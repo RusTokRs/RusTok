@@ -20,6 +20,7 @@ pub mod moderation;
 mod quote_command;
 mod rbac;
 pub mod read_model;
+pub mod read_tracking;
 mod relation_quote_input;
 mod relation_read;
 #[allow(clippy::collapsible_if, clippy::items_after_test_module)]
@@ -55,6 +56,9 @@ pub(crate) use mention_relation::MentionRelationService;
 pub use moderation::ModerationService;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
+pub use read_tracking::{
+    ForumTopicReadState, ForumTopicReadStateService, MarkForumTopicReadInput,
+};
 pub use relation_read::ForumRelationReadService;
 pub use reply_facade::ReplyService;
 pub use revision::RevisionService;
