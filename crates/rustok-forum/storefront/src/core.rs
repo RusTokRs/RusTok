@@ -26,10 +26,14 @@ pub struct ForumStorefrontTopicCardViewModel {
     pub container_class: &'static str,
     pub status_class: &'static str,
     pub status_badge_class: &'static str,
+    pub unread_badge_class: &'static str,
     pub status: String,
     pub effective_locale: String,
     pub is_pinned: bool,
     pub is_locked: bool,
+    pub is_unread: bool,
+    pub unread_count: i64,
+    pub has_unread_topic_revision: bool,
     pub title: String,
     pub slug_label: String,
     pub reply_count: i32,
@@ -51,9 +55,11 @@ pub fn forum_storefront_category_card_class(is_active: bool) -> &'static str {
     }
 }
 
-pub fn forum_storefront_topic_card_class(is_active: bool) -> &'static str {
+pub fn forum_storefront_topic_card_class(is_active: bool, is_unread: bool) -> &'static str {
     if is_active {
         "border-primary/40 bg-primary/5 shadow-sm"
+    } else if is_unread {
+        "border-sky-500/40 bg-sky-500/5 hover:border-sky-500/60 hover:shadow-sm"
     } else {
         "border-border bg-background hover:border-primary/25 hover:shadow-sm"
     }
@@ -78,6 +84,10 @@ pub fn forum_storefront_status_badge_class(status_class: &'static str) -> &'stat
             "rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
         }
     }
+}
+
+pub fn forum_storefront_unread_badge_class() -> &'static str {
+    "rounded-full bg-sky-500/15 px-2.5 py-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300"
 }
 
 pub fn forum_storefront_category_card_view_model(
@@ -110,17 +120,22 @@ pub fn forum_storefront_topic_card_view_model(
     slug_template: &str,
 ) -> ForumStorefrontTopicCardViewModel {
     let is_active = selected_topic_id == Some(item.id.as_str());
+    let is_unread = item.is_unread.unwrap_or(false);
     let status_class = topic_status_class(item.status.as_str());
     ForumStorefrontTopicCardViewModel {
         href: topic_href(module_route_base, selected_category_id, item.id.as_str()),
         is_active,
-        container_class: forum_storefront_topic_card_class(is_active),
+        container_class: forum_storefront_topic_card_class(is_active, is_unread),
         status_class,
         status_badge_class: forum_storefront_status_badge_class(status_class),
+        unread_badge_class: forum_storefront_unread_badge_class(),
         status: item.status.clone(),
         effective_locale: item.effective_locale.clone(),
         is_pinned: item.is_pinned,
         is_locked: item.is_locked,
+        is_unread,
+        unread_count: item.unread_count.unwrap_or(0),
+        has_unread_topic_revision: item.has_unread_topic_revision.unwrap_or(false),
         title: item.title.clone(),
         slug_label: forum_storefront_slug_label(slug_template, item.slug.as_str()),
         reply_count: item.reply_count,
@@ -215,13 +230,15 @@ mod tests {
             "slug: welcome"
         );
         assert!(forum_storefront_category_card_class(true).contains("border-primary/40"));
-        assert!(forum_storefront_topic_card_class(false).contains("hover:shadow-sm"));
+        assert!(forum_storefront_topic_card_class(false, false).contains("hover:shadow-sm"));
+        assert!(forum_storefront_topic_card_class(false, true).contains("border-sky-500/40"));
         assert_eq!(forum_storefront_accent_class(Some("#0ea5e9")), "bg-sky-500");
         assert!(forum_storefront_accent_class(Some(" ")).contains("from-sky-500"));
         assert!(forum_storefront_status_badge_class("success").contains("emerald"));
         assert!(forum_storefront_status_badge_class("warning").contains("amber"));
         assert!(forum_storefront_status_badge_class("muted").contains("bg-muted"));
         assert!(forum_storefront_status_badge_class("default").contains("border-border"));
+        assert!(forum_storefront_unread_badge_class().contains("sky"));
     }
 
     #[test]
