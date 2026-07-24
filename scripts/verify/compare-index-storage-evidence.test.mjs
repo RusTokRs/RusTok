@@ -2,6 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,7 +15,14 @@ const prototypeSchemas = {
   typed_eav: 'idx_bench_eav',
   hot_projection: 'idx_bench_hot',
 };
-const readWorkloads = ['status_equality', 'price_range_sort'];
+const readWorkloads = [
+  'status_equality',
+  'price_range_sort',
+  'multi_value_tag',
+  'two_hop_channel_filter',
+  'keyset_page',
+  'exact_count',
+];
 const mutationWorkloads = ['update_product_batch', 'delete_product_batch'];
 
 const scaleValues = {
@@ -25,6 +33,7 @@ const scaleValues = {
     entities: 300_080,
     fields: 1_400_160,
     links: 600_000,
+    resultMultiplier: 1,
   },
   '1m': {
     serialized: 'rows1m',
@@ -33,8 +42,14 @@ const scaleValues = {
     entities: 3_000_160,
     fields: 14_000_320,
     links: 6_000_000,
+    resultMultiplier: 10,
   },
 };
+
+const digest = (scale, workload) => createHash('md5')
+  .update(`${scale}:${workload}`)
+  .digest('hex');
+const resultRows = (values, workloadIndex) => values.resultMultiplier * (workloadIndex + 1);
 
 const repetition = (seed = 1) => ({
   planning_time_ms: seed,
@@ -76,9 +91,18 @@ function writeJson(file, value) {
 function writePacket(root, scale, overrides = {}) {
   const values = scaleValues[scale];
   const directory = path.join(root, scale);
-  const readNames = overrides.readWorkloads ?? readWorkloads;
+  const sourceNames = overrides.sourceWorkloads ?? readWorkloads;
+  const candidateNames = overrides.readWorkloads ?? sourceNames;
   const mutationNames = overrides.mutationWorkloads ?? mutationWorkloads;
   const prototypeNames = overrides.prototypes ?? prototypes;
+
+  const sourceWorkloads = sourceNames.map((name, workloadIndex) => ({
+    name,
+    sql: `SELECT product_id AS entity_id FROM idx_bench_source.product WHERE workload = '${name}'`,
+    result_rows: resultRows(values, workloadIndex),
+    result_digest: overrides.sourceDigestByName?.[name] ?? digest(scale, name),
+  }));
+  const sourceByName = new Map(sourceWorkloads.map((item) => [item.name, item]));
 
   const read = {
     database: {
@@ -95,6 +119,7 @@ function writePacket(root, scale, overrides = {}) {
     source_load_ms: 10,
     source_entity_rows: values.entities,
     source_link_rows: values.links,
+    ...(overrides.omitSourceWorkloads ? {} : { source_workloads: sourceWorkloads }),
     prototypes: prototypeNames.map((prototype, prototypeIndex) => ({
       prototype,
       schema: prototypeSchemas[prototype] ?? `idx_bench_${prototype}`,
@@ -102,15 +127,20 @@ function writePacket(root, scale, overrides = {}) {
       schema_bytes: 1000 + prototypeIndex,
       entity_rows: values.entities,
       link_rows: values.links,
-      workloads: readNames.map((name, workloadIndex) => ({
-        name,
-        result_rows: 10,
-        result_digest: `${name}-digest`,
-        repetitions: repetitions().map((item) => ({
-          ...item,
-          execution_time_ms: item.execution_time_ms + workloadIndex,
-        })),
-      })),
+      workloads: candidateNames.map((name, workloadIndex) => {
+        const source = sourceByName.get(name);
+        return {
+          name,
+          result_rows: source?.result_rows ?? resultRows(values, workloadIndex),
+          result_digest: overrides.candidateDigestByPrototype?.[prototype]?.[name]
+            ?? source?.result_digest
+            ?? digest(scale, name),
+          repetitions: repetitions().map((item) => ({
+            ...item,
+            execution_time_ms: item.execution_time_ms + workloadIndex,
+          })),
+        };
+      }),
     })),
   };
 
@@ -159,6 +189,7 @@ function writePacket(root, scale, overrides = {}) {
     scale,
     repetitions: 3,
     churn_cycles: 5,
+    source_workload_names: readWorkloads,
     expected_product_rows: values.products,
     expected_entity_rows: values.entities,
     expected_eav_field_rows: values.fields,
@@ -208,9 +239,12 @@ test('same-commit packet-v2 100k and 1m evidence is decision-ready', () => {
       same_repetitions: true,
       same_churn_cycles: true,
       same_database_settings: true,
+      same_source_oracle_shape: true,
       same_report_shape: true,
       same_mutation_effect_contract: true,
     });
+    assert.equal(report.scales[0].source_workloads.length, readWorkloads.length);
+    assert.equal(report.cross_scale_ratios.source_workloads[0].result_rows_ratio_1m_to_100k, 10);
     assert.equal(
       report.scales[0].maintenance.find((item) => item.prototype === 'typed_eav').after_churn.field_rows,
       scaleValues['100k'].fields,
@@ -260,6 +294,54 @@ test('rejects non-v2 packet contract', () => {
   });
 });
 
+test('rejects missing source oracle', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', { omitSourceWorkloads: true });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /source_workloads must be an array/);
+  });
+});
+
+test('rejects source oracle order drift', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', {
+      sourceWorkloads: [...readWorkloads].reverse(),
+    });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /source workload order mismatch/);
+  });
+});
+
+test('rejects provenance source oracle shape drift', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', {
+      provenance: { source_workload_names: readWorkloads.slice(0, -1) },
+    });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /provenance source workload order mismatch/);
+  });
+});
+
+test('rejects candidate result drift from source oracle', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', {
+      candidateDigestByPrototype: {
+        typed_eav: { status_equality: 'ffffffffffffffffffffffffffffffff' },
+      },
+    });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /typed_eav\/status_equality differs from source oracle/);
+  });
+});
+
 test('rejects maintenance EAV field cardinality drift', () => {
   withFixture((root) => {
     const lower = writePacket(root, '100k', {
@@ -283,16 +365,15 @@ test('rejects cross-scale PostgreSQL setting mismatch', () => {
   });
 });
 
-test('rejects cross-scale workload-shape mismatch', () => {
+test('rejects candidate workload-shape mismatch', () => {
   withFixture((root) => {
-    const lower = writePacket(root, '100k');
-    const upper = writePacket(root, '1m', {
+    const lower = writePacket(root, '100k', {
       readWorkloads: [...readWorkloads, 'unexpected_workload'],
     });
-    const result = runComparator([lower, upper], path.join(root, 'comparison'));
+    const result = runComparator([lower], path.join(root, 'comparison'));
 
     assert.notEqual(result.status, 0, 'expected comparator to fail closed');
-    assert.match(result.stderr, /read workload ordering mismatch/);
+    assert.match(result.stderr, /read workload order mismatch/);
   });
 });
 
