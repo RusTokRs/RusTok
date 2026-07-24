@@ -14,8 +14,7 @@ const canonicalReadWorkloads = [
   'keyset_page',
   'exact_count',
 ];
-const databaseFields = [
-  'version',
+const comparableDatabaseFields = [
   'server_version_num',
   'shared_buffers',
   'effective_cache_size',
@@ -23,6 +22,7 @@ const databaseFields = [
   'random_page_cost',
   'jit',
 ];
+const requiredDatabaseFields = ['version', ...comparableDatabaseFields];
 
 const parseArgs = () => {
   const inputs = [];
@@ -147,7 +147,7 @@ const snapshot = (value) => ({
 
 const validateDatabase = (database, scale) => {
   requireObject(database, `${scale} database`);
-  for (const field of databaseFields) {
+  for (const field of requiredDatabaseFields) {
     requireNonEmptyString(database[field], `${scale} database.${field}`);
   }
   const serverVersion = Number.parseInt(database.server_version_num, 10);
@@ -465,7 +465,7 @@ const requireDecisionProvenance = (scales) => {
   equalField('repetitions');
   equalField('churn_cycles');
 
-  for (const field of databaseFields) {
+  for (const field of comparableDatabaseFields) {
     if (lower.database[field] !== upper.database[field]) {
       die(`cross-scale database setting ${field} mismatch: 100k=${lower.database[field]} 1m=${upper.database[field]}`);
     }
