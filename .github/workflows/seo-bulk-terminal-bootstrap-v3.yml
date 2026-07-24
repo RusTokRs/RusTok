@@ -1,0 +1,116 @@
+name: SEO bulk terminal transaction bootstrap v3
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-bulk-terminal-v3-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  apply-and-check:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/seo-bulk-terminal-transaction-v4
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply and verify clean SEO bulk terminal slice
+        id: apply
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          (
+            set -euo pipefail
+            python3 scripts/seo/apply_bulk_terminal_transaction.py
+            python3 .github/seo_bulk_terminal_test_compat.py
+            rm -f .github/workflows/seo-bulk-terminal-bootstrap-v3.yml
+            rm -f .github/seo_bulk_terminal_test_compat.py
+
+            rustfmt --edition 2024 \
+              crates/rustok-seo/src/services/bulk.rs \
+              crates/rustok-seo/src/services/events.rs \
+              crates/rustok-seo/tests/bulk_terminal_transaction.rs
+            rustfmt --edition 2024 --check \
+              crates/rustok-seo/src/services/bulk.rs \
+              crates/rustok-seo/src/services/events.rs \
+              crates/rustok-seo/tests/bulk_terminal_transaction.rs
+            cargo fmt -p rustok-seo -- --check
+            cargo check -p rustok-seo
+            cargo test -p rustok-seo --no-run
+            cargo test -p rustok-seo --test bulk_terminal_transaction
+            cargo test -p rustok-seo --lib services::bulk::tests::
+            cargo test -p rustok-seo --lib services::events::tests::seo_bulk_
+
+            git add -A
+            python3 - <<'PY'
+            import subprocess
+
+            allowed = {
+                ".github/seo_bulk_terminal_test_compat.py",
+                ".github/workflows/seo-bulk-terminal-bootstrap-v3.yml",
+                ".github/workflows/seo-bulk-terminal-transaction-slice.yml",
+                "scripts/seo/apply_bulk_terminal_transaction.py",
+                "crates/rustok-seo/src/services/bulk.rs",
+                "crates/rustok-seo/src/services/events.rs",
+                "crates/rustok-seo/tests/bulk_terminal_transaction.rs",
+                "docs/roadmaps/seo-hardening-progress.md",
+            }
+            changed = set(
+                subprocess.check_output(
+                    ["git", "diff", "--cached", "--name-only"],
+                    text=True,
+                ).splitlines()
+            )
+            unexpected = sorted(changed - allowed)
+            required = {
+                ".github/workflows/seo-bulk-terminal-transaction-slice.yml",
+                "scripts/seo/apply_bulk_terminal_transaction.py",
+                "crates/rustok-seo/src/services/bulk.rs",
+                "crates/rustok-seo/src/services/events.rs",
+                "crates/rustok-seo/tests/bulk_terminal_transaction.rs",
+                "docs/roadmaps/seo-hardening-progress.md",
+            }
+            missing = sorted(required - changed)
+            if unexpected or missing:
+                raise SystemExit(
+                    f"invalid SEO slice paths: unexpected={unexpected}, missing={missing}"
+                )
+            PY
+            git diff --cached --check
+            git config user.name "RusTok Automation"
+            git config user.email "actions@users.noreply.github.com"
+            git commit -m "fix(seo): persist bulk terminal transitions atomically"
+            git push origin HEAD:fix/seo-bulk-terminal-transaction-v4
+          ) >seo-bulk-terminal-v3.log 2>&1
+          status=$?
+          cat seo-bulk-terminal-v3.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload SEO bulk terminal log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: seo-bulk-terminal-v3-log
+          path: seo-bulk-terminal-v3.log
+          retention-days: 1
+
+      - name: Fail when bootstrap failed
+        if: steps.apply.outputs.status != '0'
+        run: exit 1
