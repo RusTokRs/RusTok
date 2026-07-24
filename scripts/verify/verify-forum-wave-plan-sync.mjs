@@ -12,6 +12,8 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
+const verifierPath = "scripts/verify/verify-forum-wave-plan-sync.mjs";
+const verifierTestPath = "scripts/verify/verify-forum-wave-plan-sync.test.mjs";
 const failures = [];
 
 function read(relativePath) {
@@ -136,6 +138,18 @@ if (
   "builder_write -> forum_publish -> storefront_read"
 ) {
   failures.push(`${evidencePath}: observed-run correlation path drifted`);
+}
+
+if (!(evidence.static_readiness?.source_contracts ?? []).includes(verifierPath)) {
+  failures.push(`${evidencePath}: source contracts must register ${verifierPath}`);
+}
+for (const command of [
+  `node ${verifierPath}`,
+  `node ${verifierTestPath}`,
+]) {
+  if (!(evidence.verification?.no_compile_gates ?? []).includes(command)) {
+    failures.push(`${evidencePath}: no-compile verification set is missing ${command}`);
+  }
 }
 
 const deferred = evidence.deferred ?? [];
