@@ -43,7 +43,12 @@
       "natural_plan_analyze": true,
       "expected_root_rows": 100,
       "per_topic_subplans_forbidden": true,
-      "actual_loops_capped_by_topic_page": true,
+      "required_relations": [
+        "forum_topics",
+        "forum_topic_read_states",
+        "forum_replies",
+        "forum_topic_revisions"
+      ],
       "index_capability_plan": true,
       "required_index_capabilities": [
         "forum_topic_read_states_pkey",
