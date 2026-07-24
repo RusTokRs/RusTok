@@ -161,7 +161,7 @@ impl CategoryVisibilitySnapshot {
         {
             if let Some(visibility) = policy.visibility_override {
                 if visibility != ForumCategoryVisibility::Authenticated {
-                    return Err(ForumError::Internal(
+                    return Err(ForumError::Validation(
                         "Forum category visibility storage contains a broadening override"
                             .to_string(),
                     ));
