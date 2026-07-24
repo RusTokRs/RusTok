@@ -1,3 +1,4 @@
+mod applications;
 mod bulk;
 mod cross_links;
 mod diagnostics;
@@ -27,14 +28,19 @@ use rustok_core::{MemoryTransport, RusToKModule};
 use rustok_media::MediaAssetReadPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo_targets::{
-    seo_target_registry_from_extensions, SeoTargetCapabilityKind, SeoTargetRegistry,
-    SeoTargetRegistryEntry, SeoTargetSlug,
+    SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
+    seo_target_registry_from_extensions,
 };
 use rustok_tenant::entities::tenant_module;
 
 use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
 use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
 use crate::{SeoError, SeoResult};
+
+pub use applications::{
+    SeoApplicationServices, SeoBulkService, SeoMetadataService, SeoOperationsService,
+    SeoRedirectService, SeoRoutingService, SeoSettingsService, SeoSitemapService,
+};
 
 const MODULE_SLUG: &str = "seo";
 const REDIRECT_CACHE_TTL_SECS: u64 = 30;
@@ -77,7 +83,7 @@ fn redirect_cache_entry_weight(
 }
 
 #[derive(Clone)]
-pub struct SeoService {
+pub(crate) struct SeoService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     registry: Arc<SeoTargetRegistry>,
@@ -231,9 +237,9 @@ impl SeoService {
 }
 
 fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
-    let object = value.as_object().ok_or_else(|| {
-        SeoError::configuration("persisted SEO settings must be a JSON object")
-    })?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| SeoError::configuration("persisted SEO settings must be a JSON object"))?;
     if let Some(unknown) = object
         .keys()
         .find(|key| !SEO_SETTINGS_KEYS.contains(&key.as_str()))
@@ -260,8 +266,14 @@ fn validate_persisted_settings(settings: &SeoModuleSettings) -> SeoResult<()> {
     }
 
     for (field, hosts) in [
-        ("allowed_redirect_hosts", settings.allowed_redirect_hosts.as_slice()),
-        ("allowed_canonical_hosts", settings.allowed_canonical_hosts.as_slice()),
+        (
+            "allowed_redirect_hosts",
+            settings.allowed_redirect_hosts.as_slice(),
+        ),
+        (
+            "allowed_canonical_hosts",
+            settings.allowed_canonical_hosts.as_slice(),
+        ),
     ] {
         for host in hosts {
             validate_settings_host(host, field)?;

@@ -6,7 +6,7 @@ use rustok_api::TenantContext;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo::entities::{seo_event_delivery, seo_sitemap_file, seo_sitemap_job};
-use rustok_seo::{SeoService, SeoTargetRegistry};
+use rustok_seo::{SeoApplicationServices, SeoTargetRegistry};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
@@ -42,13 +42,14 @@ async fn sitemap_generation_rolls_back_when_transactional_event_fails() {
 
     let tenant_id = Uuid::new_v4();
     insert_seo_settings(&db, tenant_id).await;
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailingTransport)),
         Arc::new(SeoTargetRegistry::default()),
     );
 
     let error = service
+        .sitemaps()
         .generate_sitemaps(&tenant_context(tenant_id))
         .await
         .expect_err("event failure must abort the sitemap transaction");

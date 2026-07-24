@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo::entities::{seo_bulk_job, seo_event_delivery};
-use rustok_seo::{SeoService, SeoTargetRegistry};
+use rustok_seo::{SeoApplicationServices, SeoTargetRegistry};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
@@ -67,13 +67,14 @@ async fn bulk_terminal_state_rolls_back_when_transactional_event_fails() {
     .await
     .expect("failed to insert queued bulk job");
 
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailingTransport)),
         Arc::new(SeoTargetRegistry::default()),
     );
 
     let error = service
+        .bulk()
         .execute_next_bulk_job()
         .await
         .expect_err("event failure must abort the bulk terminal transaction");

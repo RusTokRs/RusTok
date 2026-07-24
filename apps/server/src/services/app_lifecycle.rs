@@ -13,7 +13,7 @@ use crate::services::event_transport_factory::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
-use rustok_seo::SeoService;
+use rustok_seo::SeoApplicationServices;
 
 // в”Ђв”Ђ Graceful-shutdown handle в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
@@ -322,7 +322,7 @@ async fn seo_bulk_worker_loop(
 ) {
     let event_bus = transactional_event_bus_from_context(&runtime_ctx);
     let runtime_extensions = module_runtime_extensions_from_ctx(&runtime_ctx);
-    let service = match SeoService::from_runtime_extensions(
+    let service = match SeoApplicationServices::from_runtime_extensions(
         runtime_ctx.db_clone(),
         event_bus,
         &runtime_extensions,
@@ -341,7 +341,7 @@ async fn seo_bulk_worker_loop(
             return;
         }
 
-        match service.execute_next_bulk_job().await {
+        match service.bulk().execute_next_bulk_job().await {
             Ok(Some(job)) => tracing::info!(
                 job_id = %job.id,
                 operation = %job.operation_kind.as_str(),
