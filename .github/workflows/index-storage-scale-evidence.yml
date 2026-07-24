@@ -16,6 +16,7 @@ on:
       - "scripts/verify/render-index-storage-adr.test.mjs"
       - "scripts/verify/prepare-index-storage-decision.mjs"
       - "scripts/verify/finalize-index-storage-adr.mjs"
+      - "scripts/verify/verify-index-storage-adr.mjs"
       - "scripts/verify/index-storage-decision-tooling.test.mjs"
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
@@ -40,6 +41,7 @@ on:
       - "scripts/verify/render-index-storage-adr.test.mjs"
       - "scripts/verify/prepare-index-storage-decision.mjs"
       - "scripts/verify/finalize-index-storage-adr.mjs"
+      - "scripts/verify/verify-index-storage-adr.mjs"
       - "scripts/verify/index-storage-decision-tooling.test.mjs"
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
@@ -94,6 +96,7 @@ jobs:
           node --check scripts/verify/render-index-storage-adr.test.mjs
           node --check scripts/verify/prepare-index-storage-decision.mjs
           node --check scripts/verify/finalize-index-storage-adr.mjs
+          node --check scripts/verify/verify-index-storage-adr.mjs
           node --check scripts/verify/index-storage-decision-tooling.test.mjs
       - name: Test storage tooling command routing
         run: node --test scripts/verify/index-storage-tooling.test.mjs
