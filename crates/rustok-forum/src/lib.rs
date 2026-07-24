@@ -34,7 +34,8 @@ pub use services::{
     CategoryService, ForumEventService, ForumQuoteCommandService, ForumReadModelService,
     ForumRelationReadService, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic,
     ForumStorefrontUnreadTopicPage, ForumTopicReadState, ForumTopicReadStateService,
-    ForumTopicUnreadSummary, ForumWidgetContractService, MarkForumTopicReadInput,
+    ForumTopicUnreadSummary, ForumTopicVisibilityScope, ForumTopicVisibilityService,
+    ForumWidgetContractService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput,
     MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
     RevisionService, SubscriptionService, TopicService, UserStatsService, VoteService,
 };
