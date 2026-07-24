@@ -25,7 +25,7 @@ node scripts/verify/index-storage-tooling.mjs compare \
   --output evidence/index-storage/comparison
 ```
 
-The router dispatches Node directly without shell evaluation. It exposes the canonical static guards, packet validator, comparator, exact-byte hashing, decision preparation, and ADR finalization paths.
+The router dispatches Node directly without shell evaluation. It exposes the canonical static guards, packet validator, comparator, exact-byte hashing, decision preparation, ADR finalization, and saved-ADR verification paths.
 
 ## Prepare the decision
 
@@ -86,8 +86,21 @@ The finalizer fails closed unless:
 - no preparation placeholder remains;
 - selection, rejection, operations, migration, and rollback rationales are all present.
 
+## Verify the saved ADR
+
+After saving or reviewing the generated Markdown, verify that it still represents the exact source files:
+
+```bash
+node scripts/verify/index-storage-tooling.mjs verify-adr \
+  --comparison evidence/index-storage/comparison/comparison.json \
+  --decision evidence/index-storage/comparison/decision.json \
+  --adr crates/rustok-index/docs/adr-postgresql-storage.md
+```
+
+`verify-adr` recalculates both digest lines from exact file bytes, snapshots the same comparison and decision bytes, repeats deterministic finalization, and requires the saved ADR to match the regenerated Markdown byte for byte. Any manual edit, formatting change, stale decision, or replaced evidence file is rejected.
+
 The generated ADR includes storage size, read latency, mutation latency, WAL, churn, and VACUUM evidence for all candidates. It never infers or ranks a winner. Its Markdown depends on evidence and decision content, not on the filesystem paths used to invoke the tooling.
 
 ## Validation boundary
 
-The tooling router and ADR finalizer do not replace benchmark execution, evidence-packet validation, production migration rehearsal, or production observability. They expose the existing contracts consistently and turn an already validated comparison plus an explicit human decision into a reviewable, byte-bound document.
+The tooling router, ADR finalizer, and saved-ADR verifier do not replace benchmark execution, evidence-packet validation, production migration rehearsal, or production observability. They expose the existing contracts consistently and turn an already validated comparison plus an explicit human decision into a reviewable, byte-bound document.
