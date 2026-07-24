@@ -113,7 +113,7 @@ requireMarkers(preflight, 'read ordering preflight', [
   "sql.startsWith('/*', index)",
   'unterminated block comment',
   "const escapeString = quote === \"'\" && isEscapeStringQuote(sql, index)",
-  "escapeString && sql[index] === '\\'",
+  "escapeString && sql[index] === '\\\\'",
   'unterminated escape string literal',
   "? (escapeString ? 'escape string literal' : 'string literal')",
   'contains an unterminated ${kind}',
