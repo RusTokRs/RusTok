@@ -5,6 +5,9 @@ mod category_tree_rest_adapter;
 mod graphql_adapter;
 mod rest_adapter;
 
+use rustok_graphql::GraphqlHttpError;
+use std::str::FromStr;
+
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
@@ -25,9 +28,12 @@ pub async fn fetch_category_tree(
     .await
     {
         Ok(tree) => Ok(tree.into_flat_items()),
-        Err(_) => category_tree_rest_adapter::fetch_category_tree(token, tenant_slug, locale)
-            .await
-            .map(|tree| tree.into_flat_items()),
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            category_tree_rest_adapter::fetch_category_tree(token, tenant_slug, locale)
+                .await
+                .map(|tree| tree.into_flat_items())
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -40,7 +46,10 @@ pub async fn fetch_categories(
         .await
     {
         Ok(categories) => Ok(categories),
-        Err(_) => rest_adapter::fetch_categories(token, tenant_slug, locale).await,
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            rest_adapter::fetch_categories(token, tenant_slug, locale).await
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -59,7 +68,10 @@ pub async fn fetch_category(
     .await
     {
         Ok(category) => Ok(category),
-        Err(_) => rest_adapter::fetch_category(token, tenant_slug, id, locale).await,
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            rest_adapter::fetch_category(token, tenant_slug, id, locale).await
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -75,12 +87,7 @@ pub async fn create_category(
 ) -> Result<CategoryDetail, ApiError> {
     let locale = draft.locale.clone();
     let requested_position = placement_position(draft.position)?;
-    let category = graphql_adapter::create_category(
-        token.clone(),
-        tenant_slug.clone(),
-        draft,
-    )
-    .await?;
+    let category = graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft).await?;
 
     move_category(
         token.clone(),
@@ -172,7 +179,10 @@ pub async fn fetch_topics(
     .await
     {
         Ok(topics) => Ok(topics),
-        Err(_) => rest_adapter::fetch_topics(token, tenant_slug, locale, category_id).await,
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            rest_adapter::fetch_topics(token, tenant_slug, locale, category_id).await
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -191,7 +201,10 @@ pub async fn fetch_topic(
     .await
     {
         Ok(topic) => Ok(topic),
-        Err(_) => rest_adapter::fetch_topic(token, tenant_slug, id, locale).await,
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            rest_adapter::fetch_topic(token, tenant_slug, id, locale).await
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -235,8 +248,18 @@ pub async fn fetch_replies(
     .await
     {
         Ok(replies) => Ok(replies),
-        Err(_) => rest_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await,
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            rest_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await
+        }
+        Err(error) => Err(error),
     }
+}
+
+fn should_fallback_to_rest(error: &str) -> bool {
+    matches!(
+        GraphqlHttpError::from_str(error),
+        Ok(GraphqlHttpError::Network)
+    )
 }
 
 fn placement_position(position: i32) -> Result<u32, ApiError> {
@@ -245,6 +268,8 @@ fn placement_position(position: i32) -> Result<u32, ApiError> {
 
 #[cfg(test)]
 mod tests {
+    use super::should_fallback_to_rest;
+
     const SOURCE: &str = include_str!("transport.rs");
 
     fn function_source(name: &str) -> &str {
@@ -284,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn forum_admin_reads_retain_compatibility_fallbacks() {
+    fn forum_admin_reads_guard_compatibility_fallbacks() {
         for operation in [
             "fetch_category_tree",
             "fetch_categories",
@@ -295,9 +320,26 @@ mod tests {
         ] {
             let source = function_source(operation);
             assert!(
+                source.contains("should_fallback_to_rest"),
+                "{operation} must classify the GraphQL failure before using REST"
+            );
+            assert!(
                 source.contains("rest_adapter::") || source.contains("category_tree_rest_adapter::"),
-                "{operation} should retain the read-only compatibility fallback"
+                "{operation} should retain the network-only compatibility fallback"
+            );
+            assert!(
+                source.contains("Err(error) => Err(error)"),
+                "{operation} must preserve non-network GraphQL errors"
             );
         }
+    }
+
+    #[test]
+    fn forum_admin_read_fallback_is_network_only() {
+        assert!(should_fallback_to_rest("Network error"));
+        assert!(!should_fallback_to_rest("Unauthorized"));
+        assert!(!should_fallback_to_rest("GraphQL error: permission denied"));
+        assert!(!should_fallback_to_rest("Http error: 503 Service Unavailable"));
+        assert!(!should_fallback_to_rest("unknown adapter error"));
     }
 }
