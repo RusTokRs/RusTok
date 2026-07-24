@@ -14,6 +14,8 @@ const routerFixture = read('scripts/verify/index-storage-tooling.test.mjs');
 const orderingPreflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const orderingFixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
 const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs');
+const standaloneFixture = read('scripts/verify/index-storage-standalone-tools.test.mjs');
+const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs');
 const preparer = read('scripts/verify/prepare-index-storage-decision.mjs');
 const finalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
 const verifier = read('scripts/verify/verify-index-storage-adr.mjs');
@@ -35,8 +37,10 @@ const forbidMarkers = (content, label, markers) => {
 
 requireMarkers(router, 'storage tooling router', [
   "'verify-index-storage-read-ordering-contract.mjs'",
+  "'verify-index-storage-standalone-tools.mjs'",
   "'verify-index-storage-adr-integrity.mjs'",
   "scriptPath('check-index-storage-read-ordering.test.mjs')",
+  "scriptPath('index-storage-standalone-tools.test.mjs')",
   "runScript('check-index-storage-read-ordering.mjs', ['--input', packetRoot])",
   "runScript('check-index-storage-read-ordering.mjs', orderingArgs)",
   "case 'prepare':",
@@ -91,12 +95,29 @@ requireMarkers(orderingFixture, 'terminal ordering fixture', [
 requireMarkers(orderingGuard, 'terminal ordering guard', [
   "const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs')",
   "const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs')",
+  "const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs')",
   'executableSql.trimEnd().endsWith(marker)',
   "test('packet runs terminal ordering preflight before the canonical validator'",
   "test('compare runs terminal ordering preflight before the canonical comparator'",
+  'standalone validator must preflight ordering before importing its core',
+  'standalone comparator must preflight every input before importing its core',
   'packet terminal ordering preflight must run before the canonical validator',
   'comparison terminal ordering preflight must run before the canonical comparator',
   'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+]);
+
+requireMarkers(standaloneGuard, 'standalone evidence guard', [
+  "const gitBlobSha = (bytes) => createHash('sha1')",
+  "'dabc18d59360c300352ab3afb2510f0a0ff22796'",
+  "'97ef0e8a216735e457c4c827d975462b84b009b3'",
+  'validator wrapper must run terminal-ordering preflight before importing its core',
+  'comparator wrapper must preflight every input before importing its core',
+]);
+requireMarkers(standaloneFixture, 'standalone evidence fixture', [
+  "test('direct validator rejects non-executable terminal ordering before its core'",
+  "test('direct comparator rejects nested-only terminal ordering before its core'",
+  "test('direct validator reaches the byte-preserved core after a valid preflight'",
+  "test('direct comparator forwards help to the byte-preserved core'",
 ]);
 
 requireMarkers(preparer, 'decision preparer', [
@@ -183,9 +204,15 @@ for (const [label, workflow] of [
     'scripts/verify/check-index-storage-read-ordering.mjs',
     'scripts/verify/check-index-storage-read-ordering.test.mjs',
     'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+    'scripts/verify/validate-index-storage-evidence-core.mjs',
+    'scripts/verify/compare-index-storage-evidence-core.mjs',
+    'scripts/verify/index-storage-standalone-tools.test.mjs',
+    'scripts/verify/verify-index-storage-standalone-tools.mjs',
     'node --check scripts/verify/check-index-storage-read-ordering.mjs',
     'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
     'node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+    'node --check scripts/verify/index-storage-standalone-tools.test.mjs',
+    'node --check scripts/verify/verify-index-storage-standalone-tools.mjs',
     'scripts/verify/verify-index-storage-adr.mjs',
     'node --check scripts/verify/verify-index-storage-adr.mjs',
     'scripts/verify/verify-index-storage-adr-integrity.mjs',
@@ -193,4 +220,4 @@ for (const [label, workflow] of [
   ]);
 }
 
-console.log('[verify-index-storage-adr-integrity] executable SQL ordering, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
+console.log('[verify-index-storage-adr-integrity] executable SQL ordering, standalone evidence entrypoints, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
