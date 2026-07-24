@@ -22,6 +22,12 @@ const readOrderMarkers = new Map([
   ['keyset_page', 'ORDER BY price_minor, entity_id LIMIT 100'],
   ['exact_count', null],
 ]);
+const canonicalSessionMetadata = new Map([
+  ['standard_conforming_strings', 'on'],
+  ['timezone', 'UTC'],
+  ['date_style', 'ISO, YMD'],
+  ['extra_float_digits', '3'],
+]);
 
 const fail = (message) => {
   throw new Error(message);
@@ -43,6 +49,15 @@ const requireObject = (value, label) => {
     fail(`${label} must be an object`);
   }
   return value;
+};
+
+const requireSessionMetadata = (read, directory) => {
+  const database = requireObject(read.database, `${directory} read.database`);
+  for (const [field, expected] of canonicalSessionMetadata) {
+    if (database[field] !== expected) {
+      fail(`${directory} read.database.${field} must be ${expected}; got ${database[field]}`);
+    }
+  }
 };
 
 const requireExactNames = (items, expected, label, field = 'name') => {
@@ -165,6 +180,7 @@ const readReport = (directory) => {
 
 export const validatePacketReadOrdering = (directory) => {
   const read = requireObject(readReport(directory), `${directory} read report`);
+  requireSessionMetadata(read, directory);
   requireExactNames(read.source_workloads, canonicalReadWorkloads, `${directory} source workload order`);
   for (const workload of read.source_workloads) {
     requireObject(workload, `${directory} source/${workload?.name ?? 'unknown'}`);
@@ -216,7 +232,7 @@ const main = () => {
   const inputs = parseArgs();
   if (inputs === null) return;
   for (const input of inputs) validatePacketReadOrdering(input);
-  console.log(`${prefix} executable terminal ordering verified for ${inputs.length} evidence packet(s)`);
+  console.log(`${prefix} deterministic session metadata and executable terminal ordering verified for ${inputs.length} evidence packet(s)`);
 };
 
 const isMain = process.argv[1]
