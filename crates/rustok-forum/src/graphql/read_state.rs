@@ -223,7 +223,7 @@ impl ForumReadStateMutation {
         ctx: &Context<'_>,
         tenant_id: Option<Uuid>,
         category_id: Uuid,
-        #[graphql(default)] input: MarkForumTopicsReadBatchGraphqlInput,
+        input: Option<MarkForumTopicsReadBatchGraphqlInput>,
     ) -> Result<GqlForumTopicsReadBatchResult> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -240,7 +240,7 @@ impl ForumReadStateMutation {
                 tenant_id,
                 category_id,
                 forum_security(&auth),
-                batch_input(input)?,
+                batch_input(input.unwrap_or_default())?,
             )
             .await?;
         Ok(map_batch_result(result))
@@ -250,7 +250,7 @@ impl ForumReadStateMutation {
         &self,
         ctx: &Context<'_>,
         tenant_id: Option<Uuid>,
-        #[graphql(default)] input: MarkForumTopicsReadBatchGraphqlInput,
+        input: Option<MarkForumTopicsReadBatchGraphqlInput>,
     ) -> Result<GqlForumTopicsReadBatchResult> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -263,7 +263,11 @@ impl ForumReadStateMutation {
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
 
         let result = ForumTopicReadStateService::new(db.clone())
-            .mark_all_read(tenant_id, forum_security(&auth), batch_input(input)?)
+            .mark_all_read(
+                tenant_id,
+                forum_security(&auth),
+                batch_input(input.unwrap_or_default())?,
+            )
             .await?;
         Ok(map_batch_result(result))
     }
