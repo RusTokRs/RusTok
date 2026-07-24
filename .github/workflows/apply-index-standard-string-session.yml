@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/index-standard-string-session
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
