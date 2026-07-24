@@ -37,11 +37,11 @@ Automated verification is recorded separately because direct pushes currently do
   - [x] Load bulk-list explicit metadata and translations in bounded batches and reuse one settings/module snapshot. (#2082)
   - [x] Reuse the batched full projection for bulk selection, preview, queue sizing, and CSV export execution. (#2083)
   - [x] Batch diagnostics metadata and page-context reads while retaining the current single-target owner-provider contract. (#2085)
-- [ ] Move synchronous in-memory SEO pipelines to bounded background execution.
+- [x] Move synchronous in-memory SEO pipelines to bounded background execution.
   - [x] Snapshot bulk-apply targets and checkpoint at most 50 targets per worker invocation. (#2092)
   - [x] Snapshot bulk-export targets and checkpoint export/import work at most 50 rows per worker invocation. (#2095)
   - [x] Queue sitemap generation and submission outside request paths and execute one durable phase per worker invocation. (#2098)
-  - [ ] Move index repair and replay execution outside request paths.
+  - [x] Queue bounded index repair/replay jobs outside request paths and resume durable worker execution. (#2100)
 - [ ] Require explicit authorization for worker and operator entry points.
 - [ ] Classify retryable, terminal, validation, and configuration failures explicitly.
 
@@ -53,4 +53,4 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Compile all SEO tests and run the bulk terminal integration, bulk service unit, and bulk event unit scopes. (scoped PR #2022 verification; landed via #2051)
 - [ ] Confirm GitHub Actions status checks for the hardening commits.
 
-The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification; PR #2051 is the clean follow-up without the temporary workflow, patch script, or `Cargo.lock` churn. PRs #2056, #2059, #2061, #2064, #2067, #2078, #2082, #2083, #2085, #2092, #2095, and #2098 continue the SEO hardening work without fresh test execution at the user's request. The full-suite checkbox remains open because nine pre-existing failures outside these slices still need resolution.
+The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification; PR #2051 is the clean follow-up without the temporary workflow, patch script, or `Cargo.lock` churn. PRs #2056, #2059, #2061, #2064, #2067, #2078, #2082, #2083, #2085, #2092, #2095, #2098, and #2100 continue the SEO hardening work without fresh test execution at the user's request. The full-suite checkbox remains open because nine pre-existing failures outside these slices still need resolution.

@@ -442,7 +442,20 @@ impl SeoOperationsService {
         replay_historical: bool,
     ) -> SeoResult<SeoIndexRepairReplayResultRecord> {
         self.runtime
-            .run_index_repair_replay(tenant_id, target_type, limit, replay_historical)
+            .queue_index_repair_replay_background(
+                tenant_id,
+                target_type,
+                limit,
+                replay_historical,
+            )
+            .await
+    }
+
+    pub async fn execute_next_index_repair_replay_job(
+        &self,
+    ) -> SeoResult<Option<SeoIndexRepairReplayResultRecord>> {
+        self.runtime
+            .execute_next_index_repair_replay_job_background()
             .await
     }
 }

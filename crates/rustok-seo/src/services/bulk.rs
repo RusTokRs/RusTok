@@ -3,6 +3,7 @@ include!("bulk_bounded_execution.rs");
 include!("bulk_io_bounded_execution.rs");
 include!("bulk_io_bounded_compat.rs");
 include!("sitemap_background.rs");
+include!("index_repair_background.rs");
 
 #[cfg(test)]
 mod bulk_read_model {
