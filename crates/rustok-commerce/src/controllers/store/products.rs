@@ -1,6 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
+    http::StatusCode,
 };
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
@@ -20,6 +21,7 @@ use super::{
 };
 use crate::controllers::{CommerceHttpRuntime, products::ProductListItem};
 use crate::{
+    CommerceError,
     dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
     storefront_channel::{
         apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
@@ -30,6 +32,76 @@ use crate::{
         shipping_profile_slug_from_product_metadata,
     },
 };
+
+fn map_storefront_product_error(
+    error: CommerceError,
+    operation: &'static str,
+    tenant_id: Uuid,
+    product_id: Option<Uuid>,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        CommerceError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_product_unavailable",
+            "Product service is temporarily unavailable",
+            "database",
+        ),
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        CommerceError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_product_invalid",
+            "Product request is invalid",
+            "validation",
+        ),
+        CommerceError::DuplicateHandle { .. }
+        | CommerceError::DuplicateSku(_)
+        | CommerceError::InvalidPrice(_)
+        | CommerceError::InsufficientInventory { .. }
+        | CommerceError::InvalidOptionCombination
+        | CommerceError::ShippingProfileNotFound(_)
+        | CommerceError::DuplicateShippingProfileSlug(_)
+        | CommerceError::NoVariants
+        | CommerceError::CannotDeletePublished
+        | CommerceError::Rich(_)
+        | CommerceError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_product_failed",
+            "Product operation could not be completed safely",
+            "unexpected_owner_error",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        operation,
+        tenant_id = %tenant_id,
+        product_id = ?product_id,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_product_http",
+        "storefront product operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_storefront_product_database_error(
+    error: sea_orm::DbErr,
+    operation: &'static str,
+    tenant_id: Uuid,
+    product_id: Option<Uuid>,
+) -> HttpError {
+    map_storefront_product_error(
+        CommerceError::Database(error),
+        operation,
+        tenant_id,
+        product_id,
+    )
+}
 
 /// List published storefront products
 #[utoipa::path(
@@ -85,7 +157,9 @@ pub async fn list_products(
         .order_by_desc(product::Column::CreatedAt)
         .all(runtime.db())
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
+        .map_err(|error| {
+            map_storefront_product_database_error(error, "list_products", tenant.id, None)
+        })?
         .into_iter()
         .filter(|product| {
             is_metadata_visible_for_public_channel(
@@ -112,7 +186,14 @@ pub async fn list_products(
             .filter(product_translation::Column::ProductId.is_in(product_ids))
             .all(runtime.db())
             .await
-            .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
+            .map_err(|error| {
+                map_storefront_product_database_error(
+                    error,
+                    "list_product_translations",
+                    tenant.id,
+                    None,
+                )
+            })?
     };
 
     let mut translation_map =
@@ -132,7 +213,9 @@ pub async fn list_products(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| {
+            map_storefront_product_error(error, "list_product_tags", tenant.id, None)
+        })?;
 
     let items = products
         .into_iter()
@@ -197,7 +280,9 @@ pub async fn show_product(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| {
+            map_storefront_product_error(error, "show_product", tenant.id, Some(id))
+        })?;
 
     if product.status != product::ProductStatus::Active
         || product.published_at.is_none()
@@ -219,7 +304,14 @@ pub async fn show_product(
         public_channel_slug.as_deref(),
     )
     .await
-    .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+    .map_err(|error| {
+        map_storefront_product_database_error(
+            error,
+            "show_product_inventory",
+            tenant.id,
+            Some(id),
+        )
+    })?;
 
     Ok(Json(product))
 }
