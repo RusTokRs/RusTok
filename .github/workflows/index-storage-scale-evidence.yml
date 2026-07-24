@@ -53,21 +53,11 @@ jobs:
 
   evidence-1m:
     needs: evidence-100k
-    if: ${{ vars.INDEX_BENCH_LARGE_RUNNER != '' }}
     uses: ./.github/workflows/index-storage-scale-run.yml
     with:
       scale: 1m
       timeout_minutes: 300
-      runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER }}
+      # Prefer an explicitly configured larger runner, but current ubuntu-latest
+      # images are allowed when the reusable job confirms at least 35 GB free.
+      runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER || 'ubuntu-latest' }}
       minimum_free_bytes: 35000000000
-
-  evidence-1m-runner-required:
-    name: 1m larger runner requirement
-    needs: evidence-100k
-    if: ${{ vars.INDEX_BENCH_LARGE_RUNNER == '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require configured larger runner
-        run: |
-          echo "::error::Set repository variable INDEX_BENCH_LARGE_RUNNER to a Linux larger-runner label with at least 35 GB free disk before running 1m evidence."
-          exit 1
