@@ -44,7 +44,7 @@ pub use dto::{
     SeoVerificationTag,
 };
 #[cfg(feature = "server")]
-pub use error::{SeoError, SeoResult};
+pub use error::{SeoError, SeoFailure, SeoFailureClass, SeoResult};
 #[cfg(feature = "server")]
 pub use graphql::{SeoMutation, SeoQuery};
 #[cfg(feature = "server")]
