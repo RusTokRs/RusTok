@@ -175,6 +175,39 @@ fn operation_variable_defaults(operation: &OperationDefinition) -> HashMap<Name,
         .collect()
 }
 
+fn pagination_value_error(
+    value: &Value,
+    position: Pos,
+    variables: &Variables,
+    defaults: &HashMap<Name, ConstValue>,
+) -> Option<ServerError> {
+    let resolved = value.clone().into_const_with(|name| {
+        resolve_variable(&name, variables, defaults).cloned().ok_or(())
+    });
+    let Ok(resolved) = resolved else {
+        // GraphQL validation owns missing or incompatible variables.
+        return None;
+    };
+    if resolved == ConstValue::Null {
+        return None;
+    }
+
+    let Ok(arguments) = from_value::<ForumPaginationArguments>(resolved) else {
+        // Schema validation owns malformed input objects and scalar types.
+        return None;
+    };
+    let pagination_input: PaginationInput = arguments.into();
+    let (offset, limit) = match pagination_input.normalize() {
+        Ok(window) => window,
+        Err(error) => return Some(error.into_server_error(position)),
+    };
+
+    (offset % limit != 0).then(|| {
+        <FieldError as GraphQLError>::bad_user_input(PAGE_BOUNDARY_ERROR)
+            .into_server_error(position)
+    })
+}
+
 fn selection_set_pagination_error(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
@@ -199,32 +232,13 @@ fn selection_set_pagination_error(
                     continue;
                 };
 
-                let resolved = pagination.node.clone().into_const_with(|name| {
-                    resolve_variable(&name, variables, defaults).cloned().ok_or(())
-                });
-                let Ok(resolved) = resolved else {
-                    // GraphQL validation owns missing or incompatible variables.
-                    continue;
-                };
-                if resolved == ConstValue::Null {
-                    continue;
-                }
-
-                let Ok(arguments) = from_value::<ForumPaginationArguments>(resolved) else {
-                    // Schema validation owns malformed input objects and scalar types.
-                    continue;
-                };
-                let pagination_input: PaginationInput = arguments.into();
-                let (offset, limit) = match pagination_input.normalize() {
-                    Ok(window) => window,
-                    Err(error) => return Some(error.into_server_error(pagination.pos)),
-                };
-
-                if offset % limit != 0 {
-                    return Some(
-                        <FieldError as GraphQLError>::bad_user_input(PAGE_BOUNDARY_ERROR)
-                            .into_server_error(pagination.pos),
-                    );
+                if let Some(error) = pagination_value_error(
+                    &pagination.node,
+                    pagination.pos,
+                    variables,
+                    defaults,
+                ) {
+                    return Some(error);
                 }
             }
             Selection::FragmentSpread(fragment) => {
