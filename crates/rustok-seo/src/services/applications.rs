@@ -255,7 +255,11 @@ impl SeoSitemapService {
         &self,
         tenant: &TenantContext,
     ) -> SeoResult<SeoSitemapStatusRecord> {
-        self.runtime.generate_sitemaps(tenant).await
+        self.runtime.queue_sitemap_generation_background(tenant).await
+    }
+
+    pub async fn execute_next_sitemap_job(&self) -> SeoResult<Option<SeoSitemapJobRecord>> {
+        self.runtime.execute_next_sitemap_job_background().await
     }
 
     pub async fn sitemap_status(
