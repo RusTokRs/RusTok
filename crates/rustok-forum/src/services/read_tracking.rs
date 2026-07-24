@@ -238,7 +238,7 @@ impl ForumTopicReadStateService {
         let cursor = input
             .cursor
             .as_deref()
-            .map(|value| decode_bulk_read_cursor(value, scope))
+            .map(|value| decode_bulk_read_cursor(value, tenant_id, user_id, scope))
             .transpose()?;
         let snapshot_at = cursor
             .as_ref()
@@ -304,9 +304,15 @@ impl ForumTopicReadStateService {
 
         let next_cursor = has_more
             .then(|| {
-                topics
-                    .last()
-                    .map(|topic| encode_bulk_read_cursor(scope, &snapshot_at, topic))
+                topics.last().map(|topic| {
+                    encode_bulk_read_cursor(
+                        tenant_id,
+                        user_id,
+                        scope,
+                        &snapshot_at,
+                        topic,
+                    )
+                })
             })
             .flatten();
         let processed = topics.len() as u64;
@@ -544,12 +550,14 @@ async fn load_explicit_state_in_tx(
 }
 
 fn encode_bulk_read_cursor(
+    tenant_id: Uuid,
+    user_id: Uuid,
     scope: BulkReadScope,
     snapshot_at: &sea_orm::prelude::DateTimeWithTimeZone,
     topic: &forum_topic::Model,
 ) -> String {
     format!(
-        "{BULK_READ_CURSOR_VERSION}|{}|{}|{}|{}",
+        "{BULK_READ_CURSOR_VERSION}|{tenant_id}|{user_id}|{}|{}|{}|{}",
         scope.cursor_token(),
         snapshot_at.to_rfc3339_opts(SecondsFormat::Nanos, true),
         topic
@@ -559,11 +567,18 @@ fn encode_bulk_read_cursor(
     )
 }
 
-fn decode_bulk_read_cursor(value: &str, expected_scope: BulkReadScope) -> ForumResult<BulkReadCursor> {
-    let expected_token = expected_scope.cursor_token();
-    let mut parts = value.splitn(5, '|');
+fn decode_bulk_read_cursor(
+    value: &str,
+    expected_tenant_id: Uuid,
+    expected_user_id: Uuid,
+    expected_scope: BulkReadScope,
+) -> ForumResult<BulkReadCursor> {
+    let expected_scope_token = expected_scope.cursor_token();
+    let mut parts = value.splitn(7, '|');
     if parts.next() != Some(BULK_READ_CURSOR_VERSION)
-        || parts.next() != Some(expected_token.as_str())
+        || parts.next() != Some(expected_tenant_id.to_string().as_str())
+        || parts.next() != Some(expected_user_id.to_string().as_str())
+        || parts.next() != Some(expected_scope_token.as_str())
     {
         return Err(invalid_bulk_read_cursor());
     }
