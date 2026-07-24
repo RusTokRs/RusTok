@@ -25,6 +25,26 @@ The reports must describe the same scale and the same ordered candidate set. The
 comparison tool rejects duplicate scales, missing files, invalid JSON, scale
 disagreement, and candidate-order disagreement.
 
+## Decision-ready contract
+
+Supplying both directories is necessary but not sufficient. Before setting
+`decision_ready=true`, the comparator requires the replacement `100k` and `1m`
+packets to have:
+
+- the same non-empty repository and commit provenance;
+- the same PostgreSQL image and recorded server/planner settings;
+- the same repetition and churn-cycle contract;
+- the same ordered read, mutation, and maintenance candidates;
+- the same ordered read and mutation workload names.
+
+Any mismatch fails closed instead of producing a comparison that could be cited
+by the storage ADR. Runner labels, CPU, memory, and disk may differ because the
+`1m` packet can require a larger runner; those resources remain visible in the
+archived packet and must be considered during manual review.
+
+The generated JSON and Markdown include a `decision_contract` section so the
+provenance checks are visible alongside the metrics.
+
 ## Running the comparison
 
 After extracting the archived packets into `evidence/index-storage/100k` and
@@ -44,7 +64,18 @@ The command writes:
 
 A smoke-only invocation is supported for validating the tool, but it emits
 `decision_ready=false`. The comparison becomes decision-ready only when both
-replacement `100k` and `1m` packets are supplied.
+replacement `100k` and `1m` packets satisfy the complete provenance and report-
+shape contract.
+
+Comparator fixture coverage is available through:
+
+```bash
+node --test scripts/verify/compare-index-storage-evidence.test.mjs
+```
+
+The tests cover the valid same-commit pair and rejection of mixed repository,
+commit, PostgreSQL, repetitions, churn, settings, workload shape, and missing
+provenance.
 
 ## Reported metrics
 

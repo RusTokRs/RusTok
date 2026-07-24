@@ -9,6 +9,7 @@ on:
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence.test.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -22,6 +23,7 @@ on:
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence.test.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -62,6 +64,8 @@ jobs:
         run: node --check scripts/verify/validate-index-storage-evidence.mjs
       - name: Verify cross-scale comparator syntax
         run: node --check scripts/verify/compare-index-storage-evidence.mjs
+      - name: Test cross-scale decision provenance
+        run: node --test scripts/verify/compare-index-storage-evidence.test.mjs
 
   evidence-100k:
     needs: contract
@@ -73,10 +77,9 @@ jobs:
       minimum_free_bytes: 6000000000
 
   evidence-1m:
-    # The 100k packet is already archived and inspected. Start the same-commit
-    # rerun and the 1m extension independently after the shared contract gate.
-    # Typed target_entity predicates on both link hops are verifier-locked so the
-    # scale packet measures the intended reverse link indexes, not a prefix miss.
+    # Generate replacement 100k and 1m packets from this exact commit after the
+    # shared contract gate. The comparator rejects mixed provenance, PostgreSQL
+    # settings, repetitions/churn parameters, or candidate/workload shapes.
     needs: contract
     uses: ./.github/workflows/index-storage-scale-run.yml
     with:
@@ -84,7 +87,7 @@ jobs:
       timeout_minutes: 300
       # Prefer an explicitly configured larger runner. Otherwise the hosted image
       # may proceed only after the reusable job verifies at least 35 GB free;
-      # the inspected 100k runner reported about 93 GB free before evidence.
+      # the inspected historical 100k runner reported about 93 GB free before evidence.
       runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER || 'ubuntu-latest' }}
       minimum_free_bytes: 35000000000
 
