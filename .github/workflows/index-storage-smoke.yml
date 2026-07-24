@@ -7,6 +7,7 @@ on:
       - "crates/rustok-index/**"
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
       - ".github/workflows/index-storage-smoke.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "crates/rustok-index/**"
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
       - ".github/workflows/index-storage-smoke.yml"
 
 permissions:
@@ -35,6 +37,8 @@ env:
   INDEX_BENCH_OUTPUT: evidence/index-storage/smoke/read-report.json
   INDEX_BENCH_MUTATION_OUTPUT: evidence/index-storage/smoke/mutation-report.json
   INDEX_BENCH_MAINTENANCE_OUTPUT: evidence/index-storage/smoke/maintenance-report.json
+  INDEX_BENCH_EVIDENCE_ROOT: evidence/index-storage/smoke
+  INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE: "1"
 
 jobs:
   contract:
@@ -114,63 +118,7 @@ jobs:
         run: target/release/index-storage-maintenance-benchmark
 
       - name: Validate evidence packet
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const root = 'evidence/index-storage/smoke';
-          const files = [
-            'read-report.json',
-            'mutation-report.json',
-            'maintenance-report.json',
-          ];
-
-          for (const filename of files) {
-            const fullPath = path.join(root, filename);
-            if (!fs.existsSync(fullPath)) {
-              throw new Error(`missing smoke evidence file: ${fullPath}`);
-            }
-            const report = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-            if (!Array.isArray(report.prototypes) || report.prototypes.length !== 3) {
-              throw new Error(`${filename} must contain exactly three prototype reports`);
-            }
-          }
-
-          const read = JSON.parse(fs.readFileSync(path.join(root, 'read-report.json'), 'utf8'));
-          if (read.dataset?.scale !== 'smoke') {
-            throw new Error(`read report scale mismatch: ${read.dataset?.scale}`);
-          }
-
-          const mutation = JSON.parse(fs.readFileSync(path.join(root, 'mutation-report.json'), 'utf8'));
-          if (mutation.repetitions !== 3) {
-            throw new Error(`mutation repetitions mismatch: ${mutation.repetitions}`);
-          }
-
-          const maintenance = JSON.parse(fs.readFileSync(path.join(root, 'maintenance-report.json'), 'utf8'));
-          if (maintenance.dataset_scale !== 'smoke' || maintenance.cycles !== 5) {
-            throw new Error('maintenance report does not match the smoke evidence contract');
-          }
-
-          fs.writeFileSync(
-            path.join(root, 'provenance.json'),
-            JSON.stringify({
-              generated_at: new Date().toISOString(),
-              repository: process.env.GITHUB_REPOSITORY,
-              commit: process.env.GITHUB_SHA,
-              ref: process.env.GITHUB_REF,
-              run_id: process.env.GITHUB_RUN_ID,
-              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
-              runner_os: process.env.RUNNER_OS,
-              postgres_image: 'postgres:16',
-              scale: 'smoke',
-              repetitions: 3,
-              churn_cycles: 5,
-              reports: files,
-            }, null, 2) + '\n',
-          );
-          NODE
+        run: node scripts/verify/validate-index-storage-evidence.mjs
 
       - name: Archive smoke evidence
         uses: actions/upload-artifact@v7
