@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 
 const prefix = '[prepare-index-storage-decision]';
@@ -158,5 +165,11 @@ const decision = {
 
 const parent = path.dirname(args.output);
 if (parent && parent !== '.') mkdirSync(parent, { recursive: true });
-writeFileSync(args.output, `${JSON.stringify(decision, null, 2)}\n`, 'utf8');
+const stagedOutput = `${args.output}.tmp-${process.pid}`;
+try {
+  writeFileSync(stagedOutput, `${JSON.stringify(decision, null, 2)}\n`, 'utf8');
+  renameSync(stagedOutput, args.output);
+} finally {
+  if (existsSync(stagedOutput)) rmSync(stagedOutput, { force: true });
+}
 console.log(`${prefix} wrote ${args.output}`);
