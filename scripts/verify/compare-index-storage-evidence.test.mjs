@@ -9,12 +9,31 @@ import { spawnSync } from 'node:child_process';
 
 const scriptPath = path.resolve('scripts/verify/compare-index-storage-evidence.mjs');
 const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
+const prototypeSchemas = {
+  jsonb: 'idx_bench_jsonb',
+  typed_eav: 'idx_bench_eav',
+  hot_projection: 'idx_bench_hot',
+};
 const readWorkloads = ['status_equality', 'price_range_sort'];
 const mutationWorkloads = ['update_product_batch', 'delete_product_batch'];
 
 const scaleValues = {
-  '100k': { serialized: 'rows100k', debug: 'Rows100k', entities: 300_080, links: 600_000 },
-  '1m': { serialized: 'rows1m', debug: 'Rows1m', entities: 3_000_160, links: 6_000_000 },
+  '100k': {
+    serialized: 'rows100k',
+    debug: 'Rows100k',
+    products: 100_000,
+    entities: 300_080,
+    fields: 1_400_160,
+    links: 600_000,
+  },
+  '1m': {
+    serialized: 'rows1m',
+    debug: 'Rows1m',
+    products: 1_000_000,
+    entities: 3_000_160,
+    fields: 14_000_320,
+    links: 6_000_000,
+  },
 };
 
 const repetition = (seed = 1) => ({
@@ -41,9 +60,10 @@ const tableStats = () => [{
   hot_updates: 0,
 }];
 
-const snapshot = (values, schemaBytes) => ({
+const snapshot = (values, prototype, schemaBytes, fieldRowsOverride) => ({
   schema_bytes: schemaBytes,
   entity_rows: values.entities,
+  field_rows: fieldRowsOverride ?? (prototype === 'typed_eav' ? values.fields : null),
   link_rows: values.links,
   table_stats: tableStats(),
 });
@@ -77,7 +97,7 @@ function writePacket(root, scale, overrides = {}) {
     source_link_rows: values.links,
     prototypes: prototypeNames.map((prototype, prototypeIndex) => ({
       prototype,
-      schema: `idx_bench_${prototype}`,
+      schema: prototypeSchemas[prototype] ?? `idx_bench_${prototype}`,
       load_ms: 20 + prototypeIndex,
       schema_bytes: 1000 + prototypeIndex,
       entity_rows: values.entities,
@@ -98,10 +118,13 @@ function writePacket(root, scale, overrides = {}) {
     dataset_scale: values.debug,
     prototypes: prototypeNames.map((prototype) => ({
       prototype,
-      schema: `idx_bench_${prototype}`,
+      schema: prototypeSchemas[prototype] ?? `idx_bench_${prototype}`,
       workloads: mutationNames.map((name) => ({
         name,
         affected_entities: 1000,
+        affected_fields: prototype === 'typed_eav'
+          ? (name === 'update_product_batch' ? 2000 : 8000)
+          : null,
         affected_links: name === 'delete_product_batch' ? 2000 : null,
         repetitions: repetitions(),
       })),
@@ -110,17 +133,21 @@ function writePacket(root, scale, overrides = {}) {
 
   const maintenance = {
     dataset_scale: values.serialized,
-    prototypes: prototypeNames.map((prototype, index) => ({
-      prototype,
-      schema: `idx_bench_${prototype}`,
-      baseline: snapshot(values, 1000 + index),
-      after_churn: snapshot(values, 1100 + index),
-      after_vacuum: snapshot(values, 1110 + index),
-      vacuum_duration_ms: 25 + index,
-    })),
+    prototypes: prototypeNames.map((prototype, index) => {
+      const fieldRowsOverride = overrides.fieldRowsByPrototype?.[prototype];
+      return {
+        prototype,
+        schema: prototypeSchemas[prototype] ?? `idx_bench_${prototype}`,
+        baseline: snapshot(values, prototype, 1000 + index, fieldRowsOverride),
+        after_churn: snapshot(values, prototype, 1100 + index, fieldRowsOverride),
+        after_vacuum: snapshot(values, prototype, 1110 + index, fieldRowsOverride),
+        vacuum_duration_ms: 25 + index,
+      };
+    }),
   };
 
   const provenance = {
+    packet_contract_version: 2,
     repository: 'RusTokRs/RusTok',
     commit: '0123456789abcdef0123456789abcdef01234567',
     ref: 'refs/heads/main',
@@ -132,6 +159,10 @@ function writePacket(root, scale, overrides = {}) {
     scale,
     repetitions: 3,
     churn_cycles: 5,
+    expected_product_rows: values.products,
+    expected_entity_rows: values.entities,
+    expected_eav_field_rows: values.fields,
+    expected_link_rows: values.links,
     ...overrides.provenance,
   };
 
@@ -158,7 +189,7 @@ function withFixture(callback) {
   }
 }
 
-test('same-commit 100k and 1m packets are decision-ready', () => {
+test('same-commit packet-v2 100k and 1m evidence is decision-ready', () => {
   withFixture((root) => {
     const lower = writePacket(root, '100k');
     const upper = writePacket(root, '1m');
@@ -170,6 +201,7 @@ test('same-commit 100k and 1m packets are decision-ready', () => {
     assert.equal(report.decision_ready, true);
     assert.deepEqual(report.decision_contract, {
       required_scales_present: true,
+      same_packet_contract_version: true,
       same_repository: true,
       same_commit: true,
       same_postgres_image: true,
@@ -177,7 +209,12 @@ test('same-commit 100k and 1m packets are decision-ready', () => {
       same_churn_cycles: true,
       same_database_settings: true,
       same_report_shape: true,
+      same_mutation_effect_contract: true,
     });
+    assert.equal(
+      report.scales[0].maintenance.find((item) => item.prototype === 'typed_eav').after_churn.field_rows,
+      scaleValues['100k'].fields,
+    );
   });
 });
 
@@ -212,6 +249,28 @@ for (const [label, field, value, pattern] of [
     });
   });
 }
+
+test('rejects non-v2 packet contract', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', { provenance: { packet_contract_version: 1 } });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /packet contract version 2/);
+  });
+});
+
+test('rejects maintenance EAV field cardinality drift', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', {
+      fieldRowsByPrototype: { typed_eav: scaleValues['100k'].fields - 1 },
+    });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /typed_eav\/baseline maintenance cardinality mismatch/);
+  });
+});
 
 test('rejects cross-scale PostgreSQL setting mismatch', () => {
   withFixture((root) => {
