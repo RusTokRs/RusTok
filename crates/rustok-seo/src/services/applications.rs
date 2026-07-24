@@ -1,5 +1,3 @@
-mod bulk_reads;
-
 use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;
@@ -334,7 +332,7 @@ impl SeoBulkService {
         selection: SeoBulkSelectionInput,
     ) -> SeoResult<SeoBulkSelectionPreviewRecord> {
         self.runtime
-            .preview_bulk_selection_count(tenant, selection)
+            .preview_bulk_selection_count_batched(tenant, selection)
             .await
     }
 
@@ -345,7 +343,7 @@ impl SeoBulkService {
         input: SeoBulkApplyInput,
     ) -> SeoResult<SeoBulkJobRecord> {
         self.runtime
-            .queue_bulk_apply(tenant, created_by, input)
+            .queue_bulk_apply_batched(tenant, created_by, input)
             .await
     }
 
@@ -356,7 +354,7 @@ impl SeoBulkService {
         input: SeoBulkExportInput,
     ) -> SeoResult<SeoBulkJobRecord> {
         self.runtime
-            .queue_bulk_export(tenant, created_by, input)
+            .queue_bulk_export_batched(tenant, created_by, input)
             .await
     }
 
@@ -400,7 +398,7 @@ impl SeoBulkService {
     }
 
     pub async fn execute_next_bulk_job(&self) -> SeoResult<Option<SeoBulkJobRecord>> {
-        self.runtime.execute_next_bulk_job().await
+        self.runtime.execute_next_bulk_job_batched().await
     }
 }
 
