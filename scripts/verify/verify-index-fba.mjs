@@ -27,6 +27,7 @@ const benchmarkCargo = read('ops/benches/Cargo.toml');
 const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
 const benchmarkConnection = read('ops/benches/src/index_storage/connection.rs');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
+const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
 const benchmarkSql = [
   'ops/benches/src/index_storage/sql/mod.rs',
   'ops/benches/src/index_storage/sql/source.rs',
@@ -116,7 +117,7 @@ for (const marker of [
   '- [x] Add committed update plus delete/reinsert churn cycles for every candidate.',
   '- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.',
   '- [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a',
-  '- [ ] Run and archive 100k Product-locale row read, mutation, and maintenance',
+  '- [x] Run and archive 100k Product-locale row read, mutation, and maintenance',
   '- [ ] Run and archive 1m Product-locale row read, mutation, and maintenance',
   '- [ ] Record the selected model and rejected alternatives in an ADR.',
 ]) {
@@ -143,6 +144,17 @@ for (const marker of [
   'retention-days: 90',
 ]) {
   if (!smokeWorkflow.includes(marker)) fail(`smoke evidence workflow missing ${marker}`);
+}
+for (const marker of [
+  "runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER || 'ubuntu-latest' }}",
+  'minimum_free_bytes: 35000000000',
+  'scale: 1m',
+  'needs: contract',
+]) {
+  if (!scaleWorkflow.includes(marker)) fail(`scale evidence workflow missing ${marker}`);
+}
+if (scaleWorkflow.includes('evidence-1m-runner-required')) {
+  fail('scale workflow must not restore the obsolete unconditional larger-runner failure job');
 }
 for (const marker of [
   'Prototype::Jsonb',
@@ -221,8 +233,11 @@ if (!normalizedBenchmarkDoc.includes('It does not run `VACUUM FULL`')) {
 if (!normalizedBenchmarkDoc.includes('Smoke evidence: archived from Actions run `30041091121`')) {
   fail('benchmark documentation must record the inspected smoke evidence run');
 }
-if (!normalizedBenchmarkDoc.includes('100k/1m evidence: pending repository-owner execution')) {
-  fail('benchmark documentation must keep scale evidence pending');
+if (!normalizedBenchmarkDoc.includes('100k evidence: archived and inspected from Actions run `30051321255`')) {
+  fail('benchmark documentation must record the inspected 100k evidence run');
+}
+if (!normalizedBenchmarkDoc.includes('1m evidence: enabled on `INDEX_BENCH_LARGE_RUNNER` when configured, otherwise `ubuntu-latest`, with a fail-closed 35 GB free-disk check')) {
+  fail('benchmark documentation must keep the guarded 1m runner policy visible');
 }
 
-console.log('[verify-index-fba] Index core boundary and M2 read/mutation/maintenance benchmark separation are consistent');
+console.log('[verify-index-fba] Index core boundary and M2 benchmark/evidence state are consistent');
