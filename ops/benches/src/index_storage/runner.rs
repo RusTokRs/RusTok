@@ -7,14 +7,15 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    BenchmarkConfig, DatasetConfig, Prototype, Workload, connect_benchmark_database,
-    explain::parse_read_explain_metrics, full_prototype_sql, read_workload_contract,
-    source_dataset_sql, source_workloads, workloads,
+    BenchmarkConfig, DatasetConfig, Prototype, RESULT_DIGEST_CONTRACT, Workload,
+    connect_benchmark_database, explain::parse_read_explain_metrics, full_prototype_sql,
+    read_workload_contract, source_dataset_sql, source_workloads, workloads,
 };
 
 #[derive(Debug, Serialize)]
 pub struct BenchmarkReport {
     pub generated_at: DateTime<Utc>,
+    pub result_digest_contract: &'static str,
     pub database: DatabaseMetadata,
     pub dataset: DatasetConfig,
     pub source_load_ms: u128,
@@ -108,6 +109,7 @@ pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
 
     Ok(BenchmarkReport {
         generated_at: Utc::now(),
+        result_digest_contract: RESULT_DIGEST_CONTRACT,
         database,
         dataset: config.dataset.clone(),
         source_load_ms,
