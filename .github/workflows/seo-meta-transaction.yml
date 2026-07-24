@@ -8,10 +8,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: seo-meta-transaction-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   apply-patch:
     if: github.head_ref == 'agent/seo-meta-transaction' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
