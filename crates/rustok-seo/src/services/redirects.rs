@@ -1,6 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
+use moka::future::Cache;
+use once_cell::sync::Lazy;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, Order, QueryFilter,
@@ -10,19 +14,209 @@ use url::Url;
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
-use rustok_core::{simple_hash, DomainEvent};
+use rustok_core::{DomainEvent, simple_hash};
 
 use crate::dto::{SeoRedirectInput, SeoRedirectMatchType, SeoRedirectRecord};
 use crate::entities::{seo_event_delivery, seo_index_cursor, seo_index_delivery, seo_redirect};
 use crate::{SeoError, SeoResult};
 
-use super::{normalize_route, SeoService, REDIRECT_CACHE};
+use super::{
+    REDIRECT_CACHE, REDIRECT_CACHE_MAX_WEIGHT_BYTES, REDIRECT_CACHE_TTL_SECS, SeoService,
+    normalize_route,
+};
 
 const DELIVERY_STATUS_SENT: &str = "sent";
 const INDEX_DELIVERY_STATUS_SENT: &str = "sent";
 const INDEX_TARGET_SCOPE_KIND: &str = "kind";
 const INDEX_SCOPE_KEY_ALL: &str = "*";
 const INDEX_CURSOR_REPLAY_MODE_NOT_STARTED: &str = "not_started";
+
+static REDIRECT_LOOKUP_CACHE: Lazy<Cache<Uuid, Arc<RedirectLookup>>> = Lazy::new(|| {
+    Cache::builder()
+        .time_to_live(Duration::from_secs(REDIRECT_CACHE_TTL_SECS))
+        .weigher(redirect_lookup_cache_entry_weight)
+        .max_capacity(REDIRECT_CACHE_MAX_WEIGHT_BYTES)
+        .build()
+});
+
+#[derive(Debug)]
+struct RedirectLookup {
+    source: Arc<Vec<seo_redirect::Model>>,
+    exact: HashMap<String, usize>,
+    wildcard_literals: HashMap<String, usize>,
+    wildcard_prefix_lengths: Vec<usize>,
+    wildcards: HashMap<String, RedirectWildcardBucket>,
+}
+
+#[derive(Debug, Default)]
+struct RedirectWildcardBucket {
+    suffix_lengths: Vec<usize>,
+    suffixes: HashMap<String, usize>,
+}
+
+impl RedirectLookup {
+    fn from_source(source: Arc<Vec<seo_redirect::Model>>) -> Self {
+        let mut exact = HashMap::new();
+        let mut wildcard_literals = HashMap::new();
+        let mut wildcard_prefix_lengths = Vec::new();
+        let mut wildcards: HashMap<String, RedirectWildcardBucket> = HashMap::new();
+
+        for (source_index, redirect) in source.iter().enumerate() {
+            if redirect.match_type == SeoRedirectMatchType::Exact.as_str() {
+                exact
+                    .entry(redirect.source_pattern.clone())
+                    .or_insert(source_index);
+                continue;
+            }
+            if redirect.match_type != SeoRedirectMatchType::Wildcard.as_str() {
+                continue;
+            }
+
+            let Some((prefix, suffix)) = redirect.source_pattern.split_once('*') else {
+                wildcard_literals
+                    .entry(redirect.source_pattern.clone())
+                    .or_insert(source_index);
+                continue;
+            };
+
+            wildcard_prefix_lengths.push(prefix.len());
+            let bucket = wildcards.entry(prefix.to_string()).or_default();
+            bucket.suffix_lengths.push(suffix.len());
+            bucket
+                .suffixes
+                .entry(suffix.to_string())
+                .or_insert(source_index);
+        }
+
+        wildcard_prefix_lengths.sort_unstable();
+        wildcard_prefix_lengths.dedup();
+        for bucket in wildcards.values_mut() {
+            bucket.suffix_lengths.sort_unstable();
+            bucket.suffix_lengths.dedup();
+        }
+
+        Self {
+            source,
+            exact,
+            wildcard_literals,
+            wildcard_prefix_lengths,
+            wildcards,
+        }
+    }
+
+    fn matches(&self, route: &str, now: DateTime<FixedOffset>) -> Option<seo_redirect::Model> {
+        if let Some(source_index) = self.exact.get(route).copied() {
+            let redirect = &self.source[source_index];
+            if redirect_is_live(redirect, &now) {
+                return Some(redirect.clone());
+            }
+        }
+
+        let mut wildcard_match = self
+            .wildcard_literals
+            .get(route)
+            .copied()
+            .filter(|source_index| redirect_is_live(&self.source[*source_index], &now));
+
+        for prefix_len in &self.wildcard_prefix_lengths {
+            if *prefix_len > route.len() || !route.is_char_boundary(*prefix_len) {
+                continue;
+            }
+            let Some(bucket) = self.wildcards.get(&route[..*prefix_len]) else {
+                continue;
+            };
+
+            for suffix_len in &bucket.suffix_lengths {
+                if *suffix_len > route.len() {
+                    continue;
+                }
+                let suffix_start = route.len() - *suffix_len;
+                if !route.is_char_boundary(suffix_start) {
+                    continue;
+                }
+                let Some(source_index) = bucket.suffixes.get(&route[suffix_start..]).copied()
+                else {
+                    continue;
+                };
+                if !redirect_is_live(&self.source[source_index], &now) {
+                    continue;
+                }
+                if wildcard_match
+                    .map(|current| source_index < current)
+                    .unwrap_or(true)
+                {
+                    wildcard_match = Some(source_index);
+                }
+            }
+        }
+
+        wildcard_match.map(|source_index| self.source[source_index].clone())
+    }
+}
+
+fn redirect_is_live(redirect: &seo_redirect::Model, now: &DateTime<FixedOffset>) -> bool {
+    redirect.is_active
+        && redirect
+            .expires_at
+            .as_ref()
+            .map(|expires_at| expires_at > now)
+            .unwrap_or(true)
+}
+
+fn redirect_lookup_cache_entry_weight(_tenant_id: &Uuid, lookup: &Arc<RedirectLookup>) -> u32 {
+    let mut weight = std::mem::size_of::<Uuid>()
+        .saturating_add(std::mem::size_of::<Arc<RedirectLookup>>())
+        .saturating_add(std::mem::size_of::<RedirectLookup>())
+        .saturating_add(std::mem::size_of::<Arc<Vec<seo_redirect::Model>>>());
+
+    for route in lookup.exact.keys() {
+        weight = weight
+            .saturating_add(std::mem::size_of::<String>())
+            .saturating_add(route.len())
+            .saturating_add(std::mem::size_of::<usize>());
+    }
+    for route in lookup.wildcard_literals.keys() {
+        weight = weight
+            .saturating_add(std::mem::size_of::<String>())
+            .saturating_add(route.len())
+            .saturating_add(std::mem::size_of::<usize>());
+    }
+    weight = weight.saturating_add(
+        lookup
+            .wildcard_prefix_lengths
+            .len()
+            .saturating_mul(std::mem::size_of::<usize>()),
+    );
+    for (prefix, bucket) in &lookup.wildcards {
+        weight = weight
+            .saturating_add(std::mem::size_of::<String>())
+            .saturating_add(prefix.len())
+            .saturating_add(std::mem::size_of::<RedirectWildcardBucket>())
+            .saturating_add(
+                bucket
+                    .suffix_lengths
+                    .len()
+                    .saturating_mul(std::mem::size_of::<usize>()),
+            );
+        for suffix in bucket.suffixes.keys() {
+            weight = weight
+                .saturating_add(std::mem::size_of::<String>())
+                .saturating_add(suffix.len())
+                .saturating_add(std::mem::size_of::<usize>());
+        }
+    }
+
+    weight.clamp(1, u32::MAX as usize) as u32
+}
+
+pub(super) async fn invalidate_redirect_lookup_cache(tenant_id: Uuid) {
+    REDIRECT_LOOKUP_CACHE.invalidate(&tenant_id).await;
+}
+
+pub(super) async fn invalidate_all_redirect_lookup_cache() {
+    REDIRECT_LOOKUP_CACHE.invalidate_all();
+    REDIRECT_LOOKUP_CACHE.run_pending_tasks().await;
+}
 
 impl SeoService {
     pub async fn list_redirects(&self, tenant_id: Uuid) -> SeoResult<Vec<SeoRedirectRecord>> {
@@ -91,7 +285,7 @@ impl SeoService {
             .await?;
         txn.commit().await?;
 
-        REDIRECT_CACHE.invalidate(&tenant.id).await;
+        super::invalidate_redirect_cache(tenant.id).await;
         Ok(record)
     }
 
@@ -232,37 +426,28 @@ impl SeoService {
             })
     }
 
+    async fn load_redirect_lookup(&self, tenant_id: Uuid) -> SeoResult<Arc<RedirectLookup>> {
+        let source = self.load_redirect_models(tenant_id).await?;
+        if let Some(lookup) = REDIRECT_LOOKUP_CACHE.get(&tenant_id).await {
+            if Arc::ptr_eq(&lookup.source, &source) {
+                return Ok(lookup);
+            }
+        }
+
+        let lookup = Arc::new(RedirectLookup::from_source(source));
+        REDIRECT_LOOKUP_CACHE
+            .insert(tenant_id, Arc::clone(&lookup))
+            .await;
+        Ok(lookup)
+    }
+
     pub(super) async fn match_redirect(
         &self,
         tenant_id: Uuid,
         route: &str,
     ) -> SeoResult<Option<seo_redirect::Model>> {
-        let now = Utc::now().fixed_offset();
-        let redirects = self.load_redirect_models(tenant_id).await?;
-        if let Some(exact) = redirects.iter().find(|item| {
-            item.is_active
-                && item
-                    .expires_at
-                    .map(|expires_at| expires_at > now)
-                    .unwrap_or(true)
-                && item.match_type == SeoRedirectMatchType::Exact.as_str()
-                && item.source_pattern == route
-        }) {
-            return Ok(Some(exact.clone()));
-        }
-
-        Ok(redirects
-            .iter()
-            .find(|item| {
-                item.is_active
-                    && item
-                        .expires_at
-                        .map(|expires_at| expires_at > now)
-                        .unwrap_or(true)
-                    && item.match_type == SeoRedirectMatchType::Wildcard.as_str()
-                    && wildcard_matches(item.source_pattern.as_str(), route)
-            })
-            .cloned())
+        let lookup = self.load_redirect_lookup(tenant_id).await?;
+        Ok(lookup.matches(route, Utc::now().fixed_offset()))
     }
 }
 
@@ -477,8 +662,37 @@ pub(super) fn map_redirect_record(model: seo_redirect::Model) -> SeoRedirectReco
 
 #[cfg(test)]
 mod tests {
-    use super::{build_seo_event_key, normalize_hosts, validate_target_url};
+    use std::sync::Arc;
+
+    use chrono::{Duration as ChronoDuration, Utc};
     use uuid::Uuid;
+
+    use super::{
+        RedirectLookup, build_seo_event_key, normalize_hosts, validate_target_url,
+    };
+    use crate::entities::seo_redirect;
+
+    fn redirect(
+        match_type: &str,
+        source_pattern: &str,
+        target_url: &str,
+        is_active: bool,
+        expires_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    ) -> seo_redirect::Model {
+        let now = Utc::now().fixed_offset();
+        seo_redirect::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            match_type: match_type.to_string(),
+            source_pattern: source_pattern.to_string(),
+            target_url: target_url.to_string(),
+            status_code: 301,
+            expires_at,
+            is_active,
+            created_at: now,
+            updated_at: now,
+        }
+    }
 
     #[test]
     fn redirect_event_keys_are_transition_sensitive() {
@@ -519,8 +733,117 @@ mod tests {
     fn redirect_target_urls_require_http_and_no_credentials() {
         let allowed_hosts = normalize_hosts(&["Allowed.Example.".to_string()]);
 
-        assert!(validate_target_url("https://allowed.example/path", &allowed_hosts, "target_url").is_ok());
-        assert!(validate_target_url("javascript://allowed.example/path", &allowed_hosts, "target_url").is_err());
-        assert!(validate_target_url("https://user:secret@allowed.example/path", &allowed_hosts, "target_url").is_err());
+        assert!(
+            validate_target_url(
+                "https://allowed.example/path",
+                &allowed_hosts,
+                "target_url"
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_target_url(
+                "javascript://allowed.example/path",
+                &allowed_hosts,
+                "target_url"
+            )
+            .is_err()
+        );
+        assert!(
+            validate_target_url(
+                "https://user:secret@allowed.example/path",
+                &allowed_hosts,
+                "target_url"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn redirect_lookup_prefers_exact_over_wildcard() {
+        let lookup = RedirectLookup::from_source(Arc::new(vec![
+            redirect("wildcard", "/docs/*", "/wildcard", true, None),
+            redirect("exact", "/docs/start", "/exact", true, None),
+        ]));
+
+        let matched = lookup
+            .matches("/docs/start", Utc::now().fixed_offset())
+            .expect("exact redirect should match");
+
+        assert_eq!(matched.target_url, "/exact");
+    }
+
+    #[test]
+    fn redirect_lookup_preserves_first_matching_wildcard_order() {
+        let lookup = RedirectLookup::from_source(Arc::new(vec![
+            redirect("wildcard", "/docs/*", "/broad", true, None),
+            redirect("wildcard", "/docs/guides/*", "/specific", true, None),
+        ]));
+
+        let matched = lookup
+            .matches("/docs/guides/start", Utc::now().fixed_offset())
+            .expect("wildcard redirect should match");
+
+        assert_eq!(matched.target_url, "/broad");
+    }
+
+    #[test]
+    fn redirect_lookup_skips_inactive_and_expired_candidates() {
+        let now = Utc::now().fixed_offset();
+        let lookup = RedirectLookup::from_source(Arc::new(vec![
+            redirect("wildcard", "/docs/*", "/inactive", false, None),
+            redirect(
+                "wildcard",
+                "/docs/guides/*",
+                "/expired",
+                true,
+                Some(now - ChronoDuration::seconds(1)),
+            ),
+            redirect(
+                "wildcard",
+                "/docs/guides/*/start",
+                "/active",
+                true,
+                None,
+            ),
+        ]));
+
+        let matched = lookup
+            .matches("/docs/guides/current/start", now)
+            .expect("live wildcard redirect should match");
+
+        assert_eq!(matched.target_url, "/active");
+    }
+
+    #[test]
+    fn wildcard_without_token_remains_literal() {
+        let lookup = RedirectLookup::from_source(Arc::new(vec![redirect(
+            "wildcard",
+            "/literal",
+            "/target",
+            true,
+            None,
+        )]));
+        let now = Utc::now().fixed_offset();
+
+        assert!(lookup.matches("/literal", now).is_some());
+        assert!(lookup.matches("/literal/child", now).is_none());
+    }
+
+    #[test]
+    fn redirect_lookup_handles_unicode_prefix_and_suffix_boundaries() {
+        let lookup = RedirectLookup::from_source(Arc::new(vec![redirect(
+            "wildcard",
+            "/каталог/*/обзор",
+            "/target",
+            true,
+            None,
+        )]));
+
+        let matched = lookup
+            .matches("/каталог/товар/обзор", Utc::now().fixed_offset())
+            .expect("unicode wildcard redirect should match");
+
+        assert_eq!(matched.target_url, "/target");
     }
 }
