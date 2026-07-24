@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
 
 const script = path.resolve('scripts/verify/render-index-storage-adr.mjs');
 const commit = '0123456789abcdef0123456789abcdef01234567';
@@ -98,11 +99,15 @@ const validComparison = () => ({
   cross_scale_ratios: ratios,
 });
 
-const validDecision = () => ({
+const serializeJson = (value) => `${JSON.stringify(value, null, 2)}\n`;
+const sha256Json = (value) => createHash('sha256').update(serializeJson(value)).digest('hex');
+
+const validDecision = (comparison = validComparison()) => ({
   status: 'proposed',
   decision_date: '2026-07-24',
   owner: 'Index maintainers',
   comparison_commit: commit,
+  comparison_sha256: sha256Json(comparison),
   selected_prototype: 'typed_eav',
   selection_rationale: 'Typed EAV provides the selected balance of query behavior and schema evolution.',
   rejection_rationales: {
@@ -116,7 +121,7 @@ const validDecision = () => ({
 
 const writeJson = (filename, value) => {
   mkdirSync(path.dirname(filename), { recursive: true });
-  writeFileSync(filename, `${JSON.stringify(value, null, 2)}\n`);
+  writeFileSync(filename, serializeJson(value));
 };
 
 const withFixture = (callback) => {
@@ -145,11 +150,13 @@ const run = (root, comparison, decision) => {
 
 test('renders a manual same-commit storage ADR', () => {
   withFixture((root) => {
-    const { result, outputPath } = run(root, validComparison(), validDecision());
+    const comparison = validComparison();
+    const { result, outputPath } = run(root, comparison, validDecision(comparison));
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const markdown = readFileSync(outputPath, 'utf8');
     assert.match(markdown, /Use \*\*typed_eav\*\*/u);
     assert.match(markdown, /ordered_length_prefixed_json_v1/u);
+    assert.match(markdown, /Comparison SHA-256/u);
     assert.match(markdown, /## Rejected alternatives/u);
     assert.match(markdown, /renderer does not infer or rank a winning prototype/u);
   });
@@ -167,19 +174,32 @@ test('rejects evidence that is not decision-ready', () => {
 
 test('rejects a decision tied to another commit', () => {
   withFixture((root) => {
-    const decision = validDecision();
+    const comparison = validComparison();
+    const decision = validDecision(comparison);
     decision.comparison_commit = 'ffffffffffffffffffffffffffffffffffffffff';
-    const { result } = run(root, validComparison(), decision);
+    const { result } = run(root, comparison, decision);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /must match the evidence comparison commit/u);
   });
 });
 
+test('rejects comparison bytes changed after the decision', () => {
+  withFixture((root) => {
+    const comparison = validComparison();
+    const decision = validDecision(comparison);
+    comparison.generated_at = '2026-07-24T12:00:01Z';
+    const { result } = run(root, comparison, decision);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must match the exact comparison\.json bytes/u);
+  });
+});
+
 test('requires rationale for every rejected alternative', () => {
   withFixture((root) => {
-    const decision = validDecision();
+    const comparison = validComparison();
+    const decision = validDecision(comparison);
     delete decision.rejection_rationales.hot_projection;
-    const { result } = run(root, validComparison(), decision);
+    const { result } = run(root, comparison, decision);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /must contain exactly jsonb, hot_projection/u);
   });
@@ -188,8 +208,9 @@ test('requires rationale for every rejected alternative', () => {
 test('rejects an unsatisfied evidence decision flag', () => {
   withFixture((root) => {
     const comparison = validComparison();
+    const decision = validDecision(comparison);
     comparison.decision_contract.same_result_digest_contract = false;
-    const { result } = run(root, comparison, validDecision());
+    const { result } = run(root, comparison, decision);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /same_result_digest_contract is not satisfied/u);
   });

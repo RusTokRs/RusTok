@@ -11,6 +11,10 @@ on:
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
+      - "scripts/verify/hash-index-storage-comparison.mjs"
+      - "scripts/verify/render-index-storage-adr.mjs"
+      - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -26,6 +30,10 @@ on:
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
+      - "scripts/verify/hash-index-storage-comparison.mjs"
+      - "scripts/verify/render-index-storage-adr.mjs"
+      - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -64,12 +72,20 @@ jobs:
         run: |
           node scripts/verify/verify-index-fba.mjs
           node scripts/verify/verify-index-storage-source-oracle.mjs
+          node scripts/verify/verify-index-storage-adr-tooling.mjs
       - name: Verify scale evidence validator syntax
         run: node --check scripts/verify/validate-index-storage-evidence.mjs
       - name: Verify cross-scale comparator syntax
         run: node --check scripts/verify/compare-index-storage-evidence.mjs
+      - name: Verify storage ADR tooling syntax
+        run: |
+          node --check scripts/verify/hash-index-storage-comparison.mjs
+          node --check scripts/verify/render-index-storage-adr.mjs
+          node --check scripts/verify/render-index-storage-adr.test.mjs
       - name: Test cross-scale decision provenance
         run: node --test scripts/verify/compare-index-storage-evidence.test.mjs
+      - name: Test manual ADR evidence binding
+        run: node --test scripts/verify/render-index-storage-adr.test.mjs
 
   evidence-100k:
     needs: contract

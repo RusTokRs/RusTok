@@ -10,24 +10,31 @@ const fail = (message) => {
 };
 
 const renderer = read('scripts/verify/render-index-storage-adr.mjs');
+const digestHelper = read('scripts/verify/hash-index-storage-comparison.mjs');
 const fixture = read('scripts/verify/render-index-storage-adr.test.mjs');
 const guide = read('crates/rustok-index/docs/storage-decision.md');
 const schema = JSON.parse(read('crates/rustok-index/docs/storage-decision.schema.json'));
 const example = JSON.parse(read('crates/rustok-index/docs/storage-decision.example.json'));
 
 for (const marker of [
+  "import { createHash } from 'node:crypto'",
   "const prototypes = ['jsonb', 'typed_eav', 'hot_projection']",
   "'same_result_digest_contract'",
-  "comparison.methodology?.automatic_winner_selection !== false",
+  'const readComparison = (filename) =>',
+  "createHash('sha256').update(bytes).digest('hex')",
+  'comparison.methodology?.automatic_winner_selection !== false',
   'comparison must contain exactly one ${scale} evidence entry',
   'comparison decision contract ${field} is not satisfied',
   'decision.comparison_commit must match the evidence comparison commit',
+  'decision.comparison_sha256 must be a SHA-256 digest',
+  'decision.comparison_sha256 must match the exact comparison.json bytes',
   'decision.rejection_rationales must contain exactly',
   'comparison.cross_scale_ratios',
   'cross-scale prototype order',
   'read workload order differs across scales',
   'mutation workload order differs across scales',
-  'const render = (comparison, decision) =>',
+  'const render = (comparison, decision, comparisonSha256) =>',
+  'Comparison SHA-256:',
   'renderer does not infer or rank a winning prototype',
 ]) {
   if (!renderer.includes(marker)) fail(`ADR renderer is missing contract marker: ${marker}`);
@@ -44,11 +51,22 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  "createHash('sha256')",
+  'exactly one comparison.json path is required',
+  'readFileSync(filename)',
+  'process.stdout.write(`${digest}\\n`)',
+]) {
+  if (!digestHelper.includes(marker)) fail(`comparison digest helper is missing marker: ${marker}`);
+}
+
+for (const marker of [
   "test('renders a manual same-commit storage ADR'",
   "test('rejects evidence that is not decision-ready'",
   "test('rejects a decision tied to another commit'",
+  "test('rejects comparison bytes changed after the decision'",
   "test('requires rationale for every rejected alternative'",
   "test('rejects an unsatisfied evidence decision flag'",
+  "comparison_sha256: sha256Json(comparison)",
 ]) {
   if (!fixture.includes(marker)) fail(`ADR renderer fixture is missing scenario: ${marker}`);
 }
@@ -56,8 +74,14 @@ for (const marker of [
 if (schema.$schema !== 'https://json-schema.org/draft/2020-12/schema') {
   fail('storage decision schema must use JSON Schema draft 2020-12');
 }
+if (schema.$id !== 'https://rustok.dev/schemas/index-storage-decision-v2.json') {
+  fail('storage decision schema must use the exact-binding v2 identifier');
+}
 if (schema.properties?.$schema?.const !== './storage-decision.schema.json') {
   fail('storage decision schema must allow the colocated schema reference used by the example');
+}
+if (schema.properties?.comparison_sha256?.pattern !== '^[0-9a-fA-F]{64}$') {
+  fail('storage decision schema must require a SHA-256 comparison digest');
 }
 if (!schema.properties?.selected_prototype?.enum
     || JSON.stringify(schema.properties.selected_prototype.enum)
@@ -72,6 +96,7 @@ for (const field of [
   'decision_date',
   'owner',
   'comparison_commit',
+  'comparison_sha256',
   'selected_prototype',
   'selection_rationale',
   'rejection_rationales',
@@ -85,6 +110,9 @@ for (const field of [
 if (example.$schema !== './storage-decision.schema.json') {
   fail('storage decision example must reference the colocated schema');
 }
+if (!/^[0-9a-f]{64}$/u.test(example.comparison_sha256 ?? '')) {
+  fail('storage decision example must contain a SHA-256 comparison digest');
+}
 if (!schema.properties.selected_prototype.enum.includes(example.selected_prototype)) {
   fail('storage decision example selected prototype is invalid');
 }
@@ -96,6 +124,9 @@ if (JSON.stringify(Object.keys(example.rejection_rationales ?? {}).sort()) !== J
 }
 
 for (const marker of [
+  'hash-index-storage-comparison.mjs',
+  'comparison_sha256',
+  'exact comparison-file bytes',
   'render-index-storage-adr.mjs',
   'storage-decision.schema.json',
   'decision_ready: true',
@@ -106,4 +137,4 @@ for (const marker of [
   if (!guide.includes(marker)) fail(`storage decision guide is missing marker: ${marker}`);
 }
 
-console.log('[verify-index-storage-adr-tooling] ADR renderer, schema, example, fixtures and guide are consistent');
+console.log('[verify-index-storage-adr-tooling] ADR renderer, digest binding, schema, example, fixtures and guide are consistent');
