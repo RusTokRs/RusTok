@@ -179,13 +179,5 @@ fn normalize_channel_slug(channel_slug: Option<&str>) -> ForumResult<Option<Stri
             "Forum channel slug must not exceed {MAX_FORUM_CHANNEL_SLUG_LEN} bytes"
         )));
     }
-    if !channel_slug
-        .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-    {
-        return Err(ForumError::Validation(
-            "Forum channel slug contains unsupported characters".to_string(),
-        ));
-    }
     Ok(Some(channel_slug.to_ascii_lowercase()))
 }
