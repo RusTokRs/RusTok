@@ -1,0 +1,16 @@
+{
+  "$schema": "./storage-decision.schema.json",
+  "status": "proposed",
+  "decision_date": "2026-07-24",
+  "owner": "Index maintainers",
+  "comparison_commit": "0123456789abcdef0123456789abcdef01234567",
+  "selected_prototype": "typed_eav",
+  "selection_rationale": "Replace this text with the evidence-based reason for selecting typed EAV.",
+  "rejection_rationales": {
+    "jsonb": "Replace this text with the measured and operational reason JSONB was not selected.",
+    "hot_projection": "Replace this text with the measured and operational reason hot projection was not selected."
+  },
+  "operational_tradeoffs": "Document index management, schema evolution, relation growth, WAL, VACUUM and observability implications.",
+  "migration_strategy": "Document table creation, backfill, parity verification and persistence-port cutover.",
+  "rollback_strategy": "Document how the previous persistence path remains recoverable until cutover verification completes."
+}
