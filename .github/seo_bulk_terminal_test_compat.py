@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 path = Path("crates/rustok-seo/src/services/events.rs")
@@ -57,3 +58,17 @@ wrapper = '''    #[cfg(test)]
 
 '''
 path.write_text(text.replace(marker, wrapper + marker, 1))
+
+roadmap_path = Path("docs/roadmaps/seo-hardening-progress.md")
+roadmap = roadmap_path.read_text()
+pr_number = os.environ["PR_NUMBER"]
+full_test_checked = f"- [x] Run `cargo test -p rustok-seo`. (#{pr_number})"
+if roadmap.count(full_test_checked) != 1:
+    raise SystemExit("full SEO test roadmap marker mismatch")
+roadmap = roadmap.replace(
+    full_test_checked,
+    "- [ ] Run `cargo test -p rustok-seo`. Full suite currently has nine pre-existing failures outside the bulk terminal slice.\n"
+    f"- [x] Compile all SEO tests and run the bulk terminal integration, bulk service unit, and bulk event unit scopes. (#{pr_number})",
+    1,
+)
+roadmap_path.write_text(roadmap)
