@@ -5,6 +5,7 @@ use rustok_forum::entities::{forum_topic_read_state, forum_topic_revision};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
     ForumTopicReadStateService, MarkForumTopicReadInput, ReplyService, TopicService,
+    UpdateTopicInput,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
@@ -45,7 +46,7 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
     (db, event_bus, Uuid::new_v4())
 }
 
-async fn create_topic_with_two_public_replies(
+async fn create_topic_with_revision_and_two_public_replies(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     tenant_id: Uuid,
@@ -70,10 +71,11 @@ async fn create_topic_with_two_public_replies(
         )
         .await
         .expect("category should be created");
-    let topic = TopicService::new(db.clone(), event_bus.clone())
+    let topics = TopicService::new(db.clone(), event_bus.clone());
+    let topic = topics
         .create(
             tenant_id,
-            author,
+            author.clone(),
             CreateTopicInput {
                 locale: "en".into(),
                 category_id: category.id,
@@ -89,6 +91,25 @@ async fn create_topic_with_two_public_replies(
         )
         .await
         .expect("topic should be created");
+    topics
+        .update(
+            tenant_id,
+            topic.id,
+            author,
+            UpdateTopicInput {
+                locale: "en".into(),
+                title: Some("Monotonic state updated".into()),
+                body: Some("Updated body".into()),
+                body_format: Some("markdown".into()),
+                content_json: None,
+                metadata: None,
+                tags: None,
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("topic edit should create an immutable revision");
+
     let replies = ReplyService::new(db.clone(), event_bus.clone());
     for content in ["First", "Second"] {
         replies
@@ -118,7 +139,7 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
     let author = SecurityContext::new(UserRole::Admin, Some(author_id));
     let reader = SecurityContext::new(UserRole::Customer, Some(reader_id));
     let anonymous = SecurityContext::new(UserRole::Customer, None);
-    let topic_id = create_topic_with_two_public_replies(
+    let topic_id = create_topic_with_revision_and_two_public_replies(
         &db,
         &event_bus,
         tenant_id,
@@ -133,7 +154,7 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
         .one(&db)
         .await
         .expect("latest topic revision query should succeed")
-        .expect("topic creation should record a revision")
+        .expect("topic edit should record a revision")
         .id;
     let service = ForumTopicReadStateService::new(db.clone());
 
