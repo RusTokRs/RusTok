@@ -21,32 +21,34 @@ use rustok_seo_targets::{
 };
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    EntityTrait, PaginatorTrait, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
+    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
 use serde_json::json;
 use uuid::Uuid;
 
-struct FailOnSecondTransport {
+struct FailOnNthTransport {
     calls: AtomicUsize,
+    fail_on: usize,
 }
 
-impl FailOnSecondTransport {
-    fn new() -> Self {
+impl FailOnNthTransport {
+    fn new(fail_on: usize) -> Self {
         Self {
             calls: AtomicUsize::new(0),
+            fail_on,
         }
     }
 }
 
 #[async_trait]
-impl EventTransport for FailOnSecondTransport {
+impl EventTransport for FailOnNthTransport {
     async fn publish(&self, _envelope: EventEnvelope) -> rustok_core::Result<()> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if call == 2 {
-            return Err(Error::Validation(
-                "forced SEO metadata reindex failure".to_string(),
-            ));
+        if call == self.fail_on {
+            return Err(Error::Validation(format!(
+                "forced SEO transaction failure on publish {call}"
+            )));
         }
         Ok(())
     }
@@ -126,7 +128,7 @@ async fn metadata_transaction_rolls_back_when_reindex_event_fails() {
         .expect("test page provider should register");
     let service = SeoService::new(
         db.clone(),
-        TransactionalEventBus::new(Arc::new(FailOnSecondTransport::new())),
+        TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(2))),
         Arc::new(registry),
     );
 
@@ -242,7 +244,7 @@ async fn revision_creation_rolls_back_when_reindex_event_fails() {
 
     let service = SeoService::new(
         db.clone(),
-        TransactionalEventBus::new(Arc::new(FailOnSecondTransport::new())),
+        TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(2))),
         Arc::new(SeoTargetRegistry::default()),
     );
     let error = service
@@ -280,6 +282,145 @@ async fn revision_creation_rolls_back_when_reindex_event_fails() {
             .await
             .expect("revision count should load"),
         0
+    );
+    assert_eq!(
+        seo_event_delivery::Entity::find()
+            .count(&db)
+            .await
+            .expect("event delivery count should load"),
+        0
+    );
+    assert_eq!(
+        seo_index_delivery::Entity::find()
+            .count(&db)
+            .await
+            .expect("index delivery count should load"),
+        0
+    );
+    assert_eq!(
+        seo_index_cursor::Entity::find()
+            .count(&db)
+            .await
+            .expect("index cursor count should load"),
+        0
+    );
+}
+
+#[tokio::test]
+async fn revision_rollback_rolls_back_when_rollback_reindex_fails() {
+    let db = test_db().await;
+    create_tables(&db).await;
+
+    let tenant = TenantContext {
+        id: Uuid::new_v4(),
+        name: "SEO rollback tenant".to_string(),
+        slug: "seo-rollback".to_string(),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".to_string(),
+        is_active: true,
+    };
+    let target_id = Uuid::new_v4();
+    let meta_id = Uuid::new_v4();
+    seo_meta::ActiveModel {
+        id: Set(meta_id),
+        tenant_id: Set(tenant.id),
+        target_type: Set(page_slug().into_string()),
+        target_id: Set(target_id),
+        no_index: Set(false),
+        no_follow: Set(false),
+        canonical_url: Set(None),
+        structured_data: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("current metadata should be seeded");
+    meta_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        meta_id: Set(meta_id),
+        locale: Set("en".to_string()),
+        title: Set(Some("Current title".to_string())),
+        description: Set(Some("Current description".to_string())),
+        keywords: Set(None),
+        og_title: Set(None),
+        og_description: Set(None),
+        og_image: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("current metadata translation should be seeded");
+    seo_revision::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant.id),
+        target_kind: Set(page_slug().into_string()),
+        target_id: Set(target_id),
+        revision: Set(1),
+        note: Set(Some("Rollback snapshot".to_string())),
+        payload: Set(json!({
+            "noindex": true,
+            "nofollow": true,
+            "canonical_url": null,
+            "structured_data": null,
+            "translations": [{
+                "locale": "en",
+                "title": "Revision title",
+                "description": "Revision description",
+                "keywords": null,
+                "og_title": null,
+                "og_description": null,
+                "og_image": null
+            }]
+        })),
+        created_at: Set(chrono::Utc::now().fixed_offset()),
+    }
+    .insert(&db)
+    .await
+    .expect("rollback revision should be seeded");
+
+    let mut registry = SeoTargetRegistry::default();
+    registry
+        .register(TestPageProvider)
+        .expect("test page provider should register");
+    let service = SeoService::new(
+        db.clone(),
+        TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(4))),
+        Arc::new(registry),
+    );
+    let error = service
+        .rollback_revision(&tenant, page_slug(), target_id, 1)
+        .await
+        .expect_err("rollback reindex failure must abort the whole revision rollback");
+    assert!(
+        error
+            .to_string()
+            .contains("failed to enqueue SEO entity reindex event transactionally")
+    );
+
+    let current_meta = seo_meta::Entity::find_by_id(meta_id)
+        .one(&db)
+        .await
+        .expect("metadata should load")
+        .expect("metadata should remain");
+    assert!(!current_meta.no_index);
+    assert!(!current_meta.no_follow);
+    let current_translation = meta_translation::Entity::find()
+        .filter(meta_translation::Column::MetaId.eq(meta_id))
+        .filter(meta_translation::Column::Locale.eq("en"))
+        .one(&db)
+        .await
+        .expect("translation should load")
+        .expect("translation should remain");
+    assert_eq!(current_translation.title.as_deref(), Some("Current title"));
+    assert_eq!(
+        current_translation.description.as_deref(),
+        Some("Current description")
+    );
+    assert_eq!(
+        seo_revision::Entity::find()
+            .count(&db)
+            .await
+            .expect("revision count should load"),
+        1
     );
     assert_eq!(
         seo_event_delivery::Entity::find()

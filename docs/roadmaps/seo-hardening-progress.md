@@ -17,7 +17,7 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Tenant-scope sitemap file aggregation for job reads. (`7593f8c`)
 - [x] Persist SEO metadata, translations, delivery tracking, and reindex events transactionally. (#2056)
 - [x] Persist revision creation and its event transactionally. (#2059)
-- [ ] Persist revision rollback and all resulting events transactionally.
+- [x] Persist revision rollback and all resulting events transactionally. (#2061)
 - [x] Persist bulk terminal state and terminal event transactionally. (#2051)
 
 ## Regression coverage
@@ -25,7 +25,7 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Add an integration regression test proving that redirect data and delivery tracking roll back when the transactional event transport fails. (`1d5144c`, `c940afd`)
 - [x] Add an integration regression test proving that sitemap jobs, generated files, and delivery tracking roll back when the transactional outbox write fails. (`a4d9476`)
 - [x] Add contract coverage for transition-scoped redirect events, safe redirect targets, fail-closed settings, and tenant-scoped sitemap reads. (`7593f8c`)
-- [ ] Add rollback coverage for metadata and revision transactions. Metadata and revision creation rollback are covered; revision rollback remains open. (#2056, #2059)
+- [x] Add rollback coverage for metadata and revision transactions. (#2056, #2059, #2061)
 - [x] Add rollback coverage for bulk terminal state and terminal event transactions. (#2051)
 
 ## P1 — performance and maintainability
@@ -46,4 +46,4 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Compile all SEO tests and run the bulk terminal integration, bulk service unit, and bulk event unit scopes. (scoped PR #2022 verification; landed via #2051)
 - [ ] Confirm GitHub Actions status checks for the hardening commits.
 
-The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification; PR #2051 is the clean follow-up without the temporary workflow, patch script, or `Cargo.lock` churn. PRs #2056 and #2059 add transactional metadata and revision creation slices without fresh test execution at the user's request. The full-suite checkbox remains open because nine pre-existing failures outside these slices still need resolution.
+The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification; PR #2051 is the clean follow-up without the temporary workflow, patch script, or `Cargo.lock` churn. PRs #2056, #2059, and #2061 complete the transactional metadata and revision slices without fresh test execution at the user's request. The full-suite checkbox remains open because nine pre-existing failures outside these slices still need resolution.

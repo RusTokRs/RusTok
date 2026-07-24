@@ -91,7 +91,37 @@ impl SeoService {
         input: SeoMetaInput,
         transition_ref: Option<String>,
     ) -> SeoResult<SeoMetaRecord> {
-        let response_locale = upsert_response_locale(&input, tenant.default_locale.as_str())?;
+        let response_locale = self.prepare_meta_transition(tenant, &input).await?;
+        let target_kind = input.target_kind.clone();
+        let target_id = input.target_id;
+        let txn = self.db.begin().await?;
+
+        self.persist_meta_transition_in_tx(
+            &txn,
+            tenant,
+            input,
+            response_locale.as_str(),
+            transition_ref.as_deref(),
+        )
+        .await?;
+        txn.commit().await?;
+
+        self.seo_meta(
+            tenant,
+            target_kind,
+            target_id,
+            Some(response_locale.as_str()),
+        )
+        .await?
+        .ok_or(SeoError::NotFound)
+    }
+
+    async fn prepare_meta_transition(
+        &self,
+        tenant: &TenantContext,
+        input: &SeoMetaInput,
+    ) -> SeoResult<String> {
+        let response_locale = upsert_response_locale(input, tenant.default_locale.as_str())?;
 
         if self
             .load_target_state(
@@ -118,15 +148,24 @@ impl SeoService {
             validate_structured_data_payload(&structured_data.0)?;
         }
 
+        Ok(response_locale)
+    }
+
+    async fn persist_meta_transition_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant: &TenantContext,
+        input: SeoMetaInput,
+        response_locale: &str,
+        transition_ref: Option<&str>,
+    ) -> SeoResult<()> {
         let target_kind = input.target_kind.clone();
         let target_id = input.target_id;
-        let txn = self.db.begin().await?;
-
         let existing = seo_meta::Entity::find()
             .filter(seo_meta::Column::TenantId.eq(tenant.id))
             .filter(seo_meta::Column::TargetType.eq(input.target_kind.as_str()))
             .filter(seo_meta::Column::TargetId.eq(input.target_id))
-            .one(&txn)
+            .one(txn)
             .await?;
 
         let meta = if let Some(existing) = existing {
@@ -135,7 +174,7 @@ impl SeoService {
             active.no_follow = Set(input.nofollow);
             active.canonical_url = Set(input.canonical_url.clone());
             active.structured_data = Set(input.structured_data.clone().map(|value| value.0));
-            active.update(&txn).await?
+            active.update(txn).await?
         } else {
             seo_meta::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -147,7 +186,7 @@ impl SeoService {
                 canonical_url: Set(input.canonical_url.clone()),
                 structured_data: Set(input.structured_data.clone().map(|value| value.0)),
             }
-            .insert(&txn)
+            .insert(txn)
             .await?
         };
 
@@ -159,7 +198,7 @@ impl SeoService {
             let existing_translation = meta_translation::Entity::find()
                 .filter(meta_translation::Column::MetaId.eq(meta.id))
                 .filter(meta_translation::Column::Locale.eq(locale.clone()))
-                .one(&txn)
+                .one(txn)
                 .await?;
 
             if let Some(existing_translation) = existing_translation {
@@ -170,7 +209,7 @@ impl SeoService {
                 active.og_title = Set(trimmed_option(translation.og_title));
                 active.og_description = Set(trimmed_option(translation.og_description));
                 active.og_image = Set(trimmed_option(translation.og_image));
-                active.update(&txn).await?;
+                active.update(txn).await?;
             } else {
                 meta_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -183,31 +222,21 @@ impl SeoService {
                     og_description: Set(trimmed_option(translation.og_description)),
                     og_image: Set(trimmed_option(translation.og_image)),
                 }
-                .insert(&txn)
+                .insert(txn)
                 .await?;
             }
         }
 
         self.publish_seo_meta_upserted_event_in_tx(
-            &txn,
+            txn,
             tenant.id,
             target_kind.as_str(),
             target_id,
-            response_locale.as_str(),
+            response_locale,
             "explicit",
-            transition_ref.as_deref(),
+            transition_ref,
         )
-        .await?;
-        txn.commit().await?;
-
-        self.seo_meta(
-            tenant,
-            target_kind,
-            target_id,
-            Some(response_locale.as_str()),
-        )
-        .await?
-        .ok_or(SeoError::NotFound)
+        .await
     }
 
     pub async fn publish_revision(
@@ -290,14 +319,35 @@ impl SeoService {
         let transition_ref = format!("revision:{revision}");
         let kind = target_kind.clone();
         let input = snapshot_to_input(snapshot.payload, target_kind, target_id);
-        let record = self
-            .upsert_meta_with_transition(tenant, input, Some(transition_ref))
-            .await?;
+        let response_locale = self.prepare_meta_transition(tenant, &input).await?;
+        let txn = self.db.begin().await?;
 
-        self.publish_seo_revision_rolled_back_event(tenant.id, kind.as_str(), target_id, revision)
-            .await;
+        self.persist_meta_transition_in_tx(
+            &txn,
+            tenant,
+            input,
+            response_locale.as_str(),
+            Some(transition_ref.as_str()),
+        )
+        .await?;
+        self.publish_seo_revision_rolled_back_event_in_tx(
+            &txn,
+            tenant.id,
+            kind.as_str(),
+            target_id,
+            revision,
+        )
+        .await?;
+        txn.commit().await?;
 
-        Ok(record)
+        self.seo_meta(
+            tenant,
+            kind,
+            target_id,
+            Some(response_locale.as_str()),
+        )
+        .await?
+        .ok_or(SeoError::NotFound)
     }
 
     async fn load_explicit_meta_in_tx(
