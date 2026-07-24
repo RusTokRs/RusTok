@@ -23,6 +23,9 @@ const region = read('crates/rustok-region/src/ports.rs');
 const cart = read('crates/rustok-cart/src/checkout_snapshot.rs');
 const pricing = read('crates/rustok-pricing/src/ports.rs');
 const payment = read('crates/rustok-payment/src/ports.rs');
+const paymentCompensation = read(
+  'crates/rustok-payment/src/checkout_compensation.rs',
+);
 const fulfillment = read('crates/rustok-fulfillment/src/ports.rs');
 const customer = read('crates/rustok-customer/src/ports.rs');
 const inventory = read('crates/rustok-inventory/src/ports.rs');
@@ -41,6 +44,7 @@ for (const [source, label] of [
   [cart, 'cart checkout port'],
   [pricing, 'pricing port'],
   [payment, 'payment collection port'],
+  [paymentCompensation, 'payment checkout compensation port'],
   [fulfillment, 'fulfillment shipping selection port'],
   [customer, 'customer read port'],
   [inventory, 'inventory reservation port'],
@@ -92,6 +96,19 @@ for (const value of [
 }
 
 for (const value of [
+  'fn manual_reconciliation(message: impl Into<String>)',
+  '.map_err(payment_error_to_port_error)',
+  'fn payment_error_to_port_error(error: PaymentError)',
+  '"PortContext.tenant_id must be a UUID for payment ports"',
+]) {
+  forbidText(
+    paymentCompensation,
+    value,
+    'payment checkout compensation public error mapping',
+  );
+}
+
+for (const value of [
   'PortError::validation("fulfillment.validation", message)',
   'format!("shipping option {id} not found")',
   'format!("fulfillment {id} not found")',
@@ -130,7 +147,6 @@ for (const value of [
 ]) {
   forbidText(inventory, value, 'inventory public error mapping');
 }
-
 
 for (const value of [
   'PortError::validation("order.checkout_identity_validation", message)',
@@ -190,6 +206,23 @@ for (const [source, value, label] of [
   [payment, '"payment provider rejected the requested operation"', 'payment stable rejection message'],
   [payment, '"payment request is invalid"', 'payment stable validation message'],
   [payment, 'payment_error_to_port_error(&context, "read_collection_status"', 'payment read operation mapping'],
+  [paymentCompensation, 'correlation_id = %context.correlation_id', 'payment compensation correlation logging'],
+  [paymentCompensation, 'tenant_id = %context.tenant_id', 'payment compensation tenant logging'],
+  [paymentCompensation, 'operation = owner_operation', 'payment compensation owner operation logging'],
+  [paymentCompensation, 'code = "payment.checkout_compensation_manual_reconciliation"', 'payment compensation reconciliation stable code'],
+  [paymentCompensation, 'code = "payment.checkout_compensation_encoding_failed"', 'payment compensation encoding stable code'],
+  [paymentCompensation, '"payment storage is temporarily unavailable"', 'payment compensation stable storage message'],
+  [paymentCompensation, '"payment provider rejected the requested operation"', 'payment compensation stable rejection message'],
+  [paymentCompensation, '"payment provider response could not be applied safely"', 'payment compensation stable invalid response message'],
+  [paymentCompensation, '"payment request context is invalid"', 'payment compensation stable context message'],
+  [paymentCompensation, '"payment checkout compensation requires manual reconciliation"', 'payment compensation stable reconciliation message'],
+  [paymentCompensation, 'let owner_operation = COMPENSATE_CHECKOUT_PAYMENT_OPERATION;', 'payment compensation operation mapping'],
+  [paymentCompensation, 'parse_tenant_id(&context, owner_operation)', 'payment compensation context-aware tenant parsing'],
+  [paymentCompensation, 'require_operation_context(&context, owner_operation', 'payment compensation context-aware causation parsing'],
+  [paymentCompensation, 'payment_error_to_port_error(&context, owner_operation, error)', 'payment compensation public context-aware mapping'],
+  [paymentCompensation, 'payment_error_to_port_error(context, owner_operation, error)', 'payment compensation helper context-aware mapping'],
+  [paymentCompensation, 'persisted_cancel_result(context, owner_operation', 'payment compensation checkpoint context mapping'],
+  [paymentCompensation, 'fn manual_reconciliation(\n    context: &PortContext,', 'payment compensation reconciliation context'],
   [fulfillment, 'correlation_id = %context.correlation_id', 'fulfillment correlation logging'],
   [fulfillment, 'tenant_id = %context.tenant_id', 'fulfillment tenant logging'],
   [fulfillment, 'operation = owner_operation', 'fulfillment owner operation logging'],
@@ -331,5 +364,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment, fulfillment, customer, inventory, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
+  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
 );
