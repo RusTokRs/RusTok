@@ -1,0 +1,64 @@
+name: SEO bulk terminal transaction bootstrap v2
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  apply-and-check:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/seo-bulk-terminal-transaction-v3
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply and verify SEO bulk terminal transaction
+        id: apply
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          (
+            set -euo pipefail
+            python3 scripts/seo/apply_bulk_terminal_transaction.py
+            rm -f .github/workflows/seo-bulk-terminal-bootstrap-v2.yml
+            cargo fmt --all
+            cargo fmt --all -- --check
+            cargo check -p rustok-seo
+            cargo test -p rustok-seo
+            git config user.name "RusTok Automation"
+            git config user.email "actions@users.noreply.github.com"
+            git add -A
+            git diff --cached --check
+            git commit -m "fix(seo): persist bulk terminal transitions atomically"
+            git push origin HEAD:fix/seo-bulk-terminal-transaction-v3
+          ) >seo-bulk-terminal-v2.log 2>&1
+          status=$?
+          cat seo-bulk-terminal-v2.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload SEO bulk terminal log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: seo-bulk-terminal-v2-log
+          path: seo-bulk-terminal-v2.log
+          retention-days: 1
+
+      - name: Fail when bootstrap failed
+        if: steps.apply.outputs.status != '0'
+        run: exit 1
