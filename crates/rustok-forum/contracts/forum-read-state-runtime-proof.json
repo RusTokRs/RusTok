@@ -35,7 +35,7 @@
       "revision_unread_topics": 32,
       "fully_read_topics": 32,
       "unseen_topics": 4,
-      "hidden_or_rejected_replies_counted": false,
+      "approved_reply_predicate_bound_to_owner_source": true,
       "single_bounded_summary_query": true
     },
     "query_plan": {
