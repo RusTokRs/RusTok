@@ -1,39 +1,29 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "artifact": "page_builder_wave_evidence_packet",
   "template": "../../../rustok-page-builder/contracts/page-builder-wave-evidence-template.json",
   "module_slug": "forum",
   "wave": "1",
-  "mode": "live",
-  "created_at": "2026-06-15T18:00:00Z",
+  "mode": "source_ready",
+  "provenance": "synthetic_fixture",
+  "execution_status": "not_run_by_implementation_agent",
+  "prepared_on": "2026-07-24",
   "metadata": {
     "provider": {
       "module_slug": "page_builder",
       "builder_contract_version": "1.0",
       "consumer_min_version": "1.0",
-      "health_profile": "ready",
-      "degraded_modes": [
-        "builder_disabled",
-        "preview_disabled",
-        "publish_disabled"
-      ],
-      "slo_thresholds": {
-        "preview_p95_ms": 1500,
-        "publish_p95_ms": 3000,
-        "sanitize_failure_rate_max": 0.01,
-        "runtime_error_rate_max": 0.01
-      }
+      "required_capabilities": [
+        "preview",
+        "tree",
+        "properties",
+        "publish"
+      ]
     },
     "consumer": {
       "module_slug": "forum",
-      "dependency_profile": "external_capability_provider",
-      "fallback_matrix": [
-        "all_on",
-        "publish_off",
-        "preview_off",
-        "builder_off"
-      ],
-      "toggle_profiles": [
+      "dependency_profile": "optional_external_capability_provider",
+      "fallback_profiles": [
         "all_on",
         "publish_off",
         "preview_off",
@@ -41,42 +31,13 @@
       ]
     }
   },
-  "control_plane": {
-    "change_set": {
-      "tenant_id": "live-wave1-forum",
-      "wave": "1",
-      "change_set_id": "live:forum-wave1:2026-06-15",
-      "requested_by": "agent",
-      "approved_by": [
-        "platform_on_call",
-        "forum_owner",
-        "builder_owner",
-        "runtime_owner"
-      ],
-      "trace_id": "trace-forum-wave1-live-20260615"
-    },
-    "snapshots": {
-      "flags_before": {
-        "builder.enabled": false,
-        "builder.preview.enabled": false,
-        "builder.properties.enabled": false,
-        "builder.publish.enabled": false,
-        "builder.legacy_bridge_readonly": true
-      },
-      "flags_after": {
-        "builder.enabled": true,
-        "builder.preview.enabled": true,
-        "builder.properties.enabled": true,
-        "builder.publish.enabled": true,
-        "builder.legacy_bridge_readonly": true
-      },
-      "module_health_before": "ready",
-      "module_health_after": "ready"
-    },
-    "audit_trail": "control_plane_builder_wave_audit"
-  },
-  "fallback": {
-    "profiles": [
+  "static_readiness": {
+    "source_contracts": [
+      "crates/rustok-forum/rustok-module.toml",
+      "crates/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json",
+      "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs"
+    ],
+    "fallback_profiles": [
       {
         "name": "all_on",
         "flags": {
@@ -86,19 +47,18 @@
           "builder.publish.enabled": true,
           "builder.legacy_bridge_readonly": true
         },
-        "smoke": {
-          "list": "pass",
-          "open": "pass",
-          "preview": "pass",
-          "save_draft": "pass",
-          "publish_dry": "pass"
+        "expected_smoke": {
+          "list": "expected_pass",
+          "open": "expected_pass",
+          "preview": "expected_pass",
+          "save_draft": "expected_pass",
+          "publish_dry": "expected_pass"
         },
-        "read_guarantees": {
+        "expected_read_guarantees": {
           "admin_list_no_5xx": true,
           "admin_read_no_5xx": true,
           "storefront_read_no_5xx": true
-        },
-        "decision": "keep"
+        }
       },
       {
         "name": "publish_off",
@@ -109,19 +69,18 @@
           "builder.publish.enabled": false,
           "builder.legacy_bridge_readonly": true
         },
-        "smoke": {
-          "list": "pass",
-          "open": "pass",
-          "preview": "pass",
-          "save_draft": "pass",
-          "publish_dry": "typed_feature_disabled_error"
+        "expected_smoke": {
+          "list": "expected_pass",
+          "open": "expected_pass",
+          "preview": "expected_pass",
+          "save_draft": "expected_pass",
+          "publish_dry": "expected_typed_feature_disabled"
         },
-        "read_guarantees": {
+        "expected_read_guarantees": {
           "admin_list_no_5xx": true,
           "admin_read_no_5xx": true,
           "storefront_read_no_5xx": true
-        },
-        "decision": "keep"
+        }
       },
       {
         "name": "preview_off",
@@ -132,19 +91,18 @@
           "builder.publish.enabled": false,
           "builder.legacy_bridge_readonly": true
         },
-        "smoke": {
-          "list": "pass",
-          "open": "pass",
-          "preview": "typed_feature_disabled_error",
-          "save_draft": "pass",
-          "publish_dry": "typed_feature_disabled_error"
+        "expected_smoke": {
+          "list": "expected_pass",
+          "open": "expected_pass",
+          "preview": "expected_typed_feature_disabled",
+          "save_draft": "expected_pass",
+          "publish_dry": "expected_typed_feature_disabled"
         },
-        "read_guarantees": {
+        "expected_read_guarantees": {
           "admin_list_no_5xx": true,
           "admin_read_no_5xx": true,
           "storefront_read_no_5xx": true
-        },
-        "decision": "keep"
+        }
       },
       {
         "name": "builder_off",
@@ -155,124 +113,67 @@
           "builder.publish.enabled": false,
           "builder.legacy_bridge_readonly": true
         },
-        "smoke": {
-          "list": "pass",
-          "open": "pass",
-          "preview": "typed_feature_disabled_error",
-          "save_draft": "readonly_fallback",
-          "publish_dry": "typed_feature_disabled_error"
+        "expected_smoke": {
+          "list": "expected_pass",
+          "open": "expected_pass",
+          "preview": "expected_typed_feature_disabled",
+          "save_draft": "expected_readonly_fallback",
+          "publish_dry": "expected_typed_feature_disabled"
         },
-        "read_guarantees": {
+        "expected_read_guarantees": {
           "admin_list_no_5xx": true,
           "admin_read_no_5xx": true,
           "storefront_read_no_5xx": true
-        },
-        "decision": "keep"
+        }
       }
     ]
   },
-  "observability": {
-    "metrics": {
-      "preview_p95_ms": "live_wave1_actual:120",
-      "publish_p95_ms": "live_wave1_actual:230",
-      "sanitize_failure_rate": "live_wave1_actual:0.001",
-      "runtime_error_rate": "live_wave1_actual:0.000"
-    },
-    "traces": {
-      "builder_write_to_forum_publish": "trace-forum-wave1-live-20260615-all-on",
-      "forum_publish_to_storefront_read": "trace-forum-wave1-live-20260615-publish-off"
-    },
-    "trace_samples": [
-      {
-        "trace_id": "trace-forum-wave1-live-20260615-all-on",
-        "profile": "all_on",
-        "correlation_path": "builder_write -> forum_publish -> storefront_read",
-        "spans": [
-          "builder.write.validate",
-          "builder.write.sanitize",
-          "forum.publish.dry_run",
-          "storefront.read.render"
-        ],
-        "result": "pass"
-      },
-      {
-        "trace_id": "trace-forum-wave1-live-20260615-publish-off",
-        "profile": "publish_off",
-        "correlation_path": "builder_write -> forum_publish -> storefront_read",
-        "spans": [
-          "builder.write.validate",
-          "forum.publish.feature_disabled",
-          "storefront.read.render"
-        ],
-        "result": "typed_feature_disabled_error_without_read_5xx"
-      }
+  "observed_run": {
+    "required": true,
+    "status": "not_run",
+    "blocked_by": "pages_reference_consumer_gate",
+    "required_correlation_path": "builder_write -> forum_publish -> storefront_read",
+    "required_profiles": [
+      "all_on",
+      "publish_off",
+      "preview_off",
+      "builder_off"
     ],
-    "slo_thresholds": {
-      "preview_p95_ms": 1500,
-      "publish_p95_ms": 3000,
-      "sanitize_failure_rate_max": 0.01,
-      "runtime_error_rate_max": 0.01
-    },
-    "slo_evaluation": {
-      "preview_p95_ms": "pass",
-      "publish_p95_ms": "pass",
-      "sanitize_failure_rate": "pass",
-      "runtime_error_rate": "pass",
-      "overall": "pass"
-    }
-  },
-  "refresh_policy": {
-    "cadence": "monthly",
-    "next_due_at": "2026-07-15T18:00:00Z",
-    "max_age_days": 45,
-    "required_gate": "npm run verify:page-builder:consumer:forum",
-    "owner": "rustok-forum module team",
-    "refresh_evidence_required": true,
-    "stale_evidence_action": "block_builder_consumer_rollout_until_refreshed",
-    "required_sections": [
+    "required_evidence": [
       "control_plane.audit_trail",
       "fallback.profiles",
       "observability.metrics",
       "observability.traces",
       "rollback.decision",
       "approvals",
-      "waivers",
-      "refresh_history.latest_refresh"
+      "waivers"
     ]
   },
-  "rollback": {
-    "decision": "keep",
-    "reason": "Wave 1 pilot rollout successfully completed with all smoke checks and read guarantees passing under live traffic.",
-    "rollback_reference": "crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json",
-    "timestamp": "2026-06-15T18:00:00Z"
+  "degraded_mode": {
+    "builder_off": "forum widgets stay readonly and forum routes remain owner-available",
+    "preview_off": "preview is hidden or typed-disabled while forum reads remain available",
+    "publish_off": "publish returns a typed feature-disabled result while forum reads remain available"
   },
-  "approvals": {
-    "platform_on_call": "approved",
-    "forum_owner": "approved",
-    "builder_owner": "approved",
-    "runtime_owner": "approved"
+  "verification": {
+    "no_compile_gates": [
+      "npm run verify:page-builder:consumer:forum",
+      "npm run verify:forum:wave-evidence-freshness",
+      "npm run test:verify:forum:wave-evidence-freshness"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
   },
-  "waivers": [],
-  "refresh_history": {
-    "latest_refresh": {
-      "refreshed_at": "2026-06-15T18:00:00Z",
-      "evidence_source": "live_wave1_control_plane_snapshot",
-      "verified_by": "rustok-forum module team",
-      "no_compile_gates": [
-        "npm run verify:page-builder:consumer:forum",
-        "npm run verify:forum:wave-evidence-freshness",
-        "npm run test:verify:forum:wave-evidence-freshness"
-      ],
-      "sections_refreshed": [
-        "control_plane.audit_trail",
-        "fallback.profiles",
-        "observability.metrics",
-        "observability.traces",
-        "rollback.decision",
-        "approvals",
-        "waivers",
-        "refresh_history.latest_refresh"
-      ]
-    }
-  }
+  "forbidden_live_claims": [
+    "live control-plane change set",
+    "live traffic metrics",
+    "live trace identifiers",
+    "maintainer approvals",
+    "rollback keep decision"
+  ],
+  "deferred": [
+    "observed tenant control-plane run after the pages reference-consumer gate",
+    "measured preview and publish latency",
+    "measured sanitize and runtime error rates",
+    "correlated builder-write, forum-publication and storefront-read traces",
+    "owner approvals and rollback decision from the observed run"
+  ]
 }
