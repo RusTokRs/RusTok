@@ -260,11 +260,20 @@ if (mutation.dataset_scale !== contract.debugScale || mutation.repetitions !== 3
   fail('mutation scale/repetition mismatch');
 }
 requirePrototypeContract(mutation, 'mutation report');
-const expectedMutations = new Map([
-  ['update_product_batch', { entities: contract.mutationBatch, links: null }],
-  ['delete_product_batch', { entities: contract.mutationBatch, links: contract.deletedLinks }],
-]);
 for (const prototype of mutation.prototypes) {
+  const eavFields = prototype.prototype === 'typed_eav';
+  const expectedMutations = new Map([
+    ['update_product_batch', {
+      entities: contract.mutationBatch,
+      fields: eavFields ? contract.mutationBatch * 2 : null,
+      links: null,
+    }],
+    ['delete_product_batch', {
+      entities: contract.mutationBatch,
+      fields: eavFields ? contract.mutationBatch * 8 : null,
+      links: contract.deletedLinks,
+    }],
+  ]);
   requireExactOrder(
     prototype.workloads?.map((workload) => workload?.name),
     canonicalMutationWorkloads,
@@ -273,7 +282,14 @@ for (const prototype of mutation.prototypes) {
   for (const workload of prototype.workloads) {
     const expected = expectedMutations.get(workload.name);
     requireNonEmptyString(workload.sql, `${prototype.prototype}/${workload.name}.sql`);
-    if (workload.affected_entities !== expected.entities || workload.affected_links !== expected.links) {
+    for (const marker of ['affected_fields', 'expected_fields', 'affected_links', 'expected_links']) {
+      if (!workload.sql.includes(marker)) {
+        fail(`${prototype.prototype}/${workload.name}.sql is missing ${marker}`);
+      }
+    }
+    if (workload.affected_entities !== expected.entities
+        || workload.affected_fields !== expected.fields
+        || workload.affected_links !== expected.links) {
       fail(`${prototype.prototype}/${workload.name} mutation effect mismatch`);
     }
     if (!Array.isArray(workload.repetitions) || workload.repetitions.length !== 3) {
