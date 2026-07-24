@@ -20,7 +20,12 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'category', NEW.id,
-        'forum.category.created', 1, NULL, json_object('category_id', NEW.id, 'parent_id', NEW.parent_id, 'position', NEW.position, 'moderated', NEW.moderated)
+        'forum.category.created', 1, NULL, json_object(
+            'category_id', lower(hex(substr(NEW.id,1,4))) || '-' || lower(hex(substr(NEW.id,5,2))) || '-' || lower(hex(substr(NEW.id,7,2))) || '-' || lower(hex(substr(NEW.id,9,2))) || '-' || lower(hex(substr(NEW.id,11,6))),
+            'parent_id', CASE WHEN NEW.parent_id IS NULL THEN NULL ELSE lower(hex(substr(NEW.parent_id,1,4))) || '-' || lower(hex(substr(NEW.parent_id,5,2))) || '-' || lower(hex(substr(NEW.parent_id,7,2))) || '-' || lower(hex(substr(NEW.parent_id,9,2))) || '-' || lower(hex(substr(NEW.parent_id,11,6))) END,
+            'position', NEW.position,
+            'moderated', NEW.moderated
+        )
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_category_updated_event"##,

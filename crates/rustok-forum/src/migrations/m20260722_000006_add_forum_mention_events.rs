@@ -185,12 +185,35 @@ ORDER BY sequence_no
 "#
         ))
         .await?;
-    connection
-        .execute_unprepared("DROP TABLE forum_domain_events")
-        .await?;
-    connection
-        .execute_unprepared("ALTER TABLE forum_domain_events_next RENAME TO forum_domain_events")
-        .await?;
+    if manager.get_database_backend() == sea_orm_migration::sea_orm::DatabaseBackend::Sqlite {
+        connection
+            .execute_unprepared("DELETE FROM forum_domain_events")
+            .await?;
+        connection
+            .execute_unprepared(
+                r#"
+INSERT INTO forum_domain_events (
+    sequence_no, event_id, tenant_id, aggregate_type, aggregate_id,
+    event_type, schema_version, actor_id, payload, created_at
+)
+SELECT
+    sequence_no, event_id, tenant_id, aggregate_type, aggregate_id,
+    event_type, schema_version, actor_id, payload, created_at
+FROM forum_domain_events_next
+"#,
+            )
+            .await?;
+        connection
+            .execute_unprepared("DROP TABLE forum_domain_events_next")
+            .await?;
+    } else {
+        connection
+            .execute_unprepared("DROP TABLE forum_domain_events")
+            .await?;
+        connection
+            .execute_unprepared("ALTER TABLE forum_domain_events_next RENAME TO forum_domain_events")
+            .await?;
+    }
 
     for statement in [
         "CREATE INDEX IF NOT EXISTS idx_forum_domain_events_tenant_sequence \

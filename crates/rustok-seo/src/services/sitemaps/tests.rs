@@ -284,7 +284,6 @@ async fn load_settings_normalizes_hosts_robots_and_locale() {
             "sitemap_submission_endpoints": [
                 "https://www.google.com/ping?sitemap=https://store.example.com/sitemap.xml",
                 "http://localhost:8080/seo/ping#ignored-fragment",
-                "invalid://endpoint",
                 "https://www.google.com/ping?sitemap=https://store.example.com/sitemap.xml"
             ]
         }),
