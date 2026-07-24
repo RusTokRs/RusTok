@@ -371,30 +371,6 @@ pub(crate) fn parse_optional_metadata(value: Option<&str>) -> Result<Value> {
     }
 }
 
-pub(crate) async fn resolve_optional_storefront_customer_id(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    auth: Option<&AuthContext>,
-) -> Result<Option<Uuid>> {
-    let Some(auth) = auth else {
-        return Ok(None);
-    };
-
-    match in_process_customer_read_port(db.clone())
-        .read_customer_projection_by_user(
-            storefront_customer_port_context(tenant_id, auth.user_id),
-            CustomerUserProjectionRequest {
-                user_id: auth.user_id,
-            },
-        )
-        .await
-    {
-        Ok(customer) => Ok(Some(customer.id)),
-        Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
-        Err(error) => Err(async_graphql::Error::new(error.message)),
-    }
-}
-
 fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),

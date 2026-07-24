@@ -5,8 +5,10 @@ use chrono::{Duration as ChronoDuration, Utc};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, TransactionTrait,
+    QueryOrder, QuerySelect,
 };
+#[cfg(test)]
+use sea_orm::TransactionTrait;
 use uuid::Uuid;
 
 use rustok_core::{DomainEvent, simple_hash};
@@ -20,8 +22,11 @@ use crate::{SeoError, SeoResult};
 
 use super::SeoService;
 
+#[allow(dead_code)]
 const DELIVERY_STATUS_PENDING: &str = "pending";
+#[allow(dead_code)]
 const DELIVERY_STATUS_SENT: &str = "sent";
+#[allow(dead_code)]
 const DELIVERY_STATUS_FAILED: &str = "failed";
 
 const INDEX_DELIVERY_STATUS_PENDING: &str = "pending";
@@ -98,6 +103,7 @@ fn build_seo_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String
     format!("{scope}:{:016x}", simple_hash(payload.as_str()))
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct SeoEventDeliveryMetadata {
     idempotency_key: String,
@@ -230,6 +236,7 @@ impl SeoService {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(super) async fn publish_seo_meta_upserted_event(
         &self,
         tenant_id: Uuid,
@@ -998,6 +1005,7 @@ impl SeoService {
         })
     }
 
+    #[allow(dead_code)]
     async fn publish_seo_event(&self, tenant_id: Uuid, event: DomainEvent) {
         let event_type = event.event_type().to_string();
         let Some(metadata) = event_delivery_metadata(&event) else {
@@ -1111,6 +1119,7 @@ impl SeoService {
         }
     }
 
+    #[allow(dead_code)]
     async fn publish_seo_event_without_delivery_tracking(
         &self,
         tenant_id: Uuid,
@@ -1126,6 +1135,7 @@ impl SeoService {
         }
     }
 
+    #[allow(dead_code)]
     async fn load_delivery_by_idempotency_key(
         &self,
         tenant_id: Uuid,
@@ -1138,6 +1148,7 @@ impl SeoService {
             .await
     }
 
+    #[allow(dead_code)]
     async fn insert_pending_delivery(
         &self,
         tenant_id: Uuid,
@@ -1163,6 +1174,7 @@ impl SeoService {
         .await
     }
 
+    #[allow(dead_code)]
     async fn mark_delivery_sent(
         &self,
         delivery_id: Uuid,
@@ -1186,6 +1198,7 @@ impl SeoService {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn mark_delivery_failed(&self, delivery_id: Uuid, error: &str) -> Result<(), DbErr> {
         let Some(delivery) = seo_event_delivery::Entity::find_by_id(delivery_id)
             .one(&self.db)
@@ -1653,6 +1666,7 @@ impl SeoService {
     }
 }
 
+#[allow(dead_code)]
 fn event_delivery_metadata(event: &DomainEvent) -> Option<SeoEventDeliveryMetadata> {
     match event {
         DomainEvent::SeoMetaUpserted {
@@ -1739,6 +1753,7 @@ fn limit_delivery_error_message(message: String) -> String {
         .collect::<String>()
 }
 
+#[allow(dead_code)]
 fn is_duplicate_delivery_insert_error(error: &DbErr) -> bool {
     let lowered = error.to_string().to_ascii_lowercase();
     lowered.contains("unique")

@@ -526,7 +526,7 @@ fn field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
 #[cfg(test)]
 mod tests {
     use crate::migrations as seo_migrations;
-    use crate::SeoService;
+    use crate::services::SeoService;
     use rustok_api::TenantContext;
     use rustok_core::{MemoryTransport, SecurityContext};
     use rustok_forum::{

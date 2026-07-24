@@ -5,23 +5,20 @@ use rustok_api::{
 use rustok_cart::CartStorefrontPort;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_pricing::{PriceResolutionContext, PricingReadPort};
-use rustok_product::entities::product_variant;
 use uuid::Uuid;
 
 use super::super::types::AddStorefrontCartLineItemInput;
 pub(crate) use super::legacy_helpers::{
     ResolvedStorefrontLineItemInput, build_create_order_change_input,
     build_create_order_return_input, build_create_return_decision_input,
-    build_return_claim_decision_input, build_return_exchange_decision_input,
-    build_return_refund_decision_input, build_storefront_pricing_context, cart_context_metadata,
-    convert_create_product_input, current_shipping_selections, ensure_no_unused_promotion_amount,
+    build_storefront_pricing_context, cart_context_metadata, convert_create_product_input,
+    current_shipping_selections, ensure_no_unused_promotion_amount,
     ensure_storefront_cart_access, ensure_storefront_order_access,
-    graphql_decision_requires_payments_update, map_cart_promotion_preview, maybe_undefined_or_existing,
-    merge_graphql_metadata, normalize_graphql_seller_id, normalize_pricing_channel_slug,
+    graphql_decision_requires_payments_update, map_cart_promotion_preview,
+    maybe_undefined_or_existing, merge_graphql_metadata, normalize_pricing_channel_slug,
     parse_decimal, parse_json_payload, parse_optional_decimal, parse_optional_metadata,
-    parse_pricing_currency_code, parse_required_promotion_decimal, pick_product_translation,
-    pick_variant_translation, request_public_channel_slug, resolve_commerce_graphql_locale,
-    seller_snapshot_metadata, storefront_cart_port_context, storefront_cart_pricing_snapshot,
+    parse_pricing_currency_code, parse_required_promotion_decimal,
+    resolve_commerce_graphql_locale, storefront_cart_port_context,
     storefront_cart_pricing_update, storefront_pricing_port_context,
     storefront_public_channel_slug_for_cart, validate_admin_cart_promotion_target,
     validate_product_shipping_profile_input, validate_shipping_option_profile_inputs,
@@ -373,49 +370,6 @@ pub(crate) async fn validate_storefront_line_item_quantity(
             tenant_id,
             Some(variant_id),
             "validate_storefront_line_item_quantity",
-            message,
-            code,
-            retryable,
-        )
-    })
-}
-
-pub(crate) async fn validate_storefront_variant_inventory(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant: &product_variant::Model,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> Result<()> {
-    super::legacy_helpers::validate_storefront_variant_inventory(
-        db,
-        tenant_id,
-        variant,
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
-    .map_err(|error| {
-        let detail = format!("{error:?}");
-        let (message, code, retryable) =
-            if detail.contains("does not have enough available inventory") {
-                (
-                    "Requested quantity is not available",
-                    "CART_INVENTORY_INSUFFICIENT",
-                    false,
-                )
-            } else {
-                (
-                    "Inventory availability could not be verified",
-                    "CART_INVENTORY_UNAVAILABLE",
-                    true,
-                )
-            };
-        legacy_graphql_error(
-            error,
-            tenant_id,
-            Some(variant.id),
-            "validate_storefront_variant_inventory",
             message,
             code,
             retryable,

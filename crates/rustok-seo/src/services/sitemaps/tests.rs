@@ -7,7 +7,7 @@ use super::{
     sitemap_event_key, sitemap_file_count, SitemapSubmissionAdapter, SitemapSubmissionSummary,
     SitemapSubmitEndpoint,
 };
-use crate::SeoService;
+use crate::services::SeoService;
 use rustok_api::TenantContext;
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{
