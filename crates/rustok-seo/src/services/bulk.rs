@@ -4,9 +4,11 @@ use async_graphql::Json;
 use chrono::{DateTime, Utc};
 use csv::{ReaderBuilder, StringRecord, WriterBuilder};
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
@@ -23,8 +25,8 @@ use crate::dto::{
 use crate::entities::{seo_bulk_job, seo_bulk_job_artifact, seo_bulk_job_item};
 use crate::{SeoError, SeoResult};
 
-use super::robots::is_valid_structured_data_payload;
 use super::SeoService;
+use super::robots::is_valid_structured_data_payload;
 
 const MAX_BULK_PAGE_SIZE: i32 = 100;
 const CSV_MIME_TYPE: &str = "text/csv; charset=utf-8";
@@ -581,8 +583,8 @@ fn preview_failure_row(target_kind: &str, target_id: Uuid, locale: &str) -> Vec<
 mod tests {
     use super::*;
     use crate::{
-        seo_builtin_slug, SeoBulkFieldPatchMode, SeoMetaRecord, SeoMetaTranslationRecord,
-        SeoTargetSlug,
+        SeoBulkFieldPatchMode, SeoMetaRecord, SeoMetaTranslationRecord, SeoTargetSlug,
+        seo_builtin_slug,
     };
 
     fn page_slug() -> SeoTargetSlug {
@@ -782,11 +784,12 @@ mod tests {
         )])
         .expect("build failure csv");
 
-        assert!(csv
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .ends_with("error_message"));
+        assert!(
+            csv.lines()
+                .next()
+                .unwrap_or_default()
+                .ends_with("error_message")
+        );
         assert!(csv.contains("boom"));
     }
 
@@ -799,11 +802,12 @@ mod tests {
         )])
         .expect("build preview csv");
 
-        assert!(csv
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .starts_with("target_kind,target_id,locale"));
+        assert!(
+            csv.lines()
+                .next()
+                .unwrap_or_default()
+                .starts_with("target_kind,target_id,locale")
+        );
         assert!(csv.contains("11111111-1111-1111-1111-111111111111"));
     }
 
@@ -1763,24 +1767,30 @@ impl SeoService {
 
     async fn fail_bulk_job(&self, job: &seo_bulk_job::Model, message: String) -> SeoResult<()> {
         let now = Utc::now().fixed_offset();
+        let txn = self.db.begin().await?;
         let mut active: seo_bulk_job::ActiveModel = job.clone().into();
         active.status = Set(SeoBulkJobStatus::Failed.as_str().to_string());
         active.last_error = Set(Some(limit_job_message(message)));
         active.completed_at = Set(Some(now));
         active.updated_at = Set(now);
-        let updated = active.update(&self.db).await?;
+        let updated = active.update(&txn).await?;
 
-        self.publish_seo_bulk_completed_event(
-            updated.tenant_id,
-            updated.id,
-            updated.target_kind.as_str(),
-            updated.locale.as_str(),
-            updated.status.as_str(),
-            updated.processed_count,
-            updated.succeeded_count,
-            updated.failed_count,
-        )
-        .await;
+        let terminal_dispatch = self
+            .publish_seo_bulk_terminal_event_in_tx(
+                &txn,
+                updated.tenant_id,
+                updated.id,
+                updated.target_kind.as_str(),
+                updated.locale.as_str(),
+                updated.status.as_str(),
+                updated.processed_count,
+                updated.succeeded_count,
+                updated.failed_count,
+            )
+            .await?;
+        txn.commit().await?;
+        self.dispatch_seo_bulk_terminal_reindex(updated.tenant_id, terminal_dispatch)
+            .await;
 
         Ok(())
     }
@@ -1802,6 +1812,7 @@ impl SeoService {
             SeoBulkJobStatus::Partial
         };
         let now = Utc::now().fixed_offset();
+        let txn = self.db.begin().await?;
         let mut active: seo_bulk_job::ActiveModel = job.clone().into();
         active.status = Set(status.as_str().to_string());
         active.processed_count = Set(processed_count);
@@ -1811,19 +1822,24 @@ impl SeoService {
         active.last_error = Set(last_error.map(limit_job_message));
         active.completed_at = Set(Some(now));
         active.updated_at = Set(now);
-        let updated = active.update(&self.db).await?;
+        let updated = active.update(&txn).await?;
 
-        self.publish_seo_bulk_completed_event(
-            updated.tenant_id,
-            updated.id,
-            updated.target_kind.as_str(),
-            updated.locale.as_str(),
-            updated.status.as_str(),
-            updated.processed_count,
-            updated.succeeded_count,
-            updated.failed_count,
-        )
-        .await;
+        let terminal_dispatch = self
+            .publish_seo_bulk_terminal_event_in_tx(
+                &txn,
+                updated.tenant_id,
+                updated.id,
+                updated.target_kind.as_str(),
+                updated.locale.as_str(),
+                updated.status.as_str(),
+                updated.processed_count,
+                updated.succeeded_count,
+                updated.failed_count,
+            )
+            .await?;
+        txn.commit().await?;
+        self.dispatch_seo_bulk_terminal_reindex(updated.tenant_id, terminal_dispatch)
+            .await;
 
         Ok(())
     }

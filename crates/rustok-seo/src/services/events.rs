@@ -3,13 +3,15 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use sea_orm::ActiveValue::Set;
+#[cfg(test)]
+use sea_orm::TransactionTrait;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
-use rustok_core::{simple_hash, DomainEvent};
+use rustok_core::{DomainEvent, simple_hash};
 
 use crate::dto::{
     SeoIndexCursorRecord, SeoIndexDeliveryStatusRecord, SeoIndexFailureSampleRecord,
@@ -239,8 +241,9 @@ impl SeoService {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) async fn publish_seo_bulk_completed_event(
+    pub(super) async fn publish_seo_bulk_terminal_event_in_tx(
         &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         job_id: Uuid,
         target_kind: &str,
@@ -249,7 +252,7 @@ impl SeoService {
         processed_count: i32,
         succeeded_count: i32,
         failed_count: i32,
-    ) {
+    ) -> SeoResult<Option<(String, DomainEvent)>> {
         let event_scope = match status {
             "partial" => "seo.bulk.partial",
             "failed" => "seo.bulk.failed",
@@ -268,6 +271,15 @@ impl SeoService {
                 failed_count.to_string(),
             ],
         );
+        let existing = seo_event_delivery::Entity::find()
+            .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_event_delivery::Column::IdempotencyKey.eq(idempotency_key.as_str()))
+            .one(txn)
+            .await?;
+        if existing.is_some() {
+            return Ok(None);
+        }
+
         let event = seo_bulk_terminal_event(
             job_id,
             target_kind,
@@ -276,9 +288,95 @@ impl SeoService {
             processed_count,
             succeeded_count,
             failed_count,
-            idempotency_key,
+            idempotency_key.clone(),
         );
-        self.publish_seo_event(tenant_id, event).await;
+        let index_reindex_event = event.clone();
+        let outbox_event_id = self
+            .event_bus
+            .publish_in_tx_with_envelope_id(txn, tenant_id, None, event)
+            .await
+            .map_err(|error| {
+                SeoError::Database(DbErr::Custom(format!(
+                    "failed to enqueue bulk terminal event transactionally: {error}"
+                )))
+            })?;
+        let now = Utc::now().fixed_offset();
+
+        seo_event_delivery::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            event_type: Set(event_scope.to_string()),
+            idempotency_key: Set(idempotency_key.clone()),
+            source_kind: Set(Some("bulk_job".to_string())),
+            source_id: Set(Some(job_id)),
+            status: Set(DELIVERY_STATUS_SENT.to_string()),
+            outbox_event_id: Set(Some(outbox_event_id)),
+            last_error: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            dispatched_at: Set(Some(now)),
+        }
+        .insert(txn)
+        .await?;
+
+        Ok(Some((idempotency_key, index_reindex_event)))
+    }
+
+    pub(super) async fn dispatch_seo_bulk_terminal_reindex(
+        &self,
+        tenant_id: Uuid,
+        dispatch: Option<(String, DomainEvent)>,
+    ) {
+        let Some((idempotency_key, event)) = dispatch else {
+            return;
+        };
+        let event_type = event.event_type().to_string();
+        self.dispatch_index_reindex_for_event(
+            tenant_id,
+            event_type.as_str(),
+            idempotency_key.as_str(),
+            &event,
+        )
+        .await;
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
+    async fn publish_seo_bulk_completed_event(
+        &self,
+        tenant_id: Uuid,
+        job_id: Uuid,
+        target_kind: &str,
+        locale: &str,
+        status: &str,
+        processed_count: i32,
+        succeeded_count: i32,
+        failed_count: i32,
+    ) {
+        let txn = self
+            .db
+            .begin()
+            .await
+            .expect("bulk terminal test transaction should begin");
+        let dispatch = self
+            .publish_seo_bulk_terminal_event_in_tx(
+                &txn,
+                tenant_id,
+                job_id,
+                target_kind,
+                locale,
+                status,
+                processed_count,
+                succeeded_count,
+                failed_count,
+            )
+            .await
+            .expect("bulk terminal test event should enqueue transactionally");
+        txn.commit()
+            .await
+            .expect("bulk terminal test transaction should commit");
+        self.dispatch_seo_bulk_terminal_reindex(tenant_id, dispatch)
+            .await;
     }
 
     pub async fn index_delivery_status(
@@ -1500,7 +1598,7 @@ mod tests {
     use rustok_core::events::{EventTransport, ReliabilityLevel};
     use rustok_core::{Error as CoreError, Result as CoreResult};
     use rustok_outbox::{
-        entity as outbox_entity, OutboxTransport, SysEventsMigration, TransactionalEventBus,
+        OutboxTransport, SysEventsMigration, TransactionalEventBus, entity as outbox_entity,
     };
     use rustok_seo_targets::SeoTargetRegistry;
     use sea_orm::{
@@ -1764,6 +1862,23 @@ mod tests {
             .await
             .expect("outbox events should load");
         assert_eq!(outbox_events.len(), 1);
+
+        let index_deliveries = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await
+            .expect("bulk index deliveries should load");
+        assert_eq!(index_deliveries.len(), 1);
+        assert_eq!(index_deliveries[0].target_type, "product");
+        assert_eq!(index_deliveries[0].target_scope, INDEX_TARGET_SCOPE_KIND);
+        assert_eq!(index_deliveries[0].status, INDEX_DELIVERY_STATUS_SENT);
+
+        let reindex_events = outbox_entity::Entity::find()
+            .filter(outbox_entity::Column::EventType.eq("index.reindex_requested"))
+            .all(&db)
+            .await
+            .expect("bulk reindex events should load");
+        assert_eq!(reindex_events.len(), 1);
     }
 
     #[tokio::test]
@@ -2295,9 +2410,10 @@ mod tests {
     fn normalize_index_target_type_rejects_unknown_values() {
         let err = normalize_index_target_type(Some("forum"))
             .expect_err("unsupported target type should fail");
-        assert!(err
-            .to_string()
-            .contains("unsupported index target_type `forum`; expected `content` or `product`"));
+        assert!(
+            err.to_string()
+                .contains("unsupported index target_type `forum`; expected `content` or `product`")
+        );
     }
 
     #[test]
