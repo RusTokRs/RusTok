@@ -26,6 +26,18 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
+function requireOrdered(source, markers, message) {
+  let previous = -1;
+  for (const marker of markers) {
+    const current = source.indexOf(marker, previous + 1);
+    if (current < 0 || current <= previous) {
+      failures.push(`${message}: ${marker}`);
+      return;
+    }
+    previous = current;
+  }
+}
+
 const contract = JSON.parse(read(contractPath));
 const forumSource = read(contract.forum_source_provider);
 const candidateService = read(contract.notifications_candidate_service);
@@ -94,10 +106,8 @@ for (const forbiddenOwnerImport of [
 
 for (const marker of [
   "pub trait NotificationRecipientPolicy",
-  "self.policy.evaluate(policy_request).await",
   "NotificationRecipientPolicyDecision::Suppress",
-  "provider",
-  ".authorize_target_open(AuthorizeNotificationTargetRequest {",
+  "let provider = match self.registry.get(&source)",
   "recipient_id: item.recipient_id",
   "persist_final_notification",
   "OnConflict::columns([",
@@ -107,7 +117,6 @@ for (const marker of [
   "notification::Column::SourceEventId",
   "notification::Column::NotificationType",
   "ensure_notification_identity",
-  "txn.commit().await?",
 ]) {
   requireText(
     candidateService,
@@ -115,6 +124,27 @@ for (const marker of [
     `${contract.notifications_candidate_service}: missing candidate privacy/dedupe invariant: ${marker}`,
   );
 }
+requireOrdered(
+  candidateService,
+  [
+    "preference_allows_in_app(&self.db",
+    "self.policy.evaluate(policy_request).await",
+    ".authorize_target_open(AuthorizeNotificationTargetRequest {",
+    ".persist_final_notification(",
+  ],
+  `${contract.notifications_candidate_service}: candidate gates must remain ordered as preference, privacy, source authorization and persistence`,
+);
+requireOrdered(
+  candidateService,
+  [
+    "let txn = self.db.begin().await?;",
+    "preference_allows_in_app(&txn",
+    "notification::Entity::insert(active)",
+    "status: Set(FanoutItemStatus::Processed)",
+    "txn.commit().await?;",
+  ],
+  `${contract.notifications_candidate_service}: final preference recheck, notification insert and candidate completion must remain one transaction`,
+);
 
 if (candidateContract.recipient_privacy_policy?.allow_all_default_forbidden !== true) {
   failures.push(`${contract.notifications_candidate_contract}: allow-all privacy default must remain forbidden`);
@@ -152,6 +182,16 @@ for (const marker of [
     `${contract.recipient_policy_runtime}: missing recipient privacy composition marker: ${marker}`,
   );
 }
+requireOrdered(
+  recipientPolicy,
+  [
+    ".evaluate_profile_privacy(",
+    ".blocks_notification(",
+    ".mutes_notification(",
+    "Ok(NotificationRecipientPolicyDecision::Allow)",
+  ],
+  `${contract.recipient_policy_runtime}: recipient policy must remain fail-closed in profile, block and mute order`,
+);
 
 if (socialGraphContract.privacy_semantics?.block_either_direction_suppresses !== true) {
   failures.push(`${contract.social_graph_policy_contract}: block must suppress in either direction`);
