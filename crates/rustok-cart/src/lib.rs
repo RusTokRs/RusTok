@@ -13,6 +13,7 @@ pub mod guest_access_http;
 pub mod marketplace_snapshot;
 pub mod migrations;
 pub mod ports;
+mod promotion_guard;
 pub mod services;
 
 pub use atomic_checkout_port::*;
@@ -33,8 +34,9 @@ pub use ports::{
     CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
     CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
-    CartStorefrontRepriceRequest, in_process_cart_promotion_port,
+    CartStorefrontRepriceRequest,
 };
+pub use promotion_guard::guarded_cart_promotion_port as in_process_cart_promotion_port;
 pub use services::cart::{
     CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionPreview,
 };
