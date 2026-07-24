@@ -13,6 +13,7 @@ pub mod category_policy;
 pub mod category_tree;
 pub mod content_commands;
 pub mod quote_commands;
+pub mod read_state;
 pub mod replies;
 pub mod subscriptions;
 pub mod topics;
@@ -122,6 +123,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             axum::routing::post(category_lifecycle::restore_category_subtree),
         )
         .route(
+            "/api/forum/categories/{id}/mark-read",
+            axum::routing::post(read_state::mark_category_read),
+        )
+        .route(
             "/api/forum/categories/{id}/topic-policy",
             get(category_policy::get_category_topic_policy)
                 .put(category_policy::update_category_topic_policy),
@@ -142,6 +147,18 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .route(
             "/api/forum/topics",
             get(topics::list_topics).post(content_commands::create_topic),
+        )
+        .route(
+            "/api/forum/topics/unread",
+            get(read_state::list_unread_topics),
+        )
+        .route(
+            "/api/forum/topics/mark-all-read",
+            axum::routing::post(read_state::mark_all_topics_read),
+        )
+        .route(
+            "/api/forum/topics/{id}/read-state",
+            get(read_state::get_topic_read_state).put(read_state::mark_topic_read),
         )
         .route(
             "/api/forum/topics/{id}",

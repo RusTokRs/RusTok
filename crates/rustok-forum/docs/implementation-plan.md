@@ -212,7 +212,7 @@ at the end of this file remain authoritative.
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
-| `FORUM-16` | `in_progress` | FORUM-16A-C add tenant-scoped monotonic topic read state, bounded unread projections and resumable category-subtree/all-read owner commands; transports and PostgreSQL concurrency/query-plan evidence remain. |
+| `FORUM-16` | `in_progress` | FORUM-16A-D add tenant-scoped monotonic topic read state, bounded unread projections, resumable category-subtree/all-read owner commands and additive REST/GraphQL contracts; storefront composition and PostgreSQL concurrency/query-plan evidence remain. |
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
@@ -890,21 +890,36 @@ accelerate the badge but database position/revision remains canonical.
   scope isolation, tenant-wide replay, bounds, anonymous rejection and late
   approval acknowledgement.
 
+### Delivered in `FORUM-16D`
+
+- additive REST routes expose the authenticated unread cursor page, topic
+  read-state get/mark, category-subtree mark and tenant-wide mark-all commands;
+- additive GraphQL query and mutation fields expose the same owner contracts
+  with tenant-scope rejection, permission checks and opaque cursor passthrough;
+- both transports call `ForumReadModelService` and
+  `ForumTopicReadStateService` directly, so unread calculation, monotonic
+  updates, bounds and cursor validation remain owner policy;
+- the legacy offset-based topic endpoints remain unchanged, and the unread/read
+  state contracts do not open anonymous or realtime paths;
+- OpenAPI and GraphQL SDL contract coverage locks the route and field names plus
+  the shared request and response shapes.
+
 ### Compatibility and degraded mode
 
 No migration or backfill is required: an absent row means position/revision zero
-and preserves unseen-topic identity. Existing Forum topic reads and commands
-remain source-compatible. The unread projection and bulk commands are additive
-authenticated owner contracts and are not wired to REST, GraphQL, storefront or
-realtime in this slice. Category membership is revalidated on every resumed page;
-a subsequent idempotent pass converges after a concurrent category move. Cache
-and realtime accelerators remain optional and never replace database owner state.
+and preserves unseen-topic identity. Existing public and offset-based topic
+reads remain source-compatible. The unread projection and read-state commands
+are additive authenticated REST and GraphQL contracts; storefront and realtime
+remain closed in this slice. REST and GraphQL pass opaque cursors and owner DTOs
+without duplicating unread policy. Category membership is revalidated on every
+resumed page; a subsequent idempotent pass converges after a concurrent category
+move. Cache and realtime accelerators remain optional and never replace database
+owner state.
 
 ### Remaining scope
 
-- expose the stable owner projection and topic/category/all-read commands through
-  verified REST/GraphQL/storefront integration without duplicating unread policy
-  in transports;
+- compose the stable unread/read-state contracts into the module-owned
+  storefront transport and UI without duplicating owner policy;
 - add PostgreSQL aggregate/concurrent-device execution evidence and query-plan
   evidence for production-sized topic/reply histories.
 
@@ -920,7 +935,10 @@ bounded.
 cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
 cargo xtask module validate forum
+npm run verify:forum:admin-boundary
+npm run verify:forum:storefront-boundary
 ```
 
 ## `FORUM-17` — drafts, autosave and bookmarks
@@ -1714,6 +1732,7 @@ cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1778,7 +1797,7 @@ Recommended next slices:
 7. `FORUM-14`: attachment relations and upload sessions;
 8. `FORUM-15`: batched member/avatar projection;
 9. `LINK-FORUM-02`: profiles/media runtime proof;
-10. finish `FORUM-16` transport composition and PostgreSQL concurrency/query-plan
+10. finish `FORUM-16` storefront composition and PostgreSQL concurrency/query-plan
     evidence;
 11. `FORUM-19`: reports/moderation/restrictions;
 12. `FORUM-20`: ACL and visibility policy;
