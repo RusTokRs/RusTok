@@ -10,6 +10,7 @@ import { test } from 'node:test';
 
 const prepareScript = path.resolve('scripts/verify/prepare-index-storage-decision.mjs');
 const finalizeScript = path.resolve('scripts/verify/finalize-index-storage-adr.mjs');
+const verifyScript = path.resolve('scripts/verify/verify-index-storage-adr.mjs');
 const commit = '0123456789abcdef0123456789abcdef01234567';
 const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
 const readWorkloads = ['status_equality', 'price_range_sort'];
@@ -132,6 +133,23 @@ const completeDecision = (decision) => ({
   rollback_strategy: 'Keep the previous persistence path readable until verification and switch the port back on failure.',
 });
 
+const finalize = (fixture, outputPath) => {
+  const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
+  const decisionBytes = writeJson(fixture.decisionPath, decision);
+  const result = run(finalizeScript, [
+    '--comparison', fixture.comparisonPath,
+    '--decision', fixture.decisionPath,
+    '--output', outputPath,
+  ]);
+  return { result, decisionBytes };
+};
+
+const verify = (fixture, outputPath) => run(verifyScript, [
+  '--comparison', fixture.comparisonPath,
+  '--decision', fixture.decisionPath,
+  '--adr', outputPath,
+]);
+
 test('prepares an exact-comparison-bound manual decision draft', () => {
   withFixture((root) => {
     const { result, decisionPath, comparisonBytes } = prepare(root);
@@ -211,22 +229,32 @@ test('rejects unsupported fields in the decision envelope', () => {
   });
 });
 
-test('finalizes an ADR bound to exact comparison and decision bytes', () => {
+test('finalizes and verifies an ADR bound to exact comparison and decision bytes', () => {
   withFixture((root) => {
     const fixture = prepare(root);
     assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
-    const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
-    const decisionBytes = writeJson(fixture.decisionPath, decision);
     const outputPath = path.join(root, 'adr.md');
-    const result = run(finalizeScript, [
-      '--comparison', fixture.comparisonPath,
-      '--decision', fixture.decisionPath,
-      '--output', outputPath,
-    ]);
-    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const finalized = finalize(fixture, outputPath);
+    assert.equal(finalized.result.status, 0, finalized.result.stderr || finalized.result.stdout);
     const markdown = readFileSync(outputPath, 'utf8');
     assert.match(markdown, new RegExp(`Comparison SHA-256: \\`${sha256(fixture.comparisonBytes)}\\``, 'u'));
-    assert.match(markdown, new RegExp(`Decision SHA-256: \\`${sha256(decisionBytes)}\\``, 'u'));
+    assert.match(markdown, new RegExp(`Decision SHA-256: \\`${sha256(finalized.decisionBytes)}\\``, 'u'));
     assert.match(markdown, /Use \*\*typed_eav\*\*/u);
+    const verified = verify(fixture, outputPath);
+    assert.equal(verified.status, 0, verified.stderr || verified.stdout);
+  });
+});
+
+test('rejects a saved ADR changed after finalization', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const outputPath = path.join(root, 'adr.md');
+    const finalized = finalize(fixture, outputPath);
+    assert.equal(finalized.result.status, 0, finalized.result.stderr || finalized.result.stdout);
+    writeFileSync(outputPath, `${readFileSync(outputPath, 'utf8')}tampered\n`, 'utf8');
+    const verified = verify(fixture, outputPath);
+    assert.notEqual(verified.status, 0);
+    assert.match(verified.stderr, /ADR bytes differ from deterministic finalization/u);
   });
 });
