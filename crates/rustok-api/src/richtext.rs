@@ -40,6 +40,25 @@ impl RichTextDocument {
             content: Vec::new(),
         }
     }
+
+    pub fn single_paragraph(text: impl Into<String>) -> Self {
+        Self {
+            kind: "doc".to_string(),
+            content: vec![RichTextNode {
+                kind: "paragraph".to_string(),
+                attrs: BTreeMap::new(),
+                content: vec![RichTextNode {
+                    kind: "text".to_string(),
+                    attrs: BTreeMap::new(),
+                    content: Vec::new(),
+                    marks: Vec::new(),
+                    text: Some(text.into()),
+                }],
+                marks: Vec::new(),
+                text: None,
+            }],
+        }
+    }
 }
 
 impl Default for RichTextDocument {

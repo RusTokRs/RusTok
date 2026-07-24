@@ -91,7 +91,6 @@ impl TopicService {
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
             .filter(forum_reply::Column::TopicId.eq(topic_id))
             .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
-            .filter(forum_reply::Column::DeletedAt.is_null())
             .count(&txn)
             .await?;
         let public_reply_count = i32::try_from(public_reply_count).map_err(|_| {
