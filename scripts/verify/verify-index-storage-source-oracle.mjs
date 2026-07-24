@@ -70,33 +70,44 @@ if (validator.includes('baselineReadWorkloads')) {
 }
 
 for (const marker of [
+  'validateReadEvidence',
+  'validateMutationEvidence',
+  'requirePlan',
   'validateDatabase',
   'validateDataset',
-  'validateExecutionContract',
+  'validateProvenance',
   'validateSourceOracle',
-  'source_workload_names',
+  'validateReadReport',
+  'validateMutationReport',
+  'validateMaintenanceReport',
   'same_dataset_shape',
   'same_source_oracle_shape',
-  'cross-scale source oracle workload ordering mismatch',
   'result_rows_ratio_1m_to_100k',
+  'fail closed on report shape, metrics, plans, effects, and cardinalities',
   '### Source oracle',
 ]) {
   if (!comparator.includes(marker)) fail(`evidence comparator missing contract guard ${marker}`);
 }
+for (const legacy of [
+  'values.filter(Number.isFinite)',
+  'const numbers = (values)',
+  'baselineReadWorkloads',
+]) {
+  if (comparator.includes(legacy)) fail(`evidence comparator restored lossy validation: ${legacy}`);
+}
 
 for (const marker of [
-  "test('rejects missing PostgreSQL metadata'",
-  "test('rejects report repetition drift from provenance'",
-  "test('rejects maintenance cycle drift from provenance'",
-  "test('rejects cross-scale non-scale dataset shape drift'",
-  "test('rejects missing source oracle'",
-  "test('rejects source oracle order drift'",
-  "test('rejects provenance source oracle shape drift'",
+  "test('rejects missing read execution timing'",
+  "test('rejects malformed EXPLAIN plan'",
+  "test('rejects missing mutation WAL metric'",
   "test('rejects candidate result drift from source oracle'",
+  "test('rejects maintenance EAV field cardinality drift'",
+  "test('rejects report repetition drift'",
+  "test('rejects cross-scale commit mismatch'",
 ]) {
   if (!comparatorFixture.includes(marker)) {
     fail(`evidence comparator fixture coverage missing ${marker}`);
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle and report contracts are statically guarded');
+console.log('[verify-index-storage-source-oracle] source oracle and complete evidence metrics are statically guarded');
