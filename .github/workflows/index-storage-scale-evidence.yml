@@ -21,6 +21,7 @@ on:
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
+      - "scripts/verify/verify-index-storage-adr-integrity.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -46,6 +47,7 @@ on:
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
+      - "scripts/verify/verify-index-storage-adr-integrity.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -97,6 +99,7 @@ jobs:
           node --check scripts/verify/prepare-index-storage-decision.mjs
           node --check scripts/verify/finalize-index-storage-adr.mjs
           node --check scripts/verify/verify-index-storage-adr.mjs
+          node --check scripts/verify/verify-index-storage-adr-integrity.mjs
           node --check scripts/verify/index-storage-decision-tooling.test.mjs
       - name: Test storage tooling command routing
         run: node --test scripts/verify/index-storage-tooling.test.mjs
