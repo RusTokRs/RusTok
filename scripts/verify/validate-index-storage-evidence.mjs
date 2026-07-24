@@ -100,7 +100,10 @@ const requireNonEmptyString = (value, label) => {
 
 const requireTimestamp = (value, label) => {
   requireNonEmptyString(value, label);
-  if (!Number.isFinite(Date.parse(value))) fail(`${label} must be an ISO timestamp`);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u.test(value)
+      || !Number.isFinite(Date.parse(value))) {
+    fail(`${label} must be an RFC 3339 UTC timestamp`);
+  }
 };
 
 const requireNonNegativeNumber = (value, label) => {
@@ -115,8 +118,12 @@ const requireNonNegativeInteger = (value, label) => {
   if (!Number.isInteger(value) || value < 0) fail(`${label} must be a non-negative integer`);
 };
 
+const requireNullableNonNegativeInteger = (value, label) => {
+  if (value !== null) requireNonNegativeInteger(value, label);
+};
+
 const requireDigest = (value, label) => {
-  if (typeof value !== 'string' || !/^[0-9a-f]{32}$/.test(value)) {
+  if (typeof value !== 'string' || !/^[0-9a-f]{32}$/u.test(value)) {
     fail(`${label} must be an MD5 digest`);
   }
 };
@@ -146,7 +153,9 @@ const requirePrototypeContract = (report, label) => {
 };
 
 const requirePlan = (plan, label) => {
-  if (!Array.isArray(plan) || plan.length !== 1 || !plan[0]?.Plan) {
+  if (!Array.isArray(plan) || plan.length !== 1
+      || !plan[0] || typeof plan[0] !== 'object' || Array.isArray(plan[0])
+      || !plan[0].Plan || typeof plan[0].Plan !== 'object' || Array.isArray(plan[0].Plan)) {
     fail(`${label} must contain one EXPLAIN JSON plan`);
   }
 };
@@ -157,9 +166,8 @@ const requireReadExplain = (evidence, label) => {
   requireNonNegativeNumber(evidence.execution_time_ms, `${label}.execution_time_ms`);
   requireNonNegativeInteger(evidence.shared_hit_blocks, `${label}.shared_hit_blocks`);
   requireNonNegativeInteger(evidence.shared_read_blocks, `${label}.shared_read_blocks`);
-  for (const field of ['temporary_read_blocks', 'temporary_written_blocks']) {
-    if (evidence[field] !== null) requireNonNegativeInteger(evidence[field], `${label}.${field}`);
-  }
+  requireNullableNonNegativeInteger(evidence.temporary_read_blocks, `${label}.temporary_read_blocks`);
+  requireNullableNonNegativeInteger(evidence.temporary_written_blocks, `${label}.temporary_written_blocks`);
   requirePlan(evidence.plan, `${label}.plan`);
 };
 
@@ -187,8 +195,11 @@ const requireDatabaseContract = (database) => {
   ]) {
     requireNonEmptyString(database[field], `read.database.${field}`);
   }
+  if (!/^\d+$/u.test(database.server_version_num)) {
+    fail(`read.database.server_version_num must contain only digits; got ${database.server_version_num}`);
+  }
   const serverVersion = Number.parseInt(database.server_version_num, 10);
-  if (!Number.isInteger(serverVersion) || Math.floor(serverVersion / 10_000) !== 16) {
+  if (Math.floor(serverVersion / 10_000) !== 16) {
     fail(`read.database.server_version_num must describe PostgreSQL 16; got ${database.server_version_num}`);
   }
   if (database.jit !== 'off') fail(`read.database.jit must be off; got ${database.jit}`);
@@ -257,6 +268,9 @@ for (const [prototypeIndex, prototype] of read.prototypes.entries()) {
   );
   for (const workload of prototype.workloads) {
     requireNonEmptyString(workload.sql, `${prototype.prototype}/${workload.name}.sql`);
+    if (workload.sql.includes('idx_bench_source.')) {
+      fail(`${prototype.prototype}/${workload.name}.sql must not read from source oracle tables`);
+    }
     requireNonNegativeInteger(workload.result_rows, `${prototype.prototype}/${workload.name}.result_rows`);
     requireDigest(workload.result_digest, `${prototype.prototype}/${workload.name}.result_digest`);
     if (!Array.isArray(workload.repetitions) || workload.repetitions.length !== 3) {
@@ -360,6 +374,7 @@ for (const [prototypeIndex, prototype] of maintenance.prototypes.entries()) {
       `${prototype.prototype}/${phase} relation order`,
     );
     for (const stats of snapshot.table_stats) {
+      requireObject(stats, `${prototype.prototype}/${phase}/${stats?.relation ?? 'unknown'}`);
       for (const field of statFields) {
         requireNonNegativeInteger(stats[field], `${prototype.prototype}/${phase}/${stats.relation}.${field}`);
       }
@@ -390,10 +405,10 @@ if (process.env.INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE === '1') {
   for (const [field, value] of Object.entries(githubProvenance)) {
     requireNonEmptyString(value, `GitHub provenance ${field}`);
   }
-  if (!/^[0-9a-f]{40}$/i.test(githubProvenance.commit)) {
+  if (!/^[0-9a-f]{40}$/iu.test(githubProvenance.commit)) {
     fail(`GitHub provenance commit must be a full SHA; got ${githubProvenance.commit}`);
   }
-  if (!/^\d+$/.test(githubProvenance.run_id) || !/^\d+$/.test(githubProvenance.run_attempt)) {
+  if (!/^\d+$/u.test(githubProvenance.run_id) || !/^\d+$/u.test(githubProvenance.run_attempt)) {
     fail('GitHub provenance run_id and run_attempt must be numeric strings');
   }
 }
