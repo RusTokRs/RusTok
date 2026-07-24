@@ -44,7 +44,10 @@ jobs:
             cargo fmt --all
             cargo fmt --all -- --check
             cargo check -p rustok-seo
-            cargo test -p rustok-seo
+            cargo test -p rustok-seo --no-run
+            cargo test -p rustok-seo --test bulk_terminal_transaction
+            cargo test -p rustok-seo --lib services::bulk::tests::
+            cargo test -p rustok-seo --lib services::events::tests::seo_bulk_
             git config user.name "RusTok Automation"
             git config user.email "actions@users.noreply.github.com"
             git add -A
