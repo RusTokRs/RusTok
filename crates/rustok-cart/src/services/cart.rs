@@ -189,7 +189,7 @@ impl CartService {
             unit_price: Set(input.unit_price),
             total_price: Set(input.unit_price * Decimal::from(input.quantity)),
             currency_code: Set(cart.currency_code.clone()),
-            metadata: Set(metadata),
+            metadata: Set(metadata.clone()),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
