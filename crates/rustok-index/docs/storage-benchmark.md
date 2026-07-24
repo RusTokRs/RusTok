@@ -10,7 +10,7 @@
 - Production migrations: intentionally absent
 - Smoke evidence: archived from Actions run `30041091121`
 - 100k evidence: archived and inspected from Actions run `30051321255`
-- 1m evidence: blocked until `INDEX_BENCH_LARGE_RUNNER` names a Linux larger runner with at least 35 GB free disk
+- 1m evidence: enabled on `INDEX_BENCH_LARGE_RUNNER` when configured, otherwise `ubuntu-latest`, with a fail-closed 35 GB free-disk check
 - Storage decision ADR: Proposed; 100k evidence is populated, acceptance still waits on 1m and the cross-scale comparison
 
 ## Goal
@@ -253,10 +253,13 @@ Ordinary VACUUM reduced estimated dead tuples to zero for every candidate but di
 not shrink relation files; after-VACUUM size deltas were small positive values,
 which is valid under the benchmark's neutral size-delta rule.
 
-The workflow then failed closed before `1m` because repository variable
-`INDEX_BENCH_LARGE_RUNNER` is not configured. It must name a Linux runner label
-with at least 35 GB free disk. The 100k result is therefore archived and accepted
-as evidence, while the storage ADR remains Proposed and M3 remains blocked.
+The inspected run failed closed before `1m` because repository variable
+`INDEX_BENCH_LARGE_RUNNER` was not configured. Its 100k resource snapshots showed
+93,030,404,096 free root-filesystem bytes before evidence and 88,893,792,256 after.
+The scale workflow now prefers the configured runner when present and otherwise
+uses `ubuntu-latest`; the reusable job still rejects any runner with less than
+35,000,000,000 free bytes before the build. The 1m result remains pending, so the
+storage ADR remains Proposed and M3 remains blocked.
 
 Optional settings:
 

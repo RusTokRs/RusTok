@@ -47,7 +47,7 @@ review. Do not fill it from smoke measurements.
 | Criterion | JSONB entity rows | Typed EAV | Hot typed projection |
 | --- | --- | --- | --- |
 | 100k read/query | Status/keyset/count warm medians 0.222/0.563/1.483 ms; two-hop 11.516 s | 7.074/20.814/4.074 ms; two-hop 14.989 s | 0.073/0.032/0.456 ms; two-hop 10.305 s |
-| 1m read/query | Pending larger runner | Pending larger runner | Pending larger runner |
+| 1m read/query | Pending guarded run | Pending guarded run | Pending guarded run |
 | Relation-size scaling | 385.58 MiB at 100k; 1m ratio pending | 687.23 MiB at 100k; 1m ratio pending | 295.56 MiB at 100k; 1m ratio pending |
 | Mutation/WAL | Update 51.060 ms / 1,054,238 B; delete 27.165 ms / 162,000 B | Update 62.207 ms / 1,238,933 B; delete 46.305 ms / 594,000 B | Update 43.672 ms / 834,784 B; delete 24.683 ms / 162,000 B |
 | Churn/VACUUM | +6.80 MiB, 20,000 dead, 800 ms | +10.97 MiB, 69,934 dead, 921 ms | +4.61 MiB, 20,000 dead, 728 ms |
@@ -76,9 +76,13 @@ The 100k packet establishes these provisional findings:
 - all plan shapes are stable across the three repetitions at 100k;
 - ordinary VACUUM clears dead-tuple estimates but does not shrink relation files.
 
-The `1m` stage did not run. The workflow failed closed because repository variable
-`INDEX_BENCH_LARGE_RUNNER` is unset; it must name a Linux larger-runner label with
-at least 35 GB free disk. These findings are not sufficient to accept the ADR.
+The inspected run's `1m` stage did not run because repository variable
+`INDEX_BENCH_LARGE_RUNNER` was unset. The 100k runner nevertheless reported
+93,030,404,096 free root-filesystem bytes before evidence and 88,893,792,256 after.
+The workflow now uses the configured larger-runner label when present and falls
+back to `ubuntu-latest` otherwise; the reusable job remains fail-closed below
+35,000,000,000 free bytes. The 1m packet is still pending, so these findings are
+not sufficient to accept the ADR.
 
 ## Decision
 

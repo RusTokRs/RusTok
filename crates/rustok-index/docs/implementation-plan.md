@@ -412,6 +412,11 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   `index-storage-100k-84a11b147689b226ca161f5a0287990c1e8489d4`.
   PostgreSQL 16 preserved 300,080 entities and 600,000 links across JSONB,
   typed EAV, and hot projection candidates; all read digests, mutation effects,
-  five churn cycles, and post-VACUUM cardinalities matched. The 1m stage remains
-  blocked until `INDEX_BENCH_LARGE_RUNNER` names a Linux runner with at least
-  35 GB free disk.
+  five churn cycles, and post-VACUUM cardinalities matched. That run's 1m stage
+  failed closed because `INDEX_BENCH_LARGE_RUNNER` was unset. The workflow now
+  prefers that explicit runner when configured and otherwise uses `ubuntu-latest`,
+  while the reusable job still rejects any runner below 35 GB free disk.
+- 2026-07-24: runner evidence showed 93,030,404,096 free bytes before the 100k
+  packet and 88,893,792,256 after it. Enabled a guarded `ubuntu-latest` fallback
+  for the 1m stage while preserving `INDEX_BENCH_LARGE_RUNNER` as an override
+  and the existing 35 GB fail-closed disk check.
