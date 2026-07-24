@@ -46,6 +46,7 @@ mod topic_owner {
     include!("topic_owner.rs");
     include!("topic_owner_inline.rs");
 }
+pub mod topic_visibility;
 pub mod user_stats;
 pub mod vote;
 pub mod widget_contract;
@@ -70,6 +71,9 @@ pub use storefront_read_state::{
 };
 pub use subscription::SubscriptionService;
 pub use topic_facade::TopicService;
+pub use topic_visibility::{
+    ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
+};
 pub use user_stats::UserStatsService;
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;
