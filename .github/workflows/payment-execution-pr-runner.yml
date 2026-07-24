@@ -1,0 +1,57 @@
+name: Payment execution PR runner
+
+on:
+  pull_request_target:
+    types: [synchronize]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: payment-execution-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/payment-execution-error-context'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Extract and apply guarded patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          workflow = Path('.github/workflows/payment-execution-error-comment-runner.yml')
+          lines = workflow.read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line.strip() == "python3 - <<'PY'")
+          end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == 'PY')
+          body = lines[start + 1:end]
+          indents = [len(line) - len(line.lstrip()) for line in body if line.strip()]
+          indent = min(indents)
+          script = '\n'.join(line[indent:] if line.strip() else '' for line in body) + '\n'
+          Path('/tmp/apply-payment-execution.py').write_text(script)
+          subprocess.run(['python3', '/tmp/apply-payment-execution.py'], check=True)
+          PY
+
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-payment/src/checkout_execution.rs \
+            scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs \
+            .github/workflows/apply-payment-execution-hardening-once.yml
+          git commit -m "Harden payment execution port errors"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
