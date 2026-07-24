@@ -80,10 +80,7 @@ pub fn workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<Workload> 
     }
 }
 
-pub fn mutation_workloads(
-    prototype: Prototype,
-    config: &DatasetConfig,
-) -> Vec<MutationWorkload> {
+pub fn mutation_workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<MutationWorkload> {
     let context = WorkloadContext::new(config);
     match prototype {
         Prototype::Jsonb => jsonb::mutation_workloads(&context),

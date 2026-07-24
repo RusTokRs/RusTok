@@ -61,7 +61,10 @@ impl ReplyService {
         reply_id: Uuid,
         locale: &str,
     ) -> ForumResult<ReplyResponse> {
-        let response = self.inner.get(tenant_id, security, reply_id, locale).await?;
+        let response = self
+            .inner
+            .get(tenant_id, security, reply_id, locale)
+            .await?;
         require_localized_reply_response(response)
     }
 

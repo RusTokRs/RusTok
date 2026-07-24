@@ -21,8 +21,7 @@ fn menu_runtime_uses_host_selected_effective_locale_only() {
 
 #[test]
 fn menu_storage_is_tenant_composite_and_locale_bound() {
-    let migration =
-        include_str!("../src/migrations/m20260722_000001_create_navigation_tables.rs");
+    let migration = include_str!("../src/migrations/m20260722_000001_create_navigation_tables.rs");
     let migrations = include_str!("../src/migrations/mod.rs");
     let menu_translation = include_str!("../src/entities/menu_translation.rs");
     let item_translation = include_str!("../src/entities/menu_item_translation.rs");
@@ -36,9 +35,7 @@ fn menu_storage_is_tenant_composite_and_locale_bound() {
         assert!(migration.contains(marker), "missing DB marker: {marker}");
     }
     assert!(migrations.contains("mod m20260722_000001_create_navigation_tables;"));
-    assert!(
-        migrations.contains("m20260722_000001_create_navigation_tables::Migration")
-    );
+    assert!(migrations.contains("m20260722_000001_create_navigation_tables::Migration"));
     assert!(menu_translation.contains("pub tenant_id: Uuid"));
     assert!(item_translation.contains("pub tenant_id: Uuid"));
     assert!(item_translation.contains("pub menu_id: Uuid"));

@@ -15,9 +15,8 @@ pub(crate) enum GroupManagerCapability {
 }
 
 pub(crate) fn tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
-        PortError::validation("groups.invalid_tenant", "tenant_id must be a UUID")
-    })
+    Uuid::parse_str(context.tenant_id.trim())
+        .map_err(|_| PortError::validation("groups.invalid_tenant", "tenant_id must be a UUID"))
 }
 
 pub(crate) fn actor_user_id(context: &PortContext) -> Result<Uuid, PortError> {
@@ -27,16 +26,15 @@ pub(crate) fn actor_user_id(context: &PortContext) -> Result<Uuid, PortError> {
             "a user actor is required",
         ));
     }
-    Uuid::parse_str(context.actor.id.trim()).map_err(|_| {
-        PortError::validation("groups.invalid_actor", "actor.id must be a UUID")
-    })
+    Uuid::parse_str(context.actor.id.trim())
+        .map_err(|_| PortError::validation("groups.invalid_actor", "actor.id must be a UUID"))
 }
 
 pub(crate) fn has_platform_manage(context: &PortContext) -> bool {
     context
         .claims
         .iter()
-        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
+        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }
 
 /// Canonical transaction-aware manager authorization.
@@ -128,15 +126,10 @@ pub(crate) async fn require_user_not_denied(
     user_id: Uuid,
     reject_active_member: bool,
 ) -> Result<(), PortError> {
-    let effective = resolve_group_membership_enforcement(
-        db,
-        tenant_id,
-        group_id,
-        user_id,
-        Utc::now(),
-    )
-    .await
-    .map_err(PortError::from)?;
+    let effective =
+        resolve_group_membership_enforcement(db, tenant_id, group_id, user_id, Utc::now())
+            .await
+            .map_err(PortError::from)?;
     require_candidate_state(effective.effective_status, reject_active_member).map_err(Into::into)
 }
 

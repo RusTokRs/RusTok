@@ -5,14 +5,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-pub const PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT: &str =
-    "page_builder_consumer_properties_v1";
+pub const PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT: &str = "page_builder_consumer_properties_v1";
 pub const CONSUMER_PROPERTY_CONTRACT_INVALID: &str =
     "PAGE_BUILDER_CONSUMER_PROPERTY_CONTRACT_INVALID";
 pub const CONSUMER_PROPERTY_EDITOR_UNAVAILABLE: &str =
     "PAGE_BUILDER_CONSUMER_PROPERTY_EDITOR_UNAVAILABLE";
-pub const CONSUMER_PROPERTY_SAVE_FAILED: &str =
-    "PAGE_BUILDER_CONSUMER_PROPERTY_SAVE_FAILED";
+pub const CONSUMER_PROPERTY_SAVE_FAILED: &str = "PAGE_BUILDER_CONSUMER_PROPERTY_SAVE_FAILED";
 
 const MAX_PROPERTY_FIELDS: usize = 32;
 const MAX_PROPERTY_VALUE_BYTES: usize = 256 * 1024;
@@ -354,9 +352,9 @@ fn require_identifier(value: &str, label: &str) -> Result<(), ConsumerPropertyEd
     let value = value.trim();
     if value.is_empty()
         || value.len() > 128
-        || !value
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_'))
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+        })
     {
         Err(ConsumerPropertyEditorError::contract(format!(
             "{label} is invalid"
@@ -380,7 +378,8 @@ fn require_text(value: &str, label: &str) -> Result<(), ConsumerPropertyEditorEr
 mod tests {
     use super::*;
     use fly_ui::{
-        AccessibilityMetadata, ContributionDescriptor, ContributionRegistry, PropertyEditorDescriptor,
+        AccessibilityMetadata, ContributionDescriptor, ContributionRegistry,
+        PropertyEditorDescriptor,
     };
     use serde_json::{Map, json};
 

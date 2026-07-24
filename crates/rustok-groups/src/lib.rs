@@ -48,8 +48,8 @@ mod invitations_legacy {
 }
 pub mod localization;
 pub mod membership_enforcement;
-mod membership_enforcement_transaction;
 pub mod membership_enforcement_entities;
+mod membership_enforcement_transaction;
 pub mod migrations;
 mod notification_source;
 pub mod policy_history;
@@ -67,12 +67,11 @@ mod targeted_invitations_legacy {
 pub mod applications {
     pub use crate::applications_legacy_module::{
         BulkReviewGroupMembershipApplicationItemResult,
-        BulkReviewGroupMembershipApplicationsRequest,
-        BulkReviewGroupMembershipApplicationsResult, CancelGroupMembershipApplicationRequest,
-        GROUP_APPLICATION_POLICY_CHANGED_CODE, GroupApplicationBulkReviewCommandPort,
-        GroupApplicationCasCommandPort, GroupApplicationCommandPort,
-        GroupApplicationLifecycleCommandPort, GroupApplicationLifecycleReadPort,
-        GroupApplicationLifecycleResult, GroupApplicationPolicy,
+        BulkReviewGroupMembershipApplicationsRequest, BulkReviewGroupMembershipApplicationsResult,
+        CancelGroupMembershipApplicationRequest, GROUP_APPLICATION_POLICY_CHANGED_CODE,
+        GroupApplicationBulkReviewCommandPort, GroupApplicationCasCommandPort,
+        GroupApplicationCommandPort, GroupApplicationLifecycleCommandPort,
+        GroupApplicationLifecycleReadPort, GroupApplicationLifecycleResult, GroupApplicationPolicy,
         GroupApplicationPolicyLocaleCatalog, GroupApplicationPolicyManagementReadPort,
         GroupApplicationPolicyManagementView, GroupApplicationPolicyPrecondition,
         GroupApplicationQuestion, GroupApplicationReadPort, GroupApplicationReviewCommandPort,
@@ -82,10 +81,9 @@ pub mod applications {
         ReadGroupApplicationPolicyForManagementRequest, ReadGroupApplicationPolicyRequest,
         ReadMyGroupMembershipApplicationRequest, ReopenGroupMembershipApplicationRequest,
         ReviewGroupMembershipApplicationRequest, ReviewGroupMembershipApplicationResult,
-        SubmitGroupMembershipApplicationIfCurrentRequest,
-        SubmitGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationResult,
-        UpsertGroupApplicationPolicyIfCurrentRequest, UpsertGroupApplicationPolicyRequest,
-        UpsertGroupApplicationPolicyResult,
+        SubmitGroupMembershipApplicationIfCurrentRequest, SubmitGroupMembershipApplicationRequest,
+        SubmitGroupMembershipApplicationResult, UpsertGroupApplicationPolicyIfCurrentRequest,
+        UpsertGroupApplicationPolicyRequest, UpsertGroupApplicationPolicyResult,
     };
     pub use crate::effective_applications::GroupApplicationService;
 }

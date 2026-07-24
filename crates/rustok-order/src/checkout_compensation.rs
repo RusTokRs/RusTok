@@ -215,13 +215,7 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
                 order_error_to_port_error(&context, "read_checkout_order_for_compensation", error)
             })?;
         let order = self
-            .cancel_or_adopt_cancelled(
-                &context,
-                tenant_id,
-                actor_id,
-                order,
-                request.reason,
-            )
+            .cancel_or_adopt_cancelled(&context, tenant_id, actor_id, order, request.reason)
             .await?;
         Ok(Some(CheckoutOrderCompensationSnapshot {
             order_id: order.id,
@@ -306,10 +300,7 @@ fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid
             code = "order.actor_id_invalid",
             "order port received invalid request context"
         );
-        PortError::validation(
-            "order.actor_id_invalid",
-            "order request context is invalid",
-        )
+        PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
 }
 

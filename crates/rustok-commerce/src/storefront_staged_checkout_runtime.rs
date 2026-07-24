@@ -51,9 +51,7 @@ impl StorefrontStagedCheckoutRuntimeError {
             Self::CartAccess => "Checkout cart was not found or is not accessible",
             Self::TemporarilyUnavailable => "Checkout is temporarily unavailable",
             Self::CheckoutFailed => "Checkout could not be completed",
-            Self::CompensationPending => {
-                "Checkout failed and compensation will be retried"
-            }
+            Self::CompensationPending => "Checkout failed and compensation will be retried",
             Self::ReconciliationRequired => {
                 "Checkout requires reconciliation before it can continue"
             }
@@ -61,7 +59,10 @@ impl StorefrontStagedCheckoutRuntimeError {
     }
 
     pub const fn retryable(&self) -> bool {
-        matches!(self, Self::TemporarilyUnavailable | Self::CompensationPending)
+        matches!(
+            self,
+            Self::TemporarilyUnavailable | Self::CompensationPending
+        )
     }
 }
 

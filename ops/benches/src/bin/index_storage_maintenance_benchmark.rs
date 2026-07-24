@@ -12,7 +12,10 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "5".to_owned())
         .parse::<u32>()
         .context("INDEX_BENCH_CHURN_CYCLES must be an integer")?;
-    ensure!(cycles > 0, "INDEX_BENCH_CHURN_CYCLES must be greater than zero");
+    ensure!(
+        cycles > 0,
+        "INDEX_BENCH_CHURN_CYCLES must be greater than zero"
+    );
     let output = env::var("INDEX_BENCH_MAINTENANCE_OUTPUT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {

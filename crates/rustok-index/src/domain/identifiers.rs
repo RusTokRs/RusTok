@@ -284,19 +284,13 @@ mod tests {
             ModuleName::new("rustok-product").unwrap().as_str(),
             "rustok-product"
         );
-        assert_eq!(
-            FieldName::new("updated_at").unwrap().as_str(),
-            "updated_at"
-        );
+        assert_eq!(FieldName::new("updated_at").unwrap().as_str(), "updated_at");
     }
 
     #[test]
     fn canonicalizes_locale_keys() {
         assert_eq!(LocaleKey::new("EN-us").unwrap().as_str(), "en-US");
-        assert_eq!(
-            LocaleKey::new("zh-hant-tw").unwrap().as_str(),
-            "zh-Hant-TW"
-        );
+        assert_eq!(LocaleKey::new("zh-hant-tw").unwrap().as_str(), "zh-Hant-TW");
     }
 
     #[test]

@@ -2,9 +2,7 @@ use std::{fs, path::Path, time::Instant};
 
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::Serialize;
 
 use super::{
@@ -64,7 +62,10 @@ pub async fn run_maintenance(
     config: &BenchmarkConfig,
     cycles: u32,
 ) -> Result<MaintenanceBenchmarkReport> {
-    ensure!(cycles > 0, "maintenance benchmark cycles must be greater than zero");
+    ensure!(
+        cycles > 0,
+        "maintenance benchmark cycles must be greater than zero"
+    );
     let db = connect_benchmark_database(&config.database_url).await?;
     db.execute_unprepared("SET jit = off; SET statement_timeout = '30min';")
         .await
@@ -127,10 +128,7 @@ pub async fn run_maintenance(
     })
 }
 
-pub fn write_maintenance_report(
-    path: &Path,
-    report: &MaintenanceBenchmarkReport,
-) -> Result<()> {
+pub fn write_maintenance_report(path: &Path, report: &MaintenanceBenchmarkReport) -> Result<()> {
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -163,10 +161,7 @@ async fn snapshot(
     })
 }
 
-async fn table_stats(
-    db: &DatabaseConnection,
-    schema: &str,
-) -> Result<Vec<TableMaintenanceStats>> {
+async fn table_stats(db: &DatabaseConnection, schema: &str) -> Result<Vec<TableMaintenanceStats>> {
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -211,9 +206,15 @@ async fn prototype_cardinality(
     prototype: Prototype,
 ) -> Result<Cardinality> {
     let sql = match prototype {
-        Prototype::Jsonb => "SELECT (SELECT count(*) FROM idx_bench_jsonb.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_jsonb.link)::bigint AS link_rows",
-        Prototype::TypedEav => "SELECT (SELECT count(*) FROM idx_bench_eav.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_eav.link)::bigint AS link_rows",
-        Prototype::HotProjection => "SELECT ((SELECT count(*) FROM idx_bench_hot.product) + (SELECT count(*) FROM idx_bench_hot.variant) + (SELECT count(*) FROM idx_bench_hot.sales_channel))::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_hot.link)::bigint AS link_rows",
+        Prototype::Jsonb => {
+            "SELECT (SELECT count(*) FROM idx_bench_jsonb.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_jsonb.link)::bigint AS link_rows"
+        }
+        Prototype::TypedEav => {
+            "SELECT (SELECT count(*) FROM idx_bench_eav.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_eav.link)::bigint AS link_rows"
+        }
+        Prototype::HotProjection => {
+            "SELECT ((SELECT count(*) FROM idx_bench_hot.product) + (SELECT count(*) FROM idx_bench_hot.variant) + (SELECT count(*) FROM idx_bench_hot.sales_channel))::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_hot.link)::bigint AS link_rows"
+        }
     };
     let row = db
         .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
@@ -225,11 +226,7 @@ async fn prototype_cardinality(
     })
 }
 
-fn validate_cardinality(
-    label: &str,
-    actual: Cardinality,
-    dataset: &DatasetConfig,
-) -> Result<()> {
+fn validate_cardinality(label: &str, actual: Cardinality, dataset: &DatasetConfig) -> Result<()> {
     let expected_entities = i64::try_from(dataset.total_entity_rows())?;
     let expected_links = i64::try_from(dataset.total_link_rows())?;
     ensure!(

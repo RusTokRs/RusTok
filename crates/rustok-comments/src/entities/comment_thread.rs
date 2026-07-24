@@ -52,12 +52,15 @@ impl ActiveModelBehavior for ActiveModel {
             return Ok(self);
         }
 
-        let thread_id = self.id.try_as_ref().copied().ok_or_else(|| {
-            DbErr::Custom("comment thread update requires id".to_string())
-        })?;
-        let tenant_id = self.tenant_id.try_as_ref().copied().ok_or_else(|| {
-            DbErr::Custom("comment thread update requires tenant_id".to_string())
-        })?;
+        let thread_id = self
+            .id
+            .try_as_ref()
+            .copied()
+            .ok_or_else(|| DbErr::Custom("comment thread update requires id".to_string()))?;
+        let tenant_id =
+            self.tenant_id.try_as_ref().copied().ok_or_else(|| {
+                DbErr::Custom("comment thread update requires tenant_id".to_string())
+            })?;
 
         // Serialize explicit counter refreshes on the owner row before deriving
         // the denormalized count. Service create/delete paths call this inside
@@ -95,15 +98,20 @@ async fn serialize_thread_identity<C>(db: &C, model: &ActiveModel) -> Result<(),
 where
     C: ConnectionTrait,
 {
-    let tenant_id = model.tenant_id.try_as_ref().copied().ok_or_else(|| {
-        DbErr::Custom("comment thread insert requires tenant_id".to_string())
-    })?;
-    let target_type = model.target_type.try_as_ref().cloned().ok_or_else(|| {
-        DbErr::Custom("comment thread insert requires target_type".to_string())
-    })?;
-    let target_id = model.target_id.try_as_ref().copied().ok_or_else(|| {
-        DbErr::Custom("comment thread insert requires target_id".to_string())
-    })?;
+    let tenant_id = model
+        .tenant_id
+        .try_as_ref()
+        .copied()
+        .ok_or_else(|| DbErr::Custom("comment thread insert requires tenant_id".to_string()))?;
+    let target_type =
+        model.target_type.try_as_ref().cloned().ok_or_else(|| {
+            DbErr::Custom("comment thread insert requires target_type".to_string())
+        })?;
+    let target_id = model
+        .target_id
+        .try_as_ref()
+        .copied()
+        .ok_or_else(|| DbErr::Custom("comment thread insert requires target_id".to_string()))?;
 
     use super::comment_thread_identity_lock as identity_lock;
 

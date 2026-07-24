@@ -1,11 +1,11 @@
 pub mod auth_invite_consumptions;
 pub mod event_delivery_settings;
-pub mod iggy_connector_settings;
 pub mod flex_attached_localized_values;
 pub mod flex_entries;
 pub mod flex_entry_localized_values;
 pub mod flex_schema_translations;
 pub mod flex_schemas;
+pub mod iggy_connector_settings;
 pub mod mcp_audit_logs;
 pub mod mcp_clients;
 pub mod mcp_policies;
@@ -34,12 +34,12 @@ pub mod users;
 
 pub use auth_invite_consumptions::Entity as AuthInviteConsumptions;
 pub use event_delivery_settings::Entity as EventDeliverySettings;
-pub use iggy_connector_settings::Entity as IggyConnectorSettings;
 pub use flex_attached_localized_values::Entity as FlexAttachedLocalizedValues;
 pub use flex_entries::Entity as FlexEntries;
 pub use flex_entry_localized_values::Entity as FlexEntryLocalizedValues;
 pub use flex_schema_translations::Entity as FlexSchemaTranslations;
 pub use flex_schemas::Entity as FlexSchemas;
+pub use iggy_connector_settings::Entity as IggyConnectorSettings;
 pub use mcp_audit_logs::Entity as McpAuditLogs;
 pub use mcp_clients::Entity as McpClients;
 pub use mcp_policies::Entity as McpPolicies;

@@ -82,14 +82,8 @@ pub struct IndexQueryScope {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Pagination {
-    Cursor {
-        first: u32,
-        after: Option<String>,
-    },
-    Offset {
-        limit: u32,
-        offset: u64,
-    },
+    Cursor { first: u32, after: Option<String> },
+    Offset { limit: u32, offset: u64 },
 }
 
 impl Pagination {
@@ -235,8 +229,7 @@ mod tests {
     fn rejects_excessive_link_depth() {
         let mut query = base_query();
         query.fields = vec![FieldPath::linked(
-            (0..=MAX_LINK_PATH_DEPTH)
-                .map(|index| LinkName::new(format!("link_{index}")).unwrap()),
+            (0..=MAX_LINK_PATH_DEPTH).map(|index| LinkName::new(format!("link_{index}")).unwrap()),
             FieldName::new("id").unwrap(),
         )];
 

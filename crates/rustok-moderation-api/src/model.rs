@@ -136,9 +136,11 @@ impl ModerationCapabilityKey {
         }
         let bytes = value.as_bytes();
         let separator = |byte: u8| matches!(byte, b'.' | b':' | b'_' | b'-');
-        let valid = bytes.iter().copied().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || separator(byte)
-        }) && !separator(bytes[0])
+        let valid = bytes
+            .iter()
+            .copied()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || separator(byte))
+            && !separator(bytes[0])
             && !separator(bytes[bytes.len() - 1]);
         if !valid {
             return Err(ModerationEffectValidationError::InvalidCapabilityKey);
@@ -240,47 +242,43 @@ impl ModerationDecisionEffect {
             (
                 ModerationDecisionKind::NoViolation | ModerationDecisionKind::Warning,
                 ModerationDecisionEffectAction::NoDomainMutation
+            ) | (
+                ModerationDecisionKind::Hide,
+                ModerationDecisionEffectAction::SetVisibility {
+                    state: ModerationVisibilityState::Hidden
+                }
+            ) | (
+                ModerationDecisionKind::Unpublish,
+                ModerationDecisionEffectAction::SetVisibility {
+                    state: ModerationVisibilityState::Unpublished
+                }
+            ) | (
+                ModerationDecisionKind::Remove,
+                ModerationDecisionEffectAction::SetVisibility {
+                    state: ModerationVisibilityState::Removed
+                }
+            ) | (
+                ModerationDecisionKind::Lock,
+                ModerationDecisionEffectAction::Lock { .. }
+            ) | (
+                ModerationDecisionKind::RestrictInteraction,
+                ModerationDecisionEffectAction::RestrictInteraction { .. }
+            ) | (
+                ModerationDecisionKind::RequireEdit,
+                ModerationDecisionEffectAction::RequireEdit
+            ) | (
+                ModerationDecisionKind::RejectPublication,
+                ModerationDecisionEffectAction::RejectPublication
+            ) | (
+                ModerationDecisionKind::SuspendSubject,
+                ModerationDecisionEffectAction::SuspendSubject { .. }
+            ) | (
+                ModerationDecisionKind::Escalate,
+                ModerationDecisionEffectAction::Escalate
+            ) | (
+                ModerationDecisionKind::AccountSanctionRecommended,
+                ModerationDecisionEffectAction::AccountSanctionRecommended { .. }
             )
-                | (
-                    ModerationDecisionKind::Hide,
-                    ModerationDecisionEffectAction::SetVisibility {
-                        state: ModerationVisibilityState::Hidden
-                    }
-                )
-                | (
-                    ModerationDecisionKind::Unpublish,
-                    ModerationDecisionEffectAction::SetVisibility {
-                        state: ModerationVisibilityState::Unpublished
-                    }
-                )
-                | (
-                    ModerationDecisionKind::Remove,
-                    ModerationDecisionEffectAction::SetVisibility {
-                        state: ModerationVisibilityState::Removed
-                    }
-                )
-                | (ModerationDecisionKind::Lock, ModerationDecisionEffectAction::Lock { .. })
-                | (
-                    ModerationDecisionKind::RestrictInteraction,
-                    ModerationDecisionEffectAction::RestrictInteraction { .. }
-                )
-                | (
-                    ModerationDecisionKind::RequireEdit,
-                    ModerationDecisionEffectAction::RequireEdit
-                )
-                | (
-                    ModerationDecisionKind::RejectPublication,
-                    ModerationDecisionEffectAction::RejectPublication
-                )
-                | (
-                    ModerationDecisionKind::SuspendSubject,
-                    ModerationDecisionEffectAction::SuspendSubject { .. }
-                )
-                | (ModerationDecisionKind::Escalate, ModerationDecisionEffectAction::Escalate)
-                | (
-                    ModerationDecisionKind::AccountSanctionRecommended,
-                    ModerationDecisionEffectAction::AccountSanctionRecommended { .. }
-                )
         );
         if compatible {
             Ok(())
@@ -350,11 +348,9 @@ mod tests {
 
     #[test]
     fn suspension_requires_matching_decision_kind() {
-        let effect = ModerationDecisionEffect::v1(
-            ModerationDecisionEffectAction::SuspendSubject {
-                effective_until: None,
-            },
-        )
+        let effect = ModerationDecisionEffect::v1(ModerationDecisionEffectAction::SuspendSubject {
+            effective_until: None,
+        })
         .expect("valid effect");
         assert!(
             effect
@@ -374,12 +370,11 @@ mod tests {
             ModerationCapabilityKey::new("groups.comment").expect("key"),
             ModerationCapabilityKey::new("groups.post").expect("key"),
         ];
-        let effect = ModerationDecisionEffect::v1(
-            ModerationDecisionEffectAction::RestrictInteraction {
+        let effect =
+            ModerationDecisionEffect::v1(ModerationDecisionEffectAction::RestrictInteraction {
                 capabilities,
                 effective_until: None,
-            },
-        );
+            });
         assert!(effect.is_ok());
     }
 }

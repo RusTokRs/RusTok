@@ -71,7 +71,10 @@ impl ConsumerPropertyEditorPort for PagesMetadataPropertyPort {
                 expected_metadata_version(&snapshot.page_id, &input.expected_revision)?;
             let current = fetch_expected_page(&snapshot).await?;
             if current.version != expected_version {
-                return Err(metadata_revision_conflict(expected_version, current.version));
+                return Err(metadata_revision_conflict(
+                    expected_version,
+                    current.version,
+                ));
             }
 
             let locale = page_locale(&current, &snapshot.default_locale);
@@ -191,10 +194,7 @@ fn metadata_values(page: &PageDetail) -> BTreeMap<String, String> {
                 .unwrap_or_default(),
         ),
         ("template".to_string(), page.template.clone()),
-        (
-            "channel_slugs".to_string(),
-            page.channel_slugs.join(", "),
-        ),
+        ("channel_slugs".to_string(), page.channel_slugs.join(", ")),
     ])
 }
 

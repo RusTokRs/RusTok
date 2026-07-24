@@ -51,11 +51,7 @@ impl CheckoutOrderRecoveryAdapter {
         context.require_write_semantics()?;
         let tenant_id = parse_tenant_id(&context, RECOVER_OPERATION)?;
         let actor_id = parse_actor_id(&context, RECOVER_OPERATION)?;
-        require_operation_context(
-            &context,
-            RECOVER_OPERATION,
-            request.checkout_operation_id,
-        )?;
+        require_operation_context(&context, RECOVER_OPERATION, request.checkout_operation_id)?;
         let legacy_snapshot_hash = normalize_hash(
             &context,
             RECOVER_OPERATION,
@@ -163,13 +159,7 @@ impl CheckoutOrderRecoveryAdapter {
         fallback_locale: Option<&str>,
     ) -> Result<OrderResponse, PortError> {
         let order = self
-            .load_order(
-                context,
-                tenant_id,
-                order_id,
-                locale,
-                fallback_locale,
-            )
+            .load_order(context, tenant_id, order_id, locale, fallback_locale)
             .await?;
         match order.status_kind() {
             OrderStatusKind::Pending => {
@@ -178,7 +168,11 @@ impl CheckoutOrderRecoveryAdapter {
                     .confirm_order(tenant_id, actor_id, order.id)
                     .await
                     .map_err(|error| {
-                        order_error_to_port_error(context, "confirm_recovered_checkout_order", error)
+                        order_error_to_port_error(
+                            context,
+                            "confirm_recovered_checkout_order",
+                            error,
+                        )
                     })?;
                 if let Some(locale) = locale {
                     self.order_service
@@ -343,10 +337,7 @@ fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid
             code = "order.actor_id_invalid",
             "order port received invalid request context"
         );
-        PortError::validation(
-            "order.actor_id_invalid",
-            "order request context is invalid",
-        )
+        PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
 }
 

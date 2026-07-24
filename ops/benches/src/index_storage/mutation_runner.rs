@@ -10,8 +10,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    BenchmarkConfig, MutationWorkload, Prototype, connect_benchmark_database,
-    full_prototype_sql, mutation_workloads, source_dataset_sql,
+    BenchmarkConfig, MutationWorkload, Prototype, connect_benchmark_database, full_prototype_sql,
+    mutation_workloads, source_dataset_sql,
 };
 
 #[derive(Debug, Serialize)]
@@ -116,9 +116,11 @@ async fn run_mutation_workload(
         let transaction = db.begin().await?;
         let result = explain_mutation(&transaction, &workload.sql).await;
         transaction.rollback().await?;
-        evidence.push(result.with_context(|| {
-            format!("failed to explain mutation workload {}", workload.name)
-        })?);
+        evidence.push(
+            result.with_context(|| {
+                format!("failed to explain mutation workload {}", workload.name)
+            })?,
+        );
     }
 
     Ok(MutationWorkloadReport {

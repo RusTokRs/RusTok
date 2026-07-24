@@ -70,8 +70,6 @@ impl PagesMutation {
         Ok(page.into())
     }
 
-
-
     async fn patch_page_metadata(
         &self,
         ctx: &Context<'_>,

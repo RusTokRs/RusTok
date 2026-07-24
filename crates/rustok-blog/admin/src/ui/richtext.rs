@@ -71,12 +71,11 @@ pub fn BlogRichTextEditor(
             let Some(iframe) = iframe_ref.get() else {
                 return;
             };
-            let on_document_change =
-                Closure::<dyn FnMut(String)>::new(move |document_json| {
-                    if let Ok(document) = serde_json::from_str::<RichTextDocument>(&document_json) {
-                        set_document.set(document);
-                    }
-                });
+            let on_document_change = Closure::<dyn FnMut(String)>::new(move |document_json| {
+                if let Ok(document) = serde_json::from_str::<RichTextDocument>(&document_json) {
+                    set_document.set(document);
+                }
+            });
             let on_error = Closure::<dyn FnMut(String, String)>::new(move |_code, _message| {});
             let document_json =
                 serde_json::to_string(&initial_document).expect("document must serialize");

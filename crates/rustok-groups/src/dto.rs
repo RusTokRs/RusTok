@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::domain::{
     GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipEffectiveStatus,
-    GroupMembershipEnforcementSourceKind, GroupMembershipEnforcementState,
-    GroupMembershipStatus, GroupRole, GroupStatus, GroupVisibility,
+    GroupMembershipEnforcementSourceKind, GroupMembershipEnforcementState, GroupMembershipStatus,
+    GroupRole, GroupStatus, GroupVisibility,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

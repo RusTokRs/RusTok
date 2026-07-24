@@ -46,9 +46,9 @@ pub async fn fetch_categories(
         .await
     {
         Ok(categories) => Ok(categories),
-        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
-            rest_adapter::fetch_categories(token, tenant_slug, locale).await,
-        ),
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            redact_rest_fallback(rest_adapter::fetch_categories(token, tenant_slug, locale).await)
+        }
         Err(error) => Err(error),
     }
 }
@@ -68,9 +68,9 @@ pub async fn fetch_category(
     .await
     {
         Ok(category) => Ok(category),
-        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
-            rest_adapter::fetch_category(token, tenant_slug, id, locale).await,
-        ),
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            redact_rest_fallback(rest_adapter::fetch_category(token, tenant_slug, id, locale).await)
+        }
         Err(error) => Err(error),
     }
 }
@@ -87,7 +87,8 @@ pub async fn create_category(
 ) -> Result<CategoryDetail, ApiError> {
     let locale = draft.locale.clone();
     let requested_position = placement_position(draft.position)?;
-    let category = graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft).await?;
+    let category =
+        graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft).await?;
 
     move_category(
         token.clone(),
@@ -147,13 +148,8 @@ pub async fn reorder_category_siblings(
     parent_id: Option<String>,
     ordered_category_ids: Vec<String>,
 ) -> Result<(), ApiError> {
-    graphql_adapter::reorder_category_siblings(
-        token,
-        tenant_slug,
-        parent_id,
-        ordered_category_ids,
-    )
-    .await
+    graphql_adapter::reorder_category_siblings(token, tenant_slug, parent_id, ordered_category_ids)
+        .await
 }
 
 pub async fn delete_category(
@@ -201,9 +197,9 @@ pub async fn fetch_topic(
     .await
     {
         Ok(topic) => Ok(topic),
-        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
-            rest_adapter::fetch_topic(token, tenant_slug, id, locale).await,
-        ),
+        Err(error) if should_fallback_to_rest(error.as_str()) => {
+            redact_rest_fallback(rest_adapter::fetch_topic(token, tenant_slug, id, locale).await)
+        }
         Err(error) => Err(error),
     }
 }
@@ -332,7 +328,8 @@ mod tests {
                 "{operation} must redact REST response and network details"
             );
             assert!(
-                source.contains("rest_adapter::") || source.contains("category_tree_rest_adapter::"),
+                source.contains("rest_adapter::")
+                    || source.contains("category_tree_rest_adapter::"),
                 "{operation} should retain the network-only compatibility fallback"
             );
             assert!(
@@ -347,7 +344,9 @@ mod tests {
         assert!(should_fallback_to_rest("Network error"));
         assert!(!should_fallback_to_rest("Unauthorized"));
         assert!(!should_fallback_to_rest("GraphQL error: permission denied"));
-        assert!(!should_fallback_to_rest("Http error: 503 Service Unavailable"));
+        assert!(!should_fallback_to_rest(
+            "Http error: 503 Service Unavailable"
+        ));
         assert!(!should_fallback_to_rest("unknown adapter error"));
     }
 

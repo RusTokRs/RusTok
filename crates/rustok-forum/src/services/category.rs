@@ -56,14 +56,8 @@ impl CategoryService {
             Self::find_category_in_tx(&txn, tenant_id, parent_id).await?;
         }
 
-        shift_siblings_for_insert_in_tx(
-            &txn,
-            tenant_id,
-            input.parent_id,
-            requested_position,
-            now,
-        )
-        .await?;
+        shift_siblings_for_insert_in_tx(&txn, tenant_id, input.parent_id, requested_position, now)
+            .await?;
 
         forum_category::ActiveModel {
             id: Set(id),
@@ -314,8 +308,8 @@ impl CategoryService {
             .into_iter()
             .map(|lifecycle| lifecycle.category_id)
             .collect::<Vec<_>>();
-        let query = forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id));
+        let query =
+            forum_category::Entity::find().filter(forum_category::Column::TenantId.eq(tenant_id));
         let query = if archived_category_ids.is_empty() {
             query
         } else {
@@ -465,10 +459,7 @@ impl CategoryService {
     }
 }
 
-async fn lock_category_tree_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> ForumResult<()> {
+async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             txn.execute(Statement::from_sql_and_values(
@@ -494,22 +485,26 @@ async fn shift_siblings_for_insert_in_tx(
     now: chrono::DateTime<Utc>,
 ) -> ForumResult<()> {
     let siblings = match parent_id {
-        Some(parent_id) => forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .filter(forum_category::Column::ParentId.eq(parent_id))
-            .filter(forum_category::Column::Position.gte(requested_position))
-            .order_by_desc(forum_category::Column::Position)
-            .order_by_desc(forum_category::Column::Id)
-            .all(txn)
-            .await?,
-        None => forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .filter(forum_category::Column::ParentId.is_null())
-            .filter(forum_category::Column::Position.gte(requested_position))
-            .order_by_desc(forum_category::Column::Position)
-            .order_by_desc(forum_category::Column::Id)
-            .all(txn)
-            .await?,
+        Some(parent_id) => {
+            forum_category::Entity::find()
+                .filter(forum_category::Column::TenantId.eq(tenant_id))
+                .filter(forum_category::Column::ParentId.eq(parent_id))
+                .filter(forum_category::Column::Position.gte(requested_position))
+                .order_by_desc(forum_category::Column::Position)
+                .order_by_desc(forum_category::Column::Id)
+                .all(txn)
+                .await?
+        }
+        None => {
+            forum_category::Entity::find()
+                .filter(forum_category::Column::TenantId.eq(tenant_id))
+                .filter(forum_category::Column::ParentId.is_null())
+                .filter(forum_category::Column::Position.gte(requested_position))
+                .order_by_desc(forum_category::Column::Position)
+                .order_by_desc(forum_category::Column::Id)
+                .all(txn)
+                .await?
+        }
     };
 
     for sibling in siblings {

@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{
-    normalize_locale_tag, PLATFORM_FALLBACK_LOCALE, PortActor, PortCallPolicy, PortContext,
-    PortError, PortErrorKind,
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind,
+    normalize_locale_tag,
 };
 use sea_orm::DatabaseConnection;
 use std::{
@@ -12,9 +12,9 @@ use std::{
 use uuid::Uuid;
 
 use crate::checkout_snapshot::{
-    in_process_cart_checkout_port as in_process_cart_checkout_snapshot_port,
     CartCheckoutPort as CartCheckoutSnapshotPort, PrepareCartCheckoutSnapshotRequest,
     PreparedCartCheckoutSnapshot,
+    in_process_cart_checkout_port as in_process_cart_checkout_snapshot_port,
 };
 use crate::{
     CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
@@ -307,7 +307,10 @@ async fn prepare_bound_cart(
     let current_status = cart_status(&current)?;
 
     if allow_existing_lock
-        && matches!(current_status, CartStatus::CheckingOut | CartStatus::Completed)
+        && matches!(
+            current_status,
+            CartStatus::CheckingOut | CartStatus::Completed
+        )
     {
         return Ok(current);
     }

@@ -7,27 +7,27 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::applications_legacy_module::{
-    BulkReviewGroupMembershipApplicationItemResult,
-    BulkReviewGroupMembershipApplicationsRequest, BulkReviewGroupMembershipApplicationsResult,
-    CancelGroupMembershipApplicationRequest, GroupApplicationBulkReviewCommandPort,
-    GroupApplicationCasCommandPort, GroupApplicationCommandPort,
-    GroupApplicationLifecycleCommandPort, GroupApplicationLifecycleReadPort,
-    GroupApplicationLifecycleResult, GroupApplicationPolicyLocaleCatalog,
-    GroupApplicationPolicyManagementReadPort, GroupApplicationPolicyManagementView,
-    GroupApplicationReadPort, GroupApplicationReviewCommandPort,
-    GroupMembershipApplication, GroupMembershipApplicationConnection,
-    ListGroupApplicationPolicyLocalesRequest, ListGroupMembershipApplicationsRequest,
-    ReadGroupApplicationPolicyForManagementRequest, ReadGroupApplicationPolicyRequest,
-    ReadMyGroupMembershipApplicationRequest, ReopenGroupMembershipApplicationRequest,
-    ReviewGroupMembershipApplicationRequest, ReviewGroupMembershipApplicationResult,
-    SubmitGroupMembershipApplicationIfCurrentRequest, SubmitGroupMembershipApplicationRequest,
-    SubmitGroupMembershipApplicationResult, UpsertGroupApplicationPolicyIfCurrentRequest,
-    UpsertGroupApplicationPolicyRequest, UpsertGroupApplicationPolicyResult,
+    BulkReviewGroupMembershipApplicationItemResult, BulkReviewGroupMembershipApplicationsRequest,
+    BulkReviewGroupMembershipApplicationsResult, CancelGroupMembershipApplicationRequest,
+    GroupApplicationBulkReviewCommandPort, GroupApplicationCasCommandPort,
+    GroupApplicationCommandPort, GroupApplicationLifecycleCommandPort,
+    GroupApplicationLifecycleReadPort, GroupApplicationLifecycleResult,
+    GroupApplicationPolicyLocaleCatalog, GroupApplicationPolicyManagementReadPort,
+    GroupApplicationPolicyManagementView, GroupApplicationReadPort,
+    GroupApplicationReviewCommandPort, GroupMembershipApplication,
+    GroupMembershipApplicationConnection, ListGroupApplicationPolicyLocalesRequest,
+    ListGroupMembershipApplicationsRequest, ReadGroupApplicationPolicyForManagementRequest,
+    ReadGroupApplicationPolicyRequest, ReadMyGroupMembershipApplicationRequest,
+    ReopenGroupMembershipApplicationRequest, ReviewGroupMembershipApplicationRequest,
+    ReviewGroupMembershipApplicationResult, SubmitGroupMembershipApplicationIfCurrentRequest,
+    SubmitGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationResult,
+    UpsertGroupApplicationPolicyIfCurrentRequest, UpsertGroupApplicationPolicyRequest,
+    UpsertGroupApplicationPolicyResult,
 };
 use crate::domain::GroupVisibility;
 use crate::effective_membership_guard::{
-    GroupManagerCapability, actor_user_id, require_candidate_not_denied,
-    require_effective_manager, tenant_id,
+    GroupManagerCapability, actor_user_id, require_candidate_not_denied, require_effective_manager,
+    tenant_id,
 };
 use crate::entities::group;
 
@@ -104,7 +104,8 @@ impl GroupApplicationReadPort for GroupApplicationService {
         self.require_candidate_surface_visible(&context, request.group_id)
             .await?;
         require_candidate_not_denied(&self.db, &context, request.group_id, false).await?;
-        GroupApplicationReadPort::read_group_application_policy(&self.legacy, context, request).await
+        GroupApplicationReadPort::read_group_application_policy(&self.legacy, context, request)
+            .await
     }
 
     async fn list_group_membership_applications(
@@ -120,12 +121,8 @@ impl GroupApplicationReadPort for GroupApplicationService {
             GroupManagerCapability::Moderate,
         )
         .await?;
-        GroupApplicationReadPort::list_group_membership_applications(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        GroupApplicationReadPort::list_group_membership_applications(&self.legacy, context, request)
+            .await
     }
 }
 

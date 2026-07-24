@@ -4,7 +4,9 @@ use async_graphql::Json;
 use chrono::{DateTime, Utc};
 use csv::{ReaderBuilder, StringRecord, WriterBuilder};
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -1763,14 +1765,16 @@ impl SeoService {
 
     async fn fail_bulk_job(&self, job: &seo_bulk_job::Model, message: String) -> SeoResult<()> {
         let now = Utc::now().fixed_offset();
+        let txn = self.db.begin().await?;
         let mut active: seo_bulk_job::ActiveModel = job.clone().into();
         active.status = Set(SeoBulkJobStatus::Failed.as_str().to_string());
         active.last_error = Set(Some(limit_job_message(message)));
         active.completed_at = Set(Some(now));
         active.updated_at = Set(now);
-        let updated = active.update(&self.db).await?;
+        let updated = active.update(&txn).await?;
 
-        self.publish_seo_bulk_completed_event(
+        self.publish_seo_bulk_terminal_event_in_tx(
+            &txn,
             updated.tenant_id,
             updated.id,
             updated.target_kind.as_str(),
@@ -1780,7 +1784,8 @@ impl SeoService {
             updated.succeeded_count,
             updated.failed_count,
         )
-        .await;
+        .await?;
+        txn.commit().await?;
 
         Ok(())
     }
@@ -1802,6 +1807,7 @@ impl SeoService {
             SeoBulkJobStatus::Partial
         };
         let now = Utc::now().fixed_offset();
+        let txn = self.db.begin().await?;
         let mut active: seo_bulk_job::ActiveModel = job.clone().into();
         active.status = Set(status.as_str().to_string());
         active.processed_count = Set(processed_count);
@@ -1811,9 +1817,10 @@ impl SeoService {
         active.last_error = Set(last_error.map(limit_job_message));
         active.completed_at = Set(Some(now));
         active.updated_at = Set(now);
-        let updated = active.update(&self.db).await?;
+        let updated = active.update(&txn).await?;
 
-        self.publish_seo_bulk_completed_event(
+        self.publish_seo_bulk_terminal_event_in_tx(
+            &txn,
             updated.tenant_id,
             updated.id,
             updated.target_kind.as_str(),
@@ -1823,7 +1830,8 @@ impl SeoService {
             updated.succeeded_count,
             updated.failed_count,
         )
-        .await;
+        .await?;
+        txn.commit().await?;
 
         Ok(())
     }

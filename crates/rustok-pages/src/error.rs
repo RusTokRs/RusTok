@@ -14,7 +14,6 @@ pub enum PagesError {
     #[error("Page not found: {0}")]
     PageNotFound(Uuid),
 
-
     #[error("Duplicate slug: {slug} already exists for locale {locale}")]
     DuplicateSlug { slug: String, locale: String },
 
@@ -95,8 +94,7 @@ pub const PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT: &str = "PAGE_ROLLBACK_IDEMPOTENCY_
 pub const PAGE_ROLLBACK_OPERATION_INTEGRITY: &str = "PAGE_ROLLBACK_OPERATION_INTEGRITY";
 pub const PAGE_ROLLBACK_TARGET_UNAVAILABLE: &str = "PAGE_ROLLBACK_TARGET_UNAVAILABLE";
 pub const PAGE_ROLLBACK_REQUIRES_PUBLISHED: &str = "PAGE_ROLLBACK_REQUIRES_PUBLISHED";
-pub(crate) const PUBLISH_MANIFEST_DB_ERROR_PREFIX: &str =
-    "PAGE_PUBLISH_OPERATION_INTEGRITY:";
+pub(crate) const PUBLISH_MANIFEST_DB_ERROR_PREFIX: &str = "PAGE_PUBLISH_OPERATION_INTEGRITY:";
 
 impl From<DbErr> for PagesError {
     fn from(error: DbErr) -> Self {
@@ -272,7 +270,6 @@ impl PagesError {
     pub fn page_not_found(page_id: Uuid) -> Self {
         Self::PageNotFound(page_id)
     }
-
 
     pub fn duplicate_slug(slug: impl Into<String>, locale: impl Into<String>) -> Self {
         Self::DuplicateSlug {

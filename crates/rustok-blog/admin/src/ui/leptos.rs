@@ -8,10 +8,10 @@ use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
+use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostListItem};
 use crate::{core, transport};
-use super::richtext::BlogRichTextEditor;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -403,9 +403,9 @@ pub fn BlogAdmin() -> impl IntoView {
                             set_title,
                             set_slug,
                             set_excerpt,
-                        set_content,
-                        set_locale,
-                        set_tags_input,
+                            set_content,
+                            set_locale,
+                            set_tags_input,
                             set_publish_now,
                             &post,
                         );

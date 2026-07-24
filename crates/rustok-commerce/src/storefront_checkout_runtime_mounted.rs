@@ -3,11 +3,11 @@ mod legacy {
 }
 
 pub use legacy::{
-    StorefrontCheckoutCompletionCommand, StorefrontCheckoutRuntime,
-    StorefrontCheckoutRuntimeError, StorefrontPaymentCollectionCommand,
-    StorefrontShippingSelectionCommand, StorefrontShippingSelectionUpdateInput,
-    create_storefront_payment_collection, read_storefront_order_refunds,
-    read_storefront_payment_collection, select_storefront_shipping_option,
+    StorefrontCheckoutCompletionCommand, StorefrontCheckoutRuntime, StorefrontCheckoutRuntimeError,
+    StorefrontPaymentCollectionCommand, StorefrontShippingSelectionCommand,
+    StorefrontShippingSelectionUpdateInput, create_storefront_payment_collection,
+    read_storefront_order_refunds, read_storefront_payment_collection,
+    select_storefront_shipping_option,
 };
 
 /// Mounted storefront completion boundary.

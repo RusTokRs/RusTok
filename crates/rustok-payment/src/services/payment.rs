@@ -229,7 +229,8 @@ impl PaymentService {
 
         if let Some(status) = input.status {
             let normalized_status = Self::normalize_collection_status_filter(&status)?;
-            query = query.filter(entities::payment_collection::Column::Status.eq(normalized_status));
+            query =
+                query.filter(entities::payment_collection::Column::Status.eq(normalized_status));
         }
         if let Some(order_id) = input.order_id {
             query = query.filter(entities::payment_collection::Column::OrderId.eq(order_id));
@@ -603,7 +604,10 @@ impl PaymentService {
         let now = Utc::now();
         if let Some(payment) = payment {
             let payment_status = PaymentStatusKind::from_raw(payment.status.as_str());
-            if matches!(payment_status, PaymentStatusKind::Captured | PaymentStatusKind::Unknown) {
+            if matches!(
+                payment_status,
+                PaymentStatusKind::Captured | PaymentStatusKind::Unknown
+            ) {
                 return Err(PaymentError::InvalidTransition {
                     from: payment.status,
                     to: STATUS_CANCELLED.to_string(),
@@ -834,7 +838,10 @@ fn validate_reusable_collection(
             existing.id, existing.amount, amount
         )));
     }
-    if matches!(existing.status_kind(), PaymentCollectionStatusKind::Cancelled | PaymentCollectionStatusKind::Unknown) {
+    if matches!(
+        existing.status_kind(),
+        PaymentCollectionStatusKind::Cancelled | PaymentCollectionStatusKind::Unknown
+    ) {
         return Err(PaymentError::InvalidTransition {
             from: existing.status.clone(),
             to: STATUS_PENDING.to_string(),
@@ -905,8 +912,7 @@ mod tests {
     #[test]
     fn normalize_collection_status_filter_accepts_supported_values() {
         assert_eq!(
-            PaymentService::normalize_collection_status_filter("pending")
-                .expect("pending status"),
+            PaymentService::normalize_collection_status_filter("pending").expect("pending status"),
             "pending"
         );
         assert_eq!(

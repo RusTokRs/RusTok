@@ -384,8 +384,7 @@ fn validate_fulfillment(
     if checkout.get("operation_id").and_then(Value::as_str) != Some(operation_id.as_str())
         || checkout.get("order_id").and_then(Value::as_str) != Some(order_id_text.as_str())
         || checkout.get("order_plan_hash").and_then(Value::as_str) != Some(plan_hash)
-        || checkout.get("fulfillment_index").and_then(Value::as_u64)
-            != Some(u64::from(plan.index))
+        || checkout.get("fulfillment_index").and_then(Value::as_u64) != Some(u64::from(plan.index))
         || checkout.get("fulfillment_key").and_then(Value::as_str) != Some(key)
     {
         return Err(PortError::conflict(

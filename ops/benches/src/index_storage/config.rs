@@ -63,9 +63,7 @@ impl DatasetConfig {
     }
 
     pub fn product_rows(&self) -> u64 {
-        u64::from(self.tenants)
-            * u64::from(self.products_per_tenant)
-            * self.locales.len() as u64
+        u64::from(self.tenants) * u64::from(self.products_per_tenant) * self.locales.len() as u64
     }
 
     pub fn variant_rows(&self) -> u64 {
@@ -128,7 +126,11 @@ impl BenchmarkConfig {
 
 fn parse_locales(raw: &str) -> Result<Vec<String>> {
     let mut locales = Vec::new();
-    for value in raw.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+    for value in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let locale = LocaleKey::new(value)
             .with_context(|| format!("invalid benchmark locale: {value}"))?
             .into_inner();

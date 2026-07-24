@@ -177,16 +177,20 @@ async fn bounded_worker_materializes_sources_and_pages_without_final_delivery() 
     assert_eq!(fourth.source_selected, 0);
     assert_eq!(fourth.jobs_selected, 1);
     assert_eq!(fourth.jobs_completed, 1);
-    assert!(worker
-        .claimable_source_inbox_work()
-        .await
-        .expect("source selection")
-        .is_empty());
-    assert!(worker
-        .claimable_fanout_job_work()
-        .await
-        .expect("job selection")
-        .is_empty());
+    assert!(
+        worker
+            .claimable_source_inbox_work()
+            .await
+            .expect("source selection")
+            .is_empty()
+    );
+    assert!(
+        worker
+            .claimable_fanout_job_work()
+            .await
+            .expect("job selection")
+            .is_empty()
+    );
 
     let items = fanout_item::Entity::find()
         .filter(fanout_item::Column::TenantId.eq(tenant_id))
@@ -214,22 +218,26 @@ async fn bounded_worker_materializes_sources_and_pages_without_final_delivery() 
         0
     );
 
-    assert!(NotificationFanoutWorker::new(
-        db.clone(),
-        Arc::new(NotificationSourceRegistry::default()),
-        "fanout-worker",
-        MAX_NOTIFICATION_FANOUT_BATCH_SIZE + 1,
-        1,
-    )
-    .is_err());
-    assert!(NotificationFanoutWorker::new(
-        db,
-        Arc::new(NotificationSourceRegistry::default()),
-        "fanout-worker",
-        1,
-        MAX_NOTIFICATION_FANOUT_PAGE_SIZE + 1,
-    )
-    .is_err());
+    assert!(
+        NotificationFanoutWorker::new(
+            db.clone(),
+            Arc::new(NotificationSourceRegistry::default()),
+            "fanout-worker",
+            MAX_NOTIFICATION_FANOUT_BATCH_SIZE + 1,
+            1,
+        )
+        .is_err()
+    );
+    assert!(
+        NotificationFanoutWorker::new(
+            db,
+            Arc::new(NotificationSourceRegistry::default()),
+            "fanout-worker",
+            1,
+            MAX_NOTIFICATION_FANOUT_PAGE_SIZE + 1,
+        )
+        .is_err()
+    );
 }
 
 fn source_event(tenant_id: Uuid, event_id: Uuid, revision: u64) -> NotificationSourceEventRef {

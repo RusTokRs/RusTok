@@ -135,7 +135,10 @@ mod tests {
 
     #[test]
     fn unknown_order_values_fail_closed() {
-        assert_eq!(OrderStatusKind::from_raw("provider_custom"), OrderStatusKind::Unknown);
+        assert_eq!(
+            OrderStatusKind::from_raw("provider_custom"),
+            OrderStatusKind::Unknown
+        );
         assert_eq!(
             OrderChangeStatusKind::from_raw("legacy_custom"),
             OrderChangeStatusKind::Unknown

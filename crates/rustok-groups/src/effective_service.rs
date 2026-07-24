@@ -60,8 +60,8 @@ impl GroupsService {
         require_read(context)?;
         let tenant_id = context_tenant_id(context)?;
         let group_model = self.group_model(tenant_id, group_id).await?;
-        let visibility = GroupVisibility::from_str(&group_model.visibility)
-            .map_err(GroupsError::Invariant)?;
+        let visibility =
+            GroupVisibility::from_str(&group_model.visibility).map_err(GroupsError::Invariant)?;
 
         let effective = match optional_actor_user_id(context) {
             Some(user_id) => Some(
@@ -145,20 +145,17 @@ impl GroupsService {
             .one(&transaction)
             .await?;
         if effective.active_member {
-            return existing
-                .map(map_membership)
-                .transpose()?
-                .ok_or_else(|| {
-                    GroupsError::Invariant(
-                        "effective active membership is missing its owner row".to_string(),
-                    )
-                });
+            return existing.map(map_membership).transpose()?.ok_or_else(|| {
+                GroupsError::Invariant(
+                    "effective active membership is missing its owner row".to_string(),
+                )
+            });
         }
 
-        let visibility = GroupVisibility::from_str(&group_model.visibility)
-            .map_err(GroupsError::Invariant)?;
-        let join_policy = GroupJoinPolicy::from_str(&group_model.join_policy)
-            .map_err(GroupsError::Invariant)?;
+        let visibility =
+            GroupVisibility::from_str(&group_model.visibility).map_err(GroupsError::Invariant)?;
+        let join_policy =
+            GroupJoinPolicy::from_str(&group_model.join_policy).map_err(GroupsError::Invariant)?;
         let target_status = match (visibility, join_policy, existing.as_ref()) {
             (_, _, Some(row)) if row.status == GroupMembershipStatus::Invited.as_str() => {
                 GroupMembershipStatus::Active
@@ -232,8 +229,8 @@ impl GroupsService {
             Utc::now(),
         )
         .await?;
-        let local_allowed = effective.active_member
-            && effective.role.is_some_and(GroupRole::can_manage_settings);
+        let local_allowed =
+            effective.active_member && effective.role.is_some_and(GroupRole::can_manage_settings);
         if !local_allowed && !has_platform_manage(context) {
             return Err(GroupsError::Forbidden(
                 "active group owner or administrator role is required".to_string(),
@@ -542,8 +539,7 @@ fn map_membership(model: membership::Model) -> GroupsResult<GroupMembership> {
         group_id: model.group_id,
         user_id: model.user_id,
         role: GroupRole::from_str(&model.role).map_err(GroupsError::Invariant)?,
-        status: GroupMembershipStatus::from_str(&model.status)
-            .map_err(GroupsError::Invariant)?,
+        status: GroupMembershipStatus::from_str(&model.status).map_err(GroupsError::Invariant)?,
     })
 }
 

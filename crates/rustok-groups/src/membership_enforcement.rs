@@ -150,12 +150,12 @@ fn map_enforcement(
         ));
     }
 
-    let state = GroupMembershipEnforcementState::from_str(&row.state)
-        .map_err(GroupsError::Invariant)?;
+    let state =
+        GroupMembershipEnforcementState::from_str(&row.state).map_err(GroupsError::Invariant)?;
     let source_kind = GroupMembershipEnforcementSourceKind::from_str(&row.source_kind)
         .map_err(GroupsError::Invariant)?;
-    let restore_status = GroupMembershipStatus::from_str(&row.restore_status)
-        .map_err(GroupsError::Invariant)?;
+    let restore_status =
+        GroupMembershipStatus::from_str(&row.restore_status).map_err(GroupsError::Invariant)?;
     if restore_status == GroupMembershipStatus::Banned {
         return Err(GroupsError::Invariant(
             "membership enforcement cannot restore legacy banned state".to_string(),
@@ -189,9 +189,7 @@ fn map_enforcement(
     }
 
     let effective_from = row.effective_from.with_timezone(&Utc);
-    let effective_until = row
-        .effective_until
-        .map(|value| value.with_timezone(&Utc));
+    let effective_until = row.effective_until.map(|value| value.with_timezone(&Utc));
     if effective_until
         .as_ref()
         .is_some_and(|until| until <= &effective_from)
@@ -270,11 +268,7 @@ fn can_read_effective_membership(context: &PortContext, target_user_id: Uuid) ->
         || context.claims.iter().any(|claim| {
             matches!(
                 claim.as_str(),
-                "groups:access:read"
-                    | "groups:moderate"
-                    | "groups:manage"
-                    | "groups:*"
-                    | "*:*"
+                "groups:access:read" | "groups:moderate" | "groups:manage" | "groups:*" | "*:*"
             )
         })
 }

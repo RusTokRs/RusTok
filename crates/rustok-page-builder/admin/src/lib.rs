@@ -34,8 +34,8 @@ pub use consumer_properties::{
     CONSUMER_PROPERTY_SAVE_FAILED, ConsumerPropertyEditorError, ConsumerPropertyEditorPort,
     ConsumerPropertyEditorRuntime, ConsumerPropertyEditorSchema, ConsumerPropertyEditorSnapshot,
     ConsumerPropertyFieldDescriptor, ConsumerPropertyFieldKind, ConsumerPropertyLoadFuture,
-    ConsumerPropertySaveFuture, ConsumerPropertySaveReceipt, PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT,
-    SaveConsumerPropertiesInput,
+    ConsumerPropertySaveFuture, ConsumerPropertySaveReceipt,
+    PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT, SaveConsumerPropertiesInput,
 };
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,

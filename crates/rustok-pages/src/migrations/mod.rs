@@ -29,4 +29,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ]
 }
 
-pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> { Vec::new() }
+pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
+    Vec::new()
+}

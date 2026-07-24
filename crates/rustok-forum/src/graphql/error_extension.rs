@@ -99,12 +99,8 @@ fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
         "Topic is locked" => ("FORUM_TOPIC_LOCKED", Some(false)),
         "Topic is deleted" => ("FORUM_TOPIC_DELETED", Some(false)),
         "Reply is deleted" => ("FORUM_REPLY_DELETED", Some(false)),
-        "Forum mention target is unavailable" => {
-            ("FORUM_MENTION_TARGET_UNAVAILABLE", Some(false))
-        }
-        "Forum quote target is unavailable" => {
-            ("FORUM_QUOTE_TARGET_UNAVAILABLE", Some(false))
-        }
+        "Forum mention target is unavailable" => ("FORUM_MENTION_TARGET_UNAVAILABLE", Some(false)),
+        "Forum quote target is unavailable" => ("FORUM_QUOTE_TARGET_UNAVAILABLE", Some(false)),
         "Forum relation revision is unavailable" => {
             ("FORUM_RELATION_REVISION_UNAVAILABLE", Some(false))
         }
@@ -118,18 +114,12 @@ fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
         _ if message.starts_with("Category not found: ") => {
             ("FORUM_CATEGORY_NOT_FOUND", Some(false))
         }
-        _ if message.starts_with("Topic not found: ") => {
-            ("FORUM_TOPIC_NOT_FOUND", Some(false))
-        }
-        _ if message.starts_with("Reply not found: ") => {
-            ("FORUM_REPLY_NOT_FOUND", Some(false))
-        }
+        _ if message.starts_with("Topic not found: ") => ("FORUM_TOPIC_NOT_FOUND", Some(false)),
+        _ if message.starts_with("Reply not found: ") => ("FORUM_REPLY_NOT_FOUND", Some(false)),
         _ if message.starts_with("Topic solution not found for topic: ") => {
             ("FORUM_SOLUTION_NOT_FOUND", Some(false))
         }
-        _ if message.starts_with("Validation error: ") => {
-            ("FORUM_VALIDATION_FAILED", Some(false))
-        }
+        _ if message.starts_with("Validation error: ") => ("FORUM_VALIDATION_FAILED", Some(false)),
         _ if message.starts_with("Forbidden: ") => ("FORUM_FORBIDDEN", Some(false)),
         _ if message.starts_with("Required capability `") => {
             ("FORUM_CAPABILITY_UNAVAILABLE", Some(false))
@@ -169,11 +159,9 @@ mod tests {
 
     #[test]
     fn annotates_exact_domain_code_and_retryability_from_source() {
-        let graphql_error: Error = ForumError::capability_unavailable(
-            "profiles",
-            "FORUM_PROFILES_CAPABILITY_UNAVAILABLE",
-        )
-        .into();
+        let graphql_error: Error =
+            ForumError::capability_unavailable("profiles", "FORUM_PROFILES_CAPABILITY_UNAVAILABLE")
+                .into();
         let mut server_error = graphql_error.into_server_error(Pos::default());
 
         annotate_forum_error(&mut server_error);

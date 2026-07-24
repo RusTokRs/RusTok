@@ -165,27 +165,28 @@ pub async fn complete_cart_checkout(
         runtime.db_clone(),
         runtime.event_bus(),
     );
-    let response = crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input(
-        &storefront_runtime,
-        runtime.payment_provider_registry(),
-        tenant.id,
-        &request_context,
-        auth.0,
-        idempotency_key,
-        checkout_input,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(
-            tenant_id = %tenant.id,
-            cart_id = %cart_id,
-            actor_id = %actor_id,
-            code = error.public_code(),
-            retryable = error.retryable(),
-            "storefront checkout request failed"
-        );
-        storefront_checkout_http_error(error)
-    })?;
+    let response =
+        crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input(
+            &storefront_runtime,
+            runtime.payment_provider_registry(),
+            tenant.id,
+            &request_context,
+            auth.0,
+            idempotency_key,
+            checkout_input,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant.id,
+                cart_id = %cart_id,
+                actor_id = %actor_id,
+                code = error.public_code(),
+                retryable = error.retryable(),
+                "storefront checkout request failed"
+            );
+            storefront_checkout_http_error(error)
+        })?;
 
     Ok(Json(response))
 }
@@ -229,9 +230,7 @@ fn storefront_checkout_http_error(
         StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => {
             StatusCode::SERVICE_UNAVAILABLE
         }
-        StorefrontStagedCheckoutRuntimeError::CheckoutFailed => {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        StorefrontStagedCheckoutRuntimeError::CheckoutFailed => StatusCode::INTERNAL_SERVER_ERROR,
         StorefrontStagedCheckoutRuntimeError::CompensationPending
         | StorefrontStagedCheckoutRuntimeError::ReconciliationRequired => StatusCode::CONFLICT,
     };

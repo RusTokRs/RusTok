@@ -92,18 +92,15 @@ impl ServerNotificationRecipientPolicy {
     ) -> NotificationRecipientPolicyRuntime {
         let profile_port: Arc<dyn ProfilePrivacyReadPort> =
             Arc::new(ProfileService::new(db.clone()));
-        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> =
-            Arc::new(SocialGraphService::new(db));
+        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> = Arc::new(SocialGraphService::new(db));
         let graph = SocialGraphPrivacyRuntime::new(graph_port);
         let blocks = extensions
             .get::<NotificationBlockReadRuntime>()
             .cloned()
             .unwrap_or_else(|| {
-                NotificationBlockReadRuntime::new(Arc::new(
-                    SocialGraphNotificationBlockAdapter {
-                        graph: graph.clone(),
-                    },
-                ))
+                NotificationBlockReadRuntime::new(Arc::new(SocialGraphNotificationBlockAdapter {
+                    graph: graph.clone(),
+                }))
             });
         let mutes = extensions
             .get::<NotificationMuteReadRuntime>()

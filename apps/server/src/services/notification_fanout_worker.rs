@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
@@ -123,7 +123,10 @@ async fn notification_fanout_worker_loop(
 ) {
     loop {
         if *stop_rx.borrow() {
-            tracing::info!(worker_id = worker.worker_id(), "Notification fanout worker stopped");
+            tracing::info!(
+                worker_id = worker.worker_id(),
+                "Notification fanout worker stopped"
+            );
             return;
         }
 
@@ -252,7 +255,12 @@ async fn source_work_is_enabled(
     match tenant_notification_policy(db, module_registry, work.tenant_id).await {
         TenantNotificationPolicy::Enabled => true,
         TenantNotificationPolicy::Disabled => {
-            defer_source_work(worker, work, NotificationFanoutPolicyDeferral::TenantDisabled).await;
+            defer_source_work(
+                worker,
+                work,
+                NotificationFanoutPolicyDeferral::TenantDisabled,
+            )
+            .await;
             false
         }
         TenantNotificationPolicy::Unavailable => {
@@ -276,7 +284,12 @@ async fn job_work_is_enabled(
     match tenant_notification_policy(db, module_registry, work.tenant_id).await {
         TenantNotificationPolicy::Enabled => true,
         TenantNotificationPolicy::Disabled => {
-            defer_job_work(worker, work, NotificationFanoutPolicyDeferral::TenantDisabled).await;
+            defer_job_work(
+                worker,
+                work,
+                NotificationFanoutPolicyDeferral::TenantDisabled,
+            )
+            .await;
             false
         }
         TenantNotificationPolicy::Unavailable => {

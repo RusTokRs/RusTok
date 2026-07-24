@@ -85,11 +85,12 @@ impl CommerceCheckoutMutation {
                 operation = "resolve_store_context",
                 "storefront payment collection context resolution failed"
             );
-            async_graphql::Error::new("Store context is temporarily unavailable")
-                .extend_with(|_, extensions| {
+            async_graphql::Error::new("Store context is temporarily unavailable").extend_with(
+                |_, extensions| {
                     extensions.set("code", "store_context_unavailable");
                     extensions.set("retryable", true);
-                })
+                },
+            )
         })?;
 
         let service = PaymentService::new(db.clone());
@@ -125,12 +126,7 @@ impl CommerceCheckoutMutation {
             )
             .await
             .map_err(|error| {
-                payment_collection_graphql_error(
-                    tenant_id,
-                    cart.id,
-                    "create_collection",
-                    error,
-                )
+                payment_collection_graphql_error(tenant_id, cart.id, "create_collection", error)
             })?;
 
         Ok(collection.into())

@@ -21,9 +21,7 @@ pub async fn fetch_configuration(
 ) -> Result<EventDeliveryConfiguration, ApiError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => native_server_adapter::fetch_configuration().await,
-        UiTransportPath::Graphql => {
-            graphql_adapter::fetch_configuration(token, tenant_slug).await
-        }
+        UiTransportPath::Graphql => graphql_adapter::fetch_configuration(token, tenant_slug).await,
     }
 }
 

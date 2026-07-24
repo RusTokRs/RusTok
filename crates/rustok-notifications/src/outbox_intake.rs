@@ -399,7 +399,10 @@ impl NotificationOutboxIntakeWorker {
                 existing, true,
             )));
         }
-        if let Some(existing) = intake_rejection::Entity::find_by_id(row.id).one(&txn).await? {
+        if let Some(existing) = intake_rejection::Entity::find_by_id(row.id)
+            .one(&txn)
+            .await?
+        {
             ensure_rejection_matches_outbox(&existing, row)?;
             txn.commit().await?;
             return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
@@ -492,10 +495,7 @@ fn ensure_rejection_matches_outbox(
     Ok(())
 }
 
-fn intake_result(
-    receipt: intake_receipt::Model,
-    replayed: bool,
-) -> NotificationOutboxIntakeResult {
+fn intake_result(receipt: intake_receipt::Model, replayed: bool) -> NotificationOutboxIntakeResult {
     NotificationOutboxIntakeResult {
         outbox_event_id: receipt.outbox_event_id,
         source_inbox_id: receipt.source_inbox_id,

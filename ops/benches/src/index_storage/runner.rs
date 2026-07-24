@@ -160,9 +160,11 @@ async fn run_workload(
         .with_context(|| format!("failed to digest workload result {}", workload.name))?;
     let mut evidence = Vec::with_capacity(repetitions as usize);
     for _ in 0..repetitions {
-        evidence.push(explain(db, &workload.sql).await.with_context(|| {
-            format!("failed to execute benchmark workload {}", workload.name)
-        })?);
+        evidence.push(
+            explain(db, &workload.sql).await.with_context(|| {
+                format!("failed to execute benchmark workload {}", workload.name)
+            })?,
+        );
     }
     Ok(WorkloadReport {
         name: workload.name,
@@ -285,15 +287,11 @@ async fn cardinality_query(db: &DatabaseConnection, sql: &str) -> Result<Cardina
     })
 }
 
-fn validate_cardinality(
-    label: &str,
-    actual: Cardinality,
-    dataset: &DatasetConfig,
-) -> Result<()> {
+fn validate_cardinality(label: &str, actual: Cardinality, dataset: &DatasetConfig) -> Result<()> {
     let expected_entities = i64::try_from(dataset.total_entity_rows())
         .context("expected entity cardinality exceeds i64")?;
-    let expected_links =
-        i64::try_from(dataset.total_link_rows()).context("expected link cardinality exceeds i64")?;
+    let expected_links = i64::try_from(dataset.total_link_rows())
+        .context("expected link cardinality exceeds i64")?;
     ensure!(
         actual.entity_rows == expected_entities,
         "{label} entity cardinality drift: expected {expected_entities}, got {}",

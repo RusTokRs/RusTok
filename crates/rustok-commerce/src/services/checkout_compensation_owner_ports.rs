@@ -9,15 +9,15 @@ use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryReservationIdentityPort,
 };
 use rustok_order::{
-    in_process_checkout_order_compensation_port, CheckoutOrderCompensationPort,
-    CheckoutOrderCompensationRequest, CheckoutOrderIdentityPort,
+    CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest, CheckoutOrderIdentityPort,
     InProcessCheckoutOrderCompensationPort, OrderStatusKind,
+    in_process_checkout_order_compensation_port,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::{
-    in_process_checkout_payment_compensation_port, CheckoutPaymentCompensationPort,
-    CheckoutPaymentCompensationRequest, InProcessCheckoutPaymentCompensationPort,
-    PaymentCollectionStatusKind, PaymentProviderRegistry,
+    CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
+    InProcessCheckoutPaymentCompensationPort, PaymentCollectionStatusKind, PaymentProviderRegistry,
+    in_process_checkout_payment_compensation_port,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::json;

@@ -40,13 +40,13 @@ pub use context::{
     TenantContextExtension, TenantError, has_any_effective_permission, has_effective_permission,
     scope_matches,
 };
-pub use event_delivery::{
-    EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryUpdateOutcome,
-    SharedEventDeliveryControl,
-};
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
     ChannelResolutionTraceStep,
+};
+pub use event_delivery::{
+    EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryUpdateOutcome,
+    SharedEventDeliveryControl,
 };
 pub use locale::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates, extract_locale_tag_from_header,

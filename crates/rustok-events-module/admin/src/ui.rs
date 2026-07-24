@@ -23,9 +23,7 @@ pub fn EventsAdmin() -> impl IntoView {
     let tenant = use_tenant();
     let configuration = local_resource(
         move || (token.get(), tenant.get()),
-        move |(token, tenant)| async move {
-            transport::fetch_configuration(token, tenant).await
-        },
+        move |(token, tenant)| async move { transport::fetch_configuration(token, tenant).await },
     );
     let (selected_profile, set_selected_profile) = signal(String::from("memory"));
     let (loaded, set_loaded) = signal(false);

@@ -121,8 +121,7 @@ pub trait GroupLocalizationCommandPort: Send + Sync {
 
 pub type SharedGroupSummaryReadPort = Arc<dyn GroupSummaryReadPort>;
 pub type SharedGroupMembershipReadPort = Arc<dyn GroupMembershipReadPort>;
-pub type SharedGroupMembershipEnforcementReadPort =
-    Arc<dyn GroupMembershipEnforcementReadPort>;
+pub type SharedGroupMembershipEnforcementReadPort = Arc<dyn GroupMembershipEnforcementReadPort>;
 pub type SharedGroupAccessReadPort = Arc<dyn GroupAccessReadPort>;
 pub type SharedGroupLocalizationReadPort = Arc<dyn GroupLocalizationReadPort>;
 pub type SharedGroupCommandPort = Arc<dyn GroupCommandPort>;

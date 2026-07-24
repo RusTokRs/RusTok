@@ -28,8 +28,8 @@ impl From<ServerFnError> for ApiError {
 }
 
 #[server(prefix = "/api/fn", endpoint = "events/configuration")]
-pub async fn event_delivery_configuration_native(
-) -> Result<EventDeliveryConfiguration, ServerFnError> {
+pub async fn event_delivery_configuration_native()
+-> Result<EventDeliveryConfiguration, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
@@ -114,9 +114,7 @@ pub(super) async fn fetch_configuration() -> Result<EventDeliveryConfiguration, 
         .map_err(Into::into)
 }
 
-pub(super) async fn update_profile(
-    profile: String,
-) -> Result<EventDeliveryUpdate, ApiError> {
+pub(super) async fn update_profile(profile: String) -> Result<EventDeliveryUpdate, ApiError> {
     update_event_delivery_profile_native(profile)
         .await
         .map_err(Into::into)

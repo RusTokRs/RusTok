@@ -224,11 +224,7 @@ impl CheckoutOrderStageExecutor {
                             order
                         }
                     };
-                    validate_order_projection(
-                        &operation,
-                        &order,
-                        &[OrderStatusKind::Confirmed],
-                    )?;
+                    validate_order_projection(&operation, &order, &[OrderStatusKind::Confirmed])?;
                     self.inventory_adoption
                         .adopt_and_checkpoint(tenant_id, operation_id, lease_owner.clone(), &order)
                         .await?;
@@ -238,11 +234,7 @@ impl CheckoutOrderStageExecutor {
                     let order = self
                         .read_order_projection(tenant_id, operation_id, &plan)
                         .await?;
-                    validate_order_projection(
-                        &operation,
-                        &order,
-                        &[OrderStatusKind::Confirmed],
-                    )?;
+                    validate_order_projection(&operation, &order, &[OrderStatusKind::Confirmed])?;
                     self.operation_journal
                         .checkpoint(CheckoutOperationCheckpoint {
                             tenant_id,

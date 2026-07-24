@@ -70,11 +70,7 @@ impl ShippingSelectionPort for crate::FulfillmentService {
             .list_shipping_options(tenant_id, Some(&context.locale), Some(&context.locale))
             .await
             .map_err(|error| {
-                fulfillment_error_to_port_error(
-                    &context,
-                    "list_seller_shipping_options",
-                    error,
-                )
+                fulfillment_error_to_port_error(&context, "list_seller_shipping_options", error)
             })?
             .into_iter()
             .filter(|option| {

@@ -68,13 +68,7 @@ impl CategoryService {
         fallback_locale: Option<&str>,
     ) -> ForumResult<CategoryResponse> {
         self.inner
-            .get_with_locale_fallback(
-                tenant_id,
-                security,
-                category_id,
-                locale,
-                fallback_locale,
-            )
+            .get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)
             .await
     }
 

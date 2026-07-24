@@ -452,7 +452,7 @@ fn sort_migrations_by_dependencies(
 
 #[cfg(test)]
 mod tests {
-    use super::{MigrationDescriptor, Migrator, sort_migrations_by_dependencies};
+    use super::{sort_migrations_by_dependencies, MigrationDescriptor, Migrator};
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
 
