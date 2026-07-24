@@ -2,6 +2,40 @@ impl SeoService {
     pub(super) async fn execute_next_bulk_job_with_bounded_io(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
+        // The server already owns one configured SEO poller. Keep that stable lifecycle boundary,
+        // but let every poll advance at most one bounded job from each durable SEO queue.
+        let bulk_result = self.execute_next_bulk_job_only_with_bounded_io().await;
+        let sitemap_result = self.execute_next_sitemap_job_background().await;
+        let index_result = self
+            .execute_next_index_repair_replay_job_background()
+            .await;
+
+        if let Ok(Some(job)) = &sitemap_result {
+            tracing::info!(
+                job_id = %job.id,
+                status = %job.status,
+                "Executed queued SEO sitemap job phase"
+            );
+        }
+        if let Ok(Some(result)) = &index_result {
+            tracing::info!(
+                target_type = ?result.target_type,
+                replay_mode = %result.replay_mode.as_str(),
+                repaired_count = result.repaired_count,
+                replayed_count = result.replayed_count,
+                "Executed queued SEO index repair/replay job"
+            );
+        }
+
+        let bulk_job = bulk_result?;
+        sitemap_result?;
+        index_result?;
+        Ok(bulk_job)
+    }
+
+    async fn execute_next_bulk_job_only_with_bounded_io(
+        &self,
+    ) -> SeoResult<Option<SeoBulkJobRecord>> {
         let running = seo_bulk_job::Entity::find()
             .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
             .filter(seo_bulk_job::Column::OperationKind.is_in([
