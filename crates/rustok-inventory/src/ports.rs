@@ -259,7 +259,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             ));
         }
 
-        let txn = self.db.begin().await.map_err(storage_unavailable)?;
+        let txn =
+            self.db.begin().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
         let variant = load_tenant_variant(
             &context,
             owner_operation,
@@ -268,35 +271,59 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             request.variant_id,
         )
         .await?;
-        let inventory_item = load_inventory_item_for_update(&txn, request.variant_id)
-            .await?
-            .ok_or_else(|| {
-                PortError::conflict(
-                    "inventory.state_not_found",
-                    "variant has no configured inventory state",
-                )
-            })?;
+        let inventory_item =
+            load_inventory_item_for_update(&context, owner_operation, &txn, request.variant_id)
+                .await?
+                .ok_or_else(|| {
+                    PortError::conflict(
+                        "inventory.state_not_found",
+                        "variant has no configured inventory state",
+                    )
+                })?;
 
         if let Some(existing) = reservation_item::Entity::find_by_id(request.reservation_id)
             .one(&txn)
             .await
-            .map_err(storage_unavailable)?
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?
         {
-            let snapshot =
-                existing_reservation_snapshot(&txn, &variant, &inventory_item, existing, &request)
-                    .await?;
-            txn.commit().await.map_err(storage_unavailable)?;
+            let snapshot = existing_reservation_snapshot(
+                &context,
+                owner_operation,
+                &txn,
+                &variant,
+                &inventory_item,
+                existing,
+                &request,
+            )
+            .await?;
+            txn.commit().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Ok(snapshot);
         }
 
-        if let Some(existing) =
-            find_reservation_by_external_id(&txn, inventory_item.id, request.external_id.as_str())
-                .await?
+        if let Some(existing) = find_reservation_by_external_id(
+            &context,
+            owner_operation,
+            &txn,
+            inventory_item.id,
+            request.external_id.as_str(),
+        )
+        .await?
         {
-            let snapshot =
-                existing_reservation_snapshot(&txn, &variant, &inventory_item, existing, &request)
-                    .await?;
-            txn.commit().await.map_err(storage_unavailable)?;
+            let snapshot = existing_reservation_snapshot(
+                &context,
+                owner_operation,
+                &txn,
+                &variant,
+                &inventory_item,
+                existing,
+                &request,
+            )
+            .await?;
+            txn.commit().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Ok(snapshot);
         }
 
@@ -305,7 +332,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             .filter(stock_location::Column::DeletedAt.is_null())
             .all(&txn)
             .await
-            .map_err(storage_unavailable)?
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?
             .into_iter()
             .map(|location| location.id)
             .collect::<HashSet<_>>();
@@ -313,7 +340,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             .filter(inventory_level::Column::InventoryItemId.eq(inventory_item.id))
             .all(&txn)
             .await
-            .map_err(storage_unavailable)?
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?
             .into_iter()
             .filter(|level| active_location_ids.contains(&level.location_id))
             .collect::<Vec<_>>();
@@ -346,7 +373,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             if update
                 .exec(&txn)
                 .await
-                .map_err(storage_unavailable)?
+                .map_err(|error| {
+                    storage_unavailable_with_context(&context, owner_operation, error)
+                })?
                 .rows_affected
                 == 1
             {
@@ -387,15 +416,20 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         .await;
 
         if let Err(error) = inserted {
-            txn.rollback().await.map_err(storage_unavailable)?;
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             let existing = match reservation_item::Entity::find_by_id(request.reservation_id)
                 .one(&self.db)
                 .await
-                .map_err(storage_unavailable)?
-            {
+                .map_err(|error| {
+                    storage_unavailable_with_context(&context, owner_operation, error)
+                })? {
                 Some(existing) => Some(existing),
                 None => {
                     find_reservation_by_external_id(
+                        &context,
+                        owner_operation,
                         &self.db,
                         inventory_item.id,
                         request.external_id.as_str(),
@@ -405,6 +439,8 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             };
             if let Some(existing) = existing {
                 return existing_reservation_snapshot(
+                    &context,
+                    owner_operation,
                     &self.db,
                     &variant,
                     &inventory_item,
@@ -413,11 +449,18 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 )
                 .await;
             }
-            return Err(storage_unavailable(error));
+            return Err(storage_unavailable_with_context(
+                &context,
+                owner_operation,
+                error,
+            ));
         }
 
-        let available_quantity = available_quantity(&txn, inventory_item.id).await?;
-        txn.commit().await.map_err(storage_unavailable)?;
+        let available_quantity =
+            available_quantity(&context, owner_operation, &txn, inventory_item.id).await?;
+        txn.commit()
+            .await
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
         Ok(InventoryIdentityReservationSnapshot {
             reservation_id: request.reservation_id,
             external_id: request.external_id,
@@ -440,11 +483,14 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         request.external_id = normalize_external_id(request.external_id)?;
 
-        let txn = self.db.begin().await.map_err(storage_unavailable)?;
+        let txn =
+            self.db.begin().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
         let observed = reservation_item::Entity::find_by_id(request.reservation_id)
             .one(&txn)
             .await
-            .map_err(storage_unavailable)?
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?
             .ok_or_else(|| {
                 PortError::not_found(
                     "inventory.reservation_not_found",
@@ -457,18 +503,23 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 "reservation id is bound to another external identity",
             ));
         }
-        let item = load_inventory_item_by_id_for_update(&txn, observed.inventory_item_id)
-            .await?
-            .ok_or_else(|| {
-                PortError::invariant_violation(
-                    "inventory.reservation_item_missing",
-                    "reservation inventory item is missing",
-                )
-            })?;
+        let item = load_inventory_item_by_id_for_update(
+            &context,
+            owner_operation,
+            &txn,
+            observed.inventory_item_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            PortError::invariant_violation(
+                "inventory.reservation_item_missing",
+                "reservation inventory item is missing",
+            )
+        })?;
         let reservation = reservation_item::Entity::find_by_id(request.reservation_id)
             .one(&txn)
             .await
-            .map_err(storage_unavailable)?
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?
             .ok_or_else(|| {
                 PortError::not_found(
                     "inventory.reservation_not_found",
@@ -489,8 +540,11 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let allows_backorder = crate::inventory_policy_allows_backorder(&variant.inventory_policy);
 
         if reservation.deleted_at.is_some() || reservation.quantity == 0 {
-            let available_quantity = available_quantity(&txn, item.id).await?;
-            txn.commit().await.map_err(storage_unavailable)?;
+            let available_quantity =
+                available_quantity(&context, owner_operation, &txn, item.id).await?;
+            txn.commit().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Ok(InventoryIdentityReservationReleaseSnapshot {
                 reservation_id: reservation.id,
                 external_id: request.external_id,
@@ -517,7 +571,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             .filter(inventory_level::Column::ReservedQuantity.gte(released_quantity))
             .exec(&txn)
             .await
-            .map_err(storage_unavailable)?;
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
         if level_update.rows_affected != 1 {
             return Err(PortError::invariant_violation(
                 "inventory.reservation_ledger_inconsistent",
@@ -538,10 +592,16 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         active.metadata = Set(metadata);
         active.updated_at = Set(Utc::now().into());
         active.deleted_at = Set(Some(Utc::now().into()));
-        active.update(&txn).await.map_err(storage_unavailable)?;
+        active
+            .update(&txn)
+            .await
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
 
-        let available_quantity = available_quantity(&txn, item.id).await?;
-        txn.commit().await.map_err(storage_unavailable)?;
+        let available_quantity =
+            available_quantity(&context, owner_operation, &txn, item.id).await?;
+        txn.commit()
+            .await
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
         Ok(InventoryIdentityReservationReleaseSnapshot {
             reservation_id: reservation.id,
             external_id: request.external_id,
@@ -586,6 +646,8 @@ where
 }
 
 async fn load_inventory_item_for_update<C>(
+    context: &PortContext,
+    owner_operation: &'static str,
     conn: &C,
     variant_id: Uuid,
 ) -> Result<Option<inventory_item::Model>, PortError>
@@ -595,16 +657,21 @@ where
     let query =
         || inventory_item::Entity::find().filter(inventory_item::Column::VariantId.eq(variant_id));
     match conn.get_database_backend() {
-        DbBackend::Sqlite => query().one(conn).await.map_err(storage_unavailable),
+        DbBackend::Sqlite => query()
+            .one(conn)
+            .await
+            .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
         DbBackend::Postgres | DbBackend::MySql => query()
             .lock_exclusive()
             .one(conn)
             .await
-            .map_err(storage_unavailable),
+            .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
     }
 }
 
 async fn load_inventory_item_by_id_for_update<C>(
+    context: &PortContext,
+    owner_operation: &'static str,
     conn: &C,
     inventory_item_id: Uuid,
 ) -> Result<Option<inventory_item::Model>, PortError>
@@ -613,16 +680,21 @@ where
 {
     let query = || inventory_item::Entity::find_by_id(inventory_item_id);
     match conn.get_database_backend() {
-        DbBackend::Sqlite => query().one(conn).await.map_err(storage_unavailable),
+        DbBackend::Sqlite => query()
+            .one(conn)
+            .await
+            .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
         DbBackend::Postgres | DbBackend::MySql => query()
             .lock_exclusive()
             .one(conn)
             .await
-            .map_err(storage_unavailable),
+            .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
     }
 }
 
 async fn find_reservation_by_external_id<C>(
+    context: &PortContext,
+    owner_operation: &'static str,
     conn: &C,
     inventory_item_id: Uuid,
     external_id: &str,
@@ -636,10 +708,12 @@ where
         .order_by_desc(reservation_item::Column::CreatedAt)
         .one(conn)
         .await
-        .map_err(storage_unavailable)
+        .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))
 }
 
 async fn existing_reservation_snapshot<C>(
+    context: &PortContext,
+    owner_operation: &'static str,
     conn: &C,
     variant: &product_variant::Model,
     item: &inventory_item::Model,
@@ -661,7 +735,7 @@ where
             "reservation identity is already bound to different reservation data",
         ));
     }
-    let available_quantity = available_quantity(conn, item.id).await?;
+    let available_quantity = available_quantity(context, owner_operation, conn, item.id).await?;
     Ok(InventoryIdentityReservationSnapshot {
         reservation_id: existing.id,
         external_id: request.external_id.clone(),
@@ -674,7 +748,12 @@ where
     })
 }
 
-async fn available_quantity<C>(conn: &C, inventory_item_id: Uuid) -> Result<i32, PortError>
+async fn available_quantity<C>(
+    context: &PortContext,
+    owner_operation: &'static str,
+    conn: &C,
+    inventory_item_id: Uuid,
+) -> Result<i32, PortError>
 where
     C: ConnectionTrait,
 {
@@ -682,7 +761,7 @@ where
         .filter(inventory_level::Column::InventoryItemId.eq(inventory_item_id))
         .all(conn)
         .await
-        .map_err(storage_unavailable)?;
+        .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))?;
     levels.into_iter().try_fold(0_i32, |total, level| {
         total.checked_add(level_available(&level)).ok_or_else(|| {
             PortError::invariant_violation(
@@ -768,10 +847,6 @@ fn storage_unavailable_with_context(
         code = "inventory.database_unavailable",
         "inventory storage operation failed"
     );
-    storage_unavailable(error)
-}
-
-fn storage_unavailable(_error: sea_orm::DbErr) -> PortError {
     PortError::unavailable(
         "inventory.database_unavailable",
         "inventory storage is temporarily unavailable",
