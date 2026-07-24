@@ -36,11 +36,16 @@ requireMarkers(preflight, 'read ordering preflight', [
   "'keyset_page'",
   "'exact_count'",
   'const maskSqlText = (text) =>',
+  'const identifierContinuation = /[A-Za-z0-9_$]/u',
+  'const isEscapeStringQuote = (sql, quoteIndex) =>',
   'const executableSqlText = (sql, label) =>',
   "sql.startsWith('--', index)",
   "sql.startsWith('/*', index)",
   'unterminated block comment',
-  "const kind = quote === \"'\" ? 'string literal' : 'quoted identifier'",
+  "const escapeString = quote === \"'\" && isEscapeStringQuote(sql, index)",
+  "escapeString && sql[index] === '\\\\'",
+  'unterminated escape string literal',
+  "? (escapeString ? 'escape string literal' : 'string literal')",
   'contains an unterminated ${kind}',
   'unterminated dollar-quoted string',
   'executableSql.trimEnd().endsWith(marker)',
@@ -63,6 +68,7 @@ requireMarkers(fixture, 'read ordering fixture', [
   "test('rejects a candidate ordering marker that exists only in a block comment'",
   "test('rejects a terminal ordering marker hidden in a line comment'",
   "test('rejects an ordering marker hidden in a dollar-quoted string'",
+  "test('rejects an ordering marker hidden after an escaped quote in an E string'",
   "test('rejects unterminated SQL comments before ordering validation'",
   "test('rejects workload order drift before checking SQL text'",
 ]);
@@ -158,4 +164,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] executable SQL lexer, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
