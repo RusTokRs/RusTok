@@ -1,5 +1,6 @@
 mod config;
 mod connection;
+mod explain;
 mod maintenance_runner;
 mod mutation_runner;
 mod runner;
