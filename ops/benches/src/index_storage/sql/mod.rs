@@ -125,8 +125,8 @@ fn assert_read_workload_contract(workload: Workload) -> Workload {
     let contract = read_workload_contract(workload.name);
     if let Some(marker) = contract.sql_order_marker {
         assert!(
-            workload.sql.contains(marker),
-            "read workload {} must contain canonical ordering marker {marker}",
+            workload.sql.trim_end().ends_with(marker),
+            "read workload {} must end with canonical ordering marker {marker}",
             workload.name
         );
     }
@@ -279,14 +279,14 @@ mod tests {
         for workload in source_workloads(&config) {
             let contract = read_workload_contract(workload.name);
             if let Some(marker) = contract.sql_order_marker {
-                assert!(workload.sql.contains(marker));
+                assert!(workload.sql.trim_end().ends_with(marker));
             }
         }
         for prototype in Prototype::ALL {
             for workload in workloads(prototype, &config) {
                 let contract = read_workload_contract(workload.name);
                 if let Some(marker) = contract.sql_order_marker {
-                    assert!(workload.sql.contains(marker));
+                    assert!(workload.sql.trim_end().ends_with(marker));
                 }
             }
         }
