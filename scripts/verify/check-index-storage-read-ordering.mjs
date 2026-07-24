@@ -28,6 +28,7 @@ const fail = (message) => {
 };
 
 const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const maskSqlText = (text) => text.replace(/[^\r\n]/gu, ' ');
 
 const requireObject = (value, label) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -45,6 +46,81 @@ const requireExactNames = (items, expected, label, field = 'name') => {
   }
 };
 
+const executableSqlText = (sql, label) => {
+  let output = '';
+  let index = 0;
+  while (index < sql.length) {
+    if (sql.startsWith('--', index)) {
+      const lineEnd = sql.indexOf('\n', index + 2);
+      const end = lineEnd === -1 ? sql.length : lineEnd;
+      output += maskSqlText(sql.slice(index, end));
+      index = end;
+      continue;
+    }
+
+    if (sql.startsWith('/*', index)) {
+      const start = index;
+      let depth = 1;
+      index += 2;
+      while (index < sql.length && depth > 0) {
+        if (sql.startsWith('/*', index)) {
+          depth += 1;
+          index += 2;
+        } else if (sql.startsWith('*/', index)) {
+          depth -= 1;
+          index += 2;
+        } else {
+          index += 1;
+        }
+      }
+      if (depth !== 0) fail(`${label}.sql contains an unterminated block comment`);
+      output += maskSqlText(sql.slice(start, index));
+      continue;
+    }
+
+    const quote = sql[index];
+    if (quote === "'" || quote === '"') {
+      const start = index;
+      index += 1;
+      let closed = false;
+      while (index < sql.length) {
+        if (sql[index] === quote) {
+          if (sql[index + 1] === quote) {
+            index += 2;
+            continue;
+          }
+          index += 1;
+          closed = true;
+          break;
+        }
+        index += 1;
+      }
+      if (!closed) {
+        const kind = quote === "'" ? 'string literal' : 'quoted identifier';
+        fail(`${label}.sql contains an unterminated ${kind}`);
+      }
+      output += maskSqlText(sql.slice(start, index));
+      continue;
+    }
+
+    if (sql[index] === '$') {
+      const delimiter = sql.slice(index).match(/^(?:\$\$|\$[A-Za-z_][A-Za-z0-9_]*\$)/u)?.[0];
+      if (delimiter) {
+        const start = index;
+        const close = sql.indexOf(delimiter, index + delimiter.length);
+        if (close === -1) fail(`${label}.sql contains an unterminated dollar-quoted string`);
+        index = close + delimiter.length;
+        output += maskSqlText(sql.slice(start, index));
+        continue;
+      }
+    }
+
+    output += sql[index];
+    index += 1;
+  }
+  return output;
+};
+
 export const requireTerminalReadOrdering = (sql, workloadName, label) => {
   if (typeof sql !== 'string' || sql.trim().length === 0) {
     fail(`${label}.sql must be a non-empty string`);
@@ -53,8 +129,9 @@ export const requireTerminalReadOrdering = (sql, workloadName, label) => {
     fail(`${label} has no canonical ordering contract`);
   }
   const marker = readOrderMarkers.get(workloadName);
-  if (marker !== null && !sql.trimEnd().endsWith(marker)) {
-    fail(`${label}.sql must end with canonical ordering marker ${marker}`);
+  const executableSql = executableSqlText(sql, label);
+  if (marker !== null && !executableSql.trimEnd().endsWith(marker)) {
+    fail(`${label}.sql must end with executable canonical ordering marker ${marker}`);
   }
 };
 
@@ -121,7 +198,7 @@ const main = () => {
   const inputs = parseArgs();
   if (inputs === null) return;
   for (const input of inputs) validatePacketReadOrdering(input);
-  console.log(`${prefix} terminal ordering verified for ${inputs.length} evidence packet(s)`);
+  console.log(`${prefix} executable terminal ordering verified for ${inputs.length} evidence packet(s)`);
 };
 
 const isMain = process.argv[1]
