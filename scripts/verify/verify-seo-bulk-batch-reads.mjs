@@ -16,7 +16,7 @@ const services = read('crates/rustok-seo/src/services/mod.rs');
 const bulkModule = read('crates/rustok-seo/src/services/bulk.rs');
 const legacy = read('crates/rustok-seo/src/services/bulk_legacy.rs');
 const readModel = read('crates/rustok-seo/src/services/bulk_read_model.rs');
-const execution = read('crates/rustok-seo/src/services/bulk_batch_execution.rs');
+const execution = read('crates/rustok-seo/src/services/bulk_bounded_execution.rs');
 const failures = [];
 
 const requireText = (source, value, label) => {
@@ -28,10 +28,13 @@ const forbidText = (source, value, label) => {
 
 requireText(services, 'mod bulk_read_model;', 'shared read-model registration');
 requireText(bulkModule, 'include!("bulk_legacy.rs");', 'legacy bulk include');
-requireText(bulkModule, 'include!("bulk_batch_execution.rs");', 'batched execution include');
+requireText(bulkModule, 'include!("bulk_bounded_execution.rs");', 'bounded execution include');
 requireText(legacy, 'pub async fn execute_next_bulk_job(', 'legacy implementation preservation');
 if (exists('crates/rustok-seo/src/services/applications/bulk_reads.rs')) {
   failures.push('application-local bulk reader must be removed after shared extraction');
+}
+if (exists('crates/rustok-seo/src/services/bulk_batch_execution.rs')) {
+  failures.push('superseded unbounded batch execution file must be removed');
 }
 
 for (const [value, label] of [
@@ -45,9 +48,9 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['const BULK_META_BATCH_SIZE: usize = 256;', 'bounded batch size'],
+  ['const BULK_META_BATCH_SIZE: usize = 256;', 'bounded metadata batch size'],
   ['pub(super) async fn collect_bulk_read_rows(', 'shared batch collector'],
-  ['target_ids.chunks(BULK_META_BATCH_SIZE)', 'bounded target chunks'],
+  ['target_ids.chunks(BULK_META_BATCH_SIZE)', 'bounded metadata target chunks'],
   ['seo_meta::Column::TargetId.is_in(', 'metadata batch predicate'],
   ['meta_translation::Column::MetaId.is_in(', 'translation batch predicate'],
   ['let settings = self.load_settings(tenant.id).await?;', 'single settings snapshot'],
@@ -58,12 +61,14 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['pub(super) async fn preview_bulk_selection_count_batched(', 'batched preview count'],
-  ['pub(super) async fn queue_bulk_apply_batched(', 'batched apply queue'],
-  ['pub(super) async fn queue_bulk_export_batched(', 'batched export queue'],
-  ['pub(super) async fn execute_next_bulk_job_batched(', 'batched worker'],
-  ['self.collect_bulk_read_rows(', 'shared collector reuse'],
-  ['self.execute_apply_job_batched(&running).await', 'batched apply execution'],
+  ['const BULK_APPLY_CHUNK_SIZE: usize = 50;', 'bounded apply chunk size'],
+  ['struct QueuedBulkApplyPayload', 'persisted apply snapshot payload'],
+  ['target_ids: Vec<Uuid>', 'persisted target snapshot'],
+  ['.take(BULK_APPLY_CHUNK_SIZE)', 'bounded worker slice'],
+  ['SeoBulkJobStatus::Running.as_str()', 'running job resume'],
+  ['self.execute_apply_job_chunk(&running).await', 'chunked apply execution'],
+  ['async fn checkpoint_bulk_apply_job(', 'persisted progress checkpoint'],
+  ['async fn load_bulk_job_progress(', 'item-derived progress recovery'],
   ['self.execute_export_job_batched(&running).await', 'batched export execution'],
   ['fn export_bulk_projection_row(', 'projection CSV serializer'],
 ]) {
@@ -74,7 +79,7 @@ for (const [source, value, label] of [
   [readModel, '.seo_meta(', 'read-model per-target metadata service call'],
   [readModel, 'load_explicit_meta(', 'read-model per-target explicit query'],
   [readModel, 'meta_translation::Column::MetaId.eq(', 'read-model per-meta translation query'],
-  [execution, '.seo_meta(', 'worker per-target metadata service call'],
+  [execution, 'self.execute_apply_job_batched(&running).await', 'superseded unbounded apply execution'],
   [applications, '.preview_bulk_selection_count(tenant, selection)', 'legacy selection routing'],
   [applications, '.queue_bulk_export(tenant, created_by, input)', 'legacy export routing'],
   [applications, 'self.runtime.execute_next_bulk_job().await', 'legacy worker routing'],
@@ -88,11 +93,11 @@ if (settingsLoads.length !== 1) {
 }
 
 if (failures.length > 0) {
-  console.error('SEO bulk batch-read verification failed:');
+  console.error('SEO bulk bounded-worker verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ SEO bulk list, selection, preview, and export use the shared bounded metadata read model',
+  '✔ SEO bulk reads stay batched and apply jobs checkpoint at most 50 targets per worker invocation',
 );

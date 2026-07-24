@@ -1,5 +1,5 @@
 include!("bulk_legacy.rs");
-include!("bulk_batch_execution.rs");
+include!("bulk_bounded_execution.rs");
 
 #[cfg(test)]
 mod bulk_read_model {
