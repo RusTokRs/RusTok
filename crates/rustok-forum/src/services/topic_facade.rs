@@ -92,7 +92,10 @@ impl TopicService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> ForumResult<Option<TopicResponse>> {
-        let scope = ForumTopicVisibilityScope::storefront(channel_slug)?;
+        let scope = ForumTopicVisibilityScope::storefront_for_viewer(
+            channel_slug,
+            !security.is_public_read(),
+        )?;
         let topic = match self
             .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
             .await
@@ -176,19 +179,27 @@ impl TopicService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-        let scope = ForumTopicVisibilityScope::storefront(channel_slug)?;
+        let scope = ForumTopicVisibilityScope::storefront_for_viewer(
+            channel_slug,
+            !security.is_public_read(),
+        )?;
+        let visibility = ForumTopicVisibilityService::new(self.db.clone());
+        let hidden_category_ids = visibility
+            .hidden_category_ids_for_scope(tenant_id, &scope)
+            .await?;
         let page = self
             .inner
-            .list_storefront_visible_with_locale_fallback(
+            .list_storefront_visible_with_locale_fallback_and_hidden_categories(
                 tenant_id,
                 security,
                 filter,
                 fallback_locale,
                 scope.channel_slug(),
+                &hidden_category_ids,
             )
             .await?;
         let candidate_ids = page.0.iter().map(|topic| topic.id).collect::<Vec<_>>();
-        let visible_ids = ForumTopicVisibilityService::new(self.db.clone())
+        let visible_ids = visibility
             .filter_visible_topic_ids(tenant_id, &candidate_ids, &scope)
             .await?;
         if visible_ids != candidate_ids {

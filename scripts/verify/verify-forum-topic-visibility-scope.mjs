@@ -30,35 +30,47 @@ function rejectText(source, marker, message) {
 const contractPath = "crates/rustok-forum/contracts/forum-topic-visibility-scope.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_file ?? "");
+const categoryOwner = read(contract.category_owner_file ?? "");
 const facade = read(contract.facade_file ?? "");
 const storefrontReadState = read(contract.storefront_read_state_file ?? "");
 const compatibilitySelector = read(contract.compatibility_selector_file ?? "");
 const testSource = read(contract.test_file ?? "");
+const authenticatedTestSource = read(contract.authenticated_test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 const services = read("crates/rustok-forum/src/services/mod.rs");
 const lib = read("crates/rustok-forum/src/lib.rs");
 
-if (contract.schema_version !== 1) {
-  failures.push("topic visibility scope contract must use schema_version=1");
+if (contract.schema_version !== 2) {
+  failures.push("topic visibility scope contract must use schema_version=2");
 }
-if (contract.task !== "FORUM-20A") {
-  failures.push("topic visibility scope contract must belong to FORUM-20A");
+if (contract.task !== "FORUM-20C") {
+  failures.push("topic visibility scope contract must belong to FORUM-20C");
 }
 if (contract.candidate_bound !== 100) {
   failures.push("topic visibility candidate bound must remain 100");
+}
+if (contract.category_tree_bound !== 512 || contract.category_depth_bound !== 16) {
+  failures.push("topic visibility category bounds must remain 512 nodes and depth 16");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("source publication must not claim unexecuted visibility evidence");
 }
 for (const residual of [
-  "category inheritance",
   "role visibility",
+  "trust-level visibility",
+  "channel membership visibility",
   "group membership visibility",
   "explicit allow and deny",
+  "reply and non-storefront owner read composition",
   "visibility-scoped category and all-read mutations",
 ]) {
   if (!contract.not_delivered?.includes(residual)) {
     failures.push(`topic visibility contract must keep ${residual} explicitly open`);
+  }
+}
+for (const delivered of ["category inheritance", "authenticated-only visibility"]) {
+  if (contract.not_delivered?.includes(delivered)) {
+    failures.push(`topic visibility contract must not keep delivered scope open: ${delivered}`);
   }
 }
 
@@ -66,8 +78,14 @@ for (const marker of [
   "pub const MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES: usize = 100",
   "pub struct ForumTopicVisibilityScope",
   "channel_slug: Option<String>",
+  "is_authenticated: bool",
   "pub fn storefront(channel_slug: Option<&str>) -> ForumResult<Self>",
+  "pub fn storefront_for_viewer(",
+  "pub const fn is_authenticated(&self) -> bool",
   "pub struct ForumTopicVisibilityService",
+  "pub(crate) async fn hidden_category_ids_for_scope",
+  "ForumCategoryVisibilityPolicyService::new(self.db.clone())",
+  ".hidden_category_ids_for_viewer(tenant_id, scope.is_authenticated())",
   "pub async fn is_topic_visible",
   "pub async fn filter_visible_topic_ids",
   "topic_ids.len() > MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES",
@@ -75,6 +93,7 @@ for (const marker of [
   ".filter(|topic_id| visible.contains(topic_id))",
   "forum_topic::Column::TenantId.eq(tenant_id)",
   "forum_topic::Column::Status.eq(TopicStatus::Open)",
+  "forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec())",
   "all_topic_channel_access_subquery(tenant_id)",
   "matching_topic_channel_access_subquery(tenant_id, channel_slug)",
   "forum_topic_channel_access::Column::TenantId",
@@ -94,8 +113,22 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "ForumTopicVisibilityScope::storefront(channel_slug)?",
+  "pub(crate) async fn hidden_category_ids_for_viewer(",
+  "if is_authenticated",
+  "CategoryVisibilitySnapshot::load(&self.db, tenant_id)",
+  "snapshot.resolve(category_id)?.effective_visibility",
+  "ForumCategoryVisibility::Authenticated",
+  "hidden.sort_unstable()",
+]) {
+  requireText(categoryOwner, marker, `category visibility owner is missing ${marker}`);
+}
+
+for (const marker of [
+  "ForumTopicVisibilityScope::storefront_for_viewer(",
+  "!security.is_public_read()",
   "ForumTopicVisibilityService::new(self.db.clone())",
+  ".hidden_category_ids_for_scope(tenant_id, &scope)",
+  ".list_storefront_visible_with_locale_fallback_and_hidden_categories(",
   ".is_topic_visible(tenant_id, topic_id, &scope)",
   ".filter_visible_topic_ids(tenant_id, &candidate_ids, &scope)",
   "if visible_ids != candidate_ids",
@@ -119,16 +152,29 @@ if (
 }
 
 for (const marker of [
-  "list_storefront_visible_with_locale_fallback",
-  "apply_public_topic_channel_filter(select, channel_slug)",
-  "forum_topic::Column::Status.eq(TopicStatus::Open)",
+  "list_storefront_visible_with_locale_fallback_and_hidden_categories",
+  "forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec())",
+  "apply_tenant_scoped_storefront_channel_filter(select, tenant_id, channel_slug)",
+  "tenant_topic_channel_access_subquery(tenant_id)",
+  "matching_tenant_topic_channel_access_subquery(tenant_id, &channel_slug)",
+  "forum_topic_channel_access::Column::TenantId",
+  "let total = paginator.num_items().await?",
+  "let topics = paginator.fetch_page",
 ]) {
   requireText(
     compatibilitySelector,
     marker,
-    `compatibility topic selector is missing existing prefilter ${marker}`,
+    `storefront topic selector is missing pre-pagination visibility composition ${marker}`,
   );
 }
+const categoryFilterIndex = compatibilitySelector.indexOf(
+  "forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec())",
+);
+const paginatorIndex = compatibilitySelector.indexOf("let paginator = select");
+if (categoryFilterIndex < 0 || paginatorIndex < 0 || categoryFilterIndex > paginatorIndex) {
+  failures.push("category visibility must be applied before storefront count and pagination");
+}
+
 for (const marker of [
   ".list_storefront_visible_with_locale_fallback(",
   ".get_storefront_visible_with_locale_fallback(",
@@ -140,6 +186,7 @@ for (const marker of [
   );
 }
 
+requireText(services, "include!(\"topic_visibility_list.rs\");", "services must include the storefront visibility selector");
 requireText(services, "pub mod topic_visibility;", "services must declare topic_visibility");
 for (const marker of [
   "ForumTopicVisibilityScope",
@@ -162,12 +209,25 @@ for (const marker of [
 ]) {
   requireText(testSource, marker, `topic visibility SQLite scenario is missing ${marker}`);
 }
+for (const marker of [
+  "inherited_authenticated_categories_filter_before_storefront_pagination",
+  "ForumCategoryVisibility::Authenticated",
+  "ForumTopicVisibilityScope::storefront_for_viewer(None, true)",
+  "assert_eq!(public_total, 1)",
+  "assert_eq!(authenticated_total, 2)",
+  "assert_eq!(public_restricted_total, 0)",
+  "assert_eq!(authenticated_restricted_total, 1)",
+  ".is_none()",
+  ".is_some()",
+]) {
+  requireText(authenticatedTestSource, marker, `authenticated topic visibility SQLite scenario is missing ${marker}`);
+}
 
 for (const marker of [
   "Delivered in `FORUM-20A`",
+  "Delivered in `FORUM-20B`",
   "ForumTopicVisibilityService",
   "forum-topic-visibility-scope.json",
-  "topic_visibility_sqlite",
   "verify-forum-topic-visibility-scope.mjs",
 ]) {
   requireText(plan, marker, `canonical FORUM-20 plan is missing ${marker}`);
