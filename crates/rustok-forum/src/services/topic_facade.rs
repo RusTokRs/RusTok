@@ -93,21 +93,21 @@ impl TopicService {
         channel_slug: Option<&str>,
     ) -> ForumResult<Option<TopicResponse>> {
         let scope = ForumTopicVisibilityScope::storefront(channel_slug)?;
+        let topic = match self
+            .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
+            .await
+        {
+            Ok(topic) => topic,
+            Err(ForumError::TopicNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
         if !ForumTopicVisibilityService::new(self.db.clone())
             .is_topic_visible(tenant_id, topic_id, &scope)
             .await?
         {
             return Ok(None);
         }
-
-        match self
-            .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
-            .await
-        {
-            Ok(topic) => Ok(Some(topic)),
-            Err(ForumError::TopicNotFound(_)) => Ok(None),
-            Err(error) => Err(error),
-        }
+        Ok(Some(topic))
     }
 
     pub async fn update(
