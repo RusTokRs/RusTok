@@ -12,6 +12,7 @@ const fail = (message) => {
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
 const router = read('scripts/verify/index-storage-tooling.mjs');
+const routerFixture = read('scripts/verify/index-storage-tooling.test.mjs');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
 const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
 const scaleRunWorkflow = read('.github/workflows/index-storage-scale-run.yml');
@@ -66,6 +67,12 @@ if (compareOrdering < 0 || comparator < 0 || compareOrdering > comparator) {
   fail('comparison terminal ordering preflight must run before the canonical comparator');
 }
 
+requireMarkers(routerFixture, 'storage tooling router fixture', [
+  "test('packet runs terminal ordering preflight before the canonical validator'",
+  "test('compare runs terminal ordering preflight before the canonical comparator'",
+  'assert.doesNotMatch(result.stderr, /missing evidence file: .*mutation-report\\.json/u)',
+]);
+
 for (const [label, workflow] of [
   ['smoke workflow', smokeWorkflow],
   ['scale workflow', scaleWorkflow],
@@ -82,4 +89,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] terminal ordering preflight, fixtures, router, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] terminal ordering preflight, direct and router fixtures, public command order, and workflows are consistent');
