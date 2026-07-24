@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 
 const scriptPath = path.resolve('scripts/verify/compare-index-storage-evidence.mjs');
 const generatedAt = '2026-07-24T12:00:00Z';
+const resultDigestContract = 'ordered_length_prefixed_json_v1';
 const locales = ['en-US', 'ru-RU'];
 const prototypes = [
   { prototype: 'jsonb', schema: 'idx_bench_jsonb', relations: ['entity', 'link'] },
@@ -30,25 +31,13 @@ const readWorkloads = [
 const mutationWorkloads = ['update_product_batch', 'delete_product_batch'];
 const scaleValues = {
   '100k': {
-    serialized: 'rows100k',
-    debug: 'Rows100k',
-    tenants: 10,
-    productsPerTenant: 5_000,
-    products: 100_000,
-    entities: 300_080,
-    fields: 1_400_160,
-    links: 600_000,
+    serialized: 'rows100k', debug: 'Rows100k', tenants: 10, productsPerTenant: 5_000,
+    products: 100_000, entities: 300_080, fields: 1_400_160, links: 600_000,
     resultRows: 10,
   },
   '1m': {
-    serialized: 'rows1m',
-    debug: 'Rows1m',
-    tenants: 20,
-    productsPerTenant: 25_000,
-    products: 1_000_000,
-    entities: 3_000_160,
-    fields: 14_000_320,
-    links: 6_000_000,
+    serialized: 'rows1m', debug: 'Rows1m', tenants: 20, productsPerTenant: 25_000,
+    products: 1_000_000, entities: 3_000_160, fields: 14_000_320, links: 6_000_000,
     resultRows: 100,
   },
 };
@@ -71,6 +60,18 @@ const repetition = (seed = 1) => ({
 });
 const repetitions = () => [repetition(1), repetition(2), repetition(3)];
 
+const readSql = (schema, workload, source = false) => {
+  const relation = source ? 'idx_bench_source.product' : `${schema}.entity`;
+  switch (workload) {
+    case 'price_range_sort':
+    case 'keyset_page':
+      return `SELECT entity_id, price_minor FROM ${relation} ORDER BY price_minor, entity_id LIMIT 100`;
+    case 'exact_count':
+      return `SELECT count(*)::bigint AS result_count FROM ${relation}`;
+    default:
+      return `SELECT entity_id FROM ${relation} ORDER BY entity_id LIMIT 100`;
+  }
+};
 const tableStats = (relations) => relations.map((relation, index) => ({
   relation,
   estimated_live_tuples: 10 + index,
@@ -92,18 +93,17 @@ const snapshot = (values, prototype, schemaBytes, fieldRowsOverride) => ({
   link_rows: values.links,
   table_stats: tableStats(prototype.relations),
 });
-
-const writeJson = (file, value) => {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
-};
-const mutationEffect = (prototype, workload, values) => ({
+const mutationEffect = (prototype, workload) => ({
   affected_entities: 1_000,
   affected_fields: prototype === 'typed_eav'
     ? (workload === 'update_product_batch' ? 2_000 : 8_000)
     : null,
   affected_links: workload === 'delete_product_batch' ? 2_000 : null,
 });
+const writeJson = (file, value) => {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+};
 
 function writePacket(root, scale, overrides = {}) {
   const values = scaleValues[scale];
@@ -117,13 +117,14 @@ function writePacket(root, scale, overrides = {}) {
     const index = readWorkloads.indexOf(name);
     return {
       name,
-      sql: `SELECT ${index + 1} FROM idx_bench_source.product`,
+      sql: overrides.sourceSql?.[name] ?? readSql('', name, true),
       result_rows: values.resultRows,
       result_digest: digest(index, scale),
     };
   });
   const read = {
     generated_at: generatedAt,
+    result_digest_contract: overrides.readDigestContract ?? resultDigestContract,
     database: {
       version: 'PostgreSQL 16 fixture',
       server_version_num: '160000',
@@ -157,11 +158,12 @@ function writePacket(root, scale, overrides = {}) {
       link_rows: values.links,
       workloads: readWorkloads.map((name, workloadIndex) => {
         const evidence = repetitions().slice(0, readRepetitions);
-        const override = overrides.readEvidence?.[prototype.prototype]?.[name];
-        if (override) Object.assign(evidence[0], override);
+        const evidenceOverride = overrides.readEvidence?.[prototype.prototype]?.[name];
+        if (evidenceOverride) Object.assign(evidence[0], evidenceOverride);
         return {
           name,
-          sql: `SELECT ${workloadIndex + 1} FROM ${prototype.schema}.entity`,
+          sql: overrides.candidateSql?.[prototype.prototype]?.[name]
+            ?? readSql(prototype.schema, name),
           result_rows: values.resultRows,
           result_digest: overrides.candidateDigest?.[prototype.prototype]?.[name]
             ?? digest(workloadIndex, scale),
@@ -180,12 +182,12 @@ function writePacket(root, scale, overrides = {}) {
       schema: prototype.schema,
       workloads: mutationWorkloads.map((name) => {
         const evidence = repetitions().slice(0, mutationRepetitions);
-        const override = overrides.mutationEvidence?.[prototype.prototype]?.[name];
-        if (override) Object.assign(evidence[0], override);
+        const evidenceOverride = overrides.mutationEvidence?.[prototype.prototype]?.[name];
+        if (evidenceOverride) Object.assign(evidence[0], evidenceOverride);
         return {
           name,
           sql: 'SELECT affected_fields, expected_fields, affected_links, expected_links',
-          ...mutationEffect(prototype.prototype, name, values),
+          ...mutationEffect(prototype.prototype, name),
           repetitions: evidence,
         };
       }),
@@ -226,6 +228,7 @@ function writePacket(root, scale, overrides = {}) {
     scale,
     repetitions: 3,
     churn_cycles: 5,
+    result_digest_contract: overrides.provenanceDigestContract ?? resultDigestContract,
     source_workload_names: readWorkloads,
     expected_product_rows: values.products,
     expected_entity_rows: values.entities,
@@ -257,7 +260,6 @@ const withFixture = (callback) => {
     rmSync(root, { recursive: true, force: true });
   }
 };
-
 const expectFailure = (root, packetOverrides, pattern) => {
   const packet = writePacket(root, '100k', packetOverrides);
   const result = runComparator([packet], path.join(root, 'comparison'));
@@ -274,8 +276,9 @@ test('same-commit complete 100k and 1m evidence is decision-ready', () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const report = JSON.parse(readFileSync(path.join(output, 'comparison.json'), 'utf8'));
     assert.equal(report.decision_ready, true);
-    assert.equal(report.decision_contract.same_database_settings, true);
-    assert.equal(report.decision_contract.same_source_oracle_shape, true);
+    assert.equal(report.decision_contract.same_result_digest_contract, true);
+    assert.equal(report.scales[0].provenance.result_digest_contract, resultDigestContract);
+    assert.equal(report.methodology.result_digest, resultDigestContract);
     assert.equal(report.cross_scale_ratios.source_workloads[0].result_rows_ratio_1m_to_100k, 10);
   });
 });
@@ -288,7 +291,30 @@ test('one valid scale remains non-decision-ready', () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const report = JSON.parse(readFileSync(path.join(output, 'comparison.json'), 'utf8'));
     assert.equal(report.decision_ready, false);
+    assert.equal(report.decision_contract.same_result_digest_contract, null);
   });
+});
+
+test('rejects missing read digest contract', () => {
+  withFixture((root) => expectFailure(root, { readDigestContract: null }, /result digest contract mismatch/));
+});
+
+test('rejects provenance digest contract drift', () => {
+  withFixture((root) => expectFailure(root, {
+    provenanceDigestContract: 'unordered_json_v0',
+  }, /result digest contract mismatch/));
+});
+
+test('rejects source workload without canonical ordering', () => {
+  withFixture((root) => expectFailure(root, {
+    sourceSql: { status_equality: 'SELECT entity_id FROM idx_bench_source.product LIMIT 100' },
+  }, /missing canonical ordering marker/));
+});
+
+test('rejects candidate workload without canonical ordering', () => {
+  withFixture((root) => expectFailure(root, {
+    candidateSql: { jsonb: { keyset_page: 'SELECT entity_id, price_minor FROM idx_bench_jsonb.entity LIMIT 100' } },
+  }, /missing canonical ordering marker/));
 });
 
 test('rejects missing read execution timing', () => {
