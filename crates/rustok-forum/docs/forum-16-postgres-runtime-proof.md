@@ -44,8 +44,9 @@ public rows and therefore cannot contribute to the approved-reply aggregate.
 
 The test runs the proof-only SQL mirror of the canonical owner aggregate through
 `EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, FORMAT JSON)`. The natural plan must return
-exactly the bounded 100-topic page, contain no per-topic `SubPlan`, and keep
-`Actual Loops` within the topic-page bound.
+exactly the bounded 100-topic page, contain no per-topic `SubPlan`, and include
+the topic, read-state, approved-reply and topic-revision relations used by the
+owner aggregate.
 
 A second plan disables sequential scans only to prove index capability. It must
 show index access for the topic read-state primary key, a tenant/topic reply
