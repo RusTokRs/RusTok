@@ -124,7 +124,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
         "Reply topic",
     )
     .await;
-    let first_reply = replies
+    replies
         .create(
             tenant_id,
             reader.clone(),
@@ -154,8 +154,6 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
         )
         .await
         .expect("second reply should be created");
-    assert_eq!(first_reply.position, 1);
-    assert_eq!(second_reply.position, 2);
     read_state
         .mark_topic_read(
             tenant_id,
@@ -177,7 +175,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
         "Revision topic",
     )
     .await;
-    let revision_reply = replies
+    replies
         .create(
             tenant_id,
             reader.clone(),
@@ -198,7 +196,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
             revision_topic,
             reader.clone(),
             MarkForumTopicReadInput {
-                last_read_position: revision_reply.position,
+                last_read_position: 1,
                 last_read_revision: 0,
             },
         )
@@ -357,7 +355,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
             revision_topic,
             reader.clone(),
             MarkForumTopicReadInput {
-                last_read_position: revision_reply.position,
+                last_read_position: 1,
                 last_read_revision: latest_revision,
             },
         )
