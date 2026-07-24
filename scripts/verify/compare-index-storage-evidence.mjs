@@ -86,6 +86,7 @@ const explain = (repetitions) => {
 const snapshot = (value) => ({
   schema_bytes: value.schema_bytes,
   entity_rows: value.entity_rows,
+  field_rows: value.field_rows,
   link_rows: value.link_rows,
   estimated_live_tuples: sum(value.table_stats.map((item) => item.estimated_live_tuples)),
   estimated_dead_tuples: sum(value.table_stats.map((item) => item.estimated_dead_tuples)),
@@ -105,15 +106,48 @@ const loadScale = (directory) => {
   if (names.some((name) => !name) || new Set(names).size !== 1) {
     die(`scale mismatch in ${directory}: ${names.join(', ')}`);
   }
+  if (provenance.packet_contract_version !== 2) {
+    die(`${names[0]} evidence must use packet contract version 2`);
+  }
+  for (const field of [
+    'expected_product_rows',
+    'expected_entity_rows',
+    'expected_eav_field_rows',
+    'expected_link_rows',
+  ]) {
+    if (!Number.isInteger(provenance[field]) || provenance[field] <= 0) {
+      die(`${names[0]} provenance has invalid ${field}`);
+    }
+  }
+  if (read.source_entity_rows !== provenance.expected_entity_rows
+      || read.source_link_rows !== provenance.expected_link_rows) {
+    die(`${names[0]} source cardinality does not match provenance`);
+  }
+
   const prototypes = read.prototypes.map((item) => item.prototype);
   for (const report of [mutation, maintenance]) {
     if (JSON.stringify(report.prototypes.map((item) => item.prototype)) !== JSON.stringify(prototypes)) {
       die(`prototype ordering mismatch in ${directory}`);
     }
   }
+  for (const item of maintenance.prototypes) {
+    const expectedFieldRows = item.prototype === 'typed_eav'
+      ? provenance.expected_eav_field_rows
+      : null;
+    for (const phase of ['baseline', 'after_churn', 'after_vacuum']) {
+      const state = item[phase];
+      if (state.entity_rows !== provenance.expected_entity_rows
+          || state.field_rows !== expectedFieldRows
+          || state.link_rows !== provenance.expected_link_rows) {
+        die(`${names[0]}/${item.prototype}/${phase} maintenance cardinality mismatch`);
+      }
+    }
+  }
+
   return {
     scale: names[0], directory,
     provenance: {
+      packet_contract_version: provenance.packet_contract_version,
       repository: provenance.repository ?? null,
       commit: provenance.commit ?? null,
       ref: provenance.ref ?? null,
@@ -124,6 +158,10 @@ const loadScale = (directory) => {
       runner_arch: provenance.runner_arch ?? null,
       repetitions: provenance.repetitions ?? null,
       churn_cycles: provenance.churn_cycles ?? null,
+      expected_product_rows: provenance.expected_product_rows,
+      expected_entity_rows: provenance.expected_entity_rows,
+      expected_eav_field_rows: provenance.expected_eav_field_rows,
+      expected_link_rows: provenance.expected_link_rows,
     },
     database: read.database, dataset: read.dataset, source_load_ms: read.source_load_ms,
     source_entity_rows: read.source_entity_rows, source_link_rows: read.source_link_rows,
@@ -191,6 +229,7 @@ const requireDecisionProvenance = (scales) => {
   if (!lower || !upper) {
     return {
       required_scales_present: false,
+      same_packet_contract_version: null,
       same_repository: null,
       same_commit: null,
       same_postgres_image: null,
@@ -209,7 +248,7 @@ const requireDecisionProvenance = (scales) => {
         die(`${scale.scale} provenance is missing ${field}`);
       }
     }
-    for (const field of ['repetitions', 'churn_cycles']) {
+    for (const field of ['packet_contract_version', 'repetitions', 'churn_cycles']) {
       if (!Number.isInteger(scale.provenance[field]) || scale.provenance[field] <= 0) {
         die(`${scale.scale} provenance has invalid ${field}`);
       }
@@ -221,6 +260,7 @@ const requireDecisionProvenance = (scales) => {
       die(`cross-scale provenance ${label} mismatch: 100k=${lower.provenance[field]} 1m=${upper.provenance[field]}`);
     }
   };
+  equalField('packet_contract_version', 'packet contract version');
   equalField('repository');
   equalField('commit');
   equalField('postgres_image', 'PostgreSQL image');
@@ -258,6 +298,7 @@ const requireDecisionProvenance = (scales) => {
 
   return {
     required_scales_present: true,
+    same_packet_contract_version: true,
     same_repository: true,
     same_commit: true,
     same_postgres_image: true,
@@ -278,13 +319,19 @@ const crossScale = (scales) => {
     const read1m = candidate(upper, 'read', name);
     const mutation100k = candidate(lower, 'mutation', name);
     const mutation1m = candidate(upper, 'mutation', name);
+    const maintenance100k = candidate(lower, 'maintenance', name);
+    const maintenance1m = candidate(upper, 'maintenance', name);
     return {
       prototype: name,
       load_ms_ratio_1m_to_100k: ratio(read1m.load_ms, read.load_ms),
       schema_bytes_ratio_1m_to_100k: ratio(read1m.schema_bytes, read.schema_bytes),
+      field_rows_ratio_1m_to_100k: ratio(
+        maintenance1m.after_churn.field_rows,
+        maintenance100k.after_churn.field_rows,
+      ),
       vacuum_duration_ratio_1m_to_100k: ratio(
-        candidate(upper, 'maintenance', name).vacuum_duration_ms,
-        candidate(lower, 'maintenance', name).vacuum_duration_ms,
+        maintenance1m.vacuum_duration_ms,
+        maintenance100k.vacuum_duration_ms,
       ),
       read_workloads: read.workloads.map((entry) => ({
         name: entry.name,
@@ -326,6 +373,7 @@ const markdown = (report) => {
     '', `Decision ready: **${report.decision_ready ? 'yes' : 'no'}**`, '',
     '## Decision contract', '',
     `- Required 100k/1m scales: **${report.decision_contract.required_scales_present ? 'yes' : 'no'}**`,
+    `- Same packet contract version: **${report.decision_contract.same_packet_contract_version === true ? 'yes' : 'n/a'}**`,
     `- Same repository: **${report.decision_contract.same_repository === true ? 'yes' : 'n/a'}**`,
     `- Same commit: **${report.decision_contract.same_commit === true ? 'yes' : 'n/a'}**`,
     `- Same PostgreSQL image/settings: **${report.decision_contract.same_postgres_image === true && report.decision_contract.same_database_settings === true ? 'yes' : 'n/a'}**`,
@@ -336,16 +384,17 @@ const markdown = (report) => {
   ];
   for (const scale of report.scales) {
     lines.push(`## ${scale.scale} evidence`, '',
+      `- Packet contract: \`v${scale.provenance.packet_contract_version}\``,
       `- Repository: \`${scale.provenance.repository ?? 'unknown'}\``,
       `- Commit: \`${scale.provenance.commit ?? 'unknown'}\``,
       `- Workflow run: \`${scale.provenance.run_id ?? 'unknown'}\``,
       `- PostgreSQL image: \`${scale.provenance.postgres_image ?? 'unknown'}\``,
       `- Source load: ${fixed(scale.source_load_ms, 0)} ms`, '',
-      '| Prototype | Load | Schema size | Churn growth | Dead tuples after churn | VACUUM |',
-      '| --- | ---: | ---: | ---: | ---: | ---: |');
+      '| Prototype | Load | Schema size | Fields after churn | Churn growth | Dead tuples after churn | VACUUM |',
+      '| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
     for (const read of scale.read) {
       const maintenance = candidate(scale, 'maintenance', read.prototype);
-      lines.push(`| ${read.prototype} | ${fixed(read.load_ms, 0)} ms | ${bytes(read.schema_bytes)} | ${bytes(maintenance.churn_growth_bytes)} (${fixed(maintenance.churn_growth_percent)}%) | ${integer(maintenance.after_churn.estimated_dead_tuples)} | ${fixed(maintenance.vacuum_duration_ms, 0)} ms |`);
+      lines.push(`| ${read.prototype} | ${fixed(read.load_ms, 0)} ms | ${bytes(read.schema_bytes)} | ${integer(maintenance.after_churn.field_rows)} | ${bytes(maintenance.churn_growth_bytes)} (${fixed(maintenance.churn_growth_percent)}%) | ${integer(maintenance.after_churn.estimated_dead_tuples)} | ${fixed(maintenance.vacuum_duration_ms, 0)} ms |`);
     }
     lines.push('', '### Read/query', '',
       '| Prototype | Workload | First run | Warm median | First read blocks | Warm read blocks | Plan shapes |',
@@ -362,9 +411,9 @@ const markdown = (report) => {
     lines.push('');
   }
   if (report.cross_scale_ratios) {
-    lines.push('## 1m / 100k ratios', '', '| Prototype | Load | Schema | VACUUM |', '| --- | ---: | ---: | ---: |');
+    lines.push('## 1m / 100k ratios', '', '| Prototype | Load | Schema | Field rows | VACUUM |', '| --- | ---: | ---: | ---: | ---: |');
     for (const item of report.cross_scale_ratios) {
-      lines.push(`| ${item.prototype} | ${fixed(item.load_ms_ratio_1m_to_100k)}x | ${fixed(item.schema_bytes_ratio_1m_to_100k)}x | ${fixed(item.vacuum_duration_ratio_1m_to_100k)}x |`);
+      lines.push(`| ${item.prototype} | ${fixed(item.load_ms_ratio_1m_to_100k)}x | ${fixed(item.schema_bytes_ratio_1m_to_100k)}x | ${fixed(item.field_rows_ratio_1m_to_100k)}x | ${fixed(item.vacuum_duration_ratio_1m_to_100k)}x |`);
     }
     lines.push('');
   }
