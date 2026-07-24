@@ -212,7 +212,7 @@ at the end of this file remain authoritative.
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
-| `FORUM-16` | `in_progress` | FORUM-16A-E add tenant-scoped monotonic topic read state, bounded unread projections, resumable category-subtree/all-read owner commands, REST/GraphQL contracts and authenticated visible-topic storefront composition; visibility-scoped storefront bulk commands plus PostgreSQL concurrency/query-plan evidence remain. |
+| `FORUM-16` | `in_progress` | FORUM-16A-F add tenant-scoped monotonic topic read state, bounded unread projections, resumable category-subtree/all-read owner commands, REST/GraphQL contracts, authenticated visible-topic storefront composition and a source-ready PostgreSQL concurrency/query-plan proof; maintainer execution/output capture and visibility-scoped storefront bulk commands remain. |
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
@@ -924,6 +924,26 @@ accelerate the badge but database position/revision remains canonical.
   without creating anonymous rows; GraphQL SDL and SQLite owner-composition tests
   lock the visible-topic-only contract and keep storefront bulk mutations closed.
 
+### Delivered in `FORUM-16F`
+
+- `topic_read_state_postgres` is source-ready in the isolated PostgreSQL Forum
+  fixture without changing production runtime APIs, migrations or transports;
+- two independent PostgreSQL connections mark the same tenant/user/topic with
+  separate reply-position and topic-revision advances, requiring durable state
+  to converge to the component-wise maximum and the database regression trigger
+  to reject a later direct downgrade;
+- a production-sized fixture creates 128 topics, 8,192 approved replies and 512
+  topic revisions, then validates the canonical owner summary across a bounded
+  100-topic page containing reply-unread, revision-unread, read and unseen rows;
+- a natural `EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, FORMAT JSON)` proof requires
+  exactly 100 aggregate rows, no per-topic `SubPlan` and all four owner relations;
+- a separate `enable_seqscan = off` plan proves index capability for read-state,
+  reply-position and topic-revision access without claiming a latency threshold
+  or requiring the production planner to choose one fixed plan;
+- the machine contract, source verifier and proof record remain explicitly
+  source-ready; no successful PostgreSQL execution or captured plan output is
+  claimed until the maintainer runs `topic_read_state_postgres`.
+
 ### Compatibility and degraded mode
 
 No migration or backfill is required: an absent row means position/revision zero
@@ -937,15 +957,17 @@ and owner DTOs without duplicating unread policy. Category membership is
 revalidated on every resumed owner bulk page; a subsequent idempotent pass
 converges after a concurrent category move. Storefront category/all-read controls
 remain closed because the current owner bulk scope is tenant/category based and
-cannot yet narrow to the channel-visible topic set. Cache and realtime
-accelerators remain optional and never replace database owner state.
+cannot yet narrow to the channel-visible topic set. FORUM-16F adds only
+source-ready tests, contracts and documentation; it changes no persistence or
+degraded-mode behavior. Cache and realtime accelerators remain optional and
+never replace database owner state.
 
 ### Remaining scope
 
 - add visibility/channel-scoped category and all-read storefront commands only
   after the shared ACL/visibility policy can produce an exact bounded owner scope;
-- add PostgreSQL aggregate/concurrent-device execution evidence and query-plan
-  evidence for production-sized topic/reply histories.
+- record successful maintainer PostgreSQL execution and capture the natural and
+  index-capability `EXPLAIN JSON` output for the source-ready proof.
 
 ### Definition of done
 
@@ -962,7 +984,9 @@ cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum-storefront
+node scripts/verify/verify-forum-read-state-runtime-proof.mjs
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
 npm run verify:forum:storefront-boundary
@@ -1762,6 +1786,7 @@ cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1779,6 +1804,7 @@ node scripts/verify/verify-forum-mention-integration.mjs
 node scripts/verify/verify-forum-mention-events.mjs
 node scripts/verify/verify-forum-quote-commands.mjs
 node scripts/verify/verify-forum-mention-runtime-proof.mjs
+node scripts/verify/verify-forum-read-state-runtime-proof.mjs
 cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
@@ -1826,8 +1852,8 @@ Recommended next slices:
 7. `FORUM-14`: attachment relations and upload sessions;
 8. `FORUM-15`: batched member/avatar projection;
 9. `LINK-FORUM-02`: profiles/media runtime proof;
-10. finish `FORUM-16` visibility-scoped storefront bulk composition and PostgreSQL
-    concurrency/query-plan evidence;
+10. record `FORUM-16` maintainer PostgreSQL proof and finish visibility-scoped
+    storefront bulk composition after `FORUM-20`;
 11. `FORUM-19`: reports/moderation/restrictions;
 12. `FORUM-20`: ACL and visibility policy;
 13. `FORUM-23`: index projections;
