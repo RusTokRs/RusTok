@@ -8,6 +8,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const scriptPath = path.resolve("scripts/verify/verify-forum-wave-plan-sync.mjs");
+const verifierContractPath = "scripts/verify/verify-forum-wave-plan-sync.mjs";
+const verifierTestContractPath = "scripts/verify/verify-forum-wave-plan-sync.test.mjs";
 
 function plan(overrides = {}) {
   const status = overrides.status ?? "in_progress";
@@ -66,11 +68,20 @@ function evidence(overrides = {}) {
     mode: "source_ready",
     provenance: "synthetic_fixture",
     execution_status: "not_run_by_implementation_agent",
+    static_readiness: {
+      source_contracts: [verifierContractPath],
+    },
     observed_run: {
       required: true,
       status: "not_run",
       blocked_by: "pages_reference_consumer_gate",
       required_correlation_path: "builder_write -> forum_publish -> storefront_read",
+    },
+    verification: {
+      no_compile_gates: [
+        `node ${verifierContractPath}`,
+        `node ${verifierTestContractPath}`,
+      ],
     },
     deferred: [
       "observed tenant control-plane run after the pages reference-consumer gate",
@@ -79,9 +90,17 @@ function evidence(overrides = {}) {
   return {
     ...base,
     ...overrides,
+    static_readiness: {
+      ...base.static_readiness,
+      ...(overrides.static_readiness ?? {}),
+    },
     observed_run: {
       ...base.observed_run,
       ...(overrides.observed_run ?? {}),
+    },
+    verification: {
+      ...base.verification,
+      ...(overrides.verification ?? {}),
     },
   };
 }
@@ -176,11 +195,33 @@ test("Forum Wave plan sync rejects live-only sections in source-ready evidence",
   assert.match(result.stderr, /must not materialize live-only key observability/);
 });
 
-test("Forum Wave plan sync rejects missing verification command", () => {
+test("Forum Wave plan sync rejects missing plan verification command", () => {
   const result = run(
     plan({ verification: "npm run verify:page-builder:consumer:forum" }),
     evidence(),
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /missing npm run verify:forum:wave-evidence-freshness/);
+});
+
+test("Forum Wave plan sync rejects missing source-contract registration", () => {
+  const result = run(
+    plan(),
+    evidence({ static_readiness: { source_contracts: [] } }),
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /source contracts must register/);
+});
+
+test("Forum Wave plan sync rejects missing mutation-test registration", () => {
+  const result = run(
+    plan(),
+    evidence({
+      verification: {
+        no_compile_gates: [`node ${verifierContractPath}`],
+      },
+    }),
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /no-compile verification set is missing/);
 });
