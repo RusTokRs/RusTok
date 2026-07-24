@@ -147,6 +147,41 @@ async fn available_quantity<C>(
 `;
 }
 
+
+function canonicalOrder() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation = owner_operation,
+  code = "order.checkout_identity_storage_unavailable",
+);
+tracing::warn!(code = "order.checkout_identity_validation");
+tracing::error!(code = "order.database_unavailable");
+tracing::warn!(code = "order.validation");
+tracing::warn!(code = "order.invalid_transition");
+tracing::error!(code = "order.invariant_violation");
+"checkout order identity request is invalid";
+"order request is invalid";
+"order request context is invalid";
+order_checkout_identity_error_to_port_error(
+                    &context,
+                    owner_operation,
+                    error,
+                );
+order_error_to_port_error(context, owner_operation, error);
+order_error_to_port_error(&context, owner_operation, error);
+let owner_operation = "read_checkout_identity_by_operation";
+let owner_operation = "read_checkout_identity_by_cart";
+let owner_operation = "bind_checkout_identity";
+let owner_operation = "adopt_legacy_checkout_identity";
+let owner_operation = "complete_checkout";
+let owner_operation = "read_checkout_result";
+let owner_operation = "read_checkout_result_by_operation";
+let owner_operation = "read_order_status";
+`;
+}
+
 function canonicalOrderCompensation() {
   return `
 tracing::error!(
@@ -264,6 +299,16 @@ function fixture(options = {}) {
     );
   }
   put(root, 'crates/rustok-inventory/src/ports.rs', inventory);
+
+
+  let order = `${canonicalOrder()}${options.orderAppend ?? ''}`;
+  if (options.removeOrderCorrelation) {
+    order = order.replace(
+      'correlation_id = %context.correlation_id',
+      'correlation_id = omitted',
+    );
+  }
+  put(root, 'crates/rustok-order/src/ports.rs', order);
 
   let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
   if (options.removeOrderCompensationCorrelation) {
@@ -484,6 +529,48 @@ test('public port error verifier requires helper storage context', () => {
   expectFailure(
     { removeInventoryHelperStorageContext: true },
     /inventory helper storage mapping: missing/,
+  );
+});
+
+
+test('public port error verifier rejects raw generic order validation cause', () => {
+  expectFailure(
+    { orderAppend: 'PortError::validation("order.validation", message);' },
+    /order generic port public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw checkout identity validation cause', () => {
+  expectFailure(
+    {
+      orderAppend:
+        'PortError::validation("order.checkout_identity_validation", message);',
+    },
+    /order generic port public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects contextless generic order mapper', () => {
+  expectFailure(
+    { orderAppend: '.map_err(order_error_to_port_error);' },
+    /order generic port public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects generic order context disclosure', () => {
+  expectFailure(
+    {
+      orderAppend:
+        '"PortContext.tenant_id must be a UUID for order ports";',
+    },
+    /order generic port public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier requires generic order correlation logging', () => {
+  expectFailure(
+    { removeOrderCorrelation: true },
+    /order generic correlation logging: missing/,
   );
 });
 
