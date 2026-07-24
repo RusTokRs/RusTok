@@ -12,6 +12,7 @@ pub mod guest_access;
 pub mod guest_access_http;
 pub mod marketplace_snapshot;
 pub mod migrations;
+mod owner_ports;
 pub mod ports;
 mod promotion_guard;
 pub mod services;

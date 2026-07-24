@@ -20,15 +20,15 @@ use crate::ports::{
 
 pub fn guarded_cart_storefront_port(db: DatabaseConnection) -> Arc<dyn CartStorefrontPort> {
     Arc::new(GuardedCartPort::new(
-        crate::ports::in_process_cart_storefront_port(db.clone()),
-        crate::ports::in_process_cart_checkout_port(db),
+        crate::owner_ports::owner_cart_storefront_port(db.clone()),
+        crate::owner_ports::owner_cart_checkout_port(db),
     ))
 }
 
 pub fn guarded_cart_checkout_port(db: DatabaseConnection) -> Arc<dyn CartCheckoutPort> {
     Arc::new(GuardedCartPort::new(
-        crate::ports::in_process_cart_storefront_port(db.clone()),
-        crate::ports::in_process_cart_checkout_port(db),
+        crate::owner_ports::owner_cart_storefront_port(db.clone()),
+        crate::owner_ports::owner_cart_checkout_port(db),
     ))
 }
 
