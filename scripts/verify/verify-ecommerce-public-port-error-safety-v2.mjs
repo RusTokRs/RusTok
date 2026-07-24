@@ -121,6 +121,9 @@ for (const value of [
   'format!("variant {variant_id} was not found")',
   'format!("insufficient inventory: requested {requested}, available {available}")',
   '.map_err(inventory_error_to_port_error)',
+  '.map_err(storage_unavailable)',
+  'return Err(storage_unavailable(error));',
+  'fn storage_unavailable(_error: sea_orm::DbErr)',
   '"PortContext.tenant_id must be a UUID for inventory ports"',
 ]) {
   forbidText(inventory, value, 'inventory public error mapping');
@@ -225,6 +228,13 @@ for (const [source, value, label] of [
   [inventory, 'let owner_operation = "release_inventory_reservation"', 'inventory release operation mapping'],
   [inventory, 'let owner_operation = "reserve_inventory_by_identity"', 'inventory identity reserve operation mapping'],
   [inventory, 'let owner_operation = "release_inventory_by_identity"', 'inventory identity release operation mapping'],
+  [inventory, 'storage_unavailable_with_context(&context, owner_operation, error)', 'inventory identity storage mapping'],
+  [inventory, 'storage_unavailable_with_context(context, owner_operation, error)', 'inventory helper storage mapping'],
+  [inventory, 'async fn load_inventory_item_for_update<C>(\n    context: &PortContext,', 'inventory item helper context'],
+  [inventory, 'async fn load_inventory_item_by_id_for_update<C>(\n    context: &PortContext,', 'inventory item by id helper context'],
+  [inventory, 'async fn find_reservation_by_external_id<C>(\n    context: &PortContext,', 'inventory reservation lookup helper context'],
+  [inventory, 'async fn existing_reservation_snapshot<C>(\n    context: &PortContext,', 'inventory reservation snapshot helper context'],
+  [inventory, 'async fn available_quantity<C>(\n    context: &PortContext,', 'inventory available quantity helper context'],
   [orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging'],
   [orderCompensation, 'tenant_id = %context.tenant_id', 'order compensation tenant logging'],
   [orderCompensation, 'operation,', 'order compensation owner operation logging'],

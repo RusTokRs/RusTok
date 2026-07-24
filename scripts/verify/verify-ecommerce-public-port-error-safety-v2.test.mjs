@@ -132,6 +132,18 @@ let owner_operation = "reserve_inventory";
 let owner_operation = "release_inventory_reservation";
 let owner_operation = "reserve_inventory_by_identity";
 let owner_operation = "release_inventory_by_identity";
+.map_err(|error| storage_unavailable_with_context(&context, owner_operation, error));
+.map_err(|error| storage_unavailable_with_context(context, owner_operation, error));
+async fn load_inventory_item_for_update<C>(
+    context: &PortContext,
+async fn load_inventory_item_by_id_for_update<C>(
+    context: &PortContext,
+async fn find_reservation_by_external_id<C>(
+    context: &PortContext,
+async fn existing_reservation_snapshot<C>(
+    context: &PortContext,
+async fn available_quantity<C>(
+    context: &PortContext,
 `;
 }
 
@@ -237,6 +249,18 @@ function fixture(options = {}) {
     inventory = inventory.replace(
       'correlation_id = %context.correlation_id',
       'correlation_id = omitted',
+    );
+  }
+  if (options.removeInventoryIdentityStorageContext) {
+    inventory = inventory.replace(
+      'storage_unavailable_with_context(&context, owner_operation, error)',
+      'storage_context_omitted(error)',
+    );
+  }
+  if (options.removeInventoryHelperStorageContext) {
+    inventory = inventory.replace(
+      'storage_unavailable_with_context(context, owner_operation, error)',
+      'storage_context_omitted(error)',
     );
   }
   put(root, 'crates/rustok-inventory/src/ports.rs', inventory);
@@ -429,6 +453,37 @@ test('public port error verifier requires inventory correlation logging', () => 
   expectFailure(
     { removeInventoryCorrelation: true },
     /inventory correlation logging: missing/,
+  );
+});
+
+test('public port error verifier rejects contextless inventory storage mapper', () => {
+  expectFailure(
+    { inventoryAppend: '.map_err(storage_unavailable);' },
+    /inventory public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects contextless inventory storage constructor', () => {
+  expectFailure(
+    {
+      inventoryAppend:
+        'fn storage_unavailable(_error: sea_orm::DbErr) -> PortError {}',
+    },
+    /inventory public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier requires identity storage context', () => {
+  expectFailure(
+    { removeInventoryIdentityStorageContext: true },
+    /inventory identity storage mapping: missing/,
+  );
+});
+
+test('public port error verifier requires helper storage context', () => {
+  expectFailure(
+    { removeInventoryHelperStorageContext: true },
+    /inventory helper storage mapping: missing/,
   );
 });
 
