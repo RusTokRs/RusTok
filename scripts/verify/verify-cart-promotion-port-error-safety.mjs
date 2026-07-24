@@ -39,19 +39,30 @@ forbidText(
 for (const [value, label] of [
   ['const READ_CART_PROMOTION_PREVIEW_OPERATION', 'preview owner operation'],
   ['const APPLY_CART_PROMOTION_OPERATION', 'apply owner operation'],
+  ['service: CartService::new(db)', 'direct owner service construction'],
   [
-    'crate::ports::in_process_cart_promotion_port(db)',
-    'internal compatibility delegation',
+    'cart_promotion_context_error(&context, owner_operation, error)',
+    'context-aware policy mapping',
   ],
   [
-    'cart_promotion_port_error(&context, owner_operation, error)',
-    'context-aware error mapping',
+    'cart_promotion_error(&context, owner_operation, error)',
+    'context-aware owner error mapping',
+  ],
+  [
+    'validate_cart_promotion_request(&context, owner_operation, &request)',
+    'context-aware target validation',
+  ],
+  [
+    'parse_cart_promotion_tenant_id(&context, owner_operation)',
+    'context-aware tenant parsing',
   ],
   ['correlation_id = %context.correlation_id', 'correlation logging'],
   ['tenant_id = %context.tenant_id', 'tenant logging'],
   ['operation = owner_operation', 'owner operation logging'],
-  ['internal_code = %error.code', 'internal code logging'],
-  ['internal_message = %error.message', 'internal message logging'],
+  ['error = ?error', 'raw owner error logging'],
+  ['internal_code = %error.code', 'context error code logging'],
+  ['internal_message = %error.message', 'context error message logging'],
+  ['code = "cart.tenant_id_invalid"', 'tenant stable code'],
   ['"cart promotion request context is invalid"', 'stable context message'],
   ['"cart promotion request is invalid"', 'stable validation message'],
   ['"cart was not found"', 'stable cart not-found message'],
@@ -61,16 +72,18 @@ for (const [value, label] of [
     'stable state conflict message',
   ],
   ['"cart promotion tax recalculation failed"', 'stable tax-boundary message'],
-  ['"cart promotion is temporarily unavailable"', 'stable unavailable message'],
-  ['"cart promotion could not be completed safely"', 'stable invariant message'],
+  ['"cart storage is temporarily unavailable"', 'stable storage message'],
 ]) {
   requireText(guard, value, label);
 }
 
 for (const value of [
-  'return error;',
-  'PortError::new(kind, code, message, retryable)',
-  '.map_err(|error| error)',
+  'crate::ports::in_process_cart_promotion_port(db)',
+  '.map_err(cart_error_to_port_error)',
+  'PortError::validation("cart.validation", message)',
+  'format!("cart storage unavailable: {error}")',
+  'format!("cart {id} not found")',
+  'format!("cart line item {id} not found")',
 ]) {
   forbidText(guard, value, 'promotion public error mapping');
 }
@@ -88,5 +101,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Cart promotion preview/apply use the correlation-aware safe wrapper and keep internal owner errors out of the public contract',
+  '✔ Cart promotion preview/apply use the correlation-aware owner provider and keep internal CartError details out of the public contract',
 );
