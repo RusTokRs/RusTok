@@ -212,7 +212,7 @@ at the end of this file remain authoritative.
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
-| `FORUM-16` | `in_progress` | FORUM-16A-D add tenant-scoped monotonic topic read state, bounded unread projections, resumable category-subtree/all-read owner commands and additive REST/GraphQL contracts; storefront composition and PostgreSQL concurrency/query-plan evidence remain. |
+| `FORUM-16` | `in_progress` | FORUM-16A-E add tenant-scoped monotonic topic read state, bounded unread projections, resumable category-subtree/all-read owner commands, REST/GraphQL contracts and authenticated visible-topic storefront composition; visibility-scoped storefront bulk commands plus PostgreSQL concurrency/query-plan evidence remain. |
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
@@ -904,22 +904,46 @@ accelerate the badge but database position/revision remains canonical.
 - OpenAPI and GraphQL SDL contract coverage locks the route and field names plus
   the shared request and response shapes.
 
+### Delivered in `FORUM-16E`
+
+- `ForumReadModelService::summarize_topic_ids` reuses the canonical unread
+  aggregate for an authenticated caller-supplied set capped at 100 exact topic
+  IDs, so storefront composition does not duplicate reply/revision policy;
+- `TopicService::get_storefront_visible_with_locale_fallback` centralizes the
+  single-topic open/channel visibility check used before a storefront mutation;
+- authenticated GraphQL and native server-function adapters enrich only the
+  topic IDs already selected by the storefront-visible owner list, while the
+  public category/topic/reply feed remains the anonymous compatibility path;
+- authentication or permission absence degrades explicitly to the public feed,
+  but network, HTTP, persistence and domain failures remain visible instead of
+  becoming synthetic anonymous state;
+- the selected visible topic can be marked at the current approved-reply and
+  immutable-revision high-water marks after visibility is rechecked, and content
+  published after that owner snapshot remains unread;
+- the module-owned storefront renders unread badges and a topic mark-read control
+  without creating anonymous rows; GraphQL SDL and SQLite owner-composition tests
+  lock the visible-topic-only contract and keep storefront bulk mutations closed.
+
 ### Compatibility and degraded mode
 
 No migration or backfill is required: an absent row means position/revision zero
-and preserves unseen-topic identity. Existing public and offset-based topic
-reads remain source-compatible. The unread projection and read-state commands
-are additive authenticated REST and GraphQL contracts; storefront and realtime
-remain closed in this slice. REST and GraphQL pass opaque cursors and owner DTOs
-without duplicating unread policy. Category membership is revalidated on every
-resumed page; a subsequent idempotent pass converges after a concurrent category
-move. Cache and realtime accelerators remain optional and never replace database
-owner state.
+and preserves unseen-topic identity. Existing public, offset-based and storefront
+topic reads remain source-compatible; storefront DTOs add only defaulted optional
+unread fields. Authenticated requests enrich the existing visibility-filtered
+page, while anonymous requests retain the public feed and never create read rows.
+Authentication/permission absence is the only personalization fallback; real
+transport or owner failures remain explicit. REST and GraphQL pass opaque cursors
+and owner DTOs without duplicating unread policy. Category membership is
+revalidated on every resumed owner bulk page; a subsequent idempotent pass
+converges after a concurrent category move. Storefront category/all-read controls
+remain closed because the current owner bulk scope is tenant/category based and
+cannot yet narrow to the channel-visible topic set. Cache and realtime
+accelerators remain optional and never replace database owner state.
 
 ### Remaining scope
 
-- compose the stable unread/read-state contracts into the module-owned
-  storefront transport and UI without duplicating owner policy;
+- add visibility/channel-scoped category and all-read storefront commands only
+  after the shared ACL/visibility policy can produce an exact bounded owner scope;
 - add PostgreSQL aggregate/concurrent-device execution evidence and query-plan
   evidence for production-sized topic/reply histories.
 
@@ -936,6 +960,9 @@ cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
+cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture
+cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum-storefront
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
 npm run verify:forum:storefront-boundary
@@ -1733,6 +1760,8 @@ cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
+cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture
+cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1797,8 +1826,8 @@ Recommended next slices:
 7. `FORUM-14`: attachment relations and upload sessions;
 8. `FORUM-15`: batched member/avatar projection;
 9. `LINK-FORUM-02`: profiles/media runtime proof;
-10. finish `FORUM-16` storefront composition and PostgreSQL concurrency/query-plan
-    evidence;
+10. finish `FORUM-16` visibility-scoped storefront bulk composition and PostgreSQL
+    concurrency/query-plan evidence;
 11. `FORUM-19`: reports/moderation/restrictions;
 12. `FORUM-20`: ACL and visibility policy;
 13. `FORUM-23`: index projections;
