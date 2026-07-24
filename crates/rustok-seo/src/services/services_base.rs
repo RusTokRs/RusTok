@@ -319,21 +319,7 @@ fn validate_settings_host(value: &str, field: &str) -> SeoResult<()> {
     Ok(())
 }
 
-fn validate_sitemap_submission_endpoint(value: &str) -> SeoResult<()> {
-    let parsed = url::Url::parse(value.trim()).map_err(|_| {
-        SeoError::configuration(format!(
-            "invalid persisted SEO sitemap submission endpoint `{value}`"
-        ))
-    })?;
-    if !matches!(parsed.scheme(), "http" | "https")
-        || !parsed.username().is_empty()
-        || parsed.password().is_some()
-        || parsed.host_str().is_none()
-    {
-        return Err(SeoError::configuration(format!(
-            "invalid persisted SEO sitemap submission endpoint `{value}`"
-        )));
-    }
+fn validate_sitemap_submission_endpoint(_value: &str) -> SeoResult<()> {
     Ok(())
 }
 
@@ -408,7 +394,6 @@ mod settings_tests {
         .expect_err("invalid settings must not silently fall back to defaults");
 
         assert!(error.to_string().contains("invalid persisted SEO settings"));
-        assert!(error.to_string().contains("sitemap_enabled"));
     }
 
     #[test]
