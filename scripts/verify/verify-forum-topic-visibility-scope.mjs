@@ -79,7 +79,7 @@ for (const marker of [
   "matching_topic_channel_access_subquery(tenant_id, channel_slug)",
   "forum_topic_channel_access::Column::TenantId",
   "MAX_FORUM_CHANNEL_SLUG_LEN: usize = 128",
-  "contains unsupported characters",
+  "channel_slug.to_ascii_lowercase()",
 ]) {
   requireText(owner, marker, `topic visibility owner is missing ${marker}`);
 }
@@ -108,6 +108,15 @@ rejectText(
   "fn is_storefront_visible(",
   "topic facade must not keep a second in-memory storefront visibility policy",
 );
+const authorizedLoadIndex = facade.indexOf("let topic = match self");
+const visibilityCheckIndex = facade.indexOf(".is_topic_visible(tenant_id, topic_id, &scope)");
+if (
+  authorizedLoadIndex < 0 ||
+  visibilityCheckIndex < 0 ||
+  authorizedLoadIndex > visibilityCheckIndex
+) {
+  failures.push("single-topic facade must preserve owner read authorization before visibility evaluation");
+}
 
 for (const marker of [
   "list_storefront_visible_with_locale_fallback",
@@ -148,7 +157,7 @@ for (const marker of [
   "assert_eq!(public_ids, vec![public_topic])",
   "assert_eq!(mobile_ids, vec![mobile_topic, public_topic])",
   "vec![public_topic; 101]",
-  "not/a/channel",
+  "Custom/Channel",
   ".close_topic(",
 ]) {
   requireText(testSource, marker, `topic visibility SQLite scenario is missing ${marker}`);
