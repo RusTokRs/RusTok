@@ -61,7 +61,7 @@ for (const residual of [
   "channel membership visibility",
   "group membership visibility",
   "explicit allow and deny",
-  "reply and non-storefront owner read composition",
+  "category owner read filtering and remaining non-topic-reply read composition",
   "visibility-scoped category and all-read mutations",
 ]) {
   if (!contract.not_delivered?.includes(residual)) {
@@ -85,7 +85,7 @@ for (const marker of [
   "pub struct ForumTopicVisibilityService",
   "pub(crate) async fn hidden_category_ids_for_scope",
   "ForumCategoryVisibilityPolicyService::new(self.db.clone())",
-  ".hidden_category_ids_for_viewer(tenant_id, scope.is_authenticated())",
+  "self.hidden_category_ids_for_viewer(tenant_id, scope.is_authenticated())",
   "pub async fn is_topic_visible",
   "pub async fn filter_visible_topic_ids",
   "topic_ids.len() > MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES",
