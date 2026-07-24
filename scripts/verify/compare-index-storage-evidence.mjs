@@ -14,6 +14,15 @@ const canonicalReadWorkloads = [
   'keyset_page',
   'exact_count',
 ];
+const databaseFields = [
+  'version',
+  'server_version_num',
+  'shared_buffers',
+  'effective_cache_size',
+  'work_mem',
+  'random_page_cost',
+  'jit',
+];
 
 const parseArgs = () => {
   const inputs = [];
@@ -75,6 +84,9 @@ const requireArray = (value, label) => {
 const requireNonEmptyString = (value, label) => {
   if (typeof value !== 'string' || value.length === 0) die(`${label} must be a non-empty string`);
 };
+const requirePositiveInteger = (value, label) => {
+  if (!Number.isInteger(value) || value <= 0) die(`${label} must be a positive integer`);
+};
 const requireNonNegativeInteger = (value, label) => {
   if (!Number.isInteger(value) || value < 0) die(`${label} must be a non-negative integer`);
 };
@@ -133,6 +145,82 @@ const snapshot = (value) => ({
   hot_updates: sum(value.table_stats.map((item) => item.hot_updates)),
 });
 
+const validateDatabase = (database, scale) => {
+  requireObject(database, `${scale} database`);
+  for (const field of databaseFields) {
+    requireNonEmptyString(database[field], `${scale} database.${field}`);
+  }
+  const serverVersion = Number.parseInt(database.server_version_num, 10);
+  if (!Number.isInteger(serverVersion) || Math.floor(serverVersion / 10_000) !== 16) {
+    die(`${scale} database.server_version_num must describe PostgreSQL 16`);
+  }
+  if (database.jit !== 'off') die(`${scale} database.jit must be off`);
+};
+
+const validateDataset = (dataset, provenance, scale) => {
+  requireObject(dataset, `${scale} dataset`);
+  for (const field of [
+    'tenants',
+    'products_per_tenant',
+    'variants_per_product',
+    'channels_per_tenant',
+    'sales_channels_per_variant',
+  ]) {
+    requirePositiveInteger(dataset[field], `${scale} dataset.${field}`);
+  }
+  requireArray(dataset.locales, `${scale} dataset.locales`);
+  if (dataset.locales.length === 0 || new Set(dataset.locales).size !== dataset.locales.length) {
+    die(`${scale} dataset.locales must contain unique locale values`);
+  }
+  dataset.locales.forEach((locale, index) => requireNonEmptyString(locale, `${scale} dataset.locales[${index}]`));
+
+  const productRows = dataset.tenants * dataset.products_per_tenant * dataset.locales.length;
+  const variantRows = productRows * dataset.variants_per_product;
+  const channelRows = dataset.tenants * dataset.channels_per_tenant;
+  const entityRows = productRows + variantRows + channelRows;
+  const eavFieldRows = productRows * 8 + variantRows * 3 + channelRows * 2;
+  const linkRows = variantRows + variantRows * dataset.sales_channels_per_variant;
+  const derived = {
+    expected_product_rows: productRows,
+    expected_entity_rows: entityRows,
+    expected_eav_field_rows: eavFieldRows,
+    expected_link_rows: linkRows,
+  };
+  for (const [field, value] of Object.entries(derived)) {
+    if (provenance[field] !== value) {
+      die(`${scale} dataset ${field} mismatch: provenance=${provenance[field]} derived=${value}`);
+    }
+  }
+  return dataset;
+};
+
+const validateExecutionContract = (read, mutation, maintenance, provenance, scale) => {
+  requirePositiveInteger(provenance.repetitions, `${scale} provenance.repetitions`);
+  requirePositiveInteger(provenance.churn_cycles, `${scale} provenance.churn_cycles`);
+  if (mutation.repetitions !== provenance.repetitions) {
+    die(`${scale} repetitions mismatch: provenance=${provenance.repetitions} mutation=${mutation.repetitions}`);
+  }
+  if (maintenance.cycles !== provenance.churn_cycles) {
+    die(`${scale} churn_cycles mismatch: provenance=${provenance.churn_cycles} maintenance=${maintenance.cycles}`);
+  }
+  for (const prototype of requireArray(read.prototypes, `${scale} read prototypes`)) {
+    for (const workload of requireArray(prototype.workloads, `${scale}/${prototype.prototype} read workloads`)) {
+      if (!Array.isArray(workload.repetitions)
+          || workload.repetitions.length !== provenance.repetitions) {
+        die(`${scale}/${prototype.prototype}/${workload.name} read repetitions mismatch`);
+      }
+    }
+  }
+  for (const prototype of requireArray(mutation.prototypes, `${scale} mutation prototypes`)) {
+    for (const workload of requireArray(prototype.workloads, `${scale}/${prototype.prototype} mutation workloads`)) {
+      if (!Array.isArray(workload.repetitions)
+          || workload.repetitions.length !== provenance.repetitions) {
+        die(`${scale}/${prototype.prototype}/${workload.name} mutation repetitions mismatch`);
+      }
+    }
+  }
+};
+
 const validateSourceOracle = (read, provenance, scale) => {
   const sourceWorkloads = requireArray(read.source_workloads, `${scale} source_workloads`);
   const names = sourceWorkloads.map((item) => item?.name);
@@ -155,12 +243,16 @@ const validateSourceOracle = (read, provenance, scale) => {
     oracle.set(item.name, item);
   }
 
-  for (const prototype of requireArray(read.prototypes, `${scale} read prototypes`)) {
+  for (const prototype of read.prototypes) {
     requireExactOrder(
       prototype.workloads?.map((item) => item?.name),
       names,
       `${scale}/${prototype.prototype} read workload order`,
     );
+    if (prototype.entity_rows !== provenance.expected_entity_rows
+        || prototype.link_rows !== provenance.expected_link_rows) {
+      die(`${scale}/${prototype.prototype} read cardinality mismatch`);
+    }
     for (const workload of prototype.workloads) {
       const expected = oracle.get(workload.name);
       requireNonNegativeInteger(workload.result_rows, `${scale}/${prototype.prototype}/${workload.name}.result_rows`);
@@ -201,10 +293,12 @@ const loadScale = (directory) => {
     'expected_eav_field_rows',
     'expected_link_rows',
   ]) {
-    if (!Number.isInteger(provenance[field]) || provenance[field] <= 0) {
-      die(`${scale} provenance has invalid ${field}`);
-    }
+    requirePositiveInteger(provenance[field], `${scale} provenance.${field}`);
   }
+
+  validateDatabase(read.database, scale);
+  const dataset = validateDataset(read.dataset, provenance, scale);
+  validateExecutionContract(read, mutation, maintenance, provenance, scale);
   if (read.source_entity_rows !== provenance.expected_entity_rows
       || read.source_link_rows !== provenance.expected_link_rows) {
     die(`${scale} source cardinality does not match provenance`);
@@ -244,8 +338,8 @@ const loadScale = (directory) => {
       postgres_image: provenance.postgres_image ?? null,
       runner_os: provenance.runner_os ?? null,
       runner_arch: provenance.runner_arch ?? null,
-      repetitions: provenance.repetitions ?? null,
-      churn_cycles: provenance.churn_cycles ?? null,
+      repetitions: provenance.repetitions,
+      churn_cycles: provenance.churn_cycles,
       source_workload_names: provenance.source_workload_names,
       expected_product_rows: provenance.expected_product_rows,
       expected_entity_rows: provenance.expected_entity_rows,
@@ -253,7 +347,7 @@ const loadScale = (directory) => {
       expected_link_rows: provenance.expected_link_rows,
     },
     database: read.database,
-    dataset: read.dataset,
+    dataset,
     source_load_ms: read.source_load_ms,
     source_entity_rows: read.source_entity_rows,
     source_link_rows: read.source_link_rows,
@@ -323,6 +417,12 @@ const mutationEffectsOf = (items) => Object.fromEntries(items.map((item) => [
     affected_links: entry.affected_links,
   })),
 ]));
+const datasetShape = (dataset) => ({
+  locales: dataset.locales,
+  variants_per_product: dataset.variants_per_product,
+  channels_per_tenant: dataset.channels_per_tenant,
+  sales_channels_per_variant: dataset.sales_channels_per_variant,
+});
 
 const requireDecisionProvenance = (scales) => {
   const lower = scales.find((item) => item.scale === '100k');
@@ -337,6 +437,7 @@ const requireDecisionProvenance = (scales) => {
       same_repetitions: null,
       same_churn_cycles: null,
       same_database_settings: null,
+      same_dataset_shape: null,
       same_source_oracle_shape: null,
       same_report_shape: null,
       same_mutation_effect_contract: null,
@@ -348,11 +449,6 @@ const requireDecisionProvenance = (scales) => {
     for (const field of requiredText) {
       if (typeof scale.provenance[field] !== 'string' || scale.provenance[field].length === 0) {
         die(`${scale.scale} provenance is missing ${field}`);
-      }
-    }
-    for (const field of ['packet_contract_version', 'repetitions', 'churn_cycles']) {
-      if (!Number.isInteger(scale.provenance[field]) || scale.provenance[field] <= 0) {
-        die(`${scale.scale} provenance has invalid ${field}`);
       }
     }
   }
@@ -369,20 +465,14 @@ const requireDecisionProvenance = (scales) => {
   equalField('repetitions');
   equalField('churn_cycles');
 
-  const databaseFields = [
-    'server_version_num',
-    'shared_buffers',
-    'effective_cache_size',
-    'work_mem',
-    'random_page_cost',
-    'jit',
-  ];
   for (const field of databaseFields) {
-    if (lower.database?.[field] !== upper.database?.[field]) {
-      die(`cross-scale database setting ${field} mismatch: 100k=${lower.database?.[field]} 1m=${upper.database?.[field]}`);
+    if (lower.database[field] !== upper.database[field]) {
+      die(`cross-scale database setting ${field} mismatch: 100k=${lower.database[field]} 1m=${upper.database[field]}`);
     }
   }
-
+  if (!sameJson(datasetShape(lower.dataset), datasetShape(upper.dataset))) {
+    die('cross-scale dataset shape mismatch');
+  }
   if (!sameJson(
     lower.source_workloads.map((item) => item.name),
     upper.source_workloads.map((item) => item.name),
@@ -413,6 +503,7 @@ const requireDecisionProvenance = (scales) => {
     same_repetitions: true,
     same_churn_cycles: true,
     same_database_settings: true,
+    same_dataset_shape: true,
     same_source_oracle_shape: true,
     same_report_shape: true,
     same_mutation_effect_contract: true,
@@ -496,6 +587,7 @@ const markdown = (report) => {
     `- Same commit: **${report.decision_contract.same_commit === true ? 'yes' : 'n/a'}**`,
     `- Same PostgreSQL image/settings: **${report.decision_contract.same_postgres_image === true && report.decision_contract.same_database_settings === true ? 'yes' : 'n/a'}**`,
     `- Same repetitions/churn contract: **${report.decision_contract.same_repetitions === true && report.decision_contract.same_churn_cycles === true ? 'yes' : 'n/a'}**`,
+    `- Same non-scale dataset shape: **${report.decision_contract.same_dataset_shape === true ? 'yes' : 'n/a'}**`,
     `- Same source-oracle shape: **${report.decision_contract.same_source_oracle_shape === true ? 'yes' : 'n/a'}**`,
     `- Same candidate/workload shape: **${report.decision_contract.same_report_shape === true ? 'yes' : 'n/a'}**`,
     `- Same mutation effect contract: **${report.decision_contract.same_mutation_effect_contract === true ? 'yes' : 'n/a'}**`,
