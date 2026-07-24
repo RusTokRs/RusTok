@@ -46,7 +46,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no >= {churn_start}
   AND link.tenant_id = {tenant}
+  AND link.source_module = 'product'
   AND link.source_entity = 'product'
+  AND link.source_schema_version = 1
   AND link.source_locale = source.locale
   AND link.source_entity_id = source.product_id;
 
@@ -88,17 +90,23 @@ WHERE tenant_no = 1
   AND product_no >= {churn_start};
 
 INSERT INTO idx_bench_jsonb.link (
-    tenant_id, source_entity, source_entity_id, source_locale, link_name,
-    ordinal, target_entity, target_entity_id, target_locale
+    tenant_id, source_module, source_entity, source_schema_version,
+    source_entity_id, source_locale, link_name, ordinal,
+    target_module, target_entity, target_schema_version,
+    target_entity_id, target_locale
 )
 SELECT
     tenant_id,
     'product',
+    'product',
+    1,
     product_id,
     locale,
     'variants',
     (variant_no - 1)::smallint,
+    'product',
     'variant',
+    1,
     variant_id,
     locale
 FROM idx_bench_source.variant
@@ -163,7 +171,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no >= {churn_start}
   AND link.tenant_id = {tenant}
+  AND link.source_module = 'product'
   AND link.source_entity = 'product'
+  AND link.source_schema_version = 1
   AND link.source_locale = source.locale
   AND link.source_entity_id = source.product_id;
 
@@ -242,17 +252,23 @@ WHERE product.tenant_no = 1
   AND product.product_no >= {churn_start};
 
 INSERT INTO idx_bench_eav.link (
-    tenant_id, source_entity, source_entity_id, source_locale, link_name,
-    ordinal, target_entity, target_entity_id, target_locale
+    tenant_id, source_module, source_entity, source_schema_version,
+    source_entity_id, source_locale, link_name, ordinal,
+    target_module, target_entity, target_schema_version,
+    target_entity_id, target_locale
 )
 SELECT
     tenant_id,
     'product',
+    'product',
+    1,
     product_id,
     locale,
     'variants',
     (variant_no - 1)::smallint,
+    'product',
     'variant',
+    1,
     variant_id,
     locale
 FROM idx_bench_source.variant
@@ -289,7 +305,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no >= {churn_start}
   AND link.tenant_id = {tenant}
+  AND link.source_module = 'product'
   AND link.source_entity = 'product'
+  AND link.source_schema_version = 1
   AND link.source_locale = source.locale
   AND link.source_entity_id = source.product_id;
 
@@ -323,17 +341,23 @@ WHERE tenant_no = 1
   AND product_no >= {churn_start};
 
 INSERT INTO idx_bench_hot.link (
-    tenant_id, source_entity, source_entity_id, source_locale, link_name,
-    ordinal, target_entity, target_entity_id, target_locale
+    tenant_id, source_module, source_entity, source_schema_version,
+    source_entity_id, source_locale, link_name, ordinal,
+    target_module, target_entity, target_schema_version,
+    target_entity_id, target_locale
 )
 SELECT
     tenant_id,
     'product',
+    'product',
+    1,
     product_id,
     locale,
     'variants',
     (variant_no - 1)::smallint,
+    'product',
     'variant',
+    1,
     variant_id,
     locale
 FROM idx_bench_source.variant
