@@ -1,0 +1,63 @@
+name: Index 100k evidence documentation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/index-100k-evidence-docs-once.yml"
+      - "scripts/verify/record-index-100k-evidence-once.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: index-100k-evidence-docs
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply inspected 100k evidence documentation
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/verify/record-index-100k-evidence-once.py 2>&1 | tee record-diagnostic.txt
+      - name: Archive documentation diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: index-100k-evidence-docs-diagnostic-${{ github.sha }}
+          path: record-diagnostic.txt
+          if-no-files-found: error
+          retention-days: 3
+      - name: Verify and commit clean documentation diff
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "DECISIONS/2026-07-24-index-storage-layout.md crates/rustok-index/docs/implementation-plan.md crates/rustok-index/docs/storage-benchmark.md "
+          grep -Fq -- '- [x] Run and archive 100k Product-locale row' crates/rustok-index/docs/implementation-plan.md
+          grep -Fq -- '- [ ] Run and archive 1m Product-locale row' crates/rustok-index/docs/implementation-plan.md
+          grep -Fq 'index-storage-100k-84a11b147689b226ca161f5a0287990c1e8489d4' crates/rustok-index/docs/storage-benchmark.md
+          grep -Fq 'INDEX_BENCH_LARGE_RUNNER' DECISIONS/2026-07-24-index-storage-layout.md
+          git rm \
+            .github/workflows/index-100k-evidence-docs-once.yml \
+            scripts/verify/record-index-100k-evidence-once.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            DECISIONS/2026-07-24-index-storage-layout.md \
+            crates/rustok-index/docs/implementation-plan.md \
+            crates/rustok-index/docs/storage-benchmark.md
+          git commit -m "docs(index): record inspected 100k storage evidence"
+          git push origin HEAD:${{ github.head_ref }}
