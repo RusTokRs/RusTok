@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::{
     BenchmarkConfig, DatasetConfig, Prototype, Workload, connect_benchmark_database,
-    full_prototype_sql, source_dataset_sql, workloads,
+    full_prototype_sql, source_dataset_sql, source_workloads, workloads,
 };
 
 #[derive(Debug, Serialize)]
@@ -19,6 +19,7 @@ pub struct BenchmarkReport {
     pub source_load_ms: u128,
     pub source_entity_rows: i64,
     pub source_link_rows: i64,
+    pub source_workloads: Vec<SourceWorkloadReport>,
     pub prototypes: Vec<PrototypeReport>,
 }
 
@@ -31,6 +32,14 @@ pub struct DatabaseMetadata {
     pub work_mem: String,
     pub random_page_cost: String,
     pub jit: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceWorkloadReport {
+    pub name: &'static str,
+    pub sql: String,
+    pub result_rows: i64,
+    pub result_digest: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -88,12 +97,13 @@ pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
     let source_load_ms = source_started.elapsed().as_millis();
     let source = source_cardinality(&db).await?;
     validate_cardinality("source dataset", source, &config.dataset)?;
+    let source_workload_reports = run_source_workloads(&db, &config.dataset).await?;
 
     let mut prototypes = Vec::with_capacity(Prototype::ALL.len());
     for prototype in Prototype::ALL {
         prototypes.push(run_prototype(&db, prototype, config).await?);
     }
-    validate_semantic_parity(&prototypes)?;
+    validate_semantic_parity(&source_workload_reports, &prototypes)?;
 
     Ok(BenchmarkReport {
         generated_at: Utc::now(),
@@ -102,6 +112,7 @@ pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
         source_load_ms,
         source_entity_rows: source.entity_rows,
         source_link_rows: source.link_rows,
+        source_workloads: source_workload_reports,
         prototypes,
     })
 }
@@ -118,6 +129,25 @@ pub fn write_report(path: &Path, report: &BenchmarkReport) -> Result<()> {
     fs::write(path, json)
         .with_context(|| format!("failed to write benchmark report to {path:?}"))?;
     Ok(())
+}
+
+async fn run_source_workloads(
+    db: &DatabaseConnection,
+    dataset: &DatasetConfig,
+) -> Result<Vec<SourceWorkloadReport>> {
+    let mut reports = Vec::new();
+    for workload in source_workloads(dataset) {
+        let digest = result_digest(db, &workload.sql)
+            .await
+            .with_context(|| format!("failed to digest source workload {}", workload.name))?;
+        reports.push(SourceWorkloadReport {
+            name: workload.name,
+            sql: workload.sql,
+            result_rows: digest.rows,
+            result_digest: digest.digest,
+        });
+    }
+    Ok(reports)
 }
 
 async fn run_prototype(
@@ -307,18 +337,23 @@ fn validate_cardinality(
     Ok(())
 }
 
-fn validate_semantic_parity(prototypes: &[PrototypeReport]) -> Result<()> {
-    let baseline = prototypes
-        .first()
-        .context("benchmark produced no prototype reports")?;
-    for candidate in &prototypes[1..] {
+fn validate_semantic_parity(
+    source_workloads: &[SourceWorkloadReport],
+    prototypes: &[PrototypeReport],
+) -> Result<()> {
+    ensure!(
+        !source_workloads.is_empty(),
+        "benchmark produced no source workload oracle"
+    );
+    ensure!(!prototypes.is_empty(), "benchmark produced no prototype reports");
+
+    for candidate in prototypes {
         ensure!(
-            candidate.workloads.len() == baseline.workloads.len(),
-            "{} workload count differs from {}",
-            candidate.schema,
-            baseline.schema
+            candidate.workloads.len() == source_workloads.len(),
+            "{} workload count differs from source oracle",
+            candidate.schema
         );
-        for expected in &baseline.workloads {
+        for expected in source_workloads {
             let actual = candidate
                 .workloads
                 .iter()
@@ -328,7 +363,7 @@ fn validate_semantic_parity(prototypes: &[PrototypeReport]) -> Result<()> {
                 })?;
             ensure!(
                 actual.result_rows == expected.result_rows,
-                "{} workload {} row-count mismatch: expected {}, got {}",
+                "{} workload {} row-count mismatch: source expected {}, got {}",
                 candidate.schema,
                 expected.name,
                 expected.result_rows,
@@ -336,10 +371,9 @@ fn validate_semantic_parity(prototypes: &[PrototypeReport]) -> Result<()> {
             );
             ensure!(
                 actual.result_digest == expected.result_digest,
-                "{} workload {} result digest differs from {}",
+                "{} workload {} result digest differs from source oracle",
                 candidate.schema,
-                expected.name,
-                baseline.schema
+                expected.name
             );
         }
     }
@@ -359,6 +393,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(dataset.total_entity_rows(), 1_216);
+        assert_eq!(dataset.total_eav_field_rows(), 5_632);
         assert_eq!(dataset.total_link_rows(), 2_400);
     }
 }
