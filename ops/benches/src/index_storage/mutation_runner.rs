@@ -11,7 +11,8 @@ use serde_json::Value;
 
 use super::{
     BenchmarkConfig, MutationWorkload, Prototype, connect_benchmark_database,
-    full_prototype_sql, mutation_workloads, source_dataset_sql,
+    explain::parse_mutation_explain_metrics, full_prototype_sql, mutation_workloads,
+    source_dataset_sql,
 };
 
 #[derive(Debug, Serialize)]
@@ -41,15 +42,15 @@ pub struct MutationWorkloadReport {
 
 #[derive(Debug, Serialize)]
 pub struct MutationExplainEvidence {
-    pub planning_time_ms: Option<f64>,
-    pub execution_time_ms: Option<f64>,
-    pub shared_hit_blocks: Option<u64>,
-    pub shared_read_blocks: Option<u64>,
+    pub planning_time_ms: f64,
+    pub execution_time_ms: f64,
+    pub shared_hit_blocks: u64,
+    pub shared_read_blocks: u64,
     pub temporary_read_blocks: Option<u64>,
     pub temporary_written_blocks: Option<u64>,
-    pub maximum_node_wal_records: Option<u64>,
-    pub maximum_node_wal_fpi: Option<u64>,
-    pub maximum_node_wal_bytes: Option<u64>,
+    pub maximum_node_wal_records: u64,
+    pub maximum_node_wal_fpi: u64,
+    pub maximum_node_wal_bytes: u64,
     pub plan: Value,
 }
 
@@ -215,38 +216,24 @@ async fn explain_mutation(
         ))
         .await?
         .context("mutation EXPLAIN returned no row")?;
-    let plan: Value = row.try_get("", "QUERY PLAN")?;
-    let root = plan.get(0).unwrap_or(&Value::Null);
-    let plan_node = root.get("Plan").unwrap_or(&Value::Null);
+    let plan: Value = row
+        .try_get("", "QUERY PLAN")
+        .context("mutation EXPLAIN result did not contain QUERY PLAN JSON")?;
+    let metrics = parse_mutation_explain_metrics(&plan)
+        .context("mutation EXPLAIN result did not satisfy the evidence contract")?;
 
     Ok(MutationExplainEvidence {
-        planning_time_ms: root.get("Planning Time").and_then(Value::as_f64),
-        execution_time_ms: root.get("Execution Time").and_then(Value::as_f64),
-        shared_hit_blocks: maximum_metric(plan_node, "Shared Hit Blocks"),
-        shared_read_blocks: maximum_metric(plan_node, "Shared Read Blocks"),
-        temporary_read_blocks: maximum_metric(plan_node, "Temp Read Blocks"),
-        temporary_written_blocks: maximum_metric(plan_node, "Temp Written Blocks"),
-        maximum_node_wal_records: maximum_metric(plan_node, "WAL Records"),
-        maximum_node_wal_fpi: maximum_metric(plan_node, "WAL FPI"),
-        maximum_node_wal_bytes: maximum_metric(plan_node, "WAL Bytes"),
+        planning_time_ms: metrics.planning_time_ms,
+        execution_time_ms: metrics.execution_time_ms,
+        shared_hit_blocks: metrics.shared_hit_blocks,
+        shared_read_blocks: metrics.shared_read_blocks,
+        temporary_read_blocks: metrics.temporary_read_blocks,
+        temporary_written_blocks: metrics.temporary_written_blocks,
+        maximum_node_wal_records: metrics.maximum_node_wal_records,
+        maximum_node_wal_fpi: metrics.maximum_node_wal_fpi,
+        maximum_node_wal_bytes: metrics.maximum_node_wal_bytes,
         plan,
     })
-}
-
-fn maximum_metric(value: &Value, key: &str) -> Option<u64> {
-    let own = value.get(key).and_then(Value::as_u64);
-    let nested = match value {
-        Value::Array(values) => values
-            .iter()
-            .filter_map(|value| maximum_metric(value, key))
-            .max(),
-        Value::Object(values) => values
-            .values()
-            .filter_map(|value| maximum_metric(value, key))
-            .max(),
-        _ => None,
-    };
-    own.into_iter().chain(nested).max()
 }
 
 fn validate_mutation_shape(prototypes: &[PrototypeMutationReport]) -> Result<()> {
@@ -285,23 +272,4 @@ fn validate_mutation_shape(prototypes: &[PrototypeMutationReport]) -> Result<()>
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn maximum_metric_finds_nested_wal_value() {
-        let plan = serde_json::json!({
-            "Plan": {
-                "WAL Bytes": 10,
-                "Plans": [
-                    {"WAL Bytes": 100},
-                    {"Plans": [{"WAL Bytes": 75}]}
-                ]
-            }
-        });
-        assert_eq!(maximum_metric(&plan, "WAL Bytes"), Some(100));
-    }
 }
