@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20A",
+  "scope": "Forum-owned exact current storefront topic visibility",
+  "owner_file": "crates/rustok-forum/src/services/topic_visibility.rs",
+  "facade_file": "crates/rustok-forum/src/services/topic_facade.rs",
+  "storefront_read_state_file": "crates/rustok-forum/src/services/storefront_read_state.rs",
+  "compatibility_selector_file": "crates/rustok-forum/src/services/topic.rs",
+  "test_file": "crates/rustok-forum/tests/topic_visibility_sqlite.rs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "candidate_bound": 100,
+  "current_policy": {
+    "topic_status": "open",
+    "without_channel_context": "topics without channel restrictions",
+    "with_channel_context": "unrestricted topics plus topics matching the exact normalized channel slug",
+    "missing_foreign_or_denied": "absent without an existence oracle",
+    "output_order": "first unique caller candidate order"
+  },
+  "composition": {
+    "single_topic_facade_guarded": true,
+    "storefront_list_facade_rechecks_exact_candidates": true,
+    "storefront_read_state_consumes_guarded_facade": true,
+    "compatibility_sql_selector_remains_prefilter": true
+  },
+  "not_delivered": [
+    "category inheritance",
+    "authenticated-only visibility",
+    "role visibility",
+    "trust-level visibility",
+    "group membership visibility",
+    "explicit allow and deny",
+    "visibility-scoped category and all-read mutations",
+    "search notification and SEO migration to the owner scope"
+  ],
+  "verification": {
+    "command": "cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture",
+    "source_verifier": "node scripts/verify/verify-forum-topic-visibility-scope.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
