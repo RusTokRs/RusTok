@@ -1,0 +1,35 @@
+name: SEO metadata transaction patch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.head_ref == 'agent/seo-meta-transaction' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply metadata transaction patch
+        run: python scripts/seo/apply_meta_transaction.py
+
+      - name: Commit clean SEO slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/seo-meta-transaction.yml
+          rm -f scripts/seo/apply_meta_transaction.py
+          git config user.name "RusTok Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(seo): persist metadata transitions atomically"
+          git push origin HEAD:${{ github.head_ref }}
