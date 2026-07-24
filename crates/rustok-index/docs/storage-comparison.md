@@ -65,15 +65,37 @@ Ordinary VACUUM may leave relation files unchanged or larger. The JSON output
 therefore records a neutral `vacuum_size_delta`, not an assumed reclaimed-space
 metric.
 
+## Operational review
+
+The generated comparison intentionally contains only reproducible evidence
+metrics. Architecture and operations are evaluated separately in
+[`storage-operational-review.md`](./storage-operational-review.md).
+
+That review records:
+
+- the genericity and schema-evolution requirements for canonical storage;
+- index, migration, mutation, query-compilation, diagnostics, rebuild, and
+  partitioning complexity for each candidate;
+- the hot typed projection's status as a best-case baseline rather than an
+  eligible canonical generic model;
+- the additional integrity and operational burden typed EAV must justify with a
+  decisive measured advantage;
+- the production controls required if JSONB is selected.
+
+A benchmark rerun changes the numeric evidence but does not change those
+architectural findings unless candidate DDL or the accepted Index ownership
+boundary changes.
+
 ## Decision boundary
 
 The tool deliberately does not compute a winner or weighted score. The ADR must
-still evaluate:
+combine the generated comparison with the operational review and still evaluate:
 
-- operational complexity and schema evolution;
-- index and migration management;
-- acceptable latency, size, WAL, and maintenance trade-offs;
-- tenant, locale, source-version, and atomic-link invariants;
+- acceptable latency, size, WAL, buffer, and maintenance trade-offs;
+- planner stability at both scales;
+- tenant, locale, complete schema identity, source-version, and atomic-link
+  invariants;
+- production index, partition, migration, rebuild, and diagnostics rules;
 - the explicit rejection reason for each alternative.
 
 The canonical proposed decision record is

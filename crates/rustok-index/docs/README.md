@@ -82,9 +82,17 @@ delete/reinsert cycles, exact cardinality guards, baseline/after-churn/after-
 VACUUM schema-size and `pg_stat_user_tables` snapshots, and ordinary
 `VACUUM (ANALYZE)` duration. It intentionally does not rely on `VACUUM FULL`.
 
-The harnesses do not select a model. Real smoke/100k/1m runs, comparison, and the
-storage ADR remain open. No production migration may be added before the ADR is
-accepted.
+The operational review evaluates genericity, schema evolution, index and
+migration management, mutation/query complexity, diagnostics, rebuild, and
+partitioning independently from benchmark timings. It treats the hot typed
+projection as a best-case baseline rather than an eligible canonical generic
+model and leaves the JSONB versus typed-EAV decision open for corrected scale
+evidence.
+
+The harnesses and operational review do not select a model. The archived smoke
+packet proves harness sanity. Replacement same-commit `100k`/`1m` evidence, the
+generated comparison, and the storage ADR remain open. No production migration
+may be added before the ADR is accepted.
 
 ## Status
 
@@ -120,6 +128,8 @@ The repository owner runs the checks and database evidence during this rewrite:
 - [Crate README](../README.md)
 - [Live implementation plan](./implementation-plan.md)
 - [M2 storage benchmark contract](./storage-benchmark.md)
+- [M2 storage evidence comparison](./storage-comparison.md)
+- [M2 storage operational review](./storage-operational-review.md)
 - [Index Engine rewrite ADR](../../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
