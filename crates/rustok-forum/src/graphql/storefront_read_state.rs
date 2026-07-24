@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::{
     AuthContext, Permission, RequestContext, TenantContext,
-    graphql::{GraphQLError, PaginationInput, require_module_enabled, resolve_graphql_locale},
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
     has_any_effective_permission,
 };
 use rustok_outbox::TransactionalEventBus;
@@ -16,6 +16,8 @@ use crate::{
 };
 
 const MODULE_SLUG: &str = "forum";
+const DEFAULT_STOREFRONT_UNREAD_LIMIT: u64 = 20;
+const MAX_STOREFRONT_UNREAD_LIMIT: u64 = 100;
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct GqlForumStorefrontUnreadTopic {
@@ -63,7 +65,7 @@ impl ForumStorefrontReadStateQuery {
         tenant_id: Option<Uuid>,
         category_id: Option<Uuid>,
         locale: Option<String>,
-        #[graphql(default)] pagination: PaginationInput,
+        limit: Option<i32>,
     ) -> Result<GqlForumStorefrontUnreadTopicPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -76,7 +78,7 @@ impl ForumStorefrontReadStateQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let request = ctx.data::<RequestContext>()?;
-        let (offset, limit) = pagination.normalize()?;
+        let limit = storefront_limit(limit)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let security = forum_security(&auth);
 
@@ -88,8 +90,8 @@ impl ForumStorefrontReadStateQuery {
                     category_id,
                     status: None,
                     locale: Some(locale),
-                    page: (offset / limit + 1) as u64,
-                    per_page: limit as u64,
+                    page: 1,
+                    per_page: limit,
                 },
                 Some(tenant.default_locale.as_str()),
                 request.channel_slug.as_deref(),
@@ -202,6 +204,21 @@ fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
+}
+
+fn storefront_limit(limit: Option<i32>) -> Result<u64> {
+    let limit = limit.unwrap_or(DEFAULT_STOREFRONT_UNREAD_LIMIT as i32);
+    let limit = u64::try_from(limit).map_err(|_| {
+        <FieldError as GraphQLError>::bad_user_input(
+            "Forum storefront unread limit must be positive",
+        )
+    })?;
+    if !(1..=MAX_STOREFRONT_UNREAD_LIMIT).contains(&limit) {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "Forum storefront unread limit must be between 1 and 100",
+        ));
+    }
+    Ok(limit)
 }
 
 fn map_topic(
