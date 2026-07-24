@@ -10,6 +10,7 @@ use serde::Serialize;
 use super::DatasetConfig;
 
 pub const SOURCE_SCHEMA: &str = "idx_bench_source";
+pub const RESULT_DIGEST_CONTRACT: &str = "ordered_length_prefixed_json_v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -274,6 +275,7 @@ mod tests {
     #[test]
     fn read_workloads_keep_canonical_ordering_contracts() {
         let config = smoke_config();
+        assert_eq!(RESULT_DIGEST_CONTRACT, "ordered_length_prefixed_json_v1");
         for workload in source_workloads(&config) {
             let contract = read_workload_contract(workload.name);
             if let Some(marker) = contract.sql_order_marker {
