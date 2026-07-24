@@ -3,11 +3,9 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use sea_orm::ActiveValue::Set;
-#[cfg(test)]
-use sea_orm::TransactionTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
