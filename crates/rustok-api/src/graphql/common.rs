@@ -19,20 +19,18 @@ pub struct PageInfo {
 
 impl PageInfo {
     pub fn new(total: i64, offset: i64, limit: i64) -> Self {
-        let start_cursor = if total > 0 {
-            Some(encode_cursor(offset))
-        } else {
-            None
-        };
-        let end_cursor = if total > 0 {
-            Some(encode_cursor((offset + limit).min(total) - 1))
-        } else {
-            None
-        };
+        let total = total.max(0);
+        let offset = offset.max(0);
+        let limit = limit.max(0);
+        let page_end = offset.saturating_add(limit).min(total);
+        let has_items = limit > 0 && offset < total;
+
+        let start_cursor = has_items.then(|| encode_cursor(offset));
+        let end_cursor = has_items.then(|| encode_cursor(page_end.saturating_sub(1)));
 
         Self {
-            has_next_page: offset + limit < total,
-            has_previous_page: offset > 0,
+            has_next_page: has_items && page_end < total,
+            has_previous_page: total > 0 && offset > 0,
             start_cursor,
             end_cursor,
             total_count: total,
@@ -59,7 +57,9 @@ impl PaginationInput {
 
     pub fn normalize(&self) -> Result<(i64, i64)> {
         if self.first.is_some() && self.last.is_some() {
-            return Err("Provide only one of `first` or `last`".into());
+            return Err(pagination_input_error(
+                "Provide only one of `first` or `last`",
+            ));
         }
 
         let after = self
@@ -98,7 +98,12 @@ impl PaginationInput {
             }
         }
 
-        Ok((offset.max(0), limit))
+        let offset = offset.max(0);
+        offset.checked_add(limit).ok_or_else(|| {
+            pagination_input_error("Pagination offset and limit exceed supported range")
+        })?;
+
+        Ok((offset, limit))
     }
 }
 
@@ -123,8 +128,11 @@ fn decode_pagination_cursor(cursor: &str, argument: &'static str) -> Result<i64>
 }
 
 fn pagination_cursor_error(argument: &'static str) -> Error {
-    Error::new(format!("Invalid `{argument}` pagination cursor"))
-        .extend_with(|_, ext| ext.set("code", "BAD_USER_INPUT"))
+    pagination_input_error(format!("Invalid `{argument}` pagination cursor"))
+}
+
+fn pagination_input_error(message: impl Into<String>) -> Error {
+    Error::new(message.into()).extend_with(|_, ext| ext.set("code", "BAD_USER_INPUT"))
 }
 
 fn module_check_error(source: sea_orm::DbErr) -> Error {
@@ -202,7 +210,10 @@ pub fn resolve_graphql_locale(ctx: &Context<'_>, requested: Option<&str>) -> Str
 
 #[cfg(test)]
 mod tests {
-    use super::{PaginationInput, encode_cursor, module_check_error, resolve_graphql_tenant_id};
+    use super::{
+        PageInfo, PaginationInput, decode_cursor, encode_cursor, module_check_error,
+        resolve_graphql_tenant_id,
+    };
     use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Pos, Schema, Value};
     use sea_orm::DbErr;
     use uuid::Uuid;
@@ -237,6 +248,33 @@ mod tests {
             .extensions
             .as_ref()
             .and_then(|extensions| extensions.get("code"))
+    }
+
+    #[test]
+    fn page_info_avoids_overflow_and_out_of_range_cursors() {
+        let beyond_end = PageInfo::new(10, i64::MAX, 100);
+        assert_eq!(beyond_end.total_count, 10);
+        assert_eq!(beyond_end.start_cursor, None);
+        assert_eq!(beyond_end.end_cursor, None);
+        assert!(!beyond_end.has_next_page);
+        assert!(beyond_end.has_previous_page);
+
+        let near_limit = PageInfo::new(i64::MAX, i64::MAX - 10, 100);
+        assert_eq!(
+            near_limit.start_cursor.as_deref().and_then(decode_cursor),
+            Some(i64::MAX - 10)
+        );
+        assert_eq!(
+            near_limit.end_cursor.as_deref().and_then(decode_cursor),
+            Some(i64::MAX - 1)
+        );
+        assert!(!near_limit.has_next_page);
+        assert!(near_limit.has_previous_page);
+
+        let invalid_total = PageInfo::new(-1, 0, 20);
+        assert_eq!(invalid_total.total_count, 0);
+        assert_eq!(invalid_total.start_cursor, None);
+        assert_eq!(invalid_total.end_cursor, None);
     }
 
     #[test]
@@ -296,6 +334,37 @@ mod tests {
         .expect_err("overflowing cursor must fail");
 
         assert_eq!(error.message, "Invalid `after` pagination cursor");
+        assert_eq!(error_code(&error), Some(&Value::from("BAD_USER_INPUT")));
+    }
+
+    #[test]
+    fn pagination_rejects_offset_limit_overflow() {
+        let error = PaginationInput {
+            offset: i64::MAX,
+            limit: 100,
+            ..Default::default()
+        }
+        .normalize()
+        .expect_err("overflowing page range must fail");
+
+        assert_eq!(
+            error.message,
+            "Pagination offset and limit exceed supported range"
+        );
+        assert_eq!(error_code(&error), Some(&Value::from("BAD_USER_INPUT")));
+    }
+
+    #[test]
+    fn pagination_rejects_conflicting_direction_limits_with_code() {
+        let error = PaginationInput {
+            first: Some(10),
+            last: Some(10),
+            ..Default::default()
+        }
+        .normalize()
+        .expect_err("first and last together must fail");
+
+        assert_eq!(error.message, "Provide only one of `first` or `last`");
         assert_eq!(error_code(&error), Some(&Value::from("BAD_USER_INPUT")));
     }
 
