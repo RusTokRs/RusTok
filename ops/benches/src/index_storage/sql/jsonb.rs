@@ -71,23 +71,28 @@ CREATE INDEX entity_payload_gin
     ON idx_bench_jsonb.entity USING gin (payload jsonb_path_ops);
 CREATE INDEX entity_status
     ON idx_bench_jsonb.entity (
-        tenant_id, entity_name, locale, (payload->>'status'), entity_id
+        tenant_id, locale, (payload->>'status'), entity_id
     )
-    WHERE entity_name = 'product';
+    WHERE module_name = 'product'
+      AND entity_name = 'product'
+      AND schema_version = 1;
 CREATE INDEX entity_price
     ON idx_bench_jsonb.entity (
         tenant_id,
-        entity_name,
         locale,
         ((payload->>'price_minor')::bigint),
         entity_id
     )
-    WHERE entity_name = 'product';
+    WHERE module_name = 'product'
+      AND entity_name = 'product'
+      AND schema_version = 1;
 CREATE INDEX entity_channel_code
     ON idx_bench_jsonb.entity (
-        tenant_id, entity_name, (payload->>'code'), entity_id
+        tenant_id, (payload->>'code'), entity_id, locale
     )
-    WHERE entity_name = 'sales_channel';
+    WHERE module_name = 'channel'
+      AND entity_name = 'sales_channel'
+      AND schema_version = 1;
 "#
     .to_owned()
 }
@@ -102,37 +107,37 @@ pub fn workloads(context: &WorkloadContext) -> Vec<Workload> {
         Workload {
             name: "status_equality",
             sql: format!(
-                "SELECT entity_id FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND entity_name = 'product' AND locale = {locale} AND payload->>'status' = 'published' ORDER BY entity_id LIMIT 100"
+                "SELECT entity_id FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND payload->>'status' = 'published' ORDER BY entity_id LIMIT 100"
             ),
         },
         Workload {
             name: "price_range_sort",
             sql: format!(
-                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND entity_name = 'product' AND locale = {locale} AND (payload->>'price_minor')::bigint BETWEEN 20000 AND 80000 ORDER BY (payload->>'price_minor')::bigint, entity_id LIMIT 100"
+                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND (payload->>'price_minor')::bigint BETWEEN 20000 AND 80000 ORDER BY (payload->>'price_minor')::bigint, entity_id LIMIT 100"
             ),
         },
         Workload {
             name: "multi_value_tag",
             sql: format!(
-                "SELECT entity_id FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND entity_name = 'product' AND locale = {locale} AND payload @> '{{\"tags\":[\"tag-3\"]}}'::jsonb ORDER BY entity_id LIMIT 100"
+                "SELECT entity_id FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND payload @> '{{\"tags\":[\"tag-3\"]}}'::jsonb ORDER BY entity_id LIMIT 100"
             ),
         },
         Workload {
             name: "two_hop_channel_filter",
             sql: format!(
-                "SELECT DISTINCT product.entity_id AS entity_id FROM idx_bench_jsonb.entity AS product JOIN idx_bench_jsonb.link AS product_variant ON product_variant.tenant_id = product.tenant_id AND product_variant.source_entity = 'product' AND product_variant.source_entity_id = product.entity_id AND product_variant.source_locale = product.locale AND product_variant.link_name = 'variants' AND product_variant.target_entity = 'variant' JOIN idx_bench_jsonb.link AS variant_channel ON variant_channel.tenant_id = product_variant.tenant_id AND variant_channel.source_entity = 'variant' AND variant_channel.source_entity_id = product_variant.target_entity_id AND variant_channel.source_locale = product_variant.target_locale AND variant_channel.link_name = 'sales_channels' AND variant_channel.target_entity = 'sales_channel' JOIN idx_bench_jsonb.entity AS channel ON channel.tenant_id = variant_channel.tenant_id AND channel.entity_name = 'sales_channel' AND channel.entity_id = variant_channel.target_entity_id AND channel.locale = variant_channel.target_locale WHERE product.tenant_id = {tenant} AND product.entity_name = 'product' AND product.locale = {locale} AND channel.payload->>'code' = 'channel-1' ORDER BY entity_id LIMIT 100"
+                "SELECT DISTINCT product.entity_id AS entity_id FROM idx_bench_jsonb.entity AS product JOIN idx_bench_jsonb.link AS product_variant ON product_variant.tenant_id = product.tenant_id AND product_variant.source_entity = 'product' AND product_variant.source_entity_id = product.entity_id AND product_variant.source_locale = product.locale AND product_variant.link_name = 'variants' AND product_variant.target_entity = 'variant' JOIN idx_bench_jsonb.link AS variant_channel ON variant_channel.tenant_id = product_variant.tenant_id AND variant_channel.source_entity = 'variant' AND variant_channel.source_entity_id = product_variant.target_entity_id AND variant_channel.source_locale = product_variant.target_locale AND variant_channel.link_name = 'sales_channels' AND variant_channel.target_entity = 'sales_channel' JOIN idx_bench_jsonb.entity AS channel ON channel.tenant_id = variant_channel.tenant_id AND channel.module_name = 'channel' AND channel.entity_name = 'sales_channel' AND channel.schema_version = 1 AND channel.entity_id = variant_channel.target_entity_id AND channel.locale = variant_channel.target_locale WHERE product.tenant_id = {tenant} AND product.module_name = 'product' AND product.entity_name = 'product' AND product.schema_version = 1 AND product.locale = {locale} AND channel.payload->>'code' = 'channel-1' ORDER BY entity_id LIMIT 100"
             ),
         },
         Workload {
             name: "keyset_page",
             sql: format!(
-                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND entity_name = 'product' AND locale = {locale} AND ((payload->>'price_minor')::bigint, entity_id) > ({anchor_price}, {anchor_id}) ORDER BY (payload->>'price_minor')::bigint, entity_id LIMIT 100"
+                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND ((payload->>'price_minor')::bigint, entity_id) > ({anchor_price}, {anchor_id}) ORDER BY (payload->>'price_minor')::bigint, entity_id LIMIT 100"
             ),
         },
         Workload {
             name: "exact_count",
             sql: format!(
-                "SELECT count(*)::bigint AS result_count FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND entity_name = 'product' AND locale = {locale} AND payload->>'status' = 'published'"
+                "SELECT count(*)::bigint AS result_count FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND payload->>'status' = 'published'"
             ),
         },
     ]
@@ -148,14 +153,14 @@ pub fn mutation_workloads(context: &WorkloadContext) -> Vec<MutationWorkload> {
         MutationWorkload {
             name: "update_product_batch",
             sql: format!(
-                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), updated AS (UPDATE idx_bench_jsonb.entity AS entity SET source_version = entity.source_version + 1, payload = jsonb_set(jsonb_set(entity.payload, '{{price_minor}}', to_jsonb((entity.payload->>'price_minor')::bigint + 17), false), '{{rating_milli}}', to_jsonb((entity.payload->>'rating_milli')::bigint + 1), false) FROM targets WHERE entity.tenant_id = {tenant} AND entity.entity_name = 'product' AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id) SELECT count(*)::bigint AS affected_entities FROM updated"
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), updated AS (UPDATE idx_bench_jsonb.entity AS entity SET source_version = entity.source_version + 1, payload = jsonb_set(jsonb_set(entity.payload, '{{price_minor}}', to_jsonb((entity.payload->>'price_minor')::bigint + 17), false), '{{rating_milli}}', to_jsonb((entity.payload->>'rating_milli')::bigint + 1), false) FROM targets WHERE entity.tenant_id = {tenant} AND entity.module_name = 'product' AND entity.entity_name = 'product' AND entity.schema_version = 1 AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id) SELECT count(*)::bigint AS affected_entities FROM updated"
             ),
             expected_affected_entities: i64::from(batch),
         },
         MutationWorkload {
             name: "delete_product_batch",
             sql: format!(
-                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), deleted_links AS (DELETE FROM idx_bench_jsonb.link AS link USING targets WHERE link.tenant_id = {tenant} AND link.source_entity = 'product' AND link.source_locale = {locale} AND link.source_entity_id = targets.product_id RETURNING 1), deleted_entities AS (DELETE FROM idx_bench_jsonb.entity AS entity USING targets WHERE entity.tenant_id = {tenant} AND entity.entity_name = 'product' AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id) SELECT (SELECT count(*) FROM deleted_entities)::bigint AS affected_entities, (SELECT count(*) FROM deleted_links)::bigint AS affected_links, {deleted_links}::bigint AS expected_links"
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), deleted_links AS (DELETE FROM idx_bench_jsonb.link AS link USING targets WHERE link.tenant_id = {tenant} AND link.source_entity = 'product' AND link.source_locale = {locale} AND link.source_entity_id = targets.product_id RETURNING 1), deleted_entities AS (DELETE FROM idx_bench_jsonb.entity AS entity USING targets WHERE entity.tenant_id = {tenant} AND entity.module_name = 'product' AND entity.entity_name = 'product' AND entity.schema_version = 1 AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id) SELECT (SELECT count(*) FROM deleted_entities)::bigint AS affected_entities, (SELECT count(*) FROM deleted_links)::bigint AS affected_links, {deleted_links}::bigint AS expected_links"
             ),
             expected_affected_entities: i64::from(batch),
         },
