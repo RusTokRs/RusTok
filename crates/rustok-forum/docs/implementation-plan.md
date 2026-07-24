@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-22
+last_reviewed: 2026-07-24
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -212,7 +212,7 @@ at the end of this file remain authoritative.
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
-| `FORUM-16` | `planned` | Durable read tracking and unread projections. |
+| `FORUM-16` | `in_progress` | FORUM-16A adds tenant-scoped monotonic topic read position/revision persistence and authenticated owner commands; unread projections, filters and bounded category/all-read commands remain. |
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
@@ -824,7 +824,7 @@ propagate without stale identity becoming authoritative.
 
 ## `FORUM-16` — read tracking and unread state
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P1  
 **Dependencies:** FORUM-07/10
 
@@ -838,11 +838,50 @@ Use `GREATEST(existing, incoming)` or equivalent compare-and-set semantics.
 Anonymous page views do not create read rows. Cache and realtime updates may
 accelerate the badge but database position/revision remains canonical.
 
+### Delivered in `FORUM-16A`
+
+- PostgreSQL and SQLite add `forum_topic_read_states` keyed by tenant, topic and
+  user, with a tenant-composite topic foreign key, nonnegative high-water marks
+  and database triggers that reject direct position or revision regression;
+- `ForumTopicReadStateService` exposes authenticated owner get/mark operations,
+  while anonymous reads return an implicit zero state and anonymous marks fail
+  without creating persistence;
+- mark validates the incoming position against the latest approved reply and the
+  incoming revision against the latest topic revision before independently
+  advancing both high-water marks through insert-or-no-op and conditional owner
+  updates in one transaction;
+- stale devices become no-ops instead of moving either cursor backwards, and a
+  SQLite owner scenario covers future-bound rejection plus the direct database
+  regression guard.
+
+### Compatibility and degraded mode
+
+No backfill is required: an absent row means position/revision zero. Existing
+Forum reads and commands remain source-compatible, and no transport or UI is
+opened in this slice. Cache and realtime accelerators remain optional and never
+replace the database owner state.
+
+### Remaining scope
+
+- join bounded topic projections with last-read position/revision, canonical
+  unread counts and unread filters that exclude hidden or deleted replies;
+- add bounded, resumable mark-category-read and mark-all-read owner commands;
+- expose verified REST/GraphQL/storefront integration only after the projection
+  contract is stable;
+- add PostgreSQL and concurrent-device execution evidence.
+
 ### Definition of done
 
 Concurrent devices cannot move read state backwards, deleted/hidden replies do
 not inflate unread counts, and category/all-read commands are resumable and
 bounded.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
+cargo xtask module validate forum
+```
 
 ## `FORUM-17` — drafts, autosave and bookmarks
 
@@ -1632,6 +1671,7 @@ cargo test -p rustok-forum quote_command
 cargo test -p rustok-forum inline_quote
 cargo test -p rustok-forum --test mention_quote_runtime_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1696,7 +1736,7 @@ Recommended next slices:
 7. `FORUM-14`: attachment relations and upload sessions;
 8. `FORUM-15`: batched member/avatar projection;
 9. `LINK-FORUM-02`: profiles/media runtime proof;
-10. `FORUM-16`: read/unread state;
+10. finish `FORUM-16` unread projections, filters and bounded bulk mark-read;
 11. `FORUM-19`: reports/moderation/restrictions;
 12. `FORUM-20`: ACL and visibility policy;
 13. `FORUM-23`: index projections;
