@@ -120,15 +120,15 @@ impl ForumTopicReadStateService {
             )));
         }
 
-        let now = Utc::now();
+        let now: sea_orm::prelude::DateTimeWithTimeZone = Utc::now().into();
         forum_topic_read_state::Entity::insert(forum_topic_read_state::ActiveModel {
             tenant_id: Set(tenant_id),
             topic_id: Set(topic.id),
             user_id: Set(user_id),
             last_read_position: Set(input.last_read_position),
             last_read_revision: Set(input.last_read_revision),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
+            created_at: Set(now.clone()),
+            updated_at: Set(now.clone()),
         })
         .on_conflict(
             OnConflict::columns([
@@ -151,7 +151,7 @@ impl ForumTopicReadStateService {
             )
             .set(forum_topic_read_state::ActiveModel {
                 last_read_position: Set(input.last_read_position),
-                updated_at: Set(now.into()),
+                updated_at: Set(now.clone()),
                 ..Default::default()
             })
             .exec(&txn)
@@ -166,7 +166,7 @@ impl ForumTopicReadStateService {
             )
             .set(forum_topic_read_state::ActiveModel {
                 last_read_revision: Set(input.last_read_revision),
-                updated_at: Set(now.into()),
+                updated_at: Set(now),
                 ..Default::default()
             })
             .exec(&txn)
