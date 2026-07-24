@@ -24,8 +24,8 @@ const usage = () => {
   node scripts/verify/index-storage-tooling.mjs verify-adr --comparison <comparison.json> --decision <decision.json> --adr <adr.md>
 
 Commands:
-  contract  Run static Index boundary, source-oracle/evidence, and ADR tooling guards.
-  fixtures  Run comparator, read-ordering, decision preparation/finalization, and ADR renderer fixture suites.
+  contract  Run static Index boundary, source-oracle/evidence, standalone-tool, and ADR guards.
+  fixtures  Run standalone, comparator, read-ordering, decision preparation/finalization, and ADR renderer fixture suites.
   packet    Validate one smoke, 100k, or 1m evidence packet through terminal-ordering preflight and the canonical validator.
   compare   Generate a cross-scale comparison after terminal-ordering preflight for every input packet.
   hash      Print the SHA-256 digest of the exact comparison.json bytes.
@@ -55,6 +55,7 @@ const runContract = (args) => {
     'verify-index-fba.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
+    'verify-index-storage-standalone-tools.mjs',
     'verify-index-storage-adr-tooling.mjs',
     'verify-index-storage-adr-integrity.mjs',
   ]) {
@@ -67,6 +68,7 @@ const runFixtures = (args) => {
   runNode([
     '--test',
     scriptPath('check-index-storage-read-ordering.test.mjs'),
+    scriptPath('index-storage-standalone-tools.test.mjs'),
     scriptPath('compare-index-storage-evidence.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
     scriptPath('index-storage-decision-tooling.test.mjs'),
