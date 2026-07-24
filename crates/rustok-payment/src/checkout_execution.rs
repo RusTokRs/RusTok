@@ -34,4 +34,5 @@ include!("checkout_execution/prepare_authorize.rs");
 include!("checkout_execution/capture_provider.rs");
 include!("checkout_execution/provider_helpers.rs");
 include!("checkout_execution/port_impl.rs");
-include!("checkout_execution/validation.rs");
+include!("checkout_execution/validation_identity.rs");
+include!("checkout_execution/validation_errors.rs");
