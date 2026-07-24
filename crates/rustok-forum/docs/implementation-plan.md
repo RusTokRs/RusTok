@@ -212,7 +212,7 @@ at the end of this file remain authoritative.
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
-| `FORUM-16` | `in_progress` | FORUM-16A/B add tenant-scoped monotonic topic read state, authenticated owner commands and a bounded unread topic projection/filter; bulk category/all-read commands, transports and PostgreSQL concurrency evidence remain. |
+| `FORUM-16` | `in_progress` | FORUM-16A-C add tenant-scoped monotonic topic read state, bounded unread projections and resumable category-subtree/all-read owner commands; transports and PostgreSQL concurrency/query-plan evidence remain. |
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
@@ -870,20 +870,41 @@ accelerate the badge but database position/revision remains canonical.
   predicate, and the SQLite scenario covers visibility changes plus two-page
   unread cursor behavior without N+1 reply reads.
 
+### Delivered in `FORUM-16C`
+
+- `ForumTopicReadStateService::mark_category_read` marks a root category and its
+  current descendant subtree, while `mark_all_read` covers the tenant scope;
+- each command processes at most 100 topics in one transaction and returns an
+  exact `(snapshot_at, created_at, topic_id)` continuation cursor bound to the
+  tenant, authenticated user and command scope;
+- the first page fixes the topic-creation snapshot, so topics created later are
+  excluded from that operation and picked up by a subsequent idempotent pass;
+- category traversal reuses the existing 512-node owner bound and fails closed
+  for an oversized, missing or cyclic tenant tree;
+- one aggregate query per bounded page resolves the latest approved-reply
+  position and latest immutable topic revision before monotonic owner upserts;
+- equal non-stale high-water marks refresh the read snapshot so a late moderator
+  approval below an already-read position can be acknowledged, while stale lower
+  markers cannot regress state or refresh the snapshot;
+- SQLite owner scenarios cover subtree pagination, snapshot exclusion, cursor
+  scope isolation, tenant-wide replay, bounds, anonymous rejection and late
+  approval acknowledgement.
+
 ### Compatibility and degraded mode
 
-No backfill is required: an absent row means position/revision zero and also
-preserves unseen-topic identity. Existing Forum topic reads and commands remain
-source-compatible. The unread projection is an additive authenticated owner
-contract and is not wired to REST, GraphQL, storefront or realtime in this
-slice. Cache and realtime accelerators remain optional and never replace the
-database owner state.
+No migration or backfill is required: an absent row means position/revision zero
+and preserves unseen-topic identity. Existing Forum topic reads and commands
+remain source-compatible. The unread projection and bulk commands are additive
+authenticated owner contracts and are not wired to REST, GraphQL, storefront or
+realtime in this slice. Category membership is revalidated on every resumed page;
+a subsequent idempotent pass converges after a concurrent category move. Cache
+and realtime accelerators remain optional and never replace database owner state.
 
 ### Remaining scope
 
-- add bounded, resumable mark-category-read and mark-all-read owner commands;
-- expose the stable owner projection through verified REST/GraphQL/storefront
-  integration without duplicating unread policy in transports;
+- expose the stable owner projection and topic/category/all-read commands through
+  verified REST/GraphQL/storefront integration without duplicating unread policy
+  in transports;
 - add PostgreSQL aggregate/concurrent-device execution evidence and query-plan
   evidence for production-sized topic/reply histories.
 
@@ -898,6 +919,7 @@ bounded.
 ```bash
 cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
 cargo xtask module validate forum
 ```
 
@@ -1691,6 +1713,7 @@ cargo test -p rustok-forum --test mention_quote_runtime_postgres -- --nocapture 
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1755,8 +1778,8 @@ Recommended next slices:
 7. `FORUM-14`: attachment relations and upload sessions;
 8. `FORUM-15`: batched member/avatar projection;
 9. `LINK-FORUM-02`: profiles/media runtime proof;
-10. finish `FORUM-16` bounded category/all-read commands, transport composition
-    and PostgreSQL concurrency/query-plan evidence;
+10. finish `FORUM-16` transport composition and PostgreSQL concurrency/query-plan
+    evidence;
 11. `FORUM-19`: reports/moderation/restrictions;
 12. `FORUM-20`: ACL and visibility policy;
 13. `FORUM-23`: index projections;

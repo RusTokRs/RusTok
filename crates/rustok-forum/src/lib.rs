@@ -33,8 +33,9 @@ pub use mentions::*;
 pub use services::{
     CategoryService, ForumEventService, ForumQuoteCommandService, ForumReadModelService,
     ForumRelationReadService, ForumTopicReadState, ForumTopicReadStateService,
-    ForumWidgetContractService, MarkForumTopicReadInput, ModerationService, ReplyService,
-    RevisionService, SubscriptionService, TopicService, UserStatsService, VoteService,
+    ForumWidgetContractService, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
+    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
+    SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};

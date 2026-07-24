@@ -58,6 +58,7 @@ pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use read_tracking::{
     ForumTopicReadState, ForumTopicReadStateService, MarkForumTopicReadInput,
+    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
 };
 pub use relation_read::ForumRelationReadService;
 pub use reply_facade::ReplyService;
