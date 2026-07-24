@@ -23,7 +23,6 @@ use crate::{
     PaymentProviderOperationJournal, PaymentService,
 };
 
-const UNKNOWN_PROVIDER_ID: &str = "payment-provider";
 const PREPARE_CHECKOUT_COLLECTION_OPERATION: &str = "prepare_checkout_collection";
 const AUTHORIZE_CHECKOUT_COLLECTION_OPERATION: &str = "authorize_checkout_collection";
 const CAPTURE_CHECKOUT_COLLECTION_OPERATION: &str = "capture_checkout_collection";
