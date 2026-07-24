@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "slice": "FORUM-12E/NOTIFY-03B-03H/NOTIFY-07C",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner": "rustok-forum",
+  "forum_source_provider": "crates/rustok-forum/src/notification_source.rs",
+  "notifications_candidate_service": "crates/rustok-notifications/src/candidate.rs",
+  "notifications_candidate_contract": "crates/rustok-notifications/contracts/notifications-candidate-policy.json",
+  "recipient_policy_runtime": "apps/server/src/services/notification_recipient_policy.rs",
+  "social_graph_policy_contract": "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
+  "delivered_invariants": {
+    "forum_source": [
+      "only an exact immutable forum_user_mentions relation can describe or resolve a user-mention event",
+      "topic/reply publication and lifecycle visibility are rechecked while describing and resolving the candidate",
+      "self mentions resolve to an empty audience",
+      "user mention fan-out is bounded to one exact recipient",
+      "target-open authorization is rechecked before final notification creation",
+      "target routes remain UUID-based until FORUM-24"
+    ],
+    "recipient_privacy": [
+      "profile availability/privacy is evaluated before final notification creation",
+      "block in either direction suppresses the candidate",
+      "recipient-to-actor mute suppresses the candidate",
+      "privacy provider failures retain retryability instead of allowing delivery"
+    ],
+    "final_notification": [
+      "preference policy is checked before privacy evaluation and rechecked in the final transaction",
+      "final notification identity is unique by tenant, recipient, source, source event and notification type",
+      "semantic replay must match source revision, target, actor, priority, template and template data",
+      "candidate completion and final notification persistence commit in one transaction"
+    ],
+    "degraded_mode": [
+      "Forum owner commands and mention event publication remain independent from Notifications",
+      "an unavailable source provider or privacy dependency is retryable rather than allow-all",
+      "the candidate worker remains disabled by default until operational evidence exists"
+    ]
+  },
+  "execution_status": "source_locked_pending_maintainer_execution",
+  "deferred": [
+    "successful PostgreSQL mention/quote runtime proof",
+    "bounded moderator audience expansion for forum.mention.audience_added",
+    "candidate worker default enablement after health and lag evidence",
+    "recipient privacy and source authorization recheck on inbox open",
+    "recipient privacy and source authorization recheck before delayed channel delivery",
+    "retention purge and reconciliation evidence"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-forum-mention-notification-integration.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
