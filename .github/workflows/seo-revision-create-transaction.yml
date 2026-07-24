@@ -8,10 +8,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: seo-revision-create-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   apply-patch:
     if: github.head_ref == 'agent/seo-revision-create-transaction' && github.actor != 'github-actions[bot]'
