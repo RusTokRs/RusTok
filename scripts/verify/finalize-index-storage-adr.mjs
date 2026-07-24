@@ -18,6 +18,20 @@ import { fileURLToPath } from 'node:url';
 const prefix = '[finalize-index-storage-adr]';
 const placeholderPrefix = 'TODO(index-storage-decision):';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const requiredDecisionKeys = [
+  'status',
+  'decision_date',
+  'owner',
+  'comparison_commit',
+  'comparison_sha256',
+  'selected_prototype',
+  'selection_rationale',
+  'rejection_rationales',
+  'operational_tradeoffs',
+  'migration_strategy',
+  'rollback_strategy',
+];
+const allowedDecisionKeys = new Set(['$schema', ...requiredDecisionKeys]);
 
 const fail = (message) => {
   throw new Error(message);
@@ -69,6 +83,22 @@ const readJsonBytes = (filename, label) => {
   }
 };
 
+const requireDecisionEnvelope = (decision) => {
+  if (!decision || typeof decision !== 'object' || Array.isArray(decision)) {
+    fail('decision must be an object');
+  }
+  for (const key of requiredDecisionKeys) {
+    if (!Object.hasOwn(decision, key)) fail(`decision is missing required field ${key}`);
+  }
+  for (const key of Object.keys(decision)) {
+    if (!allowedDecisionKeys.has(key)) fail(`decision contains unsupported field ${key}`);
+  }
+  if (Object.hasOwn(decision, '$schema')
+      && decision.$schema !== './storage-decision.schema.json') {
+    fail('decision.$schema must reference ./storage-decision.schema.json when present');
+  }
+};
+
 const requireDecisionText = (value, label) => {
   if (typeof value !== 'string' || value.trim().length === 0) return;
   if (value.trim().startsWith(placeholderPrefix)) {
@@ -77,9 +107,6 @@ const requireDecisionText = (value, label) => {
 };
 
 const rejectPlaceholders = (decision) => {
-  if (!decision || typeof decision !== 'object' || Array.isArray(decision)) {
-    fail('decision must be an object');
-  }
   for (const field of [
     'selection_rationale',
     'operational_tradeoffs',
@@ -120,6 +147,7 @@ const main = () => {
 
   const comparison = readJsonBytes(args.comparison, 'comparison');
   const decision = readJsonBytes(args.decision, 'decision');
+  requireDecisionEnvelope(decision.value);
   rejectPlaceholders(decision.value);
 
   const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-'));
