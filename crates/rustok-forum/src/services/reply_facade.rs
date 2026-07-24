@@ -1,6 +1,7 @@
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
@@ -12,20 +13,24 @@ use crate::entities::forum_reply;
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
+use super::rbac::enforce_scope;
 use super::reply_owner;
+use super::topic_visibility::ForumTopicVisibilityService;
 
 /// Public reply owner facade.
 ///
 /// The facade exposes only explicit domain operations. Persistence helpers stay
 /// crate-private and the public type never dereferences into the raw service.
 pub struct ReplyService {
+    db: DatabaseConnection,
     inner: reply_owner::ReplyService,
 }
 
 impl ReplyService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            inner: reply_owner::ReplyService::new(db, event_bus),
+            inner: reply_owner::ReplyService::new(db.clone(), event_bus),
+            db,
         }
     }
 
@@ -61,11 +66,8 @@ impl ReplyService {
         reply_id: Uuid,
         locale: &str,
     ) -> ForumResult<ReplyResponse> {
-        let response = self
-            .inner
-            .get(tenant_id, security, reply_id, locale)
-            .await?;
-        require_localized_reply_response(response)
+        self.get_with_locale_fallback(tenant_id, security, reply_id, locale, None)
+            .await
     }
 
     pub async fn get_with_locale_fallback(
@@ -76,6 +78,14 @@ impl ReplyService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<ReplyResponse> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
+        let reply = self.inner.find_reply(tenant_id, reply_id).await?;
+        if !self
+            .topic_category_is_visible(tenant_id, reply.topic_id, &security)
+            .await?
+        {
+            return Err(ForumError::ReplyNotFound(reply_id));
+        }
         let response = self
             .inner
             .get_with_locale_fallback(tenant_id, security, reply_id, locale, fallback_locale)
@@ -124,11 +134,8 @@ impl ReplyService {
         topic_id: Uuid,
         filter: ListRepliesFilter,
     ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
-        let page = self
-            .inner
-            .list_for_topic(tenant_id, security, topic_id, filter)
-            .await?;
-        require_localized_reply_list_page(page)
+        self.list_for_topic_with_locale_fallback(tenant_id, security, topic_id, filter, None)
+            .await
     }
 
     pub async fn list_for_topic_with_locale_fallback(
@@ -139,6 +146,13 @@ impl ReplyService {
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
+        if !self
+            .topic_category_is_visible(tenant_id, topic_id, &security)
+            .await?
+        {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
         let page = self
             .inner
             .list_for_topic_with_locale_fallback(
@@ -160,17 +174,15 @@ impl ReplyService {
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
-        let page = self
-            .inner
-            .list_response_for_topic_with_locale_fallback(
-                tenant_id,
-                security,
-                topic_id,
-                filter,
-                fallback_locale,
-            )
-            .await?;
-        require_localized_reply_response_page(page)
+        self.list_response_for_topic_by_statuses_with_locale_fallback(
+            tenant_id,
+            security,
+            topic_id,
+            filter,
+            fallback_locale,
+            None,
+        )
+        .await
     }
 
     pub async fn list_response_for_topic_by_statuses_with_locale_fallback(
@@ -182,6 +194,13 @@ impl ReplyService {
         fallback_locale: Option<&str>,
         statuses: Option<&[ReplyStatus]>,
     ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
+        if !self
+            .topic_category_is_visible(tenant_id, topic_id, &security)
+            .await?
+        {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
         let page = self
             .inner
             .list_response_for_topic_by_statuses_with_locale_fallback(
@@ -194,6 +213,21 @@ impl ReplyService {
             )
             .await?;
         require_localized_reply_response_page(page)
+    }
+
+    async fn topic_category_is_visible(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: &SecurityContext,
+    ) -> ForumResult<bool> {
+        ForumTopicVisibilityService::new(self.db.clone())
+            .is_topic_category_visible_to_viewer(
+                tenant_id,
+                topic_id,
+                !security.is_public_read(),
+            )
+            .await
     }
 
     pub(crate) async fn find_reply(
