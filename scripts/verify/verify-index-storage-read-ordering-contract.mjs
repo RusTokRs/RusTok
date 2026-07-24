@@ -10,6 +10,7 @@ const fail = (message) => {
 };
 
 const benchmarkModule = read('ops/benches/src/index_storage/mod.rs');
+const benchmarkBinary = read('ops/benches/src/bin/index_storage_benchmark.rs');
 const connection = read('ops/benches/src/index_storage/connection.rs');
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
@@ -45,11 +46,18 @@ requireMarkers(connection, 'benchmark session contract', [
 
 requireMarkers(benchmarkModule, 'benchmark report writer', [
   'BENCHMARK_SESSION_METADATA',
-  'fn write_report_with_session_metadata',
+  'pub fn write_report_with_session_metadata',
   'serde_json::to_value(report)',
   'database.insert(field.to_owned(), Value::String(setting_value.to_owned()))',
   'write_report_with_session_metadata(&config.output_path, &report)?',
 ]);
+requireMarkers(benchmarkBinary, 'read evidence executable', [
+  'write_report_with_session_metadata',
+  'write_report_with_session_metadata(&config.output_path, &report)?',
+]);
+if (benchmarkBinary.includes('write_report(&config.output_path, &report)?')) {
+  fail('read evidence executable bypasses deterministic session metadata serialization');
+}
 
 requireMarkers(preflight, 'read ordering preflight', [
   "const canonicalPrototypes = ['jsonb', 'typed_eav', 'hot_projection']",
@@ -198,4 +206,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] deterministic PostgreSQL session metadata, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] deterministic PostgreSQL session metadata, session-aware evidence entrypoint, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
