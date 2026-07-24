@@ -41,6 +41,31 @@ pub struct TopicCursorQuery {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+pub struct TopicUnreadCursorQuery {
+    pub cursor: Option<String>,
+    pub limit: Option<u64>,
+    pub category_id: Option<Uuid>,
+    pub status: Option<TopicStatus>,
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    #[serde(default)]
+    pub unread_only: bool,
+}
+
+impl TopicUnreadCursorQuery {
+    pub fn topic_query(&self) -> TopicCursorQuery {
+        TopicCursorQuery {
+            cursor: self.cursor.clone(),
+            limit: self.limit,
+            category_id: self.category_id,
+            status: self.status,
+            locale: self.locale.clone(),
+            fallback_locale: self.fallback_locale.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct ReplyCursorQuery {
     pub cursor: Option<String>,
     pub limit: Option<u64>,
@@ -91,6 +116,17 @@ pub struct TopicReadModel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TopicUnreadReadModel {
+    pub topic: TopicReadModel,
+    pub read_state_explicit: bool,
+    pub last_read_position: i64,
+    pub last_read_revision: i64,
+    pub unread_count: i64,
+    pub has_unread_topic_revision: bool,
+    pub is_unread: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ReplyReadModel {
     pub id: Uuid,
     pub topic_id: Uuid,
@@ -119,6 +155,13 @@ pub struct CategoryCursorPage {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TopicCursorPage {
     pub items: Vec<TopicReadModel>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TopicUnreadCursorPage {
+    pub items: Vec<TopicUnreadReadModel>,
     pub next_cursor: Option<String>,
     pub has_more: bool,
 }
