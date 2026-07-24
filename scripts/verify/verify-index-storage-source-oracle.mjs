@@ -28,7 +28,7 @@ const readWorkloads = [
   'exact_count',
 ];
 
-for (const marker of ['mod explain;', 'source_workloads']) {
+for (const marker of ['mod explain;', 'source_workloads', 'read_workload_contract']) {
   if (!benchmarkModule.includes(marker)) fail(`benchmark module missing ${marker}`);
 }
 for (const marker of [
@@ -68,8 +68,14 @@ for (const workload of readWorkloads) {
 for (const marker of [
   'pub fn source_workloads(config: &DatasetConfig) -> Vec<Workload>',
   'source::workloads(&WorkloadContext::new(config))',
+  'pub(crate) fn read_workload_contract',
+  'digest_order_by',
+  'sql_order_marker',
+  'assert_read_workload_contract',
+  'ORDER BY entity_id LIMIT 100',
+  'ORDER BY price_minor, entity_id LIMIT 100',
 ]) {
-  if (!sqlModule.includes(marker)) fail(`SQL module missing source oracle export ${marker}`);
+  if (!sqlModule.includes(marker)) fail(`SQL module missing read ordering contract ${marker}`);
 }
 
 for (const marker of [
@@ -77,6 +83,10 @@ for (const marker of [
   'run_source_workloads(&db, &config.dataset)',
   'validate_semantic_parity(&source_workload_reports, &prototypes)',
   'parse_read_explain_metrics(&plan)',
+  'read_workload_contract(workload_name).digest_order_by',
+  'ORDER BY {order_by}',
+  'result_json.len()',
+  'SELECT md5($1::text) AS result_digest',
   'pub planning_time_ms: f64',
   'pub execution_time_ms: f64',
   'pub shared_hit_blocks: u64',
@@ -84,6 +94,12 @@ for (const marker of [
   'differs from source oracle',
 ]) {
   if (!runner.includes(marker)) fail(`read runner missing evidence contract ${marker}`);
+}
+for (const legacy of [
+  "string_agg(row_to_json(result)::text, '|'",
+  'ORDER BY row_to_json(result)::text',
+]) {
+  if (runner.includes(legacy)) fail(`read runner restored unordered/set-like digest: ${legacy}`);
 }
 for (const marker of [
   'parse_mutation_explain_metrics(&plan)',
@@ -168,4 +184,4 @@ for (const marker of [
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle and complete evidence metrics are statically guarded');
+console.log('[verify-index-storage-source-oracle] source oracle, ordered digests, and complete evidence metrics are statically guarded');
