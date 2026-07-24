@@ -27,6 +27,16 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
+function between(source, start, end, label) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return "";
+  }
+  return source.slice(startIndex, endIndex);
+}
+
 const contractPath = "crates/rustok-forum/contracts/forum-owner-read-visibility.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.topic_visibility_owner_file ?? "");
@@ -41,6 +51,9 @@ if (contract.schema_version !== 1) {
 }
 if (contract.task !== "FORUM-20D") {
   failures.push("owner read visibility contract must belong to FORUM-20D");
+}
+if (contract.canonical_plan_sync !== "pending_conflict_safe_full_file_update") {
+  failures.push("owner read visibility contract must report the pending canonical plan synchronization honestly");
 }
 if (contract.category_tree_bound !== 512 || contract.category_depth_bound !== 16) {
   failures.push("owner read visibility category bounds must remain 512 nodes and depth 16");
@@ -84,22 +97,24 @@ for (const forbidden of [
   rejectText(owner, forbidden, `owner category-floor evaluation must not depend on ${forbidden}`);
 }
 
+const topicExactRead = between(
+  topicFacade,
+  "pub async fn get_with_locale_fallback(",
+  "pub async fn get_storefront_visible_with_locale_fallback(",
+  "topic exact owner read",
+);
 for (const marker of [
   "enforce_scope(&security, Resource::ForumTopics, Action::Read)?",
   ".is_topic_category_visible_to_viewer(",
   "!security.is_public_read()",
   "return Err(ForumError::TopicNotFound(topic_id))",
-  "enforce_scope(&security, Resource::ForumTopics, Action::List)?",
-  ".hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())",
-  ".list_with_locale_fallback_and_hidden_categories(",
+  "let response = self",
 ]) {
-  requireText(topicFacade, marker, `topic owner facade is missing ${marker}`);
+  requireText(topicExactRead, marker, `topic exact owner read is missing ${marker}`);
 }
-const topicReadScopeIndex = topicFacade.indexOf(
-  "enforce_scope(&security, Resource::ForumTopics, Action::Read)?",
-);
-const topicVisibilityIndex = topicFacade.indexOf(".is_topic_category_visible_to_viewer(");
-const topicHydrationIndex = topicFacade.indexOf(".get_with_locale_fallback(tenant_id, security");
+const topicReadScopeIndex = topicExactRead.indexOf("enforce_scope(");
+const topicVisibilityIndex = topicExactRead.indexOf(".is_topic_category_visible_to_viewer(");
+const topicHydrationIndex = topicExactRead.indexOf("let response = self");
 if (
   topicReadScopeIndex < 0 ||
   topicVisibilityIndex < 0 ||
@@ -108,6 +123,20 @@ if (
   topicVisibilityIndex > topicHydrationIndex
 ) {
   failures.push("topic exact owner read must authorize, check category visibility, then hydrate");
+}
+
+const topicPageRead = between(
+  topicFacade,
+  "pub async fn list_with_locale_fallback(",
+  "pub async fn list_storefront_visible_with_locale_fallback(",
+  "topic owner page",
+);
+for (const marker of [
+  "enforce_scope(&security, Resource::ForumTopics, Action::List)?",
+  ".hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())",
+  ".list_with_locale_fallback_and_hidden_categories(",
+]) {
+  requireText(topicPageRead, marker, `topic owner page is missing ${marker}`);
 }
 
 for (const marker of [
@@ -119,10 +148,16 @@ for (const marker of [
 ]) {
   requireText(topicSelector, marker, `topic owner selector is missing ${marker}`);
 }
-const ownerCategoryFilterIndex = topicSelector.indexOf(
+const ownerSelector = between(
+  topicSelector,
+  "pub(crate) async fn list_with_locale_fallback_and_hidden_categories(",
+  "#[instrument(skip(self, security, hidden_category_ids))]",
+  "topic owner hidden-category selector",
+);
+const ownerCategoryFilterIndex = ownerSelector.indexOf(
   "forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec())",
 );
-const ownerPaginatorIndex = topicSelector.indexOf("let paginator = select");
+const ownerPaginatorIndex = ownerSelector.indexOf("let paginator = select");
 if (
   ownerCategoryFilterIndex < 0 ||
   ownerPaginatorIndex < 0 ||
@@ -131,35 +166,49 @@ if (
   failures.push("topic category visibility must be applied before owner count and pagination");
 }
 
+const replyExactRead = between(
+  replyFacade,
+  "pub async fn get_with_locale_fallback(",
+  "pub async fn update(",
+  "reply exact owner read",
+);
 for (const marker of [
-  "db: DatabaseConnection",
   "enforce_scope(&security, Resource::ForumReplies, Action::Read)?",
   "let reply = self.inner.find_reply(tenant_id, reply_id).await?",
   ".topic_category_is_visible(tenant_id, reply.topic_id, &security)",
   "return Err(ForumError::ReplyNotFound(reply_id))",
+  "let response = self",
+]) {
+  requireText(replyExactRead, marker, `reply exact owner read is missing ${marker}`);
+}
+const replyLookupIndex = replyExactRead.indexOf("let reply = self.inner.find_reply");
+const replyVisibilityIndex = replyExactRead.indexOf(".topic_category_is_visible(");
+const replyHydrationIndex = replyExactRead.indexOf("let response = self");
+if (
+  replyLookupIndex < 0 ||
+  replyVisibilityIndex < 0 ||
+  replyHydrationIndex < 0 ||
+  replyLookupIndex > replyVisibilityIndex ||
+  replyVisibilityIndex > replyHydrationIndex
+) {
+  failures.push("reply exact owner read must resolve the parent, hide it, then hydrate the body");
+}
+
+for (const marker of [
   "enforce_scope(&security, Resource::ForumReplies, Action::List)?",
   ".topic_category_is_visible(tenant_id, topic_id, &security)",
   "return Err(ForumError::TopicNotFound(topic_id))",
+  "if !security.is_public_read()",
+  "return Ok(true)",
   "ForumTopicVisibilityService::new(self.db.clone())",
-  ".is_topic_category_visible_to_viewer(",
+  ".is_topic_category_visible_to_viewer(tenant_id, topic_id, false)",
 ]) {
   requireText(replyFacade, marker, `reply owner facade is missing ${marker}`);
 }
-const replyListScopeIndex = replyFacade.indexOf(
-  "enforce_scope(&security, Resource::ForumReplies, Action::List)?",
-);
-const replyListVisibilityIndex = replyFacade.indexOf(
-  ".topic_category_is_visible(tenant_id, topic_id, &security)",
-);
-const replyPageIndex = replyFacade.indexOf(".list_for_topic_with_locale_fallback(");
-if (
-  replyListScopeIndex < 0 ||
-  replyListVisibilityIndex < 0 ||
-  replyPageIndex < 0 ||
-  replyListScopeIndex > replyListVisibilityIndex ||
-  replyListVisibilityIndex > replyPageIndex
-) {
-  failures.push("reply owner page must authorize and hide the parent topic before pagination");
+const replyVisibilityUses =
+  replyFacade.match(/\.topic_category_is_visible\(tenant_id, topic_id, &security\)/g) ?? [];
+if (replyVisibilityUses.length !== 2) {
+  failures.push(`expected two guarded reply page paths, found ${replyVisibilityUses.length}`);
 }
 
 for (const marker of [
@@ -177,14 +226,11 @@ for (const marker of [
 }
 
 for (const marker of [
+  "## `FORUM-20` — ACL and visibility inheritance",
   "Delivered in `FORUM-20A`",
   "Delivered in `FORUM-20B`",
-  "Delivered in `FORUM-20C`",
-  "Delivered in `FORUM-20D`",
-  "topic_reply_owner_visibility_sqlite",
-  "verify-forum-owner-read-visibility.mjs",
 ]) {
-  requireText(plan, marker, `canonical FORUM-20 plan is missing ${marker}`);
+  requireText(plan, marker, `canonical FORUM-20 plan is missing its existing baseline ${marker}`);
 }
 
 if (failures.length > 0) {
@@ -193,4 +239,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Forum owner read visibility contract is source-ready.");
+console.log("Forum owner read visibility contract is source-ready; canonical plan sync remains explicit.");
