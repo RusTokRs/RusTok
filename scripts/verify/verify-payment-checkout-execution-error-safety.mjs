@@ -18,7 +18,6 @@ const parts = [
   'capture_provider.rs',
   'provider_helpers.rs',
   'port_impl.rs',
-  'validation.rs',
   'validation_identity.rs',
   'validation_errors.rs',
 ].map((name) =>
@@ -39,7 +38,8 @@ for (const includePath of [
   'checkout_execution/capture_provider.rs',
   'checkout_execution/provider_helpers.rs',
   'checkout_execution/port_impl.rs',
-  'checkout_execution/validation.rs',
+  'checkout_execution/validation_identity.rs',
+  'checkout_execution/validation_errors.rs',
 ]) {
   requireText(`include!("${includePath}")`, 'execution module composition');
 }
