@@ -251,7 +251,7 @@ test('rejects an unedited prepared decision', () => {
   });
 });
 
-test('finalizer rejects legacy read-only database-settings provenance with a matching comparison digest', () => {
+test('finalizer rejects database-settings provenance drift with a matching comparison digest', () => {
   withFixture((root) => {
     const fixture = prepare(root);
     assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
