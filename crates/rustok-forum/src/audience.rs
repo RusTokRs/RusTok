@@ -70,7 +70,7 @@ impl ForumAudienceConstraints {
             )));
         }
 
-        self.roles_any.sort_by_key(UserRole::privilege_rank);
+        self.roles_any.sort_by_key(|role| role.privilege_rank());
         self.roles_any.dedup();
         self.channel_members_any = normalize_channel_slugs(self.channel_members_any)?;
         normalize_uuid_list(&mut self.group_members_any);
@@ -199,9 +199,9 @@ pub trait ForumAudienceFactsPort: Send + Sync {
 
 pub type SharedForumAudienceFactsPort = Arc<dyn ForumAudienceFactsPort>;
 
-/// Fail-closed capability composition. Provider absence is harmless for rules
-/// that need only local role/explicit-user facts, but is a typed error for an
-/// authenticated actor when trust or membership facts are required.
+/// Fail-closed capability composition. Provider absence is harmless when local
+/// deny/allow/role facts already decide the request, but is a typed error for an
+/// authenticated actor when trust or membership facts are still required.
 #[derive(Clone, Default)]
 pub struct ForumAudienceFactsResolver {
     port: Option<SharedForumAudienceFactsPort>,
@@ -219,13 +219,20 @@ impl ForumAudienceFactsResolver {
         constraints: &ForumAudienceConstraints,
     ) -> ForumResult<ForumAudienceFacts> {
         let constraints = constraints.clone().normalize()?;
-        if !constraints.requires_owner_facts() {
+        let user_id = security.user_id;
+        if !constraints.requires_owner_facts()
+            || security.is_public_read()
+            || user_id.is_none()
+            || user_id.is_some_and(|id| {
+                constraints.deny_user_ids.binary_search(&id).is_ok()
+                    || constraints.allow_user_ids.binary_search(&id).is_ok()
+            })
+            || constraints.roles_any.contains(&security.role)
+        {
             return Ok(ForumAudienceFacts::default());
         }
 
-        let Some(user_id) = security.user_id else {
-            return Ok(ForumAudienceFacts::default());
-        };
+        let user_id = user_id.expect("checked above");
         let request = ForumAudienceFactsRequest::for_constraints(user_id, &constraints)?;
         let Some(port) = &self.port else {
             return Err(ForumError::capability_unavailable(
@@ -316,6 +323,13 @@ impl ForumAudienceEvaluator {
                 ForumAudienceDecisionReason::Role,
             ));
         }
+
+        let facts = match user_id {
+            Some(user_id) => facts.clone().validate_for_request(
+                &ForumAudienceFactsRequest::for_constraints(user_id, &constraints)?,
+            )?,
+            None => ForumAudienceFacts::default(),
+        };
         if constraints
             .minimum_trust_level
             .is_some_and(|minimum| facts.trust_level.is_some_and(|level| level >= minimum))
