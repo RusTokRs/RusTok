@@ -42,7 +42,7 @@ The accepted methodology contains the exact ordered `comparable_database_fields`
 - `date_style`;
 - `extra_float_digits`.
 
-Its `database_settings_source` must state that these values came from `read-report.json` database metadata observed from the active PostgreSQL benchmark session. The comparator rejects cross-scale drift in any field, and decision preparation, the direct renderer, and finalization all reject a comparison whose field list, order, or source string differs from the canonical contract.
+Its `database_settings_source` must state that the comparison uses `read-report.json` database metadata observed from its active PostgreSQL benchmark session only after exact equality was verified against the active-session metadata archived in `mutation-report.json` and `maintenance-report.json`. The comparator rejects intra-packet or cross-scale drift in any field, and decision preparation, the direct renderer, and finalization all reject a comparison whose field list, order, or source string differs from the canonical contract. The former read-only source string is no longer valid decision methodology.
 
 ## Prepare the decision
 
