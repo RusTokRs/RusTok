@@ -35,18 +35,20 @@ const crate = read(contract.crate_file ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const downstream = JSON.parse(read(contract.downstream_contract ?? "") || "{}");
 const consumer = JSON.parse(read(contract.consumer_contract ?? "") || "{}");
+const downstreamConsumer = JSON.parse(read(contract.downstream_consumer_contract ?? "") || "{}");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 3) {
-  failures.push("forum notification recipient context contract must use schema_version=3");
+if (contract.schema_version !== 4) {
+  failures.push("forum notification recipient context contract must use schema_version=4");
 }
 if (
   contract.task !== "FORUM-20L" ||
   contract.upstream_task !== "FORUM-20K" ||
   contract.downstream_task !== "FORUM-20M" ||
-  contract.consumer_task !== "FORUM-20N"
+  contract.consumer_task !== "FORUM-20N" ||
+  contract.downstream_consumer_task !== "FORUM-20O"
 ) {
-  failures.push("forum notification recipient context contract must connect FORUM-20K/L/M/N");
+  failures.push("forum notification recipient context contract must connect FORUM-20K/L/M/N/O");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("recipient context source publication must not claim unexecuted evidence");
@@ -69,13 +71,17 @@ for (const delivered of [
   "host_runtime_publication",
   "notification_source_factory_consumption",
   "recipient_target_open_authorization",
+  "recipient_mention_description_authorization",
+  "recipient_mention_audience_authorization",
+  "shared_consumer_resolution_helper",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum notification recipient context contract must record ${delivered} as delivered`);
   }
 }
 for (const residual of [
-  "recipient-specific audience filtering for non-public topics before pagination",
+  "recipient-specific topic-created subscription filtering before pagination",
+  "initially non-public topic-created descriptor materialization",
   "profile privacy and blocking policy",
   "trust channel and group facts host adapters",
   "final notification creation and delivery authorization",
@@ -105,13 +111,14 @@ const deliveredSlices = [
   "FORUM-20L",
   "FORUM-20M",
   "FORUM-20N",
+  "FORUM-20O",
 ];
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20N") {
-  failures.push("forum recipient context contract must require the canonical ledger through FORUM-20N");
+if (planSync.required_ledger_through !== "FORUM-20O") {
+  failures.push("forum recipient context contract must require the canonical ledger through FORUM-20O");
 }
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("forum recipient context contract must require FORUM-20H through FORUM-20N delivered sections");
+  failures.push("forum recipient context contract must require FORUM-20H through FORUM-20O delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -130,11 +137,7 @@ if (planSync.status === "pending") {
     );
   }
 } else if (planSync.status === "synchronized") {
-  requireText(
-    plan,
-    "FORUM-20A-N provide",
-    "synchronized canonical plan must advance the FORUM-20 ledger through N",
-  );
+  requireText(plan, "FORUM-20A-O provide", "synchronized canonical plan must advance the FORUM-20 ledger through O");
   for (const slice of deliveredSlices) {
     requireText(
       plan,
@@ -178,11 +181,7 @@ for (const forbidden of [
   "forum_group",
   "HostRuntimeContext",
 ]) {
-  rejectText(
-    owner,
-    forbidden,
-    `forum notification recipient context owner must remain storage and host neutral instead of ${forbidden}`,
-  );
+  rejectText(owner, forbidden, `forum notification recipient context owner must remain storage and host neutral instead of ${forbidden}`);
 }
 for (const marker of [
   "pub mod notification_recipient;",
@@ -195,34 +194,52 @@ for (const marker of [
 }
 
 if (
-  upstream.schema_version !== 5 ||
+  upstream.schema_version !== 6 ||
   upstream.task !== "FORUM-20K" ||
-  upstream.downstream_task !== "FORUM-20N" ||
+  upstream.downstream_task !== "FORUM-20O" ||
   upstream.composition?.exact_richer_public_owner !== true ||
-  upstream.composition?.recipient_specific_target_open !== true
+  upstream.composition?.recipient_specific_target_open !== true ||
+  upstream.composition?.recipient_specific_mention_description !== true ||
+  upstream.composition?.recipient_specific_mention_audience !== true
 ) {
-  failures.push("FORUM-20L recipient context capability must remain grounded in FORUM-20K visibility composition through FORUM-20N");
+  failures.push("FORUM-20L recipient context capability must remain grounded in FORUM-20K visibility composition through FORUM-20O");
 }
 if (
-  downstream.schema_version !== 2 ||
+  downstream.schema_version !== 3 ||
   downstream.task !== "FORUM-20M" ||
   downstream.upstream_task !== "FORUM-20L" ||
   downstream.downstream_task !== "FORUM-20N" ||
+  downstream.consumer_task !== "FORUM-20O" ||
   downstream.composition?.server_adapter !== true ||
   downstream.composition?.runtime_extension_publication !== true ||
-  downstream.composition?.notification_source_factory_consumption !== true
+  downstream.composition?.notification_source_factory_consumption !== true ||
+  downstream.composition?.recipient_mention_description_authorization !== true ||
+  downstream.composition?.recipient_mention_audience_authorization !== true
 ) {
-  failures.push("FORUM-20L recipient context capability must remain synchronized with FORUM-20M host composition through FORUM-20N");
+  failures.push("FORUM-20L recipient context capability must remain synchronized with FORUM-20M host composition through FORUM-20O");
 }
 if (
-  consumer.schema_version !== 1 ||
+  consumer.schema_version !== 2 ||
   consumer.task !== "FORUM-20N" ||
   consumer.upstream_task !== "FORUM-20M" ||
+  consumer.downstream_task !== "FORUM-20O" ||
   consumer.composition?.exact_recipient_resolution !== true ||
   consumer.composition?.recipient_specific_topic_open !== true ||
-  consumer.composition?.recipient_specific_reply_open !== true
+  consumer.composition?.recipient_specific_reply_open !== true ||
+  consumer.composition?.recipient_specific_mention_description !== true ||
+  consumer.composition?.recipient_specific_mention_audience !== true
 ) {
-  failures.push("FORUM-20L recipient context capability must remain synchronized with the delivered FORUM-20N consumer");
+  failures.push("FORUM-20L recipient context capability must remain synchronized with the FORUM-20N recipient consumer");
+}
+if (
+  downstreamConsumer.schema_version !== 1 ||
+  downstreamConsumer.task !== "FORUM-20O" ||
+  downstreamConsumer.upstream_task !== "FORUM-20N" ||
+  downstreamConsumer.composition?.exact_mention_recipient_resolution !== true ||
+  downstreamConsumer.composition?.recipient_specific_mention_description !== true ||
+  downstreamConsumer.composition?.recipient_specific_mention_audience !== true
+) {
+  failures.push("FORUM-20L recipient context capability must remain synchronized with the FORUM-20O mention consumer");
 }
 
 for (const marker of [
