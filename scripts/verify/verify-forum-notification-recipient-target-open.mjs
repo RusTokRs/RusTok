@@ -46,19 +46,22 @@ const recipientOwner = read(contract.recipient_context_owner_file ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const visibilityContract = JSON.parse(read(contract.visibility_contract ?? "") || "{}");
 const downstream = JSON.parse(read(contract.downstream_contract ?? "") || "{}");
+const downstreamChain = JSON.parse(read(contract.downstream_chain_contract ?? "") || "{}");
 const targetOpenTest = read(contract.test_file ?? "");
 const mentionTest = read(contract.downstream_test_file ?? "");
+const subscriptionTest = read(contract.downstream_chain_test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 2) {
-  failures.push("forum notification recipient contract must use schema_version=2");
+if (contract.schema_version !== 3) {
+  failures.push("forum notification recipient contract must use schema_version=3");
 }
 if (
   contract.task !== "FORUM-20N" ||
   contract.upstream_task !== "FORUM-20M" ||
-  contract.downstream_task !== "FORUM-20O"
+  contract.downstream_task !== "FORUM-20O" ||
+  contract.downstream_chain_task !== "FORUM-20P"
 ) {
-  failures.push("forum notification recipient contract must connect FORUM-20M/N/O");
+  failures.push("forum notification recipient contract must connect FORUM-20M/N/O/P");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("recipient authorization publication must not claim unexecuted evidence");
@@ -76,19 +79,19 @@ for (const delivered of [
   "inactive_or_missing_recipient_fail_closed",
   "retryability_preserved",
   "topic_created_public_description_unchanged",
-  "topic_created_public_audience_unchanged",
+  "recipient_specific_topic_subscription_audience",
   "recipient_specific_mention_description",
   "recipient_specific_mention_audience",
   "shared_recipient_resolution_helper",
   "sqlite_contract_test",
   "downstream_sqlite_contract_test",
+  "downstream_chain_sqlite_contract_test",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum notification recipient contract must record ${delivered} as delivered`);
   }
 }
 for (const residual of [
-  "recipient-specific topic-created subscription filtering before pagination",
   "initially non-public topic-created descriptor materialization",
   "profile privacy and blocking policy",
   "host trust channel and group facts adapters",
@@ -110,13 +113,14 @@ const deliveredSlices = [
   "FORUM-20M",
   "FORUM-20N",
   "FORUM-20O",
+  "FORUM-20P",
 ];
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20O") {
-  failures.push("forum notification recipient contract must require the canonical ledger through FORUM-20O");
+if (planSync.required_ledger_through !== "FORUM-20P") {
+  failures.push("forum notification recipient contract must require the canonical ledger through FORUM-20P");
 }
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("forum notification recipient contract must require FORUM-20H through FORUM-20O delivered sections");
+  failures.push("forum notification recipient contract must require FORUM-20H through FORUM-20P delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -135,7 +139,7 @@ if (planSync.status === "pending") {
     );
   }
 } else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-O provide", "synchronized canonical plan must advance the FORUM-20 ledger through O");
+  requireText(plan, "FORUM-20A-P provide", "synchronized canonical plan must advance the FORUM-20 ledger through P");
   for (const slice of deliveredSlices) {
     requireText(
       plan,
@@ -172,6 +176,8 @@ for (const marker of [
   "async fn load_mention_target_for_recipient(",
   "MENTION_DESCRIBE_ACTOR",
   "MENTION_AUDIENCE_ACTOR",
+  "async fn topic_subscription_recipient_visible(",
+  "TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR",
 ]) {
   requireText(source, marker, `forum notification recipient source is missing ${marker}`);
 }
@@ -197,7 +203,8 @@ const audienceBlock = between(source, "async fn resolve_audience(", "async fn au
 const targetOpenBlock = between(source, "async fn authorize_target_open(", "fn recipient_operation_context(", "authorize_target_open");
 for (const [block, marker, label] of [
   [describeBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public description"],
-  [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public audience"],
+  [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public source recheck"],
+  [audienceBlock, "topic_subscription_recipient_visible(", "exact topic subscription audience"],
   [describeBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)", "exact mention description"],
   [audienceBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_AUDIENCE_ACTOR)", "exact mention audience"],
   [targetOpenBlock, "resolve_recipient_viewer(", "exact target-open authorization"],
@@ -245,34 +252,56 @@ for (const marker of [
 ]) {
   requireText(mentionTest, marker, `recipient mention SQLite contract is missing ${marker}`);
 }
+for (const marker of [
+  "topic_subscription_audience_filters_exact_recipients_before_cursor_progress",
+  "first_page.recipients().is_empty()",
+  "recorded_calls(&calls), vec![denied_first, unavailable_second]",
+  "BTreeSet::from([allowed_third, allowed_fifth])",
+]) {
+  requireText(subscriptionTest, marker, `recipient topic subscription SQLite contract is missing ${marker}`);
+}
 
 if (
-  upstream.schema_version !== 2 ||
+  upstream.schema_version !== 4 ||
   upstream.task !== "FORUM-20M" ||
   upstream.downstream_task !== "FORUM-20N" ||
+  upstream.topic_subscription_consumer_task !== "FORUM-20P" ||
   upstream.composition?.notification_source_factory_consumption !== true ||
-  upstream.composition?.recipient_target_open_authorization !== true
+  upstream.composition?.recipient_target_open_authorization !== true ||
+  upstream.composition?.recipient_topic_subscription_audience_authorization !== true
 ) {
-  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20M host runtime contract");
+  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20M host runtime contract through P");
 }
 if (
-  visibilityContract.schema_version !== 6 ||
+  visibilityContract.schema_version !== 7 ||
   visibilityContract.task !== "FORUM-20K" ||
-  visibilityContract.downstream_task !== "FORUM-20O" ||
+  visibilityContract.downstream_task !== "FORUM-20P" ||
   visibilityContract.composition?.recipient_specific_target_open !== true ||
   visibilityContract.composition?.recipient_specific_mention_description !== true ||
-  visibilityContract.composition?.recipient_specific_mention_audience !== true
+  visibilityContract.composition?.recipient_specific_mention_audience !== true ||
+  visibilityContract.composition?.recipient_specific_topic_subscription_audience !== true
 ) {
-  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20K visibility composition contract");
+  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20K visibility composition contract through P");
 }
 if (
-  downstream.schema_version !== 1 ||
+  downstream.schema_version !== 2 ||
   downstream.task !== "FORUM-20O" ||
   downstream.upstream_task !== "FORUM-20N" ||
+  downstream.downstream_task !== "FORUM-20P" ||
   downstream.composition?.recipient_specific_mention_description !== true ||
-  downstream.composition?.recipient_specific_mention_audience !== true
+  downstream.composition?.recipient_specific_mention_audience !== true ||
+  downstream.composition?.topic_created_subscription_audience_downstream !== true
 ) {
-  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20O mention audience contract");
+  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20O mention audience contract through P");
+}
+if (
+  downstreamChain.schema_version !== 1 ||
+  downstreamChain.task !== "FORUM-20P" ||
+  downstreamChain.upstream_task !== "FORUM-20O" ||
+  downstreamChain.composition?.bounded_raw_keyset_scan !== true ||
+  downstreamChain.composition?.recipient_specific_topic_visibility !== true
+) {
+  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20P subscription audience contract");
 }
 
 for (const marker of [

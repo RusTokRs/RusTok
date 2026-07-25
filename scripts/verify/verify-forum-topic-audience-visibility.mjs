@@ -41,17 +41,18 @@ const notificationSource = read(contract.notification_source_file ?? "");
 const notificationContract = JSON.parse(read(contract.notification_visibility_contract ?? "") || "{}");
 const notificationConsumer = JSON.parse(read(contract.notification_consumer_contract ?? "") || "{}");
 const testSource = read(contract.test_file ?? "");
+const consumerTestSource = read(contract.notification_consumer_test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 3) {
-  failures.push("forum topic audience visibility contract must use schema_version=3");
+if (contract.schema_version !== 4) {
+  failures.push("forum topic audience visibility contract must use schema_version=4");
 }
 if (
   contract.task !== "FORUM-20J" ||
   contract.downstream_notification_task !== "FORUM-20K" ||
-  contract.notification_consumer_task !== "FORUM-20O"
+  contract.notification_consumer_task !== "FORUM-20P"
 ) {
-  failures.push("forum topic audience visibility contract must connect FORUM-20J/K/O notification composition");
+  failures.push("forum topic audience visibility contract must connect FORUM-20J/K/P notification composition");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("source publication must not claim unexecuted richer visibility evidence");
@@ -61,6 +62,7 @@ for (const delivered of [
   "recipient_target_open_notification",
   "recipient_mention_description_notification",
   "recipient_mention_audience_notification",
+  "recipient_topic_subscription_audience_notification",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum topic audience visibility contract must record ${delivered} as delivered`);
@@ -72,7 +74,6 @@ for (const residual of [
   "create reply and moderate audience write policy",
   "host trust channel and group provider adapters",
   "visibility-scoped category and all-read mutations",
-  "recipient-specific topic-created subscription filtering before pagination",
   "initially non-public topic-created descriptor materialization",
   "search index SEO and deep-link migration to the richer exact owner",
   "PostgreSQL concurrency and cross-consumer runtime evidence",
@@ -91,13 +92,14 @@ const deliveredSlices = [
   "FORUM-20M",
   "FORUM-20N",
   "FORUM-20O",
+  "FORUM-20P",
 ];
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20O") {
-  failures.push("forum topic audience visibility contract must require the canonical ledger through FORUM-20O");
+if (planSync.required_ledger_through !== "FORUM-20P") {
+  failures.push("forum topic audience visibility contract must require the canonical ledger through FORUM-20P");
 }
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("forum topic audience visibility contract must require FORUM-20H through FORUM-20O delivered sections");
+  failures.push("forum topic audience visibility contract must require FORUM-20H through FORUM-20P delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -116,7 +118,7 @@ if (planSync.status === "pending") {
     );
   }
 } else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-O provide", "synchronized canonical plan must advance the FORUM-20 ledger through O");
+  requireText(plan, "FORUM-20A-P provide", "synchronized canonical plan must advance the FORUM-20 ledger through P");
   for (const slice of deliveredSlices) {
     requireText(
       plan,
@@ -220,6 +222,8 @@ for (const marker of [
   "ForumTopicAudienceViewer::public()",
   "async fn resolve_recipient_viewer(",
   "async fn load_mention_target_for_recipient(",
+  "async fn topic_subscription_recipient_visible(",
+  "TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR",
 ]) {
   requireText(notificationSource, marker, `notification source is missing richer topic visibility composition ${marker}`);
 }
@@ -233,23 +237,25 @@ for (const forbidden of [
 }
 
 if (
-  notificationContract.schema_version !== 6 ||
+  notificationContract.schema_version !== 7 ||
   notificationContract.task !== "FORUM-20K" ||
-  notificationContract.downstream_task !== "FORUM-20O" ||
+  notificationContract.downstream_task !== "FORUM-20P" ||
   notificationContract.composition?.exact_richer_public_owner !== true ||
   notificationContract.composition?.recipient_specific_target_open !== true ||
   notificationContract.composition?.recipient_specific_mention_description !== true ||
-  notificationContract.composition?.recipient_specific_mention_audience !== true
+  notificationContract.composition?.recipient_specific_mention_audience !== true ||
+  notificationContract.composition?.recipient_specific_topic_subscription_audience !== true
 ) {
-  failures.push("FORUM-20K notification visibility contract must record public and exact recipient composition through FORUM-20O");
+  failures.push("FORUM-20K notification visibility contract must record public and exact recipient composition through FORUM-20P");
 }
 if (
   notificationConsumer.schema_version !== 1 ||
-  notificationConsumer.task !== "FORUM-20O" ||
-  notificationConsumer.upstream_task !== "FORUM-20N" ||
-  notificationConsumer.composition?.exact_mention_recipient_resolution !== true
+  notificationConsumer.task !== "FORUM-20P" ||
+  notificationConsumer.upstream_task !== "FORUM-20O" ||
+  notificationConsumer.composition?.recipient_specific_topic_visibility !== true ||
+  notificationConsumer.composition?.bounded_raw_keyset_scan !== true
 ) {
-  failures.push("FORUM-20J topic visibility must remain synchronized with the FORUM-20O notification consumer");
+  failures.push("FORUM-20J topic visibility must remain synchronized with the FORUM-20P notification consumer");
 }
 
 for (const marker of [
@@ -265,6 +271,14 @@ for (const marker of [
   "assert_eq!(recorded.len(), 2)",
 ]) {
   requireText(testSource, marker, `richer topic visibility SQLite scenario is missing ${marker}`);
+}
+for (const marker of [
+  "topic_subscription_audience_filters_exact_recipients_before_cursor_progress",
+  "deny_user_ids: vec![denied_first, denied_fourth]",
+  "first_page.recipients().is_empty()",
+  "BTreeSet::from([allowed_third, allowed_fifth])",
+]) {
+  requireText(consumerTestSource, marker, `topic subscription SQLite scenario is missing ${marker}`);
 }
 
 if (failures.length > 0) {

@@ -45,14 +45,20 @@ const visibilityOwner = read(contract.visibility_owner_file ?? "");
 const recipientOwner = read(contract.recipient_context_owner_file ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const visibilityContract = JSON.parse(read(contract.visibility_contract ?? "") || "{}");
+const downstream = JSON.parse(read(contract.downstream_contract ?? "") || "{}");
 const testSource = read(contract.test_file ?? "");
+const downstreamTestSource = read(contract.downstream_test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("forum notification recipient mention audience contract must use schema_version=1");
+if (contract.schema_version !== 2) {
+  failures.push("forum notification recipient mention audience contract must use schema_version=2");
 }
-if (contract.task !== "FORUM-20O" || contract.upstream_task !== "FORUM-20N") {
-  failures.push("forum notification recipient mention audience contract must belong to FORUM-20O after FORUM-20N");
+if (
+  contract.task !== "FORUM-20O" ||
+  contract.upstream_task !== "FORUM-20N" ||
+  contract.downstream_task !== "FORUM-20P"
+) {
+  failures.push("forum notification recipient mention audience contract must connect FORUM-20N/O/P");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("recipient mention audience publication must not claim unexecuted evidence");
@@ -72,15 +78,16 @@ for (const delivered of [
   "unavailable_recipient_fail_closed",
   "retryability_preserved",
   "stale_descriptor_recheck",
-  "topic_created_paths_unchanged",
+  "topic_created_description_unchanged",
+  "topic_created_subscription_audience_downstream",
   "sqlite_contract_test",
+  "downstream_sqlite_contract_test",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum notification recipient mention audience contract must record ${delivered} as delivered`);
   }
 }
 for (const residual of [
-  "recipient-specific topic-created subscription filtering before pagination",
   "initially non-public topic-created descriptor materialization",
   "profile privacy and blocking policy",
   "host trust channel and group facts adapters",
@@ -102,13 +109,14 @@ const deliveredSlices = [
   "FORUM-20M",
   "FORUM-20N",
   "FORUM-20O",
+  "FORUM-20P",
 ];
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20O") {
-  failures.push("forum notification recipient mention audience contract must require the canonical ledger through FORUM-20O");
+if (planSync.required_ledger_through !== "FORUM-20P") {
+  failures.push("forum notification recipient mention audience contract must require the canonical ledger through FORUM-20P");
 }
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("forum notification recipient mention audience contract must require FORUM-20H through FORUM-20O delivered sections");
+  failures.push("forum notification recipient mention audience contract must require FORUM-20H through FORUM-20P delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -129,8 +137,8 @@ if (planSync.status === "pending") {
 } else if (planSync.status === "synchronized") {
   requireText(
     plan,
-    "FORUM-20A-O provide",
-    "synchronized canonical plan must advance the FORUM-20 ledger through O",
+    "FORUM-20A-P provide",
+    "synchronized canonical plan must advance the FORUM-20 ledger through P",
   );
   for (const slice of deliveredSlices) {
     requireText(
@@ -148,8 +156,10 @@ for (const marker of [
   "host.shared_get::<SharedForumAudienceFactsPort>()",
   "const MENTION_DESCRIBE_ACTOR: &str = \"forum-notification-mention-describe\"",
   "const MENTION_AUDIENCE_ACTOR: &str = \"forum-notification-mention-audience\"",
+  "const TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR: &str = \"forum-notification-topic-subscription-audience\"",
   "const RECIPIENT_CONTEXT_DEADLINE: Duration = Duration::from_secs(2)",
   "async fn load_mention_target_for_recipient(",
+  "async fn topic_subscription_recipient_visible(",
   "async fn resolve_recipient_viewer(",
   "recipient_operation_context(",
   "if self.recipient_context_port.is_none()",
@@ -181,7 +191,7 @@ for (const forbidden of [
   rejectText(
     source,
     forbidden,
-    `forum notification recipient mention paths must reuse owners instead of ${forbidden}`,
+    `forum notification recipient paths must reuse owners instead of ${forbidden}`,
   );
 }
 
@@ -205,7 +215,8 @@ const targetOpenBlock = between(
 );
 for (const [block, marker, label] of [
   [describeBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public description"],
-  [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public audience"],
+  [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public source recheck"],
+  [audienceBlock, "topic_subscription_recipient_visible(", "topic-created exact subscription audience"],
   [describeBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)", "exact mention description"],
   [audienceBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_AUDIENCE_ACTOR)", "exact mention audience"],
   [targetOpenBlock, "resolve_recipient_viewer(", "shared target-open recipient resolution"],
@@ -246,24 +257,45 @@ for (const marker of [
 ]) {
   requireText(testSource, marker, `recipient mention SQLite contract is missing ${marker}`);
 }
+for (const marker of [
+  "topic_subscription_audience_filters_exact_recipients_before_cursor_progress",
+  "first_page.recipients().is_empty()",
+  "recorded_calls(&calls), vec![denied_first, unavailable_second]",
+  "second_page.recipients()[0].recipient_id, allowed_third",
+  "third_page.recipients()[0].recipient_id, allowed_fifth",
+]) {
+  requireText(downstreamTestSource, marker, `recipient topic subscription SQLite contract is missing ${marker}`);
+}
 
 if (
-  upstream.schema_version !== 2 ||
+  upstream.schema_version !== 3 ||
   upstream.task !== "FORUM-20N" ||
   upstream.downstream_task !== "FORUM-20O" ||
+  upstream.downstream_chain_task !== "FORUM-20P" ||
   upstream.composition?.recipient_specific_mention_description !== true ||
-  upstream.composition?.recipient_specific_mention_audience !== true
+  upstream.composition?.recipient_specific_mention_audience !== true ||
+  upstream.composition?.recipient_specific_topic_subscription_audience !== true
 ) {
-  failures.push("FORUM-20O mention audience must remain synchronized with the FORUM-20N recipient contract");
+  failures.push("FORUM-20O mention audience must remain synchronized with the FORUM-20N recipient contract through P");
 }
 if (
-  visibilityContract.schema_version !== 6 ||
+  visibilityContract.schema_version !== 7 ||
   visibilityContract.task !== "FORUM-20K" ||
-  visibilityContract.downstream_task !== "FORUM-20O" ||
+  visibilityContract.downstream_task !== "FORUM-20P" ||
   visibilityContract.composition?.recipient_specific_mention_description !== true ||
-  visibilityContract.composition?.recipient_specific_mention_audience !== true
+  visibilityContract.composition?.recipient_specific_mention_audience !== true ||
+  visibilityContract.composition?.recipient_specific_topic_subscription_audience !== true
 ) {
-  failures.push("FORUM-20O mention audience must remain synchronized with the FORUM-20K visibility composition contract");
+  failures.push("FORUM-20O mention audience must remain synchronized with the FORUM-20K visibility composition contract through P");
+}
+if (
+  downstream.schema_version !== 1 ||
+  downstream.task !== "FORUM-20P" ||
+  downstream.upstream_task !== "FORUM-20O" ||
+  downstream.composition?.bounded_raw_keyset_scan !== true ||
+  downstream.composition?.recipient_specific_topic_visibility !== true
+) {
+  failures.push("FORUM-20O mention audience must remain synchronized with the FORUM-20P topic subscription consumer");
 }
 
 for (const marker of [

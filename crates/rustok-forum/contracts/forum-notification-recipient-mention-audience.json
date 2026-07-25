@@ -1,19 +1,22 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "task": "FORUM-20O",
   "upstream_task": "FORUM-20N",
-  "scope": "Exact recipient-specific Forum user-mention description and audience composition for topic and reply targets",
+  "downstream_task": "FORUM-20P",
+  "scope": "Exact recipient-specific Forum user-mention description and audience composition for topic and reply targets, followed by bounded topic-created subscription filtering",
   "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
   "visibility_owner_file": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
   "recipient_context_owner_file": "crates/rustok-forum/src/notification_recipient.rs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json",
   "visibility_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
+  "downstream_contract": "crates/rustok-forum/contracts/forum-notification-topic-subscription-audience.json",
   "test_file": "crates/rustok-forum/tests/notification_recipient_mention_audience_sqlite.rs",
+  "downstream_test_file": "crates/rustok-forum/tests/notification_recipient_topic_subscription_audience_sqlite.rs",
   "source_verifier": "scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
     "status": "pending",
-    "required_ledger_through": "FORUM-20O",
+    "required_ledger_through": "FORUM-20P",
     "required_delivered_sections": [
       "FORUM-20H",
       "FORUM-20I",
@@ -22,7 +25,8 @@
       "FORUM-20L",
       "FORUM-20M",
       "FORUM-20N",
-      "FORUM-20O"
+      "FORUM-20O",
+      "FORUM-20P"
     ],
     "current_plan_through": "FORUM-20G",
     "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
@@ -37,7 +41,7 @@
     "local_selectors": "role and explicit-user allow or deny constraints resolve without host facts adapters",
     "fact_dependent_selectors": "missing or failing host facts capability preserves typed retryability",
     "reply_target": "reply must be active and approved and its topic must be visible to the same mentioned recipient",
-    "topic_created_boundary": "topic-created description and subscription audience remain public-only in this slice",
+    "topic_created_boundary": "topic-created description remains public-only; FORUM-20P consumes the same recipient capability for bounded subscription audience filtering",
     "stale_descriptor": "audience resolution rechecks the current target policy for the exact mentioned recipient"
   },
   "composition": {
@@ -54,11 +58,12 @@
     "unavailable_recipient_fail_closed": true,
     "retryability_preserved": true,
     "stale_descriptor_recheck": true,
-    "topic_created_paths_unchanged": true,
-    "sqlite_contract_test": true
+    "topic_created_description_unchanged": true,
+    "topic_created_subscription_audience_downstream": true,
+    "sqlite_contract_test": true,
+    "downstream_sqlite_contract_test": true
   },
   "not_delivered": [
-    "recipient-specific topic-created subscription filtering before pagination",
     "initially non-public topic-created descriptor materialization",
     "profile privacy and blocking policy",
     "host trust channel and group facts adapters",
@@ -71,8 +76,10 @@
       "cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_mention_audience_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
       "node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
+      "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
       "node scripts/verify/verify-forum-notification-visibility-composition.mjs",
       "cargo xtask module validate forum"
     ],
