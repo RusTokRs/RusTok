@@ -32,11 +32,12 @@ const contractPath =
 const contract = JSON.parse(read(contractPath) || "{}");
 const notificationSource = read(contract.notification_source_file ?? "");
 const visibilityOwner = read(contract.visibility_owner_file ?? "");
+const richerVisibilityOwner = read(contract.richer_visibility_owner_file ?? "");
 const testSource = read(contract.test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 2) {
-  failures.push("forum notification visibility contract must use schema_version=2");
+if (contract.schema_version !== 3) {
+  failures.push("forum notification visibility contract must use schema_version=3");
 }
 if (contract.task !== "FORUM-20I") {
   failures.push("forum notification visibility contract must belong to FORUM-20I");
@@ -47,7 +48,7 @@ if (contract.verification?.execution_status !== "not_run_by_implementation_agent
 for (const residual of [
   "recipient-specific authenticated role trust channel group and explicit-user evaluation",
   "profile privacy and blocking policy",
-  "normalized category and topic audience layer read composition",
+  "notification source migration to the exact richer topic audience owner",
   "search index SEO and deep-link migration",
   "final notification creation and delivery authorization",
   "PostgreSQL and cross-consumer runtime evidence",
@@ -116,6 +117,20 @@ for (const marker of [
 }
 
 for (const marker of [
+  "pub struct ForumTopicAudienceViewer",
+  "pub struct ForumTopicAudienceVisibilityService",
+  "pub async fn is_topic_visible(",
+  "ForumTopicVisibilityService::new(self.db.clone())",
+  "load_policy_for_topic(&self.db, tenant_id, &topic)",
+]) {
+  requireText(
+    richerVisibilityOwner,
+    marker,
+    `exact richer topic visibility owner is missing ${marker}`,
+  );
+}
+
+for (const marker of [
   "use crate::error::ForumError;",
   "ForumTopicVisibilityScope, ForumTopicVisibilityService",
   "async fn load_public_topic(",
@@ -139,11 +154,12 @@ for (const forbidden of [
   "async fn is_channel_restricted(",
   "forum_topic_channel_access",
   "forum_topic::Column::Status.eq(TopicStatus::Open)",
+  "ForumTopicAudienceVisibilityService",
 ]) {
   rejectText(
     notificationSource,
     forbidden,
-    `forum notification source must not retain duplicate visibility policy ${forbidden}`,
+    `forum notification source must not retain or prematurely claim visibility policy ${forbidden}`,
   );
 }
 
