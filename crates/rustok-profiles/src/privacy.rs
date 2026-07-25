@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{ProfileError, ProfileService, ProfileStatus, ProfileVisibility};
+use crate::{entities, ProfileStatus, ProfileVisibility};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProfilePrivacyReadRequest {
@@ -45,8 +46,57 @@ impl ProfilePrivacyRuntime {
     }
 }
 
+/// Owner-local read adapter for privacy decisions.
+///
+/// Privacy evaluation deliberately reads only the base `profiles` row. It must
+/// not depend on localized presentation copy, taxonomy labels, or media joins.
+#[derive(Clone, Debug)]
+pub struct ProfilePrivacyService {
+    db: DatabaseConnection,
+}
+
+impl ProfilePrivacyService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    async fn find_state(
+        &self,
+        tenant_id: Uuid,
+        recipient_id: Uuid,
+    ) -> Result<Option<ProfilePrivacyState>, PortError> {
+        let profile = entities::profile::Entity::find_by_id(recipient_id)
+            .filter(entities::profile::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(|error| {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    recipient_id = %recipient_id,
+                    error = %error,
+                    "Profile privacy state read failed"
+                );
+                PortError::unavailable(
+                    "profiles.privacy_read_unavailable",
+                    "profile privacy state is temporarily unavailable",
+                )
+            })?;
+
+        Ok(profile.map(|profile| ProfilePrivacyState {
+            status: profile.status,
+            visibility: profile.visibility,
+        }))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProfilePrivacyState {
+    status: ProfileStatus,
+    visibility: ProfileVisibility,
+}
+
 #[async_trait]
-impl ProfilePrivacyReadPort for ProfileService {
+impl ProfilePrivacyReadPort for ProfilePrivacyService {
     async fn evaluate_profile_privacy(
         &self,
         context: PortContext,
@@ -60,35 +110,11 @@ impl ProfilePrivacyReadPort for ProfileService {
             )
         })?;
 
-        let profile = match self
-            .get_profile(tenant_id, request.recipient_id, None, None)
-            .await
-        {
-            Ok(profile) => profile,
-            Err(ProfileError::ProfileNotFound(_)) => {
-                return Ok(ProfilePrivacyDecision::RecipientUnavailable);
-            }
-            Err(ProfileError::LocalizedCopyNotFound(_)) => {
-                return Err(PortError::unavailable(
-                    "profiles.privacy_projection_incomplete",
-                    "profile privacy projection is temporarily incomplete",
-                ));
-            }
-            Err(ProfileError::Database(_)) => {
-                return Err(PortError::unavailable(
-                    "profiles.privacy_read_unavailable",
-                    "profile privacy state is temporarily unavailable",
-                ));
-            }
-            Err(_) => {
-                return Err(PortError::validation(
-                    "profiles.privacy_read_invalid",
-                    "profile privacy state could not be evaluated",
-                ));
-            }
+        let Some(state) = self.find_state(tenant_id, request.recipient_id).await? else {
+            return Ok(ProfilePrivacyDecision::RecipientUnavailable);
         };
 
-        if profile.status != ProfileStatus::Active {
+        if state.status != ProfileStatus::Active {
             return Ok(ProfilePrivacyDecision::RecipientUnavailable);
         }
 
@@ -96,7 +122,7 @@ impl ProfilePrivacyReadPort for ProfileService {
             return Ok(ProfilePrivacyDecision::Allow);
         }
 
-        match profile.visibility {
+        match state.visibility {
             ProfileVisibility::Public | ProfileVisibility::Authenticated => {
                 Ok(ProfilePrivacyDecision::Allow)
             }

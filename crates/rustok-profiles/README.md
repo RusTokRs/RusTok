@@ -11,6 +11,7 @@
 - Own profile storage (`profiles`, `profile_translations`), migrations, and the reusable profile service contract.
 - Own profile-to-taxonomy relation storage via `profile_tags`.
 - Provide batched profile summary lookup for downstream author/member presentation without per-user fan-out.
+- Provide a tenant-scoped base-row privacy read adapter whose decisions do not depend on localized copy, tags, or media joins.
 - Provide explicit backfill helpers for provisioning missing profiles from existing user/customer data.
 - Expose a request-scoped GraphQL `ProfileSummaryLoader` for host applications that need DataLoader-based batching and caching.
 - Expose module-owned GraphQL transport for self-service and public profile lookups, including targeted profile update mutations.
@@ -27,6 +28,7 @@
 - Must not collapse `customer`, `seller`, or staff/admin roles into one profile record.
 - Is intended to become the canonical source for public author/member cards across host applications and module-owned UI packages.
 - Already serves `rustok-blog` and `rustok-forum` through `ProfilesReader` with batched summary resolution.
+- Serves notification recipient policy through `ProfilePrivacyReadPort` and the minimal `ProfilePrivacyService` owner adapter.
 - Uses `rustok-events` + `rustok-outbox` for downstream synchronization after profile mutations.
 
 ## Entry points
@@ -34,6 +36,8 @@
 - `ProfilesModule`
 - `ProfileService`
 - `ProfilesReader`
+- `ProfilePrivacyService`
+- `ProfilePrivacyReadPort`
 - `ProfileSummaryLoader`
 - `ProfileSummaryLoaderKey`
 - `graphql::*`
