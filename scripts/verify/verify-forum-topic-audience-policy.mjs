@@ -41,6 +41,7 @@ const contractPath =
   "crates/rustok-forum/contracts/forum-topic-audience-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_file ?? "");
+const categoryOwner = read(contract.category_owner_file ?? "");
 const audience = read(contract.audience_contract_file ?? "");
 const migration = read(contract.migration_file ?? "");
 const migrations = read(contract.migration_registry_file ?? "");
@@ -81,6 +82,12 @@ if (contract.policy?.effective_composition !== "conjunction of every non-empty l
 }
 if (contract.policy?.storage !== "normalized typed tables without JSON") {
   failures.push("topic audience persistence must remain normalized and typed");
+}
+if (
+  contract.policy?.category_snapshot_owner !==
+  "category audience owner is the single bounded inheritance resolver"
+) {
+  failures.push("topic policy must reuse the category audience snapshot owner");
 }
 if (
   contract.composition?.category_storage !== true ||
@@ -159,6 +166,7 @@ for (const marker of [
   "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?",
   "lock_category_tree_in_tx(&txn, tenant_id).await?",
   "lock_topic_audience_in_tx(&txn, tenant_id, topic_id).await?",
+  "load_category_audience_policy(&txn, tenant_id, topic.category_id).await?",
   "forum_topic_audience_policy::Entity::delete_many()",
   "insert_roles(&txn, tenant_id, topic_id, &constraints).await?",
   "insert_channels(&txn, tenant_id, topic_id, &constraints).await?",
@@ -167,13 +175,19 @@ for (const marker of [
   "inherited_category_layers",
   "Every layer remains independently required.",
   "configured_constraints",
-  "load_category_layers",
   "load_topic_layer",
-  "MAX_FORUM_CATEGORY_TREE_NODES + 1",
-  "MAX_FORUM_CATEGORY_TREE_DEPTH",
   "Forum topic audience storage contains an empty local layer",
 ]) {
   requireText(owner, marker, `topic audience owner is missing ${marker}`);
+}
+for (const marker of [
+  "pub(crate) async fn load_category_audience_policy",
+  "pub(crate) async fn lock_category_tree_in_tx",
+  "MAX_FORUM_CATEGORY_TREE_NODES + 1",
+  "MAX_FORUM_CATEGORY_TREE_DEPTH",
+  "Forum category audience storage contains an empty local layer",
+]) {
+  requireText(categoryOwner, marker, `category snapshot owner is missing ${marker}`);
 }
 const setBlock = between(
   owner,
@@ -183,22 +197,25 @@ const setBlock = between(
 );
 const categoryLockIndex = setBlock.indexOf("lock_category_tree_in_tx");
 const topicLockIndex = setBlock.indexOf("lock_topic_audience_in_tx");
+const categorySnapshotIndex = setBlock.indexOf("load_category_audience_policy");
 const deleteIndex = setBlock.indexOf("forum_topic_audience_policy::Entity::delete_many()");
 const policyInsertIndex = setBlock.indexOf("forum_topic_audience_policy::ActiveModel");
 const commitIndex = setBlock.indexOf("txn.commit().await?");
 if (
   categoryLockIndex < 0 ||
   topicLockIndex < 0 ||
+  categorySnapshotIndex < 0 ||
   deleteIndex < 0 ||
   policyInsertIndex < 0 ||
   commitIndex < 0 ||
   categoryLockIndex > topicLockIndex ||
-  topicLockIndex > deleteIndex ||
+  topicLockIndex > categorySnapshotIndex ||
+  categorySnapshotIndex > deleteIndex ||
   deleteIndex > policyInsertIndex ||
   policyInsertIndex > commitIndex
 ) {
   failures.push(
-    "topic audience owner must lock category then topic and replace the local layer atomically",
+    "topic audience owner must lock category then topic, resolve the category snapshot, and replace the local layer atomically",
   );
 }
 for (const forbidden of [
@@ -208,6 +225,9 @@ for (const forbidden of [
   "channel::",
   "forum_user_stat",
   "serde_json::Value",
+  "forum_category::Entity",
+  "forum_category_audience_policy::Entity",
+  "load_category_ancestor_ids",
 ]) {
   rejectText(owner, forbidden, `topic audience owner must not depend on ${forbidden}`);
 }
