@@ -6,6 +6,7 @@
 - Read harness: implemented in `ops/benches/src/index_storage`
 - Mutation/WAL harness: implemented with transaction rollback isolation
 - Persistent churn/VACUUM harness: implemented with committed cycles
+- PostgreSQL session metadata contract: implemented across all three reports
 - Smoke evidence automation: implemented in `.github/workflows/index-storage-smoke.yml`
 - Production migrations: intentionally absent
 - Smoke evidence: historical harness-sanity packet from Actions run `30041091121`
@@ -22,12 +23,51 @@ while keeping the generated source dataset, entity identity, links, filters,
 ordering, pagination, mutation batch, churn cycle count, and PostgreSQL session
 constant.
 
+## PostgreSQL session and metadata contract
+
 Every executable uses a pool constrained to exactly one physical PostgreSQL
-connection. This keeps session settings, temporary execution state, maintenance
-statistics, and VACUUM sequencing on one reproducible session per report. The
-shared connection setup pins `standard_conforming_strings = on` before generated
-SQL executes, so string and escape semantics cannot vary with server, database,
-or role defaults.
+connection. Read, mutation, and maintenance evidence therefore run in three
+separate sessions, with one reproducible session retained for the complete
+lifetime of each report.
+
+Before generated benchmark SQL executes, the shared connection setup pins:
+
+- `standard_conforming_strings = on`;
+- `TimeZone = 'UTC'`;
+- `DateStyle = 'ISO, YMD'`;
+- `extra_float_digits = 3`.
+
+Each runner also disables JIT for the measured session. Other planner and memory
+settings are not silently synthesized: they are observed from the active
+connection and archived with the evidence.
+
+Every `read-report.json`, `mutation-report.json`, and `maintenance-report.json`
+contains an exact `database` object with:
+
+- `version`;
+- `server_version_num`;
+- `shared_buffers`;
+- `effective_cache_size`;
+- `work_mem`;
+- `random_page_cost`;
+- `jit`;
+- `standard_conforming_strings`;
+- `timezone`;
+- `date_style`;
+- `extra_float_digits`.
+
+The runner captures this object after session setup and re-reads it after all
+workloads, churn, and maintenance operations. Any field drift fails the evidence
+run before the report is serialized. The official packet preflight then requires
+the exact field set in all three reports and exact equality between the read,
+mutation, and maintenance sessions before the byte-preserved validator or
+comparator core is imported.
+
+For cross-scale comparison, the official comparator wrapper compares the ten
+planner/session fields from `server_version_num` through `extra_float_digits`
+between same-commit packets and records that methodology in the generated
+comparison. Output produced by invoking the comparator core directly is
+incomplete and cannot make an ADR decision-ready.
 
 ## Candidates
 
@@ -138,11 +178,15 @@ schema bytes after VACUUM are valid evidence rather than a harness failure.
 
 ## Evidence captured
 
-For each read candidate the report includes:
+Every report contains database/server metadata observed from its own active
+PostgreSQL benchmark session and proven stable through the end of that report.
+The official packet preflight requires the read, mutation, and maintenance
+metadata objects to match exactly.
+
+For each read candidate the report additionally includes:
 
 - source and prototype load duration;
 - total schema relation size through `pg_total_relation_size`;
-- PostgreSQL version and relevant planner settings;
 - repeated `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` plans;
 - planning and execution time;
 - shared hit/read blocks;
