@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset, Utc};
 use rustok_notifications_api::NotificationSourceRegistry;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -12,16 +11,14 @@ use crate::candidate::NotificationRecipientPolicy;
 use crate::entities::notification;
 use crate::error::{NotificationError, NotificationResult};
 use crate::inbox::{
-    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_CURSOR_BYTES,
-    MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
-    NotificationInboxOpenService,
+    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_PAGE_SIZE,
+    NotificationInboxOpenDecision, NotificationInboxOpenRequest, NotificationInboxOpenService,
+    decode_inbox_cursor, encode_inbox_cursor,
 };
 use crate::inbox_state::{
     NotificationInboxStateDecision, NotificationInboxStateRequest, NotificationInboxStateService,
 };
 use crate::model::NotificationState;
-
-const RECONCILE_CURSOR_VERSION: &str = "ir1";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationInboxReconcileRequest {
@@ -86,7 +83,7 @@ impl NotificationInboxReconcileService {
         let cursor = request
             .cursor
             .as_deref()
-            .map(decode_cursor)
+            .map(decode_inbox_cursor)
             .transpose()?;
         let limit = request.bounded_limit();
 
@@ -115,7 +112,7 @@ impl NotificationInboxReconcileService {
         let has_more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
         let next_cursor = has_more
-            .then(|| rows.last().map(encode_cursor))
+            .then(|| rows.last().map(encode_inbox_cursor))
             .flatten();
         let scanned = rows.len() as u16;
         let mut archived = 0_u16;
@@ -156,52 +153,6 @@ impl NotificationInboxReconcileService {
     }
 }
 
-#[derive(Clone)]
-struct ReconcileCursor {
-    created_at: DateTime<FixedOffset>,
-    id: Uuid,
-}
-
-fn encode_cursor(stored: &notification::Model) -> String {
-    format!(
-        "{RECONCILE_CURSOR_VERSION}:{}:{}:{}",
-        stored.created_at.timestamp(),
-        stored.created_at.timestamp_subsec_nanos(),
-        stored.id
-    )
-}
-
-fn decode_cursor(value: &str) -> NotificationResult<ReconcileCursor> {
-    if value.is_empty()
-        || value.len() > MAX_NOTIFICATION_INBOX_CURSOR_BYTES
-        || value.chars().any(char::is_control)
-    {
-        return Err(invalid_cursor());
-    }
-
-    let mut parts = value.splitn(4, ':');
-    if parts.next() != Some(RECONCILE_CURSOR_VERSION) {
-        return Err(invalid_cursor());
-    }
-    let seconds = parts
-        .next()
-        .and_then(|part| part.parse::<i64>().ok())
-        .ok_or_else(invalid_cursor)?;
-    let nanos = parts
-        .next()
-        .and_then(|part| part.parse::<u32>().ok())
-        .ok_or_else(invalid_cursor)?;
-    let created_at = DateTime::<Utc>::from_timestamp(seconds, nanos)
-        .ok_or_else(invalid_cursor)?
-        .fixed_offset();
-    let id = parts
-        .next()
-        .and_then(|part| Uuid::parse_str(part).ok())
-        .filter(|id| !id.is_nil())
-        .ok_or_else(invalid_cursor)?;
-    Ok(ReconcileCursor { created_at, id })
-}
-
 fn validate_request(request: &NotificationInboxReconcileRequest) -> NotificationResult<()> {
     if request.tenant_id.is_nil() || request.recipient_id.is_nil() {
         return Err(NotificationError::Validation(
@@ -209,8 +160,4 @@ fn validate_request(request: &NotificationInboxReconcileRequest) -> Notification
         ));
     }
     Ok(())
-}
-
-fn invalid_cursor() -> NotificationError {
-    NotificationError::Validation("invalid notification inbox reconciliation cursor".to_string())
 }
