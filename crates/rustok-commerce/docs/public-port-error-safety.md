@@ -64,6 +64,12 @@ available only for actionable domain errors.
   order and return identities, stable public code, status, and HTTP boundary. Validation,
   not-found, conflict, storage, and fail-closed outcomes preserve the existing static
   status, code, and message policy without a second generic error event.
+- `rustok-commerce` admin order-return orchestration routes: decision and complete paths
+  retain the top-level typed post-order cause with orchestration and source owner, tenant,
+  actor, route operation, truthful optional order, return, and reserved refund identities,
+  stable public code, status, and HTTP boundary. Nested order, payment, provider, and
+  reserved-refund outcomes preserve the existing static status, code, and message policy
+  without delegating through a second generic error event.
 - `rustok-commerce` admin order detail payment lookup: the complete typed payment cause
   remains internal while owner, tenant, order, operation, error kind, stable public code,
   status, and HTTP boundary are logged. Validation, missing-resource, transition,
@@ -116,6 +122,7 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-commerce-admin-fulfillment-reconciliation-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-fulfillment-route-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-return-owner-error-context.mjs`
+- `node scripts/verify/verify-commerce-admin-order-return-orchestration-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-detail-payment-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-detail-fulfillment-error-safety.mjs`
 - `node scripts/verify/verify-order-payment-settlement-error-context.mjs`
@@ -132,8 +139,8 @@ available only for actionable domain errors.
 - Targeted cart promotion, order payment settlement, order checkout recovery, order
   checkout compensation, pricing, payment collection, fulfillment checkout execution,
   admin fulfillment reconciliation, admin fulfillment routes, admin order-return owner
-  mapping, admin order-detail payment and fulfillment mapping, and tax calculation
-  validation, provider-contract, reconciliation, correlation, HTTP-envelope, and
-  transport round-trip tests.
+  and orchestration mapping, admin order-detail payment and fulfillment mapping, and tax
+  calculation validation, provider-contract, reconciliation, correlation, HTTP-envelope,
+  and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
