@@ -18,21 +18,8 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
-            DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
-                manager
-                    .get_connection()
-                    .execute_unprepared(
-                        r#"
-DROP TABLE IF EXISTS forum_category_audience_users;
-DROP TABLE IF EXISTS forum_category_audience_groups;
-DROP TABLE IF EXISTS forum_category_audience_channels;
-DROP TABLE IF EXISTS forum_category_audience_roles;
-DROP TABLE IF EXISTS forum_category_audience_policies;
-"#,
-                    )
-                    .await?;
-                Ok(())
-            }
+            DatabaseBackend::Postgres => down_postgres(manager).await,
+            DatabaseBackend::Sqlite => down_sqlite(manager).await,
             backend => Err(DbErr::Custom(format!(
                 "rustok-forum category audience migration does not support {backend:?}"
             ))),
@@ -122,6 +109,119 @@ CREATE TABLE IF NOT EXISTS forum_category_audience_users (
     CONSTRAINT ck_forum_category_audience_user_effect
         CHECK (effect IN ('allow', 'deny'))
 );
+
+CREATE OR REPLACE FUNCTION forum_reject_category_audience_relation_update()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'forum category audience relation rows are immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION forum_validate_category_audience_channel_insert()
+RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 4));
+    IF (
+        SELECT count(*)
+        FROM forum_category_audience_channels item
+        WHERE item.tenant_id = NEW.tenant_id
+          AND item.category_id = NEW.category_id
+    ) >= 32 THEN
+        RAISE EXCEPTION 'forum category audience channels exceed bounded limit';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION forum_validate_category_audience_group_insert()
+RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 4));
+    IF (
+        SELECT count(*)
+        FROM forum_category_audience_groups item
+        WHERE item.tenant_id = NEW.tenant_id
+          AND item.category_id = NEW.category_id
+    ) >= 32 THEN
+        RAISE EXCEPTION 'forum category audience groups exceed bounded limit';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION forum_validate_category_audience_user_insert()
+RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 4));
+    IF (
+        SELECT count(*)
+        FROM forum_category_audience_users item
+        WHERE item.tenant_id = NEW.tenant_id
+          AND item.category_id = NEW.category_id
+          AND item.effect = NEW.effect
+    ) >= 100 THEN
+        RAISE EXCEPTION 'forum category audience users exceed bounded limit';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS forum_category_audience_policy_identity_update ON forum_category_audience_policies;
+CREATE TRIGGER forum_category_audience_policy_identity_update
+BEFORE UPDATE OF tenant_id, category_id ON forum_category_audience_policies
+FOR EACH ROW EXECUTE FUNCTION forum_reject_category_audience_relation_update();
+
+DROP TRIGGER IF EXISTS forum_category_audience_roles_update ON forum_category_audience_roles;
+CREATE TRIGGER forum_category_audience_roles_update
+BEFORE UPDATE ON forum_category_audience_roles
+FOR EACH ROW EXECUTE FUNCTION forum_reject_category_audience_relation_update();
+
+DROP TRIGGER IF EXISTS forum_category_audience_channels_insert ON forum_category_audience_channels;
+CREATE TRIGGER forum_category_audience_channels_insert
+BEFORE INSERT ON forum_category_audience_channels
+FOR EACH ROW EXECUTE FUNCTION forum_validate_category_audience_channel_insert();
+DROP TRIGGER IF EXISTS forum_category_audience_channels_update ON forum_category_audience_channels;
+CREATE TRIGGER forum_category_audience_channels_update
+BEFORE UPDATE ON forum_category_audience_channels
+FOR EACH ROW EXECUTE FUNCTION forum_reject_category_audience_relation_update();
+
+DROP TRIGGER IF EXISTS forum_category_audience_groups_insert ON forum_category_audience_groups;
+CREATE TRIGGER forum_category_audience_groups_insert
+BEFORE INSERT ON forum_category_audience_groups
+FOR EACH ROW EXECUTE FUNCTION forum_validate_category_audience_group_insert();
+DROP TRIGGER IF EXISTS forum_category_audience_groups_update ON forum_category_audience_groups;
+CREATE TRIGGER forum_category_audience_groups_update
+BEFORE UPDATE ON forum_category_audience_groups
+FOR EACH ROW EXECUTE FUNCTION forum_reject_category_audience_relation_update();
+
+DROP TRIGGER IF EXISTS forum_category_audience_users_insert ON forum_category_audience_users;
+CREATE TRIGGER forum_category_audience_users_insert
+BEFORE INSERT ON forum_category_audience_users
+FOR EACH ROW EXECUTE FUNCTION forum_validate_category_audience_user_insert();
+DROP TRIGGER IF EXISTS forum_category_audience_users_update ON forum_category_audience_users;
+CREATE TRIGGER forum_category_audience_users_update
+BEFORE UPDATE ON forum_category_audience_users
+FOR EACH ROW EXECUTE FUNCTION forum_reject_category_audience_relation_update();
+"#,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+DROP TABLE IF EXISTS forum_category_audience_users;
+DROP TABLE IF EXISTS forum_category_audience_groups;
+DROP TABLE IF EXISTS forum_category_audience_channels;
+DROP TABLE IF EXISTS forum_category_audience_roles;
+DROP TABLE IF EXISTS forum_category_audience_policies;
+DROP FUNCTION IF EXISTS forum_validate_category_audience_user_insert();
+DROP FUNCTION IF EXISTS forum_validate_category_audience_group_insert();
+DROP FUNCTION IF EXISTS forum_validate_category_audience_channel_insert();
+DROP FUNCTION IF EXISTS forum_reject_category_audience_relation_update();
 "#,
         )
         .await?;
@@ -194,6 +294,94 @@ CREATE TABLE IF NOT EXISTS forum_category_audience_users (
     CHECK (user_id <> '00000000-0000-0000-0000-000000000000'),
     CHECK (effect IN ('allow', 'deny'))
 );
+
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_policy_identity_update
+BEFORE UPDATE OF tenant_id, category_id ON forum_category_audience_policies
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience relation rows are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_roles_update
+BEFORE UPDATE ON forum_category_audience_roles
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience relation rows are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_channels_insert
+BEFORE INSERT ON forum_category_audience_channels
+WHEN (
+    SELECT count(*)
+    FROM forum_category_audience_channels item
+    WHERE item.tenant_id = NEW.tenant_id
+      AND item.category_id = NEW.category_id
+) >= 32
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience channels exceed bounded limit');
+END;
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_channels_update
+BEFORE UPDATE ON forum_category_audience_channels
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience relation rows are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_groups_insert
+BEFORE INSERT ON forum_category_audience_groups
+WHEN (
+    SELECT count(*)
+    FROM forum_category_audience_groups item
+    WHERE item.tenant_id = NEW.tenant_id
+      AND item.category_id = NEW.category_id
+) >= 32
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience groups exceed bounded limit');
+END;
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_groups_update
+BEFORE UPDATE ON forum_category_audience_groups
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience relation rows are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_users_insert
+BEFORE INSERT ON forum_category_audience_users
+WHEN (
+    SELECT count(*)
+    FROM forum_category_audience_users item
+    WHERE item.tenant_id = NEW.tenant_id
+      AND item.category_id = NEW.category_id
+      AND item.effect = NEW.effect
+) >= 100
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience users exceed bounded limit');
+END;
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_users_update
+BEFORE UPDATE ON forum_category_audience_users
+BEGIN
+    SELECT RAISE(ABORT, 'forum category audience relation rows are immutable');
+END;
+"#,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+DROP TRIGGER IF EXISTS forum_category_audience_users_update;
+DROP TRIGGER IF EXISTS forum_category_audience_users_insert;
+DROP TRIGGER IF EXISTS forum_category_audience_groups_update;
+DROP TRIGGER IF EXISTS forum_category_audience_groups_insert;
+DROP TRIGGER IF EXISTS forum_category_audience_channels_update;
+DROP TRIGGER IF EXISTS forum_category_audience_channels_insert;
+DROP TRIGGER IF EXISTS forum_category_audience_roles_update;
+DROP TRIGGER IF EXISTS forum_category_audience_policy_identity_update;
+DROP TABLE IF EXISTS forum_category_audience_users;
+DROP TABLE IF EXISTS forum_category_audience_groups;
+DROP TABLE IF EXISTS forum_category_audience_channels;
+DROP TABLE IF EXISTS forum_category_audience_roles;
+DROP TABLE IF EXISTS forum_category_audience_policies;
 "#,
         )
         .await?;
