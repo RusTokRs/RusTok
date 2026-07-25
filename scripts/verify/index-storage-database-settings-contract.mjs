@@ -28,7 +28,7 @@ export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =
   }
   if (methodology.database_settings_source !== databaseSettingsSource) {
     fail(
-      'comparison methodology database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata',
+      'comparison methodology database_settings_source must identify metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata',
     );
   }
   return methodology;
