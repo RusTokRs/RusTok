@@ -71,6 +71,7 @@ const runFixtures = (args) => {
     scriptPath('index-storage-standalone-tools.test.mjs'),
     scriptPath('compare-index-storage-evidence.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
+    scriptPath('finalize-index-storage-adr-decision-contract.test.mjs'),
     scriptPath('index-storage-decision-tooling.test.mjs'),
   ], 'Index storage fixture suites');
 };

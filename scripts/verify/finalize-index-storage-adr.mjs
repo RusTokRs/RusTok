@@ -20,6 +20,7 @@ import { requireComparisonDatabaseSettingsMethodology } from './index-storage-da
 const prefix = '[finalize-index-storage-adr]';
 const placeholderPrefix = 'TODO(index-storage-decision):';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const allowedArguments = new Set(['--comparison', '--decision', '--output']);
 const requiredDecisionKeys = [
   'status',
   'decision_date',
@@ -49,19 +50,23 @@ const usage = () => {
 const parseArgs = () => {
   const values = new Map();
   const args = process.argv.slice(2);
+  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) {
+    usage();
+    return null;
+  }
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--help' || argument === '-h') {
-      usage();
-      return null;
+      fail('--help/-h must be the only argument');
     }
-    if (!argument.startsWith('--') || !args[index + 1] || args[index + 1].startsWith('--')) {
-      fail(`unknown or incomplete argument: ${argument}`);
+    if (!allowedArguments.has(argument)) fail(`unknown argument: ${argument}`);
+    if (!args[index + 1] || args[index + 1].startsWith('--')) {
+      fail(`incomplete argument: ${argument}`);
     }
     if (values.has(argument)) fail(`${argument} was provided more than once`);
     values.set(argument, args[++index]);
   }
-  for (const argument of ['--comparison', '--decision', '--output']) {
+  for (const argument of allowedArguments) {
     if (!values.has(argument)) fail(`${argument} is required`);
   }
   return {
@@ -98,6 +103,22 @@ const requireDecisionEnvelope = (decision) => {
   if (Object.hasOwn(decision, '$schema')
       && decision.$schema !== './storage-decision.schema.json') {
     fail('decision.$schema must reference ./storage-decision.schema.json when present');
+  }
+};
+
+const requireAcceptedDecision = (decision) => {
+  if (decision.status !== 'accepted') {
+    fail('decision.status must be accepted before ADR finalization');
+  }
+};
+
+const requireIsoCalendarDate = (value, label) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    fail(`${label} must be a real ISO calendar date`);
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
+    fail(`${label} must be a real ISO calendar date`);
   }
 };
 
@@ -146,11 +167,14 @@ const main = () => {
   for (const [label, filename] of [['comparison', args.comparison], ['decision', args.decision]]) {
     if (resolvedOutput === path.resolve(filename)) fail(`--output must not overwrite the ${label} input`);
   }
+  rmSync(args.output, { force: true });
 
   const comparison = readJsonBytes(args.comparison, 'comparison');
   const decision = readJsonBytes(args.decision, 'decision');
   requireComparisonDatabaseSettingsMethodology(comparison.value, fail);
   requireDecisionEnvelope(decision.value);
+  requireAcceptedDecision(decision.value);
+  requireIsoCalendarDate(decision.value.decision_date, 'decision.decision_date');
   rejectPlaceholders(decision.value);
 
   const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-'));

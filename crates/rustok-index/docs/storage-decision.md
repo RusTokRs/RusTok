@@ -59,6 +59,8 @@ node scripts/verify/index-storage-tooling.mjs prepare \
 
 `prepare` requires an explicit prototype choice. It does not rank candidates or select a winner. It validates the decision-ready comparison and its exact observed database-settings methodology, copies the evidence commit, computes the SHA-256 of the exact comparison-file bytes, creates rejection entries for exactly the two unselected prototypes, and refuses to overwrite an existing decision unless `--force` is provided. The draft is written to a staged file and renamed only after the complete JSON is on disk.
 
+The generated draft has `status: proposed`. Change it to `accepted` only after the evidence and rationales have been reviewed. The finalizer rejects both `proposed` decisions and impossible calendar dates.
+
 The generated draft contains `TODO(index-storage-decision):` markers. Replace every marker with measured and operational reasoning before finalization. The finalizer rejects any remaining preparation marker.
 
 [`storage-decision.example.json`](storage-decision.example.json) shows the same decision fields and references [`storage-decision.schema.json`](storage-decision.schema.json). Its relative `$schema` is valid because the two files are colocated in the documentation directory. A generated decision under `evidence/index-storage/...` intentionally omits `$schema` rather than recording a false relative path; `$schema` remains an optional finalizer field when it correctly points to a colocated schema file.
@@ -93,6 +95,8 @@ Finalization snapshots the exact comparison and decision bytes before rendering.
 
 The finalizer fails closed unless:
 
+- the decision status is `accepted`;
+- `decision_date` is a real ISO calendar date;
 - the comparison contains the exact ten-field observed PostgreSQL database-settings methodology;
 - the comparison is decision-ready;
 - every decision-contract flag is true;
