@@ -43,8 +43,12 @@ const plan = read(contract.canonical_plan ?? "");
 if (contract.schema_version !== 1) {
   failures.push("forum notification inbox open contract must use schema_version=1");
 }
-if (contract.task !== "FORUM-20R" || contract.upstream_task !== "FORUM-20Q") {
-  failures.push("forum notification inbox open contract must connect FORUM-20Q/R");
+if (
+  contract.task !== "FORUM-20R" ||
+  contract.upstream_task !== "FORUM-20Q" ||
+  contract.downstream_task !== "FORUM-20S"
+) {
+  failures.push("forum notification inbox open contract must connect FORUM-20Q/R/S");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("inbox open authorization must not claim unexecuted evidence");
@@ -143,16 +147,18 @@ for (const marker of [
   "pub struct NotificationInboxOpenService",
   "db: DatabaseConnection",
   "registry: Arc<NotificationSourceRegistry>",
+  "policy: Arc<dyn NotificationRecipientPolicy>",
   "pub async fn authorize_open(",
   "notification::Entity::find_by_id(request.notification_id)",
   ".filter(notification::Column::TenantId.eq(request.tenant_id))",
   ".filter(notification::Column::RecipientId.eq(request.recipient_id))",
   "let Some(stored) = stored else",
   "return Ok(NotificationInboxOpenDecision::Unavailable)",
-  "NotificationSourceSlug::new(stored.source_slug)",
+  "NotificationSourceSlug::new(stored.source_slug.clone())",
   "NotificationSourceSlug::new(stored.target_owner)",
   "NotificationTargetKind::new(stored.target_kind)",
   "if target.id.is_nil()",
+  ".evaluate(NotificationRecipientPolicyRequest {",
   ".registry",
   ".get(&source)",
   "AuthorizeNotificationTargetRequest {",
@@ -169,14 +175,16 @@ for (const marker of [
 
 const lookupIndex = inbox.indexOf("notification::Entity::find_by_id(request.notification_id)");
 const missingIndex = inbox.indexOf("let Some(stored) = stored else");
+const policyIndex = inbox.indexOf(".evaluate(NotificationRecipientPolicyRequest {");
 const providerIndex = inbox.indexOf(".authorize_target_open(AuthorizeNotificationTargetRequest");
 if (
   lookupIndex < 0 ||
   missingIndex < 0 ||
+  policyIndex < 0 ||
   providerIndex < 0 ||
-  !(lookupIndex < missingIndex && missingIndex < providerIndex)
+  !(lookupIndex < missingIndex && missingIndex < policyIndex && policyIndex < providerIndex)
 ) {
-  failures.push("exact ownership lookup and unavailable branch must precede the source provider call");
+  failures.push("exact ownership lookup and unavailable branch must precede policy and source calls");
 }
 
 for (const forbidden of [
@@ -227,25 +235,25 @@ requireText(
 );
 
 for (const marker of [
-  "exact_recipient_gets_fresh_route_without_cross_recipient_oracle",
-  "stale_target_and_retryable_owner_failure_remain_distinct",
-  "invalid_stored_source_identity_fails_before_provider_invocation",
+  "exact_recipient_passes_privacy_then_gets_fresh_route_without_oracle",
+  "privacy_suppression_and_retryable_failure_stop_before_source_authorization",
+  "stale_target_provider_failure_and_invalid_source_remain_distinct",
   "NotificationInboxOpenService::new",
   "NotificationInboxOpenDecision::Allowed",
   "NotificationInboxOpenDecision::Unavailable",
   "foreign and missing rows must not invoke a source provider",
   "NotificationProviderError::CapabilityUnavailable",
-  "NotificationError::ProviderFailure { retryable: true }",
+  "NOTIFICATION_SOURCE_PROVIDER_FAILURE",
   "NotificationError::InvalidDescriptor",
 ]) {
   requireText(proof, marker, `inbox open SQLite proof is missing ${marker}`);
 }
 
 for (const marker of [
-  "### Inbox open-time target authorization",
+  "### Inbox open-time authorization",
   "Missing, cross-tenant, and cross-recipient rows all",
-  "It returns only the fresh owner-provided route or `Unavailable`.",
-  "bounded inbox listing/read-state APIs and recipient privacy rechecks",
+  "Only an allowed recipient reaches the registered source provider",
+  "bounded inbox listing and seen/read/archive state APIs",
   "inbox_open_authorization_sqlite",
 ]) {
   requireText(docs, marker, `notifications live contract is missing ${marker}`);
