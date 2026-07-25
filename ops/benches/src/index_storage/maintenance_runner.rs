@@ -6,13 +6,15 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Transac
 use serde::Serialize;
 
 use super::{
-    BenchmarkConfig, DatasetConfig, DatasetScale, Prototype, analyze_sql, churn_cycle_sql,
-    connect_benchmark_database, full_prototype_sql, source_dataset_sql, vacuum_statements,
+    BenchmarkConfig, DatabaseMetadata, DatasetConfig, DatasetScale, Prototype, analyze_sql,
+    churn_cycle_sql, connect_benchmark_database, ensure_database_metadata_stable,
+    full_prototype_sql, read_database_metadata, source_dataset_sql, vacuum_statements,
 };
 
 #[derive(Debug, Serialize)]
 pub struct MaintenanceBenchmarkReport {
     pub generated_at: DateTime<Utc>,
+    pub database: DatabaseMetadata,
     pub dataset_scale: DatasetScale,
     pub cycles: u32,
     pub prototypes: Vec<PrototypeMaintenanceReport>,
@@ -72,6 +74,9 @@ pub async fn run_maintenance(
     db.execute_unprepared("SET jit = off; SET statement_timeout = '30min';")
         .await
         .context("failed to configure maintenance benchmark session")?;
+    let database = read_database_metadata(&db)
+        .await
+        .context("failed to capture maintenance benchmark database metadata")?;
     db.execute_unprepared(&source_dataset_sql(&config.dataset))
         .await
         .context("failed to create maintenance benchmark source dataset")?;
@@ -121,9 +126,11 @@ pub async fn run_maintenance(
             after_vacuum,
         });
     }
+    ensure_database_metadata_stable(&db, &database, "maintenance benchmark").await?;
 
     Ok(MaintenanceBenchmarkReport {
         generated_at: Utc::now(),
+        database,
         dataset_scale: config.dataset.scale,
         cycles,
         prototypes,
