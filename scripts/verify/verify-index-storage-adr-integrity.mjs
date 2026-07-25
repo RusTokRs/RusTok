@@ -16,6 +16,9 @@ const orderingFixture = read('scripts/verify/check-index-storage-read-ordering.t
 const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs');
 const standaloneFixture = read('scripts/verify/index-storage-standalone-tools.test.mjs');
 const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs');
+const databaseSettingsContract = read('scripts/verify/index-storage-database-settings-contract.mjs');
+const renderer = read('scripts/verify/render-index-storage-adr.mjs');
+const rendererFixture = read('scripts/verify/render-index-storage-adr.test.mjs');
 const preparer = read('scripts/verify/prepare-index-storage-decision.mjs');
 const finalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
 const verifier = read('scripts/verify/verify-index-storage-adr.mjs');
@@ -120,6 +123,39 @@ requireMarkers(standaloneFixture, 'standalone evidence fixture', [
   "test('direct comparator forwards help to the byte-preserved core'",
 ]);
 
+requireMarkers(databaseSettingsContract, 'database settings contract', [
+  'export const comparableDatabaseFields = Object.freeze([',
+  "'standard_conforming_strings'",
+  "'timezone'",
+  "'date_style'",
+  "'extra_float_digits'",
+  'export const databaseSettingsSource =',
+  'export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =>',
+]);
+
+requireMarkers(renderer, 'ADR renderer', [
+  "from './index-storage-database-settings-contract.mjs'",
+  'requireComparisonDatabaseSettingsMethodology(comparison, fail);',
+  'if (comparison.decision_ready !== true)',
+  'decision.comparison_sha256 must match the exact comparison.json bytes',
+  'renderer does not infer or rank a winning prototype',
+]);
+const rendererMethodologyGate = renderer.indexOf(
+  'requireComparisonDatabaseSettingsMethodology(comparison, fail);',
+);
+const rendererDecisionReadyGate = renderer.indexOf('if (comparison.decision_ready !== true)');
+if (rendererMethodologyGate < 0
+    || rendererDecisionReadyGate < 0
+    || rendererMethodologyGate > rendererDecisionReadyGate) {
+  fail('ADR renderer must validate observed database-settings methodology before decision_ready');
+}
+requireMarkers(rendererFixture, 'ADR renderer fixture', [
+  'comparable_database_fields: [...comparableDatabaseFields]',
+  'database_settings_source: databaseSettingsSource',
+  "test('rejects core-only comparison without observed database-settings methodology'",
+  'comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract',
+]);
+
 requireMarkers(preparer, 'decision preparer', [
   "const placeholderPrefix = 'TODO(index-storage-decision):'",
   'comparison.methodology?.automatic_winner_selection !== false',
@@ -185,11 +221,17 @@ requireMarkers(guide, 'storage decision guide', [
   'index-storage-tooling.mjs prepare',
   'index-storage-tooling.mjs render',
   'index-storage-tooling.mjs verify-adr',
+  'Only `comparison.json` emitted through the official comparator wrapper is valid decision input.',
+  'Direct output from `compare-index-storage-evidence-core.mjs` is intentionally incomplete',
+  'exact ordered `comparable_database_fields` contract',
+  'The comparator rejects cross-scale drift in any field',
+  'The standalone renderer enforces the same methodology contract even when invoked directly.',
+  'Recomputing `comparison_sha256` after removing or changing the methodology does not make the input acceptable.',
   'Comparison SHA-256',
   'Decision SHA-256',
-  'repeats deterministic finalization',
+  'repeats deterministic finalization including the observed database-settings gate',
   'match the regenerated Markdown byte for byte',
-  'Any manual edit, formatting change, stale decision, or replaced evidence file is rejected.',
+  'Any manual edit, formatting change, stale decision, replaced evidence file, or methodology drift is rejected.',
 ]);
 forbidMarkers(guide, 'storage decision guide', [
   'node scripts/verify/render-index-storage-adr.mjs',
@@ -220,4 +262,4 @@ for (const [label, workflow] of [
   ]);
 }
 
-console.log('[verify-index-storage-adr-integrity] executable SQL ordering, standalone evidence entrypoints, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
+console.log('[verify-index-storage-adr-integrity] executable SQL ordering, observed database-settings methodology, standalone evidence entrypoints, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
