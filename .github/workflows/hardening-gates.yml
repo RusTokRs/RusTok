@@ -83,13 +83,40 @@ jobs:
       - name: Verify development container topology
         run: node scripts/verify/verify-development-container-topology.mjs
 
-  seo-hardening:
-    name: SEO Hardening
+  seo-hardening-guard:
+    name: SEO Hardening / ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Bulk batching
+            script: verify-seo-bulk-batch-reads.mjs
+          - name: Diagnostics batching
+            script: verify-seo-diagnostics-batch-reads.mjs
+          - name: Sitemap worker
+            script: verify-seo-sitemap-background-worker.mjs
+          - name: Index repair worker
+            script: verify-seo-index-repair-background-worker.mjs
+          - name: Entrypoint authorization
+            script: verify-seo-entrypoint-authorization.mjs
+          - name: Failure classification
+            script: verify-seo-failure-classification.mjs
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
-      - name: Verify SEO hardening roadmap contracts
-        run: node scripts/verify/verify-seo-hardening-suite.mjs
+      - name: Verify ${{ matrix.name }}
+        run: node scripts/verify/${{ matrix.script }}
+
+  seo-hardening:
+    name: SEO Hardening
+    needs: seo-hardening-guard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce SEO hardening roadmap result
+        env:
+          GUARD_RESULT: ${{ needs.seo-hardening-guard.result }}
+        run: test "$GUARD_RESULT" = "success"
