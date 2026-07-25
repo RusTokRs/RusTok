@@ -1,11 +1,13 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
+    http::StatusCode,
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::{FulfillmentError, FulfillmentService};
 use rustok_order::OrderService;
+use rustok_order::error::OrderError;
 use rustok_payment::{PaymentError, PaymentService};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
@@ -19,10 +21,107 @@ use crate::dto::{
     CancelOrderInput, DeliverOrderInput, MarkPaidOrderInput, OrderResponse, ShipOrderInput,
 };
 
+const ADMIN_ORDER_OWNER: &str = "rustok_order.admin_orders";
+const ADMIN_ORDER_BOUNDARY: &str = "commerce_admin_order_http";
 const ADMIN_ORDER_DETAIL_PAYMENT_OWNER: &str = "rustok_payment.admin_order_detail";
 const ADMIN_ORDER_DETAIL_PAYMENT_OPERATION: &str = "find_latest_payment_collection_by_order";
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_order_detail";
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";
+
+type AdminOrderHttpPolicy = (
+    StatusCode,
+    &'static str,
+    &'static str,
+    &'static str,
+);
+
+struct AdminOrderErrorContext {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Option<Uuid>,
+    customer_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl AdminOrderErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        order_id: Option<Uuid>,
+        customer_id: Option<Uuid>,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            order_id,
+            customer_id,
+            operation,
+        }
+    }
+}
+
+fn admin_order_error_policy(error: &OrderError) -> AdminOrderHttpPolicy {
+    match error {
+        OrderError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        OrderError::OrderNotFound(_)
+        | OrderError::OrderReturnNotFound(_)
+        | OrderError::OrderChangeNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        OrderError::InvalidTransition { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        OrderError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "database",
+        ),
+        OrderError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "core",
+        ),
+    }
+}
+
+fn map_admin_order_error(
+    mut context: AdminOrderErrorContext,
+    error: OrderError,
+) -> HttpError {
+    if let OrderError::OrderNotFound(id) = &error {
+        context.order_id = Some(*id);
+    }
+    let (status, code, message, error_kind) = admin_order_error_policy(&error);
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_ORDER_OWNER,
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        order_id = ?context.order_id,
+        customer_id = ?context.customer_id,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_BOUNDARY,
+        "commerce admin order operation failed"
+    );
+    HttpError::new(status, code, message)
+}
 
 /// Show admin ecommerce order
 #[utoipa::path(
@@ -49,6 +148,7 @@ pub async fn list_orders(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
+    let customer_id = params.customer_id;
     let (orders, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .list_orders_with_locale_fallback(
             tenant.id,
@@ -56,13 +156,24 @@ pub async fn list_orders(
                 page: pagination.page,
                 per_page: pagination.limit(),
                 status: params.status,
-                customer_id: params.customer_id,
+                customer_id,
             },
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_error(
+                AdminOrderErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    customer_id,
+                    "list_orders",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(PaginatedResponse {
         data: orders,
@@ -102,7 +213,18 @@ pub async fn show_order(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_error(
+                AdminOrderErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    None,
+                    "get_order",
+                ),
+                error,
+            )
+        })?;
     let payment_collection = PaymentService::new(runtime.db_clone())
         .find_latest_collection_by_order(tenant.id, id)
         .await
@@ -273,7 +395,18 @@ pub async fn mark_order_paid(
             input.payment_method,
         )
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_error(
+                AdminOrderErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    None,
+                    "mark_order_paid",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(order))
 }
@@ -313,7 +446,18 @@ pub async fn ship_order(
             input.carrier,
         )
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_error(
+                AdminOrderErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    None,
+                    "ship_order",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(order))
 }
@@ -347,7 +491,18 @@ pub async fn deliver_order(
     let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .deliver_order(tenant.id, auth.user_id, id, input.delivered_signature)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_error(
+                AdminOrderErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    None,
+                    "deliver_order",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(order))
 }
@@ -381,7 +536,18 @@ pub async fn cancel_order(
     let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .cancel_order(tenant.id, auth.user_id, id, input.reason)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_error(
+                AdminOrderErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    None,
+                    "cancel_order",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(order))
 }
