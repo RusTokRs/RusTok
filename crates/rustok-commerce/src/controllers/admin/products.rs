@@ -6,85 +6,17 @@ use axum::{
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_product::CatalogService;
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpResult;
 use uuid::Uuid;
 
 use super::super::{
     CommerceHttpRuntime,
     common::{PaginatedResponse, ensure_permissions},
-    products::{ListProductsParams, ProductListItem},
+    products::{
+        AdminProductErrorContext, ListProductsParams, ProductListItem, map_admin_product_error,
+    },
 };
-use crate::{
-    CommerceError,
-    dto::{CreateProductInput, ProductResponse, UpdateProductInput},
-};
-
-fn map_product_write_error(error: CommerceError) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        CommerceError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_product_storage_unavailable",
-            "Product storage is temporarily unavailable",
-            "database",
-        ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        CommerceError::DuplicateHandle { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_product_handle_conflict",
-            "A product with this handle already exists",
-            "duplicate_handle",
-        ),
-        CommerceError::DuplicateSku(_) => (
-            StatusCode::CONFLICT,
-            "commerce_admin_product_sku_conflict",
-            "A product variant with this SKU already exists",
-            "duplicate_sku",
-        ),
-        CommerceError::InvalidPrice(_)
-        | CommerceError::InvalidOptionCombination
-        | CommerceError::Validation(_)
-        | CommerceError::NoVariants => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_product_invalid",
-            "Product request is invalid",
-            "validation",
-        ),
-        CommerceError::InsufficientInventory { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_product_inventory_conflict",
-            "Product inventory conflicts with the requested operation",
-            "inventory_conflict",
-        ),
-        CommerceError::CannotDeletePublished => (
-            StatusCode::CONFLICT,
-            "commerce_admin_product_state_conflict",
-            "Product operation conflicts with the current state",
-            "state_conflict",
-        ),
-        CommerceError::ShippingProfileNotFound(_)
-        | CommerceError::DuplicateShippingProfileSlug(_)
-        | CommerceError::Rich(_)
-        | CommerceError::Core(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_product_failed",
-            "Product operation could not be completed safely",
-            "unexpected_owner_error",
-        ),
-    };
-    super::admin_public_error(
-        &error,
-        "rustok_product.catalog",
-        error_kind,
-        status,
-        code,
-        message,
-    )
-}
+use crate::dto::{CreateProductInput, ProductResponse, UpdateProductInput};
 
 /// List admin ecommerce products
 #[utoipa::path(
@@ -141,7 +73,17 @@ pub async fn create_product(
     let product = service
         .create_product(tenant.id, auth.user_id, input)
         .await
-        .map_err(map_product_write_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "create_product",
+                ),
+                error,
+            )
+        })?;
 
     Ok((StatusCode::CREATED, Json(product)))
 }
@@ -203,7 +145,17 @@ pub async fn update_product(
     let product = service
         .update_product(tenant.id, auth.user_id, id, input)
         .await
-        .map_err(map_product_write_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "update_product",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(product))
 }
