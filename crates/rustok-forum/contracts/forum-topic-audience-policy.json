@@ -3,6 +3,7 @@
   "task": "FORUM-20H",
   "scope": "Normalized topic narrowing persistence composed after inherited category audience layers",
   "owner_file": "crates/rustok-forum/src/services/topic_audience.rs",
+  "category_owner_file": "crates/rustok-forum/src/services/category_audience.rs",
   "audience_contract_file": "crates/rustok-forum/src/audience.rs",
   "category_contract": "crates/rustok-forum/contracts/forum-category-audience-policy.json",
   "migration_file": "crates/rustok-forum/src/migrations/m20260725_000002_add_forum_topic_audience_policy.rs",
@@ -40,7 +41,8 @@
     "policy_details_scope": "forum topics manage",
     "policy_and_relation_updates": "immutable; owner replacement uses delete plus insert",
     "tenant_integrity": "tenant-composite topic and policy foreign keys",
-    "lock_order": "tenant category tree then exact topic audience"
+    "lock_order": "tenant category tree then exact topic audience",
+    "category_snapshot_owner": "category audience owner is the single bounded inheritance resolver"
   },
   "composition": {
     "category_storage": true,
