@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20P",
+  "upstream_task": "FORUM-20O",
+  "fanout_prerequisite_task": "NOTIFY-03I",
+  "scope": "Bounded recipient-specific Forum topic-created subscription audience filtering with sparse keyset cursor progress",
+  "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
+  "visibility_owner_file": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
+  "recipient_context_owner_file": "crates/rustok-forum/src/notification_recipient.rs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-mention-audience.json",
+  "visibility_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
+  "fanout_contract": "crates/rustok-notifications/contracts/notifications-source-fanout.json",
+  "test_file": "crates/rustok-forum/tests/notification_recipient_topic_subscription_audience_sqlite.rs",
+  "source_verifier": "scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan_sync": {
+    "status": "pending",
+    "required_ledger_through": "FORUM-20P",
+    "required_delivered_sections": [
+      "FORUM-20H",
+      "FORUM-20I",
+      "FORUM-20J",
+      "FORUM-20K",
+      "FORUM-20L",
+      "FORUM-20M",
+      "FORUM-20N",
+      "FORUM-20O",
+      "FORUM-20P"
+    ],
+    "current_plan_through": "FORUM-20G",
+    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+  },
+  "policy": {
+    "descriptor_boundary": "topic-created descriptor materialization remains public-only in this slice",
+    "source_recheck": "when recipient context is published, load the current active topic record without a public visibility short-circuit and delegate authorization to each exact recipient; preserve the public source recheck when the capability is absent",
+    "raw_candidate_query": "tenant and category scoped notify-new-topics subscriptions excluding muted rows and the event actor, ordered by user_id",
+    "scan_bound": "read at most requested limit plus one lookahead row and evaluate only the first requested-limit raw subscriptions",
+    "cursor": "when more raw subscriptions exist, advance by the last scanned raw user_id rather than the last allowed recipient",
+    "sparse_page": "an all-denied or unavailable raw page returns zero recipients with an advancing cursor under NOTIFY-03I",
+    "recipient_resolution": "resolve one exact recipient context for each scanned subscription when the host capability is published",
+    "capability_absence": "preserve the previous public-only subscription audience fallback when recipient context is absent",
+    "recipient_unavailable": "non-retryable recipient capability failure skips that subscription without an existence oracle",
+    "authenticated_visibility": "re-evaluate exact base and normalized category/topic audience visibility for every resolved recipient",
+    "local_selectors": "role and explicit-user allow or deny constraints resolve without host facts adapters",
+    "fact_dependent_selectors": "missing or failing host facts capability preserves typed retryability",
+    "failure_atomicity": "a retryable recipient or facts failure returns a provider error before the page cursor is persisted"
+  },
+  "composition": {
+    "notification_sparse_page_prerequisite": true,
+    "active_topic_source_recheck": true,
+    "stale_public_descriptor_to_non_public_recipient_filtering": true,
+    "bounded_raw_keyset_scan": true,
+    "limit_plus_one_lookahead": true,
+    "last_scanned_raw_cursor": true,
+    "actor_subscription_excluded": true,
+    "exact_recipient_context_per_scanned_subscription": true,
+    "authenticated_topic_viewer": true,
+    "recipient_specific_topic_visibility": true,
+    "sparse_all_denied_page": true,
+    "mixed_allowed_denied_page": true,
+    "terminal_allowed_page": true,
+    "public_only_fallback": true,
+    "unavailable_recipient_skipped": true,
+    "retryability_preserved": true,
+    "initial_descriptor_behavior_unchanged": true,
+    "sqlite_contract_test": true
+  },
+  "not_delivered": [
+    "initially non-public topic-created descriptor materialization",
+    "profile privacy and blocking policy",
+    "host trust channel and group facts adapters",
+    "final notification creation and delivery authorization",
+    "search index SEO and deep-link migration",
+    "PostgreSQL and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-notifications --test fanout_sparse_page_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
+      "node scripts/verify/verify-notifications-source-fanout.mjs",
+      "node scripts/verify/verify-forum-notification-visibility-composition.mjs",
+      "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}

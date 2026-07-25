@@ -1,22 +1,24 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "task": "FORUM-20M",
   "upstream_task": "FORUM-20L",
   "downstream_task": "FORUM-20N",
-  "consumer_task": "FORUM-20O",
-  "scope": "Server-owned exact notification recipient principal adapter, host runtime publication and notification target-open plus user-mention consumption",
+  "mention_consumer_task": "FORUM-20O",
+  "topic_subscription_consumer_task": "FORUM-20P",
+  "scope": "Server-owned exact notification recipient principal adapter, host runtime publication and target-open, mention plus topic subscription consumption",
   "adapter_file": "apps/server/src/services/forum_notification_recipient_context.rs",
   "services_file": "apps/server/src/services/mod.rs",
   "runtime_composition_file": "apps/server/src/services/module_event_dispatcher.rs",
   "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-context.json",
   "downstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json",
-  "consumer_contract": "crates/rustok-forum/contracts/forum-notification-recipient-mention-audience.json",
+  "mention_consumer_contract": "crates/rustok-forum/contracts/forum-notification-recipient-mention-audience.json",
+  "topic_subscription_consumer_contract": "crates/rustok-forum/contracts/forum-notification-topic-subscription-audience.json",
   "source_verifier": "scripts/verify/verify-forum-notification-recipient-host-runtime.mjs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
     "status": "pending",
-    "required_ledger_through": "FORUM-20O",
+    "required_ledger_through": "FORUM-20P",
     "required_delivered_sections": [
       "FORUM-20H",
       "FORUM-20I",
@@ -25,7 +27,8 @@
       "FORUM-20L",
       "FORUM-20M",
       "FORUM-20N",
-      "FORUM-20O"
+      "FORUM-20O",
+      "FORUM-20P"
     ],
     "current_plan_through": "FORUM-20G",
     "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
@@ -39,7 +42,7 @@
     "permission_bound": 512,
     "dependency_failure": "typed retryable unavailable PortError without internal database details",
     "storage_access": "server identity and RBAC owners only; no Forum profile channel group or audience relation tables",
-    "consumer": "Forum notification source factory reads the exact shared port before recipient-specific target-open, mention description and mention audience authorization"
+    "consumer": "Forum notification source factory reads the exact shared port before recipient-specific target-open, mention stages and bounded topic subscription filtering"
   },
   "composition": {
     "server_adapter": true,
@@ -57,10 +60,10 @@
     "notification_source_factory_consumption": true,
     "recipient_target_open_authorization": true,
     "recipient_mention_description_authorization": true,
-    "recipient_mention_audience_authorization": true
+    "recipient_mention_audience_authorization": true,
+    "recipient_topic_subscription_audience_authorization": true
   },
   "not_delivered": [
-    "recipient-specific topic-created subscription filtering before pagination",
     "initially non-public topic-created descriptor materialization",
     "profile privacy and blocking policy",
     "trust channel and group facts host adapters",
@@ -73,10 +76,12 @@
       "cargo test -p rustok-server forum_notification_recipient_context -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_mention_audience_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-notification-recipient-context.mjs",
       "node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs",
       "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
       "node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
+      "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"

@@ -1,22 +1,24 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "task": "FORUM-20L",
   "upstream_task": "FORUM-20K",
   "downstream_task": "FORUM-20M",
-  "consumer_task": "FORUM-20N",
-  "downstream_consumer_task": "FORUM-20O",
-  "scope": "Forum-owned exact recipient principal context capability for deferred notification target-open and user-mention authorization",
+  "target_open_consumer_task": "FORUM-20N",
+  "mention_consumer_task": "FORUM-20O",
+  "topic_subscription_consumer_task": "FORUM-20P",
+  "scope": "Forum-owned exact recipient principal context capability for notification target-open, user mentions and bounded topic subscription audiences",
   "owner_file": "crates/rustok-forum/src/notification_recipient.rs",
   "crate_file": "crates/rustok-forum/src/lib.rs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
   "downstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-host-runtime.json",
-  "consumer_contract": "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json",
-  "downstream_consumer_contract": "crates/rustok-forum/contracts/forum-notification-recipient-mention-audience.json",
+  "target_open_consumer_contract": "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json",
+  "mention_consumer_contract": "crates/rustok-forum/contracts/forum-notification-recipient-mention-audience.json",
+  "topic_subscription_consumer_contract": "crates/rustok-forum/contracts/forum-notification-topic-subscription-audience.json",
   "source_verifier": "scripts/verify/verify-forum-notification-recipient-context.mjs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
     "status": "pending",
-    "required_ledger_through": "FORUM-20O",
+    "required_ledger_through": "FORUM-20P",
     "required_delivered_sections": [
       "FORUM-20H",
       "FORUM-20I",
@@ -25,7 +27,8 @@
       "FORUM-20L",
       "FORUM-20M",
       "FORUM-20N",
-      "FORUM-20O"
+      "FORUM-20O",
+      "FORUM-20P"
     ],
     "current_plan_through": "FORUM-20G",
     "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
@@ -60,10 +63,10 @@
     "recipient_target_open_authorization": true,
     "recipient_mention_description_authorization": true,
     "recipient_mention_audience_authorization": true,
+    "recipient_topic_subscription_audience_authorization": true,
     "shared_consumer_resolution_helper": true
   },
   "not_delivered": [
-    "recipient-specific topic-created subscription filtering before pagination",
     "initially non-public topic-created descriptor materialization",
     "profile privacy and blocking policy",
     "trust channel and group facts host adapters",
@@ -77,10 +80,12 @@
       "cargo test -p rustok-server forum_notification_recipient_context -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_mention_audience_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-notification-recipient-context.mjs",
       "node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs",
       "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
       "node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
+      "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"
