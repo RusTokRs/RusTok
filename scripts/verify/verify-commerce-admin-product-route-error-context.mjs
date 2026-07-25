@@ -249,7 +249,7 @@ for (const [block, permission, operation, productIdentity, serviceCall, response
   ],
 ]) {
   requireText(block, permission, `${label} permission`);
-  requireText(block, 'validate_product_shipping_profile_input(', `${label} shipping validation`);
+  requireText(block, 'validate_admin_product_shipping_profile_input(', `${label} shipping validation`);
   requireText(block, operation, `${label} operation`);
   requireText(block, productIdentity, `${label} product identity`);
   requireText(block, serviceCall, `${label} service contract`);
@@ -299,10 +299,12 @@ if (wrapperMapperUses.length !== 2) {
   );
 }
 const shippingValidationUses =
-  adminProducts.match(/validate_product_shipping_profile_input\(/g) ?? [];
+  adminProducts.match(
+    /validate_admin_product_shipping_profile_input\(\s+runtime\.db\(\),\s+AdminProductShippingProfileErrorContext::new\(/g,
+  ) ?? [];
 if (shippingValidationUses.length !== 2) {
   failures.push(
-    `expected two product shipping-profile validation callsites, found ${shippingValidationUses.length}`,
+    `expected two context-aware product shipping-profile validation callsites, found ${shippingValidationUses.length}`,
   );
 }
 
@@ -315,6 +317,7 @@ for (const [content, label] of [
     'fn map_product_database_error(',
     'fn map_product_write_error(',
     'super::admin_public_error(',
+    'super::validate_product_shipping_profile_input(',
     'err.to_string()',
     'error.to_string()',
     'other.to_string()',
