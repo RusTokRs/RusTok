@@ -193,13 +193,14 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
             admin,
             SetForumTopicAudiencePolicyInput {
                 constraints: ForumAudienceConstraints {
+                    roles_any: vec![UserRole::Customer],
                     deny_user_ids: vec![denied_first, denied_fourth],
                     ..ForumAudienceConstraints::default()
                 },
             },
         )
         .await
-        .expect("topic audience should deny exact recipients while remaining public");
+        .expect("topic audience should become non-public and deny exact recipients");
 
     let first_page = provider
         .resolve_audience(ResolveNotificationAudienceRequest {
