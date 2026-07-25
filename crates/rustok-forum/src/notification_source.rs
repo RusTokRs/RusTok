@@ -154,20 +154,11 @@ impl ForumNotificationSourceProvider {
         Ok(persisted)
     }
 
-    async fn load_topic_for_viewer(
+    async fn load_active_topic(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
-        viewer: &ForumTopicAudienceViewer,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        if !ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
-            .is_topic_visible(tenant_id, topic_id, None, viewer)
-            .await
-            .map_err(forum_owner_error)?
-        {
-            return Ok(None);
-        }
-
         let topic = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Id.eq(topic_id))
@@ -186,6 +177,22 @@ impl ForumNotificationSourceProvider {
         Ok(Some(topic))
     }
 
+    async fn load_topic_for_viewer(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        viewer: &ForumTopicAudienceViewer,
+    ) -> NotificationProviderResult<Option<forum_topic::Model>> {
+        if !ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+            .is_topic_visible(tenant_id, topic_id, None, viewer)
+            .await
+            .map_err(forum_owner_error)?
+        {
+            return Ok(None);
+        }
+        self.load_active_topic(tenant_id, topic_id).await
+    }
+
     async fn load_public_topic(
         &self,
         tenant_id: Uuid,
@@ -193,6 +200,18 @@ impl ForumNotificationSourceProvider {
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
         self.load_topic_for_viewer(tenant_id, topic_id, &ForumTopicAudienceViewer::public())
             .await
+    }
+
+    async fn load_topic_for_subscription_audience(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> NotificationProviderResult<Option<forum_topic::Model>> {
+        if self.recipient_context_port.is_none() {
+            self.load_public_topic(tenant_id, topic_id).await
+        } else {
+            self.load_active_topic(tenant_id, topic_id).await
+        }
     }
 
     async fn load_target_for_viewer(
@@ -588,7 +607,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             TOPIC_CREATED_TYPE => {
                 self.validate_topic_descriptor(&event, &request.descriptor)?;
                 let Some(topic) = self
-                    .load_public_topic(event.tenant_id, event.aggregate_id)
+                    .load_topic_for_subscription_audience(event.tenant_id, event.aggregate_id)
                     .await?
                 else {
                     return Ok(NotificationAudiencePage::empty());
