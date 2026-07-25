@@ -16,6 +16,41 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollect
 
 const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+const STOREFRONT_CHECKOUT_OWNER: &str = "rustok_commerce.storefront_staged_checkout_runtime";
+const STOREFRONT_CHECKOUT_BOUNDARY: &str = "commerce_storefront_checkout_http";
+
+type StorefrontCheckoutHttpPolicy = (StatusCode, &'static str);
+
+#[derive(Clone, Copy)]
+struct StorefrontCheckoutErrorContext<'a> {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    cart_id: Uuid,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&'a str>,
+    locale: &'a str,
+    operation: &'static str,
+}
+
+impl<'a> StorefrontCheckoutErrorContext<'a> {
+    fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        cart_id: Uuid,
+        request_context: &'a RequestContext,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            cart_id,
+            channel_id: request_context.channel_id,
+            channel_slug: request_context.channel_slug.as_deref(),
+            locale: request_context.locale.as_str(),
+            operation,
+        }
+    }
+}
 
 /// Create payment collection from storefront cart
 #[utoipa::path(
@@ -177,15 +212,16 @@ pub async fn complete_cart_checkout(
         )
         .await
         .map_err(|error| {
-            tracing::error!(
-                tenant_id = %tenant.id,
-                cart_id = %cart_id,
-                actor_id = %actor_id,
-                code = error.public_code(),
-                retryable = error.retryable(),
-                "storefront checkout request failed"
-            );
-            storefront_checkout_http_error(error)
+            storefront_checkout_http_error(
+                StorefrontCheckoutErrorContext::new(
+                    tenant.id,
+                    actor_id,
+                    cart_id,
+                    &request_context,
+                    "complete_cart_checkout",
+                ),
+                error,
+            )
         })?;
 
     Ok(Json(response))
@@ -219,23 +255,62 @@ fn required_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     Ok(value.to_string())
 }
 
-fn storefront_checkout_http_error(
-    error: crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
-) -> HttpError {
+fn storefront_checkout_error_policy(
+    error: &crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
+) -> StorefrontCheckoutHttpPolicy {
     use crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError;
 
-    let status = match &error {
-        StorefrontStagedCheckoutRuntimeError::Validation(_) => StatusCode::BAD_REQUEST,
-        StorefrontStagedCheckoutRuntimeError::CartAccess => StatusCode::NOT_FOUND,
-        StorefrontStagedCheckoutRuntimeError::AuthenticationRequired => StatusCode::UNAUTHORIZED,
-        StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => {
-            StatusCode::SERVICE_UNAVAILABLE
+    match error {
+        StorefrontStagedCheckoutRuntimeError::Validation(_) => {
+            (StatusCode::BAD_REQUEST, "validation")
         }
-        StorefrontStagedCheckoutRuntimeError::CheckoutFailed => StatusCode::INTERNAL_SERVER_ERROR,
-        StorefrontStagedCheckoutRuntimeError::CompensationPending
-        | StorefrontStagedCheckoutRuntimeError::ReconciliationRequired => StatusCode::CONFLICT,
-    };
-    HttpError::new(status, error.public_code(), error.public_message())
+        StorefrontStagedCheckoutRuntimeError::CartAccess => {
+            (StatusCode::NOT_FOUND, "cart_access")
+        }
+        StorefrontStagedCheckoutRuntimeError::AuthenticationRequired => {
+            (StatusCode::UNAUTHORIZED, "authentication_required")
+        }
+        StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "temporarily_unavailable",
+        ),
+        StorefrontStagedCheckoutRuntimeError::CheckoutFailed => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "checkout_failed")
+        }
+        StorefrontStagedCheckoutRuntimeError::CompensationPending => {
+            (StatusCode::CONFLICT, "compensation_pending")
+        }
+        StorefrontStagedCheckoutRuntimeError::ReconciliationRequired => {
+            (StatusCode::CONFLICT, "reconciliation_required")
+        }
+    }
+}
+
+fn storefront_checkout_http_error(
+    context: StorefrontCheckoutErrorContext<'_>,
+    error: crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
+) -> HttpError {
+    let (status, error_kind) = storefront_checkout_error_policy(&error);
+    let code = error.public_code();
+    let message = error.public_message();
+    tracing::error!(
+        error = ?error,
+        owner = STOREFRONT_CHECKOUT_OWNER,
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        cart_id = %context.cart_id,
+        channel_id = ?context.channel_id,
+        channel = ?context.channel_slug,
+        locale = %context.locale,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        retryable = error.retryable(),
+        status = %status,
+        boundary = STOREFRONT_CHECKOUT_BOUNDARY,
+        "storefront checkout request failed"
+    );
+    HttpError::new(status, code, message)
 }
 
 fn payment_collection_http_error(
