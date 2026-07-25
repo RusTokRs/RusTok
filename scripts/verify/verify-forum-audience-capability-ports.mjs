@@ -51,11 +51,15 @@ if (contract.schema_version !== 1) {
 if (contract.task !== "FORUM-20F") {
   failures.push("forum audience capability contract must belong to FORUM-20F");
 }
-if (contract.delivered_through !== "FORUM-20G") {
-  failures.push("forum audience capability contract must be reconciled through FORUM-20G");
+if (contract.delivered_through !== "FORUM-20H") {
+  failures.push("forum audience capability contract must be reconciled through FORUM-20H");
 }
-if (contract.composition?.storage !== true || contract.composition?.category_policy !== true) {
-  failures.push("forum audience capability contract must record delivered category persistence");
+if (
+  contract.composition?.storage !== true ||
+  contract.composition?.category_policy !== true ||
+  contract.composition?.topic_policy !== true
+) {
+  failures.push("forum audience capability contract must record category and topic persistence");
 }
 for (const [key, expected] of Object.entries({
   roles: 4,
@@ -88,7 +92,6 @@ if (contract.verification?.execution_status !== "not_run_by_implementation_agent
 for (const residual of [
   "category topic and reply read composition",
   "create reply and moderate audience write policy",
-  "topic narrowing commands",
   "channel and group provider adapters",
   "trust-level owner provider",
   "visibility-scoped category and all-read mutations",
@@ -99,8 +102,14 @@ for (const residual of [
     failures.push(`forum audience capability contract must keep ${residual} open`);
   }
 }
-if (contract.not_delivered?.includes("audience policy persistence and inheritance")) {
-  failures.push("delivered category audience persistence must not remain open");
+for (const delivered of [
+  "audience policy persistence and inheritance",
+  "topic narrowing commands",
+  "topic narrowing persistence and commands",
+]) {
+  if (contract.not_delivered?.includes(delivered)) {
+    failures.push(`delivered audience scope must not remain open: ${delivered}`);
+  }
 }
 
 for (const marker of [
@@ -251,6 +260,7 @@ for (const marker of [
 for (const marker of [
   "Delivered in `FORUM-20F`",
   "Delivered in `FORUM-20G`",
+  "Delivered in `FORUM-20H`",
   "ForumAudienceFactsPort",
   "forum-audience-capability-ports.json",
   "audience_capability_contract",
