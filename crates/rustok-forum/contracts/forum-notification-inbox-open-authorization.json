@@ -2,6 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20R",
   "upstream_task": "FORUM-20Q",
+  "downstream_task": "FORUM-20S",
   "scope": "Exact recipient-owned stored notification target reauthorization at inbox open time",
   "notifications_owner_file": "crates/rustok-notifications/src/inbox.rs",
   "notifications_surface_file": "crates/rustok-notifications/src/lib.rs",
