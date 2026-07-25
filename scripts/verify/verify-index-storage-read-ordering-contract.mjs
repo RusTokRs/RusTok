@@ -209,10 +209,10 @@ requireMarkers(databaseSettingsContract, 'shared database settings contract', [
   'export const comparableDatabaseFields = Object.freeze([',
   ...comparableDatabaseFieldMarkers,
   'export const databaseSettingsSource =',
-  'read-report.json database metadata observed from the active PostgreSQL benchmark session',
+  'read-report.json database metadata observed from the active PostgreSQL benchmark session after exact equality was verified against mutation-report.json and maintenance-report.json active-session metadata',
   'export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =>',
   'comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract',
-  'database_settings_source must identify metadata observed from the active PostgreSQL benchmark session',
+  'database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata',
 ]);
 requireMarkers(prepareDecision, 'decision preparation database settings gate', [
   "from './index-storage-database-settings-contract.mjs'",
