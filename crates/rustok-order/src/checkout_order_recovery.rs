@@ -13,6 +13,7 @@ use crate::{
     ReadCheckoutOrderIdentityByOperationRequest,
 };
 
+const CHECKOUT_ORDER_RECOVERY_OWNER: &str = "rustok_order.checkout_order_recovery";
 const RECOVER_OPERATION: &str = "recover_existing_checkout";
 const READ_OPERATION: &str = "read_checkout_order";
 
@@ -96,6 +97,7 @@ impl CheckoutOrderRecoveryAdapter {
         };
 
         validate_identity(
+            &context,
             &identity,
             tenant_id,
             &request,
@@ -134,6 +136,16 @@ impl CheckoutOrderRecoveryAdapter {
             )
             .await?
             .ok_or_else(|| {
+                tracing::warn!(
+                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    channel = ?context.channel,
+                    operation = READ_OPERATION,
+                    code = "order.checkout_order_not_found",
+                    checkout_operation_id = %request.checkout_operation_id,
+                    "checkout order identity was not found for the requested operation"
+                );
                 PortError::not_found(
                     "order.checkout_order_not_found",
                     "checkout order was not found for the requested operation",
@@ -198,14 +210,40 @@ impl CheckoutOrderRecoveryAdapter {
             | OrderStatusKind::Paid
             | OrderStatusKind::Shipped
             | OrderStatusKind::Delivered => Ok(order),
-            OrderStatusKind::Cancelled => Err(PortError::conflict(
-                "order.checkout_order_cancelled",
-                "checkout order is already cancelled",
-            )),
-            OrderStatusKind::Unknown => Err(PortError::invariant_violation(
-                "order.checkout_order_status_invalid",
-                "checkout order has an unsupported lifecycle state",
-            )),
+            OrderStatusKind::Cancelled => {
+                tracing::warn!(
+                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    channel = ?context.channel,
+                    operation = RECOVER_OPERATION,
+                    code = "order.checkout_order_cancelled",
+                    order_id = %order.id,
+                    order_state = ?OrderStatusKind::Cancelled,
+                    "checkout recovery found an already-cancelled order"
+                );
+                Err(PortError::conflict(
+                    "order.checkout_order_cancelled",
+                    "checkout order is already cancelled",
+                ))
+            }
+            OrderStatusKind::Unknown => {
+                tracing::error!(
+                    owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    channel = ?context.channel,
+                    operation = RECOVER_OPERATION,
+                    code = "order.checkout_order_status_invalid",
+                    order_id = %order.id,
+                    order_state = ?OrderStatusKind::Unknown,
+                    "checkout recovery found an unsupported order lifecycle state"
+                );
+                Err(PortError::invariant_violation(
+                    "order.checkout_order_status_invalid",
+                    "checkout order has an unsupported lifecycle state",
+                ))
+            }
         }
     }
 
@@ -252,6 +290,7 @@ pub struct ReadCheckoutOrderProjectionRequest {
 }
 
 fn validate_identity(
+    context: &PortContext,
     identity: &CheckoutOrderIdentitySnapshot,
     tenant_id: Uuid,
     request: &RecoverExistingCheckoutOrderRequest,
@@ -275,6 +314,28 @@ fn validate_identity(
     let legacy_hashes_match = identity.snapshot_hash.as_deref() == Some(legacy_snapshot_hash)
         && identity.request_hash.as_deref() == Some(legacy_request_hash);
     if !base_matches || !(owner_hashes_match || legacy_hashes_match) {
+        tracing::error!(
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            channel = ?context.channel,
+            operation = RECOVER_OPERATION,
+            code = "order.checkout_request_conflict",
+            request_checkout_operation_id = %request.checkout_operation_id,
+            request_cart_id = %request.completion.cart_id,
+            request_payment_collection_id = ?request.completion.payment_collection_id,
+            request_shipping_option_id = ?request.completion.shipping_option_id,
+            identity_tenant_id = %identity.tenant_id,
+            identity_checkout_operation_id = %identity.checkout_operation_id,
+            identity_order_id = %identity.order_id,
+            identity_source_cart_id = ?identity.source_cart_id,
+            identity_payment_collection_id = ?identity.payment_collection_id,
+            identity_shipping_option_id = ?identity.shipping_option_id,
+            base_matches,
+            owner_hashes_match,
+            legacy_hashes_match,
+            "checkout recovery identity conflicts with the completion request"
+        );
         return Err(PortError::conflict(
             "order.checkout_request_conflict",
             "checkout operation is already bound to a different completion request",
@@ -294,11 +355,14 @@ fn require_operation_context(
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
         tracing::warn!(
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             code = "order.checkout_operation_id_invalid",
             expected_checkout_operation_id = %checkout_operation_id,
+            actual_causation_id = ?context.causation_id,
             "checkout recovery received invalid causation identity"
         );
         return Err(PortError::validation(
@@ -310,9 +374,13 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    Uuid::parse_str(&context.tenant_id).map_err(|error| {
         tracing::warn!(
+            error = ?error,
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
             correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             field = "tenant_id",
             value_length = context.tenant_id.len(),
@@ -327,10 +395,13 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|_| {
+    Uuid::parse_str(&context.actor.id).map_err(|error| {
         tracing::warn!(
+            error = ?error,
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             field = "actor_id",
             value_length = context.actor.id.len(),
@@ -360,8 +431,10 @@ fn checkout_request_hashes(
     let full_request = serde_json::to_value(request).map_err(|error| {
         tracing::error!(
             error = ?error,
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation = RECOVER_OPERATION,
             code = "order.checkout_request_encoding_failed",
             "failed to encode checkout recovery request"
@@ -386,8 +459,10 @@ fn hash_json(
     let bytes = serde_json::to_vec(&canonical).map_err(|error| {
         tracing::error!(
             error = ?error,
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             code = "order.checkout_request_encoding_failed",
             "failed to encode canonical checkout recovery request"
@@ -429,8 +504,10 @@ fn normalize_hash(
         || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
     {
         tracing::warn!(
+            owner = CHECKOUT_ORDER_RECOVERY_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             field,
             value_length = value.len(),
@@ -456,8 +533,10 @@ fn order_error_to_port_error(
         OrderError::Database(error) => {
             tracing::error!(
                 error = ?error,
+                owner = CHECKOUT_ORDER_RECOVERY_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.database_unavailable",
                 "order checkout recovery storage failed"
@@ -467,14 +546,26 @@ fn order_error_to_port_error(
                 "order storage is temporarily unavailable",
             )
         }
-        OrderError::OrderNotFound(_) => {
+        OrderError::OrderNotFound(order_id) => {
+            tracing::warn!(
+                owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation,
+                code = "order.order_not_found",
+                order_id = %order_id,
+                "checkout recovery order was not found"
+            );
             PortError::not_found("order.order_not_found", "order was not found")
         }
         OrderError::Validation(cause) => {
             tracing::warn!(
                 cause = %cause,
+                owner = CHECKOUT_ORDER_RECOVERY_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.checkout_recovery_validation",
                 "order owner rejected checkout recovery"
@@ -484,12 +575,16 @@ fn order_error_to_port_error(
                 "checkout order recovery request is invalid",
             )
         }
-        OrderError::InvalidTransition { .. } => {
+        OrderError::InvalidTransition { from, to } => {
             tracing::warn!(
+                owner = CHECKOUT_ORDER_RECOVERY_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.checkout_recovery_state_conflict",
+                from = %from,
+                to = %to,
                 "order lifecycle conflicts with checkout recovery"
             );
             PortError::conflict(
@@ -497,7 +592,35 @@ fn order_error_to_port_error(
                 "order lifecycle transition conflicts with checkout recovery",
             )
         }
-        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => {
+        OrderError::OrderReturnNotFound(return_id) => {
+            tracing::warn!(
+                owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation,
+                code = "order.related_resource_not_found",
+                resource = "order_return",
+                resource_id = %return_id,
+                "checkout recovery related order resource was not found"
+            );
+            PortError::not_found(
+                "order.related_resource_not_found",
+                "related order resource was not found",
+            )
+        }
+        OrderError::OrderChangeNotFound(change_id) => {
+            tracing::warn!(
+                owner = CHECKOUT_ORDER_RECOVERY_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation,
+                code = "order.related_resource_not_found",
+                resource = "order_change",
+                resource_id = %change_id,
+                "checkout recovery related order resource was not found"
+            );
             PortError::not_found(
                 "order.related_resource_not_found",
                 "related order resource was not found",
@@ -506,8 +629,10 @@ fn order_error_to_port_error(
         OrderError::Core(error) => {
             tracing::error!(
                 error = ?error,
+                owner = CHECKOUT_ORDER_RECOVERY_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.invariant_violation",
                 "order checkout recovery invariant failed"
