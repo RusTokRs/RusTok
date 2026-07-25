@@ -11,7 +11,6 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const returns = read('crates/rustok-commerce/src/controllers/admin/returns.rs');
-const admin = read('crates/rustok-commerce/src/controllers/admin/mod.rs');
 const orderErrors = read('crates/rustok-order/src/error.rs');
 const failures = [];
 
@@ -31,11 +30,11 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const logger = between(
+const mapper = between(
   returns,
-  'fn log_admin_order_return_error(',
+  'fn map_admin_order_return_error(',
   '#[utoipa::path(',
-  'admin order-return owner logger',
+  'admin order-return owner mapper',
 );
 const createRoute = between(
   returns,
@@ -61,6 +60,7 @@ if (cancelStart < 0) failures.push('cancel return route: unable to isolate sourc
 
 for (const [value, label] of [
   ['use rustok_order::error::OrderError;', 'typed order error import'],
+  ['use rustok_web::{HttpError, HttpResult};', 'typed HTTP error import'],
   ['const ADMIN_ORDER_RETURN_OWNER: &str = "rustok_order.admin_returns";', 'owner constant'],
   [
     'const ADMIN_ORDER_RETURN_BOUNDARY: &str = "commerce_admin_order_return_http";',
@@ -74,6 +74,8 @@ for (const [value, label] of [
 ]) requireText(returns, value, label);
 
 for (const [value, label] of [
+  ['error: OrderError,', 'owned typed cause'],
+  [') -> HttpError {', 'typed HTTP mapper result'],
   ['OrderError::Validation(_)', 'validation variant'],
   ['OrderError::OrderNotFound(_)', 'order-not-found variant'],
   ['OrderError::OrderReturnNotFound(_)', 'return-not-found variant'],
@@ -91,7 +93,8 @@ for (const [value, label] of [
   ['public_code = code', 'public-code log'],
   ['status = %status', 'status log'],
   ['boundary = ADMIN_ORDER_RETURN_BOUNDARY', 'boundary log'],
-]) requireText(logger, value, label);
+  ['HttpError::new(status, code, message)', 'single static envelope constructor'],
+]) requireText(mapper, value, label);
 
 for (const [value, label] of [
   ['"commerce_admin_order_invalid"', 'validation code'],
@@ -99,12 +102,17 @@ for (const [value, label] of [
   ['"commerce_admin_order_state_conflict"', 'conflict code'],
   ['"commerce_admin_order_storage_unavailable"', 'storage code'],
   ['"commerce_admin_order_failed"', 'fail-closed code'],
+  ['"Order request is invalid"', 'static validation message'],
+  ['"Commerce resource not found"', 'static not-found message'],
+  ['"Order operation conflicts with the current state"', 'static conflict message'],
+  ['"Order storage is temporarily unavailable"', 'static storage message'],
+  ['"Order operation could not be completed safely"', 'static fail-closed message'],
   ['StatusCode::BAD_REQUEST', 'validation status'],
   ['StatusCode::NOT_FOUND', 'not-found status'],
   ['StatusCode::CONFLICT', 'conflict status'],
   ['StatusCode::SERVICE_UNAVAILABLE', 'storage status'],
   ['StatusCode::INTERNAL_SERVER_ERROR', 'fail-closed status'],
-]) requireText(logger, value, label);
+]) requireText(mapper, value, label);
 
 for (const [block, operation, identity, label] of [
   [createRoute, '"create_return"', 'Some(id), None', 'create return context'],
@@ -112,16 +120,10 @@ for (const [block, operation, identity, label] of [
   [showRoute, '"get_return"', 'None, Some(id)', 'show return context'],
   [cancelRoute, '"cancel_return"', 'None, Some(id)', 'cancel return context'],
 ]) {
-  requireText(block, 'if let Err(error) = &result {', `${label} conditional log`);
-  requireText(block, 'log_admin_order_return_error(', `${label} logger handoff`);
+  requireText(block, '.map_err(|error| {', `${label} typed mapping closure`);
+  requireText(block, 'map_admin_order_return_error(', `${label} mapper handoff`);
   requireText(block, operation, `${label} operation`);
   requireText(block, identity, `${label} identity`);
-  requireText(block, 'result.map_err(super::map_order_error)?;', `${label} shared mapping`);
-  const logIndex = block.indexOf('log_admin_order_return_error(');
-  const mapIndex = block.indexOf('result.map_err(super::map_order_error)?;');
-  if (logIndex < 0 || mapIndex < 0 || logIndex > mapIndex) {
-    failures.push(`${label}: owner context must be logged before public mapping`);
-  }
 }
 
 for (const [value, label] of [
@@ -147,28 +149,15 @@ for (const [value, label] of [
   ],
 ]) requireText(returns, value, label);
 
-const ownerMapperUses = returns.match(/result\.map_err\(super::map_order_error\)\?;/g) ?? [];
-if (ownerMapperUses.length !== 4) {
-  failures.push(`expected four logged owner mapper callsites, found ${ownerMapperUses.length}`);
-}
-const loggerUses = returns.match(/log_admin_order_return_error\(/g) ?? [];
-if (loggerUses.length !== 5) {
-  failures.push(`expected logger definition plus four uses, found ${loggerUses.length}`);
+const mapperUses = returns.match(/map_admin_order_return_error\(/g) ?? [];
+if (mapperUses.length !== 5) {
+  failures.push(`expected mapper definition plus four uses, found ${mapperUses.length}`);
 }
 const orchestrationMapperUses =
   returns.match(/\.map_err\(super::map_post_order_orchestration_error\)\?;/g) ?? [];
 if (orchestrationMapperUses.length !== 2) {
   failures.push(`expected two unchanged orchestration mapper callsites, found ${orchestrationMapperUses.length}`);
 }
-
-for (const [value, label] of [
-  ['pub(crate) fn map_order_error(error: OrderError)', 'shared order mapper'],
-  ['"Order request is invalid"', 'static validation message'],
-  ['"Commerce resource not found"', 'static not-found message'],
-  ['"Order operation conflicts with the current state"', 'static conflict message'],
-  ['"Order storage is temporarily unavailable"', 'static storage message'],
-  ['"Order operation could not be completed safely"', 'static fail-closed message'],
-]) requireText(admin, value, label);
 
 for (const [value, label] of [
   ['Validation(String)', 'owner validation variant'],
@@ -181,6 +170,7 @@ for (const [value, label] of [
 ]) requireText(orderErrors, value, label);
 
 for (const value of [
+  '.map_err(super::map_order_error)?;',
   'error.to_string()',
   'err.to_string()',
   'other.to_string()',
@@ -194,5 +184,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin order-return owner errors retain route context before static public mapping',
+  '✔ Commerce admin order-return owner errors retain route context and static public envelopes',
 );
