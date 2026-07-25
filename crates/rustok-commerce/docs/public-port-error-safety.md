@@ -45,12 +45,16 @@ available only for actionable domain errors.
   Validation, missing-resource, transition, and database causes are logged with
   correlation identity and stable codes while the existing public envelopes remain
   static.
+- `rustok-tax` calculation port: request-validation details, provider-result contract
+  violations, and owner validation causes remain internal. Every mapper records owner,
+  correlation id, tenant, channel, operation, and stable code while public validation
+  and invariant messages remain static.
 
 ## Still open
 
-- Audit order, remaining fulfillment adapters, inventory, customer, tax, promotion,
-  payment execution/compensation, and remaining ecommerce adapters for technical text
-  mislabeled as validation/conflict errors.
+- Audit order, remaining fulfillment adapters, inventory, customer, promotion, payment
+  execution/compensation, remaining tax adapters/transports, and remaining ecommerce
+  adapters for technical text mislabeled as validation/conflict errors.
 - Add structured owner-side logging with `correlation_id`, owner operation, stable error
   code, and the original cause before every remaining technical `PortError` mapping.
 - Remove raw technical text from non-`PortError` public REST, GraphQL, native, and
@@ -62,11 +66,13 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-port-error-public-safety.mjs`
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
+- `node scripts/verify/verify-tax-calculation-error-context.mjs`
 - `cargo test -p rustok-api ports::tests`
 - `cargo check -p rustok-pricing --all-features`
 - `cargo check -p rustok-payment --all-features`
 - `cargo check -p rustok-fulfillment --all-features`
-- Targeted pricing, payment collection, and fulfillment checkout execution database,
-  validation, transition, correlation, and transport round-trip tests.
+- `cargo check -p rustok-tax --all-features`
+- Targeted pricing, payment collection, fulfillment checkout execution, and tax
+  calculation validation, provider-contract, correlation, and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
