@@ -1,24 +1,26 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "task": "FORUM-20K",
   "supersedes_task": "FORUM-20I",
-  "downstream_task": "FORUM-20O",
-  "scope": "Forum notification source composition through exact richer public, recipient target-open and recipient mention visibility owners",
+  "downstream_task": "FORUM-20P",
+  "scope": "Forum notification source composition through exact richer public, recipient target-open, recipient mention and bounded topic subscription visibility owners",
   "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
   "visibility_owner_file": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
   "base_visibility_owner_file": "crates/rustok-forum/src/services/topic_visibility.rs",
   "visibility_contract": "crates/rustok-forum/contracts/forum-topic-audience-visibility.json",
   "recipient_target_open_contract": "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json",
   "recipient_mention_contract": "crates/rustok-forum/contracts/forum-notification-recipient-mention-audience.json",
+  "recipient_topic_subscription_contract": "crates/rustok-forum/contracts/forum-notification-topic-subscription-audience.json",
   "baseline_test_file": "crates/rustok-forum/tests/notification_source_sqlite.rs",
   "test_file": "crates/rustok-forum/tests/notification_richer_visibility_sqlite.rs",
   "recipient_test_file": "crates/rustok-forum/tests/notification_recipient_target_open_sqlite.rs",
   "recipient_mention_test_file": "crates/rustok-forum/tests/notification_recipient_mention_audience_sqlite.rs",
+  "recipient_topic_subscription_test_file": "crates/rustok-forum/tests/notification_recipient_topic_subscription_audience_sqlite.rs",
   "source_verifier": "scripts/verify/verify-forum-notification-visibility-composition.mjs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
     "status": "pending",
-    "required_ledger_through": "FORUM-20O",
+    "required_ledger_through": "FORUM-20P",
     "required_delivered_sections": [
       "FORUM-20H",
       "FORUM-20I",
@@ -27,19 +29,22 @@
       "FORUM-20L",
       "FORUM-20M",
       "FORUM-20N",
-      "FORUM-20O"
+      "FORUM-20O",
+      "FORUM-20P"
     ],
     "current_plan_through": "FORUM-20G",
     "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
   },
   "policy": {
-    "topic_created_description_and_audience_viewer": "public unauthenticated without route-channel context",
+    "topic_created_description_viewer": "public unauthenticated without route-channel context",
+    "topic_created_subscription_viewer": "exact subscription recipient when host recipient context is published; public-only fallback when absent",
+    "topic_created_subscription_cursor": "bounded raw keyset page advances by the last scanned subscription rather than the last allowed recipient",
     "mention_description_and_audience_viewer": "exact mentioned recipient when the host recipient-context capability is published; public-only fail-closed fallback when it is absent",
     "target_open_viewer": "exact validated recipient when the host recipient-context capability is published; public-only fail-closed fallback when it is absent",
     "evaluation_order": "exact open route-channel and category floor owner then normalized root-to-category audience layers then optional topic layer",
     "public_facts_provider": "never consulted because public evaluation does not call authenticated owner facts capabilities",
     "authenticated_facts_provider": "optional host capability; local role and explicit user selectors resolve without it while fact-dependent selectors preserve capability retryability",
-    "non_public_richer_layers": "exact user mentions and target-open authorization re-evaluate them for one recipient; topic-created descriptor and subscription pagination remain public-only",
+    "non_public_richer_layers": "mentions, target-open and bounded topic subscription pages re-evaluate them for exact recipients; initially non-public topic-created descriptor materialization remains deferred",
     "missing_foreign_closed_deleted_or_denied": "absent without an existence oracle",
     "reply_state": "pending deferred; approved eligible; all other states unavailable",
     "owner_failures": "preserve Forum retryability classification"
@@ -57,13 +62,14 @@
     "duplicate_notification_visibility_predicate_removed": true,
     "recipient_context_factory_consumption": true,
     "recipient_specific_target_open": true,
-    "topic_created_public_description_and_audience": true,
+    "topic_created_public_description": true,
+    "recipient_specific_topic_subscription_audience": true,
+    "topic_subscription_sparse_cursor": true,
     "recipient_specific_mention_description": true,
     "recipient_specific_mention_audience": true,
     "shared_recipient_resolution_helper": true
   },
   "not_delivered": [
-    "recipient-specific topic-created subscription filtering before pagination",
     "initially non-public topic-created descriptor materialization",
     "profile privacy and blocking policy",
     "host trust channel and group facts adapters for authenticated consumers",
@@ -73,13 +79,16 @@
   ],
   "verification": {
     "commands": [
+      "cargo test -p rustok-notifications --test fanout_sparse_page_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_richer_visibility_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_mention_audience_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-notification-visibility-composition.mjs",
       "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
       "node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
+      "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"
