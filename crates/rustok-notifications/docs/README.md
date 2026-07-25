@@ -142,9 +142,9 @@ full timestamp nanoseconds plus the UUID tie-breaker.
 
 Each scanned row is passed through `NotificationInboxOpenService`. Current recipient
 privacy and source target authorization therefore decide whether the row is returned.
-The list read model exposes typed source, notification type, template key, template
-data, actor, priority, state, and inbox timestamps; it does not expose a route or
-target identity.
+The list read model exposes typed source, notification type, template key,
+source-owned template data, actor, priority, state, and inbox timestamps. It adds no
+dedicated route or structural target owner, kind, or ID fields.
 
 The next cursor is derived from the last scanned raw row rather than the last returned
 item. Privacy or source suppression may produce an empty page with a next cursor,
