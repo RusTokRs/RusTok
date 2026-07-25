@@ -112,12 +112,29 @@ impl ForumAudienceFactsRequest {
         constraints: &ForumAudienceConstraints,
     ) -> ForumResult<Self> {
         let constraints = constraints.clone().normalize()?;
-        Ok(Self {
+        Self {
             user_id,
             include_trust_level: constraints.minimum_trust_level.is_some(),
             channel_slugs: constraints.channel_members_any,
             group_ids: constraints.group_members_any,
-        })
+        }
+        .normalize()
+    }
+
+    pub fn normalize(mut self) -> ForumResult<Self> {
+        validate_raw_len(
+            self.channel_slugs.len(),
+            MAX_FORUM_AUDIENCE_CHANNELS,
+            "fact request channels",
+        )?;
+        validate_raw_len(
+            self.group_ids.len(),
+            MAX_FORUM_AUDIENCE_GROUPS,
+            "fact request groups",
+        )?;
+        self.channel_slugs = normalize_channel_slugs(self.channel_slugs)?;
+        normalize_uuid_list(&mut self.group_ids);
+        Ok(self)
     }
 }
 
@@ -134,6 +151,7 @@ impl ForumAudienceFacts {
         mut self,
         request: &ForumAudienceFactsRequest,
     ) -> ForumResult<Self> {
+        let request = request.clone().normalize()?;
         validate_raw_len(
             self.channel_memberships.len(),
             MAX_FORUM_AUDIENCE_CHANNELS,
