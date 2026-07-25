@@ -6,6 +6,7 @@ use axum::{
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::error::FulfillmentError;
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -22,6 +23,29 @@ use crate::{
         UpdateShippingProfileInput,
     },
 };
+
+const ADMIN_SHIPPING_OPTION_OWNER: &str = "rustok_fulfillment.admin_shipping_options";
+const ADMIN_SHIPPING_BOUNDARY: &str = "commerce_admin_shipping_http";
+
+struct AdminShippingOptionErrorContext {
+    tenant_id: Uuid,
+    shipping_option_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl AdminShippingOptionErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        shipping_option_id: Option<Uuid>,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            shipping_option_id,
+            operation,
+        }
+    }
+}
 
 fn map_shipping_profile_error(error: CommerceError) -> HttpError {
     let (status, code, message, error_kind) = match &error {
@@ -72,8 +96,53 @@ fn map_shipping_profile_error(error: CommerceError) -> HttpError {
         error_kind,
         public_code = code,
         status = %status,
-        boundary = "commerce_admin_shipping_http",
+        boundary = ADMIN_SHIPPING_BOUNDARY,
         "commerce admin shipping profile operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_admin_shipping_option_error(
+    context: AdminShippingOptionErrorContext,
+    error: FulfillmentError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        FulfillmentError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        FulfillmentError::InvalidTransition { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+            "Fulfillment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        FulfillmentError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+            "database",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_SHIPPING_OPTION_OWNER,
+        tenant_id = %context.tenant_id,
+        shipping_option_id = ?context.shipping_option_id,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        "commerce admin shipping option operation failed"
     );
     HttpError::new(status, code, message)
 }
@@ -341,7 +410,12 @@ pub async fn list_shipping_options(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_admin_shipping_option_error(
+                AdminShippingOptionErrorContext::new(tenant.id, None, "list_shipping_options"),
+                error,
+            )
+        })?;
     if let Some(active) = params.active {
         items.retain(|option| option.active == active);
     }
@@ -403,7 +477,12 @@ pub async fn create_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .create_shipping_option(tenant.id, input)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_admin_shipping_option_error(
+                AdminShippingOptionErrorContext::new(tenant.id, None, "create_shipping_option"),
+                error,
+            )
+        })?;
 
     Ok((StatusCode::CREATED, Json(option)))
 }
@@ -441,7 +520,16 @@ pub async fn show_shipping_option(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_admin_shipping_option_error(
+                AdminShippingOptionErrorContext::new(
+                    tenant.id,
+                    Some(id),
+                    "get_shipping_option",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(option))
 }
@@ -482,7 +570,16 @@ pub async fn update_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .update_shipping_option(tenant.id, id, input)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_admin_shipping_option_error(
+                AdminShippingOptionErrorContext::new(
+                    tenant.id,
+                    Some(id),
+                    "update_shipping_option",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(option))
 }
@@ -514,7 +611,16 @@ pub async fn deactivate_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .deactivate_shipping_option(tenant.id, id)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_admin_shipping_option_error(
+                AdminShippingOptionErrorContext::new(
+                    tenant.id,
+                    Some(id),
+                    "deactivate_shipping_option",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(option))
 }
@@ -546,7 +652,16 @@ pub async fn reactivate_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .reactivate_shipping_option(tenant.id, id)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_admin_shipping_option_error(
+                AdminShippingOptionErrorContext::new(
+                    tenant.id,
+                    Some(id),
+                    "reactivate_shipping_option",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(option))
 }
