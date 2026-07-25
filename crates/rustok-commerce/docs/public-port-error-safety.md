@@ -49,6 +49,10 @@ available only for actionable domain errors.
   Validation, missing-resource, transition, and database causes are logged with
   correlation identity and stable codes while the existing public envelopes remain
   static.
+- `rustok-commerce` admin order detail fulfillment lookup: the typed fulfillment cause
+  remains internal while owner, tenant, order, operation, error kind, stable public code,
+  status, and HTTP boundary are logged. Validation, not-found, transition, and storage
+  outcomes use static public messages instead of the shared dynamic validation envelope.
 - `rustok-order` checkout payment settlement: identity absence/mismatch, lifecycle and
   payment-reference conflicts, owner-context validation, missing resources, storage,
   transition, validation, and core causes retain the settlement owner, correlation id,
@@ -89,6 +93,7 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `node scripts/verify/verify-cart-promotion-port-error-safety.mjs`
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
+- `node scripts/verify/verify-commerce-admin-order-detail-fulfillment-error-safety.mjs`
 - `node scripts/verify/verify-order-payment-settlement-error-context.mjs`
 - `node scripts/verify/verify-order-checkout-recovery-error-context.mjs`
 - `node scripts/verify/verify-order-checkout-compensation-error-context.mjs`
@@ -102,7 +107,8 @@ available only for actionable domain errors.
 - `cargo check -p rustok-tax --all-features`
 - Targeted cart promotion, order payment settlement, order checkout recovery, order
   checkout compensation, pricing, payment collection, fulfillment checkout execution,
-  and tax calculation validation, provider-contract, reconciliation, correlation, and
-  transport round-trip tests.
+  admin order-detail fulfillment mapping, and tax calculation validation,
+  provider-contract, reconciliation, correlation, HTTP-envelope, and transport
+  round-trip tests.
 
 No verification command above was executed as part of this source wave.

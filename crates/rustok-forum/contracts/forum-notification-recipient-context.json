@@ -1,25 +1,28 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "task": "FORUM-20L",
   "upstream_task": "FORUM-20K",
   "downstream_task": "FORUM-20M",
+  "consumer_task": "FORUM-20N",
   "scope": "Forum-owned exact recipient principal context capability for deferred notification authorization",
   "owner_file": "crates/rustok-forum/src/notification_recipient.rs",
   "crate_file": "crates/rustok-forum/src/lib.rs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
   "downstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-host-runtime.json",
+  "consumer_contract": "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json",
   "source_verifier": "scripts/verify/verify-forum-notification-recipient-context.mjs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
     "status": "pending",
-    "required_ledger_through": "FORUM-20M",
+    "required_ledger_through": "FORUM-20N",
     "required_delivered_sections": [
       "FORUM-20H",
       "FORUM-20I",
       "FORUM-20J",
       "FORUM-20K",
       "FORUM-20L",
-      "FORUM-20M"
+      "FORUM-20M",
+      "FORUM-20N"
     ],
     "current_plan_through": "FORUM-20G",
     "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
@@ -31,7 +34,7 @@
     "returned_context": "tenant and actor must match the request and retain read deadline semantics",
     "authority": "SecurityContext is reconstructed only from validated role and permission claims",
     "topic_viewer": "validated authority converts through ForumTopicAudienceViewer::authenticated",
-    "provider_absence": "typed capability unavailable error",
+    "provider_absence": "typed capability unavailable error at the resolver boundary; notification target-open keeps a public-only fail-closed fallback when the host capability is absent",
     "provider_failure": "stable source code and retryability preserved without leaking internals",
     "storage_access": "none; Forum does not read auth, profile, channel or group owner tables directly"
   },
@@ -49,12 +52,12 @@
     "retryable_failure_mapping": true,
     "inline_contract_tests": true,
     "host_adapter_implementation": true,
-    "host_runtime_publication": true
+    "host_runtime_publication": true,
+    "notification_source_factory_consumption": true,
+    "recipient_target_open_authorization": true
   },
   "not_delivered": [
-    "notification source factory consumption of the recipient context capability",
-    "recipient-specific audience filtering for non-public topics",
-    "recipient-specific target-open authorization for non-public topics and replies",
+    "recipient-specific audience filtering for non-public topics before pagination",
     "profile privacy and blocking policy",
     "trust channel and group facts host adapters",
     "final notification creation and delivery authorization",
@@ -65,8 +68,10 @@
     "commands": [
       "cargo test -p rustok-forum notification_recipient -- --nocapture",
       "cargo test -p rustok-server forum_notification_recipient_context -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-notification-recipient-context.mjs",
       "node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs",
+      "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"
