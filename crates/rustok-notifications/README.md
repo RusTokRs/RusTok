@@ -6,8 +6,8 @@
 grouping, digests, retention, and delivery-attempt lifecycle. The implemented
 pipeline now covers durable outbox intake, source materialization, bounded
 audience expansion, recipient policy, one idempotent in-app notification, exact
-open-time authorization, and bounded authorized inbox listing. Channel delivery
-remains a later workflow.
+open-time authorization, bounded authorized inbox listing, and exact
+seen/read/archive state APIs. Channel delivery remains a later workflow.
 
 ## Responsibilities
 
@@ -26,6 +26,7 @@ remains a later workflow.
 - recheck recipient privacy and source target authorization at inbox open/list
   time;
 - list exact-recipient inbox rows through bounded sparse keyset pages;
+- apply monotonic idempotent exact-item seen/read/archive transitions;
 - own replay, reconciliation, retention, and delivery lifecycle.
 
 ## Non-responsibilities
@@ -48,6 +49,7 @@ remains a later workflow.
 - `NotificationRecipientPolicy` / `NotificationRecipientPolicyRuntime`;
 - `NotificationInboxOpenService` and exact open request/decision contracts;
 - `NotificationInboxListService` and bounded list request/page/read-model contracts;
+- `NotificationInboxStateService` and exact state request/decision/snapshot contracts;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
 ## Persistence
@@ -173,6 +175,25 @@ The list read model exposes typed semantic/template fields and inbox timestamps 
 adds no dedicated target route or structural target fields. Open and list reads do
 not mutate seen/read/archive timestamps or create delivery attempts.
 
+### 5. Exact inbox state mutations
+
+`NotificationInboxStateService` owns exact notification/tenant/recipient commands.
+`mark_seen` advances only unread rows to seen. `mark_read` advances unread or seen
+rows to read; a direct unread-to-read transition assigns `seen_at` and `read_at`
+from the same instant. `archive` advances every non-archived state to archived and
+preserves prior seen/read timestamps.
+
+State transitions are monotonic and idempotent. Seen does not downgrade read,
+read does not unarchive, and archived is terminal. Repeated or later-state commands
+return the current snapshot with `changed=false` and preserve state timestamps plus
+`updated_at`. Missing, cross-tenant, and cross-recipient rows return the same
+`Unavailable` decision.
+
+The service exposes only state and inbox timestamps, calls no privacy/source or
+delivery owner, and creates no delivery attempt. SQLite owner evidence is
+`tests/inbox_state_sqlite.rs`. Mark-unread, bulk/mark-all mutations, canonical unread
+counts, grouped views, transport adapters, and UI remain closed.
+
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
 
@@ -193,10 +214,11 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - grouping and moderator-directory expansion;
-- seen/read/archive mutation APIs;
+- mark-unread, bulk/mark-all, canonical unread counts, and grouped inbox views;
+- external inbox transport adapters and module-owned UI;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
-- retention, reconciliation, quarantine replay/purge, and module-owned UI.
+- retention, reconciliation, quarantine replay/purge, and administrative repair.
 
 ## Documentation
 
