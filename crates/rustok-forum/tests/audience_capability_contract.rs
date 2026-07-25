@@ -70,6 +70,20 @@ fn audience_constraints_are_bounded_and_canonical() {
         Err(ForumError::Validation(message))
             if message.contains("channel memberships")
     ));
+
+    let oversized_request = ForumAudienceFactsRequest {
+        user_id,
+        include_trust_level: false,
+        channel_slugs: (0..=MAX_FORUM_AUDIENCE_CHANNELS)
+            .map(|index| format!("channel-{index}"))
+            .collect(),
+        group_ids: Vec::new(),
+    };
+    assert!(matches!(
+        oversized_request.normalize(),
+        Err(ForumError::Validation(message))
+            if message.contains("fact request channels")
+    ));
 }
 
 #[test]
@@ -180,6 +194,20 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
     assert_eq!(public_facts, ForumAudienceFacts::default());
 
     let authenticated = SecurityContext::new(UserRole::Customer, Some(user_id));
+    let locally_decided = ForumAudienceFactsResolver::default()
+        .resolve_for_constraints(
+            read_context(tenant_id, user_id),
+            &authenticated,
+            &ForumAudienceConstraints {
+                roles_any: vec![UserRole::Customer],
+                minimum_trust_level: Some(99),
+                ..ForumAudienceConstraints::default()
+            },
+        )
+        .await
+        .expect("a matching local role must not require an optional facts provider");
+    assert_eq!(locally_decided, ForumAudienceFacts::default());
+
     assert!(matches!(
         ForumAudienceFactsResolver::default()
             .resolve_for_constraints(
