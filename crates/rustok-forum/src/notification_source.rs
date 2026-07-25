@@ -23,7 +23,7 @@ use crate::entities::{
     forum_category_subscription, forum_domain_event, forum_reply, forum_topic, forum_user_mention,
 };
 use crate::error::ForumError;
-use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
+use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
 use crate::state_machine::ReplyStatus;
 use crate::subscription::ForumSubscriptionLevel;
 
@@ -137,9 +137,9 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        let scope = ForumTopicVisibilityScope::storefront(None).map_err(forum_owner_error)?;
-        if !ForumTopicVisibilityService::new(self.db.clone())
-            .is_topic_visible(tenant_id, topic_id, &scope)
+        let viewer = ForumTopicAudienceViewer::public();
+        if !ForumTopicAudienceVisibilityService::without_facts_provider(self.db.clone())
+            .is_topic_visible(tenant_id, topic_id, None, &viewer)
             .await
             .map_err(forum_owner_error)?
         {
