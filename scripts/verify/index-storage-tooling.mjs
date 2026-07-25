@@ -67,6 +67,7 @@ const runFixtures = (args) => {
   if (args.length !== 0) fail('fixtures does not accept arguments');
   runNode([
     '--test',
+    scriptPath('finalize-index-storage-adr-placeholder.test.mjs'),
     scriptPath('check-index-storage-read-ordering.test.mjs'),
     scriptPath('index-storage-standalone-tools.test.mjs'),
     scriptPath('compare-index-storage-evidence.test.mjs'),
