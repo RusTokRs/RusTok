@@ -148,18 +148,25 @@ for (const [value, label] of [
   ['pub async fn list_order_returns(', 'admin return list'],
   ['pub async fn show_order_return(', 'admin return detail'],
   ['pub async fn create_order_return(', 'admin return create'],
+  ['pub async fn create_order_return_decision(', 'admin return decision'],
+  ['pub async fn complete_order_return(', 'admin return complete'],
   ['pub async fn cancel_order_return(', 'admin return cancel'],
   ['struct AdminOrderReturnErrorContext {', 'return owner context'],
   ['fn map_admin_order_return_error(', 'context-aware return owner mapper'],
-  ['.map_err(super::map_post_order_orchestration_error)?;', 'typed return orchestration mapping'],
+  ['struct AdminOrderReturnOrchestrationErrorContext {', 'return orchestration context'],
+  [
+    'fn map_admin_order_return_orchestration_error(',
+    'context-aware return orchestration mapper',
+  ],
   ['ListOrderReturnsInput {', 'return list input'],
   ['page: pagination.page', 'return page forwarding'],
   ['per_page: pagination.limit()', 'return page-size forwarding'],
 ]) requireText(returns, value, label);
 
-for (const value of ['.map_err(super::map_order_error)?;']) {
-  forbidText(returns, value, 'stale admin return shared owner mapper callsite');
-}
+for (const value of [
+  '.map_err(super::map_order_error)?;',
+  '.map_err(super::map_post_order_orchestration_error)?;',
+]) forbidText(returns, value, 'stale admin return shared mapper callsite');
 
 for (const [value, label] of [
   ['pub async fn list_fulfillments(', 'admin fulfillment list'],
@@ -214,6 +221,16 @@ if (returnOwnerMapperUses.length !== 4) {
   );
 }
 
+const returnOrchestrationMapperUses =
+  returns.match(
+    /map_admin_order_return_orchestration_error\(\s+AdminOrderReturnOrchestrationErrorContext::new\(/g,
+  ) ?? [];
+if (returnOrchestrationMapperUses.length !== 2) {
+  failures.push(
+    `expected two context-aware return orchestration mapper callsites, found ${returnOrchestrationMapperUses.length}`,
+  );
+}
+
 const fulfillmentMapperUses =
   fulfillments.match(
     /map_admin_fulfillment_error\(\s+AdminFulfillmentErrorContext::new\(/g,
@@ -232,12 +249,6 @@ if (fulfillmentOrchestrationUses.length !== 4) {
   failures.push(
     `expected four context-aware fulfillment orchestration mapper callsites, found ${fulfillmentOrchestrationUses.length}`,
   );
-}
-
-const postOrderUses =
-  returns.match(/\.map_err\(super::map_post_order_orchestration_error\)\?;/g) ?? [];
-if (postOrderUses.length !== 2) {
-  failures.push(`expected two post-order orchestration mapper callsites, found ${postOrderUses.length}`);
 }
 
 const remainingAdminDynamicStrings = admin.match(/other\.to_string\(\)/g) ?? [];
