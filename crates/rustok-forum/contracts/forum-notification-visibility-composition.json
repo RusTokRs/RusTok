@@ -1,9 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "task": "FORUM-20I",
   "scope": "Forum notification source composition through the current public topic visibility owner",
   "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
   "visibility_owner_file": "crates/rustok-forum/src/services/topic_visibility.rs",
+  "richer_visibility_owner_file": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
   "visibility_contract": "crates/rustok-forum/contracts/forum-topic-visibility-scope.json",
   "test_file": "crates/rustok-forum/tests/notification_source_sqlite.rs",
   "source_verifier": "scripts/verify/verify-forum-notification-visibility-composition.mjs",
@@ -39,7 +40,7 @@
   "not_delivered": [
     "recipient-specific authenticated role trust channel group and explicit-user evaluation",
     "profile privacy and blocking policy",
-    "normalized category and topic audience layer read composition",
+    "notification source migration to the exact richer topic audience owner",
     "search index SEO and deep-link migration",
     "final notification creation and delivery authorization",
     "PostgreSQL and cross-consumer runtime evidence"
