@@ -56,14 +56,17 @@ if (contract.category_bound !== 512 || contract.maximum_depth !== 16) {
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("source publication must not claim unexecuted visibility evidence");
 }
-if (topicVisibilityContract.task !== "FORUM-20A") {
-  failures.push("FORUM-20B must not rewrite the existing topic visibility contract");
+if (topicVisibilityContract.task !== "FORUM-20C") {
+  failures.push("the cumulative topic visibility contract must remain at FORUM-20C");
 }
 for (const residual of [
-  "topic read composition",
   "role visibility",
+  "trust-level visibility",
+  "channel membership visibility",
   "group membership visibility",
   "explicit allow and deny",
+  "create reply and moderate audience policy",
+  "remaining non-category-topic-reply read composition",
   "visibility-scoped category and all-read mutations",
 ]) {
   if (!contract.not_delivered?.includes(residual)) {
@@ -116,7 +119,7 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  'add_column(',
+  "add_column(",
   'Alias::new("visibility_override")',
   "visibility_override = 'authenticated'",
   "forum_category_visibility_override_insert",
@@ -167,6 +170,8 @@ for (const marker of [
 
 for (const marker of [
   "Delivered in `FORUM-20B`",
+  "Delivered in `FORUM-20C`",
+  "Delivered in `FORUM-20E`",
   "ForumCategoryVisibilityPolicyService",
   "forum-category-visibility-policy.json",
   "category_visibility_policy_sqlite",
