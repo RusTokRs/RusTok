@@ -40,12 +40,17 @@ available only for actionable domain errors.
   context and owner operation into the mapper. Database, validation, transition, and
   provider causes are logged with correlation identity; raw provider ids, lifecycle
   strings, and storage causes do not appear in the public message.
+- `rustok-fulfillment` checkout execution: ensure/read storage calls and idempotent
+  adoption lookups pass the original `PortContext` and owner operation into the mapper.
+  Validation, missing-resource, transition, and database causes are logged with
+  correlation identity and stable codes while the existing public envelopes remain
+  static.
 
 ## Still open
 
-- Audit order, fulfillment, inventory, customer, tax, promotion, payment execution/
-  compensation, and remaining ecommerce adapters for technical text mislabeled as
-  validation/conflict errors.
+- Audit order, remaining fulfillment adapters, inventory, customer, tax, promotion,
+  payment execution/compensation, and remaining ecommerce adapters for technical text
+  mislabeled as validation/conflict errors.
 - Add structured owner-side logging with `correlation_id`, owner operation, stable error
   code, and the original cause before every remaining technical `PortError` mapping.
 - Remove raw technical text from non-`PortError` public REST, GraphQL, native, and
@@ -56,10 +61,12 @@ available only for actionable domain errors.
 
 - `node scripts/verify/verify-port-error-public-safety.mjs`
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
+- `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
 - `cargo test -p rustok-api ports::tests`
 - `cargo check -p rustok-pricing --all-features`
 - `cargo check -p rustok-payment --all-features`
-- Targeted pricing and payment collection database, validation, transition,
-  provider/invariant, correlation, and transport round-trip tests.
+- `cargo check -p rustok-fulfillment --all-features`
+- Targeted pricing, payment collection, and fulfillment checkout execution database,
+  validation, transition, correlation, and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
