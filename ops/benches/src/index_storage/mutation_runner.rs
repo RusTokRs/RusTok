@@ -10,14 +10,15 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    BenchmarkConfig, MutationWorkload, Prototype, connect_benchmark_database,
-    explain::parse_mutation_explain_metrics, full_prototype_sql, mutation_workloads,
-    source_dataset_sql,
+    BenchmarkConfig, DatabaseMetadata, MutationWorkload, Prototype, connect_benchmark_database,
+    ensure_database_metadata_stable, explain::parse_mutation_explain_metrics, full_prototype_sql,
+    mutation_workloads, read_database_metadata, source_dataset_sql,
 };
 
 #[derive(Debug, Serialize)]
 pub struct MutationBenchmarkReport {
     pub generated_at: DateTime<Utc>,
+    pub database: DatabaseMetadata,
     pub dataset_scale: String,
     pub repetitions: u32,
     pub prototypes: Vec<PrototypeMutationReport>,
@@ -66,6 +67,9 @@ pub async fn run_mutations(config: &BenchmarkConfig) -> Result<MutationBenchmark
     db.execute_unprepared("SET jit = off; SET statement_timeout = '30min';")
         .await
         .context("failed to configure mutation benchmark session")?;
+    let database = read_database_metadata(&db)
+        .await
+        .context("failed to capture mutation benchmark database metadata")?;
     db.execute_unprepared(&source_dataset_sql(&config.dataset))
         .await
         .context("failed to create mutation benchmark source dataset")?;
@@ -86,9 +90,11 @@ pub async fn run_mutations(config: &BenchmarkConfig) -> Result<MutationBenchmark
         });
     }
     validate_mutation_shape(&prototypes)?;
+    ensure_database_metadata_stable(&db, &database, "mutation benchmark").await?;
 
     Ok(MutationBenchmarkReport {
         generated_at: Utc::now(),
+        database,
         dataset_scale: format!("{:?}", config.dataset.scale),
         repetitions: config.repetitions,
         prototypes,
