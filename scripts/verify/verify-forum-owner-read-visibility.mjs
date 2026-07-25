@@ -67,7 +67,6 @@ for (const residual of [
   "channel membership visibility",
   "group membership visibility",
   "explicit allow and deny",
-  "category owner read filtering",
   "create reply and moderate audience policy",
   "search notification SEO and deep-link migration to the owner scope",
   "visibility-scoped category and all-read mutations",
