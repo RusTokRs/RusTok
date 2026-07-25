@@ -40,6 +40,7 @@ fn read_context(tenant_id: Uuid, user_id: Uuid) -> PortContext {
 
 #[test]
 fn audience_constraints_are_bounded_and_canonical() {
+    let tenant_id = Uuid::new_v4();
     let group_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let normalized = ForumAudienceConstraints {
@@ -54,7 +55,10 @@ fn audience_constraints_are_bounded_and_canonical() {
     .expect("bounded audience constraints should normalize");
 
     assert_eq!(normalized.roles_any, vec![UserRole::Manager, UserRole::Admin]);
-    assert_eq!(normalized.channel_members_any, vec!["team"]);
+    assert_eq!(
+        normalized.channel_members_any,
+        vec!["team".to_string()]
+    );
     assert_eq!(normalized.group_members_any, vec![group_id]);
     assert_eq!(normalized.allow_user_ids, vec![user_id]);
     assert_eq!(normalized.deny_user_ids, vec![user_id]);
@@ -72,6 +76,7 @@ fn audience_constraints_are_bounded_and_canonical() {
     ));
 
     let oversized_request = ForumAudienceFactsRequest {
+        tenant_id,
         user_id,
         include_trust_level: false,
         channel_slugs: (0..=MAX_FORUM_AUDIENCE_CHANNELS)
@@ -84,10 +89,21 @@ fn audience_constraints_are_bounded_and_canonical() {
         Err(ForumError::Validation(message))
             if message.contains("fact request channels")
     ));
+
+    assert!(matches!(
+        ForumAudienceConstraints {
+            group_members_any: vec![Uuid::nil()],
+            ..ForumAudienceConstraints::default()
+        }
+        .normalize(),
+        Err(ForumError::Validation(message))
+            if message.contains("nil identifiers")
+    ));
 }
 
 #[test]
 fn explicit_deny_wins_and_positive_selectors_are_a_union() {
+    let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let security = SecurityContext::new(UserRole::Manager, Some(user_id));
     let constraints = ForumAudienceConstraints {
@@ -98,6 +114,7 @@ fn explicit_deny_wins_and_positive_selectors_are_a_union() {
         ..ForumAudienceConstraints::default()
     };
     let denied = ForumAudienceEvaluator::decide(
+        tenant_id,
         &constraints,
         &security,
         &ForumAudienceFacts::default(),
@@ -107,6 +124,7 @@ fn explicit_deny_wins_and_positive_selectors_are_a_union() {
     assert_eq!(denied.reason, ForumAudienceDecisionReason::ExplicitDeny);
 
     let role_allowed = ForumAudienceEvaluator::decide(
+        tenant_id,
         &ForumAudienceConstraints {
             roles_any: vec![UserRole::Manager],
             minimum_trust_level: Some(50),
@@ -120,6 +138,7 @@ fn explicit_deny_wins_and_positive_selectors_are_a_union() {
     assert_eq!(role_allowed.reason, ForumAudienceDecisionReason::Role);
 
     let public_denied = ForumAudienceEvaluator::decide(
+        tenant_id,
         &ForumAudienceConstraints {
             roles_any: vec![UserRole::Customer],
             ..ForumAudienceConstraints::default()
@@ -136,11 +155,13 @@ fn explicit_deny_wins_and_positive_selectors_are_a_union() {
 }
 
 #[test]
-fn exact_owner_facts_reject_unrequested_memberships() {
+fn exact_owner_facts_reject_wrong_identity_and_unrequested_memberships() {
+    let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let requested_group = Uuid::new_v4();
     let unrequested_group = Uuid::new_v4();
     let request = ForumAudienceFactsRequest::for_constraints(
+        tenant_id,
         user_id,
         &ForumAudienceConstraints {
             minimum_trust_level: Some(1),
@@ -153,6 +174,20 @@ fn exact_owner_facts_reject_unrequested_memberships() {
 
     assert!(matches!(
         ForumAudienceFacts {
+            tenant_id: Uuid::new_v4(),
+            user_id,
+            trust_level: Some(10),
+            channel_memberships: vec!["members".into()],
+            group_memberships: vec![requested_group],
+        }
+        .validate_for_request(&request),
+        Err(ForumError::Validation(message))
+            if message.contains("different tenant or actor")
+    ));
+    assert!(matches!(
+        ForumAudienceFacts {
+            tenant_id,
+            user_id,
             trust_level: Some(10),
             channel_memberships: vec!["other".into()],
             group_memberships: vec![requested_group],
@@ -163,6 +198,8 @@ fn exact_owner_facts_reject_unrequested_memberships() {
     ));
     assert!(matches!(
         ForumAudienceFacts {
+            tenant_id,
+            user_id,
             trust_level: Some(10),
             channel_memberships: vec!["members".into()],
             group_memberships: vec![unrequested_group],
@@ -174,7 +211,7 @@ fn exact_owner_facts_reject_unrequested_memberships() {
 }
 
 #[tokio::test]
-async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
+async fn resolver_is_fail_closed_and_requires_matching_read_context() {
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let constraints = ForumAudienceConstraints {
@@ -185,6 +222,7 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
 
     let public_facts = ForumAudienceFactsResolver::default()
         .resolve_for_constraints(
+            tenant_id,
             read_context(tenant_id, user_id),
             &SecurityContext::public_read(),
             &constraints,
@@ -196,6 +234,7 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
     let authenticated = SecurityContext::new(UserRole::Customer, Some(user_id));
     let locally_decided = ForumAudienceFactsResolver::default()
         .resolve_for_constraints(
+            tenant_id,
             read_context(tenant_id, user_id),
             &authenticated,
             &ForumAudienceConstraints {
@@ -211,6 +250,7 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
     assert!(matches!(
         ForumAudienceFactsResolver::default()
             .resolve_for_constraints(
+                tenant_id,
                 read_context(tenant_id, user_id),
                 &authenticated,
                 &constraints,
@@ -222,6 +262,8 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
 
     let resolver = ForumAudienceFactsResolver::new(Some(Arc::new(StaticFactsPort {
         facts: ForumAudienceFacts {
+            tenant_id,
+            user_id,
             trust_level: Some(8),
             channel_memberships: vec!["MEMBERS".into()],
             group_memberships: Vec::new(),
@@ -229,6 +271,7 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
     })));
     let facts = resolver
         .resolve_for_constraints(
+            tenant_id,
             read_context(tenant_id, user_id),
             &authenticated,
             &constraints,
@@ -236,7 +279,21 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
         .await
         .expect("exact owner facts should resolve");
     assert_eq!(facts.trust_level, Some(8));
-    assert_eq!(facts.channel_memberships, vec!["members"]);
+    assert_eq!(facts.channel_memberships, vec!["members".to_string()]);
+
+    let wrong_actor_context = read_context(tenant_id, Uuid::new_v4());
+    assert!(matches!(
+        resolver
+            .resolve_for_constraints(
+                tenant_id,
+                wrong_actor_context,
+                &authenticated,
+                &constraints,
+            )
+            .await,
+        Err(ForumError::Validation(message))
+            if message.contains("actor does not match")
+    ));
 
     let missing_deadline = PortContext::new(
         tenant_id.to_string(),
@@ -246,7 +303,12 @@ async fn resolver_is_fail_closed_and_requires_read_deadline_semantics() {
     );
     assert!(matches!(
         resolver
-            .resolve_for_constraints(missing_deadline, &authenticated, &constraints)
+            .resolve_for_constraints(
+                tenant_id,
+                missing_deadline,
+                &authenticated,
+                &constraints,
+            )
             .await,
         Err(ForumError::CapabilityFailure { source_code, .. })
             if source_code == "port.deadline_required"
