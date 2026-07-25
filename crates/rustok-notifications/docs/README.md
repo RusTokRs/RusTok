@@ -154,26 +154,28 @@ failures abort the page without returning a partial result. Listing does not mut
 
 ### Exact inbox state mutations
 
-Exact seen/read/archive state APIs are owner-public through
+Exact seen/read/mark-unread/archive state APIs are owner-public through
 `NotificationInboxStateService`. Every request requires non-nil notification,
 tenant, and recipient identities and updates only the exact owned row. Missing,
 cross-tenant, and cross-recipient rows return the same `Unavailable` decision.
 
-The monotonic order is `unread → seen → read → archived`. `mark_seen` changes only
+The forward order is `unread → seen → read → archived`. `mark_seen` changes only
 unread rows. `mark_read` changes unread or seen rows; direct unread-to-read assigns
 `seen_at` and `read_at` from the same instant, while seen-to-read preserves the
-existing `seen_at`. `archive` changes every non-archived row and preserves existing
-seen/read timestamps.
+existing `seen_at`. `mark_unread` is the explicit reopen command for seen and read
+rows: it returns them to unread and clears `seen_at` plus `read_at`. `archive`
+changes every non-archived row and preserves existing seen/read timestamps.
 
-No command downgrades an archived row. Same-state and later-state requests are
-idempotent: `changed=false`, state timestamps remain unchanged, and `updated_at`
-is not rewritten. The response contains only notification state and inbox
-timestamps. The service calls no recipient-policy, source-provider, target, or
+No command reopens an archived row. Requests already at the requested state or at a
+protected state are idempotent: `changed=false`, state timestamps remain unchanged,
+and `updated_at` is not rewritten. The response contains only notification state and
+inbox timestamps. The service calls no recipient-policy, source-provider, target, or
 delivery owner and does not create delivery attempts.
 
-SQLite evidence is `tests/inbox_state_sqlite.rs`. Mark-unread, bulk/mark-all
-mutations, canonical unread counts, grouped inbox views, external transport
-adapters, and module-owned UI remain closed.
+SQLite evidence is `tests/inbox_state_sqlite.rs`. The former
+`mark-unread, bulk/mark-all` residual is narrowed: exact-item mark-unread is now
+delivered; bulk/mark-all mutations, canonical unread counts, grouped inbox views,
+external transport adapters, and module-owned UI remain closed.
 
 ### Bounded inbox reconciliation
 
@@ -215,7 +217,7 @@ remains deferred.
   policy changes with final candidate commits;
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
-- mark-unread, bulk/mark-all mutations, canonical unread counts, and grouped views;
+- bulk/mark-all mutations, canonical unread counts, and grouped views;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and full module-owned UI;
 - channel delivery enqueue and transports with delivery-time authorization;
@@ -253,11 +255,12 @@ node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
 node scripts/verify/verify-forum-notification-inbox-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
 node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
+node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V`.
+`FORUM-20R/20S/20T/20U/20V/20W`.
 
 ## Related documents
 
