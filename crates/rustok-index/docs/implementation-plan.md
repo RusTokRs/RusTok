@@ -48,6 +48,8 @@ Commits record which checks and evidence runs were not executed.
 - M2 read/query harness: `historical smoke/100k archived; replacement 100k/1m pending`
 - M2 transactional mutation/WAL harness: `historical smoke/100k archived; replacement 100k/1m pending`
 - M2 persistent churn/VACUUM harness: `historical smoke/100k archived; replacement 100k/1m pending`
+- M2 deterministic PostgreSQL session contract: `complete`
+- M2 observed cross-report database metadata contract: `complete`
 - M2 comparison provenance contract: `complete`
 - Production persistence: intentionally absent until the M2 ADR selects a model
 
@@ -215,8 +217,20 @@ migrations.
 - [x] Keep all candidate DDL outside production migrations in `ops/benches`.
 - [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.
 - [x] Canonicalize configured locales through `LocaleKey` before SQL generation.
-- [x] Pin the shared single-session PostgreSQL connection to
-      `standard_conforming_strings = on` before generated benchmark SQL runs.
+- [x] Pin every single-session PostgreSQL benchmark connection to
+      `standard_conforming_strings = on`, UTC, `DateStyle = 'ISO, YMD'`, and
+      `extra_float_digits = 3` before generated benchmark SQL runs.
+- [x] Archive one exact eleven-field observed PostgreSQL `database` object in
+      every read, mutation, and maintenance report through one shared Rust type
+      and metadata query.
+- [x] Re-read the observed database/session metadata after every report's
+      workloads and fail before serialization when any field drifts.
+- [x] Require exact metadata shape and equality across read, mutation, and
+      maintenance reports before importing the byte-preserved validator or
+      comparator core.
+- [x] Compare the canonical ten planner/session fields across same-commit scales
+      and bind the recorded methodology through shared ADR preparation,
+      rendering, and finalization gates.
 - [x] Generate Product, Variant, SalesChannel, tags, prices, timestamps, and links
       without random or wall-clock inputs.
 - [x] Prototype JSONB entity rows plus typed expression/GIN indexes.
@@ -455,3 +469,16 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   `standard_conforming_strings = on` before source or candidate SQL runs, and
   added a permanent source guard so server, database, or role defaults cannot
   change archived SQL semantics. Tests were not run by the assistant.
+- 2026-07-25: expanded the deterministic session contract to UTC,
+  `DateStyle = 'ISO, YMD'`, and `extra_float_digits = 3`, captured the exact
+  observed PostgreSQL metadata from each active read, mutation, and maintenance
+  session, and re-checked it after all workloads before writing reports.
+- 2026-07-25: made packet preflight fail closed on missing, extra, or unequal
+  eleven-field database metadata across the three reports before byte-preserved
+  validation or comparison, and unified all runners on one shared Rust metadata
+  owner.
+- 2026-07-25: bound the official ten-field cross-scale methodology to comparison,
+  decision preparation, direct ADR rendering, finalization, integrity guards, and
+  documentation. Core-only output remains incomplete, while replacement same-
+  commit 100k/1m evidence and the accepted storage ADR remain open. Tests,
+  verifiers, workflows, and benchmarks were not run by the assistant.
