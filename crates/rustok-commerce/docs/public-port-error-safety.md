@@ -60,10 +60,10 @@ available only for actionable domain errors.
   status, and HTTP boundary. Persisted reconciliation errors adopt the fulfillment id from
   the typed orchestration error while validation and technical details stay internal.
 - `rustok-commerce` admin order-return owner routes: create, list, detail, and cancel paths
-  record the typed `OrderError` before public conversion with owner, tenant, route
-  operation, truthful optional order and return identities, stable public code, status,
-  and HTTP boundary. The existing shared mapper continues to provide the same static
-  validation, not-found, conflict, storage, and fail-closed envelopes.
+  map the typed `OrderError` locally with owner, tenant, route operation, truthful optional
+  order and return identities, stable public code, status, and HTTP boundary. Validation,
+  not-found, conflict, storage, and fail-closed outcomes preserve the existing static
+  status, code, and message policy without a second generic error event.
 - `rustok-commerce` admin order detail payment lookup: the complete typed payment cause
   remains internal while owner, tenant, order, operation, error kind, stable public code,
   status, and HTTP boundary are logged. Validation, missing-resource, transition,
