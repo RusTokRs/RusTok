@@ -20,6 +20,9 @@ use rustok_cart::{
 };
 use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 
+#[path = "line_item_resolution.rs"]
+mod line_item_resolution;
+
 fn map_cart_port_error(
     error: PortError,
     operation: &'static str,
@@ -296,7 +299,7 @@ pub async fn add_cart_line_item(
         super::build_store_pricing_context(&existing, &request_context, input.quantity);
     let public_channel_slug =
         super::storefront_public_channel_slug_for_cart(&existing, &request_context);
-    let resolved_input = super::resolve_store_line_item_input(
+    let resolved_input = line_item_resolution::resolve_store_line_item_input(
         runtime.db(),
         tenant.id,
         super::StoreLineItemResolution {
@@ -392,7 +395,7 @@ pub async fn update_cart_line_item(
     let event_bus = runtime.event_bus();
     if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id) {
         if let Some(variant_id) = existing_line_item.variant_id {
-            super::validate_store_line_item_quantity(
+            line_item_resolution::validate_store_line_item_quantity(
                 runtime.db(),
                 tenant.id,
                 variant_id,
