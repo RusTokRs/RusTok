@@ -1,6 +1,7 @@
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
@@ -12,6 +13,7 @@ use crate::entities::forum_topic;
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
+use super::rbac::enforce_scope;
 use super::topic_owner;
 use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 
@@ -61,11 +63,8 @@ impl TopicService {
         topic_id: Uuid,
         locale: &str,
     ) -> ForumResult<TopicResponse> {
-        let response = self
-            .inner
-            .get(tenant_id, security, topic_id, locale)
-            .await?;
-        require_localized_topic_response(response)
+        self.get_with_locale_fallback(tenant_id, security, topic_id, locale, None)
+            .await
     }
 
     pub async fn get_with_locale_fallback(
@@ -76,6 +75,17 @@ impl TopicService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<TopicResponse> {
+        enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
+        let visible = ForumTopicVisibilityService::new(self.db.clone())
+            .is_topic_category_visible_to_viewer(
+                tenant_id,
+                topic_id,
+                !security.is_public_read(),
+            )
+            .await?;
+        if !visible {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
         let response = self
             .inner
             .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
@@ -153,8 +163,8 @@ impl TopicService {
         security: SecurityContext,
         filter: ListTopicsFilter,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-        let page = self.inner.list(tenant_id, security, filter).await?;
-        require_localized_topic_page(page)
+        self.list_with_locale_fallback(tenant_id, security, filter, None)
+            .await
     }
 
     pub async fn list_with_locale_fallback(
@@ -164,9 +174,20 @@ impl TopicService {
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+        enforce_scope(&security, Resource::ForumTopics, Action::List)?;
+        let visibility = ForumTopicVisibilityService::new(self.db.clone());
+        let hidden_category_ids = visibility
+            .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
+            .await?;
         let page = self
             .inner
-            .list_with_locale_fallback(tenant_id, security, filter, fallback_locale)
+            .list_with_locale_fallback_and_hidden_categories(
+                tenant_id,
+                security,
+                filter,
+                fallback_locale,
+                &hidden_category_ids,
+            )
             .await?;
         require_localized_topic_page(page)
     }

@@ -82,3 +82,14 @@ jobs:
         run: node scripts/verify/verify-rust-host-browser-contract.mjs
       - name: Verify development container topology
         run: node scripts/verify/verify-development-container-topology.mjs
+
+  seo-hardening:
+    name: SEO Hardening
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+      - name: Verify SEO hardening contracts
+        run: node scripts/verify/verify-seo-hardening-suite.mjs

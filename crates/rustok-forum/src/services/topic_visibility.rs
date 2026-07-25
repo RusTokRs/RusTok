@@ -64,14 +64,48 @@ impl ForumTopicVisibilityService {
         Self { db }
     }
 
+    pub(crate) async fn hidden_category_ids_for_viewer(
+        &self,
+        tenant_id: Uuid,
+        is_authenticated: bool,
+    ) -> ForumResult<Vec<Uuid>> {
+        ForumCategoryVisibilityPolicyService::new(self.db.clone())
+            .hidden_category_ids_for_viewer(tenant_id, is_authenticated)
+            .await
+    }
+
     pub(crate) async fn hidden_category_ids_for_scope(
         &self,
         tenant_id: Uuid,
         scope: &ForumTopicVisibilityScope,
     ) -> ForumResult<Vec<Uuid>> {
-        ForumCategoryVisibilityPolicyService::new(self.db.clone())
-            .hidden_category_ids_for_viewer(tenant_id, scope.is_authenticated())
+        self.hidden_category_ids_for_viewer(tenant_id, scope.is_authenticated())
             .await
+    }
+
+    /// Evaluates only the inherited category audience floor for an owner read.
+    ///
+    /// Unlike storefront visibility, this check intentionally does not require an
+    /// open topic or channel context. Missing, foreign and category-denied topics
+    /// all resolve to `false` so topic and reply owner reads can fail as absent.
+    pub(crate) async fn is_topic_category_visible_to_viewer(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        is_authenticated: bool,
+    ) -> ForumResult<bool> {
+        let hidden_category_ids = self
+            .hidden_category_ids_for_viewer(tenant_id, is_authenticated)
+            .await?;
+        let mut select = forum_topic::Entity::find()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::Id.eq(topic_id));
+        if !hidden_category_ids.is_empty() {
+            select = select.filter(
+                forum_topic::Column::CategoryId.is_not_in(hidden_category_ids),
+            );
+        }
+        Ok(select.one(&self.db).await?.is_some())
     }
 
     pub async fn is_topic_visible(
