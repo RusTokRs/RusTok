@@ -30,10 +30,16 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
+const orderPolicy = between(
+  returns,
+  'fn admin_order_error_policy(',
+  'fn admin_payment_error_policy(',
+  'admin order policy',
+);
 const mapper = between(
   returns,
   'fn map_admin_order_return_error(',
-  '#[utoipa::path(',
+  'fn map_admin_order_return_orchestration_error(',
   'admin order-return owner mapper',
 );
 const createRoute = between(
@@ -74,8 +80,6 @@ for (const [value, label] of [
 ]) requireText(returns, value, label);
 
 for (const [value, label] of [
-  ['error: OrderError,', 'owned typed cause'],
-  [') -> HttpError {', 'typed HTTP mapper result'],
   ['OrderError::Validation(_)', 'validation variant'],
   ['OrderError::OrderNotFound(_)', 'order-not-found variant'],
   ['OrderError::OrderReturnNotFound(_)', 'return-not-found variant'],
@@ -83,20 +87,6 @@ for (const [value, label] of [
   ['OrderError::InvalidTransition { .. }', 'transition variant'],
   ['OrderError::Database(_)', 'database variant'],
   ['OrderError::Core(_)', 'core variant'],
-  ['error = ?error', 'typed internal cause'],
-  ['owner = ADMIN_ORDER_RETURN_OWNER', 'owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['order_id = ?context.order_id', 'order identity log'],
-  ['return_id = ?context.return_id', 'return identity log'],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error-kind log'],
-  ['public_code = code', 'public-code log'],
-  ['status = %status', 'status log'],
-  ['boundary = ADMIN_ORDER_RETURN_BOUNDARY', 'boundary log'],
-  ['HttpError::new(status, code, message)', 'single static envelope constructor'],
-]) requireText(mapper, value, label);
-
-for (const [value, label] of [
   ['"commerce_admin_order_invalid"', 'validation code'],
   ['"commerce_admin_not_found"', 'not-found code'],
   ['"commerce_admin_order_state_conflict"', 'conflict code'],
@@ -112,6 +102,23 @@ for (const [value, label] of [
   ['StatusCode::CONFLICT', 'conflict status'],
   ['StatusCode::SERVICE_UNAVAILABLE', 'storage status'],
   ['StatusCode::INTERNAL_SERVER_ERROR', 'fail-closed status'],
+]) requireText(orderPolicy, value, label);
+
+for (const [value, label] of [
+  ['error: OrderError,', 'owned typed cause'],
+  [') -> HttpError {', 'typed HTTP mapper result'],
+  ['admin_order_error_policy(&error)', 'shared typed order policy'],
+  ['error = ?error', 'typed internal cause'],
+  ['owner = ADMIN_ORDER_RETURN_OWNER', 'owner log'],
+  ['tenant_id = %context.tenant_id', 'tenant log'],
+  ['order_id = ?context.order_id', 'order identity log'],
+  ['return_id = ?context.return_id', 'return identity log'],
+  ['operation = %context.operation', 'operation log'],
+  ['error_kind,', 'error-kind log'],
+  ['public_code = code', 'public-code log'],
+  ['status = %status', 'status log'],
+  ['boundary = ADMIN_ORDER_RETURN_BOUNDARY', 'boundary log'],
+  ['HttpError::new(status, code, message)', 'single static envelope constructor'],
 ]) requireText(mapper, value, label);
 
 for (const [block, operation, identity, label] of [
@@ -143,10 +150,7 @@ for (const [value, label] of [
   ['.list_returns(', 'list service contract'],
   ['.get_return(tenant.id, id)', 'detail service contract'],
   ['.cancel_return(tenant.id, id, input)', 'cancel service contract'],
-  [
-    '.map_err(super::map_post_order_orchestration_error)?;',
-    'unchanged orchestration public mapping',
-  ],
+  ['fn map_admin_order_return_orchestration_error(', 'local orchestration mapper'],
 ]) requireText(returns, value, label);
 
 const mapperUses = returns.match(/map_admin_order_return_error\(/g) ?? [];
@@ -154,9 +158,13 @@ if (mapperUses.length !== 5) {
   failures.push(`expected mapper definition plus four uses, found ${mapperUses.length}`);
 }
 const orchestrationMapperUses =
-  returns.match(/\.map_err\(super::map_post_order_orchestration_error\)\?;/g) ?? [];
+  returns.match(
+    /map_admin_order_return_orchestration_error\(\s+AdminOrderReturnOrchestrationErrorContext::new\(/g,
+  ) ?? [];
 if (orchestrationMapperUses.length !== 2) {
-  failures.push(`expected two unchanged orchestration mapper callsites, found ${orchestrationMapperUses.length}`);
+  failures.push(
+    `expected two context-aware orchestration mapper callsites, found ${orchestrationMapperUses.length}`,
+  );
 }
 
 for (const [value, label] of [
@@ -171,6 +179,7 @@ for (const [value, label] of [
 
 for (const value of [
   '.map_err(super::map_order_error)?;',
+  '.map_err(super::map_post_order_orchestration_error)?;',
   'error.to_string()',
   'err.to_string()',
   'other.to_string()',
