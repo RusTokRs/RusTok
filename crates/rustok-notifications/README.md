@@ -6,9 +6,9 @@
 grouping, digests, retention, and delivery-attempt lifecycle. The implemented
 pipeline now covers durable outbox intake, source materialization, bounded
 audience expansion, recipient policy, one idempotent in-app notification, exact
-open-time authorization, bounded authorized inbox listing, exact seen/read/archive
-state APIs, and bounded exact-recipient reconciliation. Channel delivery remains a
-later workflow.
+open-time authorization, bounded authorized inbox listing, exact
+seen/read/mark-unread/archive state APIs, and bounded exact-recipient
+reconciliation. Channel delivery remains a later workflow.
 
 ## Responsibilities
 
@@ -27,7 +27,7 @@ later workflow.
 - recheck recipient privacy and source target authorization at inbox open/list
   time;
 - list exact-recipient inbox rows through bounded sparse keyset pages;
-- apply monotonic idempotent exact-item seen/read/archive transitions;
+- apply exact-item seen/read/mark-unread/archive transitions with terminal archive;
 - reconcile one bounded exact-recipient page against current privacy/source policy;
 - own replay, reconciliation, retention, and delivery lifecycle.
 
@@ -183,19 +183,21 @@ not mutate seen/read/archive timestamps or create delivery attempts.
 `NotificationInboxStateService` owns exact notification/tenant/recipient commands.
 `mark_seen` advances only unread rows to seen. `mark_read` advances unread or seen
 rows to read; a direct unread-to-read transition assigns `seen_at` and `read_at`
-from the same instant. `archive` advances every non-archived state to archived and
-preserves prior seen/read timestamps.
+from the same instant. `mark_unread` returns seen or read rows to unread and clears
+both `seen_at` and `read_at`. `archive` advances every non-archived state to archived
+and preserves prior seen/read timestamps.
 
-State transitions are monotonic and idempotent. Seen does not downgrade read,
-read does not unarchive, and archived is terminal. Repeated or later-state commands
-return the current snapshot with `changed=false` and preserve state timestamps plus
-`updated_at`. Missing, cross-tenant, and cross-recipient rows return the same
-`Unavailable` decision.
+Archived remains terminal: `mark_seen`, `mark_read`, and `mark_unread` cannot reopen
+it. Repeated commands for an already matching or protected state return the current
+snapshot with `changed=false` and preserve state timestamps plus `updated_at`.
+Missing, cross-tenant, and cross-recipient rows return the same `Unavailable`
+decision.
 
 The service exposes only state and inbox timestamps, calls no privacy/source or
 delivery owner, and creates no delivery attempt. SQLite owner evidence is
-`tests/inbox_state_sqlite.rs`. Mark-unread, bulk/mark-all mutations, canonical unread
-counts, grouped views, transport adapters, and UI remain closed.
+`tests/inbox_state_sqlite.rs`. The former `mark-unread, bulk/mark-all` residual is
+now narrowed: exact-item mark-unread is delivered, while bulk/mark-all mutations,
+canonical unread counts, grouped views, transport adapters, and UI remain closed.
 
 ### 6. Bounded inbox reconciliation
 
@@ -237,7 +239,7 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - grouping and moderator-directory expansion;
-- mark-unread, bulk/mark-all, canonical unread counts, and grouped inbox views;
+- bulk/mark-all mutations, canonical unread counts, and grouped inbox views;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and module-owned UI;
 - channel delivery enqueue with delivery-time authorization;
