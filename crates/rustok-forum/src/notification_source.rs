@@ -13,17 +13,18 @@ use rustok_notifications_api::{
     NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Statement,
 };
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_category_subscription, forum_domain_event, forum_reply, forum_topic,
-    forum_topic_channel_access, forum_user_mention,
+    forum_category_subscription, forum_domain_event, forum_reply, forum_topic, forum_user_mention,
 };
-use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::error::ForumError;
+use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
+use crate::state_machine::ReplyStatus;
 use crate::subscription::ForumSubscriptionLevel;
 
 const FORUM_SOURCE: &str = "forum";
@@ -131,15 +132,23 @@ impl ForumNotificationSourceProvider {
         Ok(persisted)
     }
 
-    async fn load_open_topic(
+    async fn load_public_topic(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
+        let scope = ForumTopicVisibilityScope::storefront(None).map_err(forum_owner_error)?;
+        if !ForumTopicVisibilityService::new(self.db.clone())
+            .is_topic_visible(tenant_id, topic_id, &scope)
+            .await
+            .map_err(forum_owner_error)?
+        {
+            return Ok(None);
+        }
+
         let topic = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Id.eq(topic_id))
-            .filter(forum_topic::Column::Status.eq(TopicStatus::Open))
             .one(&self.db)
             .await
             .map_err(retryable_database_error)?;
@@ -163,12 +172,9 @@ impl ForumNotificationSourceProvider {
     ) -> NotificationProviderResult<ForumTargetAvailability> {
         match source_kind {
             "topic" => {
-                let Some(topic) = self.load_open_topic(tenant_id, source_id).await? else {
+                let Some(topic) = self.load_public_topic(tenant_id, source_id).await? else {
                     return Ok(ForumTargetAvailability::Unavailable);
                 };
-                if self.is_channel_restricted(tenant_id, topic.id).await? {
-                    return Ok(ForumTargetAvailability::Unavailable);
-                }
                 Ok(ForumTargetAvailability::Visible(ForumTargetContext {
                     source_kind: "topic".to_string(),
                     source_id: topic.id,
@@ -198,12 +204,9 @@ impl ForumNotificationSourceProvider {
                 if reply.status != ReplyStatus::Approved {
                     return Ok(ForumTargetAvailability::Unavailable);
                 }
-                let Some(topic) = self.load_open_topic(tenant_id, reply.topic_id).await? else {
+                let Some(topic) = self.load_public_topic(tenant_id, reply.topic_id).await? else {
                     return Ok(ForumTargetAvailability::Unavailable);
                 };
-                if self.is_channel_restricted(tenant_id, topic.id).await? {
-                    return Ok(ForumTargetAvailability::Unavailable);
-                }
                 Ok(ForumTargetAvailability::Visible(ForumTargetContext {
                     source_kind: "reply".to_string(),
                     source_id: reply.id,
@@ -231,20 +234,6 @@ impl ForumNotificationSourceProvider {
             ))
             .await
             .map(|row| row.is_some())
-            .map_err(retryable_database_error)
-    }
-
-    async fn is_channel_restricted(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-    ) -> NotificationProviderResult<bool> {
-        forum_topic_channel_access::Entity::find()
-            .filter(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic_channel_access::Column::TopicId.eq(topic_id))
-            .count(&self.db)
-            .await
-            .map(|count| count > 0)
             .map_err(retryable_database_error)
     }
 
@@ -397,17 +386,11 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     return Err(NotificationProviderError::InvalidEvent);
                 }
                 let Some(topic) = self
-                    .load_open_topic(event.tenant_id, event.aggregate_id)
+                    .load_public_topic(event.tenant_id, event.aggregate_id)
                     .await?
                 else {
                     return Ok(None);
                 };
-                if self
-                    .is_channel_restricted(event.tenant_id, event.aggregate_id)
-                    .await?
-                {
-                    return Ok(None);
-                }
                 let template_data = NotificationTemplateData::try_new(BTreeMap::from([
                     ("topic_id".to_string(), topic.id.to_string()),
                     ("category_id".to_string(), topic.category_id.to_string()),
@@ -461,17 +444,11 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             TOPIC_CREATED_TYPE => {
                 self.validate_topic_descriptor(&event, &request.descriptor)?;
                 let Some(topic) = self
-                    .load_open_topic(event.tenant_id, event.aggregate_id)
+                    .load_public_topic(event.tenant_id, event.aggregate_id)
                     .await?
                 else {
                     return Ok(NotificationAudiencePage::empty());
                 };
-                if self
-                    .is_channel_restricted(event.tenant_id, event.aggregate_id)
-                    .await?
-                {
-                    return Ok(NotificationAudiencePage::empty());
-                }
 
                 let limit = request.bounded_limit();
                 if limit == 0 {
@@ -599,6 +576,12 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
 
 fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError {
     NotificationProviderError::Internal { retryable: true }
+}
+
+fn forum_owner_error(error: ForumError) -> NotificationProviderError {
+    NotificationProviderError::Internal {
+        retryable: error.is_retryable(),
+    }
 }
 
 fn is_supported_event_type(event_type: &NotificationTypeKey) -> bool {
