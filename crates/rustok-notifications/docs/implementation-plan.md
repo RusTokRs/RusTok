@@ -31,6 +31,11 @@ candidate workers expose tenant-scoped work and recheck effective policy before
 foreign provider calls. Disabled work receives 300-second durable backoff;
 temporary policy lookup failure receives 30 seconds.
 
+Bounded audience owners may return a sparse page with zero recipients only when
+its next cursor differs from the claimed cursor. The fanout service persists that
+progress under the existing lease/CAS transition and creates no candidate items.
+A repeated cursor remains a non-retryable stalled-provider failure.
+
 Candidate pre-claim resolution captures one effective-policy snapshot containing
 the deterministic revision and manifest default-enabled module set. The final
 notification transaction invokes an injected commit guard that locks the
@@ -47,6 +52,7 @@ tenant enable/disable by commit order.
 - Notifications never reads producer-private or Modules-private tables;
 - executable hosts decode envelopes and compose cross-owner policy ports;
 - audience resolution is cursor-based and capped at 256 recipients per page;
+- a zero-recipient page may continue only with a different non-empty cursor;
 - final notification creation requires preference, privacy, current source
   authorization, current tenant enablement, and matching policy revision;
 - no allow-all recipient policy exists;
@@ -195,6 +201,17 @@ tenant enable/disable by commit order.
 - candidate worker contract schema 6 and candidate policy contract schema 8 record
   the narrow lifecycle serialization and connection-safety guarantees.
 
+### `NOTIFY-03I`
+
+- `NotificationFanoutService` accepts an empty provider page only when the next
+  cursor differs from the claimed cursor;
+- sparse progress persists through the existing lease/CAS page transition with
+  zero candidate inserts and keeps the job pending;
+- oversized pages remain rejected and repeated cursors remain non-retryable
+  `NOTIFICATION_FANOUT_CURSOR_STALLED` failures;
+- contract `contracts/notifications-source-fanout.json` advances to schema 5;
+- SQLite evidence is `tests/fanout_sparse_page_sqlite.rs`.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
@@ -239,6 +256,7 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 cargo test -p rustok-modules --test policy_commit_guard_sqlite -- --nocapture
 cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_sparse_page_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
@@ -262,8 +280,8 @@ cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
-`NOTIFY-03D/03E/03F/03G/03H` source slices. `Cargo.lock` was not regenerated because
-this work does not change the package dependency graph.
+`NOTIFY-03D/03E/03F/03G/03H/03I` source slices. `Cargo.lock` was not regenerated
+because this work does not change the package dependency graph.
 
 ## Update rules
 
