@@ -35,17 +35,19 @@ const productValueInvariantMigrationPath =
   'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs';
 const productChannelVisibilityMigrationPath =
   'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs';
+const productCategoryTreeInvariantMigrationPath =
+  'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs';
 const legacyProductMigrationPaths = [
   'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
   'crates/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
 ];
-const indexMigrationPath =
-  'crates/rustok-index/src/migrations/m20260701_000001_create_index_product_attribute_facets.rs';
 const schemaServicePath = 'crates/rustok-product/src/services/catalog_schema_service.rs';
 const schemaAttributesPath = 'crates/rustok-product/src/services/catalog_schema_service/attributes.rs';
 const schemaCategoriesPath = 'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
 const schemaSchemasPath = 'crates/rustok-product/src/services/catalog_schema_service/schemas.rs';
+const schemaVirtualCategoriesPath =
+  'crates/rustok-product/src/services/catalog_schema_service/virtual_categories.rs';
 const schemaResolverPath = 'crates/rustok-product/src/services/catalog_schema.rs';
 const catalogServicePath = 'crates/rustok-product/src/services/catalog.rs';
 const catalogTagsServicePath = 'crates/rustok-product/src/services/catalog/tags.rs';
@@ -53,11 +55,12 @@ const productManifestPath = 'crates/rustok-product/Cargo.toml';
 const inventoryBootstrapPath = 'crates/rustok-inventory/src/services/bootstrap.rs';
 const inventoryServicesModPath = 'crates/rustok-inventory/src/services/mod.rs';
 const productWriteTransactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
-const indexerPath = 'crates/rustok-index/src/product/indexer.rs';
 const productTagsTestPath = 'crates/rustok-commerce/tests/product_taxonomy_tags.rs';
 const shippingGraphqlTestPath = 'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs';
 const productEventTestPath = 'crates/rustok-commerce/tests/product_event_index_integration_test.rs';
 const commerceMutationHelpersPath = 'crates/rustok-commerce/src/graphql/mutations/helpers.rs';
+const commerceSafeOrderHelpersPath =
+  'crates/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs';
 const commerceCatalogMutationPath = 'crates/rustok-commerce/src/graphql/mutations/catalog.rs';
 const commerceGraphqlModulePath = 'crates/rustok-commerce/src/graphql/mod.rs';
 const commerceGraphqlQueryPath = 'crates/rustok-commerce/src/graphql/query.rs';
@@ -70,12 +73,13 @@ const productStatusMigration = read(productStatusMigrationPath);
 const productIntegrityMigration = read(productIntegrityMigrationPath);
 const productValueInvariantMigration = read(productValueInvariantMigrationPath);
 const productChannelVisibilityMigration = read(productChannelVisibilityMigrationPath);
+const productCategoryTreeInvariantMigration = read(productCategoryTreeInvariantMigrationPath);
 const legacyProductMigrations = legacyProductMigrationPaths.map((path) => [path, read(path)]);
-const indexMigration = read(indexMigrationPath);
 const schemaService = read(schemaServicePath);
 const schemaAttributes = read(schemaAttributesPath);
 const schemaCategories = read(schemaCategoriesPath);
 const schemaSchemas = read(schemaSchemasPath);
+const schemaVirtualCategories = read(schemaVirtualCategoriesPath);
 const schemaResolver = read(schemaResolverPath);
 const catalogService = read(catalogServicePath);
 const catalogTagsService = read(catalogTagsServicePath);
@@ -83,11 +87,11 @@ const productManifest = read(productManifestPath);
 const inventoryBootstrap = read(inventoryBootstrapPath);
 const inventoryServicesMod = read(inventoryServicesModPath);
 const productWriteTransaction = read(productWriteTransactionPath);
-const indexer = read(indexerPath);
 const productTagsTest = read(productTagsTestPath);
 const shippingGraphqlTest = read(shippingGraphqlTestPath);
 const productEventTest = read(productEventTestPath);
 const commerceMutationHelpers = read(commerceMutationHelpersPath);
+const commerceSafeOrderHelpers = read(commerceSafeOrderHelpersPath);
 const commerceCatalogMutation = read(commerceCatalogMutationPath);
 const commerceGraphqlModule = read(commerceGraphqlModulePath);
 const commerceGraphqlQuery = read(commerceGraphqlQueryPath);
@@ -182,6 +186,8 @@ for (const marker of [
   'Box::new(m20260711_000003_enforce_catalog_value_invariants::Migration)',
   'mod m20260711_000004_normalize_product_channel_visibility;',
   'Box::new(m20260711_000004_normalize_product_channel_visibility::Migration)',
+  'mod m20260725_000002_enforce_catalog_category_tree_invariants;',
+  'Box::new(m20260725_000002_enforce_catalog_category_tree_invariants::Migration)',
 ]) {
   requireSource(productMigrationsMod, marker, productMigrationsModPath);
 }
@@ -232,6 +238,20 @@ for (const marker of [
   'metadata jsonb_path_ops',
 ]) {
   requireSource(productChannelVisibilityMigration, marker, productChannelVisibilityMigrationPath);
+}
+for (const marker of [
+  'rustok_product_assert_category_tree',
+  'catalog category tree contains a cycle',
+  'catalog category closure is not the canonical parent-tree projection',
+  'trg_catalog_categories_validate_tree',
+  'trg_catalog_category_closure_validate_tree',
+  'DEFERRABLE INITIALLY DEFERRED',
+]) {
+  requireSource(
+    productCategoryTreeInvariantMigration,
+    marker,
+    productCategoryTreeInvariantMigrationPath,
+  );
 }
 for (const marker of [
   'ALTER TABLE product_translations',
@@ -288,24 +308,6 @@ for (const marker of [
   requireSource(productTenantConsistencyMigration, marker, productTenantConsistencyMigrationPath);
 }
 
-for (const table of ['index_product_categories', 'index_product_attribute_values']) {
-  requireSource(indexMigration, `CREATE TABLE IF NOT EXISTS ${table} (`, indexMigrationPath);
-}
-for (const marker of [
-  'PRIMARY KEY (tenant_id, product_id, category_id, locale)',
-  'locale VARCHAR(32) NOT NULL',
-  'channel_id UUID',
-  'attribute_code VARCHAR(128) NOT NULL',
-  'facet_bucket_key VARCHAR(255)',
-  'is_detached BOOLEAN NOT NULL DEFAULT FALSE',
-  'CONSTRAINT uq_index_product_attribute_values UNIQUE',
-  'WHERE is_filterable = TRUE AND is_detached = FALSE',
-  'WHERE is_sortable = TRUE AND is_detached = FALSE',
-  'WHERE is_searchable = TRUE AND is_detached = FALSE',
-]) {
-  requireSource(indexMigration, marker, indexMigrationPath);
-}
-
 for (const marker of [
   'pub enum CatalogCategoryKind',
   'Structural',
@@ -337,6 +339,7 @@ for (const marker of [
   'mod attributes;',
   'mod categories;',
   'mod schemas;',
+  'mod virtual_categories;',
   'ProductAttributeValuesChanged',
   'load_effective_product_form_from_storage',
   'record.detached = detached_attribute_ids.contains(&record.attribute_id);',
@@ -395,6 +398,16 @@ for (const marker of [
   'load_schema_group_id(&txn, tenant_id, input.schema_id, code)',
 ]) {
   requireSource(schemaSchemas, marker, schemaSchemasPath);
+}
+for (const marker of [
+  'validate_virtual_category_rule_references',
+  "kind = 'structural'",
+  'must support product scope',
+  'cannot be used by locale-neutral virtual category rules',
+  'must be integer or decimal',
+  'cannot be used by virtual category V1 rules',
+]) {
+  requireSource(schemaVirtualCategories, marker, schemaVirtualCategoriesPath);
 }
 
 for (const marker of [
@@ -484,6 +497,10 @@ for (const marker of [
 for (const marker of [
   'validate_product_shipping_profile_input',
   '.ensure_shipping_profile_slug_exists(tenant_id, &slug)',
+]) {
+  requireSource(commerceSafeOrderHelpers, marker, commerceSafeOrderHelpersPath);
+}
+for (const marker of [
   'effective_shipping_profile_slug(',
   'product_model.shipping_profile_slug.as_deref()',
   'variant.shipping_profile_slug.as_deref()',
@@ -539,30 +556,14 @@ for (const marker of [
 }
 
 for (const marker of [
-  'load_effective_product_form_from_storage',
-  'refresh_virtual_category_assignments',
-  'virtual_category_rule_matches',
-  'virtual_category_product_assignments',
-  'index_product_categories',
-  'index_product_attribute_values',
-  'is_detached',
-  'is_filterable',
-  'is_searchable',
-  'is_sortable',
-  'channel_id',
-]) {
-  requireSource(indexer, marker, indexerPath);
-}
-
-for (const marker of [
   '`product_attributes`',
   '`catalog_categories`',
   '`product_attribute_schemas`',
   'reusable templates',
   'translation tables',
   'detached values',
-  '`rustok-index`',
-  'tenant/locale-scoped',
+  'Product-to-Index projection',
+  'must not depend on an Index projection',
 ]) {
   requireSource(docsReadme, marker, 'crates/rustok-product/docs/README.md');
 }

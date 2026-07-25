@@ -10,9 +10,9 @@ selected path. The product packages contain no package-local framework or
 framework-specific outbox adapter dependency.
 
 `ProductCatalogReadPort` / `product.catalog_read.v1` is implemented by
-`CatalogService`. `boundary_ready` on no-compile runtime fallback evidence is
-supported by the provider registry, static contract matrix, and fallback smoke.
-`transport_verified` still requires live provider execution evidence.
+`CatalogService`. Its in-process profile has live PostgreSQL execution evidence,
+while the provider registry, static contract matrix, and fallback smoke retain
+the module at `boundary_ready` until consumer fallback profiles are observed.
 The port also resolves variant-first consumer input to the owning product
 projection, so checkout consumers do not query product or variant entities.
 The compiled commerce checkout channel-inventory regression executes the
@@ -31,8 +31,23 @@ host-provided `TenantContext` before accessing storage.
 Product migrations enforce PostgreSQL-only execution, tenant-scoped
 translation/SKU/tag identity, canonical primary categories, typed EAV option
 relations, bounded JSON inputs, and normalized/indexed channel visibility.
-Storefront product lists filter, count, and paginate in SQL; live PostgreSQL
-execution evidence remains required before promoting the transport status.
+The isolated `product_postgres_migrations_support_up_down_up` fixture verifies
+the complete Product migration lifecycle against PostgreSQL with owner
+prerequisites and schema/constraint/index assertions.
+The isolated `product_postgres_constraints_reject_invalid_and_racing_writes`
+fixture proves concurrent tenant-scoped handle and SKU uniqueness as well as
+database rejection of cross-tenant tags, corrupt typed EAV rows, legacy
+primary-category assignments, duplicate root slugs, parent cycles, and closure
+drift. Deferred database triggers validate the exact tree/closure projection at
+transaction commit.
+The pre-integrity `product_tenant_integrity_migration_rejects_dirty_data_and_maps_inventory`
+fixture proves dirty handle, SKU, and root-slug data blocks migration and verifies
+the legacy inventory-field backfill and physical column removal after cleanup.
+`product_catalog_read_port_executes_against_postgres` exercises product,
+variant-first, and published-list operations with live price/inventory
+enrichment, tenant isolation, locale fallback, channel filtering, count, and
+pagination. Consumer fallback execution remains required before promoting the
+transport status.
 `CatalogService` is being separated by responsibility; product-tag reads and
 writes now live in `services/catalog/tags.rs` while the public service contract
 remains unchanged. Inventory state uses the owner-owned native
@@ -51,13 +66,18 @@ event, translation writes, schema groups, and schema-attribute bindings preserve
 Attribute and attribute-option reads and writes now live in
 `services/catalog_schema_service/attributes.rs`, including option-type
 validation and attribute outbox events.
+Virtual-category rule reference validation now lives in
+`services/catalog_schema_service/virtual_categories.rs`; category creation
+delegates structural-subtree, attribute-scope, localization, and value-type
+checks to that component.
 
 ## FFA/FBA status
 
 - FFA status: `in_progress` — both owner UI surfaces exist and must preserve
   the core/transport/UI split and native/GraphQL parity.
 - FBA status: `boundary_ready` — read-port policy, metadata, and fallback
-  profiles are source-locked; no persistence-backed execution has been shown.
+  profiles are source-locked and the in-process profile is persistence-backed;
+  declared consumer fallback profiles are not yet live-verified.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
@@ -69,20 +89,13 @@ validation and attribute outbox events.
 
 ## Open results
 
-1. Execute `ProductCatalogReadPort` against persistence for
-   `read_product_projection`, `read_variant_product_projection`, and
-   `list_published_products`. Done when real
-   calls prove read-policy ordering, tenant and locale handling, bounded
-   pagination, and typed `PortError` mapping rather than source markers.
-   Dependency: a runnable product persistence environment. Verification:
-   `npm run verify:product:runtime-fallback-smoke` plus targeted port tests.
-2. Prove the consumer profiles with observed fallback behaviour before changing
+1. Prove the consumer profiles with observed fallback behaviour before changing
    FBA status to `transport_verified`. Done when commerce checkout/storefront,
    pricing enrichment, and `rustok-ai` product context each exercise their
    declared fallback or degraded mode against the live provider.
-   Dependency: priority 1 and the respective consumer composition. Verification:
+   Dependency: the respective consumer composition. Verification:
    `npm run verify:ecommerce:fba` and `npm run verify:ai-product:fba`.
-3. Keep Product richtext adoption explicitly deferred until the owner approves
+2. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
    their textarea alone would create a false contract. When approved, use the

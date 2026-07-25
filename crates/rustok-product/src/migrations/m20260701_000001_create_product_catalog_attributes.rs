@@ -376,31 +376,31 @@ CREATE INDEX IF NOT EXISTS idx_product_variant_attribute_values_lookup ON produc
             .execute_unprepared(
                 r#"
 ALTER TABLE products DROP CONSTRAINT IF EXISTS fk_products_primary_category;
-DROP TABLE IF EXISTS product_variant_attribute_value_options;
-DROP TABLE IF EXISTS product_variant_attribute_value_translations;
-DROP TABLE IF EXISTS product_variant_attribute_values;
-DROP TABLE IF EXISTS product_attribute_value_options;
-DROP TABLE IF EXISTS product_attribute_value_translations;
-DROP TABLE IF EXISTS product_attribute_values;
-DROP TABLE IF EXISTS virtual_category_product_assignments;
-DROP TABLE IF EXISTS product_categories;
-DROP TABLE IF EXISTS category_attributes;
-DROP TABLE IF EXISTS category_attribute_group_translations;
-DROP TABLE IF EXISTS category_attribute_groups;
-DROP TABLE IF EXISTS category_attribute_schema_assignments;
-DROP TABLE IF EXISTS product_attribute_schema_attributes;
-DROP TABLE IF EXISTS product_attribute_schema_group_translations;
-DROP TABLE IF EXISTS product_attribute_schema_groups;
-DROP TABLE IF EXISTS product_attribute_schema_translations;
-DROP TABLE IF EXISTS product_attribute_schemas;
-DROP TABLE IF EXISTS catalog_category_closure;
-DROP TABLE IF EXISTS catalog_category_translations;
-DROP TABLE IF EXISTS catalog_categories;
-DROP TABLE IF EXISTS product_attribute_channel_settings;
-DROP TABLE IF EXISTS product_attribute_option_translations;
-DROP TABLE IF EXISTS product_attribute_options;
-DROP TABLE IF EXISTS product_attribute_translations;
-DROP TABLE IF EXISTS product_attributes;
+DROP TABLE IF EXISTS product_variant_attribute_value_options CASCADE;
+DROP TABLE IF EXISTS product_variant_attribute_value_translations CASCADE;
+DROP TABLE IF EXISTS product_variant_attribute_values CASCADE;
+DROP TABLE IF EXISTS product_attribute_value_options CASCADE;
+DROP TABLE IF EXISTS product_attribute_value_translations CASCADE;
+DROP TABLE IF EXISTS product_attribute_values CASCADE;
+DROP TABLE IF EXISTS virtual_category_product_assignments CASCADE;
+DROP TABLE IF EXISTS product_categories CASCADE;
+DROP TABLE IF EXISTS category_attributes CASCADE;
+DROP TABLE IF EXISTS category_attribute_group_translations CASCADE;
+DROP TABLE IF EXISTS category_attribute_groups CASCADE;
+DROP TABLE IF EXISTS category_attribute_schema_assignments CASCADE;
+DROP TABLE IF EXISTS product_attribute_schema_attributes CASCADE;
+DROP TABLE IF EXISTS product_attribute_schema_group_translations CASCADE;
+DROP TABLE IF EXISTS product_attribute_schema_groups CASCADE;
+DROP TABLE IF EXISTS product_attribute_schema_translations CASCADE;
+DROP TABLE IF EXISTS product_attribute_schemas CASCADE;
+DROP TABLE IF EXISTS catalog_category_closure CASCADE;
+DROP TABLE IF EXISTS catalog_category_translations CASCADE;
+DROP TABLE IF EXISTS catalog_categories CASCADE;
+DROP TABLE IF EXISTS product_attribute_channel_settings CASCADE;
+DROP TABLE IF EXISTS product_attribute_option_translations CASCADE;
+DROP TABLE IF EXISTS product_attribute_options CASCADE;
+DROP TABLE IF EXISTS product_attribute_translations CASCADE;
+DROP TABLE IF EXISTS product_attributes CASCADE;
 ALTER TABLE products DROP COLUMN IF EXISTS primary_category_id;
 "#,
             )

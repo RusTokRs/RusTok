@@ -66,7 +66,7 @@
 ## Native catalog attributes
 
 - `product_attributes` is the unified reference for ecommerce attributes.
-- `catalog_categories` stores structural, collection and virtual categories; `products.primary_category_id` determines product form only through structural category.
+- `catalog_categories` stores structural, collection and virtual categories; `products.primary_category_id` determines product form only through structural category. Deferred PostgreSQL constraint triggers reject parent cycles and require `catalog_category_closure` to remain the exact tenant-owned ancestry projection at commit.
 - `product_attribute_schemas` are optional reusable templates, and category bindings/groups provide inheritance, clone snapshot, custom and local override scenarios.
 - `product_categories` stores additional navigation/storefront bindings and does not change the product form.
 - Values live in typed product/variant attribute value tables; localized labels and text-like values are in translation tables.
@@ -74,9 +74,9 @@
 - Detached values are displayed in the product admin as a separate review block and are cleared only through the owner-owned `clear_detached_product_attribute_values`; the service verifies that each deleted attribute is indeed outside the current effective schema, build-profile-selected native `#[server]` and GraphQL paths are maintained in parallel.
 - Publish validation is performed in the owner-owned `ProductCatalogSchemaService`: required effective attributes must be filled before the product transitions to `Active`, localized text-like values require an explicit non-empty translation row, option attributes require saved option relations, and create-with-publish is rejected for categories with required typed attributes.
 - Effective form loads localized options in a single bounded query by effective attribute ids; schema/category groups return a localized `group_label` by host locale, binding uses stable `group_code`, and the product admin groups fields by label/code, displays typed controls and sends only dirty patches after saving the product and its primary category.
-- `rustok-index` when indexing a product materializes tenant/locale-scoped category strings and normalized facet/search/sort values. Multiselect expands to one row per option, localized labels are taken only from the explicit row of the requested locale, and effective attribute ids are computed by a read-only resolver in `rustok-product`, so detached values do not enter the read model.
-- `rustok-search` reads these projections directly for category/virtual-category filters, channel-scoped attribute facets and attribute sorting. The write model remains with `rustok-product`; search does not recompute schema inheritance and does not read detached values as effective.
-- Visibility flags are computed with priority `global attribute defaults < schema/category overrides < channel settings`. Overrides are tri-state: a missing field inherits the previous value, explicit `false` disables the behavior. The resolver preserves overrides through live inheritance and clone snapshots, and the indexer creates separate rows for each active channel with effective facet/search/sort, comparison, storefront and admin-grid flags. If a tenant has no active channels, one global row is created with `channel_id = null`.
+- The former Product-to-Index projection has been removed with Index v1. Product and Search must not depend on an Index projection until the generic Index Engine publishes replacement owner contracts.
+- Search consumes Product's public transport contract for category and attribute options. The Product write model remains authoritative for schema inheritance and detached-value handling.
+- Visibility flags are computed with priority `global attribute defaults < schema/category overrides < channel settings`. Overrides are tri-state: a missing field inherits the previous value, explicit `false` disables the behavior. The resolver preserves overrides through live inheritance and clone snapshots.
 - Virtual category uses a bounded V1 rule contract. All filled predicates are combined with AND: `statuses`, `primary_category_subtree_id`, overlapping range `price_min`/`price_max`, `in_stock` and a list of `attributes` with `eq`/`range` operators. Attribute rules work only with stable option codes and locale-neutral product values; localized and variant-only attributes are rejected on the write-side.
 
 ```json
@@ -94,7 +94,7 @@
 }
 ```
 
-When reindexing a product, `rustok-index` first completely replaces its rows in `virtual_category_product_assignments`, then builds localized category projections. Invalid old rule payloads do not stop reindex: the category is skipped with a warning; the creation service rejects new invalid payloads.
+When resolving virtual-category assignments, Product evaluates the stored rule against the effective form. Invalid old rule payloads do not stop resolution: the category is skipped with a warning; the creation service rejects new invalid payloads.
 
 ## Integration
 
@@ -123,6 +123,11 @@ owns term identity; `rustok-inventory` owns stock quantities; `rustok-pricing`
 owns resolved prices; `rustok-media` owns media assets; and shipping-profile
 identity belongs to the commerce shipping capability. `products.primary_category_id`
 is the only canonical primary-category source.
+
+`product_images.media_id` stores a Media-owned asset UUID without a direct
+foreign key to Media storage. Product validates media references through the
+public Media owner contract, so Media can evolve its own persistence schema
+without a product migration-order dependency.
 
 ```mermaid
 erDiagram

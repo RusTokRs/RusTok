@@ -15,14 +15,15 @@ const fixtureFiles = [
   'crates/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs',
   'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
   'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
+  'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
   'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
   'crates/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
-  'crates/rustok-index/src/migrations/m20260701_000001_create_index_product_attribute_facets.rs',
   'crates/rustok-product/src/services/catalog_schema_service.rs',
   'crates/rustok-product/src/services/catalog_schema_service/attributes.rs',
   'crates/rustok-product/src/services/catalog_schema_service/categories.rs',
   'crates/rustok-product/src/services/catalog_schema_service/schemas.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/virtual_categories.rs',
   'crates/rustok-product/src/services/catalog_schema.rs',
   'crates/rustok-product/src/services/catalog.rs',
   'crates/rustok-product/src/services/catalog/tags.rs',
@@ -30,11 +31,11 @@ const fixtureFiles = [
   'crates/rustok-inventory/src/services/bootstrap.rs',
   'crates/rustok-inventory/src/services/mod.rs',
   'crates/rustok-product/src/services/write_transaction.rs',
-  'crates/rustok-index/src/product/indexer.rs',
   'crates/rustok-commerce/tests/product_taxonomy_tags.rs',
   'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
   'crates/rustok-commerce/tests/product_event_index_integration_test.rs',
   'crates/rustok-commerce/src/graphql/mutations/helpers.rs',
+  'crates/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs',
   'crates/rustok-commerce/src/graphql/mutations/catalog.rs',
   'crates/rustok-commerce/src/graphql/mod.rs',
   'crates/rustok-commerce/src/graphql/query.rs',
@@ -124,20 +125,6 @@ assert(
   `expected locale width failure, got ${localeWidthResult.stderr}`,
 );
 
-const missingPartialFacetIndex = copyFixture();
-replaceInFixture(
-  missingPartialFacetIndex,
-  'crates/rustok-index/src/migrations/m20260701_000001_create_index_product_attribute_facets.rs',
-  'WHERE is_filterable = TRUE AND is_detached = FALSE',
-  'WHERE is_filterable = TRUE',
-);
-const missingPartialFacetIndexResult = run(missingPartialFacetIndex);
-assert(missingPartialFacetIndexResult.status !== 0, 'expected missing detached facet partial index guard to fail');
-assert(
-  missingPartialFacetIndexResult.stderr.includes('WHERE is_filterable = TRUE AND is_detached = FALSE'),
-  `expected partial facet index failure, got ${missingPartialFacetIndexResult.stderr}`,
-);
-
 const legacyLocaleDrift = copyFixture();
 replaceInFixture(
   legacyLocaleDrift,
@@ -220,6 +207,22 @@ assert(missingChannelVisibilityIndexResult.status !== 0, 'expected missing chann
 assert(
   missingChannelVisibilityIndexResult.stderr.includes('metadata jsonb_path_ops'),
   `expected channel visibility index failure, got ${missingChannelVisibilityIndexResult.stderr}`,
+);
+
+const missingCategoryTreeConstraint = copyFixture();
+replaceInFixture(
+  missingCategoryTreeConstraint,
+  'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
+  'trg_catalog_categories_validate_tree',
+  'trg_catalog_categories_tree_drift',
+);
+const missingCategoryTreeConstraintResult = run(missingCategoryTreeConstraint);
+assert(missingCategoryTreeConstraintResult.status !== 0, 'expected missing category-tree constraint to fail');
+assert(
+  missingCategoryTreeConstraintResult.stderr.includes(
+    'trg_catalog_categories_validate_tree',
+  ),
+  `expected category-tree constraint failure, got ${missingCategoryTreeConstraintResult.stderr}`,
 );
 
 const missingTenantAwareValueOptionInsert = copyFixture();

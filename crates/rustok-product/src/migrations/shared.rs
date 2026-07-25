@@ -6,10 +6,3 @@ pub enum Tenants {
     Table,
     Id,
 }
-
-/// Content module table reference (for product image FK).
-#[derive(Iden)]
-pub enum Media {
-    Table,
-    Id,
-}

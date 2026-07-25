@@ -156,12 +156,6 @@ impl MigrationTrait for Migration {
                             .to(Products::Table, Products::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .from(ProductImages::Table, ProductImages::MediaId)
-                            .to(Media::Table, Media::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
                     .to_owned(),
             )
             .await?;

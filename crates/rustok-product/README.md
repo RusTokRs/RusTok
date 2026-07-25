@@ -28,23 +28,19 @@
   `group_code` bindings are available over native server functions plus
   parallel GraphQL, and the module-owned admin renders grouped typed editors
   with dirty-field patch semantics.
-- `rustok-index` materializes tenant- and locale-scoped category assignments and
-  normalized attribute rows for facets, full-text input, and sorting. The
-  projection resolves effective category membership through the product-owned
-  schema reader, so detached values are excluded without becoming write-side
-  state.
-- `rustok-search` consumes those materialized category and attribute projections
-  for category/virtual-category filters, channel-scoped attribute facets and
-  attribute sorting, while `rustok-product` remains the write-model owner.
+- The former Product-to-Index projection is removed. Product and Search must
+  not depend on an Index projection until the generic Index Engine publishes a
+  replacement owner contract. Search consumes Product's public transport
+  contract for category and attribute options while `rustok-product` remains
+  the write-model owner.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
-  Attribute facet/search/sort rows are emitted per active channel; tenants with
-  no active channel receive one explicit global projection scope. The rows also
-  retain effective storefront, comparison, and admin-grid visibility flags.
 - Virtual categories use a validated, bounded V1 rule contract over product
   status, primary-category subtree, intersecting price range, stock state, and
-  effective locale-neutral product attribute equality/ranges. The indexer
-  replaces materialized assignments idempotently before category projections.
+  effective locale-neutral product attribute equality/ranges. Materialized
+  assignments remain reserved storage until an owner-owned runtime is implemented.
+- Catalog category writes preserve a canonical closure projection; deferred
+  PostgreSQL constraints reject parent cycles and closure drift at commit.
 - Product-owned relation storage for taxonomy-backed tags (`product_tags`).
 - Product write-side services and publication lifecycle.
 - Product-side synchronization of first-class `tags` contract fields with the
@@ -76,8 +72,8 @@
   transport parity.
 - Publish the owner `ProductCatalogReadPort` / `product.catalog_read.v1`
   boundary for catalog-read consumers. The in-process `CatalogService`
-  implementation is `boundary_ready` on no-compile runtime fallback evidence;
-  `transport_verified` still requires live provider execution evidence.
+  implementation has live PostgreSQL execution evidence; the module remains
+  `boundary_ready` until declared consumer fallback profiles are observed.
 - Product module metadata for runtime registration.
 - Product-owned catalog search metadata for optional category filters and
   filterable/sortable attribute controls in admin/storefront search UI. Hosts
@@ -98,8 +94,6 @@
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
 - Consumed by `apps/admin` through manifest-driven module UI composition.
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
-- Consumed by `rustok-index` through the read-only effective-form resolver for
-  highload product projections.
 - Consumed by `rustok-search` UI hosts through product-owned catalog search
   metadata helpers for category filters and attribute filter/sort controls.
 - Consumed by commerce, pricing, and `rustok-ai-product` through the
