@@ -10,7 +10,7 @@ const fail = (message) => {
 };
 
 const args = process.argv.slice(2);
-if (args.includes('--help') || args.includes('-h')) {
+if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) {
   console.log('Usage: node scripts/verify/hash-index-storage-comparison.mjs <comparison.json>');
   process.exit(0);
 }

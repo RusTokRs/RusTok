@@ -94,6 +94,13 @@ test('forwards hash help to the exact-byte comparison helper', () => {
   assert.match(result.stdout, /hash-index-storage-comparison\.mjs <comparison\.json>/u);
 });
 
+test('rejects hash help combined with a comparison path', () => {
+  const result = run('hash', 'comparison.json', '--help');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /exactly one comparison\.json path is required/u);
+  assert.equal(result.stdout, '');
+});
+
 test('forwards comparator help without rewriting its arguments', () => {
   const result = run('compare', '--help');
   assert.equal(result.status, 0, result.stderr);
