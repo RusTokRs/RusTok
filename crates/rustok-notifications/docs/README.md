@@ -166,11 +166,12 @@ existing `seen_at`. `mark_unread` is the explicit reopen command for seen and re
 rows: it returns them to unread and clears `seen_at` plus `read_at`. `archive`
 changes every non-archived row and preserves existing seen/read timestamps.
 
-No command reopens an archived row. Requests already at the requested state or at a
-protected state are idempotent: `changed=false`, state timestamps remain unchanged,
-and `updated_at` is not rewritten. The response contains only notification state and
-inbox timestamps. The service calls no recipient-policy, source-provider, target, or
-delivery owner and does not create delivery attempts.
+No command downgrades an archived row. No command reopens an archived row. Requests
+already at the requested state or at a protected state are idempotent:
+`changed=false`, state timestamps remain unchanged, and `updated_at` is not
+rewritten. The response contains only notification state and inbox timestamps. The
+service calls no recipient-policy, source-provider, target, or delivery owner and
+does not create delivery attempts.
 
 SQLite evidence is `tests/inbox_state_sqlite.rs`. The former
 `mark-unread, bulk/mark-all` residual is narrowed: exact-item mark-unread is now
