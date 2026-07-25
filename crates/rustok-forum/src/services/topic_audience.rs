@@ -1,5 +1,3 @@
-use std::collections::{HashMap, HashSet};
-
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait,
@@ -11,7 +9,6 @@ use sea_orm::{
     DatabaseTransaction,
     EntityTrait,
     QueryFilter,
-    QueryOrder,
     QuerySelect,
     Statement,
     TransactionTrait,
@@ -28,14 +25,8 @@ use crate::audience::{
     MAX_FORUM_AUDIENCE_EXPLICIT_USERS, MAX_FORUM_AUDIENCE_GROUPS,
     MAX_FORUM_AUDIENCE_ROLES,
 };
-use crate::dto::{MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES};
 use crate::entities::{
-    forum_category,
-    forum_category_audience_channel,
-    forum_category_audience_group,
-    forum_category_audience_policy,
-    forum_category_audience_role,
-    forum_category_audience_user::{self, ForumCategoryAudienceUserEffect},
+    forum_category_audience_user::ForumCategoryAudienceUserEffect,
     forum_topic,
     forum_topic_audience_channel,
     forum_topic_audience_group,
@@ -44,7 +35,9 @@ use crate::entities::{
     forum_topic_audience_user,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::services::category_audience::ForumCategoryAudiencePolicyLayer;
+use crate::services::category_audience::{
+    ForumCategoryAudiencePolicyLayer, load_category_audience_policy, lock_category_tree_in_tx,
+};
 use crate::services::rbac::enforce_scope;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -109,7 +102,7 @@ impl ForumTopicAudiencePolicyService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_topic_audience_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = find_topic(&txn, tenant_id, topic_id).await?;
-        load_category_layers(&txn, tenant_id, topic.category_id).await?;
+        load_category_audience_policy(&txn, tenant_id, topic.category_id).await?;
 
         forum_topic_audience_policy::Entity::delete_many()
             .filter(forum_topic_audience_policy::Column::TenantId.eq(tenant_id))
@@ -259,7 +252,13 @@ async fn load_policy_for_topic<C>(
 where
     C: ConnectionTrait,
 {
-    let inherited_category_layers = load_category_layers(db, tenant_id, topic.category_id).await?;
+    let inherited_category_layers = load_category_audience_policy(
+        db,
+        tenant_id,
+        topic.category_id,
+    )
+    .await?
+    .effective_layers;
     let configured_constraints = load_topic_layer(db, tenant_id, topic.id).await?;
     Ok(ForumTopicAudiencePolicy {
         topic_id: topic.id,
@@ -267,193 +266,6 @@ where
         inherited_category_layers,
         configured_constraints,
     })
-}
-
-async fn load_category_layers<C>(
-    db: &C,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> ForumResult<Vec<ForumCategoryAudiencePolicyLayer>>
-where
-    C: ConnectionTrait,
-{
-    let ancestor_ids = load_category_ancestor_ids(db, tenant_id, category_id).await?;
-    let layers = load_category_local_layers(db, tenant_id, &ancestor_ids).await?;
-    Ok(ancestor_ids
-        .into_iter()
-        .filter_map(|ancestor_id| {
-            layers
-                .get(&ancestor_id)
-                .cloned()
-                .map(|constraints| ForumCategoryAudiencePolicyLayer {
-                    category_id: ancestor_id,
-                    constraints,
-                })
-        })
-        .collect())
-}
-
-async fn load_category_ancestor_ids<C>(
-    db: &C,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> ForumResult<Vec<Uuid>>
-where
-    C: ConnectionTrait,
-{
-    let categories = forum_category::Entity::find()
-        .filter(forum_category::Column::TenantId.eq(tenant_id))
-        .order_by_asc(forum_category::Column::Id)
-        .limit(MAX_FORUM_CATEGORY_TREE_NODES + 1)
-        .all(db)
-        .await?;
-    if categories.len() > MAX_FORUM_CATEGORY_TREE_NODES as usize {
-        return Err(ForumError::Validation(format!(
-            "Forum topic audience category tree exceeds the bounded limit of {MAX_FORUM_CATEGORY_TREE_NODES} nodes"
-        )));
-    }
-
-    let parents = categories
-        .into_iter()
-        .map(|category| (category.id, category.parent_id))
-        .collect::<HashMap<_, _>>();
-    if !parents.contains_key(&category_id) {
-        return Err(ForumError::CategoryNotFound(category_id));
-    }
-
-    let mut current = Some(category_id);
-    let mut ancestors = Vec::new();
-    let mut visited = HashSet::new();
-    let mut depth = 0usize;
-    while let Some(current_id) = current {
-        if depth > MAX_FORUM_CATEGORY_TREE_DEPTH {
-            return Err(ForumError::Validation(format!(
-                "Forum topic audience category tree exceeds the maximum depth of {MAX_FORUM_CATEGORY_TREE_DEPTH}"
-            )));
-        }
-        if !visited.insert(current_id) {
-            return Err(ForumError::Validation(
-                "Forum topic audience category tree contains a hierarchy cycle".to_string(),
-            ));
-        }
-        ancestors.push(current_id);
-        current = parents.get(&current_id).copied().ok_or_else(|| {
-            ForumError::Validation(format!(
-                "Forum topic audience category tree references missing or foreign category {current_id}"
-            ))
-        })?;
-        depth += 1;
-    }
-    ancestors.reverse();
-    Ok(ancestors)
-}
-
-async fn load_category_local_layers<C>(
-    db: &C,
-    tenant_id: Uuid,
-    category_ids: &[Uuid],
-) -> ForumResult<HashMap<Uuid, ForumAudienceConstraints>>
-where
-    C: ConnectionTrait,
-{
-    if category_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let policies = forum_category_audience_policy::Entity::find()
-        .filter(forum_category_audience_policy::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_policy::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((category_ids.len() + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(policies.len(), category_ids.len(), "category policy layers")?;
-
-    let mut layers = HashMap::with_capacity(policies.len());
-    for policy in policies {
-        layers.insert(
-            policy.category_id,
-            ForumAudienceConstraints {
-                minimum_trust_level: policy
-                    .minimum_trust_level
-                    .map(|level| {
-                        u8::try_from(level).map_err(|_| {
-                            ForumError::Validation(
-                                "Forum category audience storage contains an invalid trust level"
-                                    .to_string(),
-                            )
-                        })
-                    })
-                    .transpose()?,
-                ..ForumAudienceConstraints::default()
-            },
-        );
-    }
-
-    let maximum_roles = category_ids.len() * MAX_FORUM_AUDIENCE_ROLES;
-    let roles = forum_category_audience_role::Entity::find()
-        .filter(forum_category_audience_role::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_role::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_roles + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(roles.len(), maximum_roles, "category role relations")?;
-    for row in roles {
-        category_layer_mut(&mut layers, row.category_id)?.roles_any.push(row.role);
-    }
-
-    let maximum_channels = category_ids.len() * MAX_FORUM_AUDIENCE_CHANNELS;
-    let channels = forum_category_audience_channel::Entity::find()
-        .filter(forum_category_audience_channel::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_channel::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_channels + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(channels.len(), maximum_channels, "category channel relations")?;
-    for row in channels {
-        category_layer_mut(&mut layers, row.category_id)?
-            .channel_members_any
-            .push(row.channel_slug);
-    }
-
-    let maximum_groups = category_ids.len() * MAX_FORUM_AUDIENCE_GROUPS;
-    let groups = forum_category_audience_group::Entity::find()
-        .filter(forum_category_audience_group::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_group::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_groups + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(groups.len(), maximum_groups, "category group relations")?;
-    for row in groups {
-        category_layer_mut(&mut layers, row.category_id)?
-            .group_members_any
-            .push(row.group_id);
-    }
-
-    let maximum_users = category_ids.len() * MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2;
-    let users = forum_category_audience_user::Entity::find()
-        .filter(forum_category_audience_user::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_user::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_users + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(users.len(), maximum_users, "category explicit user relations")?;
-    for row in users {
-        let layer = category_layer_mut(&mut layers, row.category_id)?;
-        match row.effect {
-            ForumCategoryAudienceUserEffect::Allow => layer.allow_user_ids.push(row.user_id),
-            ForumCategoryAudienceUserEffect::Deny => layer.deny_user_ids.push(row.user_id),
-        }
-    }
-
-    for constraints in layers.values_mut() {
-        *constraints = constraints.clone().normalize()?;
-        if constraints_are_empty(constraints) {
-            return Err(ForumError::Validation(
-                "Forum category audience storage contains an empty local layer".to_string(),
-            ));
-        }
-    }
-    Ok(layers)
 }
 
 async fn load_topic_layer<C>(
@@ -548,17 +360,6 @@ where
     Ok(Some(constraints))
 }
 
-fn category_layer_mut(
-    layers: &mut HashMap<Uuid, ForumAudienceConstraints>,
-    category_id: Uuid,
-) -> ForumResult<&mut ForumAudienceConstraints> {
-    layers.get_mut(&category_id).ok_or_else(|| {
-        ForumError::Validation(
-            "Forum category audience relation is missing its local policy layer".to_string(),
-        )
-    })
-}
-
 fn ensure_storage_bound(actual: usize, maximum: usize, label: &str) -> ForumResult<()> {
     if actual > maximum {
         return Err(ForumError::Validation(format!(
@@ -590,27 +391,6 @@ where
         .one(db)
         .await?
         .ok_or(ForumError::TopicNotFound(topic_id))
-}
-
-async fn lock_category_tree_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> ForumResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [tenant_id.to_string().into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(ForumError::Validation(format!(
-            "Forum topic audience policy does not support {backend:?}"
-        ))),
-    }
 }
 
 async fn lock_topic_audience_in_tx(
