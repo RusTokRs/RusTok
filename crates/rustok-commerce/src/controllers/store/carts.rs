@@ -20,8 +20,7 @@ use rustok_cart::{
 };
 use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 
-#[path = "line_item_resolution.rs"]
-mod line_item_resolution;
+use super::line_item_resolution;
 
 fn map_cart_port_error(
     error: PortError,

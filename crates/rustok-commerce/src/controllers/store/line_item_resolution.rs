@@ -105,7 +105,7 @@ fn map_storefront_line_item_inventory_error(
     HttpError::new(status, code, message)
 }
 
-pub(super) async fn resolve_store_line_item_input(
+pub(crate) async fn resolve_store_line_item_input(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     resolution: StoreLineItemResolution<'_>,
@@ -276,7 +276,7 @@ pub(super) async fn resolve_store_line_item_input(
     })
 }
 
-pub(super) async fn validate_store_line_item_quantity(
+pub(crate) async fn validate_store_line_item_quantity(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     variant_id: Uuid,

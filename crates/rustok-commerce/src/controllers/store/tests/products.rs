@@ -1,8 +1,5 @@
 use super::*;
-
-#[path = "../line_item_resolution.rs"]
-mod line_item_resolution;
-use line_item_resolution::resolve_store_line_item_input;
+use crate::controllers::store::line_item_resolution::resolve_store_line_item_input;
 
 #[tokio::test]
 async fn store_products_transport_rejects_disabled_channel_module() {

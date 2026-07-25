@@ -1,5 +1,6 @@
 pub mod carts;
 pub mod checkout;
+pub(crate) mod line_item_resolution;
 pub mod orders;
 pub mod products;
 
@@ -22,18 +23,13 @@ use rustok_cart::{
 use rustok_channel::error::ChannelError;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::{FulfillmentService, error::FulfillmentError};
-use rustok_inventory::{
-    PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
-};
 use rustok_pricing::{
     PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
     in_process_pricing_read_port,
 };
-use rustok_product::entities::{
-    product, product_translation, product_variant, variant_translation,
-};
+use rustok_product::entities::{product_translation, variant_translation};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -53,8 +49,8 @@ use crate::{
         normalize_public_channel_slug, public_channel_slug_from_request,
     },
     storefront_shipping::{
-        effective_shipping_profile_slug, enrich_cart_delivery_groups_typed,
-        is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
+        enrich_cart_delivery_groups_typed, is_shipping_option_compatible_with_profiles,
+        normalize_shipping_profile_slug,
     },
 };
 
@@ -922,120 +918,6 @@ pub(crate) struct StoreLineItemResolution<'a> {
     pub(crate) input: StoreAddCartLineItemInput,
 }
 
-pub(crate) async fn resolve_store_line_item_input(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    resolution: StoreLineItemResolution<'_>,
-) -> HttpResult<ResolvedStoreLineItemInput> {
-    let StoreLineItemResolution {
-        pricing_read_port,
-        pricing_context,
-        locale,
-        default_locale,
-        public_channel_slug,
-        input,
-    } = resolution;
-
-    let variant = product_variant::Entity::find_by_id(input.variant_id)
-        .filter(product_variant::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
-        .ok_or(HttpError::not_found(
-            "commerce_store_not_found",
-            "Commerce resource not found",
-        ))?;
-
-    let product_model = product::Entity::find_by_id(variant.product_id)
-        .filter(product::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
-        .ok_or(HttpError::not_found(
-            "commerce_store_not_found",
-            "Commerce resource not found",
-        ))?;
-    if product_model.status != product::ProductStatus::Active
-        || product_model.published_at.is_none()
-        || !is_metadata_visible_for_public_channel(&product_model.metadata, public_channel_slug)
-    {
-        return Err(HttpError::not_found(
-            "commerce_store_not_found",
-            "Commerce resource not found",
-        ));
-    }
-
-    let product_translation_models = product_translation::Entity::find()
-        .filter(product_translation::Column::ProductId.eq(product_model.id))
-        .all(db)
-        .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
-    let variant_translation_models = variant_translation::Entity::find()
-        .filter(variant_translation::Column::VariantId.eq(variant.id))
-        .all(db)
-        .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
-
-    let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
-        .resolve_product_price(
-            store_line_item_pricing_port_context(tenant_id, variant.id, locale, pricing_context),
-            ResolveProductPriceRequest {
-                product_id: Some(product_model.id),
-                variant_id: variant.id,
-                region_id: pricing_context.region_id,
-                channel_id: pricing_context.channel_id,
-                channel_slug: pricing_context.channel_slug.clone(),
-                price_list_id: pricing_context.price_list_id,
-                quantity: pricing_context.quantity,
-                currency_code: pricing_context.currency_code.clone(),
-            },
-        )
-        .await
-        .map_err(rustok_web::port_error_to_http_error)?
-        .into();
-    let (base_unit_price, pricing_adjustment) =
-        storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
-    validate_store_variant_inventory(db, tenant_id, &variant, input.quantity, public_channel_slug)
-        .await?;
-
-    let base_title = pick_product_translation(&product_translation_models, locale, default_locale)
-        .map(|translation| translation.title.clone())
-        .unwrap_or_else(|| {
-            variant
-                .sku
-                .clone()
-                .unwrap_or_else(|| format!("Variant {}", variant.id))
-        });
-    let title = match pick_variant_translation(&variant_translation_models, locale, default_locale)
-        .and_then(|translation| translation.title.clone())
-    {
-        Some(variant_title) if !variant_title.trim().is_empty() => {
-            format!("{base_title} / {}", variant_title.trim())
-        }
-        _ => base_title,
-    };
-
-    Ok(ResolvedStoreLineItemInput {
-        add_line_item: AddCartLineItemInput {
-            product_id: Some(product_model.id),
-            variant_id: Some(variant.id),
-            shipping_profile_slug: Some(effective_shipping_profile_slug(
-                product_model.shipping_profile_slug.as_deref(),
-                &product_model.metadata,
-                variant.shipping_profile_slug.as_deref(),
-            )),
-            sku: variant.sku.clone(),
-            title,
-            quantity: input.quantity,
-            unit_price: base_unit_price,
-            metadata: merge_metadata(
-                input.metadata,
-                seller_snapshot_metadata(product_model.seller_id.as_deref()),
-            ),
-        },
-        pricing_adjustment,
-    })
-}
 
 fn store_line_item_pricing_port_context(
     tenant_id: Uuid,
@@ -1093,62 +975,6 @@ pub(crate) fn pick_variant_translation<'a>(
         .or_else(|| translations.first())
 }
 
-pub(crate) async fn validate_store_line_item_quantity(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> HttpResult<()> {
-    validate_store_variant_inventory(
-        db,
-        tenant_id,
-        &product_variant::Entity::find_by_id(variant_id)
-            .filter(product_variant::Column::TenantId.eq(tenant_id))
-            .one(db)
-            .await
-            .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
-            .ok_or(HttpError::not_found(
-                "commerce_store_not_found",
-                "Commerce resource not found",
-            ))?,
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
-}
-
-pub(crate) async fn validate_store_variant_inventory(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant: &product_variant::Model,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> HttpResult<()> {
-    let available = check_variant_availability_for_public_channel(
-        db,
-        tenant_id,
-        PublicChannelInventoryVariantProjectionInput {
-            variant_id: variant.id,
-            inventory_policy: &variant.inventory_policy,
-        },
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
-    .map_err(|error| HttpError::bad_request("commerce_store_invalid", error.to_string()))?;
-    if !available {
-        return Err(HttpError::bad_request(
-            "commerce_store_invalid",
-            format!(
-                "Variant {} does not have enough available inventory for the current channel",
-                variant.id
-            ),
-        ));
-    }
-
-    Ok(())
-}
 
 pub(crate) fn default_metadata() -> Value {
     json!({})
