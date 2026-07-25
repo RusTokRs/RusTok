@@ -1,0 +1,59 @@
+name: SEO Full Suite Evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  full-suite:
+    name: rustok-seo full suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: seo-full-suite-evidence
+
+      - name: Run rustok-seo full suite and retain evidence
+        id: suite
+        continue-on-error: true
+        run: bash scripts/verify/run-seo-full-suite.sh
+
+      - name: Publish evidence summary
+        if: always()
+        run: |
+          summary="target/verification/seo-full-suite/summary.txt"
+          if [[ -f "$summary" ]]; then
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "SEO full-suite summary was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload SEO full-suite evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: seo-full-suite-${{ github.sha }}
+          path: target/verification/seo-full-suite/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Propagate suite result
+        if: steps.suite.outcome != 'success'
+        run: exit 1
