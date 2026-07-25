@@ -21,7 +21,9 @@
     "explicit_deny": "wins over explicit allow and every positive selector",
     "empty_constraints": "no additional narrowing",
     "public_actor": "cannot satisfy role trust channel group or explicit-user selectors",
-    "owner_facts": "exact requested actor and candidate subset only",
+    "owner_facts": "exact requested tenant actor and candidate subset only",
+    "context_binding": "port tenant and user actor must match the requested tenant and SecurityContext user",
+    "nil_identifiers": "rejected before normalization",
     "provider_absence": "local deny allow and role decisions remain available; otherwise authenticated external-fact evaluation fails closed with a typed capability error"
   },
   "port": {
@@ -29,6 +31,8 @@
     "request": "ForumAudienceFactsRequest",
     "response": "ForumAudienceFacts",
     "requires_read_deadline": true,
+    "echoes_tenant_and_actor": true,
+    "validates_context_identity": true,
     "direct_group_dependency": false,
     "direct_channel_dependency": false,
     "direct_owner_table_access": false
