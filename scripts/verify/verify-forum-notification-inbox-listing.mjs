@@ -34,7 +34,9 @@ const inbox = read(contract.notifications_owner_file ?? "");
 const surface = read(contract.notifications_surface_file ?? "");
 const entities = read(contract.notifications_entity_file ?? "");
 const migration = read(contract.notifications_migration_file ?? "");
+const rootReadme = read(contract.notifications_readme ?? "");
 const docs = read(contract.notifications_live_contract ?? "");
+const ownerPlan = read(contract.notifications_implementation_plan ?? "");
 const proof = read(contract.sqlite_proof ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const plan = read(contract.canonical_plan ?? "");
@@ -67,7 +69,9 @@ for (const delivered of [
   "delivery_attempts_unchanged",
   "public_crate_export",
   "sqlite_contract_proof",
+  "root_notifications_docs",
   "live_notifications_docs",
+  "owner_implementation_ledger",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum notification inbox listing contract must record ${delivered} as delivered`);
@@ -292,6 +296,30 @@ for (const marker of [
   "verify-forum-notification-inbox-listing.mjs",
 ]) {
   requireText(docs, marker, `notifications live contract is missing ${marker}`);
+}
+
+for (const marker of [
+  "bounded authorized inbox listing",
+  "NotificationInboxOpenService",
+  "NotificationInboxListService",
+  "default page of 20 and a hard cap of 64",
+  "empty page with a next cursor",
+  "seen/read/archive mutation APIs",
+]) {
+  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+}
+
+for (const marker of [
+  "Exact inbox open and bounded listing services are now owner-public",
+  "### `FORUM-20R / FORUM-20S`",
+  "### `FORUM-20T`",
+  "default/hard limits 20/64",
+  "empty page with a next cursor",
+  "seen/read/archive commands",
+  "inbox_listing_sqlite",
+  "verify-forum-notification-inbox-listing.mjs",
+]) {
+  requireText(ownerPlan, marker, `notifications owner implementation plan is missing ${marker}`);
 }
 
 if (
