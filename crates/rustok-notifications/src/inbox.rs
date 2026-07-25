@@ -23,6 +23,7 @@ use crate::model::{NotificationPriorityValue, NotificationState};
 
 pub const DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE: u16 = 20;
 pub const MAX_NOTIFICATION_INBOX_PAGE_SIZE: u16 = 64;
+pub const MAX_NOTIFICATION_INBOX_CURSOR_BYTES: usize = 128;
 
 const INBOX_CURSOR_VERSION: &str = "i1";
 
@@ -294,6 +295,13 @@ fn encode_inbox_cursor(stored: &notification::Model) -> String {
 }
 
 fn decode_inbox_cursor(value: &str) -> NotificationResult<InboxCursor> {
+    if value.is_empty()
+        || value.len() > MAX_NOTIFICATION_INBOX_CURSOR_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(invalid_inbox_cursor());
+    }
+
     let mut parts = value.splitn(4, ':');
     if parts.next() != Some(INBOX_CURSOR_VERSION) {
         return Err(invalid_inbox_cursor());
