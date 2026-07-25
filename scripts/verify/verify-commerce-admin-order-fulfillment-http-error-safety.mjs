@@ -63,6 +63,11 @@ for (const [value, label] of [
   ['"commerce_admin_order_state_conflict"', 'order conflict code'],
   ['"commerce_admin_order_storage_unavailable"', 'order storage code'],
   ['"commerce_admin_order_failed"', 'order fail-closed code'],
+  ['axum::http::StatusCode::BAD_REQUEST', 'bad-request status'],
+  ['axum::http::StatusCode::NOT_FOUND', 'not-found status'],
+  ['axum::http::StatusCode::CONFLICT', 'conflict status'],
+  ['axum::http::StatusCode::SERVICE_UNAVAILABLE', 'unavailable status'],
+  ['axum::http::StatusCode::INTERNAL_SERVER_ERROR', 'internal status'],
 ]) requireText(admin, value, label);
 
 for (const [value, label] of [
@@ -114,6 +119,8 @@ for (const [value, label] of [
   ['find_by_order(tenant.id, id)', 'fulfillment detail read'],
   ['fn map_order_detail_payment_error(', 'order-detail payment mapper'],
   ['fn map_order_detail_fulfillment_error(', 'order-detail fulfillment mapper'],
+  ['.map_err(|error| map_order_detail_payment_error(tenant.id, id, error))?;', 'context-aware payment detail mapping'],
+  ['.map_err(|error| map_order_detail_fulfillment_error(tenant.id, id, error))?;', 'context-aware fulfillment detail mapping'],
   ['page: pagination.page', 'order page forwarding'],
   ['per_page: pagination.limit()', 'order page-size forwarding'],
 ]) requireText(orders, value, label);
@@ -135,6 +142,8 @@ for (const [value, label] of [
   ['struct AdminOrderChangeOrchestrationErrorContext {', 'order-change orchestration context'],
   ['fn map_admin_order_change_orchestration_error(', 'context-aware order-change orchestration mapper'],
   ['let order_id = params.order_id;', 'order-change list identity capture'],
+  ['page: pagination.page', 'order-change page forwarding'],
+  ['per_page: pagination.limit()', 'order-change page-size forwarding'],
 ]) requireText(changes, value, label);
 
 for (const value of [
@@ -154,6 +163,8 @@ for (const [value, label] of [
   ['struct AdminOrderReturnOrchestrationErrorContext {', 'return orchestration context'],
   ['fn map_admin_order_return_orchestration_error(', 'context-aware return orchestration mapper'],
   ['ListOrderReturnsInput {', 'return list input'],
+  ['page: pagination.page', 'return page forwarding'],
+  ['per_page: pagination.limit()', 'return page-size forwarding'],
 ]) requireText(returns, value, label);
 
 for (const value of [
@@ -170,10 +181,12 @@ for (const [value, label] of [
   ['pub async fn reopen_fulfillment(', 'admin fulfillment reopen'],
   ['pub async fn reship_fulfillment(', 'admin fulfillment reship'],
   ['pub async fn cancel_fulfillment(', 'admin fulfillment cancel'],
+  ['ListFulfillmentsInput {', 'fulfillment list input'],
+  ['page: pagination.page', 'fulfillment page forwarding'],
+  ['per_page: pagination.limit()', 'fulfillment page-size forwarding'],
   ['struct AdminFulfillmentErrorContext {', 'fulfillment route context'],
   ['fn map_admin_fulfillment_error(', 'context-aware fulfillment owner mapper'],
   ['fn map_admin_fulfillment_orchestration_error(', 'context-aware fulfillment orchestration mapper'],
-  ['ListFulfillmentsInput {', 'fulfillment list input'],
 ]) requireText(fulfillments, value, label);
 
 for (const value of [
