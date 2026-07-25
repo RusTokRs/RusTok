@@ -131,6 +131,12 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
             .channel_members_any,
         root_channels
     );
+    assert!(matches!(
+        policies
+            .get(tenant_id, root, SecurityContext::public_read())
+            .await,
+        Err(ForumError::Forbidden(_))
+    ));
 
     let group_id = Uuid::new_v4();
     let allowed_user_id = Uuid::new_v4();
@@ -236,7 +242,7 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
         "database must reject a thirty-third channel relation"
     );
 
-    let direct_update = db
+    let direct_relation_update = db
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE forum_category_audience_channels SET channel_slug = ? WHERE tenant_id = ? AND category_id = ? AND channel_slug = ?",
@@ -249,8 +255,24 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
         ))
         .await;
     assert!(
-        direct_update.is_err(),
+        direct_relation_update.is_err(),
         "database must reject mutable relation-row updates"
+    );
+
+    let direct_policy_update = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE forum_category_audience_policies SET minimum_trust_level = ? WHERE tenant_id = ? AND category_id = ?",
+            [
+                9.into(),
+                tenant_id.to_string().into(),
+                root.to_string().into(),
+            ],
+        ))
+        .await;
+    assert!(
+        direct_policy_update.is_err(),
+        "database must reject mutable policy-row updates"
     );
 
     let cross_tenant_policy = db
