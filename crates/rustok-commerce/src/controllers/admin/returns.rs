@@ -7,7 +7,7 @@ use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
 use rustok_order::error::OrderError;
-use rustok_web::HttpResult;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -52,11 +52,15 @@ impl AdminOrderReturnErrorContext {
     }
 }
 
-fn log_admin_order_return_error(context: AdminOrderReturnErrorContext, error: &OrderError) {
-    let (status, code, error_kind) = match error {
+fn map_admin_order_return_error(
+    context: AdminOrderReturnErrorContext,
+    error: OrderError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
         OrderError::Validation(_) => (
             StatusCode::BAD_REQUEST,
             "commerce_admin_order_invalid",
+            "Order request is invalid",
             "validation",
         ),
         OrderError::OrderNotFound(_)
@@ -64,21 +68,25 @@ fn log_admin_order_return_error(context: AdminOrderReturnErrorContext, error: &O
         | OrderError::OrderChangeNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
+            "Commerce resource not found",
             "not_found",
         ),
         OrderError::InvalidTransition { .. } => (
             StatusCode::CONFLICT,
             "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
             "state_conflict",
         ),
         OrderError::Database(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
             "database",
         ),
         OrderError::Core(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
             "core",
         ),
     };
@@ -95,6 +103,7 @@ fn log_admin_order_return_error(context: AdminOrderReturnErrorContext, error: &O
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,
         "commerce admin order return owner operation failed"
     );
+    HttpError::new(status, code, message)
 }
 
 #[utoipa::path(
@@ -121,16 +130,15 @@ pub async fn create_order_return(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
-    let result = OrderService::new(runtime.db_clone(), runtime.event_bus())
+    let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_return(tenant.id, id, input)
-        .await;
-    if let Err(error) = &result {
-        log_admin_order_return_error(
-            AdminOrderReturnErrorContext::new(tenant.id, Some(id), None, "create_return"),
-            error,
-        );
-    }
-    let created = result.map_err(super::map_order_error)?;
+        .await
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, Some(id), None, "create_return"),
+                error,
+            )
+        })?;
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -200,7 +208,7 @@ pub async fn list_order_returns(
     )?;
     let pagination = params.pagination.unwrap_or_default();
     let order_id = params.order_id;
-    let result = OrderService::new(runtime.db_clone(), runtime.event_bus())
+    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .list_returns(
             tenant.id,
             ListOrderReturnsInput {
@@ -210,14 +218,13 @@ pub async fn list_order_returns(
                 status: params.status,
             },
         )
-        .await;
-    if let Err(error) = &result {
-        log_admin_order_return_error(
-            AdminOrderReturnErrorContext::new(tenant.id, order_id, None, "list_returns"),
-            error,
-        );
-    }
-    let (items, total) = result.map_err(super::map_order_error)?;
+        .await
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, order_id, None, "list_returns"),
+                error,
+            )
+        })?;
     Ok(Json(PaginatedResponse {
         data: items,
         meta: super::super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
@@ -246,16 +253,15 @@ pub async fn show_order_return(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
-    let result = OrderService::new(runtime.db_clone(), runtime.event_bus())
+    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_return(tenant.id, id)
-        .await;
-    if let Err(error) = &result {
-        log_admin_order_return_error(
-            AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "get_return"),
-            error,
-        );
-    }
-    let item = result.map_err(super::map_order_error)?;
+        .await
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "get_return"),
+                error,
+            )
+        })?;
     Ok(Json(item))
 }
 
@@ -347,15 +353,14 @@ pub async fn cancel_order_return(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
-    let result = OrderService::new(runtime.db_clone(), runtime.event_bus())
+    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .cancel_return(tenant.id, id, input)
-        .await;
-    if let Err(error) = &result {
-        log_admin_order_return_error(
-            AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "cancel_return"),
-            error,
-        );
-    }
-    let item = result.map_err(super::map_order_error)?;
+        .await
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "cancel_return"),
+                error,
+            )
+        })?;
     Ok(Json(item))
 }
