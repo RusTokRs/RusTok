@@ -109,6 +109,7 @@ for (const marker of [
   "forum_validate_category_audience_group_insert",
   "forum_validate_category_audience_user_insert",
   "forum_reject_category_audience_relation_update",
+  "forum_category_audience_policy_update",
   "forum category audience channels exceed bounded limit",
   "forum category audience groups exceed bounded limit",
   "forum category audience users exceed bounded limit",
@@ -142,6 +143,7 @@ for (const marker of [
   "pub async fn get(",
   "pub async fn set(",
   "enforce_scope(&security, Resource::ForumCategories, Action::Manage)?",
+  "Policy details may contain explicit user and group identifiers",
   "lock_category_tree_in_tx(&txn, tenant_id).await?",
   "forum_category_audience_policy::Entity::delete_many()",
   "insert_roles(&txn, tenant_id, category_id, &constraints).await?",
@@ -156,6 +158,20 @@ for (const marker of [
   "MAX_FORUM_CATEGORY_TREE_DEPTH",
 ]) {
   requireText(owner, marker, `category audience owner is missing ${marker}`);
+}
+const getBlock = between(
+  owner,
+  "pub async fn get(",
+  "pub async fn set(",
+  "category audience owner get",
+);
+for (const marker of [
+  "Action::Manage",
+  "let txn = self.db.begin().await?",
+  "lock_category_tree_in_tx(&txn, tenant_id).await?",
+  "txn.commit().await?",
+]) {
+  requireText(getBlock, marker, `managed category audience get is missing ${marker}`);
 }
 const setBlock = between(
   owner,
@@ -214,9 +230,12 @@ for (const marker of [
 for (const marker of [
   "category_audience_layers_inherit_conjunctively_and_remain_bounded",
   "vec![root, child]",
+  "SecurityContext::public_read()",
+  "Err(ForumError::Forbidden(_))",
   "empty constraints should clear the local layer",
   "database must reject a thirty-third channel relation",
   "database must reject mutable relation-row updates",
+  "database must reject mutable policy-row updates",
   "database must reject a cross-tenant category policy relation",
 ]) {
   requireText(testSource, marker, `category audience SQLite scenario is missing ${marker}`);
