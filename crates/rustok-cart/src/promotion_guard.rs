@@ -10,6 +10,7 @@ use crate::ports::{
 };
 use crate::{CartError, CartPromotionPreview, CartResponse, CartService};
 
+const CART_PROMOTION_OWNER: &str = "rustok_cart.promotion";
 const READ_CART_PROMOTION_PREVIEW_OPERATION: &str = "read_cart_promotion_preview";
 const APPLY_CART_PROMOTION_OPERATION: &str = "apply_cart_promotion";
 
@@ -167,8 +168,10 @@ fn validate_cart_promotion_request(
         tracing::warn!(
             scope = ?request.scope,
             line_item_present = request.line_item_id.is_some(),
+            owner = CART_PROMOTION_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation = owner_operation,
             code,
             "cart promotion target validation failed"
@@ -190,8 +193,10 @@ fn parse_cart_promotion_tenant_id(
         tracing::warn!(
             error = ?error,
             internal_tenant_id = %context.tenant_id,
+            owner = CART_PROMOTION_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation = owner_operation,
             code = "cart.tenant_id_invalid",
             "cart promotion tenant context is invalid"
@@ -213,8 +218,10 @@ fn cart_promotion_context_error(
         internal_message = %error.message,
         kind = ?error.kind,
         retryable = error.retryable,
+        owner = CART_PROMOTION_OWNER,
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
+        channel = ?context.channel,
         operation = owner_operation,
         code = "cart.promotion_context_invalid",
         "cart promotion call context was rejected"
@@ -244,8 +251,10 @@ fn cart_promotion_error(
     let code = cart_promotion_error_code(&error);
     tracing::error!(
         error = ?error,
+        owner = CART_PROMOTION_OWNER,
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
+        channel = ?context.channel,
         operation = owner_operation,
         code,
         "cart promotion owner operation failed"
