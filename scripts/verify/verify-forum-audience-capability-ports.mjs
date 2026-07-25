@@ -51,6 +51,12 @@ if (contract.schema_version !== 1) {
 if (contract.task !== "FORUM-20F") {
   failures.push("forum audience capability contract must belong to FORUM-20F");
 }
+if (contract.delivered_through !== "FORUM-20G") {
+  failures.push("forum audience capability contract must be reconciled through FORUM-20G");
+}
+if (contract.composition?.storage !== true || contract.composition?.category_policy !== true) {
+  failures.push("forum audience capability contract must record delivered category persistence");
+}
 for (const [key, expected] of Object.entries({
   roles: 4,
   channels: 32,
@@ -80,7 +86,6 @@ if (contract.verification?.execution_status !== "not_run_by_implementation_agent
   failures.push("source publication must not claim unexecuted audience evidence");
 }
 for (const residual of [
-  "audience policy persistence and inheritance",
   "category topic and reply read composition",
   "create reply and moderate audience write policy",
   "topic narrowing commands",
@@ -93,6 +98,9 @@ for (const residual of [
   if (!contract.not_delivered?.includes(residual)) {
     failures.push(`forum audience capability contract must keep ${residual} open`);
   }
+}
+if (contract.not_delivered?.includes("audience policy persistence and inheritance")) {
+  failures.push("delivered category audience persistence must not remain open");
 }
 
 for (const marker of [
@@ -242,6 +250,7 @@ for (const marker of [
 
 for (const marker of [
   "Delivered in `FORUM-20F`",
+  "Delivered in `FORUM-20G`",
   "ForumAudienceFactsPort",
   "forum-audience-capability-ports.json",
   "audience_capability_contract",

@@ -2,6 +2,11 @@
 
 pub mod forum_audience_mention;
 pub mod forum_category;
+pub mod forum_category_audience_channel;
+pub mod forum_category_audience_group;
+pub mod forum_category_audience_policy;
+pub mod forum_category_audience_role;
+pub mod forum_category_audience_user;
 pub mod forum_category_lifecycle;
 pub mod forum_category_policy;
 pub mod forum_category_subscription;
@@ -27,6 +32,7 @@ pub mod forum_user_mention;
 pub mod forum_user_stat;
 
 pub use forum_category::Entity as ForumCategory;
+pub use forum_category_audience_policy::Entity as ForumCategoryAudiencePolicyEntity;
 pub use forum_category_lifecycle::Entity as ForumCategoryLifecycle;
 pub use forum_category_policy::Entity as ForumCategoryPolicy;
 pub use forum_domain_event::Entity as ForumDomainEvent;

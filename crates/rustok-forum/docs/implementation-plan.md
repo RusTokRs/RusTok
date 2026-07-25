@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-F provide inherited public/authenticated policy, category/topic/reply owner-read composition and a bounded richer-audience capability/evaluator contract. Persistence and read composition of richer rules, write audiences, remaining consumers and runtime evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-G provide inherited public/authenticated policy, category/topic/reply owner-read composition, the bounded richer-audience evaluator contract and normalized conjunctive category audience persistence. Topic narrowing, richer read composition, write audiences, provider adapters, remaining consumers and runtime evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1186,47 +1186,74 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
 - raw input is capped before normalization at four roles, 32 channel candidates,
   32 group candidates and 100 allow plus 100 deny user IDs; trust is bounded to
   0..100 and channel slugs to 128 characters;
-- `ForumAudienceFactsRequest` and `ForumAudienceFacts` form an exact actor-scoped
-  request/response pair, rejecting unrequested trust, channel or group facts;
+- `ForumAudienceFactsRequest` and `ForumAudienceFacts` form an exact tenant- and
+  actor-scoped request/response pair, rejecting cross-identity or unrequested
+  trust, channel or group facts;
 - `ForumAudienceFactsPort` is a transport-neutral optional owner boundary with
   mandatory read-deadline semantics and no direct Forum dependency on Channel,
   Groups or their private tables;
-- `ForumAudienceFactsResolver` skips the optional provider when local
-  deny/allow/role facts already decide the union, returns empty facts for public
-  or non-user actors, and otherwise fails closed with typed capability errors;
+- `ForumAudienceFactsResolver` binds the port context to the requested tenant and
+  user, skips the optional provider when local deny/allow/role facts already
+  decide the union, returns empty facts for public or non-user actors, and
+  otherwise fails closed with typed capability errors;
 - `ForumAudienceEvaluator` validates exact facts and returns an explainable
   decision reason for unrestricted, deny, allow, role, trust, channel, group,
   authentication-required or no-match outcomes;
 - `forum-audience-capability-ports.json`, `audience_capability_contract` and
   `verify-forum-audience-capability-ports.mjs` lock bounds, precedence, exact
-  subsets, deadline semantics and residual composition work;
+  subsets, identity/deadline semantics and residual composition work;
 - this slice adds no storage, migration, owner-read composition, write policy,
   transport, provider adapter or cross-consumer behavior.
 
+### Delivered in `FORUM-20G`
+
+- five normalized Forum-owned tables persist one optional local category layer
+  plus typed role, channel, group and explicit allow/deny relations without JSON;
+- every policy and relation is tenant/category scoped through composite foreign
+  keys, with typed checks for supported roles, trust `0..100`, canonical channel
+  slugs, non-nil identities and allow/deny effects;
+- direct channel/group/user inserts are bounded to the FORUM-20F limits and
+  policy and relation updates are rejected; owner replacement uses delete plus
+  insert;
+- `ForumCategoryAudiencePolicyService` exposes managed policy inspection and
+  atomically replaces a local layer under `forum_categories:manage` and the
+  tenant category-tree lock;
+- an empty constraint set deletes only the local layer and restores inheritance;
+- effective policy is an ordered root-to-target conjunction of every non-empty
+  local layer, preserving the local union/deny semantics while making child
+  broadening impossible;
+- storage reads remain bounded to the 512-node/depth-16 hierarchy and fail closed
+  for cycles, foreign categories, orphan relations, empty stored layers or
+  oversized direct writes;
+- `forum-category-audience-policy.json`, `category_audience_policy_sqlite` and
+  `verify-forum-category-audience-policy.mjs` lock normalized persistence,
+  inheritance, atomic replacement, tenant isolation and direct database guards;
+- this slice adds no topic narrowing, category/topic/reply read composition,
+  provider adapter, write-audience transport or cross-consumer behavior.
+
 ### Compatibility and degraded mode
 
-The nullable category floor still requires no backfill. Existing categories stay
-public until an owner command narrows an ancestor. Public category/topic/reply
-reads treat inherited authenticated targets as absent; authenticated reads expose
-public and authenticated categories. Storefront topic reads add the existing
-open/exact-channel policy on top of the same category floor. FORUM-20F adds only
-public Rust contract types and source-ready evidence: no current read, write or
-transport calls the richer evaluator yet. A missing optional facts provider can
-never broaden a decision; locally decidable role/explicit rules do not require
-one, while unresolved trust/channel/group facts return a typed failure. Host
-adapters may compose owner ports later without adding direct Forum dependencies
-on Channel or Groups implementations.
+The nullable public/authenticated category floor still requires no backfill.
+FORUM-20G adds empty normalized audience tables, so existing categories and all
+current category/topic/reply reads remain unchanged until a later owner-read
+composition slice calls the richer evaluator. Existing stored local layers do
+not require Channel, Groups or trust providers merely to persist or inspect the
+policy. A missing optional facts provider can never broaden a decision; locally
+decidable role/explicit rules do not require one, while unresolved
+trust/channel/group evaluation remains a typed failure. Host adapters may later
+compose owner ports without adding direct Forum dependencies on Channel or
+Groups implementations.
 
 ### Remaining scope
 
-- persist and inherit the bounded FORUM-20F constraints for categories and topic
-  narrowing, then compose them into category/topic/reply owner reads without
-  count, pagination or existence-oracle drift;
+- add normalized topic narrowing persistence and owner commands that cannot
+  broaden any effective category layer;
 - provide host adapters for Forum-owned trust state plus Channel and Groups owner
   membership ports, preserving exact request bounds and optional-capability
   failure semantics;
-- add create/reply/moderate audience policies and topic narrowing commands that
-  cannot broaden the effective category policy;
+- compose inherited category and topic layers into category/topic/reply owner
+  reads without count, pagination or existence-oracle drift;
+- add create/reply/moderate audience policies and write commands;
 - compose the owner policy into remaining Forum reads and migrate notifications,
   search/index, SEO and deep-link open authorization to the same decision;
 - add visibility-scoped category and all-read commands only after the complete
@@ -1248,19 +1275,22 @@ cargo test -p rustok-forum --test topic_authenticated_visibility_sqlite -- --noc
 cargo test -p rustok-forum --test topic_reply_owner_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_owner_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test audience_capability_contract -- --nocapture
+cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture
 node scripts/verify/verify-forum-topic-visibility-scope.mjs
 node scripts/verify/verify-forum-category-visibility-policy.mjs
 node scripts/verify/verify-forum-owner-read-visibility.mjs
 node scripts/verify/verify-forum-category-owner-read-visibility.mjs
 node scripts/verify/verify-forum-audience-capability-ports.mjs
+node scripts/verify/verify-forum-category-audience-policy.mjs
 cargo xtask module validate forum
 npm run verify:forum:storefront-boundary
 ```
 
 Tests, Cargo, verifiers and CI were not run while publishing the source-ready
-FORUM-20C-F read-composition and capability-contract slices. `FORUM-20` remains
-`in_progress` until richer policy persistence/composition, write audiences and
-all cross-consumer paths are delivered with maintainer runtime evidence.
+FORUM-20C-G read-composition, capability-contract and category-persistence
+slices. `FORUM-20` remains `in_progress` until topic narrowing, richer read
+composition, write audiences and all cross-consumer paths are delivered with
+maintainer runtime evidence.
 
 ## `FORUM-21` — move, merge, split and fork topics
 
@@ -1968,6 +1998,7 @@ cargo test -p rustok-forum --test topic_authenticated_visibility_sqlite -- --noc
 cargo test -p rustok-forum --test topic_reply_owner_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_owner_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test audience_capability_contract -- --nocapture
+cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1991,6 +2022,7 @@ node scripts/verify/verify-forum-category-visibility-policy.mjs
 node scripts/verify/verify-forum-owner-read-visibility.mjs
 node scripts/verify/verify-forum-category-owner-read-visibility.mjs
 node scripts/verify/verify-forum-audience-capability-ports.mjs
+node scripts/verify/verify-forum-category-audience-policy.mjs
 cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
@@ -2042,9 +2074,10 @@ Recommended next slices:
     storefront bulk composition after the complete `FORUM-20` policy can page an
     exact category or tenant scope;
 11. `FORUM-19`: reports/moderation/restrictions;
-12. continue `FORUM-20` by persisting and inheriting the bounded FORUM-20F
-    constraints, composing them into owner reads with exact provider adapters,
-    then add write audiences and migrate remaining consumers;
+12. continue `FORUM-20` with normalized topic narrowing persistence and commands,
+    exact trust/channel/group provider adapters, then compose inherited category
+    plus topic layers into owner reads before adding write audiences and remaining
+    consumers;
 13. `FORUM-23`: index projections;
 14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.

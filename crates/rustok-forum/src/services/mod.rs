@@ -5,6 +5,7 @@ mod category {
     include!("category.rs");
     include!("category_visibility_list.rs");
 }
+mod category_audience;
 #[allow(clippy::collapsible_if)]
 mod category_command;
 mod category_lifecycle;
@@ -59,6 +60,10 @@ pub mod user_stats;
 pub mod vote;
 pub mod widget_contract;
 
+pub use category_audience::{
+    ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
+    ForumCategoryAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+};
 pub use category_owner::CategoryService;
 pub use category_visibility::{
     ForumCategoryVisibilityPolicy, ForumCategoryVisibilityPolicyService,

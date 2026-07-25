@@ -41,15 +41,17 @@ pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
 pub use mentions::*;
 pub use services::{
-    CategoryService, ForumCategoryVisibilityPolicy, ForumCategoryVisibilityPolicyService,
-    ForumEventService, ForumQuoteCommandService, ForumReadModelService, ForumRelationReadService,
-    ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
-    ForumTopicReadState, ForumTopicReadStateService, ForumTopicUnreadSummary,
-    ForumTopicVisibilityScope, ForumTopicVisibilityService, ForumWidgetContractService,
-    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput,
-    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
-    RevisionService, SetForumCategoryVisibilityPolicyInput, SubscriptionService, TopicService,
-    UserStatsService, VoteService,
+    CategoryService, ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
+    ForumCategoryAudiencePolicyService, ForumCategoryVisibilityPolicy,
+    ForumCategoryVisibilityPolicyService, ForumEventService, ForumQuoteCommandService,
+    ForumReadModelService, ForumRelationReadService, ForumStorefrontReadStateService,
+    ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage, ForumTopicReadState,
+    ForumTopicReadStateService, ForumTopicUnreadSummary, ForumTopicVisibilityScope,
+    ForumTopicVisibilityService, ForumWidgetContractService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
+    MarkForumTopicReadInput, MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
+    ModerationService, ReplyService, RevisionService, SetForumCategoryAudiencePolicyInput,
+    SetForumCategoryVisibilityPolicyInput, SubscriptionService, TopicService, UserStatsService,
+    VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
