@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20O",
+  "upstream_task": "FORUM-20N",
+  "scope": "Exact recipient-specific Forum user-mention description and audience composition for topic and reply targets",
+  "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
+  "visibility_owner_file": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
+  "recipient_context_owner_file": "crates/rustok-forum/src/notification_recipient.rs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json",
+  "visibility_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
+  "test_file": "crates/rustok-forum/tests/notification_recipient_mention_audience_sqlite.rs",
+  "source_verifier": "scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan_sync": {
+    "status": "pending",
+    "required_ledger_through": "FORUM-20O",
+    "required_delivered_sections": [
+      "FORUM-20H",
+      "FORUM-20I",
+      "FORUM-20J",
+      "FORUM-20K",
+      "FORUM-20L",
+      "FORUM-20M",
+      "FORUM-20N",
+      "FORUM-20O"
+    ],
+    "current_plan_through": "FORUM-20G",
+    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+  },
+  "policy": {
+    "mention_recipient": "the exact mentioned user from the persisted relation event",
+    "description": "when recipient context is published, describe a topic or reply mention only if the exact mentioned recipient can view the current target",
+    "audience": "re-resolve the exact mentioned recipient and current target before returning the single-recipient audience",
+    "capability_absence": "preserve the existing public-only fail-closed mention path when the host recipient-context capability is absent",
+    "recipient_unavailable": "non-retryable recipient capability failure returns no descriptor or an empty audience without an existence oracle",
+    "authenticated_visibility": "compose exact base topic visibility and normalized inherited category/topic audience layers for the validated mentioned recipient",
+    "local_selectors": "role and explicit-user allow or deny constraints resolve without host facts adapters",
+    "fact_dependent_selectors": "missing or failing host facts capability preserves typed retryability",
+    "reply_target": "reply must be active and approved and its topic must be visible to the same mentioned recipient",
+    "topic_created_boundary": "topic-created description and subscription audience remain public-only in this slice",
+    "stale_descriptor": "audience resolution rechecks the current target policy for the exact mentioned recipient"
+  },
+  "composition": {
+    "shared_recipient_resolution_helper": true,
+    "bounded_mention_description_context": true,
+    "bounded_mention_audience_context": true,
+    "exact_mention_recipient_resolution": true,
+    "authenticated_topic_viewer": true,
+    "recipient_specific_mention_description": true,
+    "recipient_specific_mention_audience": true,
+    "topic_mention_target": true,
+    "reply_mention_target": true,
+    "public_only_fallback": true,
+    "unavailable_recipient_fail_closed": true,
+    "retryability_preserved": true,
+    "stale_descriptor_recheck": true,
+    "topic_created_paths_unchanged": true,
+    "sqlite_contract_test": true
+  },
+  "not_delivered": [
+    "recipient-specific topic-created subscription filtering before pagination",
+    "initially non-public topic-created descriptor materialization",
+    "profile privacy and blocking policy",
+    "host trust channel and group facts adapters",
+    "final notification creation and delivery authorization",
+    "search index SEO and deep-link migration",
+    "PostgreSQL and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_mention_audience_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
+      "node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
+      "node scripts/verify/verify-forum-notification-visibility-composition.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
