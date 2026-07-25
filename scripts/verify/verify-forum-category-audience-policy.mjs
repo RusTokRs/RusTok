@@ -56,6 +56,12 @@ if (contract.schema_version !== 1) {
 if (contract.task !== "FORUM-20G") {
   failures.push("category audience policy contract must belong to FORUM-20G");
 }
+if (contract.delivered_through !== "FORUM-20H") {
+  failures.push("category audience policy contract must be reconciled through FORUM-20H");
+}
+if (contract.composition?.topic_narrowing_storage !== true) {
+  failures.push("category audience contract must record delivered topic narrowing storage");
+}
 for (const [key, expected] of Object.entries({
   category_tree_nodes: 512,
   category_tree_depth: 16,
@@ -80,7 +86,6 @@ if (contract.verification?.execution_status !== "not_run_by_implementation_agent
   failures.push("source publication must not claim unexecuted category audience evidence");
 }
 for (const residual of [
-  "topic narrowing persistence and commands",
   "category topic and reply read composition",
   "create reply and moderate audience write policy",
   "channel and group provider adapters",
@@ -92,6 +97,9 @@ for (const residual of [
   if (!contract.not_delivered?.includes(residual)) {
     failures.push(`category audience contract must keep ${residual} open`);
   }
+}
+if (contract.not_delivered?.includes("topic narrowing persistence and commands")) {
+  failures.push("delivered topic narrowing must not remain open");
 }
 
 for (const table of contract.tables ?? []) {
@@ -244,6 +252,7 @@ for (const marker of [
 for (const marker of [
   "Delivered in `FORUM-20F`",
   "Delivered in `FORUM-20G`",
+  "Delivered in `FORUM-20H`",
   "ForumCategoryAudiencePolicyService",
   "forum-category-audience-policy.json",
   "category_audience_policy_sqlite",
