@@ -45,13 +45,15 @@ while the final transaction is active. PostgreSQL lifecycle tenant toggles advan
 the cursor inside their tenant-state transaction, serializing candidate commit and
 tenant enable/disable by commit order.
 
-Exact inbox open, bounded listing, and monotonic exact-item state services are now
-owner-public. Open requests recheck current recipient privacy and source target
-authorization. Listing scans exact-recipient rows in bounded descending keyset
-pages, reuses the open-time pipeline for every raw row, and supports sparse pages
-whose cursor advances from the last scanned row. State commands apply exact
-seen/read/archive transitions without foreign owner calls. No external transport,
-mark-unread, bulk/mark-all, count, grouped-view, or UI contract is published yet.
+Exact inbox open, bounded listing, monotonic exact-item state, and bounded
+exact-recipient reconciliation services are now owner-public. Open requests recheck
+current recipient privacy and source target authorization. Listing scans
+exact-recipient rows in bounded descending keyset pages and supports sparse pages.
+State commands apply exact seen/read/archive transitions without foreign owner calls.
+Reconciliation reuses open-time policy and archives currently unavailable rows
+through the state owner. No external transport, mark-unread, bulk/mark-all, count,
+grouped-view, tenant-wide scheduler, payload-redaction, or UI contract is published
+yet.
 
 ## Invariants
 
@@ -89,6 +91,13 @@ mark-unread, bulk/mark-all, count, grouped-view, or UI contract is published yet
   `updated_at`;
 - inbox state commands call no recipient policy, source provider, target, or
   delivery owner and create no delivery attempts;
+- recipient reconciliation scans only exact-recipient non-archived rows in bounded
+  `created_at DESC, id DESC` pages;
+- reconciliation raw selection completes before privacy or source owner calls;
+- only an `Unavailable` open decision triggers the exact state-owner archive command;
+- retryable reconciliation failures stop the page while prior archives remain
+  durable and idempotent on restart;
+- reconciliation responses expose only counts and continuation metadata;
 - delivery work remains outside candidate finalization;
 - worker enablement is never inferred from provider readiness.
 
@@ -288,12 +297,32 @@ mark-unread, bulk/mark-all, count, grouped-view, or UI contract is published yet
   verifier `scripts/verify/verify-forum-notification-inbox-state-mutations.mjs`, and
   SQLite evidence `tests/inbox_state_sqlite.rs`.
 
+### `FORUM-20V`
+
+- `NotificationInboxReconcileService` scans one exact-recipient non-archived page
+  with default/hard limits 20/64 and `created_at DESC, id DESC` keyset ordering;
+- its versioned cursor preserves seconds, nanoseconds, UUID identity, and the shared
+  128-byte/control-character validation boundary;
+- raw selection completes before each row reuses `NotificationInboxOpenService`;
+- current recipient privacy remains before source target authorization;
+- only `Unavailable` rows archive through `NotificationInboxStateService`, preserving
+  existing seen/read timestamps and leaving delivery attempts unchanged;
+- retryable owner failures stop the page while prior archives remain durable and
+  idempotent on restart;
+- the response exposes only scanned/archived counts and continuation metadata;
+- tenant-wide scheduled reconciliation, payload redaction, transport, and UI remain
+  closed;
+- contract
+  `crates/rustok-forum/contracts/forum-notification-inbox-reconciliation.json`,
+  verifier `scripts/verify/verify-forum-notification-inbox-reconciliation.mjs`, and
+  SQLite evidence `tests/inbox_reconcile_sqlite.rs`.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
   composition;
-- retention, reconciliation, repair, quarantine replay/purge, and administrative
-  command state;
+- retention, tenant-wide scheduled reconciliation, payload redaction, repair,
+  quarantine replay/purge, and administrative command state;
 - keep mark-unread, bulk/mark-all, preferences, digests, delivery transports, and
   external inbox adapters closed until matching owner commands exist.
 
@@ -312,7 +341,8 @@ mark-unread, bulk/mark-all, count, grouped-view, or UI contract is published yet
 - tenant restrictions beyond effective module capability;
 - block/mute management transports and relation change events;
 - privacy and source rechecks on delayed delivery;
-- redaction/archive reconciliation after source/profile changes;
+- tenant-wide scheduled reconciliation and payload redaction after source/profile
+  changes;
 - executable blocked/private/deleted and cross-tenant evidence beyond SQLite owner
   service coverage.
 
@@ -340,6 +370,7 @@ cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -361,11 +392,12 @@ node scripts/verify/verify-forum-notification-inbox-open-authorization.mjs
 node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
 node scripts/verify/verify-forum-notification-inbox-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
+node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
-`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U` source slices.
+`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V` source slices.
 `Cargo.lock` was not regenerated because this work does not change the package
 dependency graph.
 
