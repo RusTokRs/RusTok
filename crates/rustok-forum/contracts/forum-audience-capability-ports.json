@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
   "task": "FORUM-20F",
-  "delivered_through": "FORUM-20G",
+  "delivered_through": "FORUM-20H",
   "scope": "Bounded role, trust, channel membership, group membership, and explicit allow/deny audience contract",
   "contract_file": "crates/rustok-forum/src/audience.rs",
   "persistence_contract": "crates/rustok-forum/contracts/forum-category-audience-policy.json",
+  "topic_persistence_contract": "crates/rustok-forum/contracts/forum-topic-audience-policy.json",
   "crate_file": "crates/rustok-forum/src/lib.rs",
   "test_file": "crates/rustok-forum/tests/audience_capability_contract.rs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
@@ -18,9 +19,9 @@
     "channel_slug_characters": 128
   },
   "policy": {
-    "composition_order": "inherited public/authenticated floor then additional audience constraints",
+    "composition_order": "inherited public/authenticated floor then conjunctive category and topic audience layers",
     "positive_selectors": "union",
-    "explicit_deny": "wins over explicit allow and every positive selector",
+    "explicit_deny": "wins over explicit allow and every positive selector within one layer",
     "empty_constraints": "no additional narrowing",
     "public_actor": "cannot satisfy role trust channel group or explicit-user selectors",
     "owner_facts": "exact requested tenant actor and candidate subset only",
@@ -42,7 +43,7 @@
   "composition": {
     "storage": true,
     "category_policy": true,
-    "topic_policy": false,
+    "topic_policy": true,
     "reply_policy": false,
     "transport": false,
     "notifications": false,
@@ -52,7 +53,6 @@
   "not_delivered": [
     "category topic and reply read composition",
     "create reply and moderate audience write policy",
-    "topic narrowing commands",
     "channel and group provider adapters",
     "trust-level owner provider",
     "visibility-scoped category and all-read mutations",
@@ -63,8 +63,10 @@
     "commands": [
       "cargo test -p rustok-forum --test audience_capability_contract -- --nocapture",
       "cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test topic_audience_policy_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-audience-capability-ports.mjs",
       "node scripts/verify/verify-forum-category-audience-policy.mjs",
+      "node scripts/verify/verify-forum-topic-audience-policy.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"
