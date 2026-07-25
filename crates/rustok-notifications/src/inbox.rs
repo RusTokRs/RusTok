@@ -234,7 +234,7 @@ impl NotificationInboxListService {
         if let Some(cursor) = cursor {
             select = select.filter(
                 Condition::any()
-                    .add(notification::Column::CreatedAt.lt(cursor.created_at))
+                    .add(notification::Column::CreatedAt.lt(cursor.created_at.to_owned()))
                     .add(
                         Condition::all()
                             .add(notification::Column::CreatedAt.eq(cursor.created_at))
@@ -278,7 +278,7 @@ impl NotificationInboxListService {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct InboxCursor {
     created_at: DateTime<FixedOffset>,
     id: Uuid,
@@ -312,6 +312,7 @@ fn decode_inbox_cursor(value: &str) -> NotificationResult<InboxCursor> {
     let id = parts
         .next()
         .and_then(|part| Uuid::parse_str(part).ok())
+        .filter(|id| !id.is_nil())
         .ok_or_else(invalid_inbox_cursor)?;
     Ok(InboxCursor { created_at, id })
 }
