@@ -179,7 +179,7 @@ adapters, and module-owned UI remain closed.
 
 `NotificationInboxReconcileService` scans one bounded non-archived page for an
 exact tenant/recipient in `created_at DESC, id DESC` order. It defaults to 20 rows,
-is capped at 64, and uses a separate versioned cursor preserving timestamp
+is capped at 64, and reuses the crate-private `i1` inbox cursor with timestamp
 nanoseconds and the UUID tie-breaker.
 
 Every scanned row reuses `NotificationInboxOpenService`, so current recipient
