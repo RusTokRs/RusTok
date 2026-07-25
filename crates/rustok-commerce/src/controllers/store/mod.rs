@@ -61,25 +61,31 @@ fn map_storefront_context_error(error: StoreContextError, tenant_id: Uuid) -> Ht
         StoreContextError::TenantNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_store_context_not_found",
-            "Store context was not found",
+            "Store context was not found".to_string(),
             "tenant_not_found",
         ),
-        StoreContextError::Validation(_) | StoreContextError::CurrencyRegionMismatch { .. } => (
+        StoreContextError::Validation(msg) => (
             StatusCode::BAD_REQUEST,
             "commerce_store_context_invalid",
-            "Store context request is invalid",
+            msg.clone(),
+            "validation",
+        ),
+        err @ StoreContextError::CurrencyRegionMismatch { .. } => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_context_invalid",
+            err.to_string(),
             "validation",
         ),
         StoreContextError::RegionBoundary { .. } => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_context_failed",
-            "Store context could not be resolved safely",
+            "Store context could not be resolved safely".to_string(),
             "region_boundary",
         ),
         StoreContextError::Database(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_store_context_unavailable",
-            "Store context is temporarily unavailable",
+            "Store context is temporarily unavailable".to_string(),
             "database",
         ),
     };

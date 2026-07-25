@@ -162,6 +162,12 @@ pub async fn complete_storefront_checkout_input(
             .clone()
             .or_else(|| Some(request_context.locale.clone()));
     }
+    if checkout_input.country_code.is_none() {
+        checkout_input.country_code = cart.country_code.clone();
+    }
+    if checkout_input.region_id.is_none() {
+        checkout_input.region_id = cart.region_id;
+    }
     let customer_id = resolve_customer_id(runtime, tenant_id, auth.as_ref()).await?;
     if cart.customer_id.is_some() && cart.customer_id != customer_id {
         if auth.is_none() {
