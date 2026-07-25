@@ -290,7 +290,6 @@ if (
   recipientContract.schema_version !== 2 ||
   recipientContract.task !== "FORUM-20N" ||
   recipientContract.downstream_task !== "FORUM-20O" ||
-  recipientContract.composition?.recipient_specific_target_open !== undefined ||
   recipientContract.composition?.recipient_specific_topic_open !== true ||
   recipientContract.composition?.recipient_specific_reply_open !== true ||
   recipientContract.composition?.recipient_specific_mention_description !== true ||
