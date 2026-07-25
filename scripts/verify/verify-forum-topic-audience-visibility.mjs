@@ -37,17 +37,24 @@ const topicOwner = read(contract.topic_policy_owner ?? "");
 const evaluator = read(contract.audience_evaluator ?? "");
 const services = read(contract.services_file ?? "");
 const crate = read(contract.crate_file ?? "");
+const notificationSource = read(contract.notification_source_file ?? "");
+const notificationContract = JSON.parse(
+  read(contract.notification_visibility_contract ?? "") || "{}",
+);
 const testSource = read(contract.test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("forum topic audience visibility contract must use schema_version=1");
+if (contract.schema_version !== 2) {
+  failures.push("forum topic audience visibility contract must use schema_version=2");
 }
-if (contract.task !== "FORUM-20J") {
-  failures.push("forum topic audience visibility contract must belong to FORUM-20J");
+if (contract.task !== "FORUM-20J" || contract.downstream_notification_task !== "FORUM-20K") {
+  failures.push("forum topic audience visibility contract must belong to FORUM-20J and record FORUM-20K notification composition");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("source publication must not claim unexecuted richer visibility evidence");
+}
+if (contract.composition?.public_notification_source !== true) {
+  failures.push("forum topic audience visibility contract must record the public notification source consumer");
 }
 for (const residual of [
   "topic and reply page filtering before count and pagination",
@@ -55,7 +62,8 @@ for (const residual of [
   "create reply and moderate audience write policy",
   "host trust channel and group provider adapters",
   "visibility-scoped category and all-read mutations",
-  "notification search index SEO and deep-link migration to the richer exact owner",
+  "recipient-specific notification authorization for non-public audiences",
+  "search index SEO and deep-link migration to the richer exact owner",
   "PostgreSQL concurrency and cross-consumer runtime evidence",
 ]) {
   if (!contract.not_delivered?.includes(residual)) {
@@ -64,14 +72,14 @@ for (const residual of [
 }
 
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20J") {
-  failures.push("forum topic audience visibility contract must require the canonical ledger through FORUM-20J");
+if (planSync.required_ledger_through !== "FORUM-20K") {
+  failures.push("forum topic audience visibility contract must require the canonical ledger through FORUM-20K");
 }
 if (
   JSON.stringify(planSync.required_delivered_sections) !==
-  JSON.stringify(["FORUM-20H", "FORUM-20I", "FORUM-20J"])
+  JSON.stringify(["FORUM-20H", "FORUM-20I", "FORUM-20J", "FORUM-20K"])
 ) {
-  failures.push("forum topic audience visibility contract must require FORUM-20H/I/J delivered sections");
+  failures.push("forum topic audience visibility contract must require FORUM-20H/I/J/K delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -82,7 +90,7 @@ if (planSync.status === "pending") {
     "FORUM-20A-G provide",
     "pending canonical plan synchronization must remain grounded in the current FORUM-20A-G ledger row",
   );
-  for (const slice of ["FORUM-20H", "FORUM-20I", "FORUM-20J"]) {
+  for (const slice of ["FORUM-20H", "FORUM-20I", "FORUM-20J", "FORUM-20K"]) {
     rejectText(
       plan,
       `### Delivered in \`${slice}\``,
@@ -92,10 +100,10 @@ if (planSync.status === "pending") {
 } else if (planSync.status === "synchronized") {
   requireText(
     plan,
-    "FORUM-20A-J provide",
-    "synchronized canonical plan must advance the FORUM-20 ledger through J",
+    "FORUM-20A-K provide",
+    "synchronized canonical plan must advance the FORUM-20 ledger through K",
   );
-  for (const slice of ["FORUM-20H", "FORUM-20I", "FORUM-20J"]) {
+  for (const slice of ["FORUM-20H", "FORUM-20I", "FORUM-20J", "FORUM-20K"]) {
     requireText(
       plan,
       `### Delivered in \`${slice}\``,
@@ -206,6 +214,38 @@ for (const marker of [
   "ForumTopicAudienceVisibilityService",
 ]) {
   requireText(crate, marker, `forum crate surface is missing ${marker}`);
+}
+
+for (const marker of [
+  "use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};",
+  "let viewer = ForumTopicAudienceViewer::public();",
+  "ForumTopicAudienceVisibilityService::without_facts_provider(self.db.clone())",
+  ".is_topic_visible(tenant_id, topic_id, None, &viewer)",
+]) {
+  requireText(
+    notificationSource,
+    marker,
+    `public notification source is missing richer topic visibility composition ${marker}`,
+  );
+}
+for (const forbidden of [
+  "ForumTopicVisibilityScope::storefront(None)",
+  "ForumTopicVisibilityService::new(",
+  "forum_category_audience_policy",
+  "forum_topic_audience_policy",
+]) {
+  rejectText(
+    notificationSource,
+    forbidden,
+    `public notification source must not bypass the richer owner with ${forbidden}`,
+  );
+}
+if (
+  notificationContract.schema_version !== 4 ||
+  notificationContract.task !== "FORUM-20K" ||
+  notificationContract.composition?.exact_richer_public_owner !== true
+) {
+  failures.push("FORUM-20K notification visibility contract must record exact richer public composition");
 }
 
 for (const marker of [
