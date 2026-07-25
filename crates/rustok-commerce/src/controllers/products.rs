@@ -26,8 +26,44 @@ use crate::{
 
 use super::common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_permissions};
 
-fn map_product_service_error(error: CommerceError) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
+const ADMIN_PRODUCT_OWNER: &str = "rustok_product.catalog";
+const ADMIN_PRODUCT_BOUNDARY: &str = "commerce_admin_product_http";
+
+type AdminProductHttpPolicy = (
+    StatusCode,
+    &'static str,
+    &'static str,
+    &'static str,
+);
+
+#[derive(Clone, Copy)]
+pub(crate) struct AdminProductErrorContext {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    product_id: Option<Uuid>,
+    variant_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl AdminProductErrorContext {
+    pub(crate) fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Option<Uuid>,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            product_id,
+            variant_id: None,
+            operation,
+        }
+    }
+}
+
+fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
+    match error {
         CommerceError::Database(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_product_storage_unavailable",
@@ -82,21 +118,41 @@ fn map_product_service_error(error: CommerceError) -> HttpError {
             "Product operation could not be completed safely",
             "unexpected_owner_error",
         ),
-    };
+    }
+}
+
+fn adopt_product_error_identity(
+    context: &mut AdminProductErrorContext,
+    error: &CommerceError,
+) {
+    match error {
+        CommerceError::ProductNotFound(id) => context.product_id = Some(*id),
+        CommerceError::VariantNotFound(id) => context.variant_id = Some(*id),
+        _ => {}
+    }
+}
+
+pub(crate) fn map_admin_product_error(
+    mut context: AdminProductErrorContext,
+    error: CommerceError,
+) -> HttpError {
+    adopt_product_error_identity(&mut context, &error);
+    let (status, code, message, error_kind) = product_error_policy(&error);
     tracing::error!(
         error = ?error,
-        owner = "rustok_product.catalog",
+        owner = ADMIN_PRODUCT_OWNER,
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        product_id = ?context.product_id,
+        variant_id = ?context.variant_id,
+        operation = %context.operation,
         error_kind,
         public_code = code,
         status = %status,
-        boundary = "commerce_admin_product_http",
+        boundary = ADMIN_PRODUCT_BOUNDARY,
         "commerce admin product operation failed"
     );
     HttpError::new(status, code, message)
-}
-
-fn map_product_database_error(error: sea_orm::DbErr) -> HttpError {
-    map_product_service_error(CommerceError::Database(error))
 }
 
 /// Shared admin product list handler.
@@ -147,7 +203,17 @@ pub async fn list_products(
         .clone()
         .count(runtime.db())
         .await
-        .map_err(map_product_database_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "list_products_count",
+                ),
+                CommerceError::Database(error),
+            )
+        })?;
     metrics::record_read_path_query(
         "http",
         "commerce.list_products",
@@ -163,7 +229,17 @@ pub async fn list_products(
         .limit(pagination.limit())
         .all(runtime.db())
         .await
-        .map_err(map_product_database_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "list_products_page",
+                ),
+                CommerceError::Database(error),
+            )
+        })?;
     metrics::record_read_path_query(
         "http",
         "commerce.list_products",
@@ -184,7 +260,17 @@ pub async fn list_products(
             .filter(product_translation::Column::ProductId.is_in(product_ids))
             .all(runtime.db())
             .await
-            .map_err(map_product_database_error)?;
+            .map_err(|error| {
+                map_admin_product_error(
+                    AdminProductErrorContext::new(
+                        tenant.id,
+                        auth.user_id,
+                        None,
+                        "list_product_translations",
+                    ),
+                    CommerceError::Database(error),
+                )
+            })?;
         metrics::record_read_path_query(
             "http",
             "commerce.list_products",
@@ -211,7 +297,17 @@ pub async fn list_products(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(map_product_service_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "list_product_tags",
+                ),
+                error,
+            )
+        })?;
 
     let items = products
         .into_iter()
@@ -297,7 +393,17 @@ pub async fn show_product(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(map_product_service_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "show_product",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(product))
 }
@@ -319,7 +425,17 @@ pub async fn delete_product(
     service
         .delete_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(map_product_service_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "delete_product",
+                ),
+                error,
+            )
+        })?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -341,7 +457,17 @@ pub async fn publish_product(
     let product = service
         .publish_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(map_product_service_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "publish_product",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(product))
 }
@@ -363,7 +489,17 @@ pub async fn unpublish_product(
     let product = service
         .unpublish_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(map_product_service_error)?;
+        .map_err(|error| {
+            map_admin_product_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "unpublish_product",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(product))
 }
