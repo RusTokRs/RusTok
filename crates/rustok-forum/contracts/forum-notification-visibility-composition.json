@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "task": "FORUM-20I",
   "scope": "Forum notification source composition through the current public topic visibility owner",
   "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
@@ -8,6 +8,16 @@
   "test_file": "crates/rustok-forum/tests/notification_source_sqlite.rs",
   "source_verifier": "scripts/verify/verify-forum-notification-visibility-composition.mjs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan_sync": {
+    "status": "pending",
+    "required_ledger_through": "FORUM-20I",
+    "required_delivered_sections": [
+      "FORUM-20H",
+      "FORUM-20I"
+    ],
+    "current_plan_through": "FORUM-20G",
+    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+  },
   "policy": {
     "viewer_profile": "public unauthenticated without channel context",
     "topic_status": "open",
