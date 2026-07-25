@@ -74,14 +74,20 @@ impl ForumCategoryAudiencePolicyService {
         Self { db }
     }
 
+    /// Policy details may contain explicit user and group identifiers and are
+    /// therefore restricted to category managers rather than public readers.
     pub async fn get(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<ForumCategoryAudiencePolicy> {
-        enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
-        load_category_audience_policy(&self.db, tenant_id, category_id).await
+        enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let result = load_category_audience_policy(&txn, tenant_id, category_id).await?;
+        txn.commit().await?;
+        Ok(result)
     }
 
     pub async fn set(
