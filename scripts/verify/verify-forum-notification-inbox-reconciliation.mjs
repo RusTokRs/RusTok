@@ -299,7 +299,7 @@ for (const marker of [
 for (const marker of [
   "### `FORUM-20V`",
   "NotificationInboxReconcileService",
-  "shared 128-byte/control-character validation boundary",
+  "128-byte/control-character validation boundary",
   "tenant-wide scheduled reconciliation",
   "tests/inbox_reconcile_sqlite.rs",
 ]) {
