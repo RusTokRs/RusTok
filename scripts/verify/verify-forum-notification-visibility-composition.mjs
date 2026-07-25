@@ -27,6 +27,16 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
+function between(source, start, end, label) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return "";
+  }
+  return source.slice(startIndex, endIndex);
+}
+
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-visibility-composition.json";
 const contract = JSON.parse(read(contractPath) || "{}");
@@ -36,25 +46,28 @@ const baseVisibilityOwner = read(contract.base_visibility_owner_file ?? "");
 const baselineTestSource = read(contract.baseline_test_file ?? "");
 const richerTestSource = read(contract.test_file ?? "");
 const recipientTestSource = read(contract.recipient_test_file ?? "");
+const mentionTestSource = read(contract.recipient_mention_test_file ?? "");
 const recipientContract = JSON.parse(read(contract.recipient_target_open_contract ?? "") || "{}");
+const mentionContract = JSON.parse(read(contract.recipient_mention_contract ?? "") || "{}");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 5) {
-  failures.push("forum notification visibility contract must use schema_version=5");
+if (contract.schema_version !== 6) {
+  failures.push("forum notification visibility contract must use schema_version=6");
 }
 if (
   contract.task !== "FORUM-20K" ||
   contract.supersedes_task !== "FORUM-20I" ||
-  contract.downstream_task !== "FORUM-20N"
+  contract.downstream_task !== "FORUM-20O"
 ) {
-  failures.push("forum notification visibility contract must remain FORUM-20K and advance through FORUM-20N");
+  failures.push("forum notification visibility contract must remain FORUM-20K and advance through FORUM-20O");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("source publication must not claim unexecuted notification evidence");
 }
 
 for (const residual of [
-  "recipient-specific authenticated audience filtering before notification pagination",
+  "recipient-specific topic-created subscription filtering before pagination",
+  "initially non-public topic-created descriptor materialization",
   "profile privacy and blocking policy",
   "host trust channel and group facts adapters for authenticated consumers",
   "search index SEO and deep-link migration",
@@ -72,7 +85,10 @@ for (const delivered of [
   "dynamic_policy_recheck",
   "recipient_context_factory_consumption",
   "recipient_specific_target_open",
-  "public_only_description_and_audience",
+  "topic_created_public_description_and_audience",
+  "recipient_specific_mention_description",
+  "recipient_specific_mention_audience",
+  "shared_recipient_resolution_helper",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum notification visibility contract must record ${delivered} as delivered`);
@@ -87,13 +103,14 @@ const deliveredSlices = [
   "FORUM-20L",
   "FORUM-20M",
   "FORUM-20N",
+  "FORUM-20O",
 ];
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20N") {
-  failures.push("forum notification visibility contract must require the canonical ledger through FORUM-20N");
+if (planSync.required_ledger_through !== "FORUM-20O") {
+  failures.push("forum notification visibility contract must require the canonical ledger through FORUM-20O");
 }
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("forum notification visibility contract must require FORUM-20H through FORUM-20N delivered sections");
+  failures.push("forum notification visibility contract must require FORUM-20H through FORUM-20O delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -112,11 +129,7 @@ if (planSync.status === "pending") {
     );
   }
 } else if (planSync.status === "synchronized") {
-  requireText(
-    plan,
-    "FORUM-20A-N provide",
-    "synchronized canonical plan must advance the FORUM-20 ledger through N",
-  );
+  requireText(plan, "FORUM-20A-O provide", "synchronized canonical plan must advance the FORUM-20 ledger through O");
   for (const slice of deliveredSlices) {
     requireText(
       plan,
@@ -161,8 +174,13 @@ for (const marker of [
   "ForumTopicAudienceViewer::public()",
   "async fn load_target_for_viewer(",
   "async fn load_public_target(",
+  "async fn load_mention_target_for_recipient(",
+  "async fn resolve_recipient_viewer(",
   "ForumNotificationRecipientContextResolver::new(Some(port))",
   "recipient.into_topic_viewer()",
+  "recipient_operation_context(",
+  "MENTION_DESCRIBE_ACTOR",
+  "MENTION_AUDIENCE_ACTOR",
   "target_open_context(&request)",
   "fn forum_owner_error(error: ForumError) -> NotificationProviderError",
 ]) {
@@ -196,24 +214,45 @@ for (const forbidden of [
   );
 }
 
-const describeIndex = notificationSource.indexOf("async fn describe_event(");
-const audienceIndex = notificationSource.indexOf("async fn resolve_audience(");
-const targetOpenIndex = notificationSource.indexOf("async fn authorize_target_open(");
-const resolverIndex = notificationSource.indexOf("ForumNotificationRecipientContextResolver::new(Some(port))");
-if (
-  describeIndex < 0 ||
-  audienceIndex < 0 ||
-  targetOpenIndex < 0 ||
-  resolverIndex < targetOpenIndex ||
-  resolverIndex < audienceIndex
-) {
-  failures.push("recipient context resolution must remain scoped to target-open authorization after public description and audience paths");
+const visibilityIndex = notificationSource.indexOf(".is_topic_visible(tenant_id, topic_id, None, viewer)");
+const materializeIndex = notificationSource.indexOf("let topic = forum_topic::Entity::find()");
+if (visibilityIndex < 0 || materializeIndex < 0 || visibilityIndex > materializeIndex) {
+  failures.push("notification richer visibility must be evaluated before topic materialization");
+}
+
+const describeBlock = between(
+  notificationSource,
+  "async fn describe_event(",
+  "async fn resolve_audience(",
+  "forum notification describe_event",
+);
+const audienceBlock = between(
+  notificationSource,
+  "async fn resolve_audience(",
+  "async fn authorize_target_open(",
+  "forum notification resolve_audience",
+);
+const targetOpenBlock = between(
+  notificationSource,
+  "async fn authorize_target_open(",
+  "fn recipient_operation_context(",
+  "forum notification authorize_target_open",
+);
+for (const [block, marker, label] of [
+  [describeBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public description"],
+  [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public audience"],
+  [describeBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)", "recipient mention description"],
+  [audienceBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_AUDIENCE_ACTOR)", "recipient mention audience"],
+  [targetOpenBlock, "resolve_recipient_viewer(", "recipient target-open authorization"],
+]) {
+  requireText(block, marker, `${label} is missing ${marker}`);
 }
 
 for (const marker of [
   "forum_topic_and_user_mention_sources_support_notifications_profiles",
   "restricted topic description should fail closed",
   "restricted topic authorization should fail closed",
+  "restricted mention description should fail closed",
   "cross-tenant authorization should fail closed",
   "closed target authorization should fail closed",
   "NotificationProviderError::Internal { retryable: true }",
@@ -237,14 +276,36 @@ for (const marker of [
 ]) {
   requireText(recipientTestSource, marker, `recipient target-open SQLite scenario is missing ${marker}`);
 }
+for (const marker of [
+  "mention_description_and_audience_use_the_exact_recipient_for_topics_and_replies",
+  "customer topic mention audience should resolve",
+  "customer reply mention audience should resolve",
+  "manager topic mention description should fail closed",
+  "stale customer mention descriptor should be rechecked",
+]) {
+  requireText(mentionTestSource, marker, `recipient mention SQLite scenario is missing ${marker}`);
+}
 
 if (
-  recipientContract.schema_version !== 1 ||
+  recipientContract.schema_version !== 2 ||
   recipientContract.task !== "FORUM-20N" ||
+  recipientContract.downstream_task !== "FORUM-20O" ||
+  recipientContract.composition?.recipient_specific_target_open !== undefined ||
   recipientContract.composition?.recipient_specific_topic_open !== true ||
-  recipientContract.composition?.recipient_specific_reply_open !== true
+  recipientContract.composition?.recipient_specific_reply_open !== true ||
+  recipientContract.composition?.recipient_specific_mention_description !== true ||
+  recipientContract.composition?.recipient_specific_mention_audience !== true
 ) {
-  failures.push("FORUM-20K visibility composition must remain synchronized with the FORUM-20N recipient target-open contract");
+  failures.push("FORUM-20K visibility composition must remain synchronized with the FORUM-20N recipient contract");
+}
+if (
+  mentionContract.schema_version !== 1 ||
+  mentionContract.task !== "FORUM-20O" ||
+  mentionContract.upstream_task !== "FORUM-20N" ||
+  mentionContract.composition?.recipient_specific_mention_description !== true ||
+  mentionContract.composition?.recipient_specific_mention_audience !== true
+) {
+  failures.push("FORUM-20K visibility composition must remain synchronized with the FORUM-20O mention audience contract");
 }
 
 for (const marker of [
