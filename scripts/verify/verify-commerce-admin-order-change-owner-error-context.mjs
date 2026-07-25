@@ -33,7 +33,7 @@ const between = (content, start, end, label) => {
 const mapper = between(
   changes,
   'fn map_admin_order_change_error(',
-  '/// Create admin order change preview',
+  'fn map_admin_order_change_orchestration_error(',
   'admin order-change owner mapper',
 );
 const createRoute = between(
@@ -77,20 +77,38 @@ for (const [value, label] of [
   ['order_id: Option<Uuid>,', 'order identity field'],
   ['order_change_id: Option<Uuid>,', 'change identity field'],
   ["operation: &'static str,", 'operation field'],
+  ['fn admin_order_change_order_error_policy(', 'shared typed order policy'],
 ]) requireText(changes, value, label);
 
 for (const [value, label] of [
   ['mut context: AdminOrderChangeErrorContext,', 'mutable typed context'],
   ['error: OrderError,', 'owned typed cause'],
+  ['OrderError::OrderNotFound(id)', 'order identity adoption'],
+  ['OrderError::OrderChangeNotFound(id)', 'change identity adoption'],
+  ['context.order_id = Some(*id)', 'typed order identity adoption'],
+  ['context.order_change_id = Some(*id)', 'typed change identity adoption'],
+  ['admin_order_change_order_error_policy(&error)', 'typed policy handoff'],
+  ['error = ?error', 'typed internal cause'],
+  ['owner = ADMIN_ORDER_CHANGE_OWNER', 'owner log'],
+  ['tenant_id = %context.tenant_id', 'tenant log'],
+  ['order_id = ?context.order_id', 'order identity log'],
+  ['order_change_id = ?context.order_change_id', 'change identity log'],
+  ['operation = %context.operation', 'operation log'],
+  ['error_kind,', 'error-kind log'],
+  ['public_code = code', 'public-code log'],
+  ['status = %status', 'status log'],
+  ['boundary = ADMIN_ORDER_CHANGE_BOUNDARY', 'boundary log'],
+  ['HttpError::new(status, code, message)', 'single static envelope constructor'],
+]) requireText(mapper, value, label);
+
+for (const [value, label] of [
   ['OrderError::Validation(_)', 'validation variant'],
-  ['OrderError::OrderNotFound(id)', 'order not-found variant'],
+  ['OrderError::OrderNotFound(_)', 'order not-found variant'],
   ['OrderError::OrderReturnNotFound(_)', 'return not-found variant'],
-  ['OrderError::OrderChangeNotFound(id)', 'change not-found variant'],
+  ['OrderError::OrderChangeNotFound(_)', 'change not-found variant'],
   ['OrderError::InvalidTransition { .. }', 'transition variant'],
   ['OrderError::Database(_)', 'database variant'],
   ['OrderError::Core(_)', 'core variant'],
-  ['context.order_id = Some(*id);', 'typed order identity adoption'],
-  ['context.order_change_id = Some(*id);', 'typed change identity adoption'],
   ['StatusCode::BAD_REQUEST', 'bad-request status'],
   ['StatusCode::NOT_FOUND', 'not-found status'],
   ['StatusCode::CONFLICT', 'conflict status'],
@@ -106,18 +124,7 @@ for (const [value, label] of [
   ['"Order operation conflicts with the current state"', 'static conflict message'],
   ['"Order storage is temporarily unavailable"', 'static storage message'],
   ['"Order operation could not be completed safely"', 'static fail-closed message'],
-  ['error = ?error', 'typed internal cause'],
-  ['owner = ADMIN_ORDER_CHANGE_OWNER', 'owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['order_id = ?context.order_id', 'order identity log'],
-  ['order_change_id = ?context.order_change_id', 'change identity log'],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error-kind log'],
-  ['public_code = code', 'public-code log'],
-  ['status = %status', 'status log'],
-  ['boundary = ADMIN_ORDER_CHANGE_BOUNDARY', 'boundary log'],
-  ['HttpError::new(status, code, message)', 'single static envelope constructor'],
-]) requireText(mapper, value, label);
+]) requireText(changes, value, label);
 
 for (const [block, operation, identity, serviceCall, label] of [
   [
@@ -160,7 +167,7 @@ for (const [block, operation, identity, serviceCall, label] of [
 for (const [value, label] of [
   ['[Permission::ORDERS_READ]', 'read permission'],
   ['[Permission::ORDERS_UPDATE]', 'update permission'],
-  ['let actor_id = auth.user_id;', 'create actor capture'],
+  ['let actor_id = auth.user_id;', 'actor capture'],
   ['let order_id = params.order_id;', 'list order filter capture'],
   ['page: pagination.page', 'pagination page forwarding'],
   ['per_page: pagination.limit()', 'pagination size forwarding'],
@@ -169,16 +176,13 @@ for (const [value, label] of [
   ['change_type: params.change_type', 'list type forwarding'],
 ]) requireText(changes, value, label);
 
-requireText(
-  applyRoute,
-  '.map_err(super::map_post_order_orchestration_error)?;',
-  'unchanged apply orchestration mapping',
-);
-requireText(
-  applyRoute,
-  '.apply_order_change(tenant.id, id, input.difference_refund, input.metadata)',
-  'apply service contract',
-);
+for (const [value, label] of [
+  ['.map_err(|error| {', 'apply typed mapping closure'],
+  ['map_admin_order_change_orchestration_error(', 'apply local orchestration mapper'],
+  ['AdminOrderChangeOrchestrationErrorContext::new(', 'apply orchestration context'],
+  ['"apply_order_change"', 'apply operation'],
+  ['.apply_order_change(tenant.id, id, input.difference_refund, input.metadata)', 'apply service contract'],
+]) requireText(applyRoute, value, label);
 
 const ownerMapperUses =
   changes.match(
@@ -188,9 +192,11 @@ if (ownerMapperUses.length !== 4) {
   failures.push(`expected four context-aware order-change owner mapper callsites, found ${ownerMapperUses.length}`);
 }
 const orchestrationMapperUses =
-  changes.match(/\.map_err\(super::map_post_order_orchestration_error\)\?;/g) ?? [];
+  changes.match(
+    /map_admin_order_change_orchestration_error\(\s+AdminOrderChangeOrchestrationErrorContext::new\(/g,
+  ) ?? [];
 if (orchestrationMapperUses.length !== 1) {
-  failures.push(`expected one unchanged order-change orchestration mapper callsite, found ${orchestrationMapperUses.length}`);
+  failures.push(`expected one context-aware order-change orchestration mapper callsite, found ${orchestrationMapperUses.length}`);
 }
 
 for (const [value, label] of [
@@ -205,12 +211,13 @@ for (const [value, label] of [
 
 for (const value of [
   '.map_err(super::map_order_error)?;',
+  '.map_err(super::map_post_order_orchestration_error)?;',
   'format!("Order request is invalid:',
   'error.to_string()',
   'err.to_string()',
   'other.to_string()',
   'HttpError::bad_request("commerce_operation_failed"',
-]) forbidText(changes, value, 'unsafe admin order-change owner public conversion');
+]) forbidText(changes, value, 'unsafe admin order-change public conversion');
 
 if (failures.length > 0) {
   console.error('Commerce admin order-change owner error-context verification failed:');
