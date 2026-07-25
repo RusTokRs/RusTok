@@ -273,7 +273,8 @@ for (const marker of [
   "### Bounded inbox reconciliation",
   "privacy or source policy",
   "durable and idempotent",
-  "tenant-wide scheduling and payload redaction",
+  "Tenant-wide scheduling",
+  "payload redaction",
   "inbox_reconcile_sqlite",
   "verify-forum-notification-inbox-reconciliation.mjs",
 ]) {
