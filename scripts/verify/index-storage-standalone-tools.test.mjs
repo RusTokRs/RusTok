@@ -2,10 +2,20 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+
+import { runComparatorCoreWithAtomicComparison } from './compare-index-storage-evidence.mjs';
 
 const validator = path.resolve('scripts/verify/validate-index-storage-evidence.mjs');
 const comparator = path.resolve('scripts/verify/compare-index-storage-evidence.mjs');
@@ -85,6 +95,14 @@ const runValidator = (root) => spawnSync(process.execPath, [validator], {
 const runComparator = (...args) => spawnSync(process.execPath, [comparator, ...args], {
   encoding: 'utf8',
 });
+const quietStream = { write: () => true };
+const stagingEntries = (output) => readdirSync(output)
+  .filter((entry) => entry.startsWith('.comparison-staging-'));
+const stagedOutputFrom = (args) => {
+  const outputIndex = args.lastIndexOf('--output');
+  assert.notEqual(outputIndex, -1);
+  return args[outputIndex + 1];
+};
 
 const missingMutation = /missing evidence file: .*mutation-report\.json/u;
 
@@ -103,7 +121,7 @@ test('direct validator rejects non-executable terminal ordering before its core'
   });
 });
 
-test('direct comparator rejects nested-only terminal ordering before its core', () => {
+test('direct comparator revokes stale comparison before ordering preflight', () => {
   withPacket((value) => {
     value.prototypes[0].workloads[4].sql = [
       'SELECT entity_id, price_minor FROM (',
@@ -112,11 +130,16 @@ test('direct comparator rejects nested-only terminal ordering before its core', 
       ') nested_page LIMIT 100',
     ].join('\n');
   }, (root) => {
-    const result = runComparator('--input', root, '--output', path.join(root, 'comparison'));
+    const output = path.join(root, 'comparison');
+    mkdirSync(output);
+    writeFileSync(path.join(output, 'comparison.json'), '{"stale":true}\n', 'utf8');
+
+    const result = runComparator('--input', root, '--output', output);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /\[compare-index-storage-evidence\]/u);
     assert.match(result.stderr, /must end with canonical ordering marker/u);
     assert.doesNotMatch(result.stderr, missingMutation);
+    assert.equal(existsSync(path.join(output, 'comparison.json')), false);
   });
 });
 
@@ -133,4 +156,120 @@ test('direct comparator forwards help to the byte-preserved core', () => {
   const result = runComparator('--help');
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /compare-index-storage-evidence\.mjs --input <dir>/u);
+});
+
+test('direct comparator rejects help combined with other arguments', () => {
+  const result = runComparator('--help', '--output', 'comparison');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /help must be the only argument/u);
+  assert.equal(result.stdout, '');
+});
+
+test('direct comparator rejects duplicate output before its core', () => {
+  const result = runComparator(
+    '--input', 'missing-evidence',
+    '--output', 'first-comparison',
+    '--output', 'second-comparison',
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /--output was provided more than once/u);
+  assert.doesNotMatch(result.stderr, /missing evidence file/u);
+});
+
+test('comparator publishes finalized JSON last and removes staging', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-comparator-publish-'));
+  const output = path.join(root, 'comparison');
+  try {
+    mkdirSync(output);
+    writeFileSync(path.join(output, 'comparison.json'), '{"stale":true}\n', 'utf8');
+    writeFileSync(path.join(output, 'comparison.md'), 'stale markdown\n', 'utf8');
+
+    const spawn = (_executable, args) => {
+      const staged = stagedOutputFrom(args);
+      writeFileSync(path.join(staged, 'comparison.json'), '{"core":true}\n', 'utf8');
+      writeFileSync(path.join(staged, 'comparison.md'), 'core markdown\n', 'utf8');
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    const finalizeComparison = ({ output: staged }) => {
+      writeFileSync(path.join(staged, 'comparison.json'), '{"finalized":true}\n', 'utf8');
+      writeFileSync(path.join(staged, 'comparison.md'), 'finalized markdown\n', 'utf8');
+    };
+
+    const status = runComparatorCoreWithAtomicComparison({
+      inputs: ['packet-100k', 'packet-1m'],
+      output,
+      spawn,
+      finalizeComparison,
+      stdout: quietStream,
+      stderr: quietStream,
+    });
+
+    assert.equal(status, 0);
+    assert.equal(readFileSync(path.join(output, 'comparison.json'), 'utf8'), '{"finalized":true}\n');
+    assert.equal(readFileSync(path.join(output, 'comparison.md'), 'utf8'), 'finalized markdown\n');
+    assert.deepEqual(stagingEntries(output), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('comparator core failure cannot publish a partial decision input', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-comparator-core-failure-'));
+  const output = path.join(root, 'comparison');
+  try {
+    mkdirSync(output);
+    writeFileSync(path.join(output, 'comparison.json'), '{"stale":true}\n', 'utf8');
+    const spawn = (_executable, args) => {
+      const staged = stagedOutputFrom(args);
+      writeFileSync(path.join(staged, 'comparison.json'), '{"partial":', 'utf8');
+      return { status: 1, stdout: '', stderr: 'core failed\n' };
+    };
+
+    const status = runComparatorCoreWithAtomicComparison({
+      inputs: ['packet-100k', 'packet-1m'],
+      output,
+      spawn,
+      stdout: quietStream,
+      stderr: quietStream,
+    });
+
+    assert.equal(status, 1);
+    assert.equal(existsSync(path.join(output, 'comparison.json')), false);
+    assert.deepEqual(stagingEntries(output), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('comparison post-processing failure leaves no decision input', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-comparator-finalize-failure-'));
+  const output = path.join(root, 'comparison');
+  try {
+    mkdirSync(output);
+    writeFileSync(path.join(output, 'comparison.json'), '{"stale":true}\n', 'utf8');
+    const spawn = (_executable, args) => {
+      const staged = stagedOutputFrom(args);
+      writeFileSync(path.join(staged, 'comparison.json'), '{"core":true}\n', 'utf8');
+      writeFileSync(path.join(staged, 'comparison.md'), 'core markdown\n', 'utf8');
+      return { status: 0, stdout: '', stderr: '' };
+    };
+
+    assert.throws(
+      () => runComparatorCoreWithAtomicComparison({
+        inputs: ['packet-100k', 'packet-1m'],
+        output,
+        spawn,
+        finalizeComparison: () => {
+          throw new Error('methodology finalization failed');
+        },
+        stdout: quietStream,
+        stderr: quietStream,
+      }),
+      /methodology finalization failed/u,
+    );
+    assert.equal(existsSync(path.join(output, 'comparison.json')), false);
+    assert.deepEqual(stagingEntries(output), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
