@@ -51,6 +51,32 @@ for (const [source, value, label] of [
   [stagedRuntime, 'pub const fn retryable(&self)', 'stable checkout retryability contract'],
   [stagedRuntime, 'StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable', 'temporary dependency failure classification'],
   [stagedRuntime, 'map_owner_port_error(', 'owner port failure classification'],
+  [stagedRuntime, 'const STOREFRONT_STAGED_CHECKOUT_OWNER: &str =', 'staged checkout owner constant'],
+  [stagedRuntime, '"rustok_commerce.recovering_staged_checkout";', 'staged checkout owner value'],
+  [stagedRuntime, 'const STOREFRONT_STAGED_CHECKOUT_BOUNDARY: &str =', 'staged checkout boundary constant'],
+  [stagedRuntime, '"commerce_storefront_staged_checkout_runtime";', 'staged checkout boundary value'],
+  [stagedRuntime, 'fn map_checkout_error(', 'typed staged checkout mapper'],
+  [stagedRuntime, '.map_err(|error| map_checkout_error(&cart_port_context, cart_id, actor_id, error))', 'context-aware staged checkout callsite'],
+  [stagedRuntime, 'crate::RecoveringStagedCheckoutError::StagedAndCompensation {', 'staged and compensation branch'],
+  [stagedRuntime, 'compensation: crate::CheckoutCompensationError::ManualReconciliation(_)', 'manual reconciliation branch'],
+  [stagedRuntime, 'crate::RecoveringStagedCheckoutError::StagedAndJournal { .. }', 'staged and journal branch'],
+  [stagedRuntime, 'crate::RecoveringStagedCheckoutError::Journal(_)', 'journal branch'],
+  [stagedRuntime, 'crate::RecoveringStagedCheckoutError::Staged(_)', 'staged failure branch'],
+  [stagedRuntime, 'StorefrontStagedCheckoutRuntimeError::ReconciliationRequired', 'reconciliation outcome'],
+  [stagedRuntime, 'StorefrontStagedCheckoutRuntimeError::CompensationPending', 'compensation pending outcome'],
+  [stagedRuntime, 'StorefrontStagedCheckoutRuntimeError::CheckoutFailed', 'checkout failed outcome'],
+  [stagedRuntime, 'error = ?error', 'typed recovery error log'],
+  [stagedRuntime, 'owner = STOREFRONT_STAGED_CHECKOUT_OWNER', 'staged checkout owner log'],
+  [stagedRuntime, 'correlation_id = %context.correlation_id', 'correlation log'],
+  [stagedRuntime, 'tenant_id = %context.tenant_id', 'tenant log'],
+  [stagedRuntime, 'channel = ?context.channel', 'channel log'],
+  [stagedRuntime, 'actor_id = %actor_id', 'actor log'],
+  [stagedRuntime, 'cart_id = %cart_id', 'cart log'],
+  [stagedRuntime, 'operation = "complete_storefront_checkout"', 'operation log'],
+  [stagedRuntime, 'error_kind,', 'error-kind log'],
+  [stagedRuntime, 'public_code = public.public_code()', 'public code log'],
+  [stagedRuntime, 'retryable = public.retryable()', 'retryability log'],
+  [stagedRuntime, 'boundary = STOREFRONT_STAGED_CHECKOUT_BOUNDARY', 'runtime boundary log'],
   [graphqlCheckout, 'complete_storefront_checkout_input(', 'GraphQL staged checkout entrypoint'],
   [graphqlCheckout, 'payment_provider_registry_from_context(ctx)', 'GraphQL host provider registry'],
   [graphqlCheckout, 'storefront_checkout_graphql_error', 'GraphQL stable checkout mapper'],
@@ -106,10 +132,24 @@ for (const [source, value, label] of [
   [nativeCheckout, 'ServerFnError::new(error.to_string())', 'native raw checkout error display'],
   [nativeCheckout, 'ServerFn(error.to_string())', 'native transport raw server error display'],
   [stagedRuntime, '#[error("checkout request is invalid: {0}")]', 'runtime validation detail display'],
+  [stagedRuntime, 'eprintln!(', 'staged checkout raw stderr output'],
+  [stagedRuntime, 'println!(', 'staged checkout stdout output'],
+  [stagedRuntime, 'dbg!(', 'staged checkout debug macro'],
+  [stagedRuntime, 'DEBUG STAGED CHECKOUT ERROR', 'staged checkout debug marker'],
   [orderPorts, 'match order.status.as_str()', 'raw checkout order lifecycle matching'],
   [orderPorts, '"confirmed" | "paid" | "shipped" | "delivered"', 'raw checkout order lifecycle alternatives'],
 ]) {
   forbidText(source, value, label);
+}
+
+const stagedMapperUses =
+  stagedRuntime.match(
+    /map_checkout_error\(&cart_port_context, cart_id, actor_id, error\)/g,
+  ) ?? [];
+if (stagedMapperUses.length !== 1) {
+  failures.push(
+    `expected one context-aware staged checkout mapper callsite, found ${stagedMapperUses.length}`,
+  );
 }
 
 if (failures.length > 0) {
@@ -119,5 +159,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime and publish stable checkout/payment errors; journaled compatibility and order recovery use the same typed recovery policy',
+  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime; recovery failures retain typed correlation context without raw stderr output',
 );

@@ -49,6 +49,26 @@ available only for actionable domain errors.
   Validation, missing-resource, transition, and database causes are logged with
   correlation identity and stable codes while the existing public envelopes remain
   static.
+- `rustok-commerce` storefront staged checkout recovery: the typed recovering-checkout
+  cause is emitted only through structured logging with owner, correlation id, tenant,
+  channel, actor, cart, operation, error kind, stable public code, retryability, and
+  runtime boundary. Raw `eprintln!` debug output is removed while reconciliation,
+  compensation-pending, temporary-unavailable, and checkout-failed public outcomes remain
+  unchanged across REST, GraphQL, native, and mounted transports.
+- `rustok-commerce` storefront checkout HTTP completion: the typed staged-runtime error
+  is mapped with tenant, actor, cart, channel id/slug, locale, exact route operation,
+  error kind, stable public code, retryability, status, and HTTP boundary. Validation,
+  cart-access, authentication, temporary-unavailable, checkout-failed,
+  compensation-pending, and reconciliation-required status/code/message contracts remain
+  unchanged while idempotency validation, checkout input forwarding, provider registry,
+  staged runtime arguments, and the response contract stay intact.
+- `rustok-commerce` storefront payment-collection creation: reusable lookup and create
+  calls retain the typed payment cause with payment owner, tenant, actor, cart, truthful
+  optional customer identity, channel id/slug, locale, exact operation, error kind,
+  stable public code, status, and HTTP boundary. Validation, missing-resource,
+  transition, provider-unavailable/configuration/rejected, reconciliation, and storage
+  outcomes preserve the existing public envelopes while cart access, repricing, context
+  metadata, service arguments, reusable response, and created response remain unchanged.
 - `rustok-commerce` admin fulfillment reconciliation: list, quarantine, manual resolve,
   and retry paths retain the typed fulfillment or orchestration cause with owner, tenant,
   truthful optional provider-operation identity, operation, stable code, status, and HTTP
@@ -64,6 +84,35 @@ available only for actionable domain errors.
   operation, truthful optional shipping-option identity, stable public code, status, and
   HTTP boundary. Validation details remain internal while the existing not-found,
   transition, and storage status/code policy stays unchanged.
+- `rustok-commerce` admin order routes: list, detail, mark-paid, ship, deliver, and cancel
+  paths map the typed `OrderError` locally with owner, tenant, actor, route operation,
+  truthful optional order and customer identities, stable public code, status, and HTTP
+  boundary. Typed missing-order identities are adopted from the error while locale
+  fallback, filters, lifecycle inputs, and the existing static response policy stay
+  unchanged.
+- `rustok-commerce` admin checkout-operation routes: detail, compensation, and compensation
+  sweep retain the typed operation, compensation, payment, payment-orchestration, order,
+  reservation-journal, or storage cause with owner, source owner, tenant, actor, route
+  operation, and truthful optional checkout, reservation, payment, refund, and order
+  identities. Dynamic validation/conflict details remain internal, all current
+  compensation variants have explicit HTTP and sweep-code policies, and existing route,
+  provider-registry, worker, limit, and response contracts stay unchanged.
+- `rustok-commerce` admin payment routes: payment collection and refund lists/details plus
+  authorize, capture, cancel, create-refund, complete-refund, and cancel-refund operations
+  retain the typed payment or payment-orchestration cause with owner, source owner, tenant,
+  actor, route operation, and truthful optional collection, refund, order, cart, and
+  customer identities. Validation, provider, reconciliation, configuration, and storage
+  details stay internal while the existing status/code/message policy, idempotency header,
+  provider registry, filter, pagination, service, and response contracts remain unchanged.
+- `rustok-commerce` admin product routes: list count/page/translation/tag reads plus detail,
+  create, update, delete, publish, and unpublish owner calls retain the typed commerce cause
+  with tenant, actor, exact owner operation, and truthful optional product and variant
+  identities. Product create/update shipping-profile prevalidation now retains the typed
+  commerce cause with tenant, actor, exact validation operation, and truthful optional
+  product and shipping-profile identities. Database, validation, conflict, inventory,
+  state, and fail-closed outcomes preserve the existing static HTTP policy while locale
+  fallback, filters, metrics, pagination, slug normalization, validation service arguments,
+  catalog service arguments, and responses stay unchanged.
 - `rustok-commerce` admin order-change owner routes: create, list, detail, and cancel paths
   map the typed `OrderError` locally with owner, tenant, route operation, truthful optional
   order and order-change identities, stable public code, status, and HTTP boundary. Typed
@@ -133,12 +182,20 @@ available only for actionable domain errors.
 
 - `node scripts/verify/verify-port-error-public-safety.mjs`
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
+- `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
+- `node scripts/verify/verify-commerce-storefront-checkout-http-error-context.mjs`
+- `node scripts/verify/verify-commerce-storefront-payment-collection-error-context.mjs`
 - `node scripts/verify/verify-cart-promotion-port-error-safety.mjs`
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
 - `node scripts/verify/verify-commerce-admin-fulfillment-reconciliation-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-fulfillment-route-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
+- `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
+- `node scripts/verify/verify-commerce-admin-checkout-operation-error-context.mjs`
+- `node scripts/verify/verify-commerce-admin-payment-list-http-error-safety.mjs`
+- `node scripts/verify/verify-commerce-admin-product-route-error-context.mjs`
+- `node scripts/verify/verify-commerce-admin-product-shipping-profile-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-change-owner-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-change-orchestration-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-return-owner-error-context.mjs`
@@ -156,12 +213,14 @@ available only for actionable domain errors.
 - `cargo check -p rustok-payment --all-features`
 - `cargo check -p rustok-fulfillment --all-features`
 - `cargo check -p rustok-tax --all-features`
-- Targeted cart promotion, order payment settlement, order checkout recovery, order
+- Targeted cart promotion, storefront staged checkout recovery, HTTP completion and
+  payment-collection mapping, order payment settlement, order checkout recovery, order
   checkout compensation, pricing, payment collection, fulfillment checkout execution,
-  admin fulfillment reconciliation, admin fulfillment routes, admin shipping-option and
-  order-change owner and orchestration mapping, admin order-return owner and orchestration
-  mapping, admin order-detail payment and fulfillment mapping, and tax calculation
-  validation, provider-contract, reconciliation, correlation, HTTP-envelope, and transport
-  round-trip tests.
+  admin fulfillment reconciliation, admin fulfillment routes, admin shipping-option,
+  admin order-route, admin checkout-operation, admin payment-route, admin product-route and
+  product shipping-profile prevalidation, order-change owner and orchestration mapping,
+  admin order-return owner and orchestration mapping, admin order-detail payment and
+  fulfillment mapping, and tax calculation validation, provider-contract, reconciliation,
+  correlation, HTTP-envelope, and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.

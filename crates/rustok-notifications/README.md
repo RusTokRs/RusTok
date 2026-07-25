@@ -5,8 +5,9 @@
 `rustok-notifications` owns inbox state, recipient preferences, bounded fanout,
 grouping, digests, retention, and delivery-attempt lifecycle. The implemented
 pipeline now covers durable outbox intake, source materialization, bounded
-audience expansion, recipient policy, and one idempotent in-app notification.
-Channel delivery remains a later workflow.
+audience expansion, recipient policy, one idempotent in-app notification, exact
+open-time authorization, and bounded authorized inbox listing. Channel delivery
+remains a later workflow.
 
 ## Responsibilities
 
@@ -22,6 +23,9 @@ Channel delivery remains a later workflow.
 - serialize final candidate creation with PostgreSQL tenant lifecycle toggles;
 - apply preferences, recipient privacy, and current target authorization before
   creating an inbox row;
+- recheck recipient privacy and source target authorization at inbox open/list
+  time;
+- list exact-recipient inbox rows through bounded sparse keyset pages;
 - own replay, reconciliation, retention, and delivery lifecycle.
 
 ## Non-responsibilities
@@ -42,6 +46,8 @@ Channel delivery remains a later workflow.
 - `NotificationCandidateWorkItem` / `NotificationCandidatePolicyDeferral`;
 - `NotificationTenantCapabilityCommitGuard` and its request/decision contracts;
 - `NotificationRecipientPolicy` / `NotificationRecipientPolicyRuntime`;
+- `NotificationInboxOpenService` and exact open request/decision contracts;
+- `NotificationInboxListService` and bounded list request/page/read-model contracts;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
 ## Persistence
@@ -149,6 +155,24 @@ The candidate loop is default-off behind
 registry, ready recipient-policy ports, and the shared `ModuleRegistry`. Candidate
 finalization creates no channel delivery attempt.
 
+### 4. Inbox reads
+
+`NotificationInboxOpenService` loads one exact tenant/recipient-owned notification,
+re-evaluates recipient privacy, and asks the source owner for a current target route.
+Missing, foreign, suppressed, or stale targets all return `Unavailable` without
+exposing their distinction. Retryable owner failures remain retryable.
+
+`NotificationInboxListService` scans exact-recipient rows in
+`created_at DESC, id DESC` order with a default page of 20 and a hard cap of 64.
+The versioned cursor preserves timestamp nanoseconds and the UUID tie-breaker. Each
+raw row reuses the open-time privacy and source authorization pipeline; suppressed
+rows may produce an empty page with a next cursor because progress is based on the
+last scanned raw row. Retryable failures abort the page without a partial result.
+
+The list read model exposes typed semantic/template fields and inbox timestamps but
+adds no dedicated target route or structural target fields. Open and list reads do
+not mutate seen/read/archive timestamps or create delivery attempts.
+
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
 
@@ -169,8 +193,8 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - grouping and moderator-directory expansion;
-- inbox APIs and open-time privacy/source rechecks;
-- channel delivery enqueue after candidate acceptance;
+- seen/read/archive mutation APIs;
+- channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - retention, reconciliation, quarantine replay/purge, and module-owned UI.
 

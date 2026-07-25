@@ -45,6 +45,13 @@ while the final transaction is active. PostgreSQL lifecycle tenant toggles advan
 the cursor inside their tenant-state transaction, serializing candidate commit and
 tenant enable/disable by commit order.
 
+Exact inbox open and bounded listing services are now owner-public. Open requests
+recheck current recipient privacy and source target authorization. Listing scans
+exact-recipient rows in bounded descending keyset pages, reuses the open-time
+pipeline for every raw row, and supports sparse pages whose cursor advances from
+the last scanned row. No external transport or inbox state mutation command is
+published yet.
+
 ## Invariants
 
 - producer modules depend only on `rustok-notifications-api`;
@@ -62,6 +69,16 @@ tenant enable/disable by commit order.
 - final candidate transactions do not open a second connection for manifest reads;
 - PostgreSQL lifecycle tenant toggle and final candidate commit share one cursor
   serialization point;
+- exact inbox open/list reads require tenant and recipient ownership before policy
+  or source calls;
+- inbox listing defaults to 20 raw rows, is capped at 64, and orders by
+  `created_at DESC, id DESC`;
+- inbox listing cursors preserve timestamp nanoseconds and the UUID tie-breaker;
+- inbox listing progress is derived from the last scanned raw row, so an empty
+  authorized page may still carry a next cursor;
+- retryable privacy or source failures abort an inbox page without a partial result;
+- inbox reads expose no dedicated route or structural target fields and never
+  mutate seen/read/archive state or delivery attempts;
 - delivery work remains outside candidate finalization;
 - worker enablement is never inferred from provider readiness.
 
@@ -212,14 +229,44 @@ tenant enable/disable by commit order.
 - contract `contracts/notifications-source-fanout.json` advances to schema 5;
 - SQLite evidence is `tests/fanout_sparse_page_sqlite.rs`.
 
+### `FORUM-20R / FORUM-20S`
+
+- `NotificationInboxOpenService` requires exact notification, tenant, and recipient
+  identity before any foreign owner call;
+- missing and foreign rows return the same `Unavailable` result without an
+  existence oracle;
+- current recipient privacy/block policy runs before source target authorization;
+- suppression and stale targets return `Unavailable`, while retryable policy/source
+  failures preserve retryability;
+- only the current source-owned safe route is returned;
+- open authorization does not expose the stored row, mutate inbox state, or create
+  delivery attempts;
+- SQLite evidence is `tests/inbox_open_authorization_sqlite.rs`.
+
+### `FORUM-20T`
+
+- `NotificationInboxListService` provides exact-recipient bounded listing with
+  default/hard limits 20/64 and optional exact `NotificationState` filtering;
+- keyset order is `created_at DESC, id DESC` and the versioned cursor preserves
+  seconds, nanoseconds, and UUID identity;
+- raw `limit + 1` selection derives continuation from the last scanned row;
+- each raw row reuses `NotificationInboxOpenService`, so privacy/source suppression
+  can produce an empty page with a next cursor;
+- retryable privacy or source failures abort the page without a partial result;
+- the typed list item adds no route or structural target fields and listing mutates
+  neither read state nor delivery attempts;
+- contract `crates/rustok-forum/contracts/forum-notification-inbox-listing.json`,
+  verifier `scripts/verify/verify-forum-notification-inbox-listing.mjs`, and SQLite
+  evidence `tests/inbox_listing_sqlite.rs`.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
   composition;
 - retention, reconciliation, repair, quarantine replay/purge, and administrative
   command state;
-- keep inbox, preference, digest, and delivery transports closed until matching
-  owner commands exist.
+- keep seen/read/archive commands, preferences, digests, delivery transports, and
+  external inbox adapters closed until matching owner commands exist.
 
 ## Remaining `NOTIFY-03`
 
@@ -235,15 +282,17 @@ tenant enable/disable by commit order.
 
 - tenant restrictions beyond effective module capability;
 - block/mute management transports and relation change events;
-- privacy and source rechecks on inbox open and delayed delivery;
+- privacy and source rechecks on delayed delivery;
 - redaction/archive reconciliation after source/profile changes;
-- executable blocked/private/deleted and cross-tenant evidence.
+- executable blocked/private/deleted and cross-tenant evidence beyond SQLite owner
+  service coverage.
 
 ## UI gate
 
-Admin and storefront remain module-owned. Until inbox APIs exist, they expose only
-foundation/unavailable states and must not invent unread counts or shadow inbox
-storage.
+Admin and storefront remain module-owned. Until owner inbox services are exposed
+through matching module-owned transport adapters and UI packages, they expose only
+foundation/unavailable states and must not invent unread counts, state mutations,
+or shadow inbox storage.
 
 ## Maintainer verification set
 
@@ -259,6 +308,8 @@ cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sparse_page_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -276,12 +327,15 @@ node scripts/verify/verify-social-graph-notification-policy.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
 node scripts/verify/verify-notifications-outbox-intake.mjs
 node scripts/verify/verify-notifications-fanout-worker.mjs
+node scripts/verify/verify-forum-notification-inbox-open-authorization.mjs
+node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
+node scripts/verify/verify-forum-notification-inbox-listing.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
-`NOTIFY-03D/03E/03F/03G/03H/03I` source slices. `Cargo.lock` was not regenerated
-because this work does not change the package dependency graph.
+`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T` source slices. `Cargo.lock`
+was not regenerated because this work does not change the package dependency graph.
 
 ## Update rules
 

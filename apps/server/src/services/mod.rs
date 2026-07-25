@@ -41,6 +41,8 @@ pub mod mcp_runtime;
 pub mod mcp_scaffold_workspace;
 pub mod module_event_dispatcher;
 pub mod module_lifecycle;
+#[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
+pub mod forum_audience_group_facts;
 #[cfg(feature = "mod-forum")]
 pub mod forum_notification_recipient_context;
 #[cfg(feature = "mod-notifications")]
