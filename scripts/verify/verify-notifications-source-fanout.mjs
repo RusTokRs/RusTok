@@ -48,13 +48,20 @@ const entities = read("crates/rustok-notifications/src/entities.rs");
 const model = read("crates/rustok-notifications/src/model.rs");
 const library = read("crates/rustok-notifications/src/lib.rs");
 const ownerTest = read("crates/rustok-notifications/tests/fanout_sqlite.rs");
+const sparseTest = read(contract.sparse_page_test ?? "");
 const forumProvider = read(
   contract.forum_user_mention_source?.provider ?? "",
 );
 const forumTest = read("crates/rustok-forum/tests/notification_source_sqlite.rs");
 
+if (contract.schema_version !== 5) {
+  failures.push("notifications source fan-out contract must use schema_version=5");
+}
 if (contract.slice !== "NOTIFY-01B/03A") {
   failures.push("machine contract must identify NOTIFY-01B/03A");
+}
+if (!contract.promoted_by_slices?.includes("NOTIFY-03I")) {
+  failures.push("machine contract must record NOTIFY-03I sparse-page promotion");
 }
 if (contract.candidate_items?.creates_notification_rows !== false) {
   failures.push("candidate fan-out must not claim final notification creation");
@@ -71,7 +78,8 @@ if (contract.source_inbox?.expired_lease_cannot_finish !== true) {
 for (const field of [
   "one_descriptor_job_per_source_event",
   "provider_page_must_not_exceed_requested_limit",
-  "empty_page_cannot_continue",
+  "sparse_page_may_continue",
+  "sparse_page_creates_no_candidates",
   "cursor_must_advance",
   "lease_recovery",
   "expired_lease_cannot_finish",
@@ -136,13 +144,20 @@ for (const marker of [
   "exec_without_returning",
   "MAX_FANOUT_PAGE_SIZE: u16 = 256",
   "recipients.len() > usize::from(limit)",
-  "recipients.is_empty() && next_cursor.is_some()",
+  "A provider may scan a bounded page whose source candidates are all filtered out.",
+  "The advancing cursor is the progress proof; a repeated cursor remains rejected.",
+  "next_cursor.is_some() && next_cursor == claimed.audience_cursor",
   "LeaseExpiresAt.gt(timestamp)",
   "lease_expires_at",
   "job.notification_type != notification_type",
 ]) {
   requireText(service, marker, `fan-out owner service is missing ${marker}`);
 }
+reject(
+  service,
+  /recipients\.is_empty\(\)\s*&&\s*next_cursor\.is_some\(\)/,
+  "fan-out owner must not reject a bounded sparse page with an advancing cursor",
+);
 requireOrder(
   service,
   [
@@ -193,6 +208,20 @@ for (const marker of [
   "notification_count, 0",
 ]) {
   requireText(ownerTest, marker, `fan-out SQLite scenario is missing ${marker}`);
+}
+
+for (const marker of [
+  "sparse_audience_page_advances_without_creating_candidates",
+  "sparse_audience_page_still_rejects_a_stalled_cursor",
+  "NotificationAudiencePage::try_new(\n                Vec::new()",
+  "sparse.candidates, 0",
+  "sparse.inserted_items, 0",
+  "sparse.next_cursor.as_deref(), Some(PAGE_TWO)",
+  "NOTIFICATION_FANOUT_CURSOR_STALLED",
+  "NotificationJobStatus::DeadLetter",
+  "candidate_count(&db, tenant_id, job_id).await, 0",
+]) {
+  requireText(sparseTest, marker, `sparse fan-out SQLite scenario is missing ${marker}`);
 }
 
 for (const marker of [
