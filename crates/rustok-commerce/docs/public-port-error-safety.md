@@ -77,6 +77,13 @@ available only for actionable domain errors.
   identities. Dynamic validation/conflict details remain internal, all current
   compensation variants have explicit HTTP and sweep-code policies, and existing route,
   provider-registry, worker, limit, and response contracts stay unchanged.
+- `rustok-commerce` admin payment routes: payment collection and refund lists/details plus
+  authorize, capture, cancel, create-refund, complete-refund, and cancel-refund operations
+  retain the typed payment or payment-orchestration cause with owner, source owner, tenant,
+  actor, route operation, and truthful optional collection, refund, order, cart, and
+  customer identities. Validation, provider, reconciliation, configuration, and storage
+  details stay internal while the existing status/code/message policy, idempotency header,
+  provider registry, filter, pagination, service, and response contracts remain unchanged.
 - `rustok-commerce` admin order-change owner routes: create, list, detail, and cancel paths
   map the typed `OrderError` locally with owner, tenant, route operation, truthful optional
   order and order-change identities, stable public code, status, and HTTP boundary. Typed
@@ -154,6 +161,7 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-checkout-operation-error-context.mjs`
+- `node scripts/verify/verify-commerce-admin-payment-list-http-error-safety.mjs`
 - `node scripts/verify/verify-commerce-admin-order-change-owner-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-change-orchestration-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-return-owner-error-context.mjs`
@@ -174,9 +182,10 @@ available only for actionable domain errors.
 - Targeted cart promotion, order payment settlement, order checkout recovery, order
   checkout compensation, pricing, payment collection, fulfillment checkout execution,
   admin fulfillment reconciliation, admin fulfillment routes, admin shipping-option,
-  admin order-route, admin checkout-operation, order-change owner and orchestration mapping,
-  admin order-return owner and orchestration mapping, admin order-detail payment and
-  fulfillment mapping, and tax calculation validation, provider-contract, reconciliation,
-  correlation, HTTP-envelope, and transport round-trip tests.
+  admin order-route, admin checkout-operation, admin payment-route, order-change owner and
+  orchestration mapping, admin order-return owner and orchestration mapping, admin
+  order-detail payment and fulfillment mapping, and tax calculation validation,
+  provider-contract, reconciliation, correlation, HTTP-envelope, and transport round-trip
+  tests.
 
 No verification command above was executed as part of this source wave.
