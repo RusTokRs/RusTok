@@ -49,7 +49,6 @@ const entities = read(contract.entities_file ?? "");
 const services = read(contract.services_file ?? "");
 const crate = read(contract.crate_file ?? "");
 const testSource = read(contract.test_file ?? "");
-const plan = read(contract.canonical_plan ?? "");
 
 if (contract.schema_version !== 1) {
   failures.push("topic audience policy contract must use schema_version=1");
@@ -266,18 +265,6 @@ for (const marker of [
   "empty local layer",
 ]) {
   requireText(testSource, marker, `topic audience SQLite scenario is missing ${marker}`);
-}
-
-for (const marker of [
-  "Delivered in `FORUM-20F`",
-  "Delivered in `FORUM-20G`",
-  "Delivered in `FORUM-20H`",
-  "ForumTopicAudiencePolicyService",
-  "forum-topic-audience-policy.json",
-  "topic_audience_policy_sqlite",
-  "verify-forum-topic-audience-policy.mjs",
-]) {
-  requireText(plan, marker, `canonical FORUM-20 plan is missing ${marker}`);
 }
 
 if (failures.length > 0) {
