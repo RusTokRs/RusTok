@@ -2,7 +2,14 @@
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -85,6 +92,11 @@ const scale = (name, factor) => ({
 const comparison = () => ({
   generated_at: '2026-07-24T12:00:00Z',
   methodology: {
+    source_oracle: 'normalized idx_bench_source workload result digests',
+    result_digest: 'ordered_length_prefixed_json_v1',
+    evidence_validation: 'fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities',
+    first_run: 'first EXPLAIN ANALYZE repetition',
+    warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
     automatic_winner_selection: false,
     comparable_database_fields: [...comparableDatabaseFields],
     database_settings_source: databaseSettingsSource,
@@ -169,6 +181,9 @@ const verify = (fixture, outputPath) => run(verifyScript, [
   '--adr', outputPath,
 ]);
 
+const decisionStagingEntries = (root) => readdirSync(root)
+  .filter((entry) => entry.startsWith('decision.json.tmp-'));
+
 test('prepares an exact-comparison-bound manual decision draft', () => {
   withFixture((root) => {
     const { result, decisionPath, comparisonBytes } = prepare(root);
@@ -183,12 +198,57 @@ test('prepares an exact-comparison-bound manual decision draft', () => {
   });
 });
 
+test('rejects unknown decision preparation options before reading inputs', () => {
+  withFixture((root) => {
+    const decisionPath = path.join(root, 'decision.json');
+    const result = run(prepareScript, [
+      '--comparison', path.join(root, 'missing-comparison.json'),
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', decisionPath,
+      '--format', 'json',
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unknown or incomplete argument: --format/u);
+    assert.equal(result.stdout, '');
+    assert.equal(existsSync(decisionPath), false);
+  });
+});
+
+test('rejects decision preparation help combined with other arguments', () => {
+  const result = run(prepareScript, ['--help', '--output', 'decision.json']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /help must be the only argument/u);
+  assert.equal(result.stdout, '');
+});
+
+test('argument failure with force preserves an existing decision', () => {
+  withFixture((root) => {
+    const decisionPath = path.join(root, 'decision.json');
+    const original = Buffer.from('{"reviewed":true}\n', 'utf8');
+    writeFileSync(decisionPath, original);
+    const result = run(prepareScript, [
+      '--comparison', path.join(root, 'missing-comparison.json'),
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', decisionPath,
+      '--force',
+      '--format', 'json',
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unknown or incomplete argument: --format/u);
+    assert.deepEqual(readFileSync(decisionPath), original);
+  });
+});
+
 test('rejects a comparison without the canonical database-settings methodology', () => {
   withFixture((root) => {
     const comparisonPath = path.join(root, 'comparison.json');
     const decisionPath = path.join(root, 'decision.json');
     const value = comparison();
-    delete value.methodology.comparable_database_fields;
+    value.methodology.comparable_database_fields = ['server_version_num'];
     writeJson(comparisonPath, value);
     const result = run(prepareScript, [
       '--comparison', comparisonPath,
@@ -216,6 +276,52 @@ test('refuses to overwrite an existing decision without force', () => {
     ]);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /refusing to overwrite existing decision without --force/u);
+    assert.equal(existsSync(fixture.decisionPath), true);
+  });
+});
+
+test('forced preparation revokes a stale decision before comparison validation', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const invalidComparison = comparison();
+    invalidComparison.decision_ready = false;
+    writeJson(fixture.comparisonPath, invalidComparison);
+
+    const result = run(prepareScript, [
+      '--comparison', fixture.comparisonPath,
+      '--selected', 'jsonb',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', fixture.decisionPath,
+      '--force',
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /comparison is not decision-ready/u);
+    assert.equal(existsSync(fixture.decisionPath), false);
+    assert.deepEqual(decisionStagingEntries(root), []);
+  });
+});
+
+test('successful forced preparation atomically replaces the previous draft', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+
+    const result = run(prepareScript, [
+      '--comparison', fixture.comparisonPath,
+      '--selected', 'jsonb',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-25',
+      '--output', fixture.decisionPath,
+      '--force',
+    ]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const decision = JSON.parse(readFileSync(fixture.decisionPath, 'utf8'));
+    assert.equal(decision.selected_prototype, 'jsonb');
+    assert.equal(decision.decision_date, '2026-07-25');
+    assert.deepEqual(Object.keys(decision.rejection_rationales), ['typed_eav', 'hot_projection']);
+    assert.deepEqual(decisionStagingEntries(root), []);
   });
 });
 
