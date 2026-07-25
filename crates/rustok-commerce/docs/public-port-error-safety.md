@@ -62,6 +62,13 @@ available only for actionable domain errors.
   compensation-pending, and reconciliation-required status/code/message contracts remain
   unchanged while idempotency validation, checkout input forwarding, provider registry,
   staged runtime arguments, and the response contract stay intact.
+- `rustok-commerce` storefront payment-collection creation: reusable lookup and create
+  calls retain the typed payment cause with payment owner, tenant, actor, cart, truthful
+  optional customer identity, channel id/slug, locale, exact operation, error kind,
+  stable public code, status, and HTTP boundary. Validation, missing-resource,
+  transition, provider-unavailable/configuration/rejected, reconciliation, and storage
+  outcomes preserve the existing public envelopes while cart access, repricing, context
+  metadata, service arguments, reusable response, and created response remain unchanged.
 - `rustok-commerce` admin fulfillment reconciliation: list, quarantine, manual resolve,
   and retry paths retain the typed fulfillment or orchestration cause with owner, tenant,
   truthful optional provider-operation identity, operation, stable code, status, and HTTP
@@ -177,6 +184,7 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
 - `node scripts/verify/verify-commerce-storefront-checkout-http-error-context.mjs`
+- `node scripts/verify/verify-commerce-storefront-payment-collection-error-context.mjs`
 - `node scripts/verify/verify-cart-promotion-port-error-safety.mjs`
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
 - `node scripts/verify/verify-commerce-admin-fulfillment-reconciliation-error-context.mjs`
@@ -205,14 +213,14 @@ available only for actionable domain errors.
 - `cargo check -p rustok-payment --all-features`
 - `cargo check -p rustok-fulfillment --all-features`
 - `cargo check -p rustok-tax --all-features`
-- Targeted cart promotion, storefront staged checkout recovery and HTTP completion mapping,
-  order payment settlement, order checkout recovery, order checkout compensation, pricing,
-  payment collection, fulfillment checkout execution, admin fulfillment reconciliation,
-  admin fulfillment routes, admin shipping-option, admin order-route, admin
-  checkout-operation, admin payment-route, admin product-route and product shipping-profile
-  prevalidation, order-change owner and orchestration mapping, admin order-return owner and
-  orchestration mapping, admin order-detail payment and fulfillment mapping, and tax
-  calculation validation, provider-contract, reconciliation, correlation, HTTP-envelope,
-  and transport round-trip tests.
+- Targeted cart promotion, storefront staged checkout recovery, HTTP completion and
+  payment-collection mapping, order payment settlement, order checkout recovery, order
+  checkout compensation, pricing, payment collection, fulfillment checkout execution,
+  admin fulfillment reconciliation, admin fulfillment routes, admin shipping-option,
+  admin order-route, admin checkout-operation, admin payment-route, admin product-route and
+  product shipping-profile prevalidation, order-change owner and orchestration mapping,
+  admin order-return owner and orchestration mapping, admin order-detail payment and
+  fulfillment mapping, and tax calculation validation, provider-contract, reconciliation,
+  correlation, HTTP-envelope, and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
