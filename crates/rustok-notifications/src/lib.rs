@@ -4,6 +4,7 @@ pub mod error;
 mod fanout;
 mod fanout_worker;
 mod inbox;
+mod inbox_state;
 pub mod migrations;
 pub mod model;
 mod outbox_intake;
@@ -40,6 +41,10 @@ pub use inbox::{
     MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationInboxItem, NotificationInboxListRequest,
     NotificationInboxListService, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
     NotificationInboxOpenService, NotificationInboxPage,
+};
+pub use inbox_state::{
+    NotificationInboxStateDecision, NotificationInboxStateRequest, NotificationInboxStateService,
+    NotificationInboxStateSnapshot,
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,

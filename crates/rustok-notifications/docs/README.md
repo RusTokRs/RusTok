@@ -152,6 +152,29 @@ while still preserving bounded work and forward progress. Retryable policy or so
 failures abort the page without returning a partial result. Listing does not mutate
 `seen/read/archive` state or enqueue delivery attempts.
 
+### Exact inbox state mutations
+
+Exact seen/read/archive state APIs are owner-public through
+`NotificationInboxStateService`. Every request requires non-nil notification,
+tenant, and recipient identities and updates only the exact owned row. Missing,
+cross-tenant, and cross-recipient rows return the same `Unavailable` decision.
+
+The monotonic order is `unread → seen → read → archived`. `mark_seen` changes only
+unread rows. `mark_read` changes unread or seen rows; direct unread-to-read assigns
+`seen_at` and `read_at` from the same instant, while seen-to-read preserves the
+existing `seen_at`. `archive` changes every non-archived row and preserves existing
+seen/read timestamps.
+
+No command downgrades an archived row. Same-state and later-state requests are
+idempotent: `changed=false`, state timestamps remain unchanged, and `updated_at`
+is not rewritten. The response contains only notification state and inbox
+timestamps. The service calls no recipient-policy, source-provider, target, or
+delivery owner and does not create delivery attempts.
+
+SQLite evidence is `tests/inbox_state_sqlite.rs`. Mark-unread, bulk/mark-all
+mutations, canonical unread counts, grouped inbox views, external transport
+adapters, and module-owned UI remain closed.
+
 The server starts workers in intake → fanout → candidate order. Invalid or
 unreadable flags remain disabled.
 
@@ -170,9 +193,10 @@ remains deferred.
   policy changes with final candidate commits;
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
+- mark-unread, bulk/mark-all mutations, canonical unread counts, and grouped views;
+- external inbox transport adapters and full module-owned UI;
 - channel delivery enqueue and transports with delivery-time authorization;
-- seen/read/archive state APIs;
-- retention, reconciliation, quarantine replay/purge, and full module-owned UI.
+- retention, reconciliation, quarantine replay/purge, and administrative repair.
 
 ## Maintainer verification
 
@@ -189,6 +213,7 @@ cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -202,11 +227,12 @@ node scripts/verify/verify-notifications-fanout-worker.mjs
 node scripts/verify/verify-forum-notification-inbox-open-authorization.mjs
 node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
 node scripts/verify/verify-forum-notification-inbox-listing.mjs
+node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T`.
+`FORUM-20R/20S/20T/20U`.
 
 ## Related documents
 
