@@ -17,6 +17,7 @@ const boundary = read(
 const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
 const inventoryOwner = read('crates/rustok-inventory/src/services/public_channel.rs');
 const productTests = read('crates/rustok-commerce/src/controllers/store/tests/products.rs');
+const testRoot = read('crates/rustok-commerce/src/controllers/store/tests/mod.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -112,6 +113,17 @@ for (const value of [
   '"commerce_store_invalid"',
   'does not have enough available inventory for the current channel',
 ]) forbidText(productTests, value, 'legacy inventory test contract');
+
+forbidText(
+  testRoot,
+  'resolve_store_line_item_input,',
+  'legacy line-item resolver test-root import',
+);
+requireText(
+  testRoot,
+  'StoreLineItemResolution,',
+  'shared line-item resolution input test import',
+);
 
 for (const [value, label] of [
   ['owner = "rustok_product.persistence"', 'catalog persistence owner'],
