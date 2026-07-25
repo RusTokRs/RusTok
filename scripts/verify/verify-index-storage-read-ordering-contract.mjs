@@ -12,6 +12,9 @@ const fail = (message) => {
 const benchmarkModule = read('ops/benches/src/index_storage/mod.rs');
 const benchmarkBinary = read('ops/benches/src/bin/index_storage_benchmark.rs');
 const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
+const databaseMetadata = read('ops/benches/src/index_storage/database_metadata.rs');
+const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
+const maintenanceRunner = read('ops/benches/src/index_storage/maintenance_runner.rs');
 const connection = read('ops/benches/src/index_storage/connection.rs');
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
@@ -65,8 +68,9 @@ requireMarkers(connection, 'benchmark session contract', [
   'fn benchmark_session_contract_is_explicit_and_deterministic()',
 ]);
 
-requireMarkers(benchmarkRunner, 'observed database metadata', [
+requireMarkers(databaseMetadata, 'shared observed database metadata', [
   'const DATABASE_METADATA_SQL',
+  '#[derive(Debug, Clone, PartialEq, Eq, Serialize)]',
   'pub struct DatabaseMetadata',
   'pub standard_conforming_strings: String',
   'pub timezone: String',
@@ -80,9 +84,35 @@ requireMarkers(benchmarkRunner, 'observed database metadata', [
   'timezone: row.try_get("", "timezone")?',
   'date_style: row.try_get("", "date_style")?',
   'extra_float_digits: row.try_get("", "extra_float_digits")?',
-  'fn database_metadata_query_observes_deterministic_session()',
+  'pub(crate) async fn read_database_metadata',
+  'pub(crate) async fn ensure_database_metadata_stable',
+  'fn database_metadata_query_observes_comparable_session_settings()',
 ]);
+for (const [label, content, benchmark] of [
+  ['read runner', benchmarkRunner, 'read benchmark'],
+  ['mutation runner', mutationRunner, 'mutation benchmark'],
+  ['maintenance runner', maintenanceRunner, 'maintenance benchmark'],
+]) {
+  requireMarkers(content, `${label} shared database metadata`, [
+    'DatabaseMetadata',
+    'read_database_metadata',
+    'ensure_database_metadata_stable',
+    'pub database: DatabaseMetadata',
+    `ensure_database_metadata_stable(&db, &database, "${benchmark}").await?;`,
+  ]);
+  for (const forbidden of [
+    'const DATABASE_METADATA_SQL',
+    'pub struct DatabaseMetadata',
+    'async fn read_database_metadata',
+  ]) {
+    if (content.includes(forbidden)) {
+      fail(`${label} duplicated shared PostgreSQL metadata ownership: ${forbidden}`);
+    }
+  }
+}
 requireMarkers(benchmarkModule, 'benchmark report writer', [
+  'pub use database_metadata::DatabaseMetadata;',
+  'ensure_database_metadata_stable, read_database_metadata',
   'pub use runner::{BenchmarkReport, run, write_report};',
   'write_report(&config.output_path, &report)?',
 ]);
@@ -152,6 +182,9 @@ requireMarkers(fixture, 'read ordering fixture', [
   "test('accepts canonical terminal ordering with trailing whitespace'",
   "test('rejects missing deterministic session metadata'",
   "test('rejects deterministic session metadata drift'",
+  "test('rejects mutation database metadata drift from the read session'",
+  "test('rejects maintenance report without exact database metadata fields'",
+  "test('rejects a mutation report without observed database metadata'",
   "test('accepts comment tokens inside strings and comments after executable ordering'",
   "test('rejects a source ordering marker that exists only in a nested query'",
   "test('rejects a candidate ordering marker that exists only in a block comment'",
@@ -169,6 +202,7 @@ requireMarkers(comparatorFixture, 'comparison evidence fixture', [
   'assert.deepEqual(report.methodology.comparable_database_fields, comparableDatabaseFields);',
   'database_settings_source',
   "test('rejects observed session metadata drift before comparison output is accepted'",
+  "test('rejects mutation session metadata drift within one packet'",
 ]);
 
 requireMarkers(databaseSettingsContract, 'shared database settings contract', [
@@ -320,4 +354,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] enforced and observed PostgreSQL session metadata, shared cross-scale database settings, ADR-bound comparison methodology, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] shared Rust PostgreSQL metadata ownership, start/end session stability, cross-report equality, cross-scale database settings, ADR-bound comparison methodology, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
