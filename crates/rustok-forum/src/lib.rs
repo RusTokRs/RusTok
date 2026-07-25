@@ -5,6 +5,7 @@ use rustok_notifications_api::register_notification_source_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
+pub mod audience;
 pub mod category_presentation;
 pub mod constants;
 pub mod controllers;
@@ -25,6 +26,14 @@ pub mod state_machine;
 pub mod subscription;
 pub mod visibility;
 
+pub use audience::{
+    FORUM_AUDIENCE_FACTS_CAPABILITY, FORUM_AUDIENCE_FACTS_CAPABILITY_UNAVAILABLE,
+    ForumAudienceConstraints, ForumAudienceDecision, ForumAudienceDecisionReason,
+    ForumAudienceEvaluator, ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
+    ForumAudienceFactsResolver, MAX_FORUM_AUDIENCE_CHANNELS, MAX_FORUM_AUDIENCE_EXPLICIT_USERS,
+    MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES, MAX_FORUM_AUDIENCE_TRUST_LEVEL,
+    SharedForumAudienceFactsPort,
+};
 pub use constants::*;
 pub use dto::*;
 pub use entities::*;
