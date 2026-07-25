@@ -1,16 +1,14 @@
 use std::collections::HashSet;
 
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CategoryTreeQuery, CreateCategoryInput, ForumCategoryVisibility,
     ForumCategoryVisibilityPolicyService, ForumError, ForumModule,
     SetForumCategoryVisibilityPolicyInput,
 };
-use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
-use std::sync::Arc;
 use uuid::Uuid;
 
 async fn setup() -> DatabaseConnection {
@@ -39,7 +37,6 @@ async fn setup() -> DatabaseConnection {
             .await
             .expect("forum migration should apply");
     }
-    let _event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
     db
 }
 
