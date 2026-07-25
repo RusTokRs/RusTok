@@ -32,6 +32,10 @@ available only for actionable domain errors.
   message.
 - `rustok-cart` checkout snapshot: validator and serialization causes are logged
   internally; request/projection and encoding failures use stable public messages.
+- `rustok-cart` promotion guard: target validation, tenant parsing, rejected call
+  contexts, and owner service failures retain the cart-promotion owner, correlation id,
+  tenant, channel, operation, stable code, and original internal cause. Existing public
+  validation, not-found, conflict, tax-boundary, and unavailable messages remain static.
 - `rustok-pricing`: every read/write owner-port mapper receives the `PortContext` and
   operation name. Database, rich, and core causes are logged with `correlation_id`,
   tenant, operation, and stable code; public messages are stable. Pricing validation
@@ -52,9 +56,10 @@ available only for actionable domain errors.
 
 ## Still open
 
-- Audit order, remaining fulfillment adapters, inventory, customer, promotion, payment
-  execution/compensation, remaining tax adapters/transports, and remaining ecommerce
-  adapters for technical text mislabeled as validation/conflict errors.
+- Audit order, remaining fulfillment adapters, inventory, customer, remaining promotion
+  adapters/transports, payment execution/compensation, remaining tax adapters/transports,
+  and remaining ecommerce adapters for technical text mislabeled as validation/conflict
+  errors.
 - Add structured owner-side logging with `correlation_id`, owner operation, stable error
   code, and the original cause before every remaining technical `PortError` mapping.
 - Remove raw technical text from non-`PortError` public REST, GraphQL, native, and
@@ -65,14 +70,17 @@ available only for actionable domain errors.
 
 - `node scripts/verify/verify-port-error-public-safety.mjs`
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
+- `node scripts/verify/verify-cart-promotion-port-error-safety.mjs`
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
 - `node scripts/verify/verify-tax-calculation-error-context.mjs`
 - `cargo test -p rustok-api ports::tests`
+- `cargo check -p rustok-cart --all-features`
 - `cargo check -p rustok-pricing --all-features`
 - `cargo check -p rustok-payment --all-features`
 - `cargo check -p rustok-fulfillment --all-features`
 - `cargo check -p rustok-tax --all-features`
-- Targeted pricing, payment collection, fulfillment checkout execution, and tax
-  calculation validation, provider-contract, correlation, and transport round-trip tests.
+- Targeted cart promotion, pricing, payment collection, fulfillment checkout execution,
+  and tax calculation validation, provider-contract, correlation, and transport
+  round-trip tests.
 
 No verification command above was executed as part of this source wave.
