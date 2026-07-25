@@ -10,15 +10,17 @@ use rustok_notifications::api::{
     NotificationSourceSlug, NotificationTargetRoute, NotificationTypeKey,
     ResolveNotificationAudienceRequest,
 };
-use rustok_notifications::entities::notification;
+use rustok_notifications::entities::{delivery_attempt, notification};
 use rustok_notifications::model::{NotificationPriorityValue, NotificationState};
 use rustok_notifications::{
     NotificationError, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
-    NotificationInboxOpenService, NotificationsModule,
+    NotificationInboxOpenService, NotificationRecipientPolicy,
+    NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
+    NotificationRecipientPolicyRequest, NotificationRecipientSuppression, NotificationsModule,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
+    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -74,7 +76,7 @@ impl NotificationSourceProvider for TestSourceProvider {
     ) -> NotificationProviderResult<NotificationOpenAuthorization> {
         self.calls
             .lock()
-            .expect("inbox open call recorder should stay available")
+            .expect("source authorization call recorder should stay available")
             .push(request.clone());
         match self.behavior {
             AuthorizationBehavior::Allowed => Ok(NotificationOpenAuthorization::Allowed {
@@ -90,25 +92,57 @@ impl NotificationSourceProvider for TestSourceProvider {
     }
 }
 
+#[derive(Clone)]
+struct StaticRecipientPolicy {
+    result: Result<NotificationRecipientPolicyDecision, NotificationRecipientPolicyError>,
+    calls: Arc<Mutex<Vec<NotificationRecipientPolicyRequest>>>,
+}
+
+#[async_trait]
+impl NotificationRecipientPolicy for StaticRecipientPolicy {
+    async fn evaluate(
+        &self,
+        request: NotificationRecipientPolicyRequest,
+    ) -> Result<NotificationRecipientPolicyDecision, NotificationRecipientPolicyError> {
+        self.calls
+            .lock()
+            .expect("recipient policy call recorder should stay available")
+            .push(request);
+        self.result
+    }
+}
+
 #[tokio::test]
-async fn exact_recipient_gets_fresh_route_without_cross_recipient_oracle() {
+async fn exact_recipient_passes_privacy_then_gets_fresh_route_without_oracle() {
     let db = setup().await;
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
     let recipient_id = Uuid::new_v4();
     let other_recipient_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
     insert_tenant(&db, tenant_id).await;
     insert_tenant(&db, other_tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
     insert_user(&db, tenant_id, other_recipient_id).await;
 
     let target_id = Uuid::new_v4();
-    let notification_id = seed_notification(&db, tenant_id, recipient_id, target_id, SOURCE).await;
-    let calls = Arc::new(Mutex::new(Vec::new()));
+    let notification_id = seed_notification(
+        &db,
+        tenant_id,
+        recipient_id,
+        Some(actor_id),
+        target_id,
+        SOURCE,
+    )
+    .await;
+    let policy_calls = Arc::new(Mutex::new(Vec::new()));
+    let source_calls = Arc::new(Mutex::new(Vec::new()));
     let service = service(
-        db,
+        db.clone(),
+        Ok(NotificationRecipientPolicyDecision::Allow),
         AuthorizationBehavior::Allowed,
-        calls.clone(),
+        policy_calls.clone(),
+        source_calls.clone(),
     );
 
     let decision = service
@@ -131,16 +165,26 @@ async fn exact_recipient_gets_fresh_route_without_cross_recipient_oracle() {
         }
     }
 
-    let recorded = calls
+    let recorded_policy = policy_calls
         .lock()
-        .expect("inbox open call recorder should stay available")
+        .expect("recipient policy call recorder should stay available")
         .clone();
-    assert_eq!(recorded.len(), 1);
-    assert_eq!(recorded[0].tenant_id, tenant_id);
-    assert_eq!(recorded[0].recipient_id, recipient_id);
-    assert_eq!(recorded[0].target.owner, source_slug());
-    assert_eq!(recorded[0].target.kind.as_str(), TARGET_KIND);
-    assert_eq!(recorded[0].target.id, target_id);
+    assert_eq!(recorded_policy.len(), 1);
+    assert_eq!(recorded_policy[0].tenant_id, tenant_id);
+    assert_eq!(recorded_policy[0].recipient_id, recipient_id);
+    assert_eq!(recorded_policy[0].actor_id, Some(actor_id));
+    assert_eq!(recorded_policy[0].source_slug, SOURCE);
+    assert_eq!(recorded_policy[0].notification_type, NOTIFICATION_TYPE);
+    assert_eq!(recorded_policy[0].target.id, target_id);
+
+    let recorded_source = source_calls
+        .lock()
+        .expect("source authorization call recorder should stay available")
+        .clone();
+    assert_eq!(recorded_source.len(), 1);
+    assert_eq!(recorded_source[0].tenant_id, tenant_id);
+    assert_eq!(recorded_source[0].recipient_id, recipient_id);
+    assert_eq!(recorded_source[0].target.id, target_id);
 
     for foreign_request in [
         NotificationInboxOpenRequest {
@@ -168,64 +212,112 @@ async fn exact_recipient_gets_fresh_route_without_cross_recipient_oracle() {
         );
     }
     assert_eq!(
-        calls
+        policy_calls
             .lock()
-            .expect("inbox open call recorder should stay available")
+            .expect("recipient policy call recorder should stay available")
+            .len(),
+        1,
+        "foreign and missing rows must not invoke recipient policy"
+    );
+    assert_eq!(
+        source_calls
+            .lock()
+            .expect("source authorization call recorder should stay available")
             .len(),
         1,
         "foreign and missing rows must not invoke a source provider"
     );
+
+    let stored = notification::Entity::find_by_id(notification_id)
+        .one(&db)
+        .await
+        .expect("notification read should succeed")
+        .expect("notification should remain stored");
+    assert_eq!(stored.state, NotificationState::Unread);
+    assert!(stored.seen_at.is_none());
+    assert!(stored.read_at.is_none());
+    assert!(stored.archived_at.is_none());
+    assert_eq!(
+        delivery_attempt::Entity::find()
+            .filter(delivery_attempt::Column::NotificationId.eq(notification_id))
+            .count(&db)
+            .await
+            .expect("delivery attempt count should succeed"),
+        0
+    );
 }
 
 #[tokio::test]
-async fn stale_target_and_retryable_owner_failure_remain_distinct() {
+async fn privacy_suppression_and_retryable_failure_stop_before_source_authorization() {
     let db = setup().await;
     let tenant_id = Uuid::new_v4();
     let recipient_id = Uuid::new_v4();
     insert_tenant(&db, tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
-
-    let notification_id =
-        seed_notification(&db, tenant_id, recipient_id, Uuid::new_v4(), SOURCE).await;
+    let notification_id = seed_notification(
+        &db,
+        tenant_id,
+        recipient_id,
+        None,
+        Uuid::new_v4(),
+        SOURCE,
+    )
+    .await;
     let request = NotificationInboxOpenRequest {
         tenant_id,
         recipient_id,
         notification_id,
     };
 
-    let unavailable = service(
+    let suppressed_source_calls = Arc::new(Mutex::new(Vec::new()));
+    let suppressed = service(
         db.clone(),
-        AuthorizationBehavior::Unavailable,
+        Ok(NotificationRecipientPolicyDecision::Suppress {
+            reason: NotificationRecipientSuppression::Blocked,
+        }),
+        AuthorizationBehavior::Allowed,
         Arc::new(Mutex::new(Vec::new())),
+        suppressed_source_calls.clone(),
     )
     .authorize_open(request.clone())
     .await
-    .expect("stale target should fail closed without an error");
-    assert_eq!(unavailable, NotificationInboxOpenDecision::Unavailable);
+    .expect("privacy suppression should fail closed without a source error");
+    assert_eq!(suppressed, NotificationInboxOpenDecision::Unavailable);
+    assert!(
+        suppressed_source_calls
+            .lock()
+            .expect("source authorization call recorder should stay available")
+            .is_empty(),
+        "suppressed recipient must not reach source authorization"
+    );
 
+    let retryable_source_calls = Arc::new(Mutex::new(Vec::new()));
     let retryable = service(
         db,
-        AuthorizationBehavior::Error(NotificationProviderError::CapabilityUnavailable {
-            retryable: true,
-        }),
+        Err(NotificationRecipientPolicyError::retryable()),
+        AuthorizationBehavior::Allowed,
         Arc::new(Mutex::new(Vec::new())),
+        retryable_source_calls.clone(),
     )
     .authorize_open(request)
     .await
-    .expect_err("retryable source failure must not become a stale-target deny");
-    assert!(matches!(
-        &retryable,
-        NotificationError::ProviderFailure { retryable: true }
-    ));
+    .expect_err("retryable privacy failure must not become a permanent deny");
     assert_eq!(
         retryable.stable_code(),
-        "NOTIFICATION_SOURCE_PROVIDER_FAILURE"
+        "NOTIFICATION_RECIPIENT_POLICY_FAILURE"
     );
     assert!(retryable.is_retryable());
+    assert!(
+        retryable_source_calls
+            .lock()
+            .expect("source authorization call recorder should stay available")
+            .is_empty(),
+        "failed recipient policy must not reach source authorization"
+    );
 }
 
 #[tokio::test]
-async fn invalid_stored_source_identity_fails_before_provider_invocation() {
+async fn stale_target_provider_failure_and_invalid_source_remain_distinct() {
     let db = setup().await;
     let tenant_id = Uuid::new_v4();
     let recipient_id = Uuid::new_v4();
@@ -236,43 +328,116 @@ async fn invalid_stored_source_identity_fails_before_provider_invocation() {
         &db,
         tenant_id,
         recipient_id,
+        None,
+        Uuid::new_v4(),
+        SOURCE,
+    )
+    .await;
+    let request = NotificationInboxOpenRequest {
+        tenant_id,
+        recipient_id,
+        notification_id,
+    };
+
+    let unavailable = service(
+        db.clone(),
+        Ok(NotificationRecipientPolicyDecision::Allow),
+        AuthorizationBehavior::Unavailable,
+        Arc::new(Mutex::new(Vec::new())),
+        Arc::new(Mutex::new(Vec::new())),
+    )
+    .authorize_open(request.clone())
+    .await
+    .expect("stale target should fail closed without an error");
+    assert_eq!(unavailable, NotificationInboxOpenDecision::Unavailable);
+
+    let provider_error = service(
+        db.clone(),
+        Ok(NotificationRecipientPolicyDecision::Allow),
+        AuthorizationBehavior::Error(NotificationProviderError::CapabilityUnavailable {
+            retryable: true,
+        }),
+        Arc::new(Mutex::new(Vec::new())),
+        Arc::new(Mutex::new(Vec::new())),
+    )
+    .authorize_open(request)
+    .await
+    .expect_err("retryable source failure must not become a stale-target deny");
+    assert_eq!(
+        provider_error.stable_code(),
+        "NOTIFICATION_SOURCE_PROVIDER_FAILURE"
+    );
+    assert!(provider_error.is_retryable());
+
+    let invalid_notification_id = seed_notification(
+        &db,
+        tenant_id,
+        recipient_id,
+        None,
         Uuid::new_v4(),
         "Invalid Source",
     )
     .await;
-    let calls = Arc::new(Mutex::new(Vec::new()));
-    let error = service(db, AuthorizationBehavior::Allowed, calls.clone())
-        .authorize_open(NotificationInboxOpenRequest {
-            tenant_id,
-            recipient_id,
-            notification_id,
-        })
-        .await
-        .expect_err("invalid stored source identity must fail closed");
-
-    assert!(matches!(error, NotificationError::InvalidDescriptor));
-    assert!(calls
-        .lock()
-        .expect("inbox open call recorder should stay available")
-        .is_empty());
+    let policy_calls = Arc::new(Mutex::new(Vec::new()));
+    let source_calls = Arc::new(Mutex::new(Vec::new()));
+    let invalid = service(
+        db,
+        Ok(NotificationRecipientPolicyDecision::Allow),
+        AuthorizationBehavior::Allowed,
+        policy_calls.clone(),
+        source_calls.clone(),
+    )
+    .authorize_open(NotificationInboxOpenRequest {
+        tenant_id,
+        recipient_id,
+        notification_id: invalid_notification_id,
+    })
+    .await
+    .expect_err("invalid stored source identity must fail closed");
+    assert!(matches!(invalid, NotificationError::InvalidDescriptor));
+    assert!(
+        policy_calls
+            .lock()
+            .expect("recipient policy call recorder should stay available")
+            .is_empty()
+    );
+    assert!(
+        source_calls
+            .lock()
+            .expect("source authorization call recorder should stay available")
+            .is_empty()
+    );
 }
 
 fn service(
     db: DatabaseConnection,
+    policy_result: Result<NotificationRecipientPolicyDecision, NotificationRecipientPolicyError>,
     behavior: AuthorizationBehavior,
-    calls: Arc<Mutex<Vec<AuthorizeNotificationTargetRequest>>>,
+    policy_calls: Arc<Mutex<Vec<NotificationRecipientPolicyRequest>>>,
+    source_calls: Arc<Mutex<Vec<AuthorizeNotificationTargetRequest>>>,
 ) -> NotificationInboxOpenService {
     let mut registry = NotificationSourceRegistry::default();
     registry
-        .register(TestSourceProvider { behavior, calls })
+        .register(TestSourceProvider {
+            behavior,
+            calls: source_calls,
+        })
         .expect("test source provider should register");
-    NotificationInboxOpenService::new(db, Arc::new(registry))
+    NotificationInboxOpenService::new(
+        db,
+        Arc::new(registry),
+        Arc::new(StaticRecipientPolicy {
+            result: policy_result,
+            calls: policy_calls,
+        }),
+    )
 }
 
 async fn seed_notification(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     recipient_id: Uuid,
+    actor_id: Option<Uuid>,
     target_id: Uuid,
     source_slug: &str,
 ) -> Uuid {
@@ -290,7 +455,7 @@ async fn seed_notification(
         target_owner: Set(SOURCE.to_string()),
         target_kind: Set(TARGET_KIND.to_string()),
         target_id: Set(target_id),
-        actor_id: Set(None),
+        actor_id: Set(actor_id),
         priority: Set(NotificationPriorityValue::Normal),
         state: Set(NotificationState::Unread),
         template_data_json: Set(serde_json::json!({"target_id": target_id})),
