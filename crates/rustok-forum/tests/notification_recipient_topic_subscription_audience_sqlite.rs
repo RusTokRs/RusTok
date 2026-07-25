@@ -80,6 +80,8 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
     let allowed_third = Uuid::from_u128(3);
     let denied_fourth = Uuid::from_u128(4);
     let allowed_fifth = Uuid::from_u128(5);
+    let unavailable_cursor = unavailable_second.to_string();
+    let denied_cursor = denied_fourth.to_string();
     let admin = SecurityContext::new(UserRole::Admin, Some(author_id));
 
     let category = CategoryService::new(db.clone())
@@ -212,7 +214,7 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
     assert!(!first_page.is_complete());
     assert_eq!(
         first_page.next_cursor().map(NotificationAudienceCursor::as_str),
-        Some(unavailable_second.to_string().as_str())
+        Some(unavailable_cursor.as_str())
     );
     assert_eq!(recorded_calls(&calls), vec![denied_first, unavailable_second]);
 
@@ -230,7 +232,7 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
     assert!(!second_page.is_complete());
     assert_eq!(
         second_page.next_cursor().map(NotificationAudienceCursor::as_str),
-        Some(denied_fourth.to_string().as_str())
+        Some(denied_cursor.as_str())
     );
     assert_eq!(
         recorded_calls(&calls),
