@@ -76,6 +76,13 @@ available only for actionable domain errors.
   ownership helper returns the already verified customer identity without a second
   lookup, while filters, pagination, service arguments, responses, and existing payment
   status/code/message envelopes remain unchanged.
+- `rustok-commerce` storefront line-item owner reads: product persistence failures across
+  variant, product, and translation lookups retain tenant, truthful optional variant and
+  product identities, public-channel slug, locale when available, operation, stable code,
+  status, and HTTP boundary. Public-channel inventory failures retain variant and product
+  identities plus the same channel/locale context, while pricing keeps its existing
+  correlation-aware `PortContext`. Catalog lookup, visibility, pricing, availability,
+  title, shipping-profile, metadata, and public response contracts remain unchanged.
 - `rustok-commerce` admin fulfillment reconciliation: list, quarantine, manual resolve,
   and retry paths retain the typed fulfillment or orchestration cause with owner, tenant,
   truthful optional provider-operation identity, operation, stable code, status, and HTTP
@@ -193,6 +200,7 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-commerce-storefront-checkout-http-error-context.mjs`
 - `node scripts/verify/verify-commerce-storefront-payment-collection-error-context.mjs`
 - `node scripts/verify/verify-commerce-storefront-order-refund-error-context.mjs`
+- `node scripts/verify/verify-commerce-storefront-line-item-owner-context.mjs`
 - `node scripts/verify/verify-cart-promotion-port-error-safety.mjs`
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
 - `node scripts/verify/verify-commerce-admin-fulfillment-reconciliation-error-context.mjs`
@@ -222,14 +230,14 @@ available only for actionable domain errors.
 - `cargo check -p rustok-fulfillment --all-features`
 - `cargo check -p rustok-tax --all-features`
 - Targeted cart promotion, storefront staged checkout recovery, HTTP completion,
-  payment-collection and order-refund mapping, order payment settlement, order checkout
-  recovery, order checkout compensation, pricing, payment collection, fulfillment checkout
-  execution, admin fulfillment reconciliation, admin fulfillment routes, admin
-  shipping-option, admin order-route, admin checkout-operation, admin payment-route, admin
-  product-route and product shipping-profile prevalidation, order-change owner and
-  orchestration mapping, admin order-return owner and orchestration mapping, admin
-  order-detail payment and fulfillment mapping, and tax calculation validation,
-  provider-contract, reconciliation, correlation, HTTP-envelope, and transport round-trip
-  tests.
+  payment-collection, order-refund and line-item owner mapping, order payment settlement,
+  order checkout recovery, order checkout compensation, pricing, payment collection,
+  fulfillment checkout execution, admin fulfillment reconciliation, admin fulfillment
+  routes, admin shipping-option, admin order-route, admin checkout-operation, admin
+  payment-route, admin product-route and product shipping-profile prevalidation,
+  order-change owner and orchestration mapping, admin order-return owner and orchestration
+  mapping, admin order-detail payment and fulfillment mapping, and tax calculation
+  validation, provider-contract, reconciliation, correlation, HTTP-envelope, and
+  transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
