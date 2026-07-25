@@ -294,12 +294,13 @@ impl NotificationFanoutService {
         };
         let (recipients, next_cursor) = page.into_parts();
         let next_cursor = next_cursor.map(|cursor| cursor.as_str().to_string());
-        if recipients.len() > usize::from(limit) || (recipients.is_empty() && next_cursor.is_some())
-        {
+        if recipients.len() > usize::from(limit) {
             return self
                 .fail_job(&claimed, worker_id, NotificationError::ProviderRejected)
                 .await;
         }
+        // A provider may scan a bounded page whose source candidates are all filtered out.
+        // The advancing cursor is the progress proof; a repeated cursor remains rejected.
         if next_cursor.is_some() && next_cursor == claimed.audience_cursor {
             return self
                 .fail_job(&claimed, worker_id, NotificationError::CursorDidNotAdvance)
