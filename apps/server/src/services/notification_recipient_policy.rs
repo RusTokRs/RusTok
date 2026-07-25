@@ -13,7 +13,7 @@ use rustok_notifications::{
 };
 use rustok_profiles::{
     ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest,
-    ProfilePrivacyRuntime, ProfileService,
+    ProfilePrivacyRuntime, ProfilePrivacyService,
 };
 use rustok_social_graph::{
     SocialGraphPairRequest, SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime,
@@ -91,7 +91,7 @@ impl ServerNotificationRecipientPolicy {
         extensions: &ModuleRuntimeExtensions,
     ) -> NotificationRecipientPolicyRuntime {
         let profile_port: Arc<dyn ProfilePrivacyReadPort> =
-            Arc::new(ProfileService::new(db.clone()));
+            Arc::new(ProfilePrivacyService::new(db.clone()));
         let graph_port: Arc<dyn SocialGraphPrivacyReadPort> = Arc::new(SocialGraphService::new(db));
         let graph = SocialGraphPrivacyRuntime::new(graph_port);
         let blocks = extensions
