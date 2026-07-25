@@ -172,7 +172,7 @@ for (const marker of [
   ".filter(notification::Column::TenantId.eq(request.tenant_id))",
   ".filter(notification::Column::RecipientId.eq(request.recipient_id))",
   "notification::Column::State.eq(state)",
-  "notification::Column::CreatedAt.lt(cursor.created_at)",
+  "notification::Column::CreatedAt.lt(cursor.created_at.to_owned())",
   "notification::Column::CreatedAt.eq(cursor.created_at)",
   "notification::Column::Id.lt(cursor.id)",
   ".order_by_desc(notification::Column::CreatedAt)",
@@ -188,6 +188,7 @@ for (const marker of [
   "stored.created_at.timestamp_subsec_nanos()",
   "DateTime::<Utc>::from_timestamp(seconds, nanos)",
   "Uuid::parse_str(part)",
+  ".filter(|id| !id.is_nil())",
   "serde_json::from_value(stored.template_data_json)?",
 ]) {
   requireText(inbox, marker, `notification inbox listing owner is missing ${marker}`);
@@ -262,16 +263,18 @@ for (const marker of [
 for (const marker of [
   "sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_items",
   "state_filter_foreign_recipient_and_invalid_cursor_fail_closed_before_authorization",
-  "retryable_policy_failure_aborts_the_page_without_mutating_rows",
+  "retryable_policy_and_source_failures_abort_pages_without_mutating_rows",
   "NotificationInboxListService::new",
   "NotificationInboxListRequest",
   "NotificationRecipientPolicyDecision::Suppress",
   "NotificationOpenAuthorization::Unavailable",
-  "first raw page should advance its cursor",
+  "empty raw page should still advance its cursor",
   "second raw page should advance its cursor",
   "foreign recipient page should be indistinguishably empty",
   "invalid inbox cursor must fail before authorization",
   "retryable recipient policy failure must abort the whole page",
+  "retryable source owner failure must abort the whole page",
+  "NOTIFICATION_SOURCE_PROVIDER_FAILURE",
   "delivery_attempt::Entity::find()",
 ]) {
   requireText(proof, marker, `inbox listing SQLite proof is missing ${marker}`);
