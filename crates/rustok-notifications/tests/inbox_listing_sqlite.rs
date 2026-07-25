@@ -142,7 +142,7 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
             recipient_id,
             target_id,
             NotificationState::Unread,
-            base + Duration::seconds(seconds),
+            base.to_owned() + Duration::seconds(seconds),
         )
         .await;
     }
@@ -151,9 +151,9 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
     let source_calls = Arc::new(Mutex::new(Vec::new()));
     let service = service(
         db.clone(),
-        BTreeSet::from([Uuid::from_u128(104)]),
+        BTreeSet::from([Uuid::from_u128(105)]),
         BTreeSet::new(),
-        BTreeSet::from([Uuid::from_u128(103)]),
+        BTreeSet::from([Uuid::from_u128(104), Uuid::from_u128(103)]),
         BTreeSet::new(),
         policy_calls.clone(),
         source_calls.clone(),
@@ -169,15 +169,12 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
         })
         .await
         .expect("first sparse inbox page should load");
-    assert_eq!(
-        page_one.items.iter().map(|item| item.id).collect::<Vec<_>>(),
-        vec![Uuid::from_u128(5)]
-    );
+    assert!(page_one.items.is_empty());
     assert!(page_one.has_more);
     let cursor_one = page_one
         .next_cursor
         .clone()
-        .expect("first raw page should advance its cursor");
+        .expect("empty raw page should still advance its cursor");
 
     let page_two = service
         .list_page(NotificationInboxListRequest {
@@ -230,19 +227,16 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
         .collect::<Vec<_>>();
     assert_eq!(
         returned,
-        vec![
-            Uuid::from_u128(5),
-            Uuid::from_u128(2),
-            Uuid::from_u128(1)
-        ]
+        vec![Uuid::from_u128(2), Uuid::from_u128(1)]
     );
-    assert_eq!(page_one.items[0].source, source_slug());
-    assert_eq!(page_one.items[0].notification_type, notification_type());
-    assert_eq!(page_one.items[0].template_key.as_str(), NOTIFICATION_TYPE);
-    assert_eq!(page_one.items[0].state, NotificationState::Unread);
+    assert_eq!(page_two.items[0].source, source_slug());
+    assert_eq!(page_two.items[0].notification_type, notification_type());
+    assert_eq!(page_two.items[0].template_key.as_str(), NOTIFICATION_TYPE);
+    assert_eq!(page_two.items[0].state, NotificationState::Unread);
+    let expected_target = Uuid::from_u128(102).to_string();
     assert_eq!(
-        page_one.items[0].template_data.get("target_id"),
-        Some(Uuid::from_u128(105).to_string().as_str())
+        page_two.items[0].template_data.get("target_id"),
+        Some(expected_target.as_str())
     );
 
     let policy_targets = policy_calls
@@ -270,7 +264,7 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
     assert_eq!(
         source_targets,
         vec![
-            Uuid::from_u128(105),
+            Uuid::from_u128(104),
             Uuid::from_u128(103),
             Uuid::from_u128(102),
             Uuid::from_u128(101)
@@ -315,7 +309,7 @@ async fn state_filter_foreign_recipient_and_invalid_cursor_fail_closed_before_au
         recipient_id,
         Uuid::from_u128(113),
         NotificationState::Unread,
-        base + Duration::seconds(2),
+        base.to_owned() + Duration::seconds(2),
     )
     .await;
     seed_notification(
@@ -399,7 +393,7 @@ async fn state_filter_foreign_recipient_and_invalid_cursor_fail_closed_before_au
 }
 
 #[tokio::test]
-async fn retryable_policy_failure_aborts_the_page_without_mutating_rows() {
+async fn retryable_policy_and_source_failures_abort_pages_without_mutating_rows() {
     let db = setup().await;
     let tenant_id = Uuid::from_u128(20);
     let recipient_id = Uuid::from_u128(21);
@@ -414,7 +408,7 @@ async fn retryable_policy_failure_aborts_the_page_without_mutating_rows() {
         recipient_id,
         Uuid::from_u128(122),
         NotificationState::Unread,
-        base + Duration::seconds(2),
+        base.to_owned() + Duration::seconds(2),
     )
     .await;
     seed_notification(
@@ -430,7 +424,7 @@ async fn retryable_policy_failure_aborts_the_page_without_mutating_rows() {
 
     let policy_calls = Arc::new(Mutex::new(Vec::new()));
     let source_calls = Arc::new(Mutex::new(Vec::new()));
-    let service = service(
+    let policy_failure_service = service(
         db.clone(),
         BTreeSet::new(),
         BTreeSet::from([Uuid::from_u128(123)]),
@@ -440,7 +434,7 @@ async fn retryable_policy_failure_aborts_the_page_without_mutating_rows() {
         source_calls.clone(),
     );
 
-    let error = service
+    let policy_error = policy_failure_service
         .list_page(NotificationInboxListRequest {
             tenant_id,
             recipient_id,
@@ -451,10 +445,10 @@ async fn retryable_policy_failure_aborts_the_page_without_mutating_rows() {
         .await
         .expect_err("retryable recipient policy failure must abort the whole page");
     assert_eq!(
-        error.stable_code(),
+        policy_error.stable_code(),
         "NOTIFICATION_RECIPIENT_POLICY_FAILURE"
     );
-    assert!(error.is_retryable());
+    assert!(policy_error.is_retryable());
     assert_eq!(
         policy_calls
             .lock()
@@ -469,6 +463,47 @@ async fn retryable_policy_failure_aborts_the_page_without_mutating_rows() {
             .len(),
         1,
         "the retryable policy failure must stop before the second source call"
+    );
+
+    let source_policy_calls = Arc::new(Mutex::new(Vec::new()));
+    let retryable_source_calls = Arc::new(Mutex::new(Vec::new()));
+    let source_failure_service = service(
+        db.clone(),
+        BTreeSet::new(),
+        BTreeSet::new(),
+        BTreeSet::new(),
+        BTreeSet::from([Uuid::from_u128(123)]),
+        source_policy_calls.clone(),
+        retryable_source_calls.clone(),
+    );
+    let source_error = source_failure_service
+        .list_page(NotificationInboxListRequest {
+            tenant_id,
+            recipient_id,
+            state: None,
+            cursor: None,
+            limit: 2,
+        })
+        .await
+        .expect_err("retryable source owner failure must abort the whole page");
+    assert_eq!(
+        source_error.stable_code(),
+        "NOTIFICATION_SOURCE_PROVIDER_FAILURE"
+    );
+    assert!(source_error.is_retryable());
+    assert_eq!(
+        source_policy_calls
+            .lock()
+            .expect("recipient policy call recorder should stay available")
+            .len(),
+        2
+    );
+    assert_eq!(
+        retryable_source_calls
+            .lock()
+            .expect("source authorization call recorder should stay available")
+            .len(),
+        2
     );
 
     let rows = notification::Entity::find()
@@ -522,9 +557,10 @@ async fn seed_notification(
     created_at: DateTime<FixedOffset>,
 ) {
     let seen_at = matches!(state, NotificationState::Seen | NotificationState::Read)
-        .then_some(created_at);
-    let read_at = matches!(state, NotificationState::Read).then_some(created_at);
-    let archived_at = matches!(state, NotificationState::Archived).then_some(created_at);
+        .then_some(created_at.to_owned());
+    let read_at = matches!(state, NotificationState::Read).then_some(created_at.to_owned());
+    let archived_at =
+        matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
     notification::ActiveModel {
         id: Set(notification_id),
         tenant_id: Set(tenant_id),
@@ -546,7 +582,7 @@ async fn seed_notification(
         seen_at: Set(seen_at),
         read_at: Set(read_at),
         archived_at: Set(archived_at),
-        created_at: Set(created_at),
+        created_at: Set(created_at.to_owned()),
         updated_at: Set(created_at),
     }
     .insert(db)
