@@ -37,6 +37,7 @@
   },
   "policy": {
     "topic_created_description_viewer": "public unauthenticated without route-channel context",
+    "topic_created_subscription_source_recheck": "active topic record when exact recipient context is published, public visibility when it is absent",
     "topic_created_subscription_viewer": "exact subscription recipient when host recipient context is published; public-only fallback when absent",
     "topic_created_subscription_cursor": "bounded raw keyset page advances by the last scanned subscription rather than the last allowed recipient",
     "mention_description_and_audience_viewer": "exact mentioned recipient when the host recipient-context capability is published; public-only fail-closed fallback when it is absent",
@@ -63,6 +64,7 @@
     "recipient_context_factory_consumption": true,
     "recipient_specific_target_open": true,
     "topic_created_public_description": true,
+    "topic_subscription_active_source_recheck": true,
     "recipient_specific_topic_subscription_audience": true,
     "topic_subscription_sparse_cursor": true,
     "recipient_specific_mention_description": true,
