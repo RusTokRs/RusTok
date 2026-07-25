@@ -2,6 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20U",
   "upstream_task": "FORUM-20T",
+  "downstream_task": "FORUM-20V",
   "scope": "Exact-recipient monotonic seen, read and archive inbox state mutations",
   "notifications_owner_file": "crates/rustok-notifications/src/inbox_state.rs",
   "notifications_surface_file": "crates/rustok-notifications/src/lib.rs",
