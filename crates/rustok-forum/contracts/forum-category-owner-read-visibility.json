@@ -9,7 +9,7 @@
   "services_file": "crates/rustok-forum/src/services/mod.rs",
   "test_file": "crates/rustok-forum/tests/category_owner_visibility_sqlite.rs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "canonical_plan_sync": "pending_current_pr",
+  "canonical_plan_sync": "included",
   "category_tree_bound": 512,
   "category_depth_bound": 16,
   "policy": {
