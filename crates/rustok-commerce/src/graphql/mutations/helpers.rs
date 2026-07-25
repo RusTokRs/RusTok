@@ -318,8 +318,6 @@ pub(crate) fn graphql_decision_requires_payments_update(
     action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
 }
 
-
-
 pub(crate) fn parse_json_payload(value: &str, message: &str) -> Result<Value> {
     serde_json::from_str(value).map_err(|_| async_graphql::Error::new(message))
 }
@@ -539,7 +537,6 @@ pub(crate) fn current_shipping_selections(
         })
         .collect()
 }
-
 
 pub(crate) fn maybe_undefined_or_existing<T>(
     value: async_graphql::MaybeUndefined<T>,

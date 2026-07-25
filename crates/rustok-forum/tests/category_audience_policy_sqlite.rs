@@ -1,7 +1,8 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, ForumAudienceConstraints, ForumCategoryAudiencePolicyService,
-    ForumError, ForumModule, SetForumCategoryAudiencePolicyInput,
+    CategoryService, CreateCategoryInput, ForumAudienceConstraints,
+    ForumCategoryAudiencePolicyService, ForumError, ForumModule,
+    SetForumCategoryAudiencePolicyInput,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -77,22 +78,8 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
     let policies = ForumCategoryAudiencePolicyService::new(db.clone());
 
     let root = create_category(&categories, tenant_id, admin.clone(), "root", None).await;
-    let child = create_category(
-        &categories,
-        tenant_id,
-        admin.clone(),
-        "child",
-        Some(root),
-    )
-    .await;
-    let leaf = create_category(
-        &categories,
-        tenant_id,
-        admin.clone(),
-        "leaf",
-        Some(child),
-    )
-    .await;
+    let child = create_category(&categories, tenant_id, admin.clone(), "child", Some(root)).await;
+    let leaf = create_category(&categories, tenant_id, admin.clone(), "leaf", Some(child)).await;
     create_category(
         &categories,
         foreign_tenant_id,

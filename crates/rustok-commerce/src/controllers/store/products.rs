@@ -227,8 +227,7 @@ fn map_storefront_fulfillment_error(
             "Shipping request is invalid",
             "validation",
         ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => (
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_store_not_found",
             "Commerce resource not found",
@@ -462,12 +461,7 @@ pub async fn show_product(
     )
     .await
     .map_err(|error| {
-        map_storefront_product_database_error(
-            error,
-            "show_product_inventory",
-            tenant.id,
-            Some(id),
-        )
+        map_storefront_product_database_error(error, "show_product_inventory", tenant.id, Some(id))
     })?;
 
     Ok(Json(product))
@@ -544,70 +538,69 @@ pub async fn list_shipping_options(
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
     let requested_cart_id = query.cart_id;
-    let (context, public_channel_slug, required_shipping_profiles) = if let Some(cart_id) =
-        requested_cart_id
-    {
-        let cart = in_process_cart_storefront_port(runtime.db_clone())
-            .read_storefront_cart(
-                super::storefront_cart_port_context(
-                    tenant.id,
-                    &request_context,
-                    auth.0.as_ref(),
-                    cart_id,
-                    "read",
-                    false,
-                ),
-                CartStorefrontReadRequest { cart_id },
-            )
-            .await
-            .map_err(|error| {
-                map_storefront_auxiliary_port_error(
-                    error,
-                    "rustok_cart",
-                    "read_shipping_options_cart",
-                    tenant.id,
-                    Some(cart_id),
+    let (context, public_channel_slug, required_shipping_profiles) =
+        if let Some(cart_id) = requested_cart_id {
+            let cart = in_process_cart_storefront_port(runtime.db_clone())
+                .read_storefront_cart(
+                    super::storefront_cart_port_context(
+                        tenant.id,
+                        &request_context,
+                        auth.0.as_ref(),
+                        cart_id,
+                        "read",
+                        false,
+                    ),
+                    CartStorefrontReadRequest { cart_id },
                 )
-            })?;
-        super::ensure_store_cart_access(&cart, customer_id)?;
-        let required_shipping_profiles =
-            load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
                 .await
                 .map_err(|error| {
-                    map_storefront_shipping_context_error(
+                    map_storefront_auxiliary_port_error(
                         error,
-                        "load_cart_shipping_profiles",
+                        "rustok_cart",
+                        "read_shipping_options_cart",
                         tenant.id,
                         Some(cart_id),
                     )
                 })?;
-        (
-            super::resolve_context_from_cart_for_db(
-                runtime.db(),
-                tenant.id,
-                &request_context,
-                &cart,
+            super::ensure_store_cart_access(&cart, customer_id)?;
+            let required_shipping_profiles =
+                load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
+                    .await
+                    .map_err(|error| {
+                        map_storefront_shipping_context_error(
+                            error,
+                            "load_cart_shipping_profiles",
+                            tenant.id,
+                            Some(cart_id),
+                        )
+                    })?;
+            (
+                super::resolve_context_from_cart_for_db(
+                    runtime.db(),
+                    tenant.id,
+                    &request_context,
+                    &cart,
+                )
+                .await?,
+                super::storefront_public_channel_slug_for_cart(&cart, &request_context),
+                required_shipping_profiles,
             )
-            .await?,
-            super::storefront_public_channel_slug_for_cart(&cart, &request_context),
-            required_shipping_profiles,
-        )
-    } else {
-        (
-            super::resolve_context_for_db(
-                runtime.db(),
-                tenant.id,
-                &request_context,
-                query.region_id,
-                query.country_code.clone(),
-                query.locale.clone(),
-                query.currency_code.clone(),
+        } else {
+            (
+                super::resolve_context_for_db(
+                    runtime.db(),
+                    tenant.id,
+                    &request_context,
+                    query.region_id,
+                    query.country_code.clone(),
+                    query.locale.clone(),
+                    query.currency_code.clone(),
+                )
+                .await?,
+                public_channel_slug_from_request(&request_context),
+                Default::default(),
             )
-            .await?,
-            public_channel_slug_from_request(&request_context),
-            Default::default(),
-        )
-    };
+        };
 
     let service = FulfillmentService::new(runtime.db_clone());
     let mut options = service

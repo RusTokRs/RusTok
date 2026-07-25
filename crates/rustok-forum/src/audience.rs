@@ -39,11 +39,7 @@ pub struct ForumAudienceConstraints {
 
 impl ForumAudienceConstraints {
     pub fn normalize(mut self) -> ForumResult<Self> {
-        validate_raw_len(
-            self.roles_any.len(),
-            MAX_FORUM_AUDIENCE_ROLES,
-            "roles",
-        )?;
+        validate_raw_len(self.roles_any.len(), MAX_FORUM_AUDIENCE_ROLES, "roles")?;
         validate_raw_len(
             self.channel_members_any.len(),
             MAX_FORUM_AUDIENCE_CHANNELS,
@@ -186,10 +182,7 @@ impl ForumAudienceFacts {
         }
 
         self.channel_memberships = normalize_channel_slugs(self.channel_memberships)?;
-        normalize_uuid_list(
-            &mut self.group_memberships,
-            "resolved group memberships",
-        )?;
+        normalize_uuid_list(&mut self.group_memberships, "resolved group memberships")?;
 
         let requested_channels = request
             .channel_slugs
@@ -362,16 +355,13 @@ impl ForumAudienceEvaluator {
             ));
         }
 
-        let facts = match user_id {
-            Some(user_id) => facts.clone().validate_for_request(
-                &ForumAudienceFactsRequest::for_constraints(
-                    tenant_id,
-                    user_id,
-                    &constraints,
+        let facts =
+            match user_id {
+                Some(user_id) => facts.clone().validate_for_request(
+                    &ForumAudienceFactsRequest::for_constraints(tenant_id, user_id, &constraints)?,
                 )?,
-            )?,
-            None => ForumAudienceFacts::default(),
-        };
+                None => ForumAudienceFacts::default(),
+            };
         if constraints
             .minimum_trust_level
             .is_some_and(|minimum| facts.trust_level.is_some_and(|level| level >= minimum))
@@ -380,10 +370,7 @@ impl ForumAudienceEvaluator {
                 ForumAudienceDecisionReason::TrustLevel,
             ));
         }
-        if intersects_strings(
-            &constraints.channel_members_any,
-            &facts.channel_memberships,
-        ) {
+        if intersects_strings(&constraints.channel_members_any, &facts.channel_memberships) {
             return Ok(ForumAudienceDecision::allow(
                 ForumAudienceDecisionReason::ChannelMembership,
             ));
@@ -418,11 +405,7 @@ fn validate_identity(id: Uuid, label: &str) -> ForumResult<()> {
     Ok(())
 }
 
-fn validate_port_context(
-    context: &PortContext,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> ForumResult<()> {
+fn validate_port_context(context: &PortContext, tenant_id: Uuid, user_id: Uuid) -> ForumResult<()> {
     let context_tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         ForumError::Validation("Forum audience port context tenant is invalid".to_string())
     })?;

@@ -459,12 +459,7 @@ pub async fn update_cart_line_item(
             )
             .await
             .map_err(|error| {
-                map_cart_port_error(
-                    error,
-                    "update_cart_line_item_pricing",
-                    tenant.id,
-                    Some(id),
-                )
+                map_cart_port_error(error, "update_cart_line_item_pricing", tenant.id, Some(id))
             })?
     } else {
         storefront_port
@@ -485,12 +480,7 @@ pub async fn update_cart_line_item(
             )
             .await
             .map_err(|error| {
-                map_cart_port_error(
-                    error,
-                    "update_cart_line_item_quantity",
-                    tenant.id,
-                    Some(id),
-                )
+                map_cart_port_error(error, "update_cart_line_item_quantity", tenant.id, Some(id))
             })?
     };
     Ok(Json(

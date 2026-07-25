@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 
 const SECURITY_HEADERS = {
   'cache-control': 'no-store',
-  'content-security-policy': "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+  'content-security-policy':
+    "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
   'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=()',
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',
@@ -12,7 +13,9 @@ const SECURITY_HEADERS = {
 
 export async function GET() {
   const root = await richTextDistRoot();
-  const manifest = JSON.parse(await readFile(resolve(root, 'asset-manifest.json'), 'utf8')) as {
+  const manifest = JSON.parse(
+    await readFile(resolve(root, 'asset-manifest.json'), 'utf8')
+  ) as {
     frame: string;
   };
   const html = await readFile(resolve(root, manifest.frame));

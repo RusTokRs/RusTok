@@ -54,11 +54,11 @@ fn audience_constraints_are_bounded_and_canonical() {
     .normalize()
     .expect("bounded audience constraints should normalize");
 
-    assert_eq!(normalized.roles_any, vec![UserRole::Manager, UserRole::Admin]);
     assert_eq!(
-        normalized.channel_members_any,
-        vec!["team".to_string()]
+        normalized.roles_any,
+        vec![UserRole::Manager, UserRole::Admin]
     );
+    assert_eq!(normalized.channel_members_any, vec!["team".to_string()]);
     assert_eq!(normalized.group_members_any, vec![group_id]);
     assert_eq!(normalized.allow_user_ids, vec![user_id]);
     assert_eq!(normalized.deny_user_ids, vec![user_id]);

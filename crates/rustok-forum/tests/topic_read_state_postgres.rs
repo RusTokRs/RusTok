@@ -1,9 +1,7 @@
 mod support;
 
 use rustok_core::{SecurityContext, UserRole};
-use rustok_forum::{
-    ForumReadModelService, ForumTopicReadStateService, MarkForumTopicReadInput,
-};
+use rustok_forum::{ForumReadModelService, ForumTopicReadStateService, MarkForumTopicReadInput};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::Value;
 use uuid::Uuid;
@@ -99,8 +97,8 @@ async fn concurrent_devices_converge_to_component_wise_maximum_on_postgres() -> 
 }
 
 #[tokio::test]
-async fn bounded_unread_aggregate_matches_large_fixture_and_plan_contract_on_postgres(
-) -> TestResult<()> {
+async fn bounded_unread_aggregate_matches_large_fixture_and_plan_contract_on_postgres()
+-> TestResult<()> {
     let Some(context) = PostgresForumTestDb::setup("topic_unread_aggregate_plan").await? else {
         return Ok(());
     };
@@ -108,7 +106,8 @@ async fn bounded_unread_aggregate_matches_large_fixture_and_plan_contract_on_pos
     let outcome = async {
         let tenant_id = Uuid::new_v4();
         let reader_id = Uuid::new_v4();
-        let topic_ids = seed_production_sized_read_fixture(&context.db, tenant_id, reader_id).await?;
+        let topic_ids =
+            seed_production_sized_read_fixture(&context.db, tenant_id, reader_id).await?;
         let projection_ids = topic_ids
             .into_iter()
             .take(PROJECTION_TOPIC_COUNT)

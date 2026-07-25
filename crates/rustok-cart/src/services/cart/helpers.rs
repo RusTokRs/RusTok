@@ -620,8 +620,17 @@ where
         .ok_or(CartError::CartNotFound(cart_id))?;
     let backtrace = std::backtrace::Backtrace::capture();
     let bt_str = format!("{backtrace}");
-    let caller = bt_str.lines().find(|l| l.contains("rustok_")).unwrap_or("unknown");
-    eprintln!("DEBUG LOAD_CART_IN_TX: id={}, country_code={:?}, status={}, caller={}", cart.id, cart.country_code, cart.status, caller.trim());
+    let caller = bt_str
+        .lines()
+        .find(|l| l.contains("rustok_"))
+        .unwrap_or("unknown");
+    eprintln!(
+        "DEBUG LOAD_CART_IN_TX: id={}, country_code={:?}, status={}, caller={}",
+        cart.id,
+        cart.country_code,
+        cart.status,
+        caller.trim()
+    );
     Ok(cart)
 }
 
@@ -662,7 +671,11 @@ where
     let total_amount = cart.total_amount;
     let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
     let selection_map = selection_map_from_records(&delivery_group_snapshots, shipping_selections);
-    let delivery_groups = build_delivery_groups(cart.selected_shipping_option_id, &line_items, &selection_map);
+    let delivery_groups = build_delivery_groups(
+        cart.selected_shipping_option_id,
+        &line_items,
+        &selection_map,
+    );
     let selected_shipping_option_id = match delivery_groups.len() {
         0 => cart.selected_shipping_option_id,
         1 => delivery_groups[0].selected_shipping_option_id,

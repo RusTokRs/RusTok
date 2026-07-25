@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule,
-    ForumTopicVisibilityScope, ForumTopicVisibilityService, ListTopicsFilter, ModerationService,
-    TopicService,
+    CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ForumTopicVisibilityScope,
+    ForumTopicVisibilityService, ListTopicsFilter, ModerationService, TopicService,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;

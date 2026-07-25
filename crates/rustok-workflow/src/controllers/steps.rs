@@ -8,9 +8,7 @@ use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use crate::{
-    CreateWorkflowStepInput, UpdateWorkflowStepInput, WorkflowError, WorkflowService,
-};
+use crate::{CreateWorkflowStepInput, UpdateWorkflowStepInput, WorkflowError, WorkflowService};
 
 fn map_workflow_step_error(
     error: WorkflowError,

@@ -200,7 +200,7 @@ function InfobarProvider({
         <div
           data-slot='infobar-wrapper'
           className={cn(
-            'group/infobar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full [--infobar-width:22rem] [--infobar-width-icon:3rem]',
+            'group/infobar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full [--infobar-width-icon:3rem] [--infobar-width:22rem]',
             className
           )}
           {...props}
@@ -276,7 +276,7 @@ function Infobar({
       <div
         data-slot='infobar-gap'
         className={cn(
-          'relative w-(--infobar-width) bg-transparent transition-[width] duration-200 group-data-[pathname-changing=true]:duration-0 ease-linear',
+          'relative w-(--infobar-width) bg-transparent transition-[width] duration-200 ease-linear group-data-[pathname-changing=true]:duration-0',
           'group-data-[collapsible=offcanvas]:w-0',
           'group-data-[side=right]:rotate-180',
           variant === 'floating' || variant === 'inset'
@@ -287,7 +287,7 @@ function Infobar({
       <div
         data-slot='infobar-container'
         className={cn(
-          'absolute inset-y-0 z-10 hidden h-svh w-(--infobar-width) transition-[left,right,width] duration-200 group-data-[pathname-changing=true]:duration-0 ease-linear md:flex',
+          'absolute inset-y-0 z-10 hidden h-svh w-(--infobar-width) transition-[left,right,width] duration-200 ease-linear group-data-[pathname-changing=true]:duration-0 md:flex',
           side === 'left'
             ? 'left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--infobar-width)*-1)]'
             : 'right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--infobar-width)*-1)]',
@@ -665,7 +665,7 @@ function InfobarMenuSkeleton({
 }: React.ComponentProps<'div'> & {
   showIcon?: boolean;
 }) {
-return (
+  return (
     <div
       data-slot='infobar-menu-skeleton'
       data-infobar='menu-skeleton'

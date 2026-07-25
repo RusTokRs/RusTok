@@ -146,14 +146,7 @@ async fn inherited_authenticated_floor_guards_category_exact_page_and_tree_reads
     );
 
     let (public_page, public_total) = categories
-        .list_paginated_with_locale_fallback(
-            tenant_id,
-            public.clone(),
-            "en",
-            1,
-            20,
-            Some("en"),
-        )
+        .list_paginated_with_locale_fallback(tenant_id, public.clone(), "en", 1, 20, Some("en"))
         .await
         .expect("public category page should resolve");
     assert_eq!(public_total, 2);

@@ -129,7 +129,7 @@ function SidebarProvider({
         <div
           data-slot='sidebar-wrapper'
           className={cn(
-            'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full [--sidebar-width:16rem] [--sidebar-width-icon:3rem]',
+            'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full [--sidebar-width-icon:3rem] [--sidebar-width:16rem]',
             className
           )}
           {...props}
@@ -592,7 +592,7 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<'div'> & {
   showIcon?: boolean;
 }) {
-return (
+  return (
     <div
       data-slot='sidebar-menu-skeleton'
       data-sidebar='menu-skeleton'

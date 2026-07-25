@@ -6,11 +6,7 @@ use rustok_forum::{
     UpdateCategoryTopicPolicyInput, entities::forum_category_policy,
 };
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::Set,
-    ConnectOptions, Database, DatabaseConnection,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -84,14 +80,7 @@ async fn authenticated_visibility_inherits_and_cannot_be_broadened() {
     let grandchild =
         create_category(&db, tenant_id, admin.clone(), "grandchild", Some(child)).await;
     let sibling = create_category(&db, tenant_id, admin.clone(), "sibling", Some(root)).await;
-    let foreign = create_category(
-        &db,
-        foreign_tenant_id,
-        admin.clone(),
-        "foreign",
-        None,
-    )
-    .await;
+    let foreign = create_category(&db, foreign_tenant_id, admin.clone(), "foreign", None).await;
 
     let service = ForumCategoryVisibilityPolicyService::new(db.clone());
     let default_policy = service
@@ -120,10 +109,7 @@ async fn authenticated_visibility_inherits_and_cannot_be_broadened() {
         child_policy.configured_visibility,
         Some(ForumCategoryVisibility::Authenticated)
     );
-    assert_eq!(
-        child_policy.effective_from_category_id,
-        Some(child)
-    );
+    assert_eq!(child_policy.effective_from_category_id, Some(child));
 
     let inherited = service
         .get(tenant_id, grandchild, reader.clone())

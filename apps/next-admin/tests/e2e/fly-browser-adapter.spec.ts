@@ -445,9 +445,7 @@ test('stale save conflict preserves optimistic state and refreshed retry advance
     const adapter = (
       globalThis as typeof globalThis & {
         FlyBrowser?: {
-          mount?: (
-            root: Element
-          ) => {
+          mount?: (root: Element) => {
             draftSession?: { token?: string; generation?: number };
           } | null;
         };

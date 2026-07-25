@@ -77,11 +77,7 @@ impl TopicService {
     ) -> ForumResult<TopicResponse> {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let visible = ForumTopicVisibilityService::new(self.db.clone())
-            .is_topic_category_visible_to_viewer(
-                tenant_id,
-                topic_id,
-                !security.is_public_read(),
-            )
+            .is_topic_category_visible_to_viewer(tenant_id, topic_id, !security.is_public_read())
             .await?;
         if !visible {
             return Err(ForumError::TopicNotFound(topic_id));

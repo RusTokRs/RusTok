@@ -11,10 +11,8 @@ use crate::checkout_execution::{
 use crate::dto::FulfillmentResponse;
 use crate::status::FulfillmentStatusKind;
 
-const MANUAL_RECONCILIATION_CODE: &str =
-    "fulfillment.checkout_execution_manual_reconciliation";
-const MANUAL_RECONCILIATION_MESSAGE: &str =
-    "checkout fulfillment requires manual reconciliation";
+const MANUAL_RECONCILIATION_CODE: &str = "fulfillment.checkout_execution_manual_reconciliation";
+const MANUAL_RECONCILIATION_MESSAGE: &str = "checkout fulfillment requires manual reconciliation";
 
 /// Mounted in-process fulfillment boundary with fail-closed lifecycle validation.
 ///
@@ -128,10 +126,7 @@ fn manual_reconciliation(
         code = MANUAL_RECONCILIATION_CODE,
         "checkout fulfillment lifecycle requires manual reconciliation"
     );
-    PortError::conflict(
-        MANUAL_RECONCILIATION_CODE,
-        MANUAL_RECONCILIATION_MESSAGE,
-    )
+    PortError::conflict(MANUAL_RECONCILIATION_CODE, MANUAL_RECONCILIATION_MESSAGE)
 }
 
 #[cfg(test)]

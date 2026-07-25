@@ -67,10 +67,7 @@ export function ForumReplyEditor({
             onChange={setDoc}
           />
           <pre className='bg-muted max-h-44 overflow-auto rounded-md border p-3 text-xs'>
-            {stringifyRtDoc(
-              doc as RtDoc,
-              form.watch('locale') || hostLocale
-            )}
+            {stringifyRtDoc(doc as RtDoc, form.watch('locale') || hostLocale)}
           </pre>
           <Button type='submit'>Send reply</Button>
         </CardContent>

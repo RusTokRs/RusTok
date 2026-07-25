@@ -1,16 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::Set,
-    ColumnTrait,
-    ConnectionTrait,
-    DatabaseBackend,
-    DatabaseConnection,
-    DatabaseTransaction,
-    EntityTrait,
-    QueryFilter,
-    QuerySelect,
-    Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -21,18 +12,13 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::audience::{
-    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS,
-    MAX_FORUM_AUDIENCE_EXPLICIT_USERS, MAX_FORUM_AUDIENCE_GROUPS,
-    MAX_FORUM_AUDIENCE_ROLES,
+    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS, MAX_FORUM_AUDIENCE_EXPLICIT_USERS,
+    MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES,
 };
 use crate::entities::{
-    forum_category_audience_user::ForumCategoryAudienceUserEffect,
-    forum_topic,
-    forum_topic_audience_channel,
-    forum_topic_audience_group,
-    forum_topic_audience_policy,
-    forum_topic_audience_role,
-    forum_topic_audience_user,
+    forum_category_audience_user::ForumCategoryAudienceUserEffect, forum_topic,
+    forum_topic_audience_channel, forum_topic_audience_group, forum_topic_audience_policy,
+    forum_topic_audience_role, forum_topic_audience_user,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::services::category_audience::{
@@ -216,9 +202,8 @@ async fn insert_users(
     topic_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    let mut rows = Vec::with_capacity(
-        constraints.allow_user_ids.len() + constraints.deny_user_ids.len(),
-    );
+    let mut rows =
+        Vec::with_capacity(constraints.allow_user_ids.len() + constraints.deny_user_ids.len());
     rows.extend(constraints.allow_user_ids.iter().copied().map(|user_id| {
         forum_topic_audience_user::ActiveModel {
             tenant_id: Set(tenant_id),
@@ -252,13 +237,9 @@ async fn load_policy_for_topic<C>(
 where
     C: ConnectionTrait,
 {
-    let inherited_category_layers = load_category_audience_policy(
-        db,
-        tenant_id,
-        topic.category_id,
-    )
-    .await?
-    .effective_layers;
+    let inherited_category_layers = load_category_audience_policy(db, tenant_id, topic.category_id)
+        .await?
+        .effective_layers;
     let configured_constraints = load_topic_layer(db, tenant_id, topic.id).await?;
     Ok(ForumTopicAudiencePolicy {
         topic_id: topic.id,
@@ -304,13 +285,21 @@ where
         .all(db)
         .await?;
 
-    ensure_storage_bound(roles.len(), MAX_FORUM_AUDIENCE_ROLES, "topic role relations")?;
+    ensure_storage_bound(
+        roles.len(),
+        MAX_FORUM_AUDIENCE_ROLES,
+        "topic role relations",
+    )?;
     ensure_storage_bound(
         channels.len(),
         MAX_FORUM_AUDIENCE_CHANNELS,
         "topic channel relations",
     )?;
-    ensure_storage_bound(groups.len(), MAX_FORUM_AUDIENCE_GROUPS, "topic group relations")?;
+    ensure_storage_bound(
+        groups.len(),
+        MAX_FORUM_AUDIENCE_GROUPS,
+        "topic group relations",
+    )?;
     ensure_storage_bound(
         users.len(),
         MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2,
@@ -340,10 +329,7 @@ where
         ..ForumAudienceConstraints::default()
     };
     constraints.roles_any = roles.into_iter().map(|row| row.role).collect();
-    constraints.channel_members_any = channels
-        .into_iter()
-        .map(|row| row.channel_slug)
-        .collect();
+    constraints.channel_members_any = channels.into_iter().map(|row| row.channel_slug).collect();
     constraints.group_members_any = groups.into_iter().map(|row| row.group_id).collect();
     for row in users {
         match row.effect {
@@ -378,11 +364,7 @@ fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {
         && constraints.deny_user_ids.is_empty()
 }
 
-async fn find_topic<C>(
-    db: &C,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<forum_topic::Model>
+async fn find_topic<C>(db: &C, tenant_id: Uuid, topic_id: Uuid) -> ForumResult<forum_topic::Model>
 where
     C: ConnectionTrait,
 {

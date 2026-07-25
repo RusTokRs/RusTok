@@ -11,9 +11,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Alias::new("forum_category_policies"))
-                    .add_column(
-                        ColumnDef::new(Alias::new("visibility_override")).string_len(32),
-                    )
+                    .add_column(ColumnDef::new(Alias::new("visibility_override")).string_len(32))
                     .to_owned(),
             )
             .await?;

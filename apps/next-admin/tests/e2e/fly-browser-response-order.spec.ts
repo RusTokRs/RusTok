@@ -1,10 +1,10 @@
-import { expect, Page, test } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { expect, Page, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 const adapterPath = resolve(
   process.cwd(),
-  "../../crates/fly-browser/assets/fly-browser.js",
+  '../../crates/fly-browser/assets/fly-browser.js'
 );
 
 type PendingFetch = {
@@ -35,7 +35,7 @@ type OrderScope = typeof globalThis & {
     mountAll?: (options?: Record<string, unknown>) => Array<{
       emitIntent: (
         intent: string,
-        payload: Record<string, unknown>,
+        payload: Record<string, unknown>
       ) => Promise<unknown>;
     }>;
     unmountAll?: () => void;
@@ -46,26 +46,26 @@ const denial = {
   status: 403,
   body: {
     status: 403,
-    error: "browser intent `save` requires editor capability `publish`",
-    code: "FLY_CAPABILITY_DENIED",
-    intent: "save",
-    capability: "publish",
-    required: ["publish"],
-    missing: ["publish"],
-  },
+    error: 'browser intent `save` requires editor capability `publish`',
+    code: 'FLY_CAPABILITY_DENIED',
+    intent: 'save',
+    capability: 'publish',
+    required: ['publish'],
+    missing: ['publish']
+  }
 };
 
 const success = {
   status: 200,
   body: {
-    result: { revision_id: "rev-2", project_hash: "hash-2" },
-    draft_token: "draft-2",
-    draft_generation: 2,
-  },
+    result: { revision_id: 'rev-2', project_hash: 'hash-2' },
+    draft_token: 'draft-2',
+    draft_generation: 2
+  }
 };
 
 async function mountOrderContract(page: Page) {
-  const adapterSource = await readFile(adapterPath, "utf8");
+  const adapterSource = await readFile(adapterPath, 'utf8');
   await page.setContent(`
     <div
       id="fly-root"
@@ -81,12 +81,12 @@ async function mountOrderContract(page: Page) {
 
   await page.evaluate(async (source) => {
     const scope = globalThis as OrderScope;
-    const root = document.querySelector("#fly-root");
-    if (!(root instanceof HTMLElement)) throw new Error("Fly root unavailable");
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
 
     scope.__FLY_BROWSER_CONFIG__ = {
       autoMount: true,
-      intentEndpoint: "/fly-intent",
+      intentEndpoint: '/fly-intent'
     };
     scope.__flyAborts = [];
     scope.__flyPendingFetches = [];
@@ -94,42 +94,42 @@ async function mountOrderContract(page: Page) {
     scope.__flyResponses = [];
     scope.__flySavePromises = [];
     sessionStorage.setItem(
-      "fly:ssr-draft:home",
-      JSON.stringify({ token: "draft-1", generation: 1 }),
+      'fly:ssr-draft:home',
+      JSON.stringify({ token: 'draft-1', generation: 1 })
     );
 
-    root.addEventListener("fly:browser-intent-aborted", (event) => {
+    root.addEventListener('fly:browser-intent-aborted', (event) => {
       scope.__flyAborts?.push((event as CustomEvent<BrowserAbort>).detail);
     });
-    root.addEventListener("fly:browser-problem", (event) => {
+    root.addEventListener('fly:browser-problem', (event) => {
       scope.__flyProblems?.push((event as CustomEvent<BrowserProblem>).detail);
     });
-    root.addEventListener("fly:browser-intent-response", (event) => {
+    root.addEventListener('fly:browser-intent-response', (event) => {
       scope.__flyResponses?.push(
-        (event as CustomEvent<BrowserResponse>).detail,
+        (event as CustomEvent<BrowserResponse>).detail
       );
     });
 
     globalThis.fetch = async (_input, init = {}) => {
       const signal = init.signal;
       if (!(signal instanceof AbortSignal)) {
-        throw new Error("Intent request signal unavailable");
+        throw new Error('Intent request signal unavailable');
       }
       return new Promise<Response>((resolveResponse, rejectResponse) => {
         const rejectAborted = () => {
-          rejectResponse(new DOMException("Aborted", "AbortError"));
+          rejectResponse(new DOMException('Aborted', 'AbortError'));
         };
         if (signal.aborted) {
           rejectAborted();
           return;
         }
-        signal.addEventListener("abort", rejectAborted, { once: true });
+        signal.addEventListener('abort', rejectAborted, { once: true });
         scope.__flyPendingFetches?.push({ resolve: resolveResponse });
       });
     };
 
     const url = URL.createObjectURL(
-      new Blob([source], { type: "text/javascript" }),
+      new Blob([source], { type: 'text/javascript' })
     );
     try {
       await import(url);
@@ -138,9 +138,9 @@ async function mountOrderContract(page: Page) {
     }
   }, adapterSource);
 
-  await expect(page.locator("#fly-root")).toHaveAttribute(
-    "data-fly-browser-mounted",
-    "true",
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-browser-mounted',
+    'true'
   );
 }
 
@@ -148,20 +148,20 @@ async function beginSaves(page: Page, count = 2) {
   await page.evaluate((saveCount) => {
     const scope = globalThis as OrderScope;
     const adapter = scope.FlyBrowser?.mountAll?.(
-      scope.__FLY_BROWSER_CONFIG__ ?? {},
+      scope.__FLY_BROWSER_CONFIG__ ?? {}
     )[0];
-    if (!adapter) throw new Error("Fly adapter unavailable");
+    if (!adapter) throw new Error('Fly adapter unavailable');
     for (let index = 0; index < saveCount; index += 1) {
       scope.__flySavePromises?.push(
-        adapter.emitIntent("save", { save_number: index + 1 }),
+        adapter.emitIntent('save', { save_number: index + 1 })
       );
     }
   }, count);
   await expect
     .poll(() =>
       page.evaluate(
-        () => (globalThis as OrderScope).__flyPendingFetches?.length ?? 0,
-      ),
+        () => (globalThis as OrderScope).__flyPendingFetches?.length ?? 0
+      )
     )
     .toBe(count);
 }
@@ -169,7 +169,7 @@ async function beginSaves(page: Page, count = 2) {
 async function resolveFetch(
   page: Page,
   index: number,
-  response: { status: number; body: Record<string, unknown> },
+  response: { status: number; body: Record<string, unknown> }
 ) {
   await page.evaluate(
     ({ index, response }) => {
@@ -178,11 +178,11 @@ async function resolveFetch(
       pending.resolve(
         new Response(JSON.stringify(response.body), {
           status: response.status,
-          headers: { "content-type": "application/json" },
-        }),
+          headers: { 'content-type': 'application/json' }
+        })
       );
     },
-    { index, response },
+    { index, response }
   );
 }
 
@@ -197,21 +197,21 @@ async function awaitSave(page: Page, index: number) {
 async function readState(page: Page) {
   return page.evaluate(() => {
     const scope = globalThis as OrderScope;
-    const root = document.querySelector("#fly-root");
+    const root = document.querySelector('#fly-root');
     return {
-      mounted: root?.getAttribute("data-fly-browser-mounted"),
-      problem: root?.getAttribute("data-fly-browser-problem"),
-      revision: root?.getAttribute("data-fly-revision"),
-      projectHash: root?.getAttribute("data-fly-project-hash"),
-      draft: JSON.parse(sessionStorage.getItem("fly:ssr-draft:home") ?? "null"),
+      mounted: root?.getAttribute('data-fly-browser-mounted'),
+      problem: root?.getAttribute('data-fly-browser-problem'),
+      revision: root?.getAttribute('data-fly-revision'),
+      projectHash: root?.getAttribute('data-fly-project-hash'),
+      draft: JSON.parse(sessionStorage.getItem('fly:ssr-draft:home') ?? 'null'),
       aborts: scope.__flyAborts ?? [],
       problems: scope.__flyProblems ?? [],
-      responses: scope.__flyResponses ?? [],
+      responses: scope.__flyResponses ?? []
     };
   });
 }
 
-test("late denial cannot replace newer success", async ({ page }) => {
+test('late denial cannot replace newer success', async ({ page }) => {
   await mountOrderContract(page);
   await beginSaves(page);
 
@@ -223,27 +223,27 @@ test("late denial cannot replace newer success", async ({ page }) => {
   const state = await readState(page);
   expect(state).toMatchObject({
     problem: null,
-    revision: "rev-2",
-    projectHash: "hash-2",
-    draft: { token: "draft-2", generation: 2 },
+    revision: 'rev-2',
+    projectHash: 'hash-2',
+    draft: { token: 'draft-2', generation: 2 },
     aborts: [],
-    problems: [],
+    problems: []
   });
   expect(state.responses).toEqual([
     expect.objectContaining({
       status: 200,
       requestGeneration: 2,
-      current: true,
+      current: true
     }),
     expect.objectContaining({
       status: 403,
       requestGeneration: 1,
-      current: false,
-    }),
+      current: false
+    })
   ]);
 });
 
-test("late success cannot clear newer denial", async ({ page }) => {
+test('late success cannot clear newer denial', async ({ page }) => {
   await mountOrderContract(page);
   await beginSaves(page);
 
@@ -254,19 +254,19 @@ test("late success cannot clear newer denial", async ({ page }) => {
 
   const state = await readState(page);
   expect(state).toMatchObject({
-    problem: "FLY_CAPABILITY_DENIED",
-    revision: "rev-1",
-    projectHash: "hash-1",
-    draft: { token: "draft-1", generation: 1 },
-    aborts: [],
+    problem: 'FLY_CAPABILITY_DENIED',
+    revision: 'rev-1',
+    projectHash: 'hash-1',
+    draft: { token: 'draft-1', generation: 1 },
+    aborts: []
   });
   expect(state.problems).toEqual([
-    expect.objectContaining({ code: "FLY_CAPABILITY_DENIED" }),
+    expect.objectContaining({ code: 'FLY_CAPABILITY_DENIED' })
   ]);
 });
 
-test("unmount aborts in-flight work instead of accepting a late response", async ({
-  page,
+test('unmount aborts in-flight work instead of accepting a late response', async ({
+  page
 }) => {
   await mountOrderContract(page);
   await beginSaves(page, 1);
@@ -277,20 +277,20 @@ test("unmount aborts in-flight work instead of accepting a late response", async
 
   const state = await readState(page);
   expect(state).toMatchObject({
-    mounted: "false",
+    mounted: 'false',
     problem: null,
-    revision: "rev-1",
-    projectHash: "hash-1",
-    draft: { token: "draft-1", generation: 1 },
+    revision: 'rev-1',
+    projectHash: 'hash-1',
+    draft: { token: 'draft-1', generation: 1 },
     problems: [],
-    responses: [],
+    responses: []
   });
   expect(state.aborts).toEqual([
     expect.objectContaining({
-      code: "INTENT_REQUEST_ABORTED",
-      kind: "adapter_stop",
+      code: 'INTENT_REQUEST_ABORTED',
+      kind: 'adapter_stop',
       requestGeneration: 1,
-      current: false,
-    }),
+      current: false
+    })
   ]);
 });

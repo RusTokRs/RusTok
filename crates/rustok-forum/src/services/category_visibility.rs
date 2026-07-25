@@ -74,9 +74,7 @@ impl ForumCategoryVisibilityPolicyService {
         snapshot.policy(category_id)?;
 
         let requested_override = match input.visibility {
-            ForumCategoryVisibility::Authenticated => {
-                Some(ForumCategoryVisibility::Authenticated)
-            }
+            ForumCategoryVisibility::Authenticated => Some(ForumCategoryVisibility::Authenticated),
             ForumCategoryVisibility::Public => {
                 if snapshot.parent_effective(category_id)?.effective_visibility
                     == ForumCategoryVisibility::Authenticated
@@ -165,9 +163,7 @@ impl ForumCategoryVisibilityPolicyService {
 
         let snapshot = CategoryVisibilitySnapshot::load(&self.db, tenant_id).await?;
         match snapshot.resolve(category_id) {
-            Ok(resolved) => Ok(
-                resolved.effective_visibility == ForumCategoryVisibility::Public,
-            ),
+            Ok(resolved) => Ok(resolved.effective_visibility == ForumCategoryVisibility::Public),
             Err(ForumError::CategoryNotFound(_)) => Ok(false),
             Err(error) => Err(error),
         }
@@ -268,9 +264,7 @@ impl CategoryVisibilitySnapshot {
                     "Forum category visibility tree contains a hierarchy cycle".to_string(),
                 ));
             }
-            if self.overrides.get(&current_id)
-                == Some(&ForumCategoryVisibility::Authenticated)
-            {
+            if self.overrides.get(&current_id) == Some(&ForumCategoryVisibility::Authenticated) {
                 return Ok(ResolvedVisibility {
                     effective_visibility: ForumCategoryVisibility::Authenticated,
                     effective_from_category_id: Some(current_id),

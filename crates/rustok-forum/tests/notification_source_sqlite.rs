@@ -254,10 +254,7 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         })
         .await
         .expect("restricted topic authorization should fail closed");
-    assert_eq!(
-        restricted_open,
-        NotificationOpenAuthorization::Unavailable
-    );
+    assert_eq!(restricted_open, NotificationOpenAuthorization::Unavailable);
     let restricted_mention_event = seed_user_mention_event(
         &db,
         tenant_id,

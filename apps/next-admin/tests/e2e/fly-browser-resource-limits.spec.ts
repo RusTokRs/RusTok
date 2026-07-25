@@ -40,7 +40,8 @@ async function mountResourceGuard(page: Page) {
     async ({ adapterSource }) => {
       const root = document.querySelector('#fly-root');
       const iframe = document.querySelector('#canvas-a-frame');
-      if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+      if (!(root instanceof HTMLElement))
+        throw new Error('Fly root unavailable');
       if (!(iframe instanceof HTMLIFrameElement)) {
         throw new Error('Fly iframe unavailable');
       }
@@ -157,9 +158,10 @@ test('trusted iframe limits are typed, fail closed and announced accessibly', as
       })
     );
   });
-  await expect(
-    page.locator('[data-fly-browser-overlay="selected"]')
-  ).toHaveCSS('display', 'none');
+  await expect(page.locator('[data-fly-browser-overlay="selected"]')).toHaveCSS(
+    'display',
+    'none'
+  );
 
   await page
     .frameLocator('#canvas-a-frame')
@@ -172,7 +174,9 @@ test('trusted iframe limits are typed, fail closed and announced accessibly', as
     'data-fly-resource-limited',
     'message_bytes'
   );
-  await expect(status).toContainText('Canvas limit reached. message_bytes: 2048/1024.');
+  await expect(status).toContainText(
+    'Canvas limit reached. message_bytes: 2048/1024.'
+  );
 
   limits = await page.evaluate(
     () =>

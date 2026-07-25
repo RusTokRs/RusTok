@@ -16,16 +16,23 @@ export async function GET(
     return new Response('Not found', { status: 404 });
   }
   const root = await richTextDistRoot();
-  const manifest = JSON.parse(await readFile(resolve(root, 'asset-manifest.json'), 'utf8')) as Record<string, string>;
-  if (!Object.values(manifest).includes(asset)) return new Response('Not found', { status: 404 });
+  const manifest = JSON.parse(
+    await readFile(resolve(root, 'asset-manifest.json'), 'utf8')
+  ) as Record<string, string>;
+  if (!Object.values(manifest).includes(asset))
+    return new Response('Not found', { status: 404 });
   const body = await readFile(resolve(root, asset));
-  const contentType = ASSET_TYPES[asset.slice(asset.lastIndexOf('.'))] ?? 'application/octet-stream';
+  const contentType =
+    ASSET_TYPES[asset.slice(asset.lastIndexOf('.'))] ??
+    'application/octet-stream';
   return new Response(body, {
     headers: {
       'cache-control': 'public, max-age=31536000, immutable',
-      'content-security-policy': "default-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'",
+      'content-security-policy':
+        "default-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'",
       'content-type': contentType,
-      'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+      'permissions-policy':
+        'camera=(), microphone=(), geolocation=(), payment=()',
       'referrer-policy': 'no-referrer',
       'x-content-type-options': 'nosniff',
       'x-frame-options': 'SAMEORIGIN'

@@ -12,8 +12,7 @@ use uuid::Uuid;
 
 use crate::controllers::store::{ResolvedStoreLineItemInput, StoreLineItemResolution};
 use crate::{
-    CommerceError,
-    dto::AddCartLineItemInput,
+    CommerceError, dto::AddCartLineItemInput,
     storefront_channel::is_metadata_visible_for_public_channel,
     storefront_shipping::effective_shipping_profile_slug,
 };
@@ -253,14 +252,8 @@ pub(crate) async fn resolve_store_line_item_input(
             input.quantity,
             &resolved_price,
         );
-    validate_store_variant_inventory(
-        db,
-        tenant_id,
-        &variant,
-        input.quantity,
-        public_channel_slug,
-    )
-    .await?;
+    validate_store_variant_inventory(db, tenant_id, &variant, input.quantity, public_channel_slug)
+        .await?;
 
     let base_title = crate::controllers::store::pick_product_translation(
         &product_translation_models,

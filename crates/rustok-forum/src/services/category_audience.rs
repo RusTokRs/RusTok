@@ -2,19 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::Set,
-    ColumnTrait,
-    ConnectionTrait,
-    DatabaseBackend,
-    DatabaseConnection,
-    DatabaseTransaction,
-    EntityTrait,
-    QueryFilter,
-    QueryOrder,
-    QuerySelect,
-    Statement,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -24,17 +14,13 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::audience::{
-    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS,
-    MAX_FORUM_AUDIENCE_EXPLICIT_USERS, MAX_FORUM_AUDIENCE_GROUPS,
-    MAX_FORUM_AUDIENCE_ROLES,
+    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS, MAX_FORUM_AUDIENCE_EXPLICIT_USERS,
+    MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES,
 };
 use crate::dto::{MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES};
 use crate::entities::{
-    forum_category,
-    forum_category_audience_channel,
-    forum_category_audience_group,
-    forum_category_audience_policy,
-    forum_category_audience_role,
+    forum_category, forum_category_audience_channel, forum_category_audience_group,
+    forum_category_audience_policy, forum_category_audience_role,
     forum_category_audience_user::{self, ForumCategoryAudienceUserEffect},
 };
 use crate::error::{ForumError, ForumResult};
@@ -172,11 +158,13 @@ async fn insert_channels(
             .channel_members_any
             .iter()
             .cloned()
-            .map(|channel_slug| forum_category_audience_channel::ActiveModel {
-                tenant_id: Set(tenant_id),
-                category_id: Set(category_id),
-                channel_slug: Set(channel_slug),
-            })
+            .map(
+                |channel_slug| forum_category_audience_channel::ActiveModel {
+                    tenant_id: Set(tenant_id),
+                    category_id: Set(category_id),
+                    channel_slug: Set(channel_slug),
+                },
+            )
             .collect::<Vec<_>>(),
     )
     .exec(txn)
@@ -216,9 +204,8 @@ async fn insert_users(
     category_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    let mut rows = Vec::with_capacity(
-        constraints.allow_user_ids.len() + constraints.deny_user_ids.len(),
-    );
+    let mut rows =
+        Vec::with_capacity(constraints.allow_user_ids.len() + constraints.deny_user_ids.len());
     rows.extend(constraints.allow_user_ids.iter().copied().map(|user_id| {
         forum_category_audience_user::ActiveModel {
             tenant_id: Set(tenant_id),
@@ -381,7 +368,9 @@ where
         .await?;
     ensure_storage_bound(roles.len(), maximum_roles, "role relations")?;
     for row in roles {
-        layer_mut(&mut layers, row.category_id)?.roles_any.push(row.role);
+        layer_mut(&mut layers, row.category_id)?
+            .roles_any
+            .push(row.role);
     }
 
     let maximum_channels = category_ids.len() * MAX_FORUM_AUDIENCE_CHANNELS;

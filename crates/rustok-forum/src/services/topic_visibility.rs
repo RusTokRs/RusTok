@@ -101,9 +101,7 @@ impl ForumTopicVisibilityService {
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Id.eq(topic_id));
         if !hidden_category_ids.is_empty() {
-            select = select.filter(
-                forum_topic::Column::CategoryId.is_not_in(hidden_category_ids),
-            );
+            select = select.filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids));
         }
         Ok(select.one(&self.db).await?.is_some())
     }
@@ -114,9 +112,7 @@ impl ForumTopicVisibilityService {
         topic_id: Uuid,
         scope: &ForumTopicVisibilityScope,
     ) -> ForumResult<bool> {
-        let hidden_category_ids = self
-            .hidden_category_ids_for_scope(tenant_id, scope)
-            .await?;
+        let hidden_category_ids = self.hidden_category_ids_for_scope(tenant_id, scope).await?;
         Ok(apply_storefront_visibility(
             forum_topic::Entity::find()
                 .filter(forum_topic::Column::TenantId.eq(tenant_id))
@@ -156,9 +152,7 @@ impl ForumTopicVisibilityService {
             }
         }
 
-        let hidden_category_ids = self
-            .hidden_category_ids_for_scope(tenant_id, scope)
-            .await?;
+        let hidden_category_ids = self.hidden_category_ids_for_scope(tenant_id, scope).await?;
         let visible = apply_storefront_visibility(
             forum_topic::Entity::find()
                 .filter(forum_topic::Column::TenantId.eq(tenant_id))
@@ -201,9 +195,8 @@ pub(crate) fn apply_storefront_visibility(
         .filter(forum_topic::Column::Status.eq(TopicStatus::Open))
         .filter(channel_condition);
     if !hidden_category_ids.is_empty() {
-        select = select.filter(
-            forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()),
-        );
+        select =
+            select.filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
     }
     select
 }
@@ -222,10 +215,7 @@ fn all_topic_channel_access_subquery(tenant_id: Uuid) -> SelectStatement {
         .to_owned()
 }
 
-fn matching_topic_channel_access_subquery(
-    tenant_id: Uuid,
-    channel_slug: &str,
-) -> SelectStatement {
+fn matching_topic_channel_access_subquery(tenant_id: Uuid, channel_slug: &str) -> SelectStatement {
     Query::select()
         .column(forum_topic_channel_access::Column::TopicId)
         .from(forum_topic_channel_access::Entity)

@@ -82,11 +82,7 @@ impl SeoFailure {
         let payload = value.strip_prefix(SEO_FAILURE_MESSAGE_PREFIX)?;
         let (class, payload) = payload.split_once(" code=")?;
         let (code, message) = payload.split_once("] ")?;
-        Some(Self::new(
-            SeoFailureClass::parse(class)?,
-            code,
-            message,
-        ))
+        Some(Self::new(SeoFailureClass::parse(class)?, code, message))
     }
 }
 

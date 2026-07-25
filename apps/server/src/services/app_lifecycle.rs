@@ -287,11 +287,7 @@ fn spawn_seo_bulk_worker_handle(
     tracing::info!(worker = "seo_bulk", instance_id, "Starting runtime worker");
     SeoBulkWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(seo_bulk_worker_loop(
-            runtime_ctx,
-            stop_rx,
-            authorization,
-        )),
+        _handle: tokio::spawn(seo_bulk_worker_loop(runtime_ctx, stop_rx, authorization)),
     }
 }
 
@@ -358,11 +354,7 @@ async fn seo_bulk_worker_loop(
             return;
         }
 
-        match service
-            .bulk()
-            .execute_next_bulk_job(&authorization)
-            .await
-        {
+        match service.bulk().execute_next_bulk_job(&authorization).await {
             Ok(Some(job)) => tracing::info!(
                 job_id = %job.id,
                 operation = %job.operation_kind.as_str(),

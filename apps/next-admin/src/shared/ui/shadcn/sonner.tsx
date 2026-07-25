@@ -14,7 +14,7 @@ const Toaster = ({ className, ...props }: RusTokToasterProps) => {
     <Sonner
       theme={theme as ToasterProps['theme']}
       className={cn(
-        'toaster group [--normal-bg:var(--popover)] [--normal-text:var(--popover-foreground)] [--normal-border:var(--border)]',
+        'toaster group [--normal-bg:var(--popover)] [--normal-border:var(--border)] [--normal-text:var(--popover-foreground)]',
         className
       )}
       {...props}

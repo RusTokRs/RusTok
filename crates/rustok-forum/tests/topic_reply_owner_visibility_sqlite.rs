@@ -154,10 +154,8 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
     let authenticated = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let public = SecurityContext::public_read();
 
-    let public_category =
-        create_category(&db, tenant_id, admin.clone(), "public", None).await;
-    let restricted_parent =
-        create_category(&db, tenant_id, admin.clone(), "members", None).await;
+    let public_category = create_category(&db, tenant_id, admin.clone(), "public", None).await;
+    let restricted_parent = create_category(&db, tenant_id, admin.clone(), "members", None).await;
     let restricted_child = create_category(
         &db,
         tenant_id,
@@ -231,12 +229,7 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
     );
 
     let (authenticated_topics, authenticated_total) = topics
-        .list_with_locale_fallback(
-            tenant_id,
-            authenticated.clone(),
-            topic_filter(),
-            Some("en"),
-        )
+        .list_with_locale_fallback(tenant_id, authenticated.clone(), topic_filter(), Some("en"))
         .await
         .expect("authenticated owner topic page should resolve");
     assert_eq!(authenticated_total, 2);
@@ -281,13 +274,7 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
     let replies = ReplyService::new(db, event_bus);
     assert_eq!(
         replies
-            .get_with_locale_fallback(
-                tenant_id,
-                public.clone(),
-                public_reply,
-                "en",
-                Some("en"),
-            )
+            .get_with_locale_fallback(tenant_id, public.clone(), public_reply, "en", Some("en"),)
             .await
             .expect("public reply in public category should resolve")
             .id,
@@ -338,13 +325,7 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
     assert_eq!(authenticated_replies[0].id, restricted_reply);
     assert_eq!(
         replies
-            .get_with_locale_fallback(
-                tenant_id,
-                authenticated,
-                restricted_reply,
-                "en",
-                Some("en"),
-            )
+            .get_with_locale_fallback(tenant_id, authenticated, restricted_reply, "en", Some("en"),)
             .await
             .expect("authenticated exact reply read should resolve")
             .id,

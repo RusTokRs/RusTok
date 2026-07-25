@@ -460,14 +460,7 @@ pub(crate) fn map_order_error(error: OrderError) -> HttpError {
             "core",
         ),
     };
-    admin_public_error(
-        &error,
-        "rustok_order",
-        error_kind,
-        status,
-        code,
-        message,
-    )
+    admin_public_error(&error, "rustok_order", error_kind, status, code, message)
 }
 
 pub(crate) fn map_fulfillment_error(error: FulfillmentError) -> HttpError {
@@ -478,8 +471,7 @@ pub(crate) fn map_fulfillment_error(error: FulfillmentError) -> HttpError {
             format!("Fulfillment request is invalid: {msg}"),
             "validation",
         ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => (
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             axum::http::StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found".to_string(),
@@ -646,4 +638,3 @@ pub(crate) async fn validate_product_shipping_profile_input(
 
     Ok(())
 }
-

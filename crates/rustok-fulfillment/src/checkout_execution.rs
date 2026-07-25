@@ -228,9 +228,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             .service
             .list_by_order(tenant_id, order_id)
             .await
-            .map_err(|error| {
-                fulfillment_error_to_port_error(context, owner_operation, error)
-            })?;
+            .map_err(|error| fulfillment_error_to_port_error(context, owner_operation, error))?;
         let mut matches = rows.into_iter().filter(|fulfillment| {
             fulfillment
                 .metadata

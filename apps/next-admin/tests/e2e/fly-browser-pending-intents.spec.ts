@@ -1,10 +1,10 @@
-import { expect, Page, test } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { expect, Page, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 const adapterPath = resolve(
   process.cwd(),
-  "../../crates/fly-browser/assets/fly-browser.js",
+  '../../crates/fly-browser/assets/fly-browser.js'
 );
 
 type PendingFetch = {
@@ -31,7 +31,7 @@ type PendingScope = typeof globalThis & {
     mountAll?: (options?: Record<string, unknown>) => Array<{
       emitIntent: (
         intent: string,
-        payload: Record<string, unknown>,
+        payload: Record<string, unknown>
       ) => Promise<unknown>;
     }>;
     unmountAll?: () => void;
@@ -39,7 +39,7 @@ type PendingScope = typeof globalThis & {
 };
 
 async function mountPendingContract(page: Page) {
-  const adapterSource = await readFile(adapterPath, "utf8");
+  const adapterSource = await readFile(adapterPath, 'utf8');
   await page.setContent(`
     <div
       id="fly-root"
@@ -53,15 +53,15 @@ async function mountPendingContract(page: Page) {
 
   await page.evaluate(async (source) => {
     const scope = globalThis as PendingScope;
-    const root = document.querySelector("#fly-root");
-    if (!(root instanceof HTMLElement)) throw new Error("Fly root unavailable");
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
 
     scope.__FLY_BROWSER_CONFIG__ = {
       autoMount: true,
-      intentEndpoint: "/fly-intent",
+      intentEndpoint: '/fly-intent',
       maxPendingIntentRequests: 2,
-      pendingIntentLimitMessage: "Too many editor actions.",
-      intentRequestTimeoutMs: 10_000,
+      pendingIntentLimitMessage: 'Too many editor actions.',
+      intentRequestTimeoutMs: 10_000
     };
     scope.__flyAborts = [];
     scope.__flyErrors = [];
@@ -70,39 +70,39 @@ async function mountPendingContract(page: Page) {
     scope.__flyRejected = [];
     scope.__flySavePromises = [];
 
-    root.addEventListener("fly:browser-intent-aborted", (event) => {
+    root.addEventListener('fly:browser-intent-aborted', (event) => {
       scope.__flyAborts?.push((event as CustomEvent<IntentAbort>).detail);
     });
-    root.addEventListener("fly:browser-error", (event) => {
+    root.addEventListener('fly:browser-error', (event) => {
       scope.__flyErrors?.push((event as CustomEvent).detail);
     });
-    root.addEventListener("fly:browser-problem", (event) => {
+    root.addEventListener('fly:browser-problem', (event) => {
       scope.__flyProblems?.push((event as CustomEvent).detail);
     });
-    root.addEventListener("fly:browser-intent-rejected", (event) => {
+    root.addEventListener('fly:browser-intent-rejected', (event) => {
       scope.__flyRejected?.push((event as CustomEvent).detail);
     });
 
     globalThis.fetch = async (_input, init = {}) => {
       const signal = init.signal;
       if (!(signal instanceof AbortSignal)) {
-        throw new Error("Intent request signal unavailable");
+        throw new Error('Intent request signal unavailable');
       }
       return new Promise<Response>((resolveResponse, rejectResponse) => {
         const rejectAborted = () => {
-          rejectResponse(new DOMException("Aborted", "AbortError"));
+          rejectResponse(new DOMException('Aborted', 'AbortError'));
         };
         if (signal.aborted) {
           rejectAborted();
           return;
         }
-        signal.addEventListener("abort", rejectAborted, { once: true });
+        signal.addEventListener('abort', rejectAborted, { once: true });
         scope.__flyPendingFetches?.push({ signal, resolve: resolveResponse });
       });
     };
 
     const url = URL.createObjectURL(
-      new Blob([source], { type: "text/javascript" }),
+      new Blob([source], { type: 'text/javascript' })
     );
     try {
       await import(url);
@@ -111,9 +111,9 @@ async function mountPendingContract(page: Page) {
     }
   }, adapterSource);
 
-  await expect(page.locator("#fly-root")).toHaveAttribute(
-    "data-fly-browser-mounted",
-    "true",
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-browser-mounted',
+    'true'
   );
 }
 
@@ -121,11 +121,11 @@ async function emitSave(page: Page, number: number) {
   await page.evaluate((saveNumber) => {
     const scope = globalThis as PendingScope;
     const adapter = scope.FlyBrowser?.mountAll?.(
-      scope.__FLY_BROWSER_CONFIG__ ?? {},
+      scope.__FLY_BROWSER_CONFIG__ ?? {}
     )[0];
-    if (!adapter) throw new Error("Fly adapter unavailable");
+    if (!adapter) throw new Error('Fly adapter unavailable');
     scope.__flySavePromises?.push(
-      adapter.emitIntent("save", { save_number: saveNumber }),
+      adapter.emitIntent('save', { save_number: saveNumber })
     );
   }, number);
 }
@@ -147,14 +147,14 @@ async function resolveFetch(page: Page, index: number) {
     pending.resolve(
       new Response(JSON.stringify({ result: {} }), {
         status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+        headers: { 'content-type': 'application/json' }
+      })
     );
   }, index);
 }
 
-test("pending limit rejects newest work and releases settled slots", async ({
-  page,
+test('pending limit rejects newest work and releases settled slots', async ({
+  page
 }) => {
   await mountPendingContract(page);
   await emitSave(page, 1);
@@ -165,24 +165,24 @@ test("pending limit rejects newest work and releases settled slots", async ({
   await expect
     .poll(() =>
       page.evaluate(
-        () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0,
-      ),
+        () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0
+      )
     )
     .toBe(2);
 
   const rejected = await page.evaluate(
-    () => (globalThis as PendingScope).__flyRejected ?? [],
+    () => (globalThis as PendingScope).__flyRejected ?? []
   );
   expect(rejected).toEqual([
     expect.objectContaining({
-      code: "PENDING_INTENT_LIMIT",
+      code: 'PENDING_INTENT_LIMIT',
       limit: 2,
-      observed: 3,
-    }),
+      observed: 3
+    })
   ]);
-  await expect(page.locator("#fly-root")).toHaveAttribute(
-    "data-fly-browser-problem",
-    "PENDING_INTENT_LIMIT",
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-browser-problem',
+    'PENDING_INTENT_LIMIT'
   );
 
   await resolveFetch(page, 1);
@@ -191,8 +191,8 @@ test("pending limit rejects newest work and releases settled slots", async ({
   await expect
     .poll(() =>
       page.evaluate(
-        () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0,
-      ),
+        () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0
+      )
     )
     .toBe(3);
 
@@ -200,13 +200,13 @@ test("pending limit rejects newest work and releases settled slots", async ({
   await awaitSave(page, 3);
   await resolveFetch(page, 0);
   await awaitSave(page, 0);
-  await expect(page.locator("#fly-root")).not.toHaveAttribute(
-    "data-fly-browser-problem",
+  await expect(page.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-browser-problem'
   );
 });
 
-test("unmount emits typed adapter-stop aborts without browser errors", async ({
-  page,
+test('unmount emits typed adapter-stop aborts without browser errors', async ({
+  page
 }) => {
   await mountPendingContract(page);
   await emitSave(page, 1);
@@ -215,8 +215,8 @@ test("unmount emits typed adapter-stop aborts without browser errors", async ({
   await expect
     .poll(() =>
       page.evaluate(
-        () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0,
-      ),
+        () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0
+      )
     )
     .toBe(2);
 
@@ -231,7 +231,7 @@ test("unmount emits typed adapter-stop aborts without browser errors", async ({
     return {
       aborts: scope.__flyAborts ?? [],
       errors: scope.__flyErrors ?? [],
-      problems: scope.__flyProblems ?? [],
+      problems: scope.__flyProblems ?? []
     };
   });
   expect(state.errors).toEqual([]);
@@ -239,16 +239,16 @@ test("unmount emits typed adapter-stop aborts without browser errors", async ({
   expect(state.aborts).toHaveLength(2);
   expect(state.aborts).toEqual([
     expect.objectContaining({
-      code: "INTENT_REQUEST_ABORTED",
-      kind: "adapter_stop",
+      code: 'INTENT_REQUEST_ABORTED',
+      kind: 'adapter_stop',
       requestGeneration: 1,
-      current: false,
+      current: false
     }),
     expect.objectContaining({
-      code: "INTENT_REQUEST_ABORTED",
-      kind: "adapter_stop",
+      code: 'INTENT_REQUEST_ABORTED',
+      kind: 'adapter_stop',
       requestGeneration: 2,
-      current: false,
-    }),
+      current: false
+    })
   ]);
 });

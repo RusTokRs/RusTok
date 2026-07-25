@@ -1,10 +1,6 @@
 'use client';
 
-import {
-  FormInput,
-  FormTextarea,
-  FormSwitch
-} from '@/shared/ui/forms';
+import { FormInput, FormTextarea, FormSwitch } from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form } from '@/shared/ui/shadcn/form';

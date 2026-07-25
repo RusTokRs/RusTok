@@ -70,7 +70,8 @@ async function mountRuntime(
     async ({ adapterSource, runtimeSource, canvasBody }) => {
       const root = document.querySelector('#fly-root');
       const iframe = document.querySelector('#canvas-a-frame');
-      if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+      if (!(root instanceof HTMLElement))
+        throw new Error('Fly root unavailable');
       if (!(iframe instanceof HTMLIFrameElement)) {
         throw new Error('Fly iframe unavailable');
       }
@@ -162,7 +163,9 @@ async function installDeferredFetch(page: Page) {
     };
     globalThis.fetch = async (input, init = {}) => {
       const body =
-        typeof init.body === 'string' ? JSON.parse(init.body) : init.body ?? null;
+        typeof init.body === 'string'
+          ? JSON.parse(init.body)
+          : (init.body ?? null);
       requests.push({
         input: String(input),
         method: init.method ?? 'GET',
@@ -267,11 +270,13 @@ test('keyboard-started DnD suppresses late drag samples and duplicate drops', as
   const startingSequence = await page.evaluate(() =>
     Math.max(
       0,
-      ...((
-        globalThis as typeof globalThis & {
-          __flyRuntimeEvents?: RuntimeEvent[];
-        }
-      ).__flyRuntimeEvents ?? []).map((event) => event.sequence ?? 0)
+      ...(
+        (
+          globalThis as typeof globalThis & {
+            __flyRuntimeEvents?: RuntimeEvent[];
+          }
+        ).__flyRuntimeEvents ?? []
+      ).map((event) => event.sequence ?? 0)
     )
   );
 
@@ -286,24 +291,31 @@ test('keyboard-started DnD suppresses late drag samples and duplicate drops', as
       pointerType: 'mouse',
       isPrimary: true
     };
-    element.dispatchEvent(new PointerEvent('pointermove', { ...common, buttons: 1 }));
-    element.dispatchEvent(new PointerEvent('pointerup', { ...common, buttons: 0 }));
-    element.dispatchEvent(new PointerEvent('pointerup', { ...common, buttons: 0 }));
+    element.dispatchEvent(
+      new PointerEvent('pointermove', { ...common, buttons: 1 })
+    );
+    element.dispatchEvent(
+      new PointerEvent('pointerup', { ...common, buttons: 0 })
+    );
+    element.dispatchEvent(
+      new PointerEvent('pointerup', { ...common, buttons: 0 })
+    );
   });
-  await frame.locator('body').evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      )
-  );
+  await frame
+    .locator('body')
+    .evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    );
 
   await expect
     .poll(() =>
       page.evaluate(
         () =>
-          (
-            globalThis as typeof globalThis & { __flyRequests?: unknown[] }
-          ).__flyRequests?.length ?? 0
+          (globalThis as typeof globalThis & { __flyRequests?: unknown[] })
+            .__flyRequests?.length ?? 0
       )
     )
     .toBe(1);
@@ -330,7 +342,9 @@ test('keyboard-started DnD suppresses late drag samples and duplicate drops', as
     };
   }, startingSequence);
 
-  expect(state.messageTypes.filter((type) => type === 'drop_requested')).toHaveLength(2);
+  expect(
+    state.messageTypes.filter((type) => type === 'drop_requested')
+  ).toHaveLength(2);
   expect(state.messageTypes).not.toContain('drag_moved');
   expect(state.requests).toHaveLength(1);
   expect(state.requests[0]).toMatchObject({
@@ -416,7 +430,8 @@ test('geometry snapshots fail closed when the canvas resource limit is exceeded'
       })
     );
   });
-  await expect(
-    page.locator('[data-fly-browser-overlay="selected"]')
-  ).toHaveCSS('display', 'none');
+  await expect(page.locator('[data-fly-browser-overlay="selected"]')).toHaveCSS(
+    'display',
+    'none'
+  );
 });

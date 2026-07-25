@@ -120,10 +120,8 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
     let authenticated = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let public = SecurityContext::public_read();
 
-    let public_category =
-        create_category(&db, tenant_id, admin.clone(), "public", None).await;
-    let restricted_parent =
-        create_category(&db, tenant_id, admin.clone(), "members", None).await;
+    let public_category = create_category(&db, tenant_id, admin.clone(), "public", None).await;
+    let restricted_parent = create_category(&db, tenant_id, admin.clone(), "members", None).await;
     let restricted_child = create_category(
         &db,
         tenant_id,
@@ -166,15 +164,11 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
 
     let visibility = ForumTopicVisibilityService::new(db.clone());
     let public_scope = ForumTopicVisibilityScope::storefront(None).expect("public scope");
-    let authenticated_scope = ForumTopicVisibilityScope::storefront_for_viewer(None, true)
-        .expect("authenticated scope");
+    let authenticated_scope =
+        ForumTopicVisibilityScope::storefront_for_viewer(None, true).expect("authenticated scope");
     assert_eq!(
         visibility
-            .filter_visible_topic_ids(
-                tenant_id,
-                &[restricted_topic, public_topic],
-                &public_scope,
-            )
+            .filter_visible_topic_ids(tenant_id, &[restricted_topic, public_topic], &public_scope,)
             .await
             .expect("public exact visibility should resolve"),
         vec![public_topic]

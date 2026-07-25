@@ -184,8 +184,7 @@ fn map_storefront_cart_shipping_error(
             "Shipping request is invalid",
             "validation",
         ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => (
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_store_not_found",
             "Commerce resource not found",
@@ -726,12 +725,7 @@ pub(crate) async fn enrich_storefront_cart_for_db(
     )
     .await
     .map_err(|error| {
-        map_storefront_cart_shipping_error(
-            error,
-            "enrich_cart_delivery_groups",
-            tenant_id,
-            cart_id,
-        )
+        map_storefront_cart_shipping_error(error, "enrich_cart_delivery_groups", tenant_id, cart_id)
     })?;
 
     if cart.delivery_groups.len() == 1 {
@@ -924,7 +918,6 @@ pub(crate) struct StoreLineItemResolution<'a> {
     pub(crate) input: StoreAddCartLineItemInput,
 }
 
-
 fn store_line_item_pricing_port_context(
     tenant_id: Uuid,
     variant_id: Uuid,
@@ -980,7 +973,6 @@ pub(crate) fn pick_variant_translation<'a>(
         })
         .or_else(|| translations.first())
 }
-
 
 pub(crate) fn default_metadata() -> Value {
     json!({})

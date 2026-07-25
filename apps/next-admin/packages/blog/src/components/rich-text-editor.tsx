@@ -1,12 +1,7 @@
 'use client';
 
-import {
-  RichTextEditor as SharedRichTextEditor
-} from '@rustok/richtext/react';
-import type {
-  RichTextDocument,
-  RichTextProfileId
-} from '@rustok/richtext';
+import { RichTextEditor as SharedRichTextEditor } from '@rustok/richtext/react';
+import type { RichTextDocument, RichTextProfileId } from '@rustok/richtext';
 import { useTranslations } from 'next-intl';
 
 export function RichTextEditor({

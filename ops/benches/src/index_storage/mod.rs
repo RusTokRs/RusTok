@@ -10,9 +10,7 @@ mod sql;
 pub use config::{BenchmarkConfig, DatasetConfig, DatasetScale};
 pub(crate) use connection::connect as connect_benchmark_database;
 pub use database_metadata::DatabaseMetadata;
-pub(crate) use database_metadata::{
-    ensure_database_metadata_stable, read_database_metadata,
-};
+pub(crate) use database_metadata::{ensure_database_metadata_stable, read_database_metadata};
 pub use maintenance_runner::{
     MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
 };

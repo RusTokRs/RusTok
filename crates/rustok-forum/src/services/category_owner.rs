@@ -74,11 +74,7 @@ impl CategoryService {
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         if !self
             .visibility
-            .is_category_visible_to_viewer(
-                tenant_id,
-                category_id,
-                !security.is_public_read(),
-            )
+            .is_category_visible_to_viewer(tenant_id, category_id, !security.is_public_read())
             .await?
         {
             return Err(ForumError::CategoryNotFound(category_id));
