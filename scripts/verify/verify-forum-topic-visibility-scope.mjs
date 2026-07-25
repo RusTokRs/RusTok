@@ -61,7 +61,7 @@ for (const residual of [
   "channel membership visibility",
   "group membership visibility",
   "explicit allow and deny",
-  "category owner read filtering and remaining non-topic-reply read composition",
+  "remaining non-category-topic-reply read composition",
   "visibility-scoped category and all-read mutations",
 ]) {
   if (!contract.not_delivered?.includes(residual)) {

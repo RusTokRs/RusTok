@@ -16,6 +16,10 @@ const connection = read('ops/benches/src/index_storage/connection.rs');
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
 const comparatorFixture = read('scripts/verify/compare-index-storage-evidence.test.mjs');
+const databaseSettingsContract = read('scripts/verify/index-storage-database-settings-contract.mjs');
+const prepareDecision = read('scripts/verify/prepare-index-storage-decision.mjs');
+const finalizeAdr = read('scripts/verify/finalize-index-storage-adr.mjs');
+const decisionFixture = read('scripts/verify/index-storage-decision-tooling.test.mjs');
 const validatorWrapper = read('scripts/verify/validate-index-storage-evidence.mjs');
 const comparatorWrapper = read('scripts/verify/compare-index-storage-evidence.mjs');
 const standaloneFixture = read('scripts/verify/index-storage-standalone-tools.test.mjs');
@@ -37,6 +41,18 @@ const sessionMetadataMarkers = [
   "timezone: 'UTC'",
   "date_style: 'ISO, YMD'",
   "extra_float_digits: '3'",
+];
+const comparableDatabaseFieldMarkers = [
+  "'server_version_num'",
+  "'shared_buffers'",
+  "'effective_cache_size'",
+  "'work_mem'",
+  "'random_page_cost'",
+  "'jit'",
+  "'standard_conforming_strings'",
+  "'timezone'",
+  "'date_style'",
+  "'extra_float_digits'",
 ];
 
 requireMarkers(connection, 'benchmark session contract', [
@@ -147,9 +163,52 @@ requireMarkers(fixture, 'read ordering fixture', [
 ]);
 requireMarkers(comparatorFixture, 'comparison evidence fixture', [
   ...sessionMetadataMarkers,
+  ...comparableDatabaseFieldMarkers,
   'function writePacket(root, scale, overrides = {})',
   "test('same-commit complete 100k and 1m evidence is decision-ready'",
+  'assert.deepEqual(report.methodology.comparable_database_fields, comparableDatabaseFields);',
+  'database_settings_source',
+  "test('rejects observed session metadata drift before comparison output is accepted'",
 ]);
+
+requireMarkers(databaseSettingsContract, 'shared database settings contract', [
+  'export const comparableDatabaseFields = Object.freeze([',
+  ...comparableDatabaseFieldMarkers,
+  'export const databaseSettingsSource =',
+  'read-report.json database metadata observed from the active PostgreSQL benchmark session',
+  'export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =>',
+  'comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract',
+  'database_settings_source must identify metadata observed from the active PostgreSQL benchmark session',
+]);
+requireMarkers(prepareDecision, 'decision preparation database settings gate', [
+  "from './index-storage-database-settings-contract.mjs'",
+  'requireComparisonDatabaseSettingsMethodology(comparison, fail);',
+]);
+requireMarkers(finalizeAdr, 'ADR finalization database settings gate', [
+  "from './index-storage-database-settings-contract.mjs'",
+  'requireComparisonDatabaseSettingsMethodology(comparison.value, fail);',
+]);
+requireMarkers(decisionFixture, 'decision tooling database settings fixture', [
+  ...comparableDatabaseFieldMarkers,
+  'databaseSettingsSource',
+  'comparable_database_fields: [...comparableDatabaseFields]',
+  "test('rejects a comparison without the canonical database-settings methodology'",
+  "test('finalizer rejects database-settings provenance drift with a matching comparison digest'",
+]);
+const prepareDatabaseGate = prepareDecision.indexOf(
+  'requireComparisonDatabaseSettingsMethodology(comparison, fail);',
+);
+const prepareDecisionWrite = prepareDecision.indexOf('const decision = {');
+if (prepareDatabaseGate < 0 || prepareDecisionWrite < 0 || prepareDatabaseGate > prepareDecisionWrite) {
+  fail('decision preparation must validate database-settings methodology before creating a decision');
+}
+const finalizeDatabaseGate = finalizeAdr.indexOf(
+  'requireComparisonDatabaseSettingsMethodology(comparison.value, fail);',
+);
+const finalizeRenderer = finalizeAdr.indexOf("path.join(scriptDirectory, 'render-index-storage-adr.mjs')");
+if (finalizeDatabaseGate < 0 || finalizeRenderer < 0 || finalizeDatabaseGate > finalizeRenderer) {
+  fail('ADR finalization must validate database-settings methodology before invoking the renderer');
+}
 
 requireMarkers(validatorWrapper, 'standalone validator wrapper', [
   "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
@@ -163,19 +222,36 @@ if (validatorOrdering < 0 || validatorCore < 0 || validatorOrdering > validatorC
 }
 
 requireMarkers(comparatorWrapper, 'standalone comparator wrapper', [
+  "import { readFileSync, writeFileSync } from 'node:fs'",
+  "import path from 'node:path'",
   "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
-  'for (const input of inputs) validatePacketReadOrdering(input);',
+  "from './index-storage-database-settings-contract.mjs'",
+  'comparableDatabaseFields,',
+  'databaseSettingsSource,',
+  'const finalizeDatabaseSettingsContract = ({ inputs, output }) =>',
+  'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
+  'cross-scale database setting ${field} mismatch',
+  'methodology.comparable_database_fields = comparableDatabaseFields;',
+  'methodology.database_settings_source = databaseSettingsSource;',
+  'Compared PostgreSQL fields:',
   "await import('./compare-index-storage-evidence-core.mjs')",
+  'if (parsed !== null) finalizeDatabaseSettingsContract(parsed);',
 ]);
 const standaloneCompareOrdering = comparatorWrapper.indexOf(
-  'for (const input of inputs) validatePacketReadOrdering(input);',
+  'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
 );
 const standaloneComparatorCore = comparatorWrapper.indexOf(
   "await import('./compare-index-storage-evidence-core.mjs')",
 );
+const standaloneComparatorFinalization = comparatorWrapper.indexOf(
+  'if (parsed !== null) finalizeDatabaseSettingsContract(parsed);',
+);
 if (standaloneCompareOrdering < 0 || standaloneComparatorCore < 0
     || standaloneCompareOrdering > standaloneComparatorCore) {
   fail('standalone comparator must preflight every input before importing its core');
+}
+if (standaloneComparatorFinalization < 0 || standaloneComparatorCore > standaloneComparatorFinalization) {
+  fail('standalone comparator must finalize the full database-settings contract after its core');
 }
 
 requireMarkers(standaloneFixture, 'standalone evidence fixture', [
@@ -244,4 +320,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] enforced and observed PostgreSQL session metadata, canonical evidence writer, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] enforced and observed PostgreSQL session metadata, shared cross-scale database settings, ADR-bound comparison methodology, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');

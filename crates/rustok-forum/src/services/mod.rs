@@ -1,13 +1,19 @@
 #![allow(dead_code)]
 
 mod bounded_compat;
-mod category;
+mod category {
+    include!("category.rs");
+    include!("category_visibility_list.rs");
+}
 #[allow(clippy::collapsible_if)]
 mod category_command;
 mod category_lifecycle;
 mod category_owner;
 mod category_policy;
-mod category_tree;
+mod category_tree {
+    include!("category_tree.rs");
+    include!("category_tree_visibility.rs");
+}
 mod category_visibility;
 pub mod event;
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]

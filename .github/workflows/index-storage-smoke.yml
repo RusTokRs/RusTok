@@ -15,6 +15,7 @@ on:
       - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
+      - "scripts/verify/index-storage-database-settings-contract.mjs"
       - "scripts/verify/index-storage-standalone-tools.test.mjs"
       - "scripts/verify/verify-index-storage-standalone-tools.mjs"
       - "scripts/verify/hash-index-storage-comparison.mjs"
@@ -45,6 +46,7 @@ on:
       - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
+      - "scripts/verify/index-storage-database-settings-contract.mjs"
       - "scripts/verify/index-storage-standalone-tools.test.mjs"
       - "scripts/verify/verify-index-storage-standalone-tools.mjs"
       - "scripts/verify/hash-index-storage-comparison.mjs"
@@ -100,6 +102,7 @@ jobs:
             node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs
             node --check scripts/verify/validate-index-storage-evidence.mjs
             node --check scripts/verify/validate-index-storage-evidence-core.mjs
+            node --check scripts/verify/index-storage-database-settings-contract.mjs
             node --check scripts/verify/compare-index-storage-evidence.mjs
             node --check scripts/verify/compare-index-storage-evidence-core.mjs
             node --check scripts/verify/index-storage-standalone-tools.test.mjs

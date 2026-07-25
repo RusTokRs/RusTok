@@ -29,6 +29,18 @@ const readWorkloads = [
   'exact_count',
 ];
 const mutationWorkloads = ['update_product_batch', 'delete_product_batch'];
+const comparableDatabaseFields = [
+  'server_version_num',
+  'shared_buffers',
+  'effective_cache_size',
+  'work_mem',
+  'random_page_cost',
+  'jit',
+  'standard_conforming_strings',
+  'timezone',
+  'date_style',
+  'extra_float_digits',
+];
 const scaleValues = {
   '100k': {
     serialized: 'rows100k', debug: 'Rows100k', tenants: 10, productsPerTenant: 5_000,
@@ -283,6 +295,10 @@ test('same-commit complete 100k and 1m evidence is decision-ready', () => {
     assert.equal(report.decision_contract.same_result_digest_contract, true);
     assert.equal(report.scales[0].provenance.result_digest_contract, resultDigestContract);
     assert.equal(report.methodology.result_digest, resultDigestContract);
+    assert.deepEqual(report.methodology.comparable_database_fields, comparableDatabaseFields);
+    assert.match(report.methodology.database_settings_source, /observed from the active PostgreSQL benchmark session/u);
+    const markdown = readFileSync(path.join(output, 'comparison.md'), 'utf8');
+    for (const field of comparableDatabaseFields) assert.match(markdown, new RegExp(`\\\`${field}\\\``, 'u'));
     assert.equal(report.cross_scale_ratios.source_workloads[0].result_rows_ratio_1m_to_100k, 10);
   });
 });
@@ -296,6 +312,7 @@ test('one valid scale remains non-decision-ready', () => {
     const report = JSON.parse(readFileSync(path.join(output, 'comparison.json'), 'utf8'));
     assert.equal(report.decision_ready, false);
     assert.equal(report.decision_contract.same_result_digest_contract, null);
+    assert.deepEqual(report.methodology.comparable_database_fields, comparableDatabaseFields);
   });
 });
 
@@ -364,5 +381,15 @@ test('rejects cross-scale commit mismatch', () => {
     const result = runComparator([lower, upper], path.join(root, 'comparison'));
     assert.notEqual(result.status, 0, 'expected comparator to fail closed');
     assert.match(result.stderr, /cross-scale commit mismatch/);
+  });
+});
+
+test('rejects observed session metadata drift before comparison output is accepted', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k');
+    const upper = writePacket(root, '1m', { database: { timezone: 'Europe/Moscow' } });
+    const result = runComparator([lower, upper], path.join(root, 'comparison'));
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /read\.database\.timezone must be UTC; got Europe\/Moscow/u);
   });
 });

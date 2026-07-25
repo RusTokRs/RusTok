@@ -11,6 +11,7 @@ const fail = (message) => {
 
 const router = read('scripts/verify/index-storage-tooling.mjs');
 const routerFixture = read('scripts/verify/index-storage-tooling.test.mjs');
+const databaseSettingsContract = read('scripts/verify/index-storage-database-settings-contract.mjs');
 const decisionPreparer = read('scripts/verify/prepare-index-storage-decision.mjs');
 const adrFinalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
 const decisionFixture = read('scripts/verify/index-storage-decision-tooling.test.mjs');
@@ -74,8 +75,33 @@ for (const marker of [
 }
 
 for (const marker of [
+  'export const comparableDatabaseFields = Object.freeze([',
+  "'server_version_num'",
+  "'shared_buffers'",
+  "'effective_cache_size'",
+  "'work_mem'",
+  "'random_page_cost'",
+  "'jit'",
+  "'standard_conforming_strings'",
+  "'timezone'",
+  "'date_style'",
+  "'extra_float_digits'",
+  'export const databaseSettingsSource =',
+  'read-report.json database metadata observed from the active PostgreSQL benchmark session',
+  'export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =>',
+  'comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract',
+  'database_settings_source must identify metadata observed from the active PostgreSQL benchmark session',
+]) {
+  if (!databaseSettingsContract.includes(marker)) {
+    fail(`database settings contract is missing marker: ${marker}`);
+  }
+}
+
+for (const marker of [
   "const placeholderPrefix = 'TODO(index-storage-decision):'",
   "const prototypes = ['jsonb', 'typed_eav', 'hot_projection']",
+  "from './index-storage-database-settings-contract.mjs'",
+  'requireComparisonDatabaseSettingsMethodology(comparison, fail);',
   'comparison.decision_ready !== true',
   'comparison.methodology?.automatic_winner_selection !== false',
   'comparison decision contract ${field} is not satisfied',
@@ -99,8 +125,10 @@ for (const forbidden of [
 
 for (const marker of [
   "const placeholderPrefix = 'TODO(index-storage-decision):'",
+  "from './index-storage-database-settings-contract.mjs'",
   'const readJsonBytes = (filename, label) =>',
   "createHash('sha256').update(bytes).digest('hex')",
+  'requireComparisonDatabaseSettingsMethodology(comparison.value, fail);',
   'still contains a preparation placeholder',
   'writeFileSync(comparisonPath, comparison.bytes)',
   'writeFileSync(decisionPath, decision.bytes)',
@@ -119,9 +147,13 @@ for (const forbidden of ['shell: true', 'execSync(', 'execFileSync(']) {
 
 for (const marker of [
   "test('prepares an exact-comparison-bound manual decision draft'",
+  "test('rejects a comparison without the canonical database-settings methodology'",
   "test('refuses to overwrite an existing decision without force'",
   "test('rejects an unedited prepared decision'",
+  "test('finalizer rejects database-settings provenance drift with a matching comparison digest'",
   "test('finalizes an ADR bound to exact comparison and decision bytes'",
+  'comparable_database_fields: [...comparableDatabaseFields]',
+  'database_settings_source: databaseSettingsSource',
   'Comparison SHA-256:',
   'Decision SHA-256:',
 ]) {
@@ -165,7 +197,7 @@ for (const marker of [
   "createHash('sha256')",
   'exactly one comparison.json path is required',
   'readFileSync(filename)',
-  'process.stdout.write(`${digest}\\n`)',
+  'process.stdout.write(`${digest}\n`)',
 ]) {
   if (!digestHelper.includes(marker)) fail(`comparison digest helper is missing marker: ${marker}`);
 }
@@ -279,9 +311,11 @@ for (const forbidden of [
 
 for (const [name, workflow, markers] of [
   ['smoke', smokeWorkflow, [
+    'scripts/verify/index-storage-database-settings-contract.mjs',
     'scripts/verify/prepare-index-storage-decision.mjs',
     'scripts/verify/finalize-index-storage-adr.mjs',
     'scripts/verify/index-storage-decision-tooling.test.mjs',
+    'node --check scripts/verify/index-storage-database-settings-contract.mjs',
     'node --check scripts/verify/prepare-index-storage-decision.mjs',
     'node --check scripts/verify/finalize-index-storage-adr.mjs',
     'node --test scripts/verify/index-storage-decision-tooling.test.mjs',
@@ -291,9 +325,11 @@ for (const [name, workflow, markers] of [
     '--root evidence/index-storage/smoke',
   ]],
   ['scale evidence', scaleWorkflow, [
+    'scripts/verify/index-storage-database-settings-contract.mjs',
     'scripts/verify/prepare-index-storage-decision.mjs',
     'scripts/verify/finalize-index-storage-adr.mjs',
     'scripts/verify/index-storage-decision-tooling.test.mjs',
+    'node --check scripts/verify/index-storage-database-settings-contract.mjs',
     'node --check scripts/verify/prepare-index-storage-decision.mjs',
     'node --check scripts/verify/finalize-index-storage-adr.mjs',
     'node scripts/verify/index-storage-tooling.mjs contract',
@@ -318,4 +354,4 @@ for (const [name, workflow, legacy] of [
   if (workflow.includes(legacy)) fail(`${name} workflow restored a direct packet-validator invocation`);
 }
 
-console.log('[verify-index-storage-adr-tooling] command router, workflows, decision preparation, byte-bound ADR finalization, schema, examples, fixtures, and guide are consistent');
+console.log('[verify-index-storage-adr-tooling] command router, workflows, shared database-settings methodology, decision preparation, byte-bound ADR finalization, schema, examples, fixtures, and guide are consistent');

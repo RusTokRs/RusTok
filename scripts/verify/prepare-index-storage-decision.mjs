@@ -11,6 +11,8 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 
+import { requireComparisonDatabaseSettingsMethodology } from './index-storage-database-settings-contract.mjs';
+
 const prefix = '[prepare-index-storage-decision]';
 const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
 const requiredDecisionFlags = [
@@ -105,6 +107,7 @@ const readComparison = (filename) => {
 
 const comparisonCommit = (comparison) => {
   requireObject(comparison, 'comparison');
+  requireComparisonDatabaseSettingsMethodology(comparison, fail);
   if (comparison.decision_ready !== true) fail('comparison is not decision-ready');
   if (comparison.methodology?.automatic_winner_selection !== false) {
     fail('comparison must explicitly disable automatic winner selection');

@@ -2,7 +2,7 @@
 
 This checklist is the canonical implementation status for the SEO hardening work.
 A task is marked complete only after its implementation has been committed to `main`.
-Automated verification is recorded separately; the dedicated `SEO Hardening` job reports the permanent SEO source guards for pull requests and branch pushes.
+Automated verification is recorded separately; the dedicated `SEO Hardening` job reports the permanent SEO hardening guards for pull requests and branch pushes.
 
 ## P0 — correctness and security
 
@@ -51,6 +51,6 @@ Automated verification is recorded separately; the dedicated `SEO Hardening` job
 - [x] Run `cargo check -p rustok-seo`. (scoped PR #2022 verification; landed via #2051)
 - [ ] Run `cargo test -p rustok-seo`. Full suite currently has nine pre-existing failures outside the bulk terminal slice.
 - [x] Compile all SEO tests and run the bulk terminal integration, bulk service unit, and bulk event unit scopes. (scoped PR #2022 verification; landed via #2051)
-- [x] Register an independent GitHub Actions `SEO Hardening` status that aggregates the permanent SEO source guards without being skipped by unrelated repository failures. (#2118)
+- [x] Register an independent GitHub Actions `SEO Hardening` status scoped to the permanent hardening-roadmap guards without being skipped or masked by unrelated repository/readiness failures. (#2118, scope corrected in #2122, sitemap verifier aligned in #2124)
 
-The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification; PR #2051 is the clean follow-up without the temporary workflow, patch script, or `Cargo.lock` churn. PRs #2056, #2059, #2061, #2064, #2067, #2078, #2082, #2083, #2085, #2092, #2095, #2098, #2100, #2107, #2112, and #2118 continue the SEO hardening work without fresh local test execution at the user's request. The full-suite checkbox remains open because nine pre-existing failures outside these slices still need resolution.
+The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification; PR #2051 is the clean follow-up without the temporary workflow, patch script, or `Cargo.lock` churn. PRs #2056, #2059, #2061, #2064, #2067, #2078, #2082, #2083, #2085, #2092, #2095, #2098, #2100, #2107, #2112, #2118, #2122, and #2124 continue the SEO hardening work without fresh local test execution at the user's request. The full-suite checkbox remains open because nine pre-existing failures outside these slices still need resolution.

@@ -52,8 +52,8 @@ if (contract.schema_version !== 1) {
 if (contract.task !== "FORUM-20D") {
   failures.push("owner read visibility contract must belong to FORUM-20D");
 }
-if (contract.canonical_plan_sync !== "pending_conflict_safe_full_file_update") {
-  failures.push("owner read visibility contract must report the pending canonical plan synchronization honestly");
+if (contract.canonical_plan_sync !== "included") {
+  failures.push("owner read visibility contract must be synchronized into the canonical plan");
 }
 if (contract.category_tree_bound !== 512 || contract.category_depth_bound !== 16) {
   failures.push("owner read visibility category bounds must remain 512 nodes and depth 16");
@@ -67,7 +67,6 @@ for (const residual of [
   "channel membership visibility",
   "group membership visibility",
   "explicit allow and deny",
-  "category owner read filtering",
   "create reply and moderate audience policy",
   "search notification SEO and deep-link migration to the owner scope",
   "visibility-scoped category and all-read mutations",
@@ -227,10 +226,12 @@ for (const marker of [
 
 for (const marker of [
   "## `FORUM-20` — ACL and visibility inheritance",
-  "Delivered in `FORUM-20A`",
-  "Delivered in `FORUM-20B`",
+  "Delivered in `FORUM-20C`",
+  "Delivered in `FORUM-20D`",
+  "topic_reply_owner_visibility_sqlite",
+  "verify-forum-owner-read-visibility.mjs",
 ]) {
-  requireText(plan, marker, `canonical FORUM-20 plan is missing its existing baseline ${marker}`);
+  requireText(plan, marker, `canonical FORUM-20 plan is missing ${marker}`);
 }
 
 if (failures.length > 0) {
@@ -239,4 +240,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Forum owner read visibility contract is source-ready; canonical plan sync remains explicit.");
+console.log("Forum owner read visibility contract is source-ready.");

@@ -63,7 +63,7 @@ for (const [value, label] of [
   ['SITEMAP_JOB_COMPLETED.to_string()', 'terminal completion'],
   ['SITEMAP_JOB_RUNNING,\n                SITEMAP_JOB_SUBMITTING', 'active job resume'],
   ['active.is_some()', 'tenant-local queue deduplication'],
-  ['urls.chunks(super::SITEMAP_CHUNK_SIZE)', 'bounded sitemap files'],
+  ['urls.chunks(crate::services::SITEMAP_CHUNK_SIZE)', 'bounded sitemap files'],
 ]) {
   requireText(worker, value, label);
 }
