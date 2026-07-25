@@ -41,8 +41,12 @@ const plan = read(contract.canonical_plan ?? "");
 if (contract.schema_version !== 1) {
   failures.push("forum notification inbox privacy contract must use schema_version=1");
 }
-if (contract.task !== "FORUM-20S" || contract.upstream_task !== "FORUM-20R") {
-  failures.push("forum notification inbox privacy contract must connect FORUM-20R/S");
+if (
+  contract.task !== "FORUM-20S" ||
+  contract.upstream_task !== "FORUM-20R" ||
+  contract.downstream_task !== "FORUM-20T"
+) {
+  failures.push("forum notification inbox privacy contract must connect FORUM-20R/S/T");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("inbox privacy recheck must not claim unexecuted evidence");
@@ -218,7 +222,8 @@ for (const marker of [
   "evaluates the same injected Profiles/Social Graph recipient policy",
   "Suppression returns `Unavailable` without invoking the source provider",
   "Only an allowed recipient reaches the registered source provider",
-  "bounded inbox listing and seen/read/archive state APIs",
+  "### Bounded authorized inbox listing",
+  "seen/read/archive state APIs",
   "verify-forum-notification-inbox-open-privacy.mjs",
 ]) {
   requireText(docs, marker, `notifications live contract is missing ${marker}`);
