@@ -54,6 +54,20 @@ const scaleValues = {
   },
 };
 
+const databaseMetadata = (overrides = {}) => ({
+  version: 'PostgreSQL 16 fixture',
+  server_version_num: '160000',
+  shared_buffers: '128MB',
+  effective_cache_size: '4GB',
+  work_mem: '4MB',
+  random_page_cost: '4',
+  jit: 'off',
+  standard_conforming_strings: 'on',
+  timezone: 'UTC',
+  date_style: 'ISO, YMD',
+  extra_float_digits: '3',
+  ...overrides,
+});
 const digest = (workloadIndex, scale) => {
   const offset = scale === '100k' ? 1 : 8;
   return ((workloadIndex + offset) % 16).toString(16).repeat(32);
@@ -137,20 +151,7 @@ function writePacket(root, scale, overrides = {}) {
   const read = {
     generated_at: generatedAt,
     result_digest_contract: overrides.readDigestContract ?? resultDigestContract,
-    database: {
-      version: 'PostgreSQL 16 fixture',
-      server_version_num: '160000',
-      shared_buffers: '128MB',
-      effective_cache_size: '4GB',
-      work_mem: '4MB',
-      random_page_cost: '4',
-      jit: 'off',
-      standard_conforming_strings: 'on',
-      timezone: 'UTC',
-      date_style: 'ISO, YMD',
-      extra_float_digits: '3',
-      ...overrides.database,
-    },
+    database: databaseMetadata(overrides.database),
     dataset: {
       scale: values.serialized,
       tenants: values.tenants,
@@ -191,6 +192,7 @@ function writePacket(root, scale, overrides = {}) {
 
   const mutation = {
     generated_at: generatedAt,
+    database: databaseMetadata({ ...overrides.database, ...overrides.mutationDatabase }),
     dataset_scale: values.debug,
     repetitions: 3,
     prototypes: prototypes.map((prototype) => ({
@@ -212,6 +214,7 @@ function writePacket(root, scale, overrides = {}) {
 
   const maintenance = {
     generated_at: generatedAt,
+    database: databaseMetadata({ ...overrides.database, ...overrides.maintenanceDatabase }),
     dataset_scale: values.serialized,
     cycles: overrides.maintenanceCycles ?? 5,
     prototypes: prototypes.map((prototype, index) => {
@@ -392,4 +395,10 @@ test('rejects observed session metadata drift before comparison output is accept
     assert.notEqual(result.status, 0, 'expected comparator to fail closed');
     assert.match(result.stderr, /read\.database\.timezone must be UTC; got Europe\/Moscow/u);
   });
+});
+
+test('rejects mutation session metadata drift within one packet', () => {
+  withFixture((root) => expectFailure(root, {
+    mutationDatabase: { work_mem: '8MB' },
+  }, /mutation-report\.json\.database\.work_mem must match read-report\.json database metadata/u));
 });
