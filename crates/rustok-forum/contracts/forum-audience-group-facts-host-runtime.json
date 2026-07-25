@@ -2,6 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20Q",
   "upstream_task": "FORUM-20P",
+  "downstream_task": "FORUM-20R",
   "scope": "Server-owned exact requested group membership facts adapter for authenticated Forum audience evaluation",
   "adapter_file": "apps/server/src/services/forum_audience_group_facts.rs",
   "services_file": "apps/server/src/services/mod.rs",
