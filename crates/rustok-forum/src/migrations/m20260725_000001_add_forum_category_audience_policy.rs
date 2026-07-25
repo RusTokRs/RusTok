@@ -114,6 +114,7 @@ CREATE OR REPLACE FUNCTION forum_reject_category_audience_relation_update()
 RETURNS trigger AS $$
 BEGIN
     RAISE EXCEPTION 'forum category audience relation rows are immutable';
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -233,6 +234,9 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
+CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_categories_tenant_id
+    ON forum_categories (tenant_id, id);
+
 CREATE TABLE IF NOT EXISTS forum_category_audience_policies (
     tenant_id TEXT NOT NULL,
     category_id TEXT NOT NULL,
@@ -382,6 +386,7 @@ DROP TABLE IF EXISTS forum_category_audience_groups;
 DROP TABLE IF EXISTS forum_category_audience_channels;
 DROP TABLE IF EXISTS forum_category_audience_roles;
 DROP TABLE IF EXISTS forum_category_audience_policies;
+DROP INDEX IF EXISTS uq_forum_categories_tenant_id;
 "#,
         )
         .await?;
