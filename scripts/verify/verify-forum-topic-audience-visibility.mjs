@@ -110,6 +110,7 @@ for (const marker of [
   "pub struct ForumTopicAudienceViewer",
   "pub fn public() -> Self",
   "pub fn authenticated(",
+  "security.actor_kind != SecurityActorKind::User",
   "port_context.actor.kind != PortActorKind::User",
   "actor does not match the viewer",
   "pub struct ForumTopicAudienceVisibilityService",
@@ -188,7 +189,7 @@ for (const marker of [
 for (const marker of [
   "pub struct ForumAudienceFactsResolver",
   "pub struct ForumAudienceEvaluator",
-  "explicit deny always wins",
+  "ForumAudienceDecisionReason::ExplicitDeny",
 ]) {
   requireText(evaluator, marker, `audience evaluator contract is missing ${marker}`);
 }
