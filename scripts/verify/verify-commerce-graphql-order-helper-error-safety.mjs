@@ -105,6 +105,12 @@ for (const [value, label] of [
 ]) requireText(facadeSource, value, label);
 
 for (const [value, label] of [
+  ['async_graphql::Error::new(message)', 'static GraphQL public message'],
+  ['extensions.set("code", code)', 'GraphQL public code extension'],
+  ['extensions.set("retryable", retryable)', 'GraphQL retryability extension'],
+]) requireText(facadeSource, value, label);
+
+for (const [value, label] of [
   ['OrderError::Validation(_)', 'order validation mapping'],
   ['OrderError::OrderNotFound(order_id)', 'order not-found mapping'],
   ['context.order_id = Some(*order_id);', 'typed order identity adoption'],
