@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { requireComparisonDatabaseSettingsMethodology } from './index-storage-database-settings-contract.mjs';
+
 const prefix = '[render-index-storage-adr]';
 const fail = (message) => {
   console.error(`${prefix} ${message}`);
@@ -219,6 +221,7 @@ const validateScaleShape = (scale) => {
 
 const validateComparison = (comparison) => {
   requireObject(comparison, 'comparison');
+  requireComparisonDatabaseSettingsMethodology(comparison, fail);
   if (comparison.decision_ready !== true) fail('comparison is not decision-ready');
   const decisionContract = requireObject(comparison.decision_contract, 'comparison.decision_contract');
   for (const field of requiredDecisionFlags) {
