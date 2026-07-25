@@ -201,7 +201,7 @@ counts, grouped views, transport adapters, and UI remain closed.
 
 `NotificationInboxReconcileService` scans only non-archived rows for one exact
 tenant/recipient in `created_at DESC, id DESC` order. It uses the same default/hard
-page bounds of 20/64 and a separate versioned cursor that preserves timestamp
+page bounds of 20/64 and reuses the crate-private `i1` inbox cursor with timestamp
 nanoseconds and the UUID tie-breaker.
 
 Every raw row reuses `NotificationInboxOpenService`, preserving current recipient
