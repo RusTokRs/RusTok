@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -16,6 +16,20 @@ const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
 const readWorkloads = ['status_equality', 'price_range_sort'];
 const mutationWorkloads = ['update_product_batch', 'delete_product_batch'];
 const markdownCode = String.fromCharCode(96);
+const comparableDatabaseFields = [
+  'server_version_num',
+  'shared_buffers',
+  'effective_cache_size',
+  'work_mem',
+  'random_page_cost',
+  'jit',
+  'standard_conforming_strings',
+  'timezone',
+  'date_style',
+  'extra_float_digits',
+];
+const databaseSettingsSource =
+  'read-report.json database metadata observed from the active PostgreSQL benchmark session';
 const decisionFlags = {
   required_scales_present: true,
   same_packet_contract_version: true,
@@ -70,7 +84,11 @@ const scale = (name, factor) => ({
 
 const comparison = () => ({
   generated_at: '2026-07-24T12:00:00Z',
-  methodology: { automatic_winner_selection: false },
+  methodology: {
+    automatic_winner_selection: false,
+    comparable_database_fields: [...comparableDatabaseFields],
+    database_settings_source: databaseSettingsSource,
+  },
   decision_ready: true,
   decision_contract: { ...decisionFlags },
   scales: [scale('100k', 1), scale('1m', 10)],
@@ -165,6 +183,26 @@ test('prepares an exact-comparison-bound manual decision draft', () => {
   });
 });
 
+test('rejects a comparison without the canonical database-settings methodology', () => {
+  withFixture((root) => {
+    const comparisonPath = path.join(root, 'comparison.json');
+    const decisionPath = path.join(root, 'decision.json');
+    const value = comparison();
+    delete value.methodology.comparable_database_fields;
+    writeJson(comparisonPath, value);
+    const result = run(prepareScript, [
+      '--comparison', comparisonPath,
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', decisionPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract/u);
+    assert.equal(existsSync(decisionPath), false);
+  });
+});
+
 test('refuses to overwrite an existing decision without force', () => {
   withFixture((root) => {
     const fixture = prepare(root);
@@ -210,6 +248,28 @@ test('rejects an unedited prepared decision', () => {
     ]);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /still contains a preparation placeholder/u);
+  });
+});
+
+test('finalizer rejects database-settings provenance drift with a matching comparison digest', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const comparisonValue = JSON.parse(readFileSync(fixture.comparisonPath, 'utf8'));
+    comparisonValue.methodology.database_settings_source = 'declared benchmark constants';
+    const comparisonBytes = writeJson(fixture.comparisonPath, comparisonValue);
+    const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
+    decision.comparison_sha256 = sha256(comparisonBytes);
+    writeJson(fixture.decisionPath, decision);
+    const outputPath = path.join(root, 'adr.md');
+    const result = run(finalizeScript, [
+      '--comparison', fixture.comparisonPath,
+      '--decision', fixture.decisionPath,
+      '--output', outputPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /database_settings_source must identify metadata observed from the active PostgreSQL benchmark session/u);
+    assert.equal(existsSync(outputPath), false);
   });
 });
 
