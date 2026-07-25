@@ -183,6 +183,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [AI Session Template](./ai/SESSION_TEMPLATE.md)
 - [Known Pitfalls](./ai/KNOWN_PITFALLS.md)
 - [MCP Reference Index](./references/mcp/README.md)
+- [DevMesh: AI-Native Collaborative Network](./research/devmesh-concept.md) — proposed community, participant, work, provenance, settlement, and resource-commons architecture
 - [RusTok vs Medusa Architecture Comparison](./research/medusa-vs-rustok-architecture.md)
 - [Fluid Frontend Architecture for RusTok](./research/fluid-frontend-architecture.md)
 - [Fluid Backend Architecture for RusTok](./research/fluid-backend-architecture.md)
