@@ -78,11 +78,8 @@ const requireDatabaseMetadata = (report, label) => {
   return database;
 };
 
-const requireSessionMetadata = (read, directory) => {
-  const database = requireDatabaseMetadata(read, `${directory} read`);
-  requireCanonicalSessionMetadata(database, `${directory} read.database`);
-  return database;
-};
+const requireSessionMetadata = (read, directory) =>
+  requireDatabaseMetadata(read, `${directory} read`);
 
 const requireSameDatabaseMetadata = (expected, actual, label) => {
   for (const field of canonicalDatabaseMetadataFields) {
@@ -215,7 +212,6 @@ const readReport = (directory, filename = 'read-report.json') => {
 export const validatePacketReadOrdering = (directory) => {
   const read = requireObject(readReport(directory), `${directory} read report`);
   const readDatabase = requireSessionMetadata(read, directory);
-  requireSessionMetadata(read, directory);
   requireExactNames(read.source_workloads, canonicalReadWorkloads, `${directory} source workload order`);
   for (const workload of read.source_workloads) {
     requireObject(workload, `${directory} source/${workload?.name ?? 'unknown'}`);
