@@ -1,8 +1,10 @@
 {
   "schema_version": 1,
   "task": "FORUM-20F",
+  "delivered_through": "FORUM-20G",
   "scope": "Bounded role, trust, channel membership, group membership, and explicit allow/deny audience contract",
   "contract_file": "crates/rustok-forum/src/audience.rs",
+  "persistence_contract": "crates/rustok-forum/contracts/forum-category-audience-policy.json",
   "crate_file": "crates/rustok-forum/src/lib.rs",
   "test_file": "crates/rustok-forum/tests/audience_capability_contract.rs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
@@ -38,8 +40,8 @@
     "direct_owner_table_access": false
   },
   "composition": {
-    "storage": false,
-    "category_policy": false,
+    "storage": true,
+    "category_policy": true,
     "topic_policy": false,
     "reply_policy": false,
     "transport": false,
@@ -48,7 +50,6 @@
     "seo_deep_links": false
   },
   "not_delivered": [
-    "audience policy persistence and inheritance",
     "category topic and reply read composition",
     "create reply and moderate audience write policy",
     "topic narrowing commands",
@@ -61,7 +62,9 @@
   "verification": {
     "commands": [
       "cargo test -p rustok-forum --test audience_capability_contract -- --nocapture",
+      "cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-audience-capability-ports.mjs",
+      "node scripts/verify/verify-forum-category-audience-policy.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"
