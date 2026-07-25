@@ -61,8 +61,8 @@ for (const [value, label] of [
   ['const INDEX_REPAIR_JOB_COMPLETED: &str = "completed";', 'completed state'],
   ['const INDEX_REPAIR_JOB_FAILED: &str = "failed";', 'failed state'],
   ['const INDEX_REPAIR_JOB_MAX_LIMIT: usize = 500;', 'bounded worker limit'],
-  ['pub(super) async fn queue_index_repair_replay_background(', 'queue implementation'],
-  ['pub(super) async fn execute_next_index_repair_replay_job_background(', 'worker implementation'],
+  ['pub(crate) async fn queue_index_repair_replay_background(', 'queue implementation'],
+  ['pub(crate) async fn execute_next_index_repair_replay_job_background(', 'worker implementation'],
   ['job_entity::Column::Status.eq(INDEX_REPAIR_JOB_RUNNING)', 'running job resume'],
   ['job_entity::Column::Status.eq(INDEX_REPAIR_JOB_QUEUED)', 'queued job claim'],
   ['.run_index_repair_replay(', 'bounded legacy execution inside worker'],
@@ -117,9 +117,9 @@ forbidText(
   'unauthorized server worker execution',
 );
 
-const queueStart = worker.indexOf('pub(super) async fn queue_index_repair_replay_background(');
+const queueStart = worker.indexOf('pub(crate) async fn queue_index_repair_replay_background(');
 const workerStart = worker.indexOf(
-  'pub(super) async fn execute_next_index_repair_replay_job_background(',
+  'pub(crate) async fn execute_next_index_repair_replay_job_background(',
 );
 if (queueStart < 0 || workerStart < 0 || workerStart <= queueStart) {
   failures.push('unable to isolate index repair queue implementation');
