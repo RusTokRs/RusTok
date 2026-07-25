@@ -167,9 +167,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS forum_category_audience_policy_identity_update ON forum_category_audience_policies;
-CREATE TRIGGER forum_category_audience_policy_identity_update
-BEFORE UPDATE OF tenant_id, category_id ON forum_category_audience_policies
+DROP TRIGGER IF EXISTS forum_category_audience_policy_update ON forum_category_audience_policies;
+CREATE TRIGGER forum_category_audience_policy_update
+BEFORE UPDATE ON forum_category_audience_policies
 FOR EACH ROW EXECUTE FUNCTION forum_reject_category_audience_relation_update();
 
 DROP TRIGGER IF EXISTS forum_category_audience_roles_update ON forum_category_audience_roles;
@@ -299,8 +299,8 @@ CREATE TABLE IF NOT EXISTS forum_category_audience_users (
     CHECK (effect IN ('allow', 'deny'))
 );
 
-CREATE TRIGGER IF NOT EXISTS forum_category_audience_policy_identity_update
-BEFORE UPDATE OF tenant_id, category_id ON forum_category_audience_policies
+CREATE TRIGGER IF NOT EXISTS forum_category_audience_policy_update
+BEFORE UPDATE ON forum_category_audience_policies
 BEGIN
     SELECT RAISE(ABORT, 'forum category audience relation rows are immutable');
 END;
@@ -380,7 +380,7 @@ DROP TRIGGER IF EXISTS forum_category_audience_groups_insert;
 DROP TRIGGER IF EXISTS forum_category_audience_channels_update;
 DROP TRIGGER IF EXISTS forum_category_audience_channels_insert;
 DROP TRIGGER IF EXISTS forum_category_audience_roles_update;
-DROP TRIGGER IF EXISTS forum_category_audience_policy_identity_update;
+DROP TRIGGER IF EXISTS forum_category_audience_policy_update;
 DROP TABLE IF EXISTS forum_category_audience_users;
 DROP TABLE IF EXISTS forum_category_audience_groups;
 DROP TABLE IF EXISTS forum_category_audience_channels;
