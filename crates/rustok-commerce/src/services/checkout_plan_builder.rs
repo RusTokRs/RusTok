@@ -385,10 +385,22 @@ fn build_marketplace_plan_lines(
 
     for (order_line_index, line) in cart.line_items.iter().enumerate() {
         let snapshot = snapshots.remove(&line.id);
-        let has_legacy_marketplace_identity = line.seller_id.is_some()
+        let has_legacy_marketplace_identity = line
+            .seller_id
+            .as_deref()
+            .map_or(false, |s| Uuid::parse_str(s).is_ok())
             || line.metadata.get("marketplace").is_some()
-            || line.metadata.get("seller_id").is_some()
-            || line.metadata.get("seller").is_some();
+            || line
+                .metadata
+                .get("seller_id")
+                .and_then(|v| v.as_str())
+                .map_or(false, |s| Uuid::parse_str(s).is_ok())
+            || line
+                .metadata
+                .get("seller")
+                .and_then(|v| v.get("id"))
+                .and_then(|v| v.as_str())
+                .map_or(false, |s| Uuid::parse_str(s).is_ok());
         let Some(snapshot) = snapshot else {
             if has_legacy_marketplace_identity {
                 return Err(CheckoutError::Validation(format!(

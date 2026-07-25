@@ -280,6 +280,7 @@ where
 }
 
 pub fn build_delivery_groups(
+    cart_selected_shipping_option_id: Option<Uuid>,
     line_items: &[entities::cart_line_item::Model],
     selection_map: &BTreeMap<DeliveryGroupKey, Option<Uuid>>,
 ) -> Vec<CartDeliveryGroupResponse> {
@@ -292,15 +293,31 @@ pub fn build_delivery_groups(
             .or_insert_with(|| vec![item.id]);
     }
 
+    let is_single_group = groups.len() == 1;
+
     groups
         .into_iter()
-        .map(|(group_key, line_item_ids)| CartDeliveryGroupResponse {
-            selected_shipping_option_id: selection_map.get(&group_key).copied().flatten(),
-            shipping_profile_slug: group_key.shipping_profile_slug,
-            seller_id: group_key.seller_id,
-            seller_scope: group_key.seller_scope,
-            line_item_ids,
-            available_shipping_options: Vec::new(),
+        .map(|(group_key, line_item_ids)| {
+            let selected_shipping_option_id = selection_map
+                .get(&group_key)
+                .copied()
+                .flatten()
+                .or_else(|| {
+                    if is_single_group {
+                        cart_selected_shipping_option_id
+                    } else {
+                        None
+                    }
+                });
+
+            CartDeliveryGroupResponse {
+                selected_shipping_option_id,
+                shipping_profile_slug: group_key.shipping_profile_slug,
+                seller_id: group_key.seller_id,
+                seller_scope: group_key.seller_scope,
+                line_item_ids,
+                available_shipping_options: Vec::new(),
+            }
         })
         .collect()
 }
@@ -596,11 +613,16 @@ pub async fn load_cart_in_tx<C>(
 where
     C: ConnectionTrait,
 {
-    entities::cart::Entity::find_by_id(cart_id)
+    let cart = entities::cart::Entity::find_by_id(cart_id)
         .filter(entities::cart::Column::TenantId.eq(tenant_id))
         .one(conn)
         .await?
-        .ok_or(CartError::CartNotFound(cart_id))
+        .ok_or(CartError::CartNotFound(cart_id))?;
+    let backtrace = std::backtrace::Backtrace::capture();
+    let bt_str = format!("{backtrace}");
+    let caller = bt_str.lines().find(|l| l.contains("rustok_")).unwrap_or("unknown");
+    eprintln!("DEBUG LOAD_CART_IN_TX: id={}, country_code={:?}, status={}, caller={}", cart.id, cart.country_code, cart.status, caller.trim());
+    Ok(cart)
 }
 
 pub async fn build_response<C>(conn: &C, cart: entities::cart::Model) -> CartResult<CartResponse>
@@ -640,7 +662,7 @@ where
     let total_amount = cart.total_amount;
     let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
     let selection_map = selection_map_from_records(&delivery_group_snapshots, shipping_selections);
-    let delivery_groups = build_delivery_groups(&line_items, &selection_map);
+    let delivery_groups = build_delivery_groups(cart.selected_shipping_option_id, &line_items, &selection_map);
     let selected_shipping_option_id = match delivery_groups.len() {
         0 => cart.selected_shipping_option_id,
         1 => delivery_groups[0].selected_shipping_option_id,
@@ -900,6 +922,10 @@ pub async fn recalculate_totals<C>(
 where
     C: ConnectionTrait,
 {
+    let cart = entities::cart::Entity::find_by_id(cart.id)
+        .one(conn)
+        .await?
+        .ok_or(CartError::CartNotFound(cart.id))?;
     let line_items = entities::cart_line_item::Entity::find()
         .filter(entities::cart_line_item::Column::CartId.eq(cart.id))
         .all(conn)
@@ -975,7 +1001,10 @@ where
         }
     } else if available_group_snapshots.len() <= 1 {
         if let Some(group) = available_group_snapshots.iter().next() {
-            desired.insert(group.key.clone(), input.selected_shipping_option_id);
+            let option_id = input
+                .selected_shipping_option_id
+                .or(cart.selected_shipping_option_id);
+            desired.insert(group.key.clone(), option_id);
         } else {
             desired.clear();
         }
@@ -1072,7 +1101,7 @@ where
         .map(|records| selection_map_from_records(&delivery_group_snapshots, records))?;
 
     if delivery_group_snapshots.len() == 1
-        && desired.is_empty()
+        && desired.values().all(|val| val.is_none())
         && cart.selected_shipping_option_id.is_some()
         && !line_items.is_empty()
     {

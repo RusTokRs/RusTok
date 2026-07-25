@@ -151,7 +151,12 @@ impl CheckoutService {
             )
             .await
             .map_err(|error| checkout_port_error("read_cart_checkout_snapshot", error))?;
-        if input.shipping_selections.is_some() || input.shipping_option_id.is_some() {
+        if input.shipping_selections.is_some()
+            || input.shipping_option_id.is_some()
+            || input.region_id.is_some()
+            || input.country_code.is_some()
+            || input.locale.is_some()
+        {
             cart = self
                 .cart_checkout_port
                 .update_cart_checkout_context(
@@ -159,7 +164,7 @@ impl CheckoutService {
                         tenant_id,
                         actor_id,
                         cart.id,
-                        cart.locale_code.as_deref(),
+                        input.locale.as_deref().or(cart.locale_code.as_deref()),
                         cart.channel_slug.as_deref(),
                         "update_context",
                         true,
@@ -168,10 +173,12 @@ impl CheckoutService {
                         cart_id: cart.id,
                         input: UpdateCartContextInput {
                             email: cart.email.clone(),
-                            region_id: cart.region_id,
-                            country_code: cart.country_code.clone(),
-                            locale_code: cart.locale_code.clone(),
-                            selected_shipping_option_id: input.shipping_option_id,
+                            region_id: input.region_id.or(cart.region_id),
+                            country_code: input.country_code.clone().or(cart.country_code.clone()),
+                            locale_code: input.locale.clone().or(cart.locale_code.clone()),
+                            selected_shipping_option_id: input
+                                .shipping_option_id
+                                .or(cart.selected_shipping_option_id),
                             shipping_selections: input.shipping_selections.clone(),
                         },
                     },

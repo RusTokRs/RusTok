@@ -638,13 +638,6 @@ pub(super) fn normalize_redirect_status(status_code: i32) -> SeoResult<i32> {
     }
 }
 
-pub(super) fn wildcard_matches(pattern: &str, route: &str) -> bool {
-    let Some((prefix, suffix)) = pattern.split_once('*') else {
-        return pattern == route;
-    };
-    route.starts_with(prefix) && route.ends_with(suffix)
-}
-
 pub(super) fn map_redirect_record(model: seo_redirect::Model) -> SeoRedirectRecord {
     SeoRedirectRecord {
         id: model.id,

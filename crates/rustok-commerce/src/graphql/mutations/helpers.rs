@@ -3,12 +3,10 @@ use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{AuthContext, PortActor, PortContext, RequestContext, graphql::GraphQLError};
 use rustok_cart::{CartStorefrontPort, CartStorefrontRepriceRequest};
-use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
-use rustok_order::OrderService;
 use rustok_pricing::{
     PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
     in_process_pricing_read_port,
@@ -23,7 +21,7 @@ use uuid::Uuid;
 
 use crate::{
     CreateReturnDecisionInput, ReturnClaimDecisionInput, ReturnDecisionInput,
-    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
     storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
     storefront_shipping::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
@@ -320,44 +318,7 @@ pub(crate) fn graphql_decision_requires_payments_update(
     action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
 }
 
-pub(crate) async fn ensure_storefront_order_access(
-    db: &sea_orm::DatabaseConnection,
-    event_bus: &rustok_outbox::TransactionalEventBus,
-    tenant_id: Uuid,
-    ctx: &Context<'_>,
-    order_id: Uuid,
-) -> Result<()> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let customer = in_process_customer_read_port(db.clone())
-        .read_customer_projection_by_user(
-            storefront_customer_port_context(tenant_id, auth.user_id),
-            CustomerUserProjectionRequest {
-                user_id: auth.user_id,
-            },
-        )
-        .await
-        .map_err(|err| match err.code.as_str() {
-            "customer.customer_by_user_not_found" => {
-                <FieldError as GraphQLError>::unauthenticated()
-            }
-            _ => async_graphql::Error::new(err.message),
-        })?;
 
-    let order = OrderService::new(db.clone(), event_bus.clone())
-        .get_order(tenant_id, order_id)
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
-    if order.customer_id != Some(customer.id) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Order does not belong to the current customer",
-        ));
-    }
-
-    Ok(())
-}
 
 pub(crate) fn parse_json_payload(value: &str, message: &str) -> Result<Value> {
     serde_json::from_str(value).map_err(|_| async_graphql::Error::new(message))
@@ -369,16 +330,6 @@ pub(crate) fn parse_optional_metadata(value: Option<&str>) -> Result<Value> {
         Some(value) => serde_json::from_str(value)
             .map_err(|_| async_graphql::Error::new("Invalid JSON metadata payload")),
     }
-}
-
-fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortContext {
-    PortContext::new(
-        tenant_id.to_string(),
-        PortActor::user(user_id.to_string()),
-        "en",
-        format!("storefront-customer:{user_id}"),
-    )
-    .with_deadline(std::time::Duration::from_secs(2))
 }
 
 pub(crate) fn storefront_cart_port_context(
@@ -589,39 +540,6 @@ pub(crate) fn current_shipping_selections(
         .collect()
 }
 
-pub(crate) async fn validate_product_shipping_profile_input(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    shipping_profile_slug: Option<&str>,
-) -> Result<()> {
-    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
-        return Ok(());
-    };
-
-    ShippingProfileService::new(db.clone())
-        .ensure_shipping_profile_slug_exists(tenant_id, &slug)
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
-    Ok(())
-}
-
-pub(crate) async fn validate_shipping_option_profile_inputs(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    allowed_shipping_profile_slugs: Option<&Vec<String>>,
-) -> Result<()> {
-    let Some(slugs) = allowed_shipping_profile_slugs else {
-        return Ok(());
-    };
-
-    ShippingProfileService::new(db.clone())
-        .ensure_shipping_profile_slugs_exist(tenant_id, slugs.iter())
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
-    Ok(())
-}
 
 pub(crate) fn maybe_undefined_or_existing<T>(
     value: async_graphql::MaybeUndefined<T>,

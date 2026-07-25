@@ -127,15 +127,6 @@ pub async fn complete_storefront_checkout_input(
             "cart_id must be a non-nil UUID".to_string(),
         ));
     }
-    if checkout_input
-        .locale
-        .as_deref()
-        .map(str::trim)
-        .is_none_or(str::is_empty)
-    {
-        checkout_input.locale = Some(request_context.locale.clone());
-    }
-
     let cart_id = checkout_input.cart_id;
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
     let cart_port_context = cart_context(
@@ -159,6 +150,18 @@ pub async fn complete_storefront_checkout_input(
                 StorefrontStagedCheckoutRuntimeError::CartAccess,
             )
         })?;
+
+    if checkout_input
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        checkout_input.locale = cart
+            .locale_code
+            .clone()
+            .or_else(|| Some(request_context.locale.clone()));
+    }
     let customer_id = resolve_customer_id(runtime, tenant_id, auth.as_ref()).await?;
     if cart.customer_id.is_some() && cart.customer_id != customer_id {
         if auth.is_none() {

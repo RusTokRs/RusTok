@@ -23,7 +23,6 @@ use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
-use rustok_order::OrderService;
 use rustok_pricing::{
     PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
     in_process_pricing_read_port,
@@ -150,35 +149,7 @@ pub(crate) async fn resolve_context_from_cart_for_db(
     .await
 }
 
-pub(crate) async fn ensure_customer_owns_order_for_db(
-    db: &DatabaseConnection,
-    event_bus: rustok_outbox::TransactionalEventBus,
-    tenant_id: Uuid,
-    auth: Option<&rustok_api::AuthContext>,
-    order_id: Uuid,
-) -> HttpResult<()> {
-    let customer_id = current_customer_id_for_db(db, tenant_id, auth)
-        .await?
-        .ok_or_else(|| {
-            HttpError::unauthorized(
-                "commerce_store_denied",
-                "Customer account required".to_string(),
-            )
-        })?;
-    let order = OrderService::new(db.clone(), event_bus)
-        .get_order(tenant_id, order_id)
-        .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
 
-    if order.customer_id != Some(customer_id) {
-        return Err(HttpError::unauthorized(
-            "commerce_store_denied",
-            "Order does not belong to the current customer".to_string(),
-        ));
-    }
-
-    Ok(())
-}
 
 pub(crate) async fn current_customer_id_for_db(
     db: &DatabaseConnection,
@@ -362,7 +333,11 @@ pub(crate) async fn apply_cart_context_patch_for_db(
                 input: UpdateCartContextInput {
                     email: requested.email,
                     region_id: context.region.as_ref().map(|region| region.id),
-                    country_code: requested.country_code,
+                    country_code: context
+                        .region
+                        .as_ref()
+                        .and_then(|region| region.countries.first().cloned())
+                        .or(requested.country_code),
                     locale_code: Some(context.locale.clone()),
                     selected_shipping_option_id: requested.selected_shipping_option_id,
                     shipping_selections: Some(requested.shipping_selections.clone()),
@@ -580,7 +555,7 @@ pub(crate) async fn enrich_storefront_cart_for_db(
     cart: CartResponse,
 ) -> HttpResult<CartResponse> {
     let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, request_context);
-    enrich_cart_delivery_groups(
+    let mut cart = enrich_cart_delivery_groups(
         db,
         tenant_id,
         cart,
@@ -589,7 +564,28 @@ pub(crate) async fn enrich_storefront_cart_for_db(
         Some(tenant_default_locale),
     )
     .await
-    .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))
+    .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
+
+    if cart.delivery_groups.len() == 1 {
+        let is_compatible = |opt_id: Uuid| {
+            cart.delivery_groups[0]
+                .available_shipping_options
+                .iter()
+                .any(|opt| opt.id == opt_id)
+        };
+        let selected_id = cart.delivery_groups[0]
+            .selected_shipping_option_id
+            .filter(|id| is_compatible(*id))
+            .or_else(|| {
+                cart.selected_shipping_option_id
+                    .filter(|id| is_compatible(*id))
+            });
+
+        cart.delivery_groups[0].selected_shipping_option_id = selected_id;
+        cart.selected_shipping_option_id = selected_id;
+    }
+
+    Ok(cart)
 }
 
 pub(crate) fn requested_cart_context(
@@ -722,7 +718,9 @@ pub(crate) fn current_shipping_selections(
             shipping_profile_slug: group.shipping_profile_slug.clone(),
             seller_id: group.seller_id.clone(),
             seller_scope: None,
-            selected_shipping_option_id: group.selected_shipping_option_id,
+            selected_shipping_option_id: group
+                .selected_shipping_option_id
+                .or(cart.selected_shipping_option_id),
         })
         .collect()
 }

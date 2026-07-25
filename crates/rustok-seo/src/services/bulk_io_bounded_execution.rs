@@ -142,6 +142,7 @@ impl SeoService {
             .ok_or(SeoError::NotFound)
     }
 
+    #[allow(dead_code)]
     pub(super) async fn execute_next_bulk_job_fully_bounded(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {

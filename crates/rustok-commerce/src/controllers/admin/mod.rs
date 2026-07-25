@@ -332,11 +332,12 @@ fn admin_public_error<E>(
     error_kind: &'static str,
     status: axum::http::StatusCode,
     code: &'static str,
-    message: &'static str,
+    message: impl Into<String>,
 ) -> HttpError
 where
     E: std::fmt::Debug,
 {
+    let message = message.into();
     tracing::error!(
         error = ?error,
         owner,
@@ -471,29 +472,29 @@ pub(crate) fn map_order_error(error: OrderError) -> HttpError {
 
 pub(crate) fn map_fulfillment_error(error: FulfillmentError) -> HttpError {
     let (status, code, message, error_kind) = match &error {
-        FulfillmentError::Validation(_) => (
+        FulfillmentError::Validation(msg) => (
             axum::http::StatusCode::BAD_REQUEST,
             "commerce_admin_fulfillment_invalid",
-            "Fulfillment request is invalid",
+            format!("Fulfillment request is invalid: {msg}"),
             "validation",
         ),
         FulfillmentError::ShippingOptionNotFound(_)
         | FulfillmentError::FulfillmentNotFound(_) => (
             axum::http::StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
-            "Commerce resource not found",
+            "Commerce resource not found".to_string(),
             "not_found",
         ),
         FulfillmentError::InvalidTransition { .. } => (
             axum::http::StatusCode::CONFLICT,
             "commerce_admin_fulfillment_state_conflict",
-            "Fulfillment operation conflicts with the current state",
+            "Fulfillment operation conflicts with the current state".to_string(),
             "state_conflict",
         ),
         FulfillmentError::Database(_) => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_fulfillment_storage_unavailable",
-            "Fulfillment storage is temporarily unavailable",
+            "Fulfillment storage is temporarily unavailable".to_string(),
             "database",
         ),
     };
@@ -528,13 +529,13 @@ pub(crate) fn map_fulfillment_orchestration_error(
             "commerce_admin_fulfillment_storage_unavailable",
             "Fulfillment storage is temporarily unavailable",
         ),
-        error @ FulfillmentOrchestrationError::Validation(_) => admin_public_error(
-            &error,
+        FulfillmentOrchestrationError::Validation(msg) => admin_public_error(
+            &FulfillmentOrchestrationError::Validation(msg.clone()),
             "rustok_commerce",
             "validation",
             axum::http::StatusCode::BAD_REQUEST,
             "commerce_admin_fulfillment_invalid",
-            "Fulfillment request is invalid",
+            format!("Fulfillment request is invalid: {msg}"),
         ),
         error @ FulfillmentOrchestrationError::ProviderAfterPersistence { .. }
         | error @ FulfillmentOrchestrationError::PersistenceAfterProvider { .. } => {
@@ -646,19 +647,3 @@ pub(crate) async fn validate_product_shipping_profile_input(
     Ok(())
 }
 
-pub(crate) async fn validate_shipping_option_profile_inputs(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    allowed_shipping_profile_slugs: Option<&Vec<String>>,
-) -> HttpResult<()> {
-    let Some(slugs) = allowed_shipping_profile_slugs else {
-        return Ok(());
-    };
-
-    ShippingProfileService::new(db.clone())
-        .ensure_shipping_profile_slugs_exist(tenant_id, slugs.iter())
-        .await
-        .map_err(map_shipping_profile_error)?;
-
-    Ok(())
-}

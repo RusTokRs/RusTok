@@ -1,10 +1,6 @@
 mod index_repair_background_impl {
     use super::*;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::{
-        ActiveModelTrait as _, ColumnTrait as _, EntityTrait as _, QueryFilter as _,
-        QueryOrder as _,
-    };
 
     const INDEX_REPAIR_JOB_QUEUED: &str = "queued";
     const INDEX_REPAIR_JOB_RUNNING: &str = "running";

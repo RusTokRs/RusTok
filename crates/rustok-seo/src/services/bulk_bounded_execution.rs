@@ -88,6 +88,7 @@ impl SeoService {
             .ok_or(SeoError::NotFound)
     }
 
+    #[allow(dead_code)]
     pub(super) async fn queue_bulk_export_batched(
         &self,
         tenant: &TenantContext,
@@ -132,6 +133,7 @@ impl SeoService {
             .ok_or(SeoError::NotFound)
     }
 
+    #[allow(dead_code)]
     pub(super) async fn execute_next_bulk_job_batched(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
@@ -456,6 +458,7 @@ impl SeoService {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn execute_export_job_batched(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
         let tenant = self.load_tenant_context(job.tenant_id).await?;
         let input = serde_json::from_value::<SeoBulkExportInput>(job.input_payload.clone())

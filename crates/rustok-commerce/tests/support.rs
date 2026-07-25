@@ -16,8 +16,8 @@ use rustok_inventory::entities::{
     inventory_item, inventory_level, reservation_item, stock_location, stock_location_translation,
 };
 use rustok_order::entities::{
-    order, order_adjustment, order_change, order_line_item, order_line_item_translation,
-    order_return, order_return_item, order_tax_line,
+    order, order_adjustment, order_change, order_checkout_identity, order_line_item,
+    order_line_item_translation, order_return, order_return_item, order_tax_line,
 };
 use rustok_payment::entities::{
     payment, payment_collection, provider_operation as payment_provider_operation, refund_creation,
@@ -32,14 +32,13 @@ use rustok_region::entities::{region, region_country_tax_policy, region_translat
 use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};
+use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::prelude::SchemaManager;
 
 pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
         return;
     }
-
-    use sea_orm_migration::MigrationTrait;
-    use sea_orm_migration::prelude::SchemaManager;
 
     let manager = SchemaManager::new(db);
     let _ = rustok_outbox::SysEventsMigration.up(&manager).await;
@@ -260,6 +259,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     )
     .await;
     create_entity_table(db, &builder, schema.create_table_from_entity(order::Entity)).await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(order_checkout_identity::Entity),
+    )
+    .await;
     create_entity_table(
         db,
         &builder,

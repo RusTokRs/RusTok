@@ -145,6 +145,17 @@ pub async fn enrich_cart_delivery_groups(
             })
             .map(map_shipping_option_summary)
             .collect();
+        if delivery_group.selected_shipping_option_id.is_none() {
+            if let Some(selected_id) = cart.selected_shipping_option_id {
+                if delivery_group
+                    .available_shipping_options
+                    .iter()
+                    .any(|opt| opt.id == selected_id)
+                {
+                    delivery_group.selected_shipping_option_id = Some(selected_id);
+                }
+            }
+        }
     }
     cart.selected_shipping_option_id = if cart.delivery_groups.len() == 1 {
         cart.delivery_groups[0].selected_shipping_option_id

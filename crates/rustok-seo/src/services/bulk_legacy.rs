@@ -326,6 +326,7 @@ fn limit_job_message(value: String) -> String {
     rustok_core::truncate(value.trim(), 2048)
 }
 
+#[allow(dead_code)]
 fn parse_bulk_csv(
     expected_kind: SeoTargetSlug,
     expected_locale: &str,
@@ -454,6 +455,7 @@ fn trimmed_string(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+#[allow(dead_code)]
 fn export_csv_row(
     target_kind: SeoTargetSlug,
     target_id: Uuid,
@@ -848,6 +850,7 @@ mod tests {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct BulkTargetSummary {
     target_id: Uuid,
@@ -855,12 +858,14 @@ struct BulkTargetSummary {
     route: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct BulkScopedSummary {
     summary: BulkTargetSummary,
     source: SeoBulkSource,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct BulkSelectionResolution {
     filter: NormalizedBulkListFilter,
@@ -883,6 +888,7 @@ struct BulkImportRow {
     nofollow: bool,
 }
 
+#[allow(dead_code)]
 impl SeoService {
     pub async fn list_bulk_items(
         &self,

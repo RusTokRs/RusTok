@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -281,43 +281,50 @@ async fn find_legacy_checkout_order_candidate<C>(
 where
     C: ConnectionTrait,
 {
-    let sql = match conn.get_database_backend() {
-        DbBackend::Postgres => {
-            "SELECT id, metadata #>> '{checkout,payment_collection_id}' AS payment_collection_id, metadata #>> '{checkout,shipping_option_id}' AS shipping_option_id, metadata #>> '{checkout,snapshot_hash}' AS snapshot_hash, metadata #>> '{checkout,order_request_hash}' AS request_hash FROM orders WHERE tenant_id = ? AND metadata #>> '{checkout,operation_id}' = ? LIMIT 2"
-        }
-        DbBackend::Sqlite => {
-            "SELECT id, json_extract(metadata, '$.checkout.payment_collection_id') AS payment_collection_id, json_extract(metadata, '$.checkout.shipping_option_id') AS shipping_option_id, json_extract(metadata, '$.checkout.snapshot_hash') AS snapshot_hash, json_extract(metadata, '$.checkout.order_request_hash') AS request_hash FROM orders WHERE tenant_id = ? AND json_extract(metadata, '$.checkout.operation_id') = ? LIMIT 2"
-        }
-        DbBackend::MySql => {
-            "SELECT id, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.payment_collection_id')) AS payment_collection_id, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.shipping_option_id')) AS shipping_option_id, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.snapshot_hash')) AS snapshot_hash, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.order_request_hash')) AS request_hash FROM orders WHERE tenant_id = ? AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.operation_id')) = ? LIMIT 2"
-        }
-    };
-    let rows = conn
-        .query_all(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            sql,
-            vec![tenant_id.into(), checkout_operation_id.to_string().into()],
-        ))
+    let orders = crate::entities::order::Entity::find()
+        .filter(crate::entities::order::Column::TenantId.eq(tenant_id))
+        .all(conn)
         .await?;
-    if rows.len() > 1 {
+
+    let op_str = checkout_operation_id.to_string();
+    let mut matches = orders
+        .into_iter()
+        .filter_map(|order| {
+            let checkout = order.metadata.get("checkout")?;
+            let op_id = checkout.get("operation_id")?.as_str()?;
+            if op_id == op_str {
+                Some(LegacyCheckoutOrderCandidate {
+                    order_id: order.id,
+                    payment_collection_id: checkout
+                        .get("payment_collection_id")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(|s| Uuid::parse_str(s).ok()),
+                    shipping_option_id: checkout
+                        .get("shipping_option_id")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(|s| Uuid::parse_str(s).ok()),
+                    snapshot_hash: checkout
+                        .get("snapshot_hash")
+                        .and_then(serde_json::Value::as_str)
+                        .map(String::from),
+                    request_hash: checkout
+                        .get("order_request_hash")
+                        .and_then(serde_json::Value::as_str)
+                        .map(String::from),
+                })
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if matches.len() > 1 {
         return Err(sea_orm::DbErr::Custom(
             "multiple orders are bound to one checkout operation".to_string(),
         ));
     }
-    rows.into_iter()
-        .next()
-        .map(|row| {
-            let payment_collection_id: Option<String> = row.try_get("", "payment_collection_id")?;
-            let shipping_option_id: Option<String> = row.try_get("", "shipping_option_id")?;
-            Ok(LegacyCheckoutOrderCandidate {
-                order_id: row.try_get("", "id")?,
-                payment_collection_id: parse_optional_uuid(payment_collection_id),
-                shipping_option_id: parse_optional_uuid(shipping_option_id),
-                snapshot_hash: row.try_get("", "snapshot_hash")?,
-                request_hash: row.try_get("", "request_hash")?,
-            })
-        })
-        .transpose()
+
+    Ok(matches.pop())
 }
 
 fn parse_optional_uuid(value: Option<String>) -> Option<Uuid> {

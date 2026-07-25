@@ -326,6 +326,7 @@ mod source {
         pub mod graphql {
             use super::super::super::query_error_boundary::BoundaryError;
 
+            #[allow(dead_code)]
             pub trait GraphQLError {
                 fn unauthenticated() -> BoundaryError;
                 fn permission_denied(message: &str) -> BoundaryError;

@@ -21,9 +21,11 @@ use crate::{SeoError, SeoResult};
 
 use super::routing::locale_prefixed_path;
 use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
-
+#[allow(dead_code)]
 mod index_generation;
+#[allow(dead_code)]
 mod submission_adapters;
+#[allow(dead_code)]
 mod submission_aggregation;
 
 use index_generation::{render_sitemap_file, render_sitemap_index};
@@ -35,12 +37,15 @@ use submission_aggregation::{
     SitemapSubmissionSummary,
 };
 
+#[allow(dead_code)]
 const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
+#[allow(dead_code)]
 const DELIVERY_STATUS_SENT: &str = "sent";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PublicOrigin(String);
 
+#[allow(dead_code)]
 struct SitemapEventPublication {
     tenant_id: Uuid,
     job_id: Uuid,
@@ -172,6 +177,7 @@ fn resolve_public_origin_from_values(
     PublicOrigin::parse(candidate.1, candidate.0)
 }
 
+#[allow(dead_code)]
 impl SeoService {
     pub async fn generate_sitemaps(
         &self,
@@ -653,6 +659,7 @@ impl SeoService {
     }
 }
 
+#[allow(dead_code)]
 impl SeoService {
     async fn submit_sitemap_endpoints(
         &self,
@@ -724,6 +731,7 @@ impl SeoService {
     }
 }
 
+#[allow(dead_code)]
 fn sitemap_file_count(url_count: usize) -> usize {
     if url_count == 0 {
         1
@@ -732,6 +740,7 @@ fn sitemap_file_count(url_count: usize) -> usize {
     }
 }
 
+#[allow(dead_code)]
 fn sitemap_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String {
     let mut payload = format!("{scope}|{tenant_id}");
     for part in parts {
@@ -741,6 +750,7 @@ fn sitemap_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String {
     format!("{scope}:{:016x}", simple_hash(payload.as_str()))
 }
 
+#[allow(dead_code)]
 fn transactional_event_error(context: &str, error: rustok_core::Error) -> SeoError {
     SeoError::Database(sea_orm::DbErr::Custom(format!(
         "failed to enqueue {context} transactionally: {error}"
@@ -781,6 +791,7 @@ fn render_robots_body(base_url: &str, sitemap_enabled: bool) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn build_sitemap_submission_url(endpoint: &str, sitemap_index_url: &str) -> Option<String> {
     let normalized = endpoint.trim();
     if normalized.is_empty() {
