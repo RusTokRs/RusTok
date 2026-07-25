@@ -142,6 +142,11 @@ fn safe_error_code(error: &CheckoutCompensationError) -> &'static str {
         CheckoutCompensationError::ReservationJournal(_) => {
             "checkout.compensation_inventory_failed"
         }
+        CheckoutCompensationError::Payment(_)
+        | CheckoutCompensationError::PaymentOrchestration(_) => {
+            "checkout.compensation_payment_failed"
+        }
+        CheckoutCompensationError::Order(_) => "checkout.compensation_order_failed",
         CheckoutCompensationError::ManualReconciliation(_) => {
             "checkout.compensation_manual_reconciliation"
         }
