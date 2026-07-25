@@ -73,9 +73,12 @@ async fn bulk_terminal_state_rolls_back_when_transactional_event_fails() {
         Arc::new(SeoTargetRegistry::default()),
     );
 
+    let worker_auth =
+        rustok_seo::SeoWorkerAuthorization::from_runtime_config(true, true).expect("worker auth");
+
     let error = service
         .bulk()
-        .execute_next_bulk_job()
+        .execute_next_bulk_job(&worker_auth)
         .await
         .expect_err("event failure must abort the bulk terminal transaction");
     assert!(
