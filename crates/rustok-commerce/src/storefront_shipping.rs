@@ -7,7 +7,7 @@ use crate::{
     CommerceResult,
     dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
 };
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{FulfillmentResult, FulfillmentService};
 
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
 
@@ -112,18 +112,17 @@ pub fn map_shipping_option_summary(option: &ShippingOptionResponse) -> CartShipp
     }
 }
 
-pub async fn enrich_cart_delivery_groups(
+pub async fn enrich_cart_delivery_groups_typed(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     mut cart: CartResponse,
     public_channel_slug: Option<&str>,
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
-) -> CommerceResult<CartResponse> {
+) -> FulfillmentResult<CartResponse> {
     let mut options = FulfillmentService::new(db.clone())
         .list_shipping_options(tenant_id, requested_locale, tenant_default_locale)
-        .await
-        .map_err(|err| crate::CommerceError::Validation(err.to_string()))?;
+        .await?;
     options.retain(|option| {
         option
             .currency_code
@@ -164,6 +163,26 @@ pub async fn enrich_cart_delivery_groups(
     };
 
     Ok(cart)
+}
+
+pub async fn enrich_cart_delivery_groups(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    cart: CartResponse,
+    public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> CommerceResult<CartResponse> {
+    enrich_cart_delivery_groups_typed(
+        db,
+        tenant_id,
+        cart,
+        public_channel_slug,
+        requested_locale,
+        tenant_default_locale,
+    )
+    .await
+    .map_err(|error| crate::CommerceError::Validation(error.to_string()))
 }
 
 fn extract_allowed_shipping_profile_slugs_from_metadata(

@@ -8,6 +8,11 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import {
+  comparableDatabaseFields,
+  databaseSettingsSource,
+} from './index-storage-database-settings-contract.mjs';
+
 const script = path.resolve('scripts/verify/render-index-storage-adr.mjs');
 const commit = '0123456789abcdef0123456789abcdef01234567';
 const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
@@ -92,7 +97,11 @@ const ratios = {
 
 const validComparison = () => ({
   generated_at: '2026-07-24T12:00:00Z',
-  methodology: { automatic_winner_selection: false },
+  methodology: {
+    automatic_winner_selection: false,
+    comparable_database_fields: [...comparableDatabaseFields],
+    database_settings_source: databaseSettingsSource,
+  },
   decision_ready: true,
   decision_contract: { ...decisionFlags },
   scales: [scale('100k', 1), scale('1m', 10)],
@@ -159,6 +168,19 @@ test('renders a manual same-commit storage ADR', () => {
     assert.match(markdown, /Comparison SHA-256/u);
     assert.match(markdown, /## Rejected alternatives/u);
     assert.match(markdown, /renderer does not infer or rank a winning prototype/u);
+  });
+});
+
+test('rejects core-only comparison without observed database-settings methodology', () => {
+  withFixture((root) => {
+    const comparison = validComparison();
+    comparison.methodology = { automatic_winner_selection: false };
+    const { result } = run(root, comparison, validDecision(comparison));
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract/u,
+    );
   });
 });
 

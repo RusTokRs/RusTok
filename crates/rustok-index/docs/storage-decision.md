@@ -1,6 +1,6 @@
 # Index PostgreSQL storage decision
 
-The storage benchmark comparison is evidence, not an automatic model selector. After replacement `100k` and `1m` packets have been generated from the same commit and the comparator reports `decision_ready: true`, maintainers record a manual decision and finalize the ADR.
+The storage benchmark comparison is evidence, not an automatic model selector. After replacement `100k` and `1m` packets have been generated from the same commit and the official comparator reports `decision_ready: true`, maintainers record a manual decision and finalize the ADR.
 
 ## Tooling entrypoint
 
@@ -27,6 +27,23 @@ node scripts/verify/index-storage-tooling.mjs compare \
 
 The router dispatches Node directly without shell evaluation. It exposes the canonical static guards, packet validator, comparator, exact-byte hashing, decision preparation, ADR finalization, and saved-ADR verification paths.
 
+Only `comparison.json` emitted through the official comparator wrapper is valid decision input. Direct output from `compare-index-storage-evidence-core.mjs` is intentionally incomplete because it does not finalize the observed PostgreSQL database-settings methodology. Do not add the missing fields by hand.
+
+The accepted methodology contains the exact ordered `comparable_database_fields` contract:
+
+- `server_version_num`;
+- `shared_buffers`;
+- `effective_cache_size`;
+- `work_mem`;
+- `random_page_cost`;
+- `jit`;
+- `standard_conforming_strings`;
+- `timezone`;
+- `date_style`;
+- `extra_float_digits`.
+
+Its `database_settings_source` must state that these values came from `read-report.json` database metadata observed from the active PostgreSQL benchmark session. The comparator rejects cross-scale drift in any field, and decision preparation, the direct renderer, and finalization all reject a comparison whose field list, order, or source string differs from the canonical contract.
+
 ## Prepare the decision
 
 Create a draft from the exact `comparison.json` that will be reviewed:
@@ -40,7 +57,7 @@ node scripts/verify/index-storage-tooling.mjs prepare \
   --output evidence/index-storage/comparison/decision.json
 ```
 
-`prepare` requires an explicit prototype choice. It does not rank candidates or select a winner. It validates the decision-ready comparison, copies the evidence commit, computes the SHA-256 of the exact comparison-file bytes, creates rejection entries for exactly the two unselected prototypes, and refuses to overwrite an existing decision unless `--force` is provided. The draft is written to a staged file and renamed only after the complete JSON is on disk.
+`prepare` requires an explicit prototype choice. It does not rank candidates or select a winner. It validates the decision-ready comparison and its exact observed database-settings methodology, copies the evidence commit, computes the SHA-256 of the exact comparison-file bytes, creates rejection entries for exactly the two unselected prototypes, and refuses to overwrite an existing decision unless `--force` is provided. The draft is written to a staged file and renamed only after the complete JSON is on disk.
 
 The generated draft contains `TODO(index-storage-decision):` markers. Replace every marker with measured and operational reasoning before finalization. The finalizer rejects any remaining preparation marker.
 
@@ -76,6 +93,7 @@ Finalization snapshots the exact comparison and decision bytes before rendering.
 
 The finalizer fails closed unless:
 
+- the comparison contains the exact ten-field observed PostgreSQL database-settings methodology;
 - the comparison is decision-ready;
 - every decision-contract flag is true;
 - `100k` and `1m` evidence are present and share the same full commit;
@@ -85,6 +103,8 @@ The finalizer fails closed unless:
 - `comparison_sha256` matches the exact comparison-file bytes;
 - no preparation placeholder remains;
 - selection, rejection, operations, migration, and rollback rationales are all present.
+
+The standalone renderer enforces the same methodology contract even when invoked directly. Recomputing `comparison_sha256` after removing or changing the methodology does not make the input acceptable.
 
 ## Verify the saved ADR
 
@@ -97,10 +117,10 @@ node scripts/verify/index-storage-tooling.mjs verify-adr \
   --adr crates/rustok-index/docs/adr-postgresql-storage.md
 ```
 
-`verify-adr` recalculates both digest lines from exact file bytes, snapshots the same comparison and decision bytes, repeats deterministic finalization, and requires the saved ADR to match the regenerated Markdown byte for byte. Any manual edit, formatting change, stale decision, or replaced evidence file is rejected.
+`verify-adr` recalculates both digest lines from exact file bytes, snapshots the same comparison and decision bytes, repeats deterministic finalization including the observed database-settings gate, and requires the saved ADR to match the regenerated Markdown byte for byte. Any manual edit, formatting change, stale decision, replaced evidence file, or methodology drift is rejected.
 
 The generated ADR includes storage size, read latency, mutation latency, WAL, churn, and VACUUM evidence for all candidates. It never infers or ranks a winner. Its Markdown depends on evidence and decision content, not on the filesystem paths used to invoke the tooling.
 
 ## Validation boundary
 
-The tooling router, ADR finalizer, and saved-ADR verifier do not replace benchmark execution, evidence-packet validation, production migration rehearsal, or production observability. They expose the existing contracts consistently and turn an already validated comparison plus an explicit human decision into a reviewable, byte-bound document.
+The tooling router, direct renderer, ADR finalizer, and saved-ADR verifier do not replace benchmark execution, evidence-packet validation, production migration rehearsal, or production observability. They expose the existing contracts consistently and turn an already validated official comparison plus an explicit human decision into a reviewable, byte-bound document.
