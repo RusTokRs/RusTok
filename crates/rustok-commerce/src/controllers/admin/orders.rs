@@ -84,7 +84,13 @@ pub async fn show_order(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
-    Path(id):?;
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<AdminOrderDetailResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_READ],
+        "Permission denied: orders:read required",
+    )?;
 
     let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_order_with_locale_fallback(
