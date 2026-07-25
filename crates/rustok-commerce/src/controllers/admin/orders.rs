@@ -6,7 +6,7 @@ use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::{FulfillmentError, FulfillmentService};
 use rustok_order::OrderService;
-use rustok_payment::PaymentService;
+use rustok_payment::{PaymentError, PaymentService};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -19,6 +19,8 @@ use crate::dto::{
     CancelOrderInput, DeliverOrderInput, MarkPaidOrderInput, OrderResponse, ShipOrderInput,
 };
 
+const ADMIN_ORDER_DETAIL_PAYMENT_OWNER: &str = "rustok_payment.admin_order_detail";
+const ADMIN_ORDER_DETAIL_PAYMENT_OPERATION: &str = "find_latest_payment_collection_by_order";
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_order_detail";
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";
 
@@ -104,7 +106,7 @@ pub async fn show_order(
     let payment_collection = PaymentService::new(runtime.db_clone())
         .find_latest_collection_by_order(tenant.id, id)
         .await
-        .map_err(super::map_payment_error)?;
+        .map_err(|error| map_order_detail_payment_error(tenant.id, id, error))?;
     let fulfillment = FulfillmentService::new(runtime.db_clone())
         .find_by_order(tenant.id, id)
         .await
@@ -115,6 +117,78 @@ pub async fn show_order(
         payment_collection,
         fulfillment,
     }))
+}
+
+fn map_order_detail_payment_error(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    error: PaymentError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PaymentError::Validation(_) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_payment_invalid",
+            "Payment request is invalid",
+            "validation",
+        ),
+        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_payment_state_conflict",
+            "Payment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PaymentError::ProviderUnavailable { .. } => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_provider_unavailable",
+            "Payment provider is temporarily unavailable",
+            "provider_unavailable",
+        ),
+        PaymentError::ProviderInvalidResponse { .. } => (
+            axum::http::StatusCode::BAD_GATEWAY,
+            "commerce_admin_payment_provider_invalid_response",
+            "Payment provider returned an invalid response; reconciliation may be required",
+            "provider_invalid_response",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_payment_reconciliation_required",
+            "Payment provider outcome is unknown and requires reconciliation",
+            "provider_outcome_unknown",
+        ),
+        PaymentError::ProviderConfiguration { .. } => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_provider_not_configured",
+            "Payment provider is not configured for this tenant",
+            "provider_configuration",
+        ),
+        PaymentError::Database(_) => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_storage_unavailable",
+            "Payment storage is temporarily unavailable",
+            "database",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_ORDER_DETAIL_PAYMENT_OWNER,
+        tenant_id = %tenant_id,
+        order_id = %order_id,
+        operation = ADMIN_ORDER_DETAIL_PAYMENT_OPERATION,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_order_detail_http",
+        "commerce admin order detail payment lookup failed"
+    );
+    HttpError::new(status, code, message)
 }
 
 fn map_order_detail_fulfillment_error(

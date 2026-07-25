@@ -135,12 +135,27 @@ for (const [value, label] of [
   ['get_order_with_locale_fallback(', 'localized order detail'],
   ['find_latest_collection_by_order(tenant.id, id)', 'payment collection detail read'],
   ['find_by_order(tenant.id, id)', 'fulfillment detail read'],
-  ['.map_err(super::map_payment_error)?;', 'typed payment detail mapping'],
-  ['.map_err(super::map_fulfillment_error)?;', 'typed fulfillment detail mapping'],
+  ['fn map_order_detail_payment_error(', 'order-detail payment mapper'],
+  ['fn map_order_detail_fulfillment_error(', 'order-detail fulfillment mapper'],
+  [
+    '.map_err(|error| map_order_detail_payment_error(tenant.id, id, error))?;',
+    'context-aware payment detail mapping',
+  ],
+  [
+    '.map_err(|error| map_order_detail_fulfillment_error(tenant.id, id, error))?;',
+    'context-aware fulfillment detail mapping',
+  ],
   ['page: pagination.page', 'order page forwarding'],
   ['per_page: pagination.limit()', 'order page-size forwarding'],
 ]) {
   requireText(orders, value, label);
+}
+
+for (const value of [
+  '.map_err(super::map_payment_error)?;',
+  '.map_err(super::map_fulfillment_error)?;',
+]) {
+  forbidText(orders, value, 'stale order-detail shared mapper callsite');
 }
 
 for (const [value, label] of [
