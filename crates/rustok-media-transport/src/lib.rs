@@ -4,6 +4,7 @@
 //! replaceable transport adapter and never carries media binary bodies.
 
 pub mod client;
+pub mod public_image_client;
 pub mod server;
 
 pub mod proto {
@@ -11,5 +12,9 @@ pub mod proto {
 }
 
 pub use client::GrpcMediaProvider;
+pub use public_image_client::{
+    GrpcMediaPublicImageConnectionConfig, GrpcMediaPublicImageConnectionError,
+    GrpcMediaPublicImageProvider, ValidatedGrpcMediaPublicImageConnection,
+};
 pub use server::{MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority};
 pub use tonic::transport::ClientTlsConfig;

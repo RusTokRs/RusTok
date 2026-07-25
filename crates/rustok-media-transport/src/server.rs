@@ -3,8 +3,8 @@ use std::{collections::HashSet, sync::Arc};
 use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetWritePort, MediaReconciliationRequest, MediaUploadRequest,
-    UpsertTranslationInput,
+    MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort,
+    MediaReconciliationRequest, MediaUploadRequest, UpsertTranslationInput,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::{Code, Request, Response, Status};
@@ -16,10 +16,11 @@ use crate::proto::{
     ListRequest,
 };
 
-/// Provider-side adapter. The wrapped Media provider retains all policy,
-/// persistence, object lifecycle, and binary transport ownership.
+/// Provider-side adapter. The wrapped Media providers retain all policy,
+/// persistence, object lifecycle, URL selection, and binary transport ownership.
 pub struct MediaGrpcService<P> {
     provider: Arc<P>,
+    public_image_provider: Option<Arc<dyn MediaPublicImageReadPort>>,
 }
 
 /// Authority established by a server-side authentication/authorization interceptor.
@@ -44,6 +45,7 @@ pub enum MediaGrpcOperation {
     GetAsset,
     ListAssets,
     GetImageDescriptor,
+    GetPublicImageAsset,
     GetTranslations,
     PrepareUpload,
     CompleteUpload,
@@ -89,7 +91,22 @@ impl TrustedMediaAuthority {
 
 impl<P> MediaGrpcService<P> {
     pub fn new(provider: Arc<P>) -> Self {
-        Self { provider }
+        Self {
+            provider,
+            public_image_provider: None,
+        }
+    }
+
+    /// Explicitly attaches the Media owner provider that may select public image URLs.
+    ///
+    /// The provider returns metadata and an owner-selected descriptor only. Image bytes remain on
+    /// the Media-owned HTTP capability endpoint and never enter this gRPC service.
+    pub fn with_public_image_provider(
+        mut self,
+        provider: Arc<dyn MediaPublicImageReadPort>,
+    ) -> Self {
+        self.public_image_provider = Some(provider);
+        self
     }
 }
 
@@ -147,6 +164,29 @@ where
         let value = self
             .provider
             .get_image_descriptor(context, parse_id(&request.id)?, request.alt)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn get_public_image_asset(
+        &self,
+        request: Request<ImageDescriptorRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            MediaGrpcOperation::GetPublicImageAsset,
+        )?;
+        let request = request.into_inner();
+        let provider = self.public_image_provider.as_ref().ok_or_else(|| {
+            port_error_to_status(PortError::unavailable(
+                "media.public_image_provider_unavailable",
+                "media public image provider is not configured",
+            ))
+        })?;
+        let value = provider
+            .get_public_image_asset(context, parse_id(&request.id)?, request.alt)
             .await
             .map_err(port_error_to_status)?;
         json_response(&value)
@@ -393,8 +433,8 @@ mod tests {
         );
         let claimed = PortContext::new("tenant-a", PortActor::user("forged"), "en", "corr");
 
-        let error = trusted_context(&request, claimed, MediaGrpcOperation::DeleteAsset)
-            .expect_err("delete must not inherit read authorization");
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetPublicImageAsset)
+            .expect_err("public image selection must require an explicit operation grant");
 
         assert_eq!(error.code(), Code::PermissionDenied);
     }

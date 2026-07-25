@@ -13,9 +13,11 @@ rustok-api.workspace = true
 rustok-media.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tonic = { workspace = true, features = ["tls-ring"] }
+thiserror.workspace = true
+tonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }
 tonic-prost.workspace = true
 prost.workspace = true
+url.workspace = true
 uuid.workspace = true
 
 [build-dependencies]

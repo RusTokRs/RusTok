@@ -66,6 +66,13 @@ and post `blog_posts:*` permissions do not grant Blog category access.
 - uses `rustok-taxonomy` as a shared vocabulary for tag identity;
 - uses `rustok-comments` as a comment runtime contract;
 - uses `rustok-profiles` for author presentation;
+- the server GraphQL host binds `ProfileSummaryLoader` to the current anonymous,
+  authenticated-human, or trusted-service audience before Blog resolves
+  `authorProfile`; restricted, hidden, blocked, missing, and cross-tenant profile
+  summaries are omitted before localized profile/tag loading, without per-author
+  privacy reads;
+- standalone/custom GraphQL hosts must attach the same audience-bound loader;
+  `ProfileSummaryLoader::new` is anonymous and fail-closed by default;
 - uses `rustok-channel` for module-level and publication-level public visibility;
 - uses `rustok-telemetry` for read/write observability;
 - `rustok-blog/admin` embeds the owner-side post SEO panel through the shared `rustok-seo` capability contract.
@@ -80,7 +87,7 @@ Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.
 - **Taxonomy sync**: Blog tags ↔ `rustok-taxonomy` vocabulary
 - **RBAC enforcement**: distinct post/category resources and denied cross-resource grants
 - **Category invariants**: mandatory event bus, tenant parent/translation scope, slug validation, pagination cap
-- **GraphQL read paths**: public vs authenticated channel gating
+- **GraphQL read paths**: public vs authenticated channel gating and request-scoped profile author-card privacy
 - **Events**: Blog post lifecycle and category-triggered Search reindex
 - **Comments**: thread, locale resolution, status transitions, RBAC
 - **State machine**: BlogPost and CommentStatus transitions
@@ -90,7 +97,9 @@ Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.
 - `cargo xtask module validate blog`
 - `cargo xtask module test blog`
 - `node scripts/verify/verify-blog-category-search-reindex.mjs`
-- targeted tests for lifecycle, category authority, outbox rollback, Search refresh, channel visibility, and public/admin read paths
+- targeted tests for lifecycle, category authority, outbox rollback, Search refresh,
+  channel visibility, request-scoped author-summary filtering, and public/admin read
+  paths
 
 ## Related documents
 

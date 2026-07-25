@@ -1,12 +1,16 @@
 use anyhow::Context;
 use axum::{
     Json,
+    body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-    http::StatusCode,
+    http::{
+        HeaderMap, Response, StatusCode,
+        header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
+    },
 };
 use rustok_api::{
-    Action, AuthContext, HostRuntimeContext, Permission, Resource, TenantContext,
-    has_effective_permission,
+    Action, AuthContext, HostRuntimeContext, Permission, PortError, PortErrorKind, Resource,
+    TenantContext, has_effective_permission,
 };
 use rustok_storage::StorageRuntime;
 use rustok_web::{HttpError, HttpResult};
@@ -14,11 +18,12 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    MediaError, MediaService, UploadInput,
+    MediaError, MediaPublicImageService, MediaService, UploadInput,
     dto::{DEFAULT_MAX_SIZE, MediaItem, MediaTranslationItem, UpsertTranslationInput},
 };
 
 const MULTIPART_OVERHEAD_BYTES: u64 = 1024 * 1024;
+const PUBLIC_IMAGE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 
 #[derive(Clone)]
 pub struct MediaHttpRuntime {
@@ -93,6 +98,20 @@ fn media_error(error: MediaError) -> HttpError {
             HttpError::bad_request("media_image_processing_failed", error.to_string())
         }
         MediaError::Json(error) => HttpError::internal(error.to_string()),
+    }
+}
+
+fn public_image_error(error: PortError) -> HttpError {
+    match error.kind {
+        PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Forbidden => {
+            HttpError::not_found("media_public_image_not_found", "Media image not found")
+        }
+        PortErrorKind::Conflict
+        | PortErrorKind::Unavailable
+        | PortErrorKind::Timeout
+        | PortErrorKind::InvariantViolation => HttpError::internal(
+            "Media image is temporarily unavailable".to_string(),
+        ),
     }
 }
 
@@ -219,6 +238,51 @@ pub async fn get_media(
     Ok(Json(item))
 }
 
+/// Serve an immutable public image through a Media-owned capability URL.
+pub async fn public_image(
+    State(runtime): State<MediaHttpRuntime>,
+    tenant: TenantContext,
+    headers: HeaderMap,
+    Path((id, checksum_sha256)): Path<(Uuid, String)>,
+) -> HttpResult<Response<Body>> {
+    let image = MediaPublicImageService::new(runtime.db_clone(), runtime.storage())
+        .read_public_image(tenant.id, id, &checksum_sha256)
+        .await
+        .map_err(public_image_error)?;
+    let etag = image.etag();
+
+    if headers
+        .get(IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .any(|candidate| candidate == "*" || candidate == etag)
+        })
+    {
+        return Response::builder()
+            .status(StatusCode::NOT_MODIFIED)
+            .header(ETAG, etag)
+            .header(CACHE_CONTROL, PUBLIC_IMAGE_CACHE_CONTROL)
+            .body(Body::empty())
+            .map_err(|_| {
+                HttpError::internal("Failed to build media image response".to_string())
+            });
+    }
+
+    let content_length = image.bytes.len().to_string();
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, image.mime_type)
+        .header(CONTENT_LENGTH, content_length)
+        .header(ETAG, etag)
+        .header(CACHE_CONTROL, PUBLIC_IMAGE_CACHE_CONTROL)
+        .header("x-content-type-options", "nosniff")
+        .body(Body::from(image.bytes))
+        .map_err(|_| HttpError::internal("Failed to build media image response".to_string()))
+}
+
 /// Delete a media asset.
 pub async fn delete_media(
     State(runtime): State<MediaHttpRuntime>,
@@ -257,6 +321,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
     let body_limit = DEFAULT_MAX_SIZE.saturating_add(MULTIPART_OVERHEAD_BYTES) as usize;
     Ok(axum::Router::new()
         .route("/api/media/", get(list).post(upload))
+        .route(
+            "/api/media/public/images/{id}/{checksum_sha256}",
+            get(public_image),
+        )
         .route("/api/media/{id}", get(get_media).delete(delete_media))
         .route(
             "/api/media/{id}/translations/{locale}",

@@ -10,6 +10,7 @@ use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
 use crate::services::field_definition_cache::field_definition_cache_from_context;
+use crate::services::profile_media_public_image_runtime::attach_profile_media_public_image_provider;
 #[cfg(feature = "mod-seo")]
 use crate::services::seo_redirect_cache_reconciliation::start_seo_redirect_cache_reconciliation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -22,6 +23,13 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         return shared.0.clone();
     }
 
+    // Select the public-image provider before any host snapshot is built. The enriched extension
+    // registry is stored back in ServerRuntimeContext, so GraphQL and later server-function
+    // composition receive the exact same deployment-selected provider wrapper.
+    let runtime_extensions = attach_profile_media_public_image_provider(
+        ctx,
+        module_runtime_extensions_from_ctx(ctx),
+    );
     let event_bus = event_bus_from_context(ctx);
     let transactional_event_bus = transactional_event_bus_from_context(ctx);
     let registry = ctx
@@ -30,7 +38,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
         .with_shared_value(transactional_event_bus.clone())
         .with_shared_value(registry);
-    let host_runtime = module_runtime_extensions_from_ctx(ctx).apply_to_host_runtime(host_runtime);
+    let host_runtime = runtime_extensions.apply_to_host_runtime(host_runtime);
     let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
     let host_runtime =
         if let Some(catalog) = ctx.shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>() {
@@ -61,7 +69,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         graphql_runtime_inputs,
         build_event_hub: build_event_hub_from_context(ctx),
         field_definition_cache: field_definition_cache_from_context(ctx, event_bus),
-        runtime_extensions: module_runtime_extensions_from_ctx(ctx),
+        runtime_extensions,
         rbac_role_writer: rbac_graphql_role_writer_from_context(ctx),
         search_rate_limiter: search_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-blog")]

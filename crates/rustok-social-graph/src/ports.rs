@@ -10,10 +10,23 @@ use crate::error::SocialGraphError;
 use crate::model::SocialRelationKind;
 use crate::service::SocialGraphService;
 
+pub const MAX_SOCIAL_GRAPH_FOLLOW_TARGETS: usize = 100;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SocialGraphPairRequest {
     pub source_user_id: Uuid,
     pub target_user_id: Uuid,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SocialGraphFollowBatchRequest {
+    pub source_user_id: Uuid,
+    pub target_user_ids: Vec<Uuid>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SocialGraphFollowBatchResult {
+    pub followed_target_user_ids: Vec<Uuid>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -47,6 +60,18 @@ pub trait SocialGraphPrivacyReadPort: Send + Sync {
         context: PortContext,
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError>;
+
+    async fn source_follows_target(
+        &self,
+        context: PortContext,
+        request: SocialGraphPairRequest,
+    ) -> Result<bool, PortError>;
+
+    async fn source_follows_targets(
+        &self,
+        context: PortContext,
+        request: SocialGraphFollowBatchRequest,
+    ) -> Result<SocialGraphFollowBatchResult, PortError>;
 }
 
 #[derive(Clone)]
@@ -120,6 +145,51 @@ impl SocialGraphPrivacyReadPort for SocialGraphService {
         .await
         .map_err(map_owner_error)
     }
+
+    async fn source_follows_target(
+        &self,
+        context: PortContext,
+        request: SocialGraphPairRequest,
+    ) -> Result<bool, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        validate_source_actor(&context, request.source_user_id)?;
+        SocialGraphService::source_follows_target(
+            self,
+            parse_tenant_id(&context)?,
+            request.source_user_id,
+            request.target_user_id,
+        )
+        .await
+        .map_err(map_owner_error)
+    }
+
+    async fn source_follows_targets(
+        &self,
+        context: PortContext,
+        request: SocialGraphFollowBatchRequest,
+    ) -> Result<SocialGraphFollowBatchResult, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        validate_source_actor(&context, request.source_user_id)?;
+        if request.target_user_ids.len() > MAX_SOCIAL_GRAPH_FOLLOW_TARGETS {
+            return Err(PortError::validation(
+                "social_graph.follow_batch_too_large",
+                "social graph follow reads accept at most 100 target users",
+            ));
+        }
+
+        let followed_target_user_ids = SocialGraphService::source_follows_targets(
+            self,
+            parse_tenant_id(&context)?,
+            request.source_user_id,
+            &request.target_user_ids,
+        )
+        .await
+        .map_err(map_owner_error)?;
+
+        Ok(SocialGraphFollowBatchResult {
+            followed_target_user_ids,
+        })
+    }
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
@@ -137,7 +207,7 @@ fn validate_source_actor(context: &PortContext, source_user_id: Uuid) -> Result<
     {
         return Err(PortError::forbidden(
             "social_graph.source_actor_mismatch",
-            "user actors may mutate only relations they own",
+            "user actors may mutate or read only relations they own",
         ));
     }
     Ok(())

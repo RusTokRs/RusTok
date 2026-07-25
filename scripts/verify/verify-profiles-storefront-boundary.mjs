@@ -1,0 +1,129 @@
+#!/usr/bin/env node
+// Profiles storefront owner-boundary, optimistic recovery, Media presentation, and accessibility guardrails.
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : path.resolve(scriptDir, "../..");
+const failures = [];
+
+function repoPath(relativePath) {
+  return path.join(repoRoot, relativePath);
+}
+
+function readRepo(relativePath) {
+  return readFileSync(repoPath(relativePath), "utf8");
+}
+
+function fail(message) {
+  failures.push(message);
+}
+
+function assertExists(relativePath) {
+  if (!existsSync(repoPath(relativePath))) fail(`${relativePath}: expected file`);
+}
+
+function assertContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (!found) fail(description);
+}
+
+function assertNotContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (found) fail(description);
+}
+
+const paths = {
+  followRead: "crates/rustok-social-graph/src/follow_read.rs",
+  socialLib: "crates/rustok-social-graph/src/lib.rs",
+  socialGraphql: "crates/rustok-social-graph/src/graphql.rs",
+  native: "crates/rustok-profiles/storefront/src/transport/native_server_adapter.rs",
+  graphql: "crates/rustok-profiles/storefront/src/transport/graphql_adapter.rs",
+  profileGraphql: "crates/rustok-profiles/src/graphql/types.rs",
+  mediaPublic: "crates/rustok-media/src/public_image.rs",
+  core: "crates/rustok-profiles/storefront/src/core.rs",
+  ui: "crates/rustok-profiles/storefront/src/ui/leptos.rs",
+  en: "crates/rustok-profiles/storefront/locales/en.json",
+  ru: "crates/rustok-profiles/storefront/locales/ru.json",
+  test: "crates/rustok-social-graph/tests/follow_state_sqlite.rs",
+};
+
+for (const value of Object.values(paths)) assertExists(value);
+
+const followRead = readRepo(paths.followRead);
+const socialLib = readRepo(paths.socialLib);
+const socialGraphql = readRepo(paths.socialGraphql);
+const native = readRepo(paths.native);
+const graphql = readRepo(paths.graphql);
+const profileGraphql = readRepo(paths.profileGraphql);
+const mediaPublic = readRepo(paths.mediaPublic);
+const core = readRepo(paths.core);
+const ui = readRepo(paths.ui);
+const en = readRepo(paths.en);
+const ru = readRepo(paths.ru);
+const test = readRepo(paths.test);
+
+assertContains(followRead, "pub trait SocialGraphFollowReadPort", `${paths.followRead}: owner read port missing`);
+assertContains(followRead, "revision: Option<i64>", `${paths.followRead}: revision-bearing state missing`);
+assertContains(followRead, ".relation_state(", `${paths.followRead}: state read must use owner service`);
+assertContains(socialLib, "pub mod follow_read;", `${paths.socialLib}: follow read module not wired`);
+assertContains(socialLib, "SocialGraphFollowReadPort", `${paths.socialLib}: follow read port not exported`);
+
+assertContains(socialGraphql, "async fn follow_state", `${paths.socialGraphql}: followState query missing`);
+assertContains(socialGraphql, "revision: state.revision.map", `${paths.socialGraphql}: query must expose optional revision string`);
+assertContains(graphql, "followState(userId: $userId)", `${paths.graphql}: storefront must request revision-bearing state`);
+assertContains(graphql, "revision: Option<String>", `${paths.graphql}: missing relation must keep null revision`);
+assertNotContains(graphql, "isFollowing(userId", `${paths.graphql}: storefront must not downgrade to bool-only follow reads`);
+
+assertContains(native, "ProfilePresentationService::for_audience", `${paths.native}: native profile read must use owner presentation service`);
+assertNotContains(native, "ProfilePrivacyService::new", `${paths.native}: native adapter must not duplicate privacy composition`);
+assertNotContains(native, "ProfileService::new", `${paths.native}: native presentation must not use raw ProfileService`);
+assertContains(native, "SocialGraphFollowReadPort::source_follow_state", `${paths.native}: native follow state must retain revision`);
+
+for (const [source, sourcePath] of [
+  [native, paths.native],
+  [profileGraphql, paths.profileGraphql],
+]) {
+  assertContains(source, "MediaPublicImageReadPort", `${sourcePath}: must use Media public image owner port`);
+  assertContains(source, "get_public_image_asset", `${sourcePath}: must request Media-owned presentation descriptor`);
+  assertContains(source, "validate_profile_media_asset", `${sourcePath}: must revalidate profile tenant/uploader/MIME`);
+  assertNotContains(source, "public_image_path(", `${sourcePath}: must not construct Media capability paths`);
+  assertNotContains(source, '"/api/media/public/images', `${sourcePath}: must not own Media route strings`);
+}
+assertContains(mediaPublic, "MediaImagePublicUrlPolicy::ProxyRequired", `${paths.mediaPublic}: storage-relative proxy policy missing`);
+
+assertContains(core, "pub fn recovered_follow_state", `${paths.core}: pure recovery selector missing`);
+assertContains(ui, "recovered_follow_state", `${paths.ui}: UI must use validated recovery state`);
+assertContains(ui, "load_profiles_storefront_page(", `${paths.ui}: mutation failure must re-read current state`);
+assertContains(ui, "set_profiles_storefront_follow(transport, command).await", `${paths.ui}: owner mutation call missing`);
+assertNotContains(ui, /loop\s*\{|while\s*\(|for\s+.*set_profiles_storefront_follow/, `${paths.ui}: recovery must not automatically retry writes`);
+
+for (const marker of [
+  "aria-pressed=",
+  "aria-busy=",
+  'aria-live="polite"',
+  'role="alert"',
+  'role="img"',
+  'alt=""',
+]) {
+  assertContains(ui, marker, `${paths.ui}: accessibility marker ${marker} missing`);
+}
+assertContains(en, '"followRecovered"', `${paths.en}: recovery message missing`);
+assertContains(ru, '"followRecovered"', `${paths.ru}: recovery message missing`);
+
+for (const marker of ["initial.revision, None", "active.revision, Some(1)", "inactive.revision, Some(2)"]) {
+  assertContains(test, marker, `${paths.test}: scenario ${marker} missing`);
+}
+assertContains(test, "PortErrorKind::Forbidden", `${paths.test}: actor mismatch evidence missing`);
+
+if (failures.length > 0) {
+  console.error("Profiles storefront boundary verification failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log("Profiles storefront boundary verification passed");

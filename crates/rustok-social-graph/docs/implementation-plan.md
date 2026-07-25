@@ -25,6 +25,50 @@ Privacy reads remain authoritative when tenant-facing Social Graph surfaces are
 not enabled: disabling management UX must not silently bypass an already stored
 block or mute.
 
+## Delivered for Profiles follower policy
+
+- migration `m20260725_000002_add_follow_relation_kind` expands the PostgreSQL and
+  SQLite relation-kind constraint while preserving existing block/mute rows and
+  indexes;
+- `SocialRelationKind::Follow` uses directional follower
+  (`source_user_id`) to profile owner (`target_user_id`) semantics;
+- the existing owner command port persists follow/unfollow state with the same
+  tenant-composite integrity, replay, revision, actor, deadline, and idempotency
+  rules as block/mute;
+- `SocialGraphPrivacyReadPort` exposes directional single-target and bounded
+  multi-target active follow reads;
+- `SocialGraphFollowReadPort` exposes one actor-bound source/target state with
+  active flag and optional current revision, including inactive persisted rows;
+- follow batches accept at most 100 target users, deduplicate input, return only
+  active followed targets, and reject user actors that do not own the source;
+- `rustok-profiles` composes followers-only visibility through the owner port in
+  bounded chunks and propagates owner errors instead of allowing implicitly;
+- the Profiles storefront uses the revision-bearing read for initial state and
+  read-only conflict recovery without automatic command replay;
+- the Social Graph owner remains independent from Profiles presentation storage
+  and does not read profile rows, translations, tags, or media.
+
+## Delivered public follow transport
+
+- optional crate feature `graphql` exposes module-owned `SocialGraphQuery` and
+  `SocialGraphMutation` roots through `rustok-module.toml`;
+- `isFollowing(userId)` reads only the authenticated human user's directional
+  active state and returns `false` for self without creating an existence oracle;
+- `followState(userId)` returns target user, active state, and optional revision
+  string without exposing relation ids or storage details;
+- `followUser` and `unfollowUser` require explicit `idempotencyKey`, accept an
+  optional positive 64-bit `expectedRevision` string, and delegate to
+  `SocialGraphCommandPort`;
+- transport context is tenant-bound, human-user-only, deadline-aware, and carries
+  authenticated permission claims and optional channel context;
+- service principals and tenant mismatches are rejected before owner calls;
+- mutation responses expose only target user, active state, and revision string;
+  internal relation ids and storage details remain private;
+- validation/conflict/forbidden semantics remain typed while unavailable and
+  invariant failures use static public GraphQL messages;
+- the server enables the Social Graph GraphQL feature while non-host consumers may
+  keep the transport disabled.
+
 ## Promoted by `NOTIFY-03C`
 
 - the production candidate worker consumes Social Graph only through the existing
@@ -37,7 +81,7 @@ block or mute.
 
 ## Promoted by `NOTIFY-03D`
 
-- Notifications now accepts supported committed outbox envelopes into its own
+- Notifications accepts supported committed outbox envelopes into its own
   durable source inbox and intake-receipt state;
 - intake remains independent from Social Graph and does not evaluate recipient
   privacy before fan-out candidates exist;
@@ -50,7 +94,7 @@ block or mute.
 
 - durable command receipts that bind idempotency keys to command identity;
 - friendship request/accept/remove lifecycle;
-- follow/unfollow and follower privacy;
+- broader profile directory/follow product UX beyond the first storefront profile page;
 - custom lists and list membership;
 - commands/transports for block and mute management;
 - outbox events and reconciliation;
@@ -70,8 +114,12 @@ block or mute.
 ```bash
 cargo fmt --all -- --check
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
+cargo test -p rustok-social-graph --test follow_sqlite -- --nocapture
+cargo test -p rustok-social-graph --test follow_state_sqlite -- --nocapture
 node scripts/verify/verify-social-graph-notification-policy.mjs
+node scripts/verify/verify-profiles-storefront-boundary.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
 node scripts/verify/verify-notifications-outbox-intake.mjs
 ```

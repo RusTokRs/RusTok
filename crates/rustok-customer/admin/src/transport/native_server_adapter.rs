@@ -101,8 +101,16 @@ fn customer_service(
 #[cfg(feature = "ssr")]
 fn profile_service(
     runtime_ctx: &rustok_api::HostRuntimeContext,
-) -> rustok_profiles::ProfileService {
-    rustok_profiles::ProfileService::new(runtime_ctx.db_clone())
+    auth: &rustok_api::AuthContext,
+) -> rustok_profiles::ProfilePresentationService {
+    let audience = if auth.is_service_principal() {
+        rustok_profiles::ProfileAccessAudience::TrustedService { actor_id: None }
+    } else {
+        rustok_profiles::ProfileAccessAudience::Authenticated {
+            actor_id: auth.user_id,
+        }
+    };
+    rustok_profiles::ProfilePresentationService::for_audience(runtime_ctx.db_clone(), audience)
 }
 
 #[cfg(feature = "ssr")]
@@ -185,7 +193,7 @@ fn map_profile(value: rustok_profiles::ProfileSummary) -> CustomerProfileRecord 
 #[cfg(feature = "ssr")]
 async fn load_customer_detail(
     customer_service: &rustok_customer::CustomerService,
-    profile_service: &rustok_profiles::ProfileService,
+    profile_service: &rustok_profiles::ProfilePresentationService,
     tenant: &rustok_api::TenantContext,
     customer_id: uuid::Uuid,
     requested_locale: Option<&str>,
@@ -280,7 +288,7 @@ async fn customer_list_native(
         let (items, total) = service
             .list_customers(
                 tenant.id,
-                ListCustomersInput {
+                rustok_customer::ListCustomersInput {
                     search,
                     page,
                     per_page,
@@ -330,7 +338,7 @@ async fn customer_detail_native(customer_id: String) -> Result<CustomerDetail, S
 
         let customer_id = parse_uuid(&customer_id, "customer_id")?;
         let customer_service = customer_service(&runtime_ctx);
-        let profile_service = profile_service(&runtime_ctx);
+        let profile_service = profile_service(&runtime_ctx, &auth);
 
         load_customer_detail(
             &customer_service,
@@ -379,7 +387,7 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
             .unwrap_or(tenant.default_locale.as_str())
             .to_string();
         let customer_service = customer_service(&runtime_ctx);
-        let profile_service = profile_service(&runtime_ctx);
+        let profile_service = profile_service(&runtime_ctx, &auth);
         let created = customer_service
             .create_customer(
                 tenant.id,
@@ -450,7 +458,7 @@ async fn customer_update_native(
             }
         };
         let customer_service = customer_service(&runtime_ctx);
-        let profile_service = profile_service(&runtime_ctx);
+        let profile_service = profile_service(&runtime_ctx, &auth);
         customer_service
             .update_customer(
                 tenant.id,

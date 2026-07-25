@@ -9,3 +9,7 @@ ui_classification = "capability_only"
 
 [crate]
 entry_type = "SocialGraphModule"
+
+[provides.graphql]
+query = "graphql::SocialGraphQuery"
+mutation = "graphql::SocialGraphMutation"

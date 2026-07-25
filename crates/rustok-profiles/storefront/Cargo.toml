@@ -1,0 +1,37 @@
+[package]
+name = "rustok-profiles-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Profiles storefront page and follow controls"
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "dep:leptos_axum",
+    "dep:rustok-core",
+    "dep:rustok-profiles",
+    "dep:rustok-social-graph",
+    "rustok-api/server",
+]
+
+[dependencies]
+rustok-ui-core.workspace = true
+rustok-ui-i18n-leptos.workspace = true
+rustok-ui-transport.workspace = true
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth = { workspace = true, default-features = false }
+rustok-graphql.workspace = true
+leptos-ui-routing.workspace = true
+serde = { workspace = true, features = ["derive"] }
+rustok-api = { workspace = true, default-features = false }
+rustok-core = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, optional = true }
+rustok-social-graph = { path = "../../rustok-social-graph", optional = true }
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

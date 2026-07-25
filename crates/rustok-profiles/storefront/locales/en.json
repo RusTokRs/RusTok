@@ -1,0 +1,26 @@
+{
+  "profiles": {
+    "storefront": {
+      "badge": "Public profile",
+      "title": "Discover people",
+      "body": "Open a profile by handle and follow people whose updates you want to see.",
+      "searchLabel": "Profile handle",
+      "searchPlaceholder": "alice",
+      "searchAction": "Open profile",
+      "loading": "Loading profile...",
+      "loadError": "Failed to load profile",
+      "notFound": "This profile is unavailable.",
+      "follow": "Follow",
+      "unfollow": "Unfollow",
+      "updating": "Updating...",
+      "signIn": "Sign in to follow this profile.",
+      "self": "This is your profile.",
+      "followUnavailable": "Follow controls are temporarily unavailable.",
+      "followRecovered": "We refreshed the current follow state. Review it and try again.",
+      "bioFallback": "No biography has been added yet.",
+      "visibility": "Visibility",
+      "tags": "Interests",
+      "transport": "transport"
+    }
+  }
+}

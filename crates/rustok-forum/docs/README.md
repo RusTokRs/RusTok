@@ -33,6 +33,13 @@ documents describe stable contracts only and must not duplicate its backlog.
 - uses `rustok-content` only as a shared helper/orchestration dependency;
 - uses `rustok-taxonomy` as a shared dictionary for tag identity;
 - uses `rustok-profiles` for the author presentation contract;
+- the server GraphQL host binds `ProfileSummaryLoader` to the current anonymous,
+  authenticated-human, or trusted-service audience before Forum topic/reply
+  resolvers return `authorProfile`; the Profiles owner batch removes restricted,
+  hidden, blocked, missing, and cross-tenant summaries before localized profile
+  and tag reads, without per-author privacy calls;
+- standalone/custom GraphQL hosts must attach the same audience-bound loader;
+  `ProfileSummaryLoader::new` is anonymous and fail-closed by default;
 - uses `rustok-channel` for visibility/pilot gating on the public read-path: channel-restricted topics are stored in `forum_topic_channel_access`, public GraphQL checks `channel_module_bindings`, and SEO/read-path filters consume the host-provided request channel slug.
 - `rustok-forum/admin` already embeds owner-side SEO panels through `rustok-seo-admin-support`,
   and `rustok-seo` now holds target kinds `forum_category` and `forum_topic` for the shared runtime/resolver contract.
@@ -42,7 +49,8 @@ documents describe stable contracts only and must not duplicate its backlog.
 - `cargo xtask module validate forum`
 - `cargo xtask module test forum`
 - `npm run verify:page-builder:consumer:forum` for fast FBA consumer guardrail without compilation, including Wave 1 smoke/SLO/trace anti-drift checks;
-- targeted tests for topic/reply lifecycle, moderation, votes, subscriptions and visibility contracts;
+- targeted tests for topic/reply lifecycle, moderation, votes, subscriptions,
+  visibility contracts, and request-scoped profile author-summary filtering;
 - `npm run verify:channel:proof-points` for no-compile capture of forum channel-aware read-path/SEO markers
 
 ## Related documents

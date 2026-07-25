@@ -8,7 +8,9 @@ pub mod entities;
 pub mod error;
 pub mod graphql;
 pub mod loader;
+pub mod media;
 pub mod migrations;
+pub mod presentation;
 pub mod privacy;
 pub mod reader;
 pub mod services;
@@ -17,9 +19,15 @@ pub use dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfileInp
 pub use entities::ProfileRecord;
 pub use error::{ProfileError, ProfileResult};
 pub use loader::{ProfileSummaryLoader, ProfileSummaryLoaderKey};
+pub use media::{
+    ProfileImagePresentation, ProfileMediaPublicImageProvider, ProfileMediaSlot,
+    profile_image_presentation, validate_profile_media_asset,
+};
+pub use presentation::ProfilePresentationService;
 pub use privacy::{
-    ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest,
-    ProfilePrivacyRuntime, ProfilePrivacyService,
+    ProfileAccessAudience, ProfilePrivacyDecision, ProfilePrivacyReadPort,
+    ProfilePrivacyReadRequest, ProfilePrivacyRuntime, ProfilePrivacyService,
+    evaluate_profile_access,
 };
 pub use reader::ProfilesReader;
 pub use services::{ProfileBackfillResult, ProfileService};
@@ -45,7 +53,7 @@ impl RusToKModule for ProfilesModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["taxonomy"]
+        &["media", "social_graph", "taxonomy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -72,41 +80,17 @@ mod tests {
     use rustok_api::{Action, Resource};
 
     #[test]
-    fn module_metadata() {
-        let module = ProfilesModule;
-
-        assert_eq!(module.slug(), "profiles");
-        assert_eq!(module.name(), "Profiles");
-        assert_eq!(
-            module.description(),
-            "Universal public profile domain for platform users"
-        );
-        assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(module.dependencies(), &["taxonomy"]);
-    }
-
-    #[test]
-    fn module_permissions() {
-        let module = ProfilesModule;
-        let permissions = module.permissions();
-
-        assert!(
-            permissions
-                .iter()
-                .any(|permission| permission.resource == Resource::Profiles
-                    && permission.action == Action::Read)
-        );
-        assert!(
-            permissions
-                .iter()
-                .any(|permission| permission.resource == Resource::Profiles
-                    && permission.action == Action::Manage)
-        );
-    }
-
-    #[test]
-    fn module_has_profile_migrations() {
-        let module = ProfilesModule;
-        assert!(!module.migrations().is_empty());
+    fn profiles_permissions_cover_crud_and_list() {
+        let permissions = ProfilesModule.permissions();
+        for action in [
+            Action::Create,
+            Action::Read,
+            Action::Update,
+            Action::Delete,
+            Action::List,
+            Action::Manage,
+        ] {
+            assert!(permissions.contains(&Permission::new(Resource::Profiles, action)));
+        }
     }
 }

@@ -16,14 +16,20 @@ pub enum ProfileVisibility {
     Private,
 }
 
+impl ProfileVisibility {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Authenticated => "authenticated",
+            Self::FollowersOnly => "followers_only",
+            Self::Private => "private",
+        }
+    }
+}
+
 impl std::fmt::Display for ProfileVisibility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Public => write!(f, "public"),
-            Self::Authenticated => write!(f, "authenticated"),
-            Self::FollowersOnly => write!(f, "followers_only"),
-            Self::Private => write!(f, "private"),
-        }
+        f.write_str(self.as_str())
     }
 }
 

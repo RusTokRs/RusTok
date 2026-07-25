@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_media::{
     MediaAssetReadPort, MediaAssetWritePort, MediaImageDescriptor, MediaItem,
-    MediaReconciliationReport, MediaReconciliationRequest, MediaTranslationItem,
-    MediaUploadRequest, MediaUploadTarget, UpsertTranslationInput,
+    MediaPublicImageAsset, MediaPublicImageReadPort, MediaReconciliationReport,
+    MediaReconciliationRequest, MediaTranslationItem, MediaUploadRequest, MediaUploadTarget,
+    UpsertTranslationInput,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
@@ -15,7 +16,7 @@ use uuid::Uuid;
 use crate::proto::media_service_client::MediaServiceClient;
 use crate::proto::{IdJsonRequest, IdRequest, ImageDescriptorRequest, JsonRequest, ListRequest};
 
-/// Consumer-side gRPC adapter implementing the same owner ports as `MediaService`.
+/// Consumer-side gRPC adapter implementing the same owner ports as the embedded Media providers.
 pub struct GrpcMediaProvider {
     client: MediaServiceClient<Channel>,
 }
@@ -117,6 +118,30 @@ impl MediaAssetReadPort for GrpcMediaProvider {
             .client
             .clone()
             .get_translations(with_deadline(payload, &context))
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+}
+
+#[async_trait]
+impl MediaPublicImageReadPort for GrpcMediaProvider {
+    async fn get_public_image_asset(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        alt: Option<String>,
+    ) -> Result<MediaPublicImageAsset, PortError> {
+        let payload = ImageDescriptorRequest {
+            context_json: encode(&context)?,
+            id: media_id.to_string(),
+            alt,
+        };
+        let response = self
+            .client
+            .clone()
+            .get_public_image_asset(with_deadline(payload, &context))
             .await
             .map_err(status_to_port_error)?
             .into_inner();

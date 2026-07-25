@@ -6,6 +6,7 @@ license.workspace = true
 description = "Tenant-scoped social relation owner for blocks, mutes, follows, and friendship policy"
 
 [dependencies]
+async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
@@ -15,6 +16,10 @@ sea-orm-migration.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]
 
 [dev-dependencies]
 tokio.workspace = true

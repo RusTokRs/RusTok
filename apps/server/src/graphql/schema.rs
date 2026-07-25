@@ -25,6 +25,8 @@ use super::module_security::GraphqlModuleSecurityPolicy;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
 use super::principal_tenant_security::GraphqlPrincipalTenantPolicy;
+#[cfg(feature = "mod-profiles")]
+use super::profile_summary_policy::ProfileSummaryAudiencePolicy;
 use super::queries::RootQuery;
 use super::security::GraphqlSecurityPolicy;
 use super::settings::{SettingsMutation, SettingsQuery};
@@ -193,6 +195,9 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
 
     #[cfg(feature = "mod-blog")]
     let builder = builder.extension(BlogGraphqlRateLimitPolicy::new(blog_rate_limiter));
+
+    #[cfg(feature = "mod-profiles")]
+    let builder = builder.extension(ProfileSummaryAudiencePolicy);
 
     #[cfg(feature = "mod-content")]
     let builder = builder

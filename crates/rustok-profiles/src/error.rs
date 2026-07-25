@@ -32,6 +32,8 @@ pub enum ProfileError {
     DuplicateHandle(String),
     #[error("profile validation failed: {0}")]
     Validation(String),
+    #[error("profile presentation is temporarily unavailable")]
+    PresentationUnavailable,
     #[error(transparent)]
     Database(#[from] DbErr),
 }

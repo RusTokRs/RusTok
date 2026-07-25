@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use chrono::Utc;
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::Expr;
@@ -158,6 +160,52 @@ impl SocialGraphService {
             .one(&self.db)
             .await?
             .is_some())
+    }
+
+    pub async fn source_follows_target(
+        &self,
+        tenant_id: Uuid,
+        source_user_id: Uuid,
+        target_user_id: Uuid,
+    ) -> SocialGraphResult<bool> {
+        Ok(self
+            .source_follows_targets(tenant_id, source_user_id, &[target_user_id])
+            .await?
+            .contains(&target_user_id))
+    }
+
+    pub async fn source_follows_targets(
+        &self,
+        tenant_id: Uuid,
+        source_user_id: Uuid,
+        target_user_ids: &[Uuid],
+    ) -> SocialGraphResult<Vec<Uuid>> {
+        let target_user_ids = target_user_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        for target_user_id in &target_user_ids {
+            validate_pair(source_user_id, *target_user_id)?;
+        }
+        if target_user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let followed = relation::Entity::find()
+            .filter(relation::Column::TenantId.eq(tenant_id))
+            .filter(relation::Column::SourceUserId.eq(source_user_id))
+            .filter(relation::Column::TargetUserId.is_in(target_user_ids))
+            .filter(relation::Column::RelationKind.eq(SocialRelationKind::Follow))
+            .filter(relation::Column::Active.eq(true))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|relation| relation.target_user_id)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+
+        Ok(followed)
     }
 }
 

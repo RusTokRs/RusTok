@@ -66,6 +66,8 @@ pub mod payment_provider_event_worker;
 #[cfg(feature = "mod-payment")]
 pub mod payment_provider_runtime;
 pub mod platform_composition;
+pub mod profile_media_public_image_deployment;
+pub mod profile_media_public_image_runtime;
 
 pub mod event_transport_factory;
 pub mod order_field_service;

@@ -9,4 +9,6 @@ pub enum SocialRelationKind {
     Block,
     #[sea_orm(string_value = "mute")]
     Mute,
+    #[sea_orm(string_value = "follow")]
+    Follow,
 }

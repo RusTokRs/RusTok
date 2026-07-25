@@ -9,6 +9,8 @@ pub mod mutations;
 pub mod observability;
 pub mod persisted;
 pub mod principal_tenant_security;
+#[cfg(feature = "mod-profiles")]
+pub mod profile_summary_policy;
 pub mod queries;
 pub mod rbac_runtime;
 pub mod schema;

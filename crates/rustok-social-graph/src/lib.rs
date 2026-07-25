@@ -4,15 +4,20 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod entities;
 pub mod error;
+pub mod follow_read;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod migrations;
 pub mod model;
 pub mod ports;
 pub mod service;
 
 pub use error::{SocialGraphError, SocialGraphResult};
+pub use follow_read::{SocialGraphFollowReadPort, SocialGraphFollowState};
 pub use model::SocialRelationKind;
 pub use ports::{
-    SetSocialRelationCommand, SocialGraphCommandPort, SocialGraphPairRequest,
+    MAX_SOCIAL_GRAPH_FOLLOW_TARGETS, SetSocialRelationCommand, SocialGraphCommandPort,
+    SocialGraphFollowBatchRequest, SocialGraphFollowBatchResult, SocialGraphPairRequest,
     SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime,
 };
 pub use service::SocialGraphService;
@@ -59,7 +64,7 @@ mod tests {
         let module = SocialGraphModule;
         assert_eq!(module.slug(), "social_graph");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 1);
-        assert_eq!(module.migration_dependencies().len(), 1);
+        assert_eq!(module.migrations().len(), 2);
+        assert_eq!(module.migration_dependencies().len(), 2);
     }
 }
