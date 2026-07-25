@@ -18,6 +18,7 @@ pub mod locale;
 #[allow(clippy::collapsible_if, clippy::redundant_closure)]
 pub mod mentions;
 pub mod migrations;
+pub mod notification_recipient;
 mod notification_source;
 pub mod openapi;
 mod seo_targets;
@@ -40,6 +41,13 @@ pub use entities::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
 pub use mentions::*;
+pub use notification_recipient::{
+    FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY,
+    FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE,
+    ForumNotificationRecipientContext, ForumNotificationRecipientContextPort,
+    ForumNotificationRecipientContextRequest, ForumNotificationRecipientContextResolver,
+    SharedForumNotificationRecipientContextPort,
+};
 pub use services::{
     CategoryService, ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyService, ForumCategoryVisibilityPolicy,
