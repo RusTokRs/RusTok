@@ -11,13 +11,15 @@ pub use products::*;
 #[cfg(test)]
 mod tests;
 
+use axum::http::StatusCode;
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
-use rustok_api::{PortActor, PortContext, RequestContext};
+use rustok_api::{PortActor, PortContext, PortError, RequestContext};
 use rustok_cart::{
     CartStorefrontContextUpdateRequest, CartStorefrontPort, CartStorefrontRepriceRequest,
     in_process_cart_storefront_port,
 };
+use rustok_channel::error::ChannelError;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::{
@@ -31,7 +33,7 @@ use rustok_pricing::{
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
 };
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
@@ -42,7 +44,7 @@ use uuid::Uuid;
 
 use super::common::PaginationParams;
 use crate::{
-    StoreContextService,
+    StoreContextError, StoreContextService,
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
         UpdateCartContextInput,
@@ -58,6 +60,115 @@ use crate::{
 };
 
 pub const MODULE_SLUG: &str = "commerce";
+
+fn map_storefront_context_error(error: StoreContextError, tenant_id: Uuid) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        StoreContextError::TenantNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_context_not_found",
+            "Store context was not found",
+            "tenant_not_found",
+        ),
+        StoreContextError::Validation(_) | StoreContextError::CurrencyRegionMismatch { .. } => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_context_invalid",
+            "Store context request is invalid",
+            "validation",
+        ),
+        StoreContextError::RegionBoundary { .. } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_context_failed",
+            "Store context could not be resolved safely",
+            "region_boundary",
+        ),
+        StoreContextError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_context_unavailable",
+            "Store context is temporarily unavailable",
+            "database",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_commerce.store_context",
+        operation = "resolve_store_context",
+        tenant_id = %tenant_id,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_shared_http",
+        "storefront context resolution failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_storefront_customer_port_error(
+    error: PortError,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> HttpError {
+    let public = port_error_to_http_error(error.clone());
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_customer",
+        operation = "resolve_current_customer",
+        tenant_id = %tenant_id,
+        user_id = %user_id,
+        error_kind = ?error.kind,
+        retryable = error.retryable,
+        public_code = %public.code,
+        status = %public.status,
+        boundary = "commerce_storefront_shared_http",
+        "storefront customer projection failed"
+    );
+    public
+}
+
+fn map_storefront_channel_error(
+    error: ChannelError,
+    request_context: &RequestContext,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        ChannelError::NotFound(_) | ChannelError::InactiveChannel(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_channel_not_found",
+            "Store channel was not found",
+            "not_found",
+        ),
+        ChannelError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_channel_unavailable",
+            "Store channel is temporarily unavailable",
+            "database",
+        ),
+        ChannelError::SlugAlreadyExists(_)
+        | ChannelError::InvalidTargetType(_)
+        | ChannelError::InvalidTargetValue(_)
+        | ChannelError::InvalidPolicyDefinition(_)
+        | ChannelError::TargetAlreadyExists(_, _)
+        | ChannelError::PolicySetSlugAlreadyExists(_)
+        | ChannelError::InvalidPolicyOperation(_)
+        | ChannelError::Serialization(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_channel_failed",
+            "Store channel could not be resolved safely",
+            "unexpected_owner_error",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_channel",
+        operation = "ensure_storefront_channel_enabled",
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_shared_http",
+        "storefront channel resolution failed"
+    );
+    HttpError::new(status, code, message)
+}
 
 pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
     axum::Router::new()
@@ -129,7 +240,7 @@ pub(crate) async fn resolve_context_for_db(
             },
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))
+        .map_err(|error| map_storefront_context_error(error, tenant_id))
 }
 
 pub(crate) async fn resolve_context_from_cart_for_db(
@@ -200,9 +311,10 @@ pub(crate) async fn current_customer_id_for_db(
     {
         Ok(customer) => Ok(Some(customer.id)),
         Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
-        Err(error) => Err(HttpError::bad_request(
-            "commerce_store_invalid",
-            error.message,
+        Err(error) => Err(map_storefront_customer_port_error(
+            error,
+            tenant_id,
+            auth.user_id,
         )),
     }
 }
@@ -254,7 +366,7 @@ pub(crate) async fn ensure_storefront_channel_enabled_for_db(
 ) -> HttpResult<()> {
     let enabled = is_module_enabled_for_request_channel(db, request_context, MODULE_SLUG)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
+        .map_err(|error| map_storefront_channel_error(error, request_context))?;
 
     if !enabled {
         return Err(HttpError::unauthorized(
