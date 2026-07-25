@@ -292,6 +292,14 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         extensions.insert(policy);
     }
 
+    #[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
+    {
+        let audience_facts = crate::services::forum_audience_group_facts::ServerForumAudienceGroupFactsPort::shared(
+            db.clone(),
+        );
+        extensions.insert(audience_facts);
+    }
+
     #[cfg(feature = "mod-forum")]
     {
         let recipient_context = crate::services::forum_notification_recipient_context::ServerForumNotificationRecipientContextPort::shared(
@@ -400,6 +408,8 @@ mod tests {
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
         #[cfg(feature = "mod-forum")]
         assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
+        #[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
+        assert!(extensions.contains::<rustok_forum::SharedForumAudienceFactsPort>());
         #[cfg(feature = "mod-notifications")]
         assert!(
             rustok_notifications::api::notification_source_registry_from_extensions(
