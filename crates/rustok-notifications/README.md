@@ -185,7 +185,8 @@ not mutate seen/read/archive timestamps or create delivery attempts.
 rows to read; a direct unread-to-read transition assigns `seen_at` and `read_at`
 from the same instant. `mark_unread` returns seen or read rows to unread and clears
 both `seen_at` and `read_at`. `archive` advances every non-archived state to archived
-and preserves prior seen/read timestamps.
+and preserves prior seen/read timestamps. This extends the exact seen/read/archive
+state APIs with one explicit reopen command.
 
 Archived remains terminal: `mark_seen`, `mark_read`, and `mark_unread` cannot reopen
 it. Repeated commands for an already matching or protected state return the current
