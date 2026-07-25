@@ -1,7 +1,7 @@
 use super::{
     MODULE_SLUG, RequestedCartContext, StoreAddCartLineItemInput, StoreCartContextPatch,
     StoreLineItemResolution, cart_context_metadata, checkout_actor_id, ensure_store_cart_access,
-    merge_metadata, requested_cart_context, resolve_store_line_item_input,
+    merge_metadata, requested_cart_context,
 };
 use axum::Router;
 use axum::body::{Body, to_bytes};
