@@ -33,14 +33,20 @@ const contract = JSON.parse(read(contractPath) || "{}");
 const adapter = read(contract.adapter_file ?? "");
 const services = read(contract.services_file ?? "");
 const runtime = read(contract.runtime_composition_file ?? "");
+const notificationSource = read(contract.notification_source_file ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
+const downstream = JSON.parse(read(contract.downstream_contract ?? "") || "{}");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("forum notification recipient host runtime contract must use schema_version=1");
+if (contract.schema_version !== 2) {
+  failures.push("forum notification recipient host runtime contract must use schema_version=2");
 }
-if (contract.task !== "FORUM-20M" || contract.upstream_task !== "FORUM-20L") {
-  failures.push("forum notification recipient host runtime contract must belong to FORUM-20M after FORUM-20L");
+if (
+  contract.task !== "FORUM-20M" ||
+  contract.upstream_task !== "FORUM-20L" ||
+  contract.downstream_task !== "FORUM-20N"
+) {
+  failures.push("forum notification recipient host runtime contract must connect FORUM-20L/M/N");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("recipient host runtime publication must not claim unexecuted evidence");
@@ -62,16 +68,15 @@ for (const delivered of [
   "publication_before_notification_source_materialization",
   "feature_guarded_server_module",
   "inline_contract_tests",
+  "notification_source_factory_consumption",
+  "recipient_target_open_authorization",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum notification recipient host runtime contract must record ${delivered} as delivered`);
   }
 }
-
 for (const residual of [
-  "notification source factory consumption of the recipient context capability",
-  "recipient-specific audience filtering for non-public topics",
-  "recipient-specific target-open authorization for non-public topics and replies",
+  "recipient-specific audience filtering for non-public topics before pagination",
   "profile privacy and blocking policy",
   "trust channel and group facts host adapters",
   "final notification creation and delivery authorization",
@@ -82,8 +87,15 @@ for (const residual of [
     failures.push(`forum notification recipient host runtime contract must keep ${residual} explicitly open`);
   }
 }
+for (const staleResidual of [
+  "notification source factory consumption of the recipient context capability",
+  "recipient-specific target-open authorization for non-public topics and replies",
+]) {
+  if (contract.not_delivered?.includes(staleResidual)) {
+    failures.push(`forum notification recipient host runtime contract must remove delivered residual ${staleResidual}`);
+  }
+}
 
-const planSync = contract.canonical_plan_sync ?? {};
 const deliveredSlices = [
   "FORUM-20H",
   "FORUM-20I",
@@ -91,12 +103,14 @@ const deliveredSlices = [
   "FORUM-20K",
   "FORUM-20L",
   "FORUM-20M",
+  "FORUM-20N",
 ];
-if (planSync.required_ledger_through !== "FORUM-20M") {
-  failures.push("forum recipient host runtime contract must require the canonical ledger through FORUM-20M");
+const planSync = contract.canonical_plan_sync ?? {};
+if (planSync.required_ledger_through !== "FORUM-20N") {
+  failures.push("forum recipient host runtime contract must require the canonical ledger through FORUM-20N");
 }
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("forum recipient host runtime contract must require FORUM-20H through FORUM-20M delivered sections");
+  failures.push("forum recipient host runtime contract must require FORUM-20H through FORUM-20N delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -117,8 +131,8 @@ if (planSync.status === "pending") {
 } else if (planSync.status === "synchronized") {
   requireText(
     plan,
-    "FORUM-20A-M provide",
-    "synchronized canonical plan must advance the FORUM-20 ledger through M",
+    "FORUM-20A-N provide",
+    "synchronized canonical plan must advance the FORUM-20 ledger through N",
   );
   for (const slice of deliveredSlices) {
     requireText(
@@ -154,7 +168,6 @@ for (const marker of [
 ]) {
   requireText(adapter, marker, `forum notification recipient host adapter is missing ${marker}`);
 }
-
 for (const forbidden of [
   "rustok_forum::entities",
   "forum_category_audience_",
@@ -172,14 +185,12 @@ for (const forbidden of [
     `forum notification recipient host adapter must not bypass owner boundaries with ${forbidden}`,
   );
 }
-
 for (const marker of [
   "#[cfg(feature = \"mod-forum\")]",
   "pub mod forum_notification_recipient_context;",
 ]) {
   requireText(services, marker, `server services surface is missing ${marker}`);
 }
-
 for (const marker of [
   "ServerForumNotificationRecipientContextPort::shared(",
   "extensions.insert(recipient_context)",
@@ -199,14 +210,36 @@ if (
   failures.push("recipient context capability must be published before notification source materialization");
 }
 
+for (const marker of [
+  "host.shared_get::<SharedForumNotificationRecipientContextPort>()",
+  "recipient_context_port: Option<SharedForumNotificationRecipientContextPort>",
+  "ForumNotificationRecipientContextResolver::new(Some(port))",
+  "target_open_context(&request)",
+  "recipient.into_topic_viewer()",
+]) {
+  requireText(notificationSource, marker, `notification source consumer is missing ${marker}`);
+}
+
 if (
-  upstream.schema_version !== 2 ||
+  upstream.schema_version !== 3 ||
   upstream.task !== "FORUM-20L" ||
   upstream.downstream_task !== "FORUM-20M" ||
+  upstream.consumer_task !== "FORUM-20N" ||
   upstream.composition?.host_adapter_implementation !== true ||
-  upstream.composition?.host_runtime_publication !== true
+  upstream.composition?.host_runtime_publication !== true ||
+  upstream.composition?.notification_source_factory_consumption !== true
 ) {
-  failures.push("FORUM-20M host runtime must remain synchronized with the delivered FORUM-20L capability contract");
+  failures.push("FORUM-20M host runtime must remain synchronized with the FORUM-20L capability contract through FORUM-20N");
+}
+if (
+  downstream.schema_version !== 1 ||
+  downstream.task !== "FORUM-20N" ||
+  downstream.upstream_task !== "FORUM-20M" ||
+  downstream.composition?.factory_recipient_capability_lookup !== true ||
+  downstream.composition?.recipient_specific_topic_open !== true ||
+  downstream.composition?.recipient_specific_reply_open !== true
+) {
+  failures.push("FORUM-20M host runtime must remain synchronized with delivered FORUM-20N target-open consumption");
 }
 
 if (failures.length > 0) {
