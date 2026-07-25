@@ -50,7 +50,10 @@ mod topic {
     include!("topic_inline.rs");
     include!("topic_visibility_list.rs");
 }
-mod topic_audience;
+mod topic_audience {
+    include!("topic_audience.rs");
+    include!("topic_audience_visibility.rs");
+}
 mod topic_facade;
 mod topic_owner {
     include!("topic_owner.rs");
@@ -89,7 +92,8 @@ pub use storefront_read_state::{
 };
 pub use subscription::SubscriptionService;
 pub use topic_audience::{
-    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, SetForumTopicAudiencePolicyInput,
+    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, ForumTopicAudienceViewer,
+    ForumTopicAudienceVisibilityService, SetForumTopicAudiencePolicyInput,
 };
 pub use topic_facade::TopicService;
 pub use topic_visibility::{
