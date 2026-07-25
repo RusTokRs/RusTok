@@ -57,6 +57,7 @@ for (const delivered of [
   "exact_tenant_recipient_query",
   "non_archived_scope",
   "default_and_hard_page_bounds",
+  "shared_inbox_cursor_owner",
   "bounded_cursor_input",
   "composite_descending_keyset_cursor",
   "nanosecond_cursor_precision",
@@ -172,17 +173,14 @@ for (const marker of [
   ".order_by_desc(notification::Column::CreatedAt)",
   ".order_by_desc(notification::Column::Id)",
   ".limit(limit + 1)",
+  "decode_inbox_cursor",
+  "encode_inbox_cursor",
   "NotificationInboxOpenService::new",
   ".authorize_open(NotificationInboxOpenRequest {",
   "NotificationInboxOpenDecision::Unavailable",
   "self.state.archive(identity).await?",
   "NotificationInboxStateDecision::Available { changed: true, .. }",
-  "MAX_NOTIFICATION_INBOX_CURSOR_BYTES",
-  "value.chars().any(char::is_control)",
-  "timestamp_subsec_nanos()",
-  "Uuid::parse_str(part)",
   "notification inbox reconciliation identity must not be nil",
-  "invalid notification inbox reconciliation cursor",
 ]) {
   requireText(owner, marker, `notification inbox reconciliation owner is missing ${marker}`);
 }
@@ -210,6 +208,12 @@ for (const forbidden of [
   "route:",
   "delivery_attempt",
   "NotificationInboxState::",
+  "RECONCILE_CURSOR_VERSION",
+  "struct ReconcileCursor",
+  "fn encode_cursor",
+  "fn decode_cursor",
+  "DateTime<",
+  "Utc",
 ]) {
   rejectText(owner, forbidden, `inbox reconciliation must preserve its boundary against ${forbidden}`);
 }
@@ -218,8 +222,18 @@ for (const marker of [
   "pub struct NotificationInboxOpenService",
   ".evaluate(NotificationRecipientPolicyRequest {",
   ".authorize_target_open(AuthorizeNotificationTargetRequest {",
+  "pub(crate) struct InboxCursor",
+  "pub(crate) created_at: DateTime<FixedOffset>",
+  "pub(crate) id: Uuid",
+  "pub(crate) fn encode_inbox_cursor",
+  "pub(crate) fn decode_inbox_cursor",
+  "MAX_NOTIFICATION_INBOX_CURSOR_BYTES",
+  "value.chars().any(char::is_control)",
+  "timestamp_subsec_nanos()",
+  "Uuid::parse_str(part)",
+  "invalid notification inbox cursor",
 ]) {
-  requireText(openOwner, marker, `open-time owner is missing reconciliation dependency ${marker}`);
+  requireText(openOwner, marker, `open-time inbox owner is missing reconciliation dependency ${marker}`);
 }
 const policyIndex = openOwner.indexOf(".evaluate(NotificationRecipientPolicyRequest {");
 const sourceIndex = openOwner.indexOf(".authorize_target_open(AuthorizeNotificationTargetRequest {");
@@ -264,6 +278,7 @@ for (const marker of [
 for (const marker of [
   "NotificationInboxReconcileService",
   "bounded exact-recipient reconciliation",
+  "crate-private `i1` inbox cursor",
   "tenant-wide scheduled reconciliation",
   "inbox_reconcile_sqlite",
 ]) {
@@ -273,6 +288,7 @@ for (const marker of [
   "### Bounded inbox reconciliation",
   "privacy or source policy",
   "durable and idempotent",
+  "crate-private `i1` inbox cursor",
   "Tenant-wide scheduling",
   "payload redaction",
   "inbox_reconcile_sqlite",
@@ -283,6 +299,7 @@ for (const marker of [
 for (const marker of [
   "### `FORUM-20V`",
   "NotificationInboxReconcileService",
+  "shared 128-byte/control-character validation boundary",
   "tenant-wide scheduled reconciliation",
   "tests/inbox_reconcile_sqlite.rs",
 ]) {
