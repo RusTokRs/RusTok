@@ -41,8 +41,9 @@
 - Shared DTOs, entities and error surface come from `rustok-commerce-foundation`.
 - FBA boundary is published as `ProductCatalogReadPort` / `product.catalog_read.v1`.
   Registry `contracts/product-fba-registry.json`, static matrix,
-  no-compile runtime contract smoke and source-locked runtime fallback smoke maintain status
-  `boundary_ready`; `transport_verified` remains closed until live provider execution evidence.
+  no-compile runtime contract smoke, source-locked runtime fallback smoke, and
+  the live PostgreSQL in-process port fixture maintain status `boundary_ready`;
+  `transport_verified` remains closed until consumer fallback execution evidence.
 - Canonical vocabulary and attach semantics for product tags live in
   `rustok-taxonomy` + `product_tags`, and the public contract uses a first-class
   `tags` field instead of legacy `metadata.tags`.
