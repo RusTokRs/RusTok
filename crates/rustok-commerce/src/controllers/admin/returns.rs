@@ -6,7 +6,8 @@ use axum::{
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
-use rustok_web::HttpResult;
+use rustok_order::error::OrderError;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -24,6 +25,86 @@ use crate::{
         CancelOrderReturnInput, CreateOrderReturnInput, ListOrderReturnsInput, OrderReturnResponse,
     },
 };
+
+const ADMIN_ORDER_RETURN_OWNER: &str = "rustok_order.admin_returns";
+const ADMIN_ORDER_RETURN_BOUNDARY: &str = "commerce_admin_order_return_http";
+
+struct AdminOrderReturnErrorContext {
+    tenant_id: Uuid,
+    order_id: Option<Uuid>,
+    return_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl AdminOrderReturnErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        order_id: Option<Uuid>,
+        return_id: Option<Uuid>,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            order_id,
+            return_id,
+            operation,
+        }
+    }
+}
+
+fn map_admin_order_return_error(
+    context: AdminOrderReturnErrorContext,
+    error: OrderError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        OrderError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        OrderError::OrderNotFound(_)
+        | OrderError::OrderReturnNotFound(_)
+        | OrderError::OrderChangeNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        OrderError::InvalidTransition { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        OrderError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "database",
+        ),
+        OrderError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "core",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_ORDER_RETURN_OWNER,
+        tenant_id = %context.tenant_id,
+        order_id = ?context.order_id,
+        return_id = ?context.return_id,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_RETURN_BOUNDARY,
+        "commerce admin order return owner operation failed"
+    );
+    HttpError::new(status, code, message)
+}
 
 #[utoipa::path(
     post,
@@ -52,7 +133,12 @@ pub async fn create_order_return(
     let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_return(tenant.id, id, input)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, Some(id), None, "create_return"),
+                error,
+            )
+        })?;
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -121,18 +207,24 @@ pub async fn list_order_returns(
         "Permission denied: orders:read required",
     )?;
     let pagination = params.pagination.unwrap_or_default();
+    let order_id = params.order_id;
     let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .list_returns(
             tenant.id,
             ListOrderReturnsInput {
                 page: pagination.page,
                 per_page: pagination.limit(),
-                order_id: params.order_id,
+                order_id,
                 status: params.status,
             },
         )
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, order_id, None, "list_returns"),
+                error,
+            )
+        })?;
     Ok(Json(PaginatedResponse {
         data: items,
         meta: super::super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
@@ -164,7 +256,12 @@ pub async fn show_order_return(
     let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_return(tenant.id, id)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "get_return"),
+                error,
+            )
+        })?;
     Ok(Json(item))
 }
 
@@ -259,6 +356,11 @@ pub async fn cancel_order_return(
     let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .cancel_return(tenant.id, id, input)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_return_error(
+                AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "cancel_return"),
+                error,
+            )
+        })?;
     Ok(Json(item))
 }

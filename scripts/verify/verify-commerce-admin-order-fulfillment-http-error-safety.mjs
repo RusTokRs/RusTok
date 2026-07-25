@@ -45,9 +45,7 @@ for (const [value, label] of [
   ['pub(crate) fn map_fulfillment_error(error: FulfillmentError)', 'fulfillment mapper'],
   ['pub(crate) fn map_fulfillment_orchestration_error(', 'fulfillment orchestration mapper'],
   ['pub(crate) fn map_post_order_orchestration_error(', 'post-order mapper'],
-]) {
-  requireText(admin, value, label);
-}
+]) requireText(admin, value, label);
 
 for (const [value, label] of [
   ['OrderError::Validation(_)', 'order validation mapping'],
@@ -67,9 +65,7 @@ for (const [value, label] of [
   ['axum::http::StatusCode::CONFLICT', 'conflict status'],
   ['axum::http::StatusCode::SERVICE_UNAVAILABLE', 'unavailable status'],
   ['axum::http::StatusCode::INTERNAL_SERVER_ERROR', 'internal status'],
-]) {
-  requireText(admin, value, label);
-}
+]) requireText(admin, value, label);
 
 for (const [value, label] of [
   ['FulfillmentError::Validation(_)', 'fulfillment validation mapping'],
@@ -87,9 +83,7 @@ for (const [value, label] of [
   ['FulfillmentOrchestrationError::PersistenceAfterProvider { .. }', 'persistence-after-provider mapping'],
   ['"commerce_admin_fulfillment_reconciliation_required"', 'fulfillment reconciliation code'],
   ['"Fulfillment operation requires reconciliation"', 'fulfillment reconciliation message'],
-]) {
-  requireText(admin, value, label);
-}
+]) requireText(admin, value, label);
 
 for (const [value, label] of [
   ['PostOrderOrchestrationError::Order(error) => map_order_error(error)', 'post-order order delegation'],
@@ -97,9 +91,7 @@ for (const [value, label] of [
   ['PostOrderOrchestrationError::PaymentOrchestration(error)', 'post-order payment orchestration delegation'],
   ['PostOrderOrchestrationError::Validation(_)', 'post-order validation mapping'],
   ['"commerce_admin_post_order_invalid"', 'post-order validation code'],
-]) {
-  requireText(admin, value, label);
-}
+]) requireText(admin, value, label);
 
 for (const [ownerSource, value, label] of [
   [orderErrors, 'Validation(String)', 'owner order validation variant'],
@@ -124,9 +116,7 @@ for (const [ownerSource, value, label] of [
   [postOrder, 'Payment(#[from] rustok_payment::error::PaymentError)', 'post-order payment variant'],
   [postOrder, 'PaymentOrchestration(#[from] PaymentOrchestrationError)', 'post-order payment orchestration variant'],
   [postOrder, 'Validation(String)', 'post-order validation variant'],
-]) {
-  requireText(ownerSource, value, label);
-}
+]) requireText(ownerSource, value, label);
 
 for (const [value, label] of [
   ['pub async fn list_orders(', 'admin list-orders handler'],
@@ -147,29 +137,28 @@ for (const [value, label] of [
   ],
   ['page: pagination.page', 'order page forwarding'],
   ['per_page: pagination.limit()', 'order page-size forwarding'],
-]) {
-  requireText(orders, value, label);
-}
+]) requireText(orders, value, label);
 
 for (const value of [
   '.map_err(super::map_payment_error)?;',
   '.map_err(super::map_fulfillment_error)?;',
-]) {
-  forbidText(orders, value, 'stale order-detail shared mapper callsite');
-}
+]) forbidText(orders, value, 'stale order-detail shared mapper callsite');
 
 for (const [value, label] of [
   ['pub async fn list_order_returns(', 'admin return list'],
   ['pub async fn show_order_return(', 'admin return detail'],
   ['pub async fn create_order_return(', 'admin return create'],
   ['pub async fn cancel_order_return(', 'admin return cancel'],
-  ['.map_err(super::map_order_error)?;', 'typed return owner mapping'],
+  ['struct AdminOrderReturnErrorContext {', 'return owner context'],
+  ['fn map_admin_order_return_error(', 'context-aware return owner mapper'],
   ['.map_err(super::map_post_order_orchestration_error)?;', 'typed return orchestration mapping'],
   ['ListOrderReturnsInput {', 'return list input'],
   ['page: pagination.page', 'return page forwarding'],
   ['per_page: pagination.limit()', 'return page-size forwarding'],
-]) {
-  requireText(returns, value, label);
+]) requireText(returns, value, label);
+
+for (const value of ['.map_err(super::map_order_error)?;']) {
+  forbidText(returns, value, 'stale admin return shared owner mapper callsite');
 }
 
 for (const [value, label] of [
@@ -190,16 +179,12 @@ for (const [value, label] of [
     'fn map_admin_fulfillment_orchestration_error(',
     'context-aware fulfillment orchestration mapper',
   ],
-]) {
-  requireText(fulfillments, value, label);
-}
+]) requireText(fulfillments, value, label);
 
 for (const value of [
   '.map_err(super::map_fulfillment_error)?;',
   '.map_err(super::map_fulfillment_orchestration_error)?;',
-]) {
-  forbidText(fulfillments, value, 'stale admin fulfillment shared mapper callsite');
-}
+]) forbidText(fulfillments, value, 'stale admin fulfillment shared mapper callsite');
 
 for (const [content, label] of [
   [orders, 'admin order reads'],
@@ -211,15 +196,22 @@ for (const [content, label] of [
     'error.to_string()',
     'other.to_string()',
     'HttpError::bad_request("commerce_operation_failed"',
-  ]) {
-    forbidText(content, value, `${label} unsafe public conversion`);
-  }
+  ]) forbidText(content, value, `${label} unsafe public conversion`);
 }
 
-const orderMapperUses = (orders.match(/\.map_err\(super::map_order_error\)\?;/g) ?? []).length
-  + (returns.match(/\.map_err\(super::map_order_error\)\?;/g) ?? []).length;
-if (orderMapperUses !== 10) {
-  failures.push(`expected ten order/return owner mapper callsites, found ${orderMapperUses}`);
+const sharedOrderMapperUses = orders.match(/\.map_err\(super::map_order_error\)\?;/g) ?? [];
+if (sharedOrderMapperUses.length !== 6) {
+  failures.push(`expected six remaining shared order mapper callsites, found ${sharedOrderMapperUses.length}`);
+}
+
+const returnOwnerMapperUses =
+  returns.match(
+    /map_admin_order_return_error\(\s+AdminOrderReturnErrorContext::new\(/g,
+  ) ?? [];
+if (returnOwnerMapperUses.length !== 4) {
+  failures.push(
+    `expected four context-aware return owner mapper callsites, found ${returnOwnerMapperUses.length}`,
+  );
 }
 
 const fulfillmentMapperUses =
