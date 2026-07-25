@@ -327,14 +327,6 @@ where
     Ok(matches.pop())
 }
 
-fn parse_optional_uuid(value: Option<String>) -> Option<Uuid> {
-    value
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .and_then(|value| Uuid::parse_str(value).ok())
-}
-
 fn order_checkout_identity_error_to_port_error(
     context: &PortContext,
     owner_operation: &'static str,
