@@ -46,8 +46,8 @@
     "sparse_page": "an empty returned page may carry a next cursor",
     "cursor_progress": "derive the next cursor from the last scanned raw row rather than the last returned item",
     "failure_atomicity": "retryable privacy or source failures abort the page without a partial result",
-    "read_model": "return typed source type template actor priority state template data and inbox timestamps only",
-    "route_boundary": "listing does not expose a target route or persisted target identity",
+    "read_model": "return typed source type template actor priority state source-owned template data and inbox timestamps only",
+    "route_boundary": "listing adds no dedicated route or structural target owner kind or id fields",
     "mutation_boundary": "listing does not mutate seen read archive state or delivery attempts"
   },
   "composition": {
@@ -62,7 +62,7 @@
     "last_scanned_raw_cursor": true,
     "sparse_page_progress": true,
     "typed_sanitized_read_model": true,
-    "route_and_target_not_exposed": true,
+    "dedicated_route_and_target_fields_not_exposed": true,
     "retryable_failure_atomicity": true,
     "read_state_unchanged": true,
     "delivery_attempts_unchanged": true,
