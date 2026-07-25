@@ -6,13 +6,24 @@ use axum::{
 use chrono::{Duration, Utc};
 use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_fulfillment::providers::FulfillmentProviderOperationResult;
-use rustok_fulfillment::{FulfillmentProviderOperationRecovery, entities::provider_operation};
+use rustok_fulfillment::{
+    FulfillmentError, FulfillmentProviderOperationRecovery, entities::provider_operation,
+};
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{CommerceHttpRuntime, admin::map_fulfillment_orchestration_error};
-use crate::{FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService};
+use super::CommerceHttpRuntime;
+use crate::{
+    FulfillmentCreateLabelRecoveryService, FulfillmentOrchestrationError,
+    FulfillmentReconciliationService,
+};
+
+const ADMIN_RECONCILIATION_FULFILLMENT_OWNER: &str =
+    "rustok_fulfillment.admin_reconciliation";
+const ADMIN_RECONCILIATION_ORCHESTRATION_OWNER: &str =
+    "rustok_commerce.fulfillment_reconciliation";
+const ADMIN_RECONCILIATION_BOUNDARY: &str = "commerce_admin_reconciliation_http";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ListReconciliationParams {
@@ -63,7 +74,14 @@ async fn list_reconciliation_required(
     let operations = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .list_reconciliation_required(tenant.id, params.limit.unwrap_or(100))
         .await
-        .map_err(super::admin::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_reconciliation_fulfillment_error(
+                tenant.id,
+                None,
+                "list_reconciliation_required",
+                error,
+            )
+        })?;
     Ok(Json(operations))
 }
 
@@ -79,7 +97,14 @@ async fn quarantine_stale_executing(
     let quarantined = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .quarantine_stale_executing(tenant.id, stale_before, input.limit.unwrap_or(100))
         .await
-        .map_err(super::admin::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_reconciliation_fulfillment_error(
+                tenant.id,
+                None,
+                "quarantine_stale_executing",
+                error,
+            )
+        })?;
     Ok(Json(QuarantineStaleResponse { quarantined }))
 }
 
@@ -94,7 +119,14 @@ async fn resolve_unknown_as_failed(
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .resolve_unknown_as_failed(tenant.id, operation_id, input.reason)
         .await
-        .map_err(super::admin::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_reconciliation_fulfillment_error(
+                tenant.id,
+                Some(operation_id),
+                "resolve_unknown_as_failed",
+                error,
+            )
+        })?;
     Ok(Json(operation))
 }
 
@@ -108,15 +140,19 @@ async fn resolve_unknown_as_succeeded(
     require_manage_permission(&auth)?;
     let provider_reference = input.provider_result.external_reference.clone();
     let provider_result = serde_json::to_value(input.provider_result).map_err(|error| {
-        HttpError::bad_request(
-            "commerce_admin_invalid",
-            format!("failed to serialize provider result: {error}"),
-        )
+        map_provider_result_encoding_error(tenant.id, operation_id, error)
     })?;
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .resolve_unknown_as_succeeded(tenant.id, operation_id, provider_reference, provider_result)
         .await
-        .map_err(super::admin::map_fulfillment_error)?;
+        .map_err(|error| {
+            map_reconciliation_fulfillment_error(
+                tenant.id,
+                Some(operation_id),
+                "resolve_unknown_as_succeeded",
+                error,
+            )
+        })?;
     Ok(Json(operation))
 }
 
@@ -130,7 +166,14 @@ async fn retry_local_persistence(
     let fulfillment = FulfillmentReconciliationService::new(runtime.db_clone())
         .retry_local_persistence(tenant.id, operation_id)
         .await
-        .map_err(map_fulfillment_orchestration_error)?;
+        .map_err(|error| {
+            map_reconciliation_orchestration_error(
+                tenant.id,
+                Some(operation_id),
+                "retry_local_persistence",
+                error,
+            )
+        })?;
     Ok(Json(fulfillment))
 }
 
@@ -145,8 +188,150 @@ async fn retry_create_label(
         .with_provider_registry(runtime.fulfillment_provider_registry())
         .retry(tenant.id, operation_id)
         .await
-        .map_err(map_fulfillment_orchestration_error)?;
+        .map_err(|error| {
+            map_reconciliation_orchestration_error(
+                tenant.id,
+                Some(operation_id),
+                "retry_create_label",
+                error,
+            )
+        })?;
     Ok(Json(fulfillment))
+}
+
+fn map_reconciliation_fulfillment_error(
+    tenant_id: Uuid,
+    provider_operation_id: Option<Uuid>,
+    operation: &'static str,
+    error: FulfillmentError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        FulfillmentError::Validation(_) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        FulfillmentError::ShippingOptionNotFound(_)
+        | FulfillmentError::FulfillmentNotFound(_) => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        FulfillmentError::InvalidTransition { .. } => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+            "Fulfillment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        FulfillmentError::Database(_) => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+            "database",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_RECONCILIATION_FULFILLMENT_OWNER,
+        tenant_id = %tenant_id,
+        provider_operation_id = ?provider_operation_id,
+        operation,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        "commerce admin fulfillment reconciliation owner operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_reconciliation_orchestration_error(
+    tenant_id: Uuid,
+    provider_operation_id: Option<Uuid>,
+    operation: &'static str,
+    error: FulfillmentOrchestrationError,
+) -> HttpError {
+    match error {
+        FulfillmentOrchestrationError::Fulfillment(error) => map_reconciliation_fulfillment_error(
+            tenant_id,
+            provider_operation_id,
+            operation,
+            error,
+        ),
+        error => {
+            let (status, code, message, error_kind) = match &error {
+                FulfillmentOrchestrationError::OrderNotFound(_) => (
+                    axum::http::StatusCode::NOT_FOUND,
+                    "commerce_admin_not_found",
+                    "Commerce resource not found",
+                    "order_not_found",
+                ),
+                FulfillmentOrchestrationError::Database(_) => (
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "commerce_admin_fulfillment_storage_unavailable",
+                    "Fulfillment storage is temporarily unavailable",
+                    "database",
+                ),
+                FulfillmentOrchestrationError::Validation(_) => (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "commerce_admin_fulfillment_invalid",
+                    "Fulfillment request is invalid",
+                    "validation",
+                ),
+                FulfillmentOrchestrationError::ProviderAfterPersistence { .. }
+                | FulfillmentOrchestrationError::PersistenceAfterProvider { .. } => (
+                    axum::http::StatusCode::CONFLICT,
+                    "commerce_admin_fulfillment_reconciliation_required",
+                    "Fulfillment operation requires reconciliation",
+                    "reconciliation_required",
+                ),
+                FulfillmentOrchestrationError::Fulfillment(_) => unreachable!(
+                    "nested fulfillment errors are handled before orchestration mapping"
+                ),
+            };
+            tracing::error!(
+                error = ?error,
+                owner = ADMIN_RECONCILIATION_ORCHESTRATION_OWNER,
+                tenant_id = %tenant_id,
+                provider_operation_id = ?provider_operation_id,
+                operation,
+                error_kind,
+                public_code = code,
+                status = %status,
+                boundary = ADMIN_RECONCILIATION_BOUNDARY,
+                "commerce admin fulfillment reconciliation orchestration failed"
+            );
+            HttpError::new(status, code, message)
+        }
+    }
+}
+
+fn map_provider_result_encoding_error(
+    tenant_id: Uuid,
+    provider_operation_id: Uuid,
+    error: serde_json::Error,
+) -> HttpError {
+    let status = axum::http::StatusCode::INTERNAL_SERVER_ERROR;
+    let code = "commerce_admin_fulfillment_reconciliation_encoding_failed";
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_RECONCILIATION_ORCHESTRATION_OWNER,
+        tenant_id = %tenant_id,
+        provider_operation_id = %provider_operation_id,
+        operation = "resolve_unknown_as_succeeded",
+        error_kind = "encoding",
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        "commerce admin fulfillment reconciliation provider result encoding failed"
+    );
+    HttpError::new(
+        status,
+        code,
+        "Fulfillment reconciliation result could not be processed safely",
+    )
 }
 
 fn require_manage_permission(auth: &AuthContext) -> HttpResult<()> {

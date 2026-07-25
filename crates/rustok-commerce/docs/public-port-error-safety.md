@@ -49,6 +49,11 @@ available only for actionable domain errors.
   Validation, missing-resource, transition, and database causes are logged with
   correlation identity and stable codes while the existing public envelopes remain
   static.
+- `rustok-commerce` admin fulfillment reconciliation: list, quarantine, manual resolve,
+  and retry paths retain the typed fulfillment or orchestration cause with owner, tenant,
+  truthful optional provider-operation identity, operation, stable code, status, and HTTP
+  boundary. Provider-result encoding failures are internal invariant failures with a
+  static fail-closed `500` envelope instead of dynamic serialization text in a `400`.
 - `rustok-commerce` admin order detail payment lookup: the complete typed payment cause
   remains internal while owner, tenant, order, operation, error kind, stable public code,
   status, and HTTP boundary are logged. Validation, missing-resource, transition,
@@ -98,6 +103,7 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `node scripts/verify/verify-cart-promotion-port-error-safety.mjs`
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
+- `node scripts/verify/verify-commerce-admin-fulfillment-reconciliation-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-detail-payment-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-order-detail-fulfillment-error-safety.mjs`
 - `node scripts/verify/verify-order-payment-settlement-error-context.mjs`
@@ -113,8 +119,8 @@ available only for actionable domain errors.
 - `cargo check -p rustok-tax --all-features`
 - Targeted cart promotion, order payment settlement, order checkout recovery, order
   checkout compensation, pricing, payment collection, fulfillment checkout execution,
-  admin order-detail payment and fulfillment mapping, and tax calculation validation,
-  provider-contract, reconciliation, correlation, HTTP-envelope, and transport
-  round-trip tests.
+  admin fulfillment reconciliation, admin order-detail payment and fulfillment mapping,
+  and tax calculation validation, provider-contract, reconciliation, correlation,
+  HTTP-envelope, and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
