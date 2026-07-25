@@ -17,6 +17,11 @@ use crate::storefront_checkout_runtime::{
     StorefrontCheckoutCompletionCommand, StorefrontCheckoutRuntime,
 };
 
+const STOREFRONT_STAGED_CHECKOUT_OWNER: &str =
+    "rustok_commerce.recovering_staged_checkout";
+const STOREFRONT_STAGED_CHECKOUT_BOUNDARY: &str =
+    "commerce_storefront_staged_checkout_runtime";
+
 #[derive(Debug, Error)]
 pub enum StorefrontStagedCheckoutRuntimeError {
     #[error("checkout request is invalid")]
@@ -258,7 +263,7 @@ pub async fn complete_storefront_checkout_input(
     crate::RecoveringStagedCheckoutService::new(staged, compensation)
         .complete_checkout(tenant_id, actor_id, idempotency_key, checkout_input)
         .await
-        .map_err(|error| map_checkout_error(tenant_id, cart_id, error))
+        .map_err(|error| map_checkout_error(&cart_port_context, cart_id, actor_id, error))
 }
 
 async fn resolve_customer_id(
@@ -344,32 +349,50 @@ fn map_owner_port_error(
 }
 
 fn map_checkout_error(
-    tenant_id: Uuid,
+    context: &PortContext,
     cart_id: Uuid,
+    actor_id: Uuid,
     error: crate::RecoveringStagedCheckoutError,
 ) -> StorefrontStagedCheckoutRuntimeError {
-    eprintln!("DEBUG STAGED CHECKOUT ERROR: {error:?}");
-    tracing::error!(
-        error = ?error,
-        tenant_id = %tenant_id,
-        cart_id = %cart_id,
-        operation = "complete_storefront_checkout",
-        "storefront staged checkout failed"
-    );
-    match error {
+    let (public, error_kind) = match &error {
         crate::RecoveringStagedCheckoutError::StagedAndCompensation {
             compensation: crate::CheckoutCompensationError::ManualReconciliation(_),
             ..
-        } => StorefrontStagedCheckoutRuntimeError::ReconciliationRequired,
-        crate::RecoveringStagedCheckoutError::StagedAndCompensation { .. } => {
-            StorefrontStagedCheckoutRuntimeError::CompensationPending
-        }
-        crate::RecoveringStagedCheckoutError::StagedAndJournal { .. }
-        | crate::RecoveringStagedCheckoutError::Journal(_) => {
-            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable
-        }
-        crate::RecoveringStagedCheckoutError::Staged(_) => {
-            StorefrontStagedCheckoutRuntimeError::CheckoutFailed
-        }
-    }
+        } => (
+            StorefrontStagedCheckoutRuntimeError::ReconciliationRequired,
+            "manual_reconciliation",
+        ),
+        crate::RecoveringStagedCheckoutError::StagedAndCompensation { .. } => (
+            StorefrontStagedCheckoutRuntimeError::CompensationPending,
+            "compensation_pending",
+        ),
+        crate::RecoveringStagedCheckoutError::StagedAndJournal { .. } => (
+            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable,
+            "staged_and_journal",
+        ),
+        crate::RecoveringStagedCheckoutError::Journal(_) => (
+            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable,
+            "journal",
+        ),
+        crate::RecoveringStagedCheckoutError::Staged(_) => (
+            StorefrontStagedCheckoutRuntimeError::CheckoutFailed,
+            "staged",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = STOREFRONT_STAGED_CHECKOUT_OWNER,
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        channel = ?context.channel,
+        actor_id = %actor_id,
+        cart_id = %cart_id,
+        operation = "complete_storefront_checkout",
+        error_kind,
+        public_code = public.public_code(),
+        retryable = public.retryable(),
+        boundary = STOREFRONT_STAGED_CHECKOUT_BOUNDARY,
+        "storefront staged checkout failed"
+    );
+    public
 }
