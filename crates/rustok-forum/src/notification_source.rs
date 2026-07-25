@@ -207,11 +207,7 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        if self.recipient_context_port.is_none() {
-            self.load_public_topic(tenant_id, topic_id).await
-        } else {
-            self.load_active_topic(tenant_id, topic_id).await
-        }
+        self.load_active_topic(tenant_id, topic_id).await
     }
 
     async fn load_target_for_viewer(
@@ -606,10 +602,17 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
         match event.event_type.as_str() {
             TOPIC_CREATED_TYPE => {
                 self.validate_topic_descriptor(&event, &request.descriptor)?;
-                let Some(topic) = self
-                    .load_topic_for_subscription_audience(event.tenant_id, event.aggregate_id)
+                let topic = if self.recipient_context_port.is_none() {
+                    self.load_public_topic(event.tenant_id, event.aggregate_id)
+                        .await?
+                } else {
+                    self.load_topic_for_subscription_audience(
+                        event.tenant_id,
+                        event.aggregate_id,
+                    )
                     .await?
-                else {
+                };
+                let Some(topic) = topic else {
                     return Ok(NotificationAudiencePage::empty());
                 };
 
