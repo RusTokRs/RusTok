@@ -133,7 +133,7 @@ for (const marker of [
   "pub struct ForumNotificationRecipientContext",
   "pub struct ForumNotificationRecipientContextResolver",
   "ForumNotificationRecipientContextRequest::new(tenant_id, recipient_id)",
-  "context.require_policy(PortCallPolicy::read())",
+  ".require_policy(PortCallPolicy::read())",
   "PortActorKind::System | PortActorKind::Service",
   "context.actor.kind != PortActorKind::User",
   "SecurityContext::try_from_port_context(&recipient_context)",
