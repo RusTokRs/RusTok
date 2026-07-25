@@ -9,7 +9,7 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use super::super::{ResolvedStoreLineItemInput, StoreLineItemResolution};
+use crate::controllers::store::{ResolvedStoreLineItemInput, StoreLineItemResolution};
 use crate::{
     CommerceError,
     dto::AddCartLineItemInput,
@@ -193,7 +193,7 @@ pub(super) async fn resolve_store_line_item_input(
 
     let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
         .resolve_product_price(
-            super::super::store_line_item_pricing_port_context(
+            crate::controllers::store::store_line_item_pricing_port_context(
                 tenant_id,
                 variant.id,
                 locale,
@@ -214,7 +214,10 @@ pub(super) async fn resolve_store_line_item_input(
         .map_err(rustok_web::port_error_to_http_error)?
         .into();
     let (base_unit_price, pricing_adjustment) =
-        super::super::storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
+        crate::controllers::store::storefront_cart_pricing_snapshot(
+            input.quantity,
+            &resolved_price,
+        );
     validate_store_variant_inventory(
         db,
         tenant_id,
@@ -224,16 +227,19 @@ pub(super) async fn resolve_store_line_item_input(
     )
     .await?;
 
-    let base_title =
-        super::super::pick_product_translation(&product_translation_models, locale, default_locale)
-            .map(|translation| translation.title.clone())
-            .unwrap_or_else(|| {
-                variant
-                    .sku
-                    .clone()
-                    .unwrap_or_else(|| format!("Variant {}", variant.id))
-            });
-    let title = match super::super::pick_variant_translation(
+    let base_title = crate::controllers::store::pick_product_translation(
+        &product_translation_models,
+        locale,
+        default_locale,
+    )
+    .map(|translation| translation.title.clone())
+    .unwrap_or_else(|| {
+        variant
+            .sku
+            .clone()
+            .unwrap_or_else(|| format!("Variant {}", variant.id))
+    });
+    let title = match crate::controllers::store::pick_variant_translation(
         &variant_translation_models,
         locale,
         default_locale,
@@ -259,9 +265,11 @@ pub(super) async fn resolve_store_line_item_input(
             title,
             quantity: input.quantity,
             unit_price: base_unit_price,
-            metadata: super::super::merge_metadata(
+            metadata: crate::controllers::store::merge_metadata(
                 input.metadata,
-                super::super::seller_snapshot_metadata(product_model.seller_id.as_deref()),
+                crate::controllers::store::seller_snapshot_metadata(
+                    product_model.seller_id.as_deref(),
+                ),
             ),
         },
         pricing_adjustment,
