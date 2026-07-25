@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20Q",
+  "upstream_task": "FORUM-20P",
+  "scope": "Server-owned exact requested group membership facts adapter for authenticated Forum audience evaluation",
+  "adapter_file": "apps/server/src/services/forum_audience_group_facts.rs",
+  "services_file": "apps/server/src/services/mod.rs",
+  "runtime_composition_file": "apps/server/src/services/module_event_dispatcher.rs",
+  "forum_audience_owner_file": "crates/rustok-forum/src/audience.rs",
+  "groups_owner_port_file": "crates/rustok-groups/src/ports.rs",
+  "groups_owner_service_file": "crates/rustok-groups/src/membership_enforcement.rs",
+  "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-notification-topic-subscription-audience.json",
+  "source_verifier": "scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan_sync": {
+    "status": "pending",
+    "required_ledger_through": "FORUM-20Q",
+    "required_delivered_sections": [
+      "FORUM-20H",
+      "FORUM-20I",
+      "FORUM-20J",
+      "FORUM-20K",
+      "FORUM-20L",
+      "FORUM-20M",
+      "FORUM-20N",
+      "FORUM-20O",
+      "FORUM-20P",
+      "FORUM-20Q"
+    ],
+    "current_plan_through": "FORUM-20G",
+    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+  },
+  "policy": {
+    "request": "exact tenant and user plus at most 32 requested group IDs",
+    "caller": "tenant-matching exact user PortContext with read deadline semantics",
+    "owner": "Groups-owned effective membership enforcement read port",
+    "membership_truth": "active_member from the Groups owner-clock effective state",
+    "positive_union": "an active requested group may decide the positive-selector union even when unsupported trust or channel selectors are also requested",
+    "partial_provider": "when requested groups do not decide and trust or channel facts are required, return typed retryable unavailable instead of a false deny",
+    "identity_validation": "validate exact tenant, user and group identity on every Groups owner response",
+    "storage_access": "no direct Groups entity or table access from the server adapter or Forum"
+  },
+  "composition": {
+    "feature_guarded_server_adapter": true,
+    "groups_owner_port_reuse": true,
+    "bounded_requested_group_calls": true,
+    "exact_user_actor_validation": true,
+    "owner_response_identity_validation": true,
+    "active_memberships_only": true,
+    "positive_union_short_circuit": true,
+    "unsupported_dimension_retryability": true,
+    "runtime_extension_publication": true,
+    "publication_before_notification_source_materialization": true,
+    "notification_source_factory_consumption": true,
+    "inline_contract_tests": true
+  },
+  "not_delivered": [
+    "host trust facts adapter",
+    "host channel membership facts adapter",
+    "profile privacy and blocking policy",
+    "final notification creation and delivery authorization",
+    "initially non-public topic-created descriptor materialization",
+    "search index SEO and deep-link migration",
+    "PostgreSQL and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-server --features mod-forum,mod-groups,mod-notifications forum_audience_group_facts -- --nocapture",
+      "cargo test -p rustok-server --features mod-forum,mod-groups,mod-notifications host_runtime_extensions_register_admin_mutation_providers -- --nocapture",
+      "cargo test -p rustok-forum --test topic_audience_visibility_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
