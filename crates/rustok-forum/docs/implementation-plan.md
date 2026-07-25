@@ -1213,9 +1213,11 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
   keys, with typed checks for supported roles, trust `0..100`, canonical channel
   slugs, non-nil identities and allow/deny effects;
 - direct channel/group/user inserts are bounded to the FORUM-20F limits and
-  relation updates are rejected; owner replacement uses delete plus insert;
-- `ForumCategoryAudiencePolicyService` reads and atomically replaces a local
-  layer under `forum_categories:read/manage` and the tenant category-tree lock;
+  policy and relation updates are rejected; owner replacement uses delete plus
+  insert;
+- `ForumCategoryAudiencePolicyService` exposes managed policy inspection and
+  atomically replaces a local layer under `forum_categories:manage` and the
+  tenant category-tree lock;
 - an empty constraint set deletes only the local layer and restores inheritance;
 - effective policy is an ordered root-to-target conjunction of every non-empty
   local layer, preserving the local union/deny semantics while making child
