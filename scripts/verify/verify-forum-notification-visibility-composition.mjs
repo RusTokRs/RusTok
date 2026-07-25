@@ -35,8 +35,8 @@ const visibilityOwner = read(contract.visibility_owner_file ?? "");
 const testSource = read(contract.test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("forum notification visibility contract must use schema_version=1");
+if (contract.schema_version !== 2) {
+  failures.push("forum notification visibility contract must use schema_version=2");
 }
 if (contract.task !== "FORUM-20I") {
   failures.push("forum notification visibility contract must belong to FORUM-20I");
@@ -55,6 +55,52 @@ for (const residual of [
   if (!contract.not_delivered?.includes(residual)) {
     failures.push(`forum notification visibility contract must keep ${residual} explicitly open`);
   }
+}
+
+const planSync = contract.canonical_plan_sync ?? {};
+if (planSync.required_ledger_through !== "FORUM-20I") {
+  failures.push("forum notification visibility contract must require the canonical ledger through FORUM-20I");
+}
+if (
+  JSON.stringify(planSync.required_delivered_sections) !==
+  JSON.stringify(["FORUM-20H", "FORUM-20I"])
+) {
+  failures.push("forum notification visibility contract must require FORUM-20H/I delivered sections");
+}
+if (planSync.status === "pending") {
+  if (planSync.current_plan_through !== "FORUM-20G") {
+    failures.push("pending canonical plan synchronization must identify FORUM-20G as the current plan boundary");
+  }
+  requireText(
+    plan,
+    "FORUM-20A-G provide",
+    "pending canonical plan synchronization must remain grounded in the current FORUM-20A-G ledger row",
+  );
+  rejectText(
+    plan,
+    "### Delivered in `FORUM-20H`",
+    "canonical plan now contains FORUM-20H; update canonical_plan_sync to synchronized",
+  );
+  rejectText(
+    plan,
+    "### Delivered in `FORUM-20I`",
+    "canonical plan now contains FORUM-20I; update canonical_plan_sync to synchronized",
+  );
+} else if (planSync.status === "synchronized") {
+  requireText(
+    plan,
+    "FORUM-20A-I provide",
+    "synchronized canonical plan must advance the FORUM-20 ledger through I",
+  );
+  for (const slice of ["FORUM-20H", "FORUM-20I"]) {
+    requireText(
+      plan,
+      `### Delivered in \`${slice}\``,
+      `synchronized canonical plan is missing the delivered ${slice} section`,
+    );
+  }
+} else {
+  failures.push("canonical_plan_sync.status must be pending or synchronized");
 }
 
 for (const marker of [
@@ -128,7 +174,6 @@ for (const marker of [
 for (const marker of [
   "## `FORUM-20` — ACL and visibility inheritance",
   "notifications, search, SEO and deep links must call the same",
-  "migrate notifications,",
 ]) {
   requireText(plan, marker, `canonical Forum plan is missing the visibility boundary ${marker}`);
 }
