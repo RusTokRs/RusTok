@@ -157,7 +157,9 @@ for (const marker of [
 for (const forbidden of [
   "rustok_groups::entities",
   "membership_state::Entity",
-  "group_memberships",
+  "group_membership::Entity",
+  "membership_enforcement_state::Entity",
+  "forum_group_memberships",
   "EntityTrait",
   "QueryFilter",
   "ColumnTrait",
