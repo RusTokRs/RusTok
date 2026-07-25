@@ -174,14 +174,31 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['pub async fn list_fulfillments(', 'admin fulfillment list'],
+  ['pub async fn create_fulfillment(', 'admin fulfillment create'],
   ['pub async fn show_fulfillment(', 'admin fulfillment detail'],
+  ['pub async fn ship_fulfillment(', 'admin fulfillment ship'],
+  ['pub async fn deliver_fulfillment(', 'admin fulfillment deliver'],
+  ['pub async fn reopen_fulfillment(', 'admin fulfillment reopen'],
+  ['pub async fn reship_fulfillment(', 'admin fulfillment reship'],
+  ['pub async fn cancel_fulfillment(', 'admin fulfillment cancel'],
   ['ListFulfillmentsInput {', 'fulfillment list input'],
   ['page: pagination.page', 'fulfillment page forwarding'],
   ['per_page: pagination.limit()', 'fulfillment page-size forwarding'],
-  ['.map_err(super::map_fulfillment_error)?;', 'typed fulfillment owner mapping'],
-  ['.map_err(super::map_fulfillment_orchestration_error)?;', 'typed fulfillment orchestration mapping'],
+  ['struct AdminFulfillmentErrorContext {', 'fulfillment route context'],
+  ['fn map_admin_fulfillment_error(', 'context-aware fulfillment owner mapper'],
+  [
+    'fn map_admin_fulfillment_orchestration_error(',
+    'context-aware fulfillment orchestration mapper',
+  ],
 ]) {
   requireText(fulfillments, value, label);
+}
+
+for (const value of [
+  '.map_err(super::map_fulfillment_error)?;',
+  '.map_err(super::map_fulfillment_orchestration_error)?;',
+]) {
+  forbidText(fulfillments, value, 'stale admin fulfillment shared mapper callsite');
 }
 
 for (const [content, label] of [
@@ -206,15 +223,23 @@ if (orderMapperUses !== 10) {
 }
 
 const fulfillmentMapperUses =
-  fulfillments.match(/\.map_err\(super::map_fulfillment_error\)\?;/g) ?? [];
+  fulfillments.match(
+    /map_admin_fulfillment_error\(\s+AdminFulfillmentErrorContext::new\(/g,
+  ) ?? [];
 if (fulfillmentMapperUses.length !== 4) {
-  failures.push(`expected four fulfillment owner mapper callsites, found ${fulfillmentMapperUses.length}`);
+  failures.push(
+    `expected four context-aware fulfillment owner mapper callsites, found ${fulfillmentMapperUses.length}`,
+  );
 }
 
 const fulfillmentOrchestrationUses =
-  fulfillments.match(/\.map_err\(super::map_fulfillment_orchestration_error\)\?;/g) ?? [];
+  fulfillments.match(
+    /map_admin_fulfillment_orchestration_error\(\s+AdminFulfillmentErrorContext::new\(/g,
+  ) ?? [];
 if (fulfillmentOrchestrationUses.length !== 4) {
-  failures.push(`expected four fulfillment orchestration mapper callsites, found ${fulfillmentOrchestrationUses.length}`);
+  failures.push(
+    `expected four context-aware fulfillment orchestration mapper callsites, found ${fulfillmentOrchestrationUses.length}`,
+  );
 }
 
 const postOrderUses =
