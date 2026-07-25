@@ -33,7 +33,7 @@
     "description_and_audience_viewer": "public unauthenticated without route-channel context",
     "target_open_viewer": "exact validated recipient when the host recipient-context capability is published; public-only fail-closed fallback when it is absent",
     "evaluation_order": "exact open route-channel and category floor owner then normalized root-to-category audience layers then optional topic layer",
-    "public_facts_provider": "intentionally absent because public evaluation never calls authenticated owner facts capabilities",
+    "public_facts_provider": "never consulted because public evaluation does not call authenticated owner facts capabilities",
     "authenticated_facts_provider": "optional host capability; local role and explicit user selectors resolve without it while fact-dependent selectors preserve capability retryability",
     "non_public_richer_layers": "unavailable before notification descriptor or audience materialization; target-open authorization re-evaluates them for the exact recipient",
     "missing_foreign_closed_deleted_or_denied": "absent without an existence oracle",
