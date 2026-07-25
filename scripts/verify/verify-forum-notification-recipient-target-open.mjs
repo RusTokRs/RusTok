@@ -27,6 +27,16 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
+function between(source, start, end, label) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return "";
+  }
+  return source.slice(startIndex, endIndex);
+}
+
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-recipient-target-open.json";
 const contract = JSON.parse(read(contractPath) || "{}");
@@ -35,17 +45,23 @@ const visibilityOwner = read(contract.visibility_owner_file ?? "");
 const recipientOwner = read(contract.recipient_context_owner_file ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const visibilityContract = JSON.parse(read(contract.visibility_contract ?? "") || "{}");
-const testSource = read(contract.test_file ?? "");
+const downstream = JSON.parse(read(contract.downstream_contract ?? "") || "{}");
+const targetOpenTest = read(contract.test_file ?? "");
+const mentionTest = read(contract.downstream_test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("forum notification recipient target-open contract must use schema_version=1");
+if (contract.schema_version !== 2) {
+  failures.push("forum notification recipient contract must use schema_version=2");
 }
-if (contract.task !== "FORUM-20N" || contract.upstream_task !== "FORUM-20M") {
-  failures.push("forum notification recipient target-open contract must belong to FORUM-20N after FORUM-20M");
+if (
+  contract.task !== "FORUM-20N" ||
+  contract.upstream_task !== "FORUM-20M" ||
+  contract.downstream_task !== "FORUM-20O"
+) {
+  failures.push("forum notification recipient contract must connect FORUM-20M/N/O");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
-  failures.push("recipient target-open publication must not claim unexecuted evidence");
+  failures.push("recipient authorization publication must not claim unexecuted evidence");
 }
 
 for (const delivered of [
@@ -59,16 +75,21 @@ for (const delivered of [
   "public_only_fallback",
   "inactive_or_missing_recipient_fail_closed",
   "retryability_preserved",
-  "public_description_unchanged",
-  "public_audience_unchanged",
+  "topic_created_public_description_unchanged",
+  "topic_created_public_audience_unchanged",
+  "recipient_specific_mention_description",
+  "recipient_specific_mention_audience",
+  "shared_recipient_resolution_helper",
   "sqlite_contract_test",
+  "downstream_sqlite_contract_test",
 ]) {
   if (contract.composition?.[delivered] !== true) {
-    failures.push(`forum notification recipient target-open contract must record ${delivered} as delivered`);
+    failures.push(`forum notification recipient contract must record ${delivered} as delivered`);
   }
 }
 for (const residual of [
-  "recipient-specific audience filtering for non-public topics before pagination",
+  "recipient-specific topic-created subscription filtering before pagination",
+  "initially non-public topic-created descriptor materialization",
   "profile privacy and blocking policy",
   "host trust channel and group facts adapters",
   "final notification creation and delivery authorization",
@@ -76,7 +97,7 @@ for (const residual of [
   "PostgreSQL and cross-consumer runtime evidence",
 ]) {
   if (!contract.not_delivered?.includes(residual)) {
-    failures.push(`forum notification recipient target-open contract must keep ${residual} explicitly open`);
+    failures.push(`forum notification recipient contract must keep ${residual} explicitly open`);
   }
 }
 
@@ -88,13 +109,14 @@ const deliveredSlices = [
   "FORUM-20L",
   "FORUM-20M",
   "FORUM-20N",
+  "FORUM-20O",
 ];
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20N") {
-  failures.push("forum notification recipient target-open contract must require the canonical ledger through FORUM-20N");
+if (planSync.required_ledger_through !== "FORUM-20O") {
+  failures.push("forum notification recipient contract must require the canonical ledger through FORUM-20O");
 }
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("forum notification recipient target-open contract must require FORUM-20H through FORUM-20N delivered sections");
+  failures.push("forum notification recipient contract must require FORUM-20H through FORUM-20O delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -113,11 +135,7 @@ if (planSync.status === "pending") {
     );
   }
 } else if (planSync.status === "synchronized") {
-  requireText(
-    plan,
-    "FORUM-20A-N provide",
-    "synchronized canonical plan must advance the FORUM-20 ledger through N",
-  );
+  requireText(plan, "FORUM-20A-O provide", "synchronized canonical plan must advance the FORUM-20 ledger through O");
   for (const slice of deliveredSlices) {
     requireText(
       plan,
@@ -140,19 +158,22 @@ for (const marker of [
   "async fn load_target_for_viewer(",
   "reply.status == ReplyStatus::Pending",
   "reply.status != ReplyStatus::Approved",
-  "const TARGET_OPEN_DEADLINE: Duration = Duration::from_secs(2)",
-  "PortActor::service(TARGET_OPEN_ACTOR)",
-  ".with_deadline(TARGET_OPEN_DEADLINE)",
+  "const RECIPIENT_CONTEXT_DEADLINE: Duration = Duration::from_secs(2)",
+  "async fn resolve_recipient_viewer(",
   "ForumNotificationRecipientContextResolver::new(Some(port))",
-  "target_open_context(&request)",
   "recipient.into_topic_viewer()",
+  "recipient_operation_context(",
+  "target_open_context(&request)",
   "Err(ForumError::CapabilityFailure {",
   "retryable: false, ..",
   "self.load_public_target(request.tenant_id, source_kind, request.target.id)",
   "ForumError::CapabilityUnavailable { .. }",
   "NotificationProviderError::CapabilityUnavailable { retryable: true }",
+  "async fn load_mention_target_for_recipient(",
+  "MENTION_DESCRIBE_ACTOR",
+  "MENTION_AUDIENCE_ACTOR",
 ]) {
-  requireText(source, marker, `forum notification recipient target-open source is missing ${marker}`);
+  requireText(source, marker, `forum notification recipient source is missing ${marker}`);
 }
 for (const forbidden of [
   "forum_category_audience_policy",
@@ -168,25 +189,20 @@ for (const forbidden of [
   "Rbac::permissions_for_role",
   "SecurityContext::new(",
 ]) {
-  rejectText(
-    source,
-    forbidden,
-    `forum notification target-open must reuse owners instead of ${forbidden}`,
-  );
+  rejectText(source, forbidden, `forum notification recipient paths must reuse owners instead of ${forbidden}`);
 }
 
-const describeIndex = source.indexOf("async fn describe_event(");
-const audienceIndex = source.indexOf("async fn resolve_audience(");
-const targetOpenIndex = source.indexOf("async fn authorize_target_open(");
-const recipientResolutionIndex = source.indexOf("ForumNotificationRecipientContextResolver::new(Some(port))");
-if (
-  describeIndex < 0 ||
-  audienceIndex < 0 ||
-  targetOpenIndex < 0 ||
-  recipientResolutionIndex < targetOpenIndex ||
-  recipientResolutionIndex < audienceIndex
-) {
-  failures.push("exact recipient resolution must remain scoped to authorize_target_open after public description and audience methods");
+const describeBlock = between(source, "async fn describe_event(", "async fn resolve_audience(", "describe_event");
+const audienceBlock = between(source, "async fn resolve_audience(", "async fn authorize_target_open(", "resolve_audience");
+const targetOpenBlock = between(source, "async fn authorize_target_open(", "fn recipient_operation_context(", "authorize_target_open");
+for (const [block, marker, label] of [
+  [describeBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public description"],
+  [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public audience"],
+  [describeBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)", "exact mention description"],
+  [audienceBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_AUDIENCE_ACTOR)", "exact mention audience"],
+  [targetOpenBlock, "resolve_recipient_viewer(", "exact target-open authorization"],
+]) {
+  requireText(block, marker, `${label} is missing ${marker}`);
 }
 
 for (const marker of [
@@ -212,15 +228,22 @@ for (const marker of [
   "notification_target_open_uses_exact_recipient_role_for_topics_and_replies",
   "impl ForumNotificationRecipientContextPort for StaticRecipientContextPort",
   "roles_any: vec![UserRole::Customer]",
-  "SharedForumNotificationRecipientContextPort",
-  "Forum source factory should consume the recipient capability",
   "customer target-open authorization should complete",
   "manager target-open authorization should fail closed",
   "unavailable recipient should fail closed without an existence oracle",
   "NotificationOpenAuthorization::Allowed",
   "NotificationOpenAuthorization::Unavailable",
 ]) {
-  requireText(testSource, marker, `recipient target-open SQLite contract is missing ${marker}`);
+  requireText(targetOpenTest, marker, `recipient target-open SQLite contract is missing ${marker}`);
+}
+for (const marker of [
+  "mention_description_and_audience_use_the_exact_recipient_for_topics_and_replies",
+  "customer topic mention audience should resolve",
+  "customer reply mention audience should resolve",
+  "manager topic mention description should fail closed",
+  "stale customer mention descriptor should be rechecked",
+]) {
+  requireText(mentionTest, marker, `recipient mention SQLite contract is missing ${marker}`);
 }
 
 if (
@@ -230,16 +253,26 @@ if (
   upstream.composition?.notification_source_factory_consumption !== true ||
   upstream.composition?.recipient_target_open_authorization !== true
 ) {
-  failures.push("FORUM-20N target-open must remain synchronized with the FORUM-20M host runtime contract");
+  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20M host runtime contract");
 }
 if (
-  visibilityContract.schema_version !== 5 ||
+  visibilityContract.schema_version !== 6 ||
   visibilityContract.task !== "FORUM-20K" ||
-  visibilityContract.downstream_task !== "FORUM-20N" ||
+  visibilityContract.downstream_task !== "FORUM-20O" ||
   visibilityContract.composition?.recipient_specific_target_open !== true ||
-  visibilityContract.composition?.public_only_description_and_audience !== true
+  visibilityContract.composition?.recipient_specific_mention_description !== true ||
+  visibilityContract.composition?.recipient_specific_mention_audience !== true
 ) {
-  failures.push("FORUM-20N target-open must remain synchronized with the FORUM-20K visibility composition contract");
+  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20K visibility composition contract");
+}
+if (
+  downstream.schema_version !== 1 ||
+  downstream.task !== "FORUM-20O" ||
+  downstream.upstream_task !== "FORUM-20N" ||
+  downstream.composition?.recipient_specific_mention_description !== true ||
+  downstream.composition?.recipient_specific_mention_audience !== true
+) {
+  failures.push("FORUM-20N recipient authorization must remain synchronized with the FORUM-20O mention audience contract");
 }
 
 for (const marker of [
@@ -250,9 +283,9 @@ for (const marker of [
 }
 
 if (failures.length > 0) {
-  console.error("Forum notification recipient target-open verification failed:");
+  console.error("Forum notification recipient authorization verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("Forum notification recipient target-open contract is source-ready.");
+console.log("Forum notification recipient authorization contract is source-ready.");
