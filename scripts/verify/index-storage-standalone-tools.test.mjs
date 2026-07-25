@@ -18,6 +18,19 @@ const workloads = [
   'keyset_page',
   'exact_count',
 ];
+const databaseMetadata = () => ({
+  version: 'PostgreSQL 16 fixture',
+  server_version_num: '160000',
+  shared_buffers: '128MB',
+  effective_cache_size: '4GB',
+  work_mem: '4MB',
+  random_page_cost: '4',
+  jit: 'off',
+  standard_conforming_strings: 'on',
+  timezone: 'UTC',
+  date_style: 'ISO, YMD',
+  extra_float_digits: '3',
+});
 
 const readSql = (relation, workload) => {
   if (workload === 'exact_count') return `SELECT count(*)::bigint AS result_count FROM ${relation}`;
@@ -28,12 +41,7 @@ const readSql = (relation, workload) => {
 };
 
 const report = () => ({
-  database: {
-    standard_conforming_strings: 'on',
-    timezone: 'UTC',
-    date_style: 'ISO, YMD',
-    extra_float_digits: '3',
-  },
+  database: databaseMetadata(),
   source_workloads: workloads.map((name) => ({
     name,
     sql: readSql('idx_bench_source.product', name),
@@ -53,6 +61,13 @@ const withPacket = (mutate, callback) => {
     const value = report();
     mutate?.(value);
     writeFileSync(path.join(root, 'read-report.json'), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    for (const filename of ['mutation-report.json', 'maintenance-report.json']) {
+      writeFileSync(
+        path.join(root, filename),
+        `${JSON.stringify({ database: databaseMetadata() }, null, 2)}\n`,
+        'utf8',
+      );
+    }
     callback(root);
   } finally {
     rmSync(root, { recursive: true, force: true });
