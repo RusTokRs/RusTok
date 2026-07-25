@@ -2,6 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20V",
   "upstream_task": "FORUM-20U",
+  "downstream_task": "FORUM-20W",
   "scope": "Bounded exact-recipient reconciliation that archives notifications no longer allowed by current privacy or source policy",
   "notifications_owner_file": "crates/rustok-notifications/src/inbox_reconcile.rs",
   "notifications_open_owner_file": "crates/rustok-notifications/src/inbox.rs",
