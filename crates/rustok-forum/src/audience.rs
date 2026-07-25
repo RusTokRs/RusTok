@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_core::{SecurityContext, UserRole};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -73,9 +73,9 @@ impl ForumAudienceConstraints {
         self.roles_any.sort_by_key(|role| role.privilege_rank());
         self.roles_any.dedup();
         self.channel_members_any = normalize_channel_slugs(self.channel_members_any)?;
-        normalize_uuid_list(&mut self.group_members_any);
-        normalize_uuid_list(&mut self.allow_user_ids);
-        normalize_uuid_list(&mut self.deny_user_ids);
+        normalize_uuid_list(&mut self.group_members_any, "group memberships")?;
+        normalize_uuid_list(&mut self.allow_user_ids, "explicit allow users")?;
+        normalize_uuid_list(&mut self.deny_user_ids, "explicit deny users")?;
         Ok(self)
     }
 
@@ -96,10 +96,11 @@ impl ForumAudienceConstraints {
 
 /// Exact bounded request to owner capability adapters.
 ///
-/// Providers must resolve only the requested actor and candidate memberships;
-/// they must not discover or return additional channels or groups.
+/// Providers must resolve only the requested tenant, actor and candidate
+/// memberships; they must not discover or return additional channels or groups.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ForumAudienceFactsRequest {
+    pub tenant_id: Uuid,
     pub user_id: Uuid,
     pub include_trust_level: bool,
     pub channel_slugs: Vec<String>,
@@ -108,11 +109,13 @@ pub struct ForumAudienceFactsRequest {
 
 impl ForumAudienceFactsRequest {
     pub fn for_constraints(
+        tenant_id: Uuid,
         user_id: Uuid,
         constraints: &ForumAudienceConstraints,
     ) -> ForumResult<Self> {
         let constraints = constraints.clone().normalize()?;
         Self {
+            tenant_id,
             user_id,
             include_trust_level: constraints.minimum_trust_level.is_some(),
             channel_slugs: constraints.channel_members_any,
@@ -122,6 +125,8 @@ impl ForumAudienceFactsRequest {
     }
 
     pub fn normalize(mut self) -> ForumResult<Self> {
+        validate_identity(self.tenant_id, "fact request tenant")?;
+        validate_identity(self.user_id, "fact request user")?;
         validate_raw_len(
             self.channel_slugs.len(),
             MAX_FORUM_AUDIENCE_CHANNELS,
@@ -133,14 +138,16 @@ impl ForumAudienceFactsRequest {
             "fact request groups",
         )?;
         self.channel_slugs = normalize_channel_slugs(self.channel_slugs)?;
-        normalize_uuid_list(&mut self.group_ids);
+        normalize_uuid_list(&mut self.group_ids, "fact request groups")?;
         Ok(self)
     }
 }
 
-/// Exact owner facts for one actor and one bounded request.
+/// Exact owner facts for one tenant and actor.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ForumAudienceFacts {
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
     pub trust_level: Option<u8>,
     pub channel_memberships: Vec<String>,
     pub group_memberships: Vec<Uuid>,
@@ -152,6 +159,11 @@ impl ForumAudienceFacts {
         request: &ForumAudienceFactsRequest,
     ) -> ForumResult<Self> {
         let request = request.clone().normalize()?;
+        if self.tenant_id != request.tenant_id || self.user_id != request.user_id {
+            return Err(ForumError::Validation(
+                "Forum audience facts returned a different tenant or actor".to_string(),
+            ));
+        }
         validate_raw_len(
             self.channel_memberships.len(),
             MAX_FORUM_AUDIENCE_CHANNELS,
@@ -174,7 +186,10 @@ impl ForumAudienceFacts {
         }
 
         self.channel_memberships = normalize_channel_slugs(self.channel_memberships)?;
-        normalize_uuid_list(&mut self.group_memberships);
+        normalize_uuid_list(
+            &mut self.group_memberships,
+            "resolved group memberships",
+        )?;
 
         let requested_channels = request
             .channel_slugs
@@ -232,10 +247,12 @@ impl ForumAudienceFactsResolver {
 
     pub async fn resolve_for_constraints(
         &self,
+        tenant_id: Uuid,
         context: PortContext,
         security: &SecurityContext,
         constraints: &ForumAudienceConstraints,
     ) -> ForumResult<ForumAudienceFacts> {
+        validate_identity(tenant_id, "tenant")?;
         let constraints = constraints.clone().normalize()?;
         let user_id = security.user_id;
         if !constraints.requires_owner_facts()
@@ -251,7 +268,8 @@ impl ForumAudienceFactsResolver {
         }
 
         let user_id = user_id.expect("checked above");
-        let request = ForumAudienceFactsRequest::for_constraints(user_id, &constraints)?;
+        validate_port_context(&context, tenant_id, user_id)?;
+        let request = ForumAudienceFactsRequest::for_constraints(tenant_id, user_id, &constraints)?;
         let Some(port) = &self.port else {
             return Err(ForumError::capability_unavailable(
                 FORUM_AUDIENCE_FACTS_CAPABILITY,
@@ -309,10 +327,12 @@ pub struct ForumAudienceEvaluator;
 
 impl ForumAudienceEvaluator {
     pub fn decide(
+        tenant_id: Uuid,
         constraints: &ForumAudienceConstraints,
         security: &SecurityContext,
         facts: &ForumAudienceFacts,
     ) -> ForumResult<ForumAudienceDecision> {
+        validate_identity(tenant_id, "tenant")?;
         let constraints = constraints.clone().normalize()?;
         let user_id = security.user_id;
 
@@ -344,7 +364,11 @@ impl ForumAudienceEvaluator {
 
         let facts = match user_id {
             Some(user_id) => facts.clone().validate_for_request(
-                &ForumAudienceFactsRequest::for_constraints(user_id, &constraints)?,
+                &ForumAudienceFactsRequest::for_constraints(
+                    tenant_id,
+                    user_id,
+                    &constraints,
+                )?,
             )?,
             None => ForumAudienceFacts::default(),
         };
@@ -385,6 +409,44 @@ fn validate_raw_len(actual: usize, maximum: usize, label: &str) -> ForumResult<(
     Ok(())
 }
 
+fn validate_identity(id: Uuid, label: &str) -> ForumResult<()> {
+    if id.is_nil() {
+        return Err(ForumError::Validation(format!(
+            "Forum audience {label} must not be nil"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_port_context(
+    context: &PortContext,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> ForumResult<()> {
+    let context_tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        ForumError::Validation("Forum audience port context tenant is invalid".to_string())
+    })?;
+    if context_tenant_id != tenant_id {
+        return Err(ForumError::Validation(
+            "Forum audience port context tenant does not match the requested tenant".to_string(),
+        ));
+    }
+    if context.actor.kind != PortActorKind::User {
+        return Err(ForumError::Validation(
+            "Forum audience owner facts require a user port actor".to_string(),
+        ));
+    }
+    let context_user_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
+        ForumError::Validation("Forum audience port context actor is invalid".to_string())
+    })?;
+    if context_user_id != user_id {
+        return Err(ForumError::Validation(
+            "Forum audience port context actor does not match the requested user".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn normalize_channel_slugs(slugs: Vec<String>) -> ForumResult<Vec<String>> {
     let mut normalized = Vec::with_capacity(slugs.len());
     let mut seen = HashSet::with_capacity(slugs.len());
@@ -409,9 +471,15 @@ fn normalize_channel_slugs(slugs: Vec<String>) -> ForumResult<Vec<String>> {
     Ok(normalized)
 }
 
-fn normalize_uuid_list(ids: &mut Vec<Uuid>) {
+fn normalize_uuid_list(ids: &mut Vec<Uuid>, label: &str) -> ForumResult<()> {
+    if ids.iter().any(Uuid::is_nil) {
+        return Err(ForumError::Validation(format!(
+            "Forum audience {label} must not contain nil identifiers"
+        )));
+    }
     ids.sort_unstable();
     ids.dedup();
+    Ok(())
 }
 
 fn intersects_strings(left: &[String], right: &[String]) -> bool {
