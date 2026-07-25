@@ -1,3 +1,4 @@
+use rustok_api::{PortContext, PortError};
 use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
@@ -5,7 +6,7 @@ use rustok_pricing::ResolveProductPriceRequest;
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
 };
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
@@ -40,6 +41,32 @@ fn map_storefront_line_item_database_error(
         "storefront line item catalog read failed"
     );
     HttpError::new(status, code, "Store catalog is temporarily unavailable")
+}
+
+fn map_storefront_line_item_pricing_error(
+    error: PortError,
+    context: &PortContext,
+    variant_id: Uuid,
+    product_id: Uuid,
+) -> HttpError {
+    let public = port_error_to_http_error(error.clone());
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_pricing",
+        operation = "resolve_product_price",
+        tenant_id = %context.tenant_id,
+        correlation_id = %context.correlation_id,
+        channel = ?context.channel,
+        variant_id = %variant_id,
+        product_id = %product_id,
+        error_kind = ?error.kind,
+        retryable = error.retryable,
+        public_code = %public.code,
+        status = %public.status,
+        boundary = "commerce_storefront_line_item_http",
+        "storefront line item pricing resolution failed"
+    );
+    public
 }
 
 fn map_storefront_line_item_inventory_error(
@@ -191,14 +218,15 @@ pub(crate) async fn resolve_store_line_item_input(
             )
         })?;
 
+    let pricing_port_context = crate::controllers::store::store_line_item_pricing_port_context(
+        tenant_id,
+        variant.id,
+        locale,
+        pricing_context,
+    );
     let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
         .resolve_product_price(
-            crate::controllers::store::store_line_item_pricing_port_context(
-                tenant_id,
-                variant.id,
-                locale,
-                pricing_context,
-            ),
+            pricing_port_context.clone(),
             ResolveProductPriceRequest {
                 product_id: Some(product_model.id),
                 variant_id: variant.id,
@@ -211,7 +239,14 @@ pub(crate) async fn resolve_store_line_item_input(
             },
         )
         .await
-        .map_err(rustok_web::port_error_to_http_error)?
+        .map_err(|error| {
+            map_storefront_line_item_pricing_error(
+                error,
+                &pricing_port_context,
+                variant.id,
+                product_model.id,
+            )
+        })?
         .into();
     let (base_unit_price, pricing_adjustment) =
         crate::controllers::store::storefront_cart_pricing_snapshot(

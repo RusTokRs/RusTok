@@ -13,6 +13,9 @@ use crate::{
     FulfillmentService,
 };
 
+const ENSURE_OPERATION: &str = "ensure_checkout_fulfillments";
+const READ_OPERATION: &str = "read_checkout_fulfillments";
+
 #[async_trait]
 pub trait CheckoutFulfillmentExecutionPort: Send + Sync {
     async fn ensure_checkout_fulfillments(
@@ -77,6 +80,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
 
     async fn ensure(
         &self,
+        context: &PortContext,
         tenant_id: Uuid,
         request: EnsureCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
@@ -91,7 +95,13 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             let key = fulfillment_key(request.checkout_operation_id, plan.index);
             let input = build_input(&request, plan, key.as_str());
             let existing = self
-                .find_by_key(tenant_id, request.order_id, key.as_str())
+                .find_by_key(
+                    context,
+                    "find_checkout_fulfillment_before_create",
+                    tenant_id,
+                    request.order_id,
+                    key.as_str(),
+                )
                 .await?;
             let fulfillment = match existing {
                 Some(existing) => existing,
@@ -99,11 +109,23 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                     Ok(created) => created,
                     Err(error) => {
                         let adopted = self
-                            .find_by_key(tenant_id, request.order_id, key.as_str())
+                            .find_by_key(
+                                context,
+                                "adopt_checkout_fulfillment_after_create_error",
+                                tenant_id,
+                                request.order_id,
+                                key.as_str(),
+                            )
                             .await?;
                         match adopted {
                             Some(adopted) => adopted,
-                            None => return Err(fulfillment_error_to_port_error(error)),
+                            None => {
+                                return Err(fulfillment_error_to_port_error(
+                                    context,
+                                    "create_checkout_fulfillment",
+                                    error,
+                                ));
+                            }
                         }
                     }
                 },
@@ -126,6 +148,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
 
     async fn read(
         &self,
+        context: &PortContext,
         tenant_id: Uuid,
         request: ReadCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
@@ -139,7 +162,13 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             .service
             .list_by_order(tenant_id, request.order_id)
             .await
-            .map_err(fulfillment_error_to_port_error)?;
+            .map_err(|error| {
+                fulfillment_error_to_port_error(
+                    context,
+                    "list_checkout_fulfillments_for_read",
+                    error,
+                )
+            })?;
         let operation_id = request.checkout_operation_id.to_string();
         let mut by_index = BTreeMap::new();
         for row in rows.into_iter().filter(|row| {
@@ -189,6 +218,8 @@ impl InProcessCheckoutFulfillmentExecutionPort {
 
     async fn find_by_key(
         &self,
+        context: &PortContext,
+        owner_operation: &'static str,
         tenant_id: Uuid,
         order_id: Uuid,
         key: &str,
@@ -197,7 +228,9 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             .service
             .list_by_order(tenant_id, order_id)
             .await
-            .map_err(fulfillment_error_to_port_error)?;
+            .map_err(|error| {
+                fulfillment_error_to_port_error(context, owner_operation, error)
+            })?;
         let mut matches = rows.into_iter().filter(|fulfillment| {
             fulfillment
                 .metadata
@@ -232,9 +265,9 @@ impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionP
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_tenant_id(&context)?;
-        require_operation_context(&context, request.checkout_operation_id)?;
-        self.ensure(tenant_id, request).await
+        let tenant_id = parse_tenant_id(&context, ENSURE_OPERATION)?;
+        require_operation_context(&context, ENSURE_OPERATION, request.checkout_operation_id)?;
+        self.ensure(&context, tenant_id, request).await
     }
 
     async fn read_checkout_fulfillments(
@@ -243,9 +276,9 @@ impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionP
         request: ReadCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_tenant_id(&context)?;
-        require_operation_context(&context, request.checkout_operation_id)?;
-        self.read(tenant_id, request).await
+        let tenant_id = parse_tenant_id(&context, READ_OPERATION)?;
+        require_operation_context(&context, READ_OPERATION, request.checkout_operation_id)?;
+        self.read(&context, tenant_id, request).await
     }
 }
 
@@ -476,6 +509,7 @@ fn object_or_empty(value: Value) -> serde_json::Map<String, Value> {
 
 fn require_operation_context(
     context: &PortContext,
+    owner_operation: &'static str,
     checkout_operation_id: Uuid,
 ) -> Result<(), PortError> {
     let context_operation = context
@@ -483,6 +517,15 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            channel = ?context.channel,
+            operation = owner_operation,
+            expected_checkout_operation_id = %checkout_operation_id,
+            code = "fulfillment.checkout_operation_id_invalid",
+            "checkout fulfillment execution received invalid causation identity"
+        );
         return Err(PortError::validation(
             "fulfillment.checkout_operation_id_invalid",
             "checkout fulfillment causation_id must match the checkout operation",
@@ -491,8 +534,20 @@ fn require_operation_context(
     Ok(())
 }
 
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+fn parse_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+        tracing::warn!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            channel = ?context.channel,
+            operation = owner_operation,
+            code = "fulfillment.tenant_id_invalid",
+            "checkout fulfillment execution received invalid tenant context"
+        );
         PortError::validation(
             "fulfillment.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for fulfillment ports",
@@ -500,30 +555,87 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     })
 }
 
-fn fulfillment_error_to_port_error(error: FulfillmentError) -> PortError {
+fn fulfillment_error_to_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: FulfillmentError,
+) -> PortError {
     match error {
-        FulfillmentError::Validation(_) => PortError::validation(
-            "fulfillment.checkout_execution_validation",
-            "checkout fulfillment request is invalid",
-        ),
-        FulfillmentError::ShippingOptionNotFound(_) => PortError::new(
-            PortErrorKind::NotFound,
-            "fulfillment.shipping_option_not_found",
-            "shipping option was not found",
-            false,
-        ),
-        FulfillmentError::FulfillmentNotFound(_) => PortError::new(
-            PortErrorKind::NotFound,
-            "fulfillment.fulfillment_not_found",
-            "fulfillment was not found",
-            false,
-        ),
-        FulfillmentError::InvalidTransition { .. } => PortError::conflict(
-            "fulfillment.checkout_execution_state_conflict",
-            "fulfillment lifecycle conflicts with checkout execution",
-        ),
+        FulfillmentError::Validation(cause) => {
+            tracing::warn!(
+                cause = %cause,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation = owner_operation,
+                code = "fulfillment.checkout_execution_validation",
+                "fulfillment owner rejected checkout execution request"
+            );
+            PortError::validation(
+                "fulfillment.checkout_execution_validation",
+                "checkout fulfillment request is invalid",
+            )
+        }
+        FulfillmentError::ShippingOptionNotFound(id) => {
+            tracing::warn!(
+                shipping_option_id = %id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation = owner_operation,
+                code = "fulfillment.shipping_option_not_found",
+                "checkout fulfillment shipping option was not found"
+            );
+            PortError::new(
+                PortErrorKind::NotFound,
+                "fulfillment.shipping_option_not_found",
+                "shipping option was not found",
+                false,
+            )
+        }
+        FulfillmentError::FulfillmentNotFound(id) => {
+            tracing::warn!(
+                fulfillment_id = %id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation = owner_operation,
+                code = "fulfillment.fulfillment_not_found",
+                "checkout fulfillment resource was not found"
+            );
+            PortError::new(
+                PortErrorKind::NotFound,
+                "fulfillment.fulfillment_not_found",
+                "fulfillment was not found",
+                false,
+            )
+        }
+        FulfillmentError::InvalidTransition { from, to } => {
+            tracing::warn!(
+                from = %from,
+                to = %to,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation = owner_operation,
+                code = "fulfillment.checkout_execution_state_conflict",
+                "fulfillment lifecycle conflicts with checkout execution"
+            );
+            PortError::conflict(
+                "fulfillment.checkout_execution_state_conflict",
+                "fulfillment lifecycle conflicts with checkout execution",
+            )
+        }
         FulfillmentError::Database(error) => {
-            tracing::error!(error = ?error, "checkout fulfillment storage failed");
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation = owner_operation,
+                code = "fulfillment.database_unavailable",
+                "checkout fulfillment storage operation failed"
+            );
             PortError::unavailable(
                 "fulfillment.database_unavailable",
                 "fulfillment storage is temporarily unavailable",

@@ -14,6 +14,7 @@ const carts = read('crates/rustok-commerce/src/controllers/store/carts.rs');
 const boundary = read(
   'crates/rustok-commerce/src/controllers/store/line_item_resolution.rs',
 );
+const portContract = read('crates/rustok-api/src/ports.rs');
 const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
 const inventoryOwner = read('crates/rustok-inventory/src/services/public_channel.rs');
 const productTests = read('crates/rustok-commerce/src/controllers/store/tests/products.rs');
@@ -47,8 +48,14 @@ const from = (content, start, label) => {
 const databaseMapper = between(
   boundary,
   'fn map_storefront_line_item_database_error(',
-  'fn map_storefront_line_item_inventory_error(',
+  'fn map_storefront_line_item_pricing_error(',
   'line-item database mapper',
+);
+const pricingMapper = between(
+  boundary,
+  'fn map_storefront_line_item_pricing_error(',
+  'fn map_storefront_line_item_inventory_error(',
+  'line-item pricing mapper',
 );
 const inventoryMapper = between(
   boundary,
@@ -86,8 +93,10 @@ for (const value of [
 ]) forbidText(carts, value, 'legacy unsafe production helper call');
 
 for (const [value, label] of [
+  ['use rustok_api::{PortContext, PortError};', 'typed pricing port imports'],
   ['DbErr', 'typed database error import'],
   ['CommerceError', 'typed inventory error import'],
+  ['port_error_to_http_error', 'shared safe port mapper import'],
   ['boundary = "commerce_storefront_line_item_http"', 'line-item boundary name'],
 ]) requireText(boundary, value, label);
 
@@ -139,6 +148,25 @@ for (const [value, label] of [
 ]) requireText(databaseMapper, value, label);
 
 for (const [value, label] of [
+  ['error: PortError', 'typed pricing port error'],
+  ['context: &PortContext', 'pricing port context'],
+  ['let public = port_error_to_http_error(error.clone());', 'shared safe pricing envelope'],
+  ['owner = "rustok_pricing"', 'pricing owner logging'],
+  ['operation = "resolve_product_price"', 'pricing operation logging'],
+  ['tenant_id = %context.tenant_id', 'pricing tenant logging'],
+  ['correlation_id = %context.correlation_id', 'pricing correlation logging'],
+  ['channel = ?context.channel', 'pricing channel logging'],
+  ['variant_id = %variant_id', 'pricing variant logging'],
+  ['product_id = %product_id', 'pricing product logging'],
+  ['error_kind = ?error.kind', 'pricing error-kind logging'],
+  ['retryable = error.retryable', 'pricing retryability logging'],
+  ['public_code = %public.code', 'pricing public-code logging'],
+  ['status = %public.status', 'pricing status logging'],
+  ['boundary = "commerce_storefront_line_item_http"', 'pricing boundary logging'],
+  ['public\n}', 'pricing safe envelope return'],
+]) requireText(pricingMapper, value, label);
+
+for (const [value, label] of [
   ['CommerceError::Validation(_)', 'inventory validation variant'],
   ['CommerceError::ProductNotFound(_)', 'inventory product-not-found variant'],
   ['CommerceError::VariantNotFound(_)', 'inventory variant-not-found variant'],
@@ -183,8 +211,11 @@ for (const [value, label] of [
   ['product_model.status != product::ProductStatus::Active', 'active product guard'],
   ['product_model.published_at.is_none()', 'published product guard'],
   ['is_metadata_visible_for_public_channel', 'channel visibility guard'],
+  ['let pricing_port_context =', 'pricing context retention'],
+  ['store_line_item_pricing_port_context(', 'pricing context construction'],
   ['.resolve_product_price(', 'pricing resolution'],
-  ['.map_err(rustok_web::port_error_to_http_error)?', 'pricing shared mapper'],
+  ['pricing_port_context.clone()', 'pricing context propagation'],
+  ['map_storefront_line_item_pricing_error(', 'correlation-safe pricing mapper'],
   ['storefront_cart_pricing_snapshot', 'pricing snapshot'],
   ['validate_store_variant_inventory(', 'inventory validation'],
   ['pick_product_translation(', 'product title fallback'],
@@ -193,6 +224,11 @@ for (const [value, label] of [
   ['seller_snapshot_metadata(', 'seller snapshot'],
   ['merge_metadata(', 'metadata merge'],
 ]) requireText(resolver, value, label);
+forbidText(
+  resolver,
+  '.map_err(rustok_web::port_error_to_http_error)?',
+  'unlogged pricing mapper call',
+);
 
 for (const [value, label] of [
   ['product_variant::Entity::find_by_id(variant_id)', 'quantity variant lookup'],
@@ -222,6 +258,12 @@ for (const value of [
 ]) forbidText(boundary, value, 'unsafe line-item public conversion');
 
 for (const [content, value, label] of [
+  [portContract, 'pub struct PortContext {', 'shared port context'],
+  [portContract, 'pub correlation_id: String', 'shared correlation field'],
+  [portContract, 'pub channel: Option<String>', 'shared channel field'],
+  [portContract, 'pub struct PortError {', 'shared port error'],
+  [portContract, 'pub kind: PortErrorKind', 'shared port error kind'],
+  [portContract, 'pub retryable: bool', 'shared port retryability'],
   [commerceErrors, 'pub enum CommerceError {', 'commerce owner enum'],
   [commerceErrors, 'Database(#[from] sea_orm::DbErr)', 'commerce database variant'],
   [commerceErrors, 'ProductNotFound(Uuid)', 'commerce product variant'],
@@ -241,6 +283,10 @@ const databaseMapperUses = boundary.match(/map_storefront_line_item_database_err
 if (databaseMapperUses.length !== 6) {
   failures.push(`expected database mapper definition plus five uses, found ${databaseMapperUses.length}`);
 }
+const pricingMapperUses = boundary.match(/map_storefront_line_item_pricing_error\(/g) ?? [];
+if (pricingMapperUses.length !== 2) {
+  failures.push(`expected pricing mapper definition plus one use, found ${pricingMapperUses.length}`);
+}
 const inventoryMapperUses = boundary.match(/map_storefront_line_item_inventory_error\(/g) ?? [];
 if (inventoryMapperUses.length !== 2) {
   failures.push(`expected inventory mapper definition plus one use, found ${inventoryMapperUses.length}`);
@@ -252,4 +298,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ Storefront line-item catalog and inventory errors use typed safe envelopes');
+console.log('✔ Storefront line-item catalog, pricing, and inventory errors use typed safe envelopes');

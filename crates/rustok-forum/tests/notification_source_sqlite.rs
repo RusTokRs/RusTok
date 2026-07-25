@@ -13,8 +13,9 @@ use rustok_notifications::NotificationsModule;
 use rustok_notifications_api::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationOpenAuthorization,
     NotificationProviderError, NotificationSourceEventRef, NotificationSourceSlug,
-    NotificationTypeKey, ResolveNotificationAudienceRequest,
-    materialize_notification_source_registry, notification_source_factory_registry_from_extensions,
+    NotificationTargetKind, NotificationTargetRef, NotificationTypeKey,
+    ResolveNotificationAudienceRequest, materialize_notification_source_registry,
+    notification_source_factory_registry_from_extensions,
     notification_source_registry_from_extensions,
 };
 use rustok_outbox::TransactionalEventBus;
@@ -203,6 +204,77 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         ),
         NotificationOpenAuthorization::Unavailable => panic!("open topic should be available"),
     }
+
+    let restricted_topic = TopicService::new(db.clone(), event_bus.clone())
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateTopicInput {
+                locale: "en".into(),
+                category_id: category.id,
+                title: "Mobile provider proof".into(),
+                slug: Some("mobile-provider-proof".into()),
+                body: "This topic is visible only in the mobile channel.".into(),
+                body_format: "markdown".into(),
+                content_json: None,
+                metadata: serde_json::json!({}),
+                tags: Vec::new(),
+                channel_slugs: Some(vec!["mobile".into()]),
+            },
+        )
+        .await
+        .expect("channel-restricted topic should be created");
+    let restricted_event = forum_domain_event::Entity::find()
+        .filter(forum_domain_event::Column::TenantId.eq(tenant_id))
+        .filter(forum_domain_event::Column::AggregateType.eq("topic"))
+        .filter(forum_domain_event::Column::AggregateId.eq(restricted_topic.id))
+        .filter(forum_domain_event::Column::EventType.eq("forum.topic.created"))
+        .one(&db)
+        .await
+        .expect("restricted topic event query should succeed")
+        .expect("restricted topic-created event should be journaled");
+    assert!(
+        provider
+            .describe_event(DescribeNotificationRequest {
+                event: source_event_ref(&restricted_event),
+            })
+            .await
+            .expect("restricted topic description should fail closed")
+            .is_none()
+    );
+    let restricted_open = provider
+        .authorize_target_open(AuthorizeNotificationTargetRequest {
+            tenant_id,
+            recipient_id: first_recipient,
+            target: NotificationTargetRef {
+                owner: NotificationSourceSlug::new("forum").expect("source slug"),
+                kind: NotificationTargetKind::new("forum.topic").expect("topic target kind"),
+                id: restricted_topic.id,
+            },
+        })
+        .await
+        .expect("restricted topic authorization should fail closed");
+    assert_eq!(
+        restricted_open,
+        NotificationOpenAuthorization::Unavailable
+    );
+    let restricted_mention_event = seed_user_mention_event(
+        &db,
+        tenant_id,
+        author_id,
+        restricted_topic.id,
+        first_recipient,
+    )
+    .await;
+    assert!(
+        provider
+            .describe_event(DescribeNotificationRequest {
+                event: source_event_ref(&restricted_mention_event),
+            })
+            .await
+            .expect("restricted mention description should fail closed")
+            .is_none()
+    );
 
     let mention_event =
         seed_user_mention_event(&db, tenant_id, author_id, topic.id, first_recipient).await;

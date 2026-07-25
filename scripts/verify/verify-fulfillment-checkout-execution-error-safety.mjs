@@ -1,0 +1,173 @@
+#!/usr/bin/env node
+
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
+const root = configuredRoot
+  ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
+  : new URL('../../', import.meta.url);
+const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
+
+const source = read('crates/rustok-fulfillment/src/checkout_execution.rs');
+const portContract = read('crates/rustok-api/src/ports.rs');
+const failures = [];
+
+const requireText = (content, value, label) => {
+  if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
+};
+const forbidText = (content, value, label) => {
+  if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
+};
+const between = (content, start, end, label) => {
+  const startIndex = content.indexOf(start);
+  const endIndex = content.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return content.slice(startIndex, endIndex);
+};
+const from = (content, start, label) => {
+  const startIndex = content.indexOf(start);
+  if (startIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return content.slice(startIndex);
+};
+
+const ensure = between(
+  source,
+  'async fn ensure(',
+  'async fn read(',
+  'checkout fulfillment ensure helper',
+);
+const readHelper = between(
+  source,
+  'async fn read(',
+  'async fn find_by_key(',
+  'checkout fulfillment read helper',
+);
+const findHelper = between(
+  source,
+  'async fn find_by_key(',
+  'pub fn in_process_checkout_fulfillment_execution_port(',
+  'checkout fulfillment lookup helper',
+);
+const portImpl = between(
+  source,
+  'impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionPort {',
+  'fn validate_request(',
+  'checkout fulfillment port implementation',
+);
+const operationContext = between(
+  source,
+  'fn require_operation_context(',
+  'fn parse_tenant_id(',
+  'checkout operation context validator',
+);
+const tenantParser = between(
+  source,
+  'fn parse_tenant_id(',
+  'fn fulfillment_error_to_port_error(',
+  'checkout tenant context parser',
+);
+const mapper = from(
+  source,
+  'fn fulfillment_error_to_port_error(',
+  'checkout fulfillment owner mapper',
+);
+
+for (const [value, label] of [
+  ['const ENSURE_OPERATION: &str = "ensure_checkout_fulfillments";', 'ensure operation constant'],
+  ['const READ_OPERATION: &str = "read_checkout_fulfillments";', 'read operation constant'],
+  ['use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};', 'typed port imports'],
+]) requireText(source, value, label);
+
+for (const [content, value, label] of [
+  [ensure, 'context: &PortContext', 'ensure context input'],
+  [ensure, '"find_checkout_fulfillment_before_create"', 'pre-create lookup operation'],
+  [ensure, '"adopt_checkout_fulfillment_after_create_error"', 'post-error adoption operation'],
+  [ensure, '"create_checkout_fulfillment"', 'create operation'],
+  [ensure, 'fulfillment_error_to_port_error(', 'create mapper handoff'],
+  [readHelper, 'context: &PortContext', 'read context input'],
+  [readHelper, '"list_checkout_fulfillments_for_read"', 'read owner operation'],
+  [readHelper, 'fulfillment_error_to_port_error(', 'read mapper handoff'],
+  [findHelper, 'context: &PortContext', 'lookup context input'],
+  [findHelper, "owner_operation: &'static str", 'lookup operation input'],
+  [findHelper, 'fulfillment_error_to_port_error(context, owner_operation, error)', 'lookup mapper handoff'],
+  [portImpl, 'parse_tenant_id(&context, ENSURE_OPERATION)', 'ensure context validation'],
+  [portImpl, 'require_operation_context(&context, ENSURE_OPERATION', 'ensure causation validation'],
+  [portImpl, 'self.ensure(&context, tenant_id, request).await', 'ensure context propagation'],
+  [portImpl, 'parse_tenant_id(&context, READ_OPERATION)', 'read context validation'],
+  [portImpl, 'require_operation_context(&context, READ_OPERATION', 'read causation validation'],
+  [portImpl, 'self.read(&context, tenant_id, request).await', 'read context propagation'],
+]) requireText(content, value, label);
+
+for (const [content, value, label] of [
+  [operationContext, 'correlation_id = %context.correlation_id', 'causation correlation log'],
+  [operationContext, 'tenant_id = %context.tenant_id', 'causation tenant log'],
+  [operationContext, 'channel = ?context.channel', 'causation channel log'],
+  [operationContext, 'operation = owner_operation', 'causation operation log'],
+  [operationContext, 'code = "fulfillment.checkout_operation_id_invalid"', 'causation code log'],
+  [tenantParser, 'error = ?error', 'tenant parse cause log'],
+  [tenantParser, 'correlation_id = %context.correlation_id', 'tenant parse correlation log'],
+  [tenantParser, 'tenant_id = %context.tenant_id', 'tenant parse tenant log'],
+  [tenantParser, 'channel = ?context.channel', 'tenant parse channel log'],
+  [tenantParser, 'operation = owner_operation', 'tenant parse operation log'],
+  [tenantParser, 'code = "fulfillment.tenant_id_invalid"', 'tenant parse code log'],
+]) requireText(content, value, label);
+
+for (const [value, label] of [
+  ['context: &PortContext', 'mapper context input'],
+  ["owner_operation: &'static str", 'mapper operation input'],
+  ['FulfillmentError::Validation(cause)', 'validation cause capture'],
+  ['FulfillmentError::ShippingOptionNotFound(id)', 'shipping option identity capture'],
+  ['FulfillmentError::FulfillmentNotFound(id)', 'fulfillment identity capture'],
+  ['FulfillmentError::InvalidTransition { from, to }', 'transition cause capture'],
+  ['FulfillmentError::Database(error)', 'database cause capture'],
+  ['correlation_id = %context.correlation_id', 'mapper correlation log'],
+  ['tenant_id = %context.tenant_id', 'mapper tenant log'],
+  ['channel = ?context.channel', 'mapper channel log'],
+  ['operation = owner_operation', 'mapper operation log'],
+  ['code = "fulfillment.checkout_execution_validation"', 'validation stable code log'],
+  ['code = "fulfillment.shipping_option_not_found"', 'shipping stable code log'],
+  ['code = "fulfillment.fulfillment_not_found"', 'fulfillment stable code log'],
+  ['code = "fulfillment.checkout_execution_state_conflict"', 'transition stable code log'],
+  ['code = "fulfillment.database_unavailable"', 'database stable code log'],
+  ['"checkout fulfillment request is invalid"', 'static validation public message'],
+  ['"shipping option was not found"', 'static shipping public message'],
+  ['"fulfillment was not found"', 'static fulfillment public message'],
+  ['"fulfillment lifecycle conflicts with checkout execution"', 'static transition public message'],
+  ['"fulfillment storage is temporarily unavailable"', 'static database public message'],
+]) requireText(mapper, value, label);
+
+for (const value of [
+  '.map_err(fulfillment_error_to_port_error)',
+  'tracing::error!(error = ?error, "checkout fulfillment storage failed")',
+  'FulfillmentError::Validation(_) =>',
+]) forbidText(source, value, 'context-free checkout fulfillment mapping');
+
+const mapperUses = source.match(/fulfillment_error_to_port_error\(/g) ?? [];
+if (mapperUses.length !== 4) {
+  failures.push(`expected mapper definition plus three service mappings, found ${mapperUses.length}`);
+}
+
+for (const [value, label] of [
+  ['pub struct PortContext {', 'shared port context'],
+  ['pub correlation_id: String', 'shared correlation field'],
+  ['pub channel: Option<String>', 'shared channel field'],
+  ['pub struct PortError {', 'shared port error'],
+  ['pub fn validation(', 'typed validation constructor'],
+  ['pub fn unavailable(', 'typed unavailable constructor'],
+]) requireText(portContract, value, label);
+
+if (failures.length > 0) {
+  console.error('Fulfillment checkout execution error-safety verification failed:');
+  for (const failure of failures) console.error(`✗ ${failure}`);
+  process.exit(Math.min(failures.length, 255));
+}
+
+console.log('✔ Fulfillment checkout execution owner errors retain context and stable public envelopes');

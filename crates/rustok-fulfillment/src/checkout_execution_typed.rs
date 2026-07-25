@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::{PortContext, PortError};
 use sea_orm::DatabaseConnection;
 
 use crate::checkout_execution::{
@@ -10,6 +10,11 @@ use crate::checkout_execution::{
 };
 use crate::dto::FulfillmentResponse;
 use crate::status::FulfillmentStatusKind;
+
+const MANUAL_RECONCILIATION_CODE: &str =
+    "fulfillment.checkout_execution_manual_reconciliation";
+const MANUAL_RECONCILIATION_MESSAGE: &str =
+    "checkout fulfillment requires manual reconciliation";
 
 /// Mounted in-process fulfillment boundary with fail-closed lifecycle validation.
 ///
@@ -35,11 +40,16 @@ impl CheckoutFulfillmentExecutionPort for TypedCheckoutFulfillmentExecutionPort 
         context: PortContext,
         request: EnsureCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
+        let lifecycle_context = context.clone();
         let fulfillments = self
             .delegate
             .ensure_checkout_fulfillments(context, request)
             .await?;
-        validate_checkout_fulfillment_lifecycle(&fulfillments)?;
+        validate_checkout_fulfillment_lifecycle(
+            &lifecycle_context,
+            "ensure_checkout_fulfillments",
+            &fulfillments,
+        )?;
         Ok(fulfillments)
     }
 
@@ -48,11 +58,16 @@ impl CheckoutFulfillmentExecutionPort for TypedCheckoutFulfillmentExecutionPort 
         context: PortContext,
         request: ReadCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
+        let lifecycle_context = context.clone();
         let fulfillments = self
             .delegate
             .read_checkout_fulfillments(context, request)
             .await?;
-        validate_checkout_fulfillment_lifecycle(&fulfillments)?;
+        validate_checkout_fulfillment_lifecycle(
+            &lifecycle_context,
+            "read_checkout_fulfillments",
+            &fulfillments,
+        )?;
         Ok(fulfillments)
     }
 }
@@ -64,6 +79,8 @@ pub fn in_process_checkout_fulfillment_execution_port(
 }
 
 fn validate_checkout_fulfillment_lifecycle(
+    context: &PortContext,
+    operation: &'static str,
     fulfillments: &[FulfillmentResponse],
 ) -> Result<(), PortError> {
     for fulfillment in fulfillments {
@@ -73,12 +90,18 @@ fn validate_checkout_fulfillment_lifecycle(
             | FulfillmentStatusKind::Delivered => {}
             FulfillmentStatusKind::Cancelled => {
                 return Err(manual_reconciliation(
-                    "checkout fulfillment is cancelled after payment capture",
+                    context,
+                    operation,
+                    fulfillment,
+                    "cancelled_after_payment_capture",
                 ));
             }
             FulfillmentStatusKind::Unknown => {
                 return Err(manual_reconciliation(
-                    "checkout fulfillment lifecycle is unknown",
+                    context,
+                    operation,
+                    fulfillment,
+                    "unknown_owner_status",
                 ));
             }
         }
@@ -86,12 +109,28 @@ fn validate_checkout_fulfillment_lifecycle(
     Ok(())
 }
 
-fn manual_reconciliation(message: &'static str) -> PortError {
-    PortError::new(
-        PortErrorKind::Conflict,
-        "fulfillment.checkout_execution_manual_reconciliation",
-        message,
-        false,
+fn manual_reconciliation(
+    context: &PortContext,
+    operation: &'static str,
+    fulfillment: &FulfillmentResponse,
+    cause: &'static str,
+) -> PortError {
+    tracing::error!(
+        owner = "rustok_fulfillment.checkout_execution",
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        channel = ?context.channel,
+        operation,
+        fulfillment_id = %fulfillment.id,
+        order_id = %fulfillment.order_id,
+        owner_status = %fulfillment.status,
+        cause,
+        code = MANUAL_RECONCILIATION_CODE,
+        "checkout fulfillment lifecycle requires manual reconciliation"
+    );
+    PortError::conflict(
+        MANUAL_RECONCILIATION_CODE,
+        MANUAL_RECONCILIATION_MESSAGE,
     )
 }
 
@@ -100,7 +139,18 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use serde_json::json;
+    use std::time::Duration;
     use uuid::Uuid;
+
+    fn context() -> PortContext {
+        PortContext::new(
+            Uuid::new_v4().to_string(),
+            rustok_api::PortActor::service("fulfillment-checkout-lifecycle-test"),
+            "en",
+            "fulfillment-checkout-lifecycle-test-correlation",
+        )
+        .with_deadline(Duration::from_secs(2))
+    }
 
     fn fulfillment(status: &str) -> FulfillmentResponse {
         FulfillmentResponse {
@@ -126,20 +176,31 @@ mod tests {
 
     #[test]
     fn checkout_replay_accepts_active_and_completed_fulfillments() {
+        let context = context();
         for status in ["pending", "shipped", "delivered"] {
-            assert!(validate_checkout_fulfillment_lifecycle(&[fulfillment(status)]).is_ok());
+            assert!(
+                validate_checkout_fulfillment_lifecycle(
+                    &context,
+                    "test_checkout_fulfillment_lifecycle",
+                    &[fulfillment(status)],
+                )
+                .is_ok()
+            );
         }
     }
 
     #[test]
     fn checkout_replay_reconciles_cancelled_and_unknown_fulfillments() {
+        let context = context();
         for status in ["cancelled", "carrier_custom"] {
-            let error = validate_checkout_fulfillment_lifecycle(&[fulfillment(status)])
-                .expect_err("unsafe fulfillment lifecycle must fail closed");
-            assert_eq!(
-                error.code,
-                "fulfillment.checkout_execution_manual_reconciliation"
-            );
+            let error = validate_checkout_fulfillment_lifecycle(
+                &context,
+                "test_checkout_fulfillment_lifecycle",
+                &[fulfillment(status)],
+            )
+            .expect_err("unsafe fulfillment lifecycle must fail closed");
+            assert_eq!(error.code, MANUAL_RECONCILIATION_CODE);
+            assert_eq!(error.message, MANUAL_RECONCILIATION_MESSAGE);
         }
     }
 }

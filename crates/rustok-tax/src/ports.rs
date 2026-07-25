@@ -257,8 +257,10 @@ fn tax_request_error(
 ) -> PortError {
     tracing::warn!(
         detail = %detail,
+        owner = "rustok_tax",
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
+        channel = ?context.channel,
         operation = owner_operation,
         code,
         "tax request validation failed"
@@ -274,8 +276,10 @@ fn tax_result_error(
 ) -> PortError {
     tracing::error!(
         detail = %detail,
+        owner = "rustok_tax",
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
+        channel = ?context.channel,
         operation = owner_operation,
         code,
         "tax provider result violated the owner contract"
@@ -292,8 +296,10 @@ fn tax_error_to_port_error(
         TaxError::Validation(message) => {
             tracing::warn!(
                 error = %message,
+                owner = "rustok_tax",
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation = owner_operation,
                 code = "tax.validation",
                 "tax owner validation failed"
