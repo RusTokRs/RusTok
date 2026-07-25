@@ -32,6 +32,7 @@
   },
   "policy": {
     "descriptor_boundary": "topic-created descriptor materialization remains public-only in this slice",
+    "source_recheck": "when recipient context is published, load the current active topic record without a public visibility short-circuit and delegate authorization to each exact recipient; preserve the public source recheck when the capability is absent",
     "raw_candidate_query": "tenant and category scoped notify-new-topics subscriptions excluding muted rows and the event actor, ordered by user_id",
     "scan_bound": "read at most requested limit plus one lookahead row and evaluate only the first requested-limit raw subscriptions",
     "cursor": "when more raw subscriptions exist, advance by the last scanned raw user_id rather than the last allowed recipient",
@@ -46,6 +47,8 @@
   },
   "composition": {
     "notification_sparse_page_prerequisite": true,
+    "active_topic_source_recheck": true,
+    "stale_public_descriptor_to_non_public_recipient_filtering": true,
     "bounded_raw_keyset_scan": true,
     "limit_plus_one_lookahead": true,
     "last_scanned_raw_cursor": true,
