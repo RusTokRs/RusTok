@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20N",
+  "upstream_task": "FORUM-20M",
+  "scope": "Forum notification source factory consumption of exact recipient context for topic and reply target-open authorization",
+  "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
+  "visibility_owner_file": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
+  "recipient_context_owner_file": "crates/rustok-forum/src/notification_recipient.rs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-host-runtime.json",
+  "visibility_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
+  "test_file": "crates/rustok-forum/tests/notification_recipient_target_open_sqlite.rs",
+  "source_verifier": "scripts/verify/verify-forum-notification-recipient-target-open.mjs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan_sync": {
+    "status": "pending",
+    "required_ledger_through": "FORUM-20N",
+    "required_delivered_sections": [
+      "FORUM-20H",
+      "FORUM-20I",
+      "FORUM-20J",
+      "FORUM-20K",
+      "FORUM-20L",
+      "FORUM-20M",
+      "FORUM-20N"
+    ],
+    "current_plan_through": "FORUM-20G",
+    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+  },
+  "policy": {
+    "factory": "consume optional SharedForumNotificationRecipientContextPort and SharedForumAudienceFactsPort from HostRuntimeContext",
+    "capability_absence": "preserve the existing public-only fail-closed target-open path",
+    "recipient_lookup": "bounded service PortContext for the exact tenant and notification recipient",
+    "recipient_unavailable": "non-retryable recipient capability failure resolves to target unavailable without an existence oracle",
+    "authenticated_visibility": "compose exact base topic visibility and normalized inherited category/topic audience layers for the validated recipient",
+    "local_selectors": "role and explicit-user allow/deny constraints resolve without host facts adapters",
+    "fact_dependent_selectors": "missing or failing host facts capability preserves typed retryability",
+    "reply_target": "reply must be active and approved and its owner topic must be visible to the same recipient",
+    "public_surfaces": "describe_event and resolve_audience remain public-only and unchanged",
+    "channel_context": "target-open has no route channel slug and therefore retains the existing channel-deny semantics"
+  },
+  "composition": {
+    "factory_recipient_capability_lookup": true,
+    "factory_facts_capability_lookup": true,
+    "bounded_target_open_context": true,
+    "exact_recipient_resolution": true,
+    "authenticated_topic_viewer": true,
+    "recipient_specific_topic_open": true,
+    "recipient_specific_reply_open": true,
+    "public_only_fallback": true,
+    "inactive_or_missing_recipient_fail_closed": true,
+    "retryability_preserved": true,
+    "public_description_unchanged": true,
+    "public_audience_unchanged": true,
+    "sqlite_contract_test": true
+  },
+  "not_delivered": [
+    "recipient-specific audience filtering for non-public topics before pagination",
+    "profile privacy and blocking policy",
+    "host trust channel and group facts adapters",
+    "final notification creation and delivery authorization",
+    "search index SEO and deep-link migration",
+    "PostgreSQL and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_richer_visibility_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-notification-visibility-composition.mjs",
+      "node scripts/verify/verify-forum-notification-recipient-context.mjs",
+      "node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs",
+      "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
