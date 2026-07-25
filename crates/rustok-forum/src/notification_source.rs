@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_api::HostRuntimeContext;
+use rustok_api::{HostRuntimeContext, PortActor, PortContext};
 use rustok_notifications_api::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
     NotificationAudienceCursor, NotificationAudiencePage, NotificationOpenAuthorization,
@@ -19,10 +20,14 @@ use sea_orm::{
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::audience::SharedForumAudienceFactsPort;
 use crate::entities::{
     forum_category_subscription, forum_domain_event, forum_reply, forum_topic, forum_user_mention,
 };
 use crate::error::ForumError;
+use crate::notification_recipient::{
+    ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
+};
 use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
 use crate::state_machine::ReplyStatus;
 use crate::subscription::ForumSubscriptionLevel;
@@ -32,6 +37,8 @@ const TOPIC_CREATED_TYPE: &str = "forum.topic.created";
 const USER_MENTION_ADDED_TYPE: &str = "forum.mention.user_added";
 const FORUM_TOPIC_TARGET: &str = "forum.topic";
 const FORUM_REPLY_TARGET: &str = "forum.reply";
+const TARGET_OPEN_ACTOR: &str = "forum-notification-target-open";
+const TARGET_OPEN_DEADLINE: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Default)]
 pub(crate) struct ForumNotificationSourceProviderFactory;
@@ -47,6 +54,8 @@ impl NotificationSourceProviderFactory for ForumNotificationSourceProviderFactor
     ) -> NotificationProviderResult<Arc<dyn NotificationSourceProvider>> {
         Ok(Arc::new(ForumNotificationSourceProvider::new(
             host.db_clone(),
+            host.shared_get::<SharedForumNotificationRecipientContextPort>(),
+            host.shared_get::<SharedForumAudienceFactsPort>(),
         )))
     }
 }
@@ -54,6 +63,8 @@ impl NotificationSourceProviderFactory for ForumNotificationSourceProviderFactor
 #[derive(Clone)]
 struct ForumNotificationSourceProvider {
     db: DatabaseConnection,
+    recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
+    facts_port: Option<SharedForumAudienceFactsPort>,
 }
 
 #[derive(Clone, Debug)]
@@ -81,8 +92,16 @@ struct ForumUserMentionPayload {
 }
 
 impl ForumNotificationSourceProvider {
-    fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    fn new(
+        db: DatabaseConnection,
+        recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
+        facts_port: Option<SharedForumAudienceFactsPort>,
+    ) -> Self {
+        Self {
+            db,
+            recipient_context_port,
+            facts_port,
+        }
     }
 
     async fn load_event(
@@ -132,14 +151,14 @@ impl ForumNotificationSourceProvider {
         Ok(persisted)
     }
 
-    async fn load_public_topic(
+    async fn load_topic_for_viewer(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
+        viewer: &ForumTopicAudienceViewer,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        let viewer = ForumTopicAudienceViewer::public();
-        if !ForumTopicAudienceVisibilityService::without_facts_provider(self.db.clone())
-            .is_topic_visible(tenant_id, topic_id, None, &viewer)
+        if !ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+            .is_topic_visible(tenant_id, topic_id, None, viewer)
             .await
             .map_err(forum_owner_error)?
         {
@@ -164,15 +183,28 @@ impl ForumNotificationSourceProvider {
         Ok(Some(topic))
     }
 
-    async fn load_public_target(
+    async fn load_public_topic(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> NotificationProviderResult<Option<forum_topic::Model>> {
+        self.load_topic_for_viewer(tenant_id, topic_id, &ForumTopicAudienceViewer::public())
+            .await
+    }
+
+    async fn load_target_for_viewer(
         &self,
         tenant_id: Uuid,
         source_kind: &str,
         source_id: Uuid,
+        viewer: &ForumTopicAudienceViewer,
     ) -> NotificationProviderResult<ForumTargetAvailability> {
         match source_kind {
             "topic" => {
-                let Some(topic) = self.load_public_topic(tenant_id, source_id).await? else {
+                let Some(topic) = self
+                    .load_topic_for_viewer(tenant_id, source_id, viewer)
+                    .await?
+                else {
                     return Ok(ForumTargetAvailability::Unavailable);
                 };
                 Ok(ForumTargetAvailability::Visible(ForumTargetContext {
@@ -204,7 +236,10 @@ impl ForumNotificationSourceProvider {
                 if reply.status != ReplyStatus::Approved {
                     return Ok(ForumTargetAvailability::Unavailable);
                 }
-                let Some(topic) = self.load_public_topic(tenant_id, reply.topic_id).await? else {
+                let Some(topic) = self
+                    .load_topic_for_viewer(tenant_id, reply.topic_id, viewer)
+                    .await?
+                else {
                     return Ok(ForumTargetAvailability::Unavailable);
                 };
                 Ok(ForumTargetAvailability::Visible(ForumTargetContext {
@@ -216,6 +251,21 @@ impl ForumNotificationSourceProvider {
             }
             _ => Err(NotificationProviderError::InvalidEvent),
         }
+    }
+
+    async fn load_public_target(
+        &self,
+        tenant_id: Uuid,
+        source_kind: &str,
+        source_id: Uuid,
+    ) -> NotificationProviderResult<ForumTargetAvailability> {
+        self.load_target_for_viewer(
+            tenant_id,
+            source_kind,
+            source_id,
+            &ForumTopicAudienceViewer::public(),
+        )
+        .await
     }
 
     async fn row_is_active(
@@ -558,10 +608,37 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
         } else {
             return Ok(NotificationOpenAuthorization::Unavailable);
         };
-        match self
-            .load_public_target(request.tenant_id, source_kind, request.target.id)
+
+        let availability = if let Some(port) = self.recipient_context_port.clone() {
+            let resolver = ForumNotificationRecipientContextResolver::new(Some(port));
+            let recipient = match resolver
+                .resolve(
+                    target_open_context(&request),
+                    request.tenant_id,
+                    request.recipient_id,
+                )
+                .await
+            {
+                Ok(recipient) => recipient,
+                Err(ForumError::CapabilityFailure {
+                    retryable: false, ..
+                }) => return Ok(NotificationOpenAuthorization::Unavailable),
+                Err(error) => return Err(forum_owner_error(error)),
+            };
+            let viewer = recipient.into_topic_viewer().map_err(forum_owner_error)?;
+            self.load_target_for_viewer(
+                request.tenant_id,
+                source_kind,
+                request.target.id,
+                &viewer,
+            )
             .await?
-        {
+        } else {
+            self.load_public_target(request.tenant_id, source_kind, request.target.id)
+                .await?
+        };
+
+        match availability {
             ForumTargetAvailability::Visible(target) => {
                 Ok(NotificationOpenAuthorization::Allowed {
                     route: self.target_route(&target)?,
@@ -574,13 +651,34 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
     }
 }
 
+fn target_open_context(request: &AuthorizeNotificationTargetRequest) -> PortContext {
+    PortContext::new(
+        request.tenant_id.to_string(),
+        PortActor::service(TARGET_OPEN_ACTOR),
+        "und",
+        format!(
+            "forum-target-open:{}:{}",
+            request.recipient_id, request.target.id
+        ),
+    )
+    .with_deadline(TARGET_OPEN_DEADLINE)
+}
+
 fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError {
     NotificationProviderError::Internal { retryable: true }
 }
 
 fn forum_owner_error(error: ForumError) -> NotificationProviderError {
-    NotificationProviderError::Internal {
-        retryable: error.is_retryable(),
+    match error {
+        ForumError::CapabilityUnavailable { .. } => {
+            NotificationProviderError::CapabilityUnavailable { retryable: true }
+        }
+        ForumError::CapabilityFailure { retryable, .. } => {
+            NotificationProviderError::Internal { retryable }
+        }
+        error => NotificationProviderError::Internal {
+            retryable: error.is_retryable(),
+        },
     }
 }
 
