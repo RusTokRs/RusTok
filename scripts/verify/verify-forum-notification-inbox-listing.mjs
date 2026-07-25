@@ -55,6 +55,7 @@ for (const delivered of [
   "bounded_owner_listing_service",
   "exact_tenant_recipient_query",
   "optional_exact_state_filter",
+  "bounded_cursor_input",
   "composite_descending_keyset_cursor",
   "nanosecond_cursor_precision",
   "limit_plus_one_raw_scan",
@@ -146,6 +147,7 @@ if (planSync.status === "pending") {
 for (const marker of [
   "pub const DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE: u16 = 20",
   "pub const MAX_NOTIFICATION_INBOX_PAGE_SIZE: u16 = 64",
+  "pub const MAX_NOTIFICATION_INBOX_CURSOR_BYTES: usize = 128",
   "const INBOX_CURSOR_VERSION: &str = \"i1\"",
   "pub struct NotificationInboxListRequest",
   "pub tenant_id: Uuid",
@@ -188,6 +190,8 @@ for (const marker of [
   ".authorize_open(NotificationInboxOpenRequest {",
   "if matches!(decision, NotificationInboxOpenDecision::Allowed { .. })",
   "items.push(materialize_inbox_item(stored)?)",
+  "value.len() > MAX_NOTIFICATION_INBOX_CURSOR_BYTES",
+  "value.chars().any(char::is_control)",
   "stored.created_at.timestamp()",
   "stored.created_at.timestamp_subsec_nanos()",
   "DateTime::<Utc>::from_timestamp(seconds, nanos)",
@@ -238,6 +242,7 @@ for (const forbidden of [
 for (const marker of [
   "DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE",
   "MAX_NOTIFICATION_INBOX_PAGE_SIZE",
+  "MAX_NOTIFICATION_INBOX_CURSOR_BYTES",
   "NotificationInboxItem",
   "NotificationInboxListRequest",
   "NotificationInboxListService",
