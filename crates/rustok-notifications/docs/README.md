@@ -175,6 +175,28 @@ SQLite evidence is `tests/inbox_state_sqlite.rs`. Mark-unread, bulk/mark-all
 mutations, canonical unread counts, grouped inbox views, external transport
 adapters, and module-owned UI remain closed.
 
+### Bounded inbox reconciliation
+
+`NotificationInboxReconcileService` scans one bounded non-archived page for an
+exact tenant/recipient in `created_at DESC, id DESC` order. It defaults to 20 rows,
+is capped at 64, and reuses the crate-private `i1` inbox cursor with timestamp
+nanoseconds and the UUID tie-breaker.
+
+Every scanned row reuses `NotificationInboxOpenService`, so current recipient
+privacy runs before source target authorization. Allowed rows remain unchanged.
+Rows that current privacy or source policy marks `Unavailable` are archived through
+`NotificationInboxStateService`, preserving existing seen/read timestamps. Raw
+selection completes before any foreign owner call, and no foreign provider runs
+inside a notification database transaction.
+
+Retryable owner failures stop the page. Earlier per-row archives are durable and
+idempotent, allowing a restart from the same cursor to skip already archived rows.
+The response contains only scanned/archived counts and continuation metadata; it
+exposes no route, notification identity, or structural source target fields.
+
+SQLite evidence is `tests/inbox_reconcile_sqlite.rs`. Tenant-wide scheduling and
+payload redaction, transport adapters, and UI remain closed.
+
 The server starts workers in intake → fanout → candidate order. Invalid or
 unreadable flags remain disabled.
 
@@ -194,9 +216,10 @@ remains deferred.
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
 - mark-unread, bulk/mark-all mutations, canonical unread counts, and grouped views;
+- tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and full module-owned UI;
 - channel delivery enqueue and transports with delivery-time authorization;
-- retention, reconciliation, quarantine replay/purge, and administrative repair.
+- retention, quarantine replay/purge, and administrative repair.
 
 ## Maintainer verification
 
@@ -214,6 +237,7 @@ cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -228,11 +252,12 @@ node scripts/verify/verify-forum-notification-inbox-open-authorization.mjs
 node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
 node scripts/verify/verify-forum-notification-inbox-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
+node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U`.
+`FORUM-20R/20S/20T/20U/20V`.
 
 ## Related documents
 

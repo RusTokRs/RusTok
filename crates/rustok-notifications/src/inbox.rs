@@ -280,12 +280,12 @@ impl NotificationInboxListService {
 }
 
 #[derive(Clone)]
-struct InboxCursor {
-    created_at: DateTime<FixedOffset>,
-    id: Uuid,
+pub(crate) struct InboxCursor {
+    pub(crate) created_at: DateTime<FixedOffset>,
+    pub(crate) id: Uuid,
 }
 
-fn encode_inbox_cursor(stored: &notification::Model) -> String {
+pub(crate) fn encode_inbox_cursor(stored: &notification::Model) -> String {
     format!(
         "{INBOX_CURSOR_VERSION}:{}:{}:{}",
         stored.created_at.timestamp(),
@@ -294,7 +294,7 @@ fn encode_inbox_cursor(stored: &notification::Model) -> String {
     )
 }
 
-fn decode_inbox_cursor(value: &str) -> NotificationResult<InboxCursor> {
+pub(crate) fn decode_inbox_cursor(value: &str) -> NotificationResult<InboxCursor> {
     if value.is_empty()
         || value.len() > MAX_NOTIFICATION_INBOX_CURSOR_BYTES
         || value.chars().any(char::is_control)
