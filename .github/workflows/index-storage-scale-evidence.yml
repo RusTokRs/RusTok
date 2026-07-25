@@ -16,6 +16,7 @@ on:
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
+      - "scripts/verify/index-storage-database-settings-contract.mjs"
       - "scripts/verify/index-storage-standalone-tools.test.mjs"
       - "scripts/verify/verify-index-storage-standalone-tools.mjs"
       - "scripts/verify/hash-index-storage-comparison.mjs"
@@ -49,6 +50,7 @@ on:
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
+      - "scripts/verify/index-storage-database-settings-contract.mjs"
       - "scripts/verify/index-storage-standalone-tools.test.mjs"
       - "scripts/verify/verify-index-storage-standalone-tools.mjs"
       - "scripts/verify/hash-index-storage-comparison.mjs"
@@ -112,6 +114,7 @@ jobs:
           node --check scripts/verify/validate-index-storage-evidence-core.mjs
       - name: Verify cross-scale comparator syntax
         run: |
+          node --check scripts/verify/index-storage-database-settings-contract.mjs
           node --check scripts/verify/compare-index-storage-evidence.mjs
           node --check scripts/verify/compare-index-storage-evidence-core.mjs
       - name: Verify storage decision and ADR tooling syntax
