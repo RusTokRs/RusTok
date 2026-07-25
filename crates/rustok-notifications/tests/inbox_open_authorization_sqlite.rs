@@ -214,7 +214,7 @@ async fn stale_target_and_retryable_owner_failure_remain_distinct() {
     .await
     .expect_err("retryable source failure must not become a stale-target deny");
     assert!(matches!(
-        retryable,
+        &retryable,
         NotificationError::ProviderFailure { retryable: true }
     ));
     assert_eq!(
