@@ -31,7 +31,6 @@ const forbidText = (content, value, label) => {
 };
 
 for (const [value, label] of [
-  ['use rustok_fulfillment::error::FulfillmentError;', 'typed fulfillment error import'],
   ['use rustok_order::error::OrderError;', 'typed order error import'],
   ['fn admin_public_error<E>(', 'shared safe HTTP constructor'],
   ['E: std::fmt::Debug', 'raw error logging bound'],
@@ -42,11 +41,14 @@ for (const [value, label] of [
   ['status = %status', 'status logging'],
   ['boundary = "commerce_admin_http"', 'admin HTTP boundary logging'],
   ['HttpError::new(status, code, message)', 'static HTTP envelope construction'],
-  ['pub(crate) fn map_order_error(error: OrderError)', 'order mapper'],
-  ['pub(crate) fn map_fulfillment_error(error: FulfillmentError)', 'fulfillment mapper'],
-  ['pub(crate) fn map_fulfillment_orchestration_error(', 'fulfillment orchestration mapper'],
-  ['pub(crate) fn map_post_order_orchestration_error(', 'post-order mapper'],
+  ['pub(crate) fn map_order_error(error: OrderError)', 'legacy shared order mapper'],
+  ['pub(crate) fn map_post_order_orchestration_error(', 'legacy shared post-order mapper'],
 ]) requireText(admin, value, label);
+
+for (const value of [
+  'pub(crate) fn map_fulfillment_error(',
+  'pub(crate) fn map_fulfillment_orchestration_error(',
+]) forbidText(admin, value, 'removed shared fulfillment mapper definition');
 
 for (const [value, label] of [
   ['OrderError::Validation(_)', 'order validation mapping'],
@@ -61,29 +63,6 @@ for (const [value, label] of [
   ['"commerce_admin_order_state_conflict"', 'order conflict code'],
   ['"commerce_admin_order_storage_unavailable"', 'order storage code'],
   ['"commerce_admin_order_failed"', 'order fail-closed code'],
-  ['axum::http::StatusCode::BAD_REQUEST', 'bad-request status'],
-  ['axum::http::StatusCode::NOT_FOUND', 'not-found status'],
-  ['axum::http::StatusCode::CONFLICT', 'conflict status'],
-  ['axum::http::StatusCode::SERVICE_UNAVAILABLE', 'unavailable status'],
-  ['axum::http::StatusCode::INTERNAL_SERVER_ERROR', 'internal status'],
-]) requireText(admin, value, label);
-
-for (const [value, label] of [
-  ['FulfillmentError::Validation(_)', 'fulfillment validation mapping'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'shipping-option not-found mapping'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'fulfillment not-found mapping'],
-  ['FulfillmentError::InvalidTransition { .. }', 'fulfillment transition mapping'],
-  ['FulfillmentError::Database(_)', 'fulfillment database mapping'],
-  ['"commerce_admin_fulfillment_invalid"', 'fulfillment invalid code'],
-  ['"commerce_admin_fulfillment_state_conflict"', 'fulfillment conflict code'],
-  ['"commerce_admin_fulfillment_storage_unavailable"', 'fulfillment storage code'],
-  ['FulfillmentOrchestrationError::OrderNotFound(_)', 'orchestration order-not-found mapping'],
-  ['FulfillmentOrchestrationError::Fulfillment(error)', 'orchestration owner delegation'],
-  ['FulfillmentOrchestrationError::Validation(_)', 'orchestration validation mapping'],
-  ['FulfillmentOrchestrationError::ProviderAfterPersistence { .. }', 'provider-after-persistence mapping'],
-  ['FulfillmentOrchestrationError::PersistenceAfterProvider { .. }', 'persistence-after-provider mapping'],
-  ['"commerce_admin_fulfillment_reconciliation_required"', 'fulfillment reconciliation code'],
-  ['"Fulfillment operation requires reconciliation"', 'fulfillment reconciliation message'],
 ]) requireText(admin, value, label);
 
 for (const [value, label] of [
@@ -122,28 +101,28 @@ for (const [ownerSource, value, label] of [
 for (const [value, label] of [
   ['pub async fn list_orders(', 'admin list-orders handler'],
   ['pub async fn show_order(', 'admin show-order handler'],
+  ['pub async fn mark_order_paid(', 'admin mark-paid handler'],
+  ['pub async fn ship_order(', 'admin ship-order handler'],
+  ['pub async fn deliver_order(', 'admin deliver-order handler'],
+  ['pub async fn cancel_order(', 'admin cancel-order handler'],
+  ['struct AdminOrderErrorContext {', 'order route context'],
+  ['fn map_admin_order_error(', 'context-aware order route mapper'],
+  ['let customer_id = params.customer_id;', 'customer filter capture'],
   ['list_orders_with_locale_fallback(', 'localized order list'],
   ['get_order_with_locale_fallback(', 'localized order detail'],
   ['find_latest_collection_by_order(tenant.id, id)', 'payment collection detail read'],
   ['find_by_order(tenant.id, id)', 'fulfillment detail read'],
   ['fn map_order_detail_payment_error(', 'order-detail payment mapper'],
   ['fn map_order_detail_fulfillment_error(', 'order-detail fulfillment mapper'],
-  [
-    '.map_err(|error| map_order_detail_payment_error(tenant.id, id, error))?;',
-    'context-aware payment detail mapping',
-  ],
-  [
-    '.map_err(|error| map_order_detail_fulfillment_error(tenant.id, id, error))?;',
-    'context-aware fulfillment detail mapping',
-  ],
   ['page: pagination.page', 'order page forwarding'],
   ['per_page: pagination.limit()', 'order page-size forwarding'],
 ]) requireText(orders, value, label);
 
 for (const value of [
+  '.map_err(super::map_order_error)?;',
   '.map_err(super::map_payment_error)?;',
   '.map_err(super::map_fulfillment_error)?;',
-]) forbidText(orders, value, 'stale order-detail shared mapper callsite');
+]) forbidText(orders, value, 'stale admin order shared mapper callsite');
 
 for (const [value, label] of [
   ['pub async fn create_order_change(', 'admin order-change create'],
@@ -154,13 +133,8 @@ for (const [value, label] of [
   ['struct AdminOrderChangeErrorContext {', 'order-change owner context'],
   ['fn map_admin_order_change_error(', 'context-aware order-change owner mapper'],
   ['struct AdminOrderChangeOrchestrationErrorContext {', 'order-change orchestration context'],
-  [
-    'fn map_admin_order_change_orchestration_error(',
-    'context-aware order-change orchestration mapper',
-  ],
+  ['fn map_admin_order_change_orchestration_error(', 'context-aware order-change orchestration mapper'],
   ['let order_id = params.order_id;', 'order-change list identity capture'],
-  ['page: pagination.page', 'order-change page forwarding'],
-  ['per_page: pagination.limit()', 'order-change page-size forwarding'],
 ]) requireText(changes, value, label);
 
 for (const value of [
@@ -178,13 +152,8 @@ for (const [value, label] of [
   ['struct AdminOrderReturnErrorContext {', 'return owner context'],
   ['fn map_admin_order_return_error(', 'context-aware return owner mapper'],
   ['struct AdminOrderReturnOrchestrationErrorContext {', 'return orchestration context'],
-  [
-    'fn map_admin_order_return_orchestration_error(',
-    'context-aware return orchestration mapper',
-  ],
+  ['fn map_admin_order_return_orchestration_error(', 'context-aware return orchestration mapper'],
   ['ListOrderReturnsInput {', 'return list input'],
-  ['page: pagination.page', 'return page forwarding'],
-  ['per_page: pagination.limit()', 'return page-size forwarding'],
 ]) requireText(returns, value, label);
 
 for (const value of [
@@ -201,15 +170,10 @@ for (const [value, label] of [
   ['pub async fn reopen_fulfillment(', 'admin fulfillment reopen'],
   ['pub async fn reship_fulfillment(', 'admin fulfillment reship'],
   ['pub async fn cancel_fulfillment(', 'admin fulfillment cancel'],
-  ['ListFulfillmentsInput {', 'fulfillment list input'],
-  ['page: pagination.page', 'fulfillment page forwarding'],
-  ['per_page: pagination.limit()', 'fulfillment page-size forwarding'],
   ['struct AdminFulfillmentErrorContext {', 'fulfillment route context'],
   ['fn map_admin_fulfillment_error(', 'context-aware fulfillment owner mapper'],
-  [
-    'fn map_admin_fulfillment_orchestration_error(',
-    'context-aware fulfillment orchestration mapper',
-  ],
+  ['fn map_admin_fulfillment_orchestration_error(', 'context-aware fulfillment orchestration mapper'],
+  ['ListFulfillmentsInput {', 'fulfillment list input'],
 ]) requireText(fulfillments, value, label);
 
 for (const value of [
@@ -218,7 +182,7 @@ for (const value of [
 ]) forbidText(fulfillments, value, 'stale admin fulfillment shared mapper callsite');
 
 for (const [content, label] of [
-  [orders, 'admin order reads'],
+  [orders, 'admin order endpoints'],
   [changes, 'admin order-change endpoints'],
   [returns, 'admin return endpoints'],
   [fulfillments, 'admin fulfillment endpoints'],
@@ -231,68 +195,47 @@ for (const [content, label] of [
   ]) forbidText(content, value, `${label} unsafe public conversion`);
 }
 
+const orderMapperUses =
+  orders.match(/map_admin_order_error\(\s+AdminOrderErrorContext::new\(/g) ?? [];
+if (orderMapperUses.length !== 6) {
+  failures.push(`expected six context-aware admin order mapper callsites, found ${orderMapperUses.length}`);
+}
 const sharedOrderMapperUses = orders.match(/\.map_err\(super::map_order_error\)\?;/g) ?? [];
-if (sharedOrderMapperUses.length !== 6) {
-  failures.push(`expected six remaining shared order mapper callsites, found ${sharedOrderMapperUses.length}`);
+if (sharedOrderMapperUses.length !== 0) {
+  failures.push(`expected zero shared order mapper callsites, found ${sharedOrderMapperUses.length}`);
 }
 
 const orderChangeOwnerMapperUses =
-  changes.match(
-    /map_admin_order_change_error\(\s+AdminOrderChangeErrorContext::new\(/g,
-  ) ?? [];
+  changes.match(/map_admin_order_change_error\(\s+AdminOrderChangeErrorContext::new\(/g) ?? [];
 if (orderChangeOwnerMapperUses.length !== 4) {
-  failures.push(
-    `expected four context-aware order-change owner mapper callsites, found ${orderChangeOwnerMapperUses.length}`,
-  );
+  failures.push(`expected four context-aware order-change owner mapper callsites, found ${orderChangeOwnerMapperUses.length}`);
 }
 const orderChangeOrchestrationUses =
-  changes.match(
-    /map_admin_order_change_orchestration_error\(\s+AdminOrderChangeOrchestrationErrorContext::new\(/g,
-  ) ?? [];
+  changes.match(/map_admin_order_change_orchestration_error\(\s+AdminOrderChangeOrchestrationErrorContext::new\(/g) ?? [];
 if (orderChangeOrchestrationUses.length !== 1) {
-  failures.push(
-    `expected one context-aware order-change orchestration mapper callsite, found ${orderChangeOrchestrationUses.length}`,
-  );
+  failures.push(`expected one context-aware order-change orchestration mapper callsite, found ${orderChangeOrchestrationUses.length}`);
 }
 
 const returnOwnerMapperUses =
-  returns.match(
-    /map_admin_order_return_error\(\s+AdminOrderReturnErrorContext::new\(/g,
-  ) ?? [];
+  returns.match(/map_admin_order_return_error\(\s+AdminOrderReturnErrorContext::new\(/g) ?? [];
 if (returnOwnerMapperUses.length !== 4) {
-  failures.push(
-    `expected four context-aware return owner mapper callsites, found ${returnOwnerMapperUses.length}`,
-  );
+  failures.push(`expected four context-aware return owner mapper callsites, found ${returnOwnerMapperUses.length}`);
 }
-
 const returnOrchestrationMapperUses =
-  returns.match(
-    /map_admin_order_return_orchestration_error\(\s+AdminOrderReturnOrchestrationErrorContext::new\(/g,
-  ) ?? [];
+  returns.match(/map_admin_order_return_orchestration_error\(\s+AdminOrderReturnOrchestrationErrorContext::new\(/g) ?? [];
 if (returnOrchestrationMapperUses.length !== 2) {
-  failures.push(
-    `expected two context-aware return orchestration mapper callsites, found ${returnOrchestrationMapperUses.length}`,
-  );
+  failures.push(`expected two context-aware return orchestration mapper callsites, found ${returnOrchestrationMapperUses.length}`);
 }
 
 const fulfillmentMapperUses =
-  fulfillments.match(
-    /map_admin_fulfillment_error\(\s+AdminFulfillmentErrorContext::new\(/g,
-  ) ?? [];
+  fulfillments.match(/map_admin_fulfillment_error\(\s+AdminFulfillmentErrorContext::new\(/g) ?? [];
 if (fulfillmentMapperUses.length !== 4) {
-  failures.push(
-    `expected four context-aware fulfillment owner mapper callsites, found ${fulfillmentMapperUses.length}`,
-  );
+  failures.push(`expected four context-aware fulfillment owner mapper callsites, found ${fulfillmentMapperUses.length}`);
 }
-
 const fulfillmentOrchestrationUses =
-  fulfillments.match(
-    /map_admin_fulfillment_orchestration_error\(\s+AdminFulfillmentErrorContext::new\(/g,
-  ) ?? [];
+  fulfillments.match(/map_admin_fulfillment_orchestration_error\(\s+AdminFulfillmentErrorContext::new\(/g) ?? [];
 if (fulfillmentOrchestrationUses.length !== 4) {
-  failures.push(
-    `expected four context-aware fulfillment orchestration mapper callsites, found ${fulfillmentOrchestrationUses.length}`,
-  );
+  failures.push(`expected four context-aware fulfillment orchestration mapper callsites, found ${fulfillmentOrchestrationUses.length}`);
 }
 
 forbidText(admin, 'other.to_string()', 'unsafe shared admin dynamic string conversion');
