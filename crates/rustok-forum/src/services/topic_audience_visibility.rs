@@ -1,4 +1,5 @@
 use rustok_api::{PortActorKind, PortContext};
+use rustok_core::SecurityActorKind;
 
 use crate::audience::{
     ForumAudienceEvaluator, ForumAudienceFacts, ForumAudienceFactsResolver,
@@ -28,6 +29,12 @@ impl ForumTopicAudienceViewer {
         if security.is_public_read() {
             return Err(ForumError::Validation(
                 "Forum topic audience authenticated viewer cannot use public security"
+                    .to_string(),
+            ));
+        }
+        if security.actor_kind != SecurityActorKind::User {
+            return Err(ForumError::Validation(
+                "Forum topic audience authenticated viewer requires a user security actor"
                     .to_string(),
             ));
         }
