@@ -27,6 +27,16 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
+function between(source, start, end, label) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return "";
+  }
+  return source.slice(startIndex, endIndex);
+}
+
 const contractPath =
   "crates/rustok-forum/contracts/forum-audience-capability-ports.json";
 const contract = JSON.parse(read(contractPath) || "{}");
@@ -56,6 +66,15 @@ for (const [key, expected] of Object.entries({
 }
 if (contract.policy?.positive_selectors !== "union") {
   failures.push("forum audience positive selectors must remain a documented union");
+}
+if (contract.policy?.owner_facts !== "exact requested tenant actor and candidate subset only") {
+  failures.push("forum audience owner facts must remain exact by tenant, actor, and candidates");
+}
+if (
+  contract.port?.echoes_tenant_and_actor !== true ||
+  contract.port?.validates_context_identity !== true
+) {
+  failures.push("forum audience port must echo and validate exact tenant/actor identity");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("source publication must not claim unexecuted audience evidence");
@@ -120,7 +139,12 @@ if (
 }
 
 for (const marker of [
-  "Providers must resolve only the requested actor and candidate memberships",
+  "Providers must resolve only the requested tenant, actor and candidate",
+  "pub tenant_id: Uuid",
+  "pub user_id: Uuid",
+  "validate_identity(self.tenant_id, \"fact request tenant\")?",
+  "validate_identity(self.user_id, \"fact request user\")?",
+  "Forum audience facts returned a different tenant or actor",
   "Forum audience facts returned an unrequested trust level",
   "Forum audience facts returned an unrequested channel membership",
   "Forum audience facts returned an unrequested group membership",
@@ -130,6 +154,12 @@ for (const marker of [
 }
 
 for (const marker of [
+  "fn validate_port_context(",
+  "context_tenant_id != tenant_id",
+  "context.actor.kind != PortActorKind::User",
+  "context_user_id != user_id",
+  "port context tenant does not match",
+  "port context actor does not match",
   ".require_policy(PortCallPolicy::read())",
   "FORUM_AUDIENCE_FACTS_CAPABILITY_UNAVAILABLE",
   "ForumError::capability_unavailable(",
@@ -140,12 +170,26 @@ for (const marker of [
   requireText(audience, marker, `fail-closed audience resolver is missing ${marker}`);
 }
 
-const denyIndex = audience.indexOf("ForumAudienceDecisionReason::ExplicitDeny");
-const allowIndex = audience.indexOf("ForumAudienceDecisionReason::ExplicitAllow");
-const roleIndex = audience.indexOf("ForumAudienceDecisionReason::Role");
-const trustIndex = audience.indexOf("ForumAudienceDecisionReason::TrustLevel");
-const channelIndex = audience.indexOf("ForumAudienceDecisionReason::ChannelMembership");
-const groupIndex = audience.indexOf("ForumAudienceDecisionReason::GroupMembership");
+for (const marker of [
+  "must not be nil",
+  "must not contain nil identifiers",
+  "ids.iter().any(Uuid::is_nil)",
+]) {
+  requireText(audience, marker, `nil audience identity guard is missing ${marker}`);
+}
+
+const evaluator = between(
+  audience,
+  "impl ForumAudienceEvaluator {",
+  "fn validate_raw_len(",
+  "forum audience evaluator",
+);
+const denyIndex = evaluator.indexOf("ForumAudienceDecisionReason::ExplicitDeny");
+const allowIndex = evaluator.indexOf("ForumAudienceDecisionReason::ExplicitAllow");
+const roleIndex = evaluator.indexOf("ForumAudienceDecisionReason::Role");
+const trustIndex = evaluator.indexOf("ForumAudienceDecisionReason::TrustLevel");
+const channelIndex = evaluator.indexOf("ForumAudienceDecisionReason::ChannelMembership");
+const groupIndex = evaluator.indexOf("ForumAudienceDecisionReason::GroupMembership");
 if (
   denyIndex < 0 ||
   allowIndex < 0 ||
@@ -186,10 +230,12 @@ for (const marker of [
 for (const marker of [
   "audience_constraints_are_bounded_and_canonical",
   "explicit_deny_wins_and_positive_selectors_are_a_union",
-  "exact_owner_facts_reject_unrequested_memberships",
-  "resolver_is_fail_closed_and_requires_read_deadline_semantics",
+  "exact_owner_facts_reject_wrong_identity_and_unrequested_memberships",
+  "resolver_is_fail_closed_and_requires_matching_read_context",
   "FORUM_AUDIENCE_FACTS_CAPABILITY_UNAVAILABLE",
   "port.deadline_required",
+  "actor does not match",
+  "different tenant or actor",
 ]) {
   requireText(testSource, marker, `audience capability test is missing ${marker}`);
 }
