@@ -55,3 +55,88 @@ proptest = "1.11"
 rust_decimal_macros = "1.36"
 rustok-taxonomy.workspace = true
 sea-orm-migration.workspace = true
+
+# Explicit test targets prevent support.rs from being auto-discovered as a
+# standalone integration-test root. Without this list Cargo (and rust-analyzer)
+# treat every .rs file in tests/ as a binary root; support.rs is only ever used
+# via `mod support;` inside the real roots below, so including it as a root
+# causes spurious "unresolved import" diagnostics in IDEs.
+[[test]]
+name = "catalog_service_test"
+path = "tests/catalog_service_test.rs"
+
+[[test]]
+name = "checkout_fulfillment_label_boundary_test"
+path = "tests/checkout_fulfillment_label_boundary_test.rs"
+
+[[test]]
+name = "checkout_marketplace_economics_checkpoint"
+path = "tests/checkout_marketplace_economics_checkpoint.rs"
+
+[[test]]
+name = "checkout_service_test"
+path = "tests/checkout_service_test/main.rs"
+
+[[test]]
+name = "context_service_test"
+path = "tests/context_service_test.rs"
+
+[[test]]
+name = "contract_surface"
+path = "tests/contract_surface.rs"
+
+[[test]]
+name = "graphql_runtime_parity_test"
+path = "tests/graphql_runtime_parity_test/main.rs"
+
+[[test]]
+name = "graphql_surface_regression"
+path = "tests/graphql_surface_regression.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[test]]
+name = "inventory_service_test"
+path = "tests/inventory_service_test.rs"
+
+[[test]]
+name = "marketplace_reversal_recovery_source"
+path = "tests/marketplace_reversal_recovery_source.rs"
+
+[[test]]
+name = "module"
+path = "tests/module.rs"
+
+[[test]]
+name = "order_inventory_reservation_test"
+path = "tests/order_inventory_reservation_test.rs"
+
+[[test]]
+name = "order_returns_bridge_test"
+path = "tests/order_returns_bridge_test.rs"
+
+[[test]]
+name = "payment_service_test"
+path = "tests/payment_service_test.rs"
+
+[[test]]
+name = "pricing_service_test"
+path = "tests/pricing_service_test/main.rs"
+
+[[test]]
+name = "product_event_index_integration_test"
+path = "tests/product_event_index_integration_test.rs"
+
+[[test]]
+name = "product_taxonomy_tags"
+path = "tests/product_taxonomy_tags.rs"
+
+[[test]]
+name = "routes_contract_test"
+path = "tests/routes_contract_test.rs"
+
+[[test]]
+name = "storefront_returns_graphql_test"
+path = "tests/storefront_returns_graphql_test.rs"
