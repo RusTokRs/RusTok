@@ -96,6 +96,12 @@ persist stable error metadata, and remove the row from the bounded queue head.
 The host loop is default-off behind
 `RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED`.
 
+A producer may return a sparse page with zero recipients after scanning one
+bounded source page. Such a page must carry a cursor different from the claimed
+cursor. The owner persists that cursor under the same lease/CAS transition,
+creates no candidates, and keeps the job pending. Oversized pages and stalled
+cursors remain terminal provider failures.
+
 Fanout creates only idempotent pending candidates—never final notifications or
 delivery attempts.
 
@@ -162,10 +168,10 @@ continue to succeed when the module is absent or disabled.
 
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
-- PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - grouping and moderator-directory expansion;
 - inbox APIs and open-time privacy/source rechecks;
 - channel delivery enqueue after candidate acceptance;
+- PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - retention, reconciliation, quarantine replay/purge, and module-owned UI.
 
 ## Documentation
