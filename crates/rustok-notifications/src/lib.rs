@@ -36,7 +36,10 @@ pub use fanout_worker::{
     NotificationFanoutWorkerStage,
 };
 pub use inbox::{
+    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_PAGE_SIZE,
+    NotificationInboxItem, NotificationInboxListRequest, NotificationInboxListService,
     NotificationInboxOpenDecision, NotificationInboxOpenRequest, NotificationInboxOpenService,
+    NotificationInboxPage,
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
