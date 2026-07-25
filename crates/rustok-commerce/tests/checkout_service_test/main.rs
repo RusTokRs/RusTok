@@ -21,7 +21,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use std::str::FromStr;
 use uuid::Uuid;
 
-#[path = "../support.rs"]
+#[path = "../support/mod.rs"]
 mod support;
 
 pub(crate) async fn setup() -> (

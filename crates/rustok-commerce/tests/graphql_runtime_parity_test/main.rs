@@ -37,7 +37,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[path = "../support.rs"]
+#[path = "../support/mod.rs"]
 mod support;
 
 type CommerceSchema = Schema<CommerceQuery, CommerceMutation, EmptySubscription>;

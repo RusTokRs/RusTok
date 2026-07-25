@@ -22,7 +22,7 @@ use sea_orm::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[path = "../support.rs"]
+#[path = "../support/mod.rs"]
 mod support;
 
 pub(crate) async fn setup() -> (DatabaseConnection, PricingService, CatalogService) {
