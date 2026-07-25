@@ -1,6 +1,7 @@
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::dto::{
@@ -12,6 +13,8 @@ use crate::dto::{
 };
 use crate::error::{ForumError, ForumResult};
 
+use super::category_visibility::ForumCategoryVisibilityPolicyService;
+use super::rbac::enforce_scope;
 use super::{category, category_command, category_lifecycle, category_policy, category_tree};
 
 /// Public owner facade for forum categories.
@@ -25,6 +28,7 @@ pub struct CategoryService {
     lifecycle: category_lifecycle::CategoryLifecycleService,
     policy: category_policy::CategoryTopicPolicyService,
     tree: category_tree::CategoryTreeService,
+    visibility: ForumCategoryVisibilityPolicyService,
 }
 
 impl CategoryService {
@@ -34,7 +38,8 @@ impl CategoryService {
             commands: category_command::CategoryCommandService::new(db.clone()),
             lifecycle: category_lifecycle::CategoryLifecycleService::new(db.clone()),
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
-            tree: category_tree::CategoryTreeService::new(db),
+            tree: category_tree::CategoryTreeService::new(db.clone()),
+            visibility: ForumCategoryVisibilityPolicyService::new(db),
         }
     }
 
@@ -54,8 +59,7 @@ impl CategoryService {
         category_id: Uuid,
         locale: &str,
     ) -> ForumResult<CategoryResponse> {
-        self.inner
-            .get(tenant_id, security, category_id, locale)
+        self.get_with_locale_fallback(tenant_id, security, category_id, locale, None)
             .await
     }
 
@@ -67,6 +71,18 @@ impl CategoryService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<CategoryResponse> {
+        enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
+        if !self
+            .visibility
+            .is_category_visible_to_viewer(
+                tenant_id,
+                category_id,
+                !security.is_public_read(),
+            )
+            .await?
+        {
+            return Err(ForumError::CategoryNotFound(category_id));
+        }
         self.inner
             .get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)
             .await
@@ -92,7 +108,14 @@ impl CategoryService {
         security: SecurityContext,
         query: CategoryTreeQuery,
     ) -> ForumResult<CategoryTreeResponse> {
-        self.tree.read(tenant_id, security, query).await
+        enforce_scope(&security, Resource::ForumCategories, Action::List)?;
+        let hidden_category_ids = self
+            .visibility
+            .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
+            .await?;
+        self.tree
+            .read_with_hidden_categories(tenant_id, security, query, &hidden_category_ids)
+            .await
     }
 
     pub async fn archive_subtree(
@@ -186,7 +209,6 @@ impl CategoryService {
         locale: &str,
     ) -> ForumResult<Vec<CategoryListItem>> {
         let (items, _) = self
-            .inner
             .list_paginated_with_locale_fallback(
                 tenant_id,
                 security,
@@ -207,7 +229,6 @@ impl CategoryService {
         fallback_locale: Option<&str>,
     ) -> ForumResult<Vec<CategoryListItem>> {
         let (items, _) = self
-            .inner
             .list_paginated_with_locale_fallback(
                 tenant_id,
                 security,
@@ -229,14 +250,20 @@ impl CategoryService {
         per_page: u64,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<CategoryListItem>, u64)> {
+        enforce_scope(&security, Resource::ForumCategories, Action::List)?;
+        let hidden_category_ids = self
+            .visibility
+            .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
+            .await?;
         self.inner
-            .list_paginated_with_locale_fallback(
+            .list_paginated_with_locale_fallback_and_hidden_categories(
                 tenant_id,
                 security,
                 locale,
                 page,
                 bounded_forum_read_limit(Some(per_page)),
                 fallback_locale,
+                &hidden_category_ids,
             )
             .await
     }

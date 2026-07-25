@@ -147,6 +147,31 @@ impl ForumCategoryVisibilityPolicyService {
         hidden.sort_unstable();
         Ok(hidden)
     }
+
+    /// Resolves one exact category without exposing whether a denied target exists.
+    pub(crate) async fn is_category_visible_to_viewer(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        is_authenticated: bool,
+    ) -> ForumResult<bool> {
+        if is_authenticated {
+            return Ok(forum_category::Entity::find_by_id(category_id)
+                .filter(forum_category::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .is_some());
+        }
+
+        let snapshot = CategoryVisibilitySnapshot::load(&self.db, tenant_id).await?;
+        match snapshot.resolve(category_id) {
+            Ok(resolved) => Ok(
+                resolved.effective_visibility == ForumCategoryVisibility::Public,
+            ),
+            Err(ForumError::CategoryNotFound(_)) => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 struct CategoryVisibilitySnapshot {

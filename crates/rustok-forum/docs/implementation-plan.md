@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-25
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A centralizes the existing open/public-or-exact-channel topic policy; FORUM-20B adds bounded inherited public/authenticated category policy storage and owner evaluation. Read composition, role/trust/group rules, explicit allow/deny and cross-consumer authorization remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-E provide typed inherited public/authenticated policy plus storefront and category/topic/reply owner-read composition. Richer role/trust/membership/allow-deny rules, write audiences, remaining consumers and runtime evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1132,28 +1132,73 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
 - this slice adds no transport, storefront, topic/reply read composition, role,
   trust, group or explicit allow/deny behavior.
 
+### Delivered in `FORUM-20C`
+
+- storefront topic exact and paginated reads compose the inherited category
+  floor with the existing open/exact-channel policy through the Forum owner;
+- public viewers see public categories only, while authenticated viewers may see
+  both public and inherited authenticated categories without page/count drift;
+- category exclusions are applied before storefront count and pagination and the
+  exact selected page is rechecked by the bounded visibility evaluator;
+- `topic_authenticated_visibility_sqlite` and the cumulative storefront contract
+  preserve non-oracular missing/denied behavior and tenant-scoped channel checks.
+
+### Delivered in `FORUM-20D`
+
+- exact topic reads authorize, evaluate the inherited category floor and only
+  then hydrate localized content; denied public targets resolve as
+  `TopicNotFound`;
+- ordinary topic pages exclude inherited authenticated categories before count
+  and pagination, while authenticated owner reads preserve existing behavior;
+- exact reply reads evaluate their parent topic before body/vote enrichment and
+  denied public targets resolve as `ReplyNotFound`;
+- reply pages reject a denied parent as `TopicNotFound` before reply count and
+  pagination;
+- `forum-owner-read-visibility.json`,
+  `topic_reply_owner_visibility_sqlite` and
+  `verify-forum-owner-read-visibility.mjs` lock the owner-read order and residual
+  scope.
+
+### Delivered in `FORUM-20E`
+
+- exact category reads authorize and evaluate the inherited category floor
+  before localization/subscription hydration; denied public targets resolve as
+  `CategoryNotFound`;
+- flat category pages exclude inherited authenticated categories before count
+  and pagination;
+- the bounded canonical category tree removes authenticated subtrees for public
+  viewers and recomputes visible `total_nodes`, `max_depth`, `children_count` and
+  `has_children` metadata;
+- monotonic inheritance guarantees that pruning a hidden node cannot orphan a
+  visible descendant, while authenticated tree reads retain the complete bounded
+  hierarchy;
+- `forum-category-owner-read-visibility.json`,
+  `category_owner_visibility_sqlite` and
+  `verify-forum-category-owner-read-visibility.mjs` lock exact, page and tree
+  composition.
+
 ### Compatibility and degraded mode
 
-The new column is nullable and requires no backfill. Existing categories remain
-public until an owner command stores an authenticated floor, and existing
-`allows_topics` values remain unchanged. Current public/exact-channel storefront
-selection remains the FORUM-20A contract because FORUM-20B intentionally does
-not compose the category policy into topic/reply reads or transport entrypoints.
-Missing future channel/group capability providers cannot broaden results; their
-membership semantics remain closed until explicit owner ports are composed.
+The nullable policy column still requires no backfill. Existing categories stay
+public until an owner command narrows an ancestor. Public category/topic/reply
+reads now treat inherited authenticated targets as absent; authenticated reads
+continue to expose public and authenticated categories. Storefront topic reads
+add the existing open/exact-channel policy on top of the same category floor.
+No transport field, migration or write behavior changes in FORUM-20C-E. Missing
+future role/trust/channel/group capability providers cannot broaden results;
+their membership semantics remain closed until explicit bounded owner ports are
+composed.
 
 ### Remaining scope
 
-- compose inherited public/authenticated category policy into every topic/reply
-  owner read and add authenticated storefront filtering without page/count drift;
 - add role, trust-level, channel-member, group-member and explicit allow/deny
   evaluation through bounded owner capability ports;
 - add create/reply/moderate audience policies and topic narrowing that cannot
   broaden the effective category policy;
-- migrate all Forum reads, notifications, search/index, SEO and deep-link open
-  authorization to the same owner policy;
-- add visibility-scoped category and all-read commands only after the owner can
-  page an exact category/tenant scope under the complete policy;
+- compose the owner policy into remaining Forum reads and migrate notifications,
+  search/index, SEO and deep-link open authorization to the same decision;
+- add visibility-scoped category and all-read commands only after the complete
+  policy can page an exact category/tenant scope;
 - add PostgreSQL concurrency, inheritance and cross-consumer runtime evidence.
 
 ### Definition of done
@@ -1167,16 +1212,21 @@ profiles.
 ```bash
 cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_visibility_policy_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_authenticated_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_reply_owner_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_owner_visibility_sqlite -- --nocapture
 node scripts/verify/verify-forum-topic-visibility-scope.mjs
 node scripts/verify/verify-forum-category-visibility-policy.mjs
+node scripts/verify/verify-forum-owner-read-visibility.mjs
+node scripts/verify/verify-forum-category-owner-read-visibility.mjs
 cargo xtask module validate forum
 npm run verify:forum:storefront-boundary
 ```
 
 Tests, Cargo, verifiers and CI were not run while publishing the source-ready
-FORUM-20B owner-policy slice. `FORUM-20` remains `in_progress` until inherited
-policy is composed into reads and all remaining audience/cross-consumer paths
-use the complete policy.
+FORUM-20C-E read-composition slices. `FORUM-20` remains `in_progress` until the
+complete audience policy and all remaining cross-consumer paths are delivered
+with maintainer runtime evidence.
 
 ## `FORUM-21` — move, merge, split and fork topics
 
@@ -1880,6 +1930,9 @@ cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_visibility_policy_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_authenticated_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_reply_owner_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_owner_visibility_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1900,6 +1953,8 @@ node scripts/verify/verify-forum-mention-runtime-proof.mjs
 node scripts/verify/verify-forum-read-state-runtime-proof.mjs
 node scripts/verify/verify-forum-topic-visibility-scope.mjs
 node scripts/verify/verify-forum-category-visibility-policy.mjs
+node scripts/verify/verify-forum-owner-read-visibility.mjs
+node scripts/verify/verify-forum-category-owner-read-visibility.mjs
 cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
@@ -1951,9 +2006,9 @@ Recommended next slices:
     storefront bulk composition after the complete `FORUM-20` policy can page an
     exact category or tenant scope;
 11. `FORUM-19`: reports/moderation/restrictions;
-12. continue `FORUM-20` by composing inherited public/authenticated category
-    policy into owner reads, then add role/trust/group/allow-deny capability ports
-    and migrate notifications, search, SEO and deep-link checks;
+12. continue `FORUM-20` with bounded role/trust/channel-membership/group-membership/
+    explicit allow-deny capability ports, then compose write audiences and migrate
+    remaining reads, notifications, search, SEO and deep-link checks;
 13. `FORUM-23`: index projections;
 14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.

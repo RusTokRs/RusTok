@@ -25,17 +25,17 @@
     "existing_category_rows_require_backfill": false,
     "allows_topics_preserved": true,
     "transport_changes": false,
-    "storefront_changes": false,
-    "topic_visibility_scope_changes": false
+    "storefront_changes_in_forum_20b": false,
+    "topic_visibility_scope_changes_in_forum_20b": false
   },
   "not_delivered": [
-    "topic read composition",
-    "reply read composition",
-    "authenticated storefront filtering",
     "role visibility",
     "trust-level visibility",
+    "channel membership visibility",
     "group membership visibility",
     "explicit allow and deny",
+    "create reply and moderate audience policy",
+    "remaining non-category-topic-reply read composition",
     "visibility-scoped category and all-read mutations",
     "search notification SEO and deep-link migration",
     "PostgreSQL inheritance runtime evidence"
