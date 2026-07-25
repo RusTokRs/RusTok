@@ -1,22 +1,25 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "task": "FORUM-20N",
   "upstream_task": "FORUM-20M",
   "downstream_task": "FORUM-20O",
-  "scope": "Forum notification source factory consumption of exact recipient context for target-open and user-mention notification authorization",
+  "downstream_chain_task": "FORUM-20P",
+  "scope": "Forum notification source factory consumption of exact recipient context for target-open, user mentions and bounded topic subscription audiences",
   "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
   "visibility_owner_file": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
   "recipient_context_owner_file": "crates/rustok-forum/src/notification_recipient.rs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-host-runtime.json",
   "visibility_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
   "downstream_contract": "crates/rustok-forum/contracts/forum-notification-recipient-mention-audience.json",
+  "downstream_chain_contract": "crates/rustok-forum/contracts/forum-notification-topic-subscription-audience.json",
   "test_file": "crates/rustok-forum/tests/notification_recipient_target_open_sqlite.rs",
   "downstream_test_file": "crates/rustok-forum/tests/notification_recipient_mention_audience_sqlite.rs",
+  "downstream_chain_test_file": "crates/rustok-forum/tests/notification_recipient_topic_subscription_audience_sqlite.rs",
   "source_verifier": "scripts/verify/verify-forum-notification-recipient-target-open.mjs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
     "status": "pending",
-    "required_ledger_through": "FORUM-20O",
+    "required_ledger_through": "FORUM-20P",
     "required_delivered_sections": [
       "FORUM-20H",
       "FORUM-20I",
@@ -25,21 +28,22 @@
       "FORUM-20L",
       "FORUM-20M",
       "FORUM-20N",
-      "FORUM-20O"
+      "FORUM-20O",
+      "FORUM-20P"
     ],
     "current_plan_through": "FORUM-20G",
     "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
   },
   "policy": {
     "factory": "consume optional SharedForumNotificationRecipientContextPort and SharedForumAudienceFactsPort from HostRuntimeContext",
-    "capability_absence": "preserve the existing public-only fail-closed target-open and mention paths",
+    "capability_absence": "preserve the existing public-only fail-closed target-open, mention and topic subscription audience paths",
     "recipient_lookup": "bounded service PortContext for the exact tenant and notification recipient",
-    "recipient_unavailable": "non-retryable recipient capability failure resolves to no descriptor, an empty audience or an unavailable target without an existence oracle",
+    "recipient_unavailable": "non-retryable recipient capability failure resolves to no descriptor, an empty audience, a skipped subscription or an unavailable target without an existence oracle",
     "authenticated_visibility": "compose exact base topic visibility and normalized inherited category/topic audience layers for the validated recipient",
     "local_selectors": "role and explicit-user allow or deny constraints resolve without host facts adapters",
     "fact_dependent_selectors": "missing or failing host facts capability preserves typed retryability",
     "reply_target": "reply must be active and approved and its owner topic must be visible to the same recipient",
-    "topic_created_surfaces": "topic-created description and subscription audience remain public-only",
+    "topic_created_surfaces": "topic-created description remains public-only while FORUM-20P filters bounded subscription pages for exact recipients",
     "mention_surfaces": "FORUM-20O reuses exact recipient resolution for topic and reply mention description and audience",
     "channel_context": "notification operations have no route channel slug and therefore retain the existing channel-deny semantics"
   },
@@ -55,15 +59,15 @@
     "inactive_or_missing_recipient_fail_closed": true,
     "retryability_preserved": true,
     "topic_created_public_description_unchanged": true,
-    "topic_created_public_audience_unchanged": true,
+    "recipient_specific_topic_subscription_audience": true,
     "recipient_specific_mention_description": true,
     "recipient_specific_mention_audience": true,
     "shared_recipient_resolution_helper": true,
     "sqlite_contract_test": true,
-    "downstream_sqlite_contract_test": true
+    "downstream_sqlite_contract_test": true,
+    "downstream_chain_sqlite_contract_test": true
   },
   "not_delivered": [
-    "recipient-specific topic-created subscription filtering before pagination",
     "initially non-public topic-created descriptor materialization",
     "profile privacy and blocking policy",
     "host trust channel and group facts adapters",
@@ -76,10 +80,12 @@
       "cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_target_open_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_mention_audience_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-notification-recipient-context.mjs",
       "node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs",
       "node scripts/verify/verify-forum-notification-recipient-target-open.mjs",
       "node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs",
+      "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"
