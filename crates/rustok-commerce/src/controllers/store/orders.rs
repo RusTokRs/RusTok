@@ -23,6 +23,54 @@ use crate::dto::{
     OrderChangeResponse, OrderResponse, OrderReturnResponse, RefundResponse,
 };
 
+const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";
+const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";
+
+type StorefrontOrderPaymentHttpPolicy = (
+    StatusCode,
+    &'static str,
+    &'static str,
+    &'static str,
+);
+
+#[derive(Clone, Copy)]
+struct StorefrontOrderPaymentErrorContext<'a> {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    customer_id: Uuid,
+    order_id: Uuid,
+    payment_collection_id: Option<Uuid>,
+    refund_id: Option<Uuid>,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&'a str>,
+    locale: &'a str,
+    operation: &'static str,
+}
+
+impl<'a> StorefrontOrderPaymentErrorContext<'a> {
+    fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        customer_id: Uuid,
+        order_id: Uuid,
+        request_context: &'a RequestContext,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            customer_id,
+            order_id,
+            payment_collection_id: None,
+            refund_id: None,
+            channel_id: request_context.channel_id,
+            channel_slug: request_context.channel_slug.as_deref(),
+            locale: request_context.locale.as_str(),
+            operation,
+        }
+    }
+}
+
 fn map_storefront_customer_port_error(
     error: PortError,
     operation: &'static str,
@@ -92,32 +140,55 @@ fn map_storefront_order_error(
     HttpError::new(status, code, message)
 }
 
-fn map_storefront_payment_error(
-    error: PaymentError,
-    operation: &'static str,
-    tenant_id: Uuid,
-    order_id: Uuid,
-) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
+fn storefront_order_payment_error_policy(
+    context: &mut StorefrontOrderPaymentErrorContext<'_>,
+    error: &PaymentError,
+) -> StorefrontOrderPaymentHttpPolicy {
+    match error {
         PaymentError::Validation(_) => (
             StatusCode::BAD_REQUEST,
             "commerce_store_payment_invalid",
             "Payment request is invalid",
             "validation",
         ),
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_store_payment_not_found",
-            "Payment resource was not found",
-            "not_found",
-        ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
+        PaymentError::PaymentCollectionNotFound(payment_collection_id) => {
+            context.payment_collection_id = Some(*payment_collection_id);
+            (
+                StatusCode::NOT_FOUND,
+                "commerce_store_payment_not_found",
+                "Payment resource was not found",
+                "payment_collection_not_found",
+            )
+        }
+        PaymentError::PaymentNotFound(payment_collection_id) => {
+            context.payment_collection_id = Some(*payment_collection_id);
+            (
+                StatusCode::NOT_FOUND,
+                "commerce_store_payment_not_found",
+                "Payment resource was not found",
+                "payment_not_found",
+            )
+        }
+        PaymentError::RefundNotFound(refund_id) => {
+            context.refund_id = Some(*refund_id);
+            (
+                StatusCode::NOT_FOUND,
+                "commerce_store_payment_not_found",
+                "Payment resource was not found",
+                "refund_not_found",
+            )
+        }
+        PaymentError::InvalidTransition { .. } => (
             StatusCode::CONFLICT,
             "commerce_store_payment_state_conflict",
             "Payment operation conflicts with the current state",
             "state_conflict",
+        ),
+        PaymentError::ProviderRejected { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_store_payment_state_conflict",
+            "Payment operation conflicts with the current state",
+            "provider_rejected",
         ),
         PaymentError::ProviderUnavailable { .. } => (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -149,16 +220,32 @@ fn map_storefront_payment_error(
             "Payment service is temporarily unavailable",
             "database",
         ),
-    };
+    }
+}
+
+fn map_storefront_payment_error(
+    mut context: StorefrontOrderPaymentErrorContext<'_>,
+    error: PaymentError,
+) -> HttpError {
+    let (status, code, message, error_kind) =
+        storefront_order_payment_error_policy(&mut context, &error);
     tracing::error!(
         error = ?error,
-        operation,
-        tenant_id = %tenant_id,
-        order_id = %order_id,
+        owner = STOREFRONT_ORDER_PAYMENT_OWNER,
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        customer_id = %context.customer_id,
+        order_id = %context.order_id,
+        payment_collection_id = ?context.payment_collection_id,
+        refund_id = ?context.refund_id,
+        channel_id = ?context.channel_id,
+        channel = ?context.channel_slug,
+        locale = %context.locale,
+        operation = %context.operation,
         error_kind,
         public_code = code,
         status = %status,
-        boundary = "commerce_storefront_order_http",
+        boundary = STOREFRONT_ORDER_PAYMENT_BOUNDARY,
         "storefront payment read failed"
     );
     HttpError::new(status, code, message)
@@ -193,7 +280,7 @@ async fn ensure_customer_owns_order(
     auth: &rustok_api::AuthContext,
     order_id: Uuid,
     operation: &'static str,
-) -> HttpResult<()> {
+) -> HttpResult<Uuid> {
     let customer_id = current_storefront_customer_id(runtime, tenant_id, auth, operation)
         .await?
         .ok_or_else(|| {
@@ -214,7 +301,7 @@ async fn ensure_customer_owns_order(
         ));
     }
 
-    Ok(())
+    Ok(customer_id)
 }
 
 /// Get current storefront customer
@@ -404,7 +491,9 @@ pub async fn list_order_refunds(
 ) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_refunds_access").await?;
+    let customer_id =
+        ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_refunds_access")
+            .await?;
 
     let payment_service = PaymentService::new(runtime.db_clone());
     let (items, total) = payment_service
@@ -420,7 +509,17 @@ pub async fn list_order_refunds(
         )
         .await
         .map_err(|error| {
-            map_storefront_payment_error(error, "list_order_refunds", tenant.id, id)
+            map_storefront_payment_error(
+                StorefrontOrderPaymentErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    customer_id,
+                    id,
+                    &request_context,
+                    "list_order_refunds",
+                ),
+                error,
+            )
         })?;
 
     Ok(Json(PaginatedResponse {
