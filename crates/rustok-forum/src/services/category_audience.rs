@@ -23,7 +23,11 @@ use uuid::Uuid;
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
-use crate::audience::ForumAudienceConstraints;
+use crate::audience::{
+    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS,
+    MAX_FORUM_AUDIENCE_EXPLICIT_USERS, MAX_FORUM_AUDIENCE_GROUPS,
+    MAX_FORUM_AUDIENCE_ROLES,
+};
 use crate::dto::{MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES};
 use crate::entities::{
     forum_category,
@@ -335,8 +339,11 @@ where
     let policies = forum_category_audience_policy::Entity::find()
         .filter(forum_category_audience_policy::Column::TenantId.eq(tenant_id))
         .filter(forum_category_audience_policy::Column::CategoryId.is_in(category_ids.to_vec()))
+        .limit((category_ids.len() + 1) as u64)
         .all(db)
         .await?;
+    ensure_storage_bound(policies.len(), category_ids.len(), "policy layers")?;
+
     let mut layers = HashMap::with_capacity(policies.len());
     for policy in policies {
         let minimum_trust_level = policy
@@ -359,40 +366,55 @@ where
         );
     }
 
-    for row in forum_category_audience_role::Entity::find()
+    let maximum_roles = category_ids.len() * MAX_FORUM_AUDIENCE_ROLES;
+    let roles = forum_category_audience_role::Entity::find()
         .filter(forum_category_audience_role::Column::TenantId.eq(tenant_id))
         .filter(forum_category_audience_role::Column::CategoryId.is_in(category_ids.to_vec()))
+        .limit((maximum_roles + 1) as u64)
         .all(db)
-        .await?
-    {
+        .await?;
+    ensure_storage_bound(roles.len(), maximum_roles, "role relations")?;
+    for row in roles {
         layer_mut(&mut layers, row.category_id)?.roles_any.push(row.role);
     }
-    for row in forum_category_audience_channel::Entity::find()
+
+    let maximum_channels = category_ids.len() * MAX_FORUM_AUDIENCE_CHANNELS;
+    let channels = forum_category_audience_channel::Entity::find()
         .filter(forum_category_audience_channel::Column::TenantId.eq(tenant_id))
         .filter(forum_category_audience_channel::Column::CategoryId.is_in(category_ids.to_vec()))
+        .limit((maximum_channels + 1) as u64)
         .all(db)
-        .await?
-    {
+        .await?;
+    ensure_storage_bound(channels.len(), maximum_channels, "channel relations")?;
+    for row in channels {
         layer_mut(&mut layers, row.category_id)?
             .channel_members_any
             .push(row.channel_slug);
     }
-    for row in forum_category_audience_group::Entity::find()
+
+    let maximum_groups = category_ids.len() * MAX_FORUM_AUDIENCE_GROUPS;
+    let groups = forum_category_audience_group::Entity::find()
         .filter(forum_category_audience_group::Column::TenantId.eq(tenant_id))
         .filter(forum_category_audience_group::Column::CategoryId.is_in(category_ids.to_vec()))
+        .limit((maximum_groups + 1) as u64)
         .all(db)
-        .await?
-    {
+        .await?;
+    ensure_storage_bound(groups.len(), maximum_groups, "group relations")?;
+    for row in groups {
         layer_mut(&mut layers, row.category_id)?
             .group_members_any
             .push(row.group_id);
     }
-    for row in forum_category_audience_user::Entity::find()
+
+    let maximum_users = category_ids.len() * MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2;
+    let users = forum_category_audience_user::Entity::find()
         .filter(forum_category_audience_user::Column::TenantId.eq(tenant_id))
         .filter(forum_category_audience_user::Column::CategoryId.is_in(category_ids.to_vec()))
+        .limit((maximum_users + 1) as u64)
         .all(db)
-        .await?
-    {
+        .await?;
+    ensure_storage_bound(users.len(), maximum_users, "explicit user relations")?;
+    for row in users {
         let layer = layer_mut(&mut layers, row.category_id)?;
         match row.effect {
             ForumCategoryAudienceUserEffect::Allow => layer.allow_user_ids.push(row.user_id),
@@ -420,6 +442,15 @@ fn layer_mut(
             "Forum category audience relation is missing its local policy layer".to_string(),
         )
     })
+}
+
+fn ensure_storage_bound(actual: usize, maximum: usize, label: &str) -> ForumResult<()> {
+    if actual > maximum {
+        return Err(ForumError::Validation(format!(
+            "Forum category audience storage exceeds the bounded {label} limit of {maximum}"
+        )));
+    }
+    Ok(())
 }
 
 fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {
