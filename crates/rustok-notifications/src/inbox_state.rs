@@ -1,6 +1,6 @@
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -36,12 +36,13 @@ pub enum NotificationInboxStateDecision {
     Unavailable,
 }
 
-/// Applies monotonic exact-recipient inbox state transitions.
+/// Applies exact-recipient inbox state transitions.
 ///
 /// `mark_seen` advances only `unread -> seen`; `mark_read` advances `unread/seen -> read`;
-/// and `archive` advances every non-archived state to `archived`. Requests at the same or a later
-/// state are idempotent and preserve all timestamps. Missing and foreign-recipient rows both return
-/// `Unavailable`, preventing a cross-recipient or cross-tenant existence oracle.
+/// `mark_unread` returns only `seen/read -> unread`; and `archive` advances every non-archived
+/// state to `archived`. Archived remains terminal. Requests already at the requested state or at a
+/// protected state are idempotent and preserve all timestamps. Missing and foreign-recipient rows
+/// both return `Unavailable`, preventing a cross-recipient or cross-tenant existence oracle.
 #[derive(Clone)]
 pub struct NotificationInboxStateService {
     db: DatabaseConnection,
@@ -114,6 +115,33 @@ impl NotificationInboxStateService {
                 > 0
         };
         self.load_decision(request, changed).await
+    }
+
+    pub async fn mark_unread(
+        &self,
+        request: NotificationInboxStateRequest,
+    ) -> NotificationResult<NotificationInboxStateDecision> {
+        validate_request(&request)?;
+        let timestamp = now();
+        let result = notification::Entity::update_many()
+            .set(notification::ActiveModel {
+                state: Set(NotificationState::Unread),
+                seen_at: Set(None),
+                read_at: Set(None),
+                updated_at: Set(timestamp),
+                ..Default::default()
+            })
+            .filter(notification::Column::Id.eq(request.notification_id))
+            .filter(notification::Column::TenantId.eq(request.tenant_id))
+            .filter(notification::Column::RecipientId.eq(request.recipient_id))
+            .filter(
+                Condition::any()
+                    .add(notification::Column::State.eq(NotificationState::Seen))
+                    .add(notification::Column::State.eq(NotificationState::Read)),
+            )
+            .exec(&self.db)
+            .await?;
+        self.load_decision(request, result.rows_affected > 0).await
     }
 
     pub async fn archive(
