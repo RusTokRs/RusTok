@@ -4,20 +4,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs';
+import {
+  comparableDatabaseFields,
+  databaseSettingsSource,
+} from './index-storage-database-settings-contract.mjs';
 
 const prefix = '[compare-index-storage-evidence]';
-const comparableDatabaseFields = [
-  'server_version_num',
-  'shared_buffers',
-  'effective_cache_size',
-  'work_mem',
-  'random_page_cost',
-  'jit',
-  'standard_conforming_strings',
-  'timezone',
-  'date_style',
-  'extra_float_digits',
-];
 
 const preflightArgs = (args) => {
   const inputs = [];
@@ -84,8 +76,7 @@ const finalizeDatabaseSettingsContract = ({ inputs, output }) => {
   const report = requireObject(readJson(comparisonPath, 'comparison report'), 'comparison report');
   const methodology = requireObject(report.methodology, 'comparison methodology');
   methodology.comparable_database_fields = comparableDatabaseFields;
-  methodology.database_settings_source =
-    'read-report.json database metadata observed from the active PostgreSQL benchmark session';
+  methodology.database_settings_source = databaseSettingsSource;
   writeFileSync(comparisonPath, `${JSON.stringify(report, null, 2)}\n`);
 
   const markdownPath = path.join(output, 'comparison.md');

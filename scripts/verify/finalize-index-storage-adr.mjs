@@ -15,6 +15,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { requireComparisonDatabaseSettingsMethodology } from './index-storage-database-settings-contract.mjs';
+
 const prefix = '[finalize-index-storage-adr]';
 const placeholderPrefix = 'TODO(index-storage-decision):';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -147,6 +149,7 @@ const main = () => {
 
   const comparison = readJsonBytes(args.comparison, 'comparison');
   const decision = readJsonBytes(args.decision, 'decision');
+  requireComparisonDatabaseSettingsMethodology(comparison.value, fail);
   requireDecisionEnvelope(decision.value);
   rejectPlaceholders(decision.value);
 
