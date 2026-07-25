@@ -65,6 +65,11 @@ attempt count, set `next_attempt_at`, clear lease fields, and persist stable err
 metadata before any producer call. The loop is default-off behind
 `RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED` and creates only pending candidates.
 
+A bounded producer scan may return zero recipients with a next cursor. The cursor
+must differ from the claimed cursor; the owner persists it under the same lease
+CAS, creates no candidates, and keeps the job pending. Oversized pages and stalled
+cursors fail closed.
+
 ### Candidate policy and lifecycle-serialized inbox creation
 
 `NotificationCandidateWorker` selects bounded tenant-scoped work without acquiring
@@ -143,6 +148,7 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications --all-targets
 cargo test -p rustok-modules --test policy_commit_guard_sqlite -- --nocapture
 cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_sparse_page_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
@@ -158,7 +164,7 @@ node scripts/verify/verify-notifications-fanout-worker.mjs
 cargo xtask module validate notifications
 ```
 
-These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H`.
+These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I`.
 
 ## Related documents
 
