@@ -12,6 +12,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 
 const admin = read('crates/rustok-commerce/src/controllers/admin/mod.rs');
 const orders = read('crates/rustok-commerce/src/controllers/admin/orders.rs');
+const changes = read('crates/rustok-commerce/src/controllers/admin/changes.rs');
 const returns = read('crates/rustok-commerce/src/controllers/admin/returns.rs');
 const fulfillments = read('crates/rustok-commerce/src/controllers/admin/fulfillments.rs');
 const orderErrors = read('crates/rustok-order/src/error.rs');
@@ -145,6 +146,29 @@ for (const value of [
 ]) forbidText(orders, value, 'stale order-detail shared mapper callsite');
 
 for (const [value, label] of [
+  ['pub async fn create_order_change(', 'admin order-change create'],
+  ['pub async fn list_order_changes(', 'admin order-change list'],
+  ['pub async fn show_order_change(', 'admin order-change detail'],
+  ['pub async fn apply_order_change(', 'admin order-change apply'],
+  ['pub async fn cancel_order_change(', 'admin order-change cancel'],
+  ['struct AdminOrderChangeErrorContext {', 'order-change owner context'],
+  ['fn map_admin_order_change_error(', 'context-aware order-change owner mapper'],
+  ['let order_id = params.order_id;', 'order-change list identity capture'],
+  ['page: pagination.page', 'order-change page forwarding'],
+  ['per_page: pagination.limit()', 'order-change page-size forwarding'],
+  [
+    '.map_err(super::map_post_order_orchestration_error)?;',
+    'unchanged order-change orchestration mapping',
+  ],
+]) requireText(changes, value, label);
+
+forbidText(
+  changes,
+  '.map_err(super::map_order_error)?;',
+  'stale admin order-change shared owner mapper callsite',
+);
+
+for (const [value, label] of [
   ['pub async fn list_order_returns(', 'admin return list'],
   ['pub async fn show_order_return(', 'admin return detail'],
   ['pub async fn create_order_return(', 'admin return create'],
@@ -195,6 +219,7 @@ for (const value of [
 
 for (const [content, label] of [
   [orders, 'admin order reads'],
+  [changes, 'admin order-change endpoints'],
   [returns, 'admin return endpoints'],
   [fulfillments, 'admin fulfillment endpoints'],
 ]) {
@@ -209,6 +234,23 @@ for (const [content, label] of [
 const sharedOrderMapperUses = orders.match(/\.map_err\(super::map_order_error\)\?;/g) ?? [];
 if (sharedOrderMapperUses.length !== 6) {
   failures.push(`expected six remaining shared order mapper callsites, found ${sharedOrderMapperUses.length}`);
+}
+
+const orderChangeOwnerMapperUses =
+  changes.match(
+    /map_admin_order_change_error\(\s+AdminOrderChangeErrorContext::new\(/g,
+  ) ?? [];
+if (orderChangeOwnerMapperUses.length !== 4) {
+  failures.push(
+    `expected four context-aware order-change owner mapper callsites, found ${orderChangeOwnerMapperUses.length}`,
+  );
+}
+const orderChangeOrchestrationUses =
+  changes.match(/\.map_err\(super::map_post_order_orchestration_error\)\?;/g) ?? [];
+if (orderChangeOrchestrationUses.length !== 1) {
+  failures.push(
+    `expected one unchanged order-change orchestration mapper callsite, found ${orderChangeOrchestrationUses.length}`,
+  );
 }
 
 const returnOwnerMapperUses =
@@ -265,5 +307,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin order, return, and fulfillment HTTP errors use stable typed public envelopes',
+  '✔ Commerce admin order, change, return, and fulfillment HTTP errors use stable typed public envelopes',
 );
