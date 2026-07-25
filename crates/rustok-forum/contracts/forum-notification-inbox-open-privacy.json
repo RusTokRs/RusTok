@@ -2,6 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20S",
   "upstream_task": "FORUM-20R",
+  "downstream_task": "FORUM-20T",
   "scope": "Current recipient privacy and blocking policy recheck before stored notification target authorization",
   "notifications_owner_file": "crates/rustok-notifications/src/inbox.rs",
   "recipient_policy_owner_file": "crates/rustok-notifications/src/candidate.rs",

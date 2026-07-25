@@ -133,6 +133,25 @@ Only an allowed recipient reaches the registered source provider's
 route or `Unavailable`. It does not expose the stored row, mutate
 `seen/read/archive` state, or enqueue delivery attempts.
 
+### Bounded authorized inbox listing
+
+`NotificationInboxListService` scans one exact tenant/recipient page in
+`created_at DESC, id DESC` order. A request defaults to 20 rows, is capped at 64,
+and may apply one exact notification-state filter. Its versioned cursor preserves
+full timestamp nanoseconds plus the UUID tie-breaker.
+
+Each scanned row is passed through `NotificationInboxOpenService`. Current recipient
+privacy and source target authorization therefore decide whether the row is returned.
+The list read model exposes typed source, notification type, template key,
+source-owned template data, actor, priority, state, and inbox timestamps. It adds no
+dedicated route or structural target owner, kind, or ID fields.
+
+The next cursor is derived from the last scanned raw row rather than the last returned
+item. Privacy or source suppression may produce an empty page with a next cursor,
+while still preserving bounded work and forward progress. Retryable policy or source
+failures abort the page without returning a partial result. Listing does not mutate
+`seen/read/archive` state or enqueue delivery attempts.
+
 The server starts workers in intake → fanout → candidate order. Invalid or
 unreadable flags remain disabled.
 
@@ -152,7 +171,7 @@ remains deferred.
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
 - channel delivery enqueue and transports with delivery-time authorization;
-- bounded inbox listing and seen/read/archive state APIs;
+- seen/read/archive state APIs;
 - retention, reconciliation, quarantine replay/purge, and full module-owned UI.
 
 ## Maintainer verification
@@ -169,6 +188,7 @@ cargo test -p rustok-notifications --test fanout_sparse_page_sqlite -- --nocaptu
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -181,11 +201,12 @@ node scripts/verify/verify-notifications-outbox-intake.mjs
 node scripts/verify/verify-notifications-fanout-worker.mjs
 node scripts/verify/verify-forum-notification-inbox-open-authorization.mjs
 node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
+node scripts/verify/verify-forum-notification-inbox-listing.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S`.
+`FORUM-20R/20S/20T`.
 
 ## Related documents
 

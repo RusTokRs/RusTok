@@ -168,7 +168,7 @@ for (const marker of [
   ".map_err(NotificationError::from)?",
   "NotificationOpenAuthorization::Allowed { route }",
   "NotificationOpenAuthorization::Unavailable",
-  "validate_request(&request)?",
+  "validate_open_request(&request)?",
 ]) {
   requireText(inbox, marker, `notification inbox open owner is missing ${marker}`);
 }
@@ -253,7 +253,8 @@ for (const marker of [
   "### Inbox open-time authorization",
   "Missing, cross-tenant, and cross-recipient rows all",
   "Only an allowed recipient reaches the registered source provider",
-  "bounded inbox listing and seen/read/archive state APIs",
+  "### Bounded authorized inbox listing",
+  "seen/read/archive state APIs",
   "inbox_open_authorization_sqlite",
 ]) {
   requireText(docs, marker, `notifications live contract is missing ${marker}`);
