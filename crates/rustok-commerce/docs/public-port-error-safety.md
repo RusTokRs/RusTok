@@ -60,6 +60,12 @@ available only for actionable domain errors.
   recovery owner, correlation id, tenant, channel, operation, stable code, and
   reconciliation evidence. Raw hash values remain private and public validation,
   not-found, conflict, unavailable, and invariant envelopes remain static.
+- `rustok-order` checkout compensation: invalid request and causation context, durable
+  identity conflicts, cancellation races, effectful or unknown lifecycle states,
+  owner-context validation, missing resources, storage, transitions, validation, and
+  core causes retain the compensation owner, correlation id, tenant, channel, operation,
+  stable code, typed lifecycle state, and truthful optional order identity. Public
+  validation, not-found, conflict, unavailable, and invariant envelopes remain static.
 - `rustok-tax` calculation port: request-validation details, provider-result contract
   violations, and owner validation causes remain internal. Every mapper records owner,
   correlation id, tenant, channel, operation, and stable code while public validation
@@ -85,6 +91,7 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`
 - `node scripts/verify/verify-order-payment-settlement-error-context.mjs`
 - `node scripts/verify/verify-order-checkout-recovery-error-context.mjs`
+- `node scripts/verify/verify-order-checkout-compensation-error-context.mjs`
 - `node scripts/verify/verify-tax-calculation-error-context.mjs`
 - `cargo test -p rustok-api ports::tests`
 - `cargo check -p rustok-cart --all-features`
@@ -93,8 +100,9 @@ available only for actionable domain errors.
 - `cargo check -p rustok-payment --all-features`
 - `cargo check -p rustok-fulfillment --all-features`
 - `cargo check -p rustok-tax --all-features`
-- Targeted cart promotion, order payment settlement, order checkout recovery, pricing,
-  payment collection, fulfillment checkout execution, and tax calculation validation,
-  provider-contract, reconciliation, correlation, and transport round-trip tests.
+- Targeted cart promotion, order payment settlement, order checkout recovery, order
+  checkout compensation, pricing, payment collection, fulfillment checkout execution,
+  and tax calculation validation, provider-contract, reconciliation, correlation, and
+  transport round-trip tests.
 
 No verification command above was executed as part of this source wave.

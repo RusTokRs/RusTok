@@ -13,6 +13,7 @@ use crate::{
     OrderService, OrderStatusKind, ReadCheckoutOrderIdentityByOperationRequest,
 };
 
+const ORDER_COMPENSATION_OWNER: &str = "rustok_order.checkout_compensation";
 const COMPENSATE_OPERATION: &str = "compensate_checkout_order";
 
 #[async_trait]
@@ -113,7 +114,7 @@ impl InProcessCheckoutOrderCompensationPort {
                 .await
             {
                 Ok(cancelled) => Ok(cancelled),
-                Err(OrderError::InvalidTransition { .. }) => {
+                Err(OrderError::InvalidTransition { from, to }) => {
                     let current = self
                         .order_service
                         .get_order(tenant_id, order.id)
@@ -128,6 +129,19 @@ impl InProcessCheckoutOrderCompensationPort {
                     if current.status_kind() == OrderStatusKind::Cancelled {
                         Ok(current)
                     } else {
+                        tracing::warn!(
+                            owner = ORDER_COMPENSATION_OWNER,
+                            correlation_id = %context.correlation_id,
+                            tenant_id = %context.tenant_id,
+                            channel = ?context.channel,
+                            operation = "cancel_checkout_order",
+                            code = "order.checkout_compensation_state_conflict",
+                            order_id = %current.id,
+                            current_state = ?current.status_kind(),
+                            from = %from,
+                            to = %to,
+                            "order lifecycle changed while checkout compensation was being applied"
+                        );
                         Err(PortError::conflict(
                             "order.checkout_compensation_state_conflict",
                             "checkout order changed while compensation was being applied",
@@ -141,16 +155,20 @@ impl InProcessCheckoutOrderCompensationPort {
                 )),
             },
             OrderStatusKind::Cancelled => Ok(order),
-            OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered => {
-                Err(manual_reconciliation(
-                    context,
-                    "cancel_checkout_order",
-                    "checkout order has financial or fulfillment effects and cannot be cancelled automatically",
-                ))
-            }
+            state @ (OrderStatusKind::Paid
+            | OrderStatusKind::Shipped
+            | OrderStatusKind::Delivered) => Err(manual_reconciliation(
+                context,
+                "cancel_checkout_order",
+                Some(order.id),
+                state,
+                "checkout order has financial or fulfillment effects and cannot be cancelled automatically",
+            )),
             OrderStatusKind::Unknown => Err(manual_reconciliation(
                 context,
                 "cancel_checkout_order",
+                Some(order.id),
+                OrderStatusKind::Unknown,
                 "checkout order lifecycle is unknown",
             )),
         }
@@ -182,10 +200,15 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
         )?;
         if request.checkout_operation_id.is_nil() || request.cart_id.is_nil() {
             tracing::warn!(
+                owner = ORDER_COMPENSATION_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation = COMPENSATE_OPERATION,
                 code = "order.checkout_compensation_identity_invalid",
+                checkout_operation_id = %request.checkout_operation_id,
+                cart_id = %request.cart_id,
+                expected_order_id = ?request.expected_order_id,
                 "checkout compensation rejected invalid owner identity"
             );
             return Err(PortError::validation(
@@ -201,11 +224,13 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
                 Err(manual_reconciliation(
                     &context,
                     COMPENSATE_OPERATION,
+                    request.expected_order_id,
+                    OrderStatusKind::Unknown,
                     "checkout operation records an order but the order owner has no durable checkout identity",
                 ))
             };
         };
-        validate_identity(tenant_id, &request, &identity)?;
+        validate_identity(&context, tenant_id, &request, &identity)?;
 
         let order = self
             .order_service
@@ -225,6 +250,7 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
 }
 
 fn validate_identity(
+    context: &PortContext,
     tenant_id: Uuid,
     request: &CheckoutOrderCompensationRequest,
     identity: &CheckoutOrderIdentitySnapshot,
@@ -238,6 +264,22 @@ fn validate_identity(
             .expected_order_id
             .is_none_or(|order_id| order_id == identity.order_id);
     if !valid {
+        tracing::error!(
+            owner = ORDER_COMPENSATION_OWNER,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            channel = ?context.channel,
+            operation = COMPENSATE_OPERATION,
+            code = "order.checkout_compensation_identity_conflict",
+            request_checkout_operation_id = %request.checkout_operation_id,
+            request_cart_id = %request.cart_id,
+            request_expected_order_id = ?request.expected_order_id,
+            identity_tenant_id = %identity.tenant_id,
+            identity_checkout_operation_id = %identity.checkout_operation_id,
+            identity_order_id = %identity.order_id,
+            identity_source_cart_id = ?identity.source_cart_id,
+            "checkout order identity conflicts with compensation"
+        );
         return Err(PortError::conflict(
             "order.checkout_compensation_identity_conflict",
             "checkout order identity conflicts with the compensation request",
@@ -257,11 +299,14 @@ fn require_operation_context(
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
         tracing::warn!(
+            owner = ORDER_COMPENSATION_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             code = "order.checkout_compensation_causation_invalid",
             expected_checkout_operation_id = %checkout_operation_id,
+            actual_causation_id = ?context.causation_id,
             "checkout compensation received invalid causation identity"
         );
         return Err(PortError::validation(
@@ -273,9 +318,13 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    Uuid::parse_str(&context.tenant_id).map_err(|error| {
         tracing::warn!(
+            error = ?error,
+            owner = ORDER_COMPENSATION_OWNER,
             correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             field = "tenant_id",
             value_length = context.tenant_id.len(),
@@ -290,10 +339,13 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|_| {
+    Uuid::parse_str(&context.actor.id).map_err(|error| {
         tracing::warn!(
+            error = ?error,
+            owner = ORDER_COMPENSATION_OWNER,
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
+            channel = ?context.channel,
             operation,
             field = "actor_id",
             value_length = context.actor.id.len(),
@@ -307,13 +359,19 @@ fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid
 fn manual_reconciliation(
     context: &PortContext,
     operation: &'static str,
+    order_id: Option<Uuid>,
+    order_state: OrderStatusKind,
     reason: &'static str,
 ) -> PortError {
     tracing::error!(
+        owner = ORDER_COMPENSATION_OWNER,
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
+        channel = ?context.channel,
         operation,
         code = "order.checkout_compensation_manual_reconciliation",
+        order_id = ?order_id,
+        order_state = ?order_state,
         reason = %reason,
         "checkout order compensation requires manual reconciliation"
     );
@@ -332,8 +390,10 @@ fn order_error_to_port_error(
         OrderError::Database(error) => {
             tracing::error!(
                 error = ?error,
+                owner = ORDER_COMPENSATION_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.database_unavailable",
                 "order checkout compensation storage failed"
@@ -343,14 +403,26 @@ fn order_error_to_port_error(
                 "order storage is temporarily unavailable",
             )
         }
-        OrderError::OrderNotFound(_) => {
+        OrderError::OrderNotFound(order_id) => {
+            tracing::warn!(
+                owner = ORDER_COMPENSATION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation,
+                code = "order.order_not_found",
+                order_id = %order_id,
+                "checkout compensation order was not found"
+            );
             PortError::not_found("order.order_not_found", "order was not found")
         }
         OrderError::Validation(cause) => {
             tracing::warn!(
                 cause = %cause,
+                owner = ORDER_COMPENSATION_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.checkout_compensation_validation",
                 "order owner rejected checkout compensation"
@@ -360,12 +432,16 @@ fn order_error_to_port_error(
                 "checkout order compensation request is invalid",
             )
         }
-        OrderError::InvalidTransition { .. } => {
+        OrderError::InvalidTransition { from, to } => {
             tracing::warn!(
+                owner = ORDER_COMPENSATION_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.checkout_compensation_state_conflict",
+                from = %from,
+                to = %to,
                 "order lifecycle conflicts with checkout compensation"
             );
             PortError::conflict(
@@ -373,7 +449,35 @@ fn order_error_to_port_error(
                 "checkout order lifecycle conflicts with compensation",
             )
         }
-        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => {
+        OrderError::OrderReturnNotFound(return_id) => {
+            tracing::warn!(
+                owner = ORDER_COMPENSATION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation,
+                code = "order.related_resource_not_found",
+                resource = "order_return",
+                resource_id = %return_id,
+                "checkout compensation related order resource was not found"
+            );
+            PortError::not_found(
+                "order.related_resource_not_found",
+                "related order resource was not found",
+            )
+        }
+        OrderError::OrderChangeNotFound(change_id) => {
+            tracing::warn!(
+                owner = ORDER_COMPENSATION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                operation,
+                code = "order.related_resource_not_found",
+                resource = "order_change",
+                resource_id = %change_id,
+                "checkout compensation related order resource was not found"
+            );
             PortError::not_found(
                 "order.related_resource_not_found",
                 "related order resource was not found",
@@ -382,8 +486,10 @@ fn order_error_to_port_error(
         OrderError::Core(error) => {
             tracing::error!(
                 error = ?error,
+                owner = ORDER_COMPENSATION_OWNER,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
+                channel = ?context.channel,
                 operation,
                 code = "order.invariant_violation",
                 "order checkout compensation invariant failed"
