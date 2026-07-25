@@ -38,6 +38,18 @@ const sessionMetadataMarkers = [
   "date_style: 'ISO, YMD'",
   "extra_float_digits: '3'",
 ];
+const comparableDatabaseFieldMarkers = [
+  "'server_version_num'",
+  "'shared_buffers'",
+  "'effective_cache_size'",
+  "'work_mem'",
+  "'random_page_cost'",
+  "'jit'",
+  "'standard_conforming_strings'",
+  "'timezone'",
+  "'date_style'",
+  "'extra_float_digits'",
+];
 
 requireMarkers(connection, 'benchmark session contract', [
   'const BENCHMARK_SESSION_SQL',
@@ -147,8 +159,12 @@ requireMarkers(fixture, 'read ordering fixture', [
 ]);
 requireMarkers(comparatorFixture, 'comparison evidence fixture', [
   ...sessionMetadataMarkers,
+  ...comparableDatabaseFieldMarkers,
   'function writePacket(root, scale, overrides = {})',
   "test('same-commit complete 100k and 1m evidence is decision-ready'",
+  'assert.deepEqual(report.methodology.comparable_database_fields, comparableDatabaseFields);',
+  'database_settings_source',
+  "test('rejects observed session metadata drift before comparison output is accepted'",
 ]);
 
 requireMarkers(validatorWrapper, 'standalone validator wrapper', [
@@ -163,19 +179,35 @@ if (validatorOrdering < 0 || validatorCore < 0 || validatorOrdering > validatorC
 }
 
 requireMarkers(comparatorWrapper, 'standalone comparator wrapper', [
+  "import { readFileSync, writeFileSync } from 'node:fs'",
+  "import path from 'node:path'",
   "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
-  'for (const input of inputs) validatePacketReadOrdering(input);',
+  'const comparableDatabaseFields = [',
+  ...comparableDatabaseFieldMarkers,
+  'const finalizeDatabaseSettingsContract = ({ inputs, output }) =>',
+  'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
+  'cross-scale database setting ${field} mismatch',
+  'methodology.comparable_database_fields = comparableDatabaseFields;',
+  'database_settings_source',
+  'Compared PostgreSQL fields:',
   "await import('./compare-index-storage-evidence-core.mjs')",
+  'if (parsed !== null) finalizeDatabaseSettingsContract(parsed);',
 ]);
 const standaloneCompareOrdering = comparatorWrapper.indexOf(
-  'for (const input of inputs) validatePacketReadOrdering(input);',
+  'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
 );
 const standaloneComparatorCore = comparatorWrapper.indexOf(
   "await import('./compare-index-storage-evidence-core.mjs')",
 );
+const standaloneComparatorFinalization = comparatorWrapper.indexOf(
+  'if (parsed !== null) finalizeDatabaseSettingsContract(parsed);',
+);
 if (standaloneCompareOrdering < 0 || standaloneComparatorCore < 0
     || standaloneCompareOrdering > standaloneComparatorCore) {
   fail('standalone comparator must preflight every input before importing its core');
+}
+if (standaloneComparatorFinalization < 0 || standaloneComparatorCore > standaloneComparatorFinalization) {
+  fail('standalone comparator must finalize the full database-settings contract after its core');
 }
 
 requireMarkers(standaloneFixture, 'standalone evidence fixture', [
@@ -244,4 +276,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] enforced and observed PostgreSQL session metadata, canonical evidence writer, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] enforced and observed PostgreSQL session metadata, canonical evidence writer, full cross-scale database settings, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
