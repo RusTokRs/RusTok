@@ -6,7 +6,8 @@ use axum::{
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
-use rustok_web::HttpResult;
+use rustok_order::error::OrderError;
+use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -23,6 +24,102 @@ use crate::{
         CancelOrderChangeInput, CreateOrderChangeInput, ListOrderChangesInput, OrderChangeResponse,
     },
 };
+
+const ADMIN_ORDER_CHANGE_OWNER: &str = "rustok_order.admin_changes";
+const ADMIN_ORDER_CHANGE_BOUNDARY: &str = "commerce_admin_order_change_http";
+
+struct AdminOrderChangeErrorContext {
+    tenant_id: Uuid,
+    order_id: Option<Uuid>,
+    order_change_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl AdminOrderChangeErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        order_id: Option<Uuid>,
+        order_change_id: Option<Uuid>,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            order_id,
+            order_change_id,
+            operation,
+        }
+    }
+}
+
+fn map_admin_order_change_error(
+    mut context: AdminOrderChangeErrorContext,
+    error: OrderError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        OrderError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        OrderError::OrderNotFound(id) => {
+            context.order_id = Some(*id);
+            (
+                StatusCode::NOT_FOUND,
+                "commerce_admin_not_found",
+                "Commerce resource not found",
+                "not_found",
+            )
+        }
+        OrderError::OrderChangeNotFound(id) => {
+            context.order_change_id = Some(*id);
+            (
+                StatusCode::NOT_FOUND,
+                "commerce_admin_not_found",
+                "Commerce resource not found",
+                "not_found",
+            )
+        }
+        OrderError::OrderReturnNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        OrderError::InvalidTransition { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        OrderError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "database",
+        ),
+        OrderError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "core",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_ORDER_CHANGE_OWNER,
+        tenant_id = %context.tenant_id,
+        order_id = ?context.order_id,
+        order_change_id = ?context.order_change_id,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
+        "commerce admin order change owner operation failed"
+    );
+    HttpError::new(status, code, message)
+}
 
 /// Create admin order change preview
 #[utoipa::path(
@@ -54,7 +151,17 @@ pub async fn create_order_change(
     let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_order_change(tenant.id, actor_id, id, input)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_change_error(
+                AdminOrderChangeErrorContext::new(
+                    tenant.id,
+                    Some(id),
+                    None,
+                    "create_order_change",
+                ),
+                error,
+            )
+        })?;
 
     Ok((StatusCode::CREATED, Json(created)))
 }
@@ -83,19 +190,30 @@ pub async fn list_order_changes(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
+    let order_id = params.order_id;
     let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .list_order_changes(
             tenant.id,
             ListOrderChangesInput {
                 page: pagination.page,
                 per_page: pagination.limit(),
-                order_id: params.order_id,
+                order_id,
                 status: params.status,
                 change_type: params.change_type,
             },
         )
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_change_error(
+                AdminOrderChangeErrorContext::new(
+                    tenant.id,
+                    order_id,
+                    None,
+                    "list_order_changes",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -130,7 +248,17 @@ pub async fn show_order_change(
     let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_order_change(tenant.id, id)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_change_error(
+                AdminOrderChangeErrorContext::new(
+                    tenant.id,
+                    None,
+                    Some(id),
+                    "get_order_change",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(item))
 }
@@ -206,7 +334,17 @@ pub async fn cancel_order_change(
     let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .cancel_order_change(tenant.id, id, input)
         .await
-        .map_err(super::map_order_error)?;
+        .map_err(|error| {
+            map_admin_order_change_error(
+                AdminOrderChangeErrorContext::new(
+                    tenant.id,
+                    None,
+                    Some(id),
+                    "cancel_order_change",
+                ),
+                error,
+            )
+        })?;
 
     Ok(Json(item))
 }
