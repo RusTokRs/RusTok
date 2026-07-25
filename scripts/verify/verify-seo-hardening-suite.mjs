@@ -9,9 +9,9 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim()
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(scriptDir, '../..');
 
+// Keep this status scoped to the SEO hardening roadmap. FBA composition and the admin
+// boundary have independent readiness contracts and must not mask this hardening signal.
 const checks = [
-  ['verify-seo-fba.mjs', 'SEO FBA contract'],
-  ['verify-seo-admin-boundary.mjs', 'SEO admin boundary'],
   ['verify-seo-bulk-batch-reads.mjs', 'SEO bulk batching and bounded execution'],
   ['verify-seo-diagnostics-batch-reads.mjs', 'SEO diagnostics batching'],
   ['verify-seo-sitemap-background-worker.mjs', 'SEO sitemap background worker'],

@@ -91,5 +91,5 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
-      - name: Verify SEO hardening contracts
+      - name: Verify SEO hardening roadmap contracts
         run: node scripts/verify/verify-seo-hardening-suite.mjs
