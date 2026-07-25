@@ -98,6 +98,10 @@ async fn exact_recipient_transitions_are_monotonic_and_idempotent() {
             .await
             .expect("archived notification should not downgrade to read"),
         service
+            .mark_unread(request.clone())
+            .await
+            .expect("archived notification should not reopen as unread"),
+        service
             .archive(request)
             .await
             .expect("archive should be idempotent"),
@@ -115,6 +119,101 @@ async fn exact_recipient_transitions_are_monotonic_and_idempotent() {
             .expect("delivery attempt count should succeed"),
         0
     );
+}
+
+#[tokio::test]
+async fn mark_unread_reopens_seen_and_read_without_unarchiving() {
+    let db = setup().await;
+    let tenant_id = Uuid::from_u128(4);
+    let recipient_id = Uuid::from_u128(5);
+    let seen_id = Uuid::from_u128(6);
+    let read_id = Uuid::from_u128(7);
+    let archived_id = Uuid::from_u128(8);
+    insert_tenant(&db, tenant_id).await;
+    insert_user(&db, tenant_id, recipient_id).await;
+    for notification_id in [seen_id, read_id, archived_id] {
+        seed_unread_notification(&db, notification_id, tenant_id, recipient_id).await;
+    }
+
+    let service = NotificationInboxStateService::new(db);
+    let seen_request = NotificationInboxStateRequest {
+        tenant_id,
+        recipient_id,
+        notification_id: seen_id,
+    };
+    let read_request = NotificationInboxStateRequest {
+        tenant_id,
+        recipient_id,
+        notification_id: read_id,
+    };
+    let archived_request = NotificationInboxStateRequest {
+        tenant_id,
+        recipient_id,
+        notification_id: archived_id,
+    };
+
+    let (_, seen_before) = available(
+        service
+            .mark_seen(seen_request.clone())
+            .await
+            .expect("fixture should become seen"),
+    );
+    let (_, read_before) = available(
+        service
+            .mark_read(read_request.clone())
+            .await
+            .expect("fixture should become read"),
+    );
+    let (_, archived_before) = available(
+        service
+            .archive(archived_request.clone())
+            .await
+            .expect("fixture should become archived"),
+    );
+
+    let (changed, seen_unread) = available(
+        service
+            .mark_unread(seen_request.clone())
+            .await
+            .expect("seen notification should become unread"),
+    );
+    assert!(changed);
+    assert_eq!(seen_unread.state, NotificationState::Unread);
+    assert!(seen_unread.seen_at.is_none());
+    assert!(seen_unread.read_at.is_none());
+    assert!(seen_unread.archived_at.is_none());
+    assert_ne!(seen_unread.updated_at, seen_before.updated_at);
+
+    let (changed, seen_unread_again) = available(
+        service
+            .mark_unread(seen_request)
+            .await
+            .expect("unread notification should remain unread"),
+    );
+    assert!(!changed);
+    assert_eq!(seen_unread_again, seen_unread);
+
+    let (changed, read_unread) = available(
+        service
+            .mark_unread(read_request)
+            .await
+            .expect("read notification should become unread"),
+    );
+    assert!(changed);
+    assert_eq!(read_unread.state, NotificationState::Unread);
+    assert!(read_unread.seen_at.is_none());
+    assert!(read_unread.read_at.is_none());
+    assert!(read_unread.archived_at.is_none());
+    assert_ne!(read_unread.updated_at, read_before.updated_at);
+
+    let (changed, archived_after) = available(
+        service
+            .mark_unread(archived_request)
+            .await
+            .expect("archived notification should stay archived"),
+    );
+    assert!(!changed);
+    assert_eq!(archived_after, archived_before);
 }
 
 #[tokio::test]
@@ -221,9 +320,16 @@ async fn foreign_missing_and_invalid_requests_fail_closed_without_mutation() {
     ] {
         assert_eq!(
             service
-                .archive(request)
+                .archive(request.clone())
                 .await
                 .expect("foreign or missing notification should fail closed"),
+            NotificationInboxStateDecision::Unavailable
+        );
+        assert_eq!(
+            service
+                .mark_unread(request)
+                .await
+                .expect("foreign or missing mark unread should fail closed"),
             NotificationInboxStateDecision::Unavailable
         );
     }
@@ -246,7 +352,7 @@ async fn foreign_missing_and_invalid_requests_fail_closed_without_mutation() {
         },
     ] {
         let error = service
-            .mark_seen(request)
+            .mark_unread(request)
             .await
             .expect_err("nil state identity must be rejected");
         assert!(matches!(error, NotificationError::Validation(_)));

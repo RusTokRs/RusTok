@@ -45,15 +45,15 @@ while the final transaction is active. PostgreSQL lifecycle tenant toggles advan
 the cursor inside their tenant-state transaction, serializing candidate commit and
 tenant enable/disable by commit order.
 
-Exact inbox open, bounded listing, monotonic exact-item state, and bounded
+Exact inbox open, bounded listing, exact-item read-state, and bounded
 exact-recipient reconciliation services are now owner-public. Open requests recheck
 current recipient privacy and source target authorization. Listing scans
 exact-recipient rows in bounded descending keyset pages and supports sparse pages.
-State commands apply exact seen/read/archive transitions without foreign owner calls.
-Reconciliation reuses open-time policy and archives currently unavailable rows
-through the state owner. No external transport, mark-unread, bulk/mark-all, count,
-grouped-view, tenant-wide scheduler, payload-redaction, or UI contract is published
-yet.
+State commands provide exact seen/read/mark-unread/archive transitions without
+foreign owner calls, while archived remains terminal. Reconciliation reuses
+open-time policy and archives currently unavailable rows through the state owner.
+No external transport, bulk/mark-all, count, grouped-view, tenant-wide scheduler,
+payload-redaction, or UI contract is published yet.
 
 ## Invariants
 
@@ -83,12 +83,14 @@ yet.
 - inbox reads expose no dedicated route or structural target fields and never
   mutate seen/read/archive state or delivery attempts;
 - exact inbox state commands require notification, tenant, and recipient ownership;
-- `mark_seen` advances only unread rows, `mark_read` advances unread/seen rows, and
-  archive advances every non-archived row;
+- `mark_seen` advances only unread rows and `mark_read` advances unread/seen rows;
 - direct unread-to-read assigns one timestamp to both `seen_at` and `read_at`;
 - seen-to-read and archive preserve existing state timestamps;
-- archived is terminal and same/later-state commands preserve timestamps and
-  `updated_at`;
+- `mark_unread` changes only seen/read rows, clears `seen_at` and `read_at`, and
+  leaves already-unread rows unchanged;
+- archive advances every non-archived row and archived remains terminal against
+  mark-seen, mark-read, and mark-unread commands;
+- state commands rewrite `updated_at` only on an actual transition;
 - inbox state commands call no recipient policy, source provider, target, or
   delivery owner and create no delivery attempts;
 - recipient reconciliation scans only exact-recipient non-archived rows in bounded
@@ -291,7 +293,7 @@ yet.
 - state commands expose no semantic target, call no privacy/source/delivery owner,
   and create no delivery attempts;
 - mark-unread, bulk/mark-all, counts, grouped views, external transport, and UI
-  remain closed;
+  remained closed at this milestone;
 - contract
   `crates/rustok-forum/contracts/forum-notification-inbox-state-mutations.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-state-mutations.mjs`, and
@@ -317,14 +319,32 @@ yet.
   verifier `scripts/verify/verify-forum-notification-inbox-reconciliation.mjs`, and
   SQLite evidence `tests/inbox_reconcile_sqlite.rs`.
 
+### `FORUM-20W`
+
+- `NotificationInboxStateService::mark_unread` changes only exact-recipient seen or
+  read rows back to unread;
+- the command clears `seen_at` and `read_at` to satisfy the owner persistence state
+  constraint and rewrites `updated_at` only when a transition occurs;
+- already-unread rows remain unchanged and archived rows never reopen;
+- missing, cross-tenant, and cross-recipient rows return the same unavailable
+  decision without a notification-existence oracle;
+- the command exposes no semantic target, calls no privacy/source/delivery owner,
+  and creates no delivery attempts;
+- bulk/mark-all mutations, canonical unread counts, grouped views, external
+  transport, and UI remain closed;
+- contract
+  `crates/rustok-forum/contracts/forum-notification-inbox-mark-unread.json`,
+  verifier `scripts/verify/verify-forum-notification-inbox-mark-unread.mjs`, and
+  SQLite evidence `tests/inbox_state_sqlite.rs`.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
   composition;
 - retention, tenant-wide scheduled reconciliation, payload redaction, repair,
   quarantine replay/purge, and administrative command state;
-- keep mark-unread, bulk/mark-all, preferences, digests, delivery transports, and
-  external inbox adapters closed until matching owner commands exist.
+- keep bulk/mark-all, preferences, digests, delivery transports, and external inbox
+  adapters closed until matching owner commands exist.
 
 ## Remaining `NOTIFY-03`
 
@@ -393,11 +413,12 @@ node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
 node scripts/verify/verify-forum-notification-inbox-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
 node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
+node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
-`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V` source slices.
+`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V/20W` source slices.
 `Cargo.lock` was not regenerated because this work does not change the package
 dependency graph.
 
