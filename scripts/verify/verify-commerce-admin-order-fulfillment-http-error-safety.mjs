@@ -153,20 +153,20 @@ for (const [value, label] of [
   ['pub async fn cancel_order_change(', 'admin order-change cancel'],
   ['struct AdminOrderChangeErrorContext {', 'order-change owner context'],
   ['fn map_admin_order_change_error(', 'context-aware order-change owner mapper'],
+  ['struct AdminOrderChangeOrchestrationErrorContext {', 'order-change orchestration context'],
+  [
+    'fn map_admin_order_change_orchestration_error(',
+    'context-aware order-change orchestration mapper',
+  ],
   ['let order_id = params.order_id;', 'order-change list identity capture'],
   ['page: pagination.page', 'order-change page forwarding'],
   ['per_page: pagination.limit()', 'order-change page-size forwarding'],
-  [
-    '.map_err(super::map_post_order_orchestration_error)?;',
-    'unchanged order-change orchestration mapping',
-  ],
 ]) requireText(changes, value, label);
 
-forbidText(
-  changes,
+for (const value of [
   '.map_err(super::map_order_error)?;',
-  'stale admin order-change shared owner mapper callsite',
-);
+  '.map_err(super::map_post_order_orchestration_error)?;',
+]) forbidText(changes, value, 'stale admin order-change shared mapper callsite');
 
 for (const [value, label] of [
   ['pub async fn list_order_returns(', 'admin return list'],
@@ -246,10 +246,12 @@ if (orderChangeOwnerMapperUses.length !== 4) {
   );
 }
 const orderChangeOrchestrationUses =
-  changes.match(/\.map_err\(super::map_post_order_orchestration_error\)\?;/g) ?? [];
+  changes.match(
+    /map_admin_order_change_orchestration_error\(\s+AdminOrderChangeOrchestrationErrorContext::new\(/g,
+  ) ?? [];
 if (orderChangeOrchestrationUses.length !== 1) {
   failures.push(
-    `expected one unchanged order-change orchestration mapper callsite, found ${orderChangeOrchestrationUses.length}`,
+    `expected one context-aware order-change orchestration mapper callsite, found ${orderChangeOrchestrationUses.length}`,
   );
 }
 
