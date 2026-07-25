@@ -306,7 +306,7 @@ for (const marker of [
 for (const marker of [
   "### `FORUM-20W`",
   "NotificationInboxStateService::mark_unread",
-  "seen or read rows back to unread",
+  "read rows back to unread",
   "bulk/mark-all mutations",
   "tests/inbox_state_sqlite.rs",
 ]) {
