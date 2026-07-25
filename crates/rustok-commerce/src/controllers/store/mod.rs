@@ -21,7 +21,7 @@ use rustok_cart::{
 };
 use rustok_channel::error::ChannelError;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{FulfillmentService, error::FulfillmentError};
 use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
@@ -53,7 +53,7 @@ use crate::{
         normalize_public_channel_slug, public_channel_slug_from_request,
     },
     storefront_shipping::{
-        effective_shipping_profile_slug, enrich_cart_delivery_groups,
+        effective_shipping_profile_slug, enrich_cart_delivery_groups_typed,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
 };
@@ -169,6 +169,54 @@ fn map_storefront_channel_error(
     HttpError::new(status, code, message)
 }
 
+fn map_storefront_cart_shipping_error(
+    error: FulfillmentError,
+    operation: &'static str,
+    tenant_id: Uuid,
+    cart_id: Uuid,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        FulfillmentError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_shipping_invalid",
+            "Shipping request is invalid",
+            "validation",
+        ),
+        FulfillmentError::ShippingOptionNotFound(_)
+        | FulfillmentError::FulfillmentNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        FulfillmentError::InvalidTransition { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_store_shipping_state_conflict",
+            "Shipping operation conflicts with the current state",
+            "state_conflict",
+        ),
+        FulfillmentError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_shipping_unavailable",
+            "Shipping service is temporarily unavailable",
+            "database",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_fulfillment",
+        operation,
+        tenant_id = %tenant_id,
+        cart_id = %cart_id,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_cart_shipping_http",
+        "storefront cart shipping operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
 pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
     axum::Router::new()
         .route("/products", axum::routing::get(products::list_products))
@@ -259,8 +307,6 @@ pub(crate) async fn resolve_context_from_cart_for_db(
     )
     .await
 }
-
-
 
 pub(crate) async fn current_customer_id_for_db(
     db: &DatabaseConnection,
@@ -667,7 +713,8 @@ pub(crate) async fn enrich_storefront_cart_for_db(
     cart: CartResponse,
 ) -> HttpResult<CartResponse> {
     let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, request_context);
-    let mut cart = enrich_cart_delivery_groups(
+    let cart_id = cart.id;
+    let mut cart = enrich_cart_delivery_groups_typed(
         db,
         tenant_id,
         cart,
@@ -676,7 +723,14 @@ pub(crate) async fn enrich_storefront_cart_for_db(
         Some(tenant_default_locale),
     )
     .await
-    .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
+    .map_err(|error| {
+        map_storefront_cart_shipping_error(
+            error,
+            "enrich_cart_delivery_groups",
+            tenant_id,
+            cart_id,
+        )
+    })?;
 
     if cart.delivery_groups.len() == 1 {
         let is_compatible = |opt_id: Uuid| {
@@ -784,7 +838,14 @@ pub(crate) async fn validate_selected_shipping_option_for_db(
                 validation.tenant_default_locale,
             )
             .await
-            .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
+            .map_err(|error| {
+                map_storefront_cart_shipping_error(
+                    error,
+                    "get_selected_shipping_option",
+                    tenant_id,
+                    cart.id,
+                )
+            })?;
         if !option
             .currency_code
             .eq_ignore_ascii_case(validation.currency_code)
