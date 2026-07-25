@@ -35,7 +35,8 @@
     "empty_input": "deletes the local layer and restores inheritance",
     "child_broadening": "impossible because every inherited layer remains independently required",
     "storage": "normalized typed tables without JSON",
-    "relation_updates": "immutable; owner replacement uses delete plus insert",
+    "policy_details_scope": "forum categories manage",
+    "policy_and_relation_updates": "immutable; owner replacement uses delete plus insert",
     "tenant_integrity": "tenant-composite category and policy foreign keys"
   },
   "composition": {
