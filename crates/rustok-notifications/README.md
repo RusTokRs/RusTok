@@ -6,8 +6,8 @@
 grouping, digests, retention, and delivery-attempt lifecycle. The implemented
 pipeline now covers durable outbox intake, source materialization, bounded
 audience expansion, recipient policy, one idempotent in-app notification, exact
-open-time authorization, bounded authorized inbox listing, and exact
-seen/read/archive state APIs. Channel delivery remains a later workflow.
+open-time authorization, bounded authorized inbox listing, and exact seen/read/archive
+state APIs. Channel delivery remains a later workflow.
 
 ## Responsibilities
 
