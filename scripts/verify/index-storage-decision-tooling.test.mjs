@@ -29,7 +29,7 @@ const comparableDatabaseFields = [
   'extra_float_digits',
 ];
 const databaseSettingsSource =
-  'read-report.json database metadata observed from the active PostgreSQL benchmark session';
+  'read-report.json database metadata observed from the active PostgreSQL benchmark session after exact equality was verified against mutation-report.json and maintenance-report.json active-session metadata';
 const decisionFlags = {
   required_scales_present: true,
   same_packet_contract_version: true,
@@ -251,12 +251,13 @@ test('rejects an unedited prepared decision', () => {
   });
 });
 
-test('finalizer rejects database-settings provenance drift with a matching comparison digest', () => {
+test('finalizer rejects legacy read-only database-settings provenance with a matching comparison digest', () => {
   withFixture((root) => {
     const fixture = prepare(root);
     assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
     const comparisonValue = JSON.parse(readFileSync(fixture.comparisonPath, 'utf8'));
-    comparisonValue.methodology.database_settings_source = 'declared benchmark constants';
+    comparisonValue.methodology.database_settings_source =
+      'read-report.json database metadata observed from the active PostgreSQL benchmark session';
     const comparisonBytes = writeJson(fixture.comparisonPath, comparisonValue);
     const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
     decision.comparison_sha256 = sha256(comparisonBytes);
@@ -268,7 +269,10 @@ test('finalizer rejects database-settings provenance drift with a matching compa
       '--output', outputPath,
     ]);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /database_settings_source must identify metadata observed from the active PostgreSQL benchmark session/u);
+    assert.match(
+      result.stderr,
+      /database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata/u,
+    );
     assert.equal(existsSync(outputPath), false);
   });
 });
