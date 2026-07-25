@@ -8,10 +8,10 @@ use rustok_notifications_api::{
 
 /// Owner-facing access to the registered semantic notification sources.
 ///
-/// The owner schema is available through `NotificationsModule::migrations`, but
-/// inbox, fan-out, preference, digest, and delivery workflows remain private
-/// until their transactional services are introduced. This facade intentionally
-/// exposes no producer database or outbox transport internals.
+/// The owner schema is available through `NotificationsModule::migrations`, and exact inbox target
+/// opens are authorized by `NotificationInboxOpenService`. Bounded inbox listing, read-state,
+/// preference, digest, and delivery workflows remain private until their transactional services are
+/// introduced. This facade intentionally exposes no producer database or outbox transport internals.
 #[derive(Clone, Default)]
 pub struct NotificationsService {
     registry: Arc<NotificationSourceRegistry>,
