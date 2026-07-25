@@ -11,7 +11,6 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const shipping = read('crates/rustok-commerce/src/controllers/admin/shipping.rs');
-const admin = read('crates/rustok-commerce/src/controllers/admin/mod.rs');
 const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
 const fulfillmentErrors = read('crates/rustok-fulfillment/src/error.rs');
 const shippingService = read('crates/rustok-commerce/src/services/shipping_profile.rs');
@@ -23,41 +22,70 @@ const requireText = (content, value, label) => {
 const forbidText = (content, value, label) => {
   if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
+const between = (content, start, end, label) => {
+  const startIndex = content.indexOf(start);
+  const endIndex = content.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return content.slice(startIndex, endIndex);
+};
+
+const profileMapper = between(
+  shipping,
+  'fn map_shipping_profile_error(',
+  'fn map_admin_shipping_option_error(',
+  'shipping-profile mapper',
+);
+const optionMapper = between(
+  shipping,
+  'fn map_admin_shipping_option_error(',
+  'async fn validate_shipping_option_profile_inputs(',
+  'shipping-option mapper',
+);
 
 for (const [value, label] of [
   ['CommerceError, ShippingProfileService', 'typed commerce error import'],
+  ['use rustok_fulfillment::error::FulfillmentError;', 'typed fulfillment error import'],
   ['fn map_shipping_profile_error(error: CommerceError)', 'local shipping profile mapper'],
+  ['fn map_admin_shipping_option_error(', 'local shipping option mapper'],
   ['async fn validate_shipping_option_profile_inputs(', 'local profile validation helper'],
-  ['error = ?error', 'raw internal error logging'],
-  ['owner = "rustok_commerce.shipping_profile"', 'owner logging'],
-  ['error_kind,', 'error-kind logging'],
-  ['public_code = code', 'public-code logging'],
-  ['status = %status', 'status logging'],
-  ['boundary = "commerce_admin_shipping_http"', 'shipping HTTP boundary logging'],
-  ['HttpError::new(status, code, message)', 'static public envelope construction'],
-]) {
-  requireText(shipping, value, label);
-}
+  [
+    'const ADMIN_SHIPPING_OPTION_OWNER: &str = "rustok_fulfillment.admin_shipping_options";',
+    'shipping-option owner constant',
+  ],
+  [
+    'const ADMIN_SHIPPING_BOUNDARY: &str = "commerce_admin_shipping_http";',
+    'shipping HTTP boundary constant',
+  ],
+  ['struct AdminShippingOptionErrorContext {', 'shipping-option context'],
+  ['tenant_id: Uuid,', 'tenant context field'],
+  ['shipping_option_id: Option<Uuid>,', 'truthful option identity field'],
+  ["operation: &'static str,", 'operation field'],
+]) requireText(shipping, value, label);
 
 for (const [value, label] of [
   ['CommerceError::ShippingProfileNotFound(_)', 'profile not-found mapping'],
   ['CommerceError::DuplicateShippingProfileSlug(_)', 'duplicate profile slug mapping'],
   ['CommerceError::Validation(_)', 'profile validation mapping'],
   ['CommerceError::Database(_)', 'profile database mapping'],
-  ['StatusCode::NOT_FOUND', 'not-found status'],
-  ['StatusCode::CONFLICT', 'conflict status'],
-  ['StatusCode::BAD_REQUEST', 'bad-request status'],
-  ['StatusCode::SERVICE_UNAVAILABLE', 'unavailable status'],
-  ['StatusCode::INTERNAL_SERVER_ERROR', 'fail-closed status'],
+  ['StatusCode::NOT_FOUND', 'profile not-found status'],
+  ['StatusCode::CONFLICT', 'profile conflict status'],
+  ['StatusCode::BAD_REQUEST', 'profile bad-request status'],
+  ['StatusCode::SERVICE_UNAVAILABLE', 'profile unavailable status'],
+  ['StatusCode::INTERNAL_SERVER_ERROR', 'profile fail-closed status'],
   ['"commerce_admin_not_found"', 'shared not-found code'],
   ['"commerce_admin_shipping_profile_conflict"', 'profile conflict code'],
   ['"commerce_admin_shipping_profile_invalid"', 'profile invalid code'],
   ['"commerce_admin_shipping_profile_storage_unavailable"', 'profile storage code'],
   ['"commerce_admin_shipping_profile_failed"', 'profile fail-closed code'],
   ['"unexpected_commerce_error"', 'unexpected owner variant kind'],
-]) {
-  requireText(shipping, value, label);
-}
+  ['error = ?error', 'profile typed internal cause'],
+  ['owner = "rustok_commerce.shipping_profile"', 'profile owner logging'],
+  ['boundary = ADMIN_SHIPPING_BOUNDARY', 'profile boundary logging'],
+  ['HttpError::new(status, code, message)', 'profile static envelope construction'],
+]) requireText(profileMapper, value, label);
 
 for (const value of [
   'CommerceError::ProductNotFound(_)',
@@ -71,9 +99,41 @@ for (const value of [
   'CommerceError::CannotDeletePublished',
   'CommerceError::Rich(_)',
   'CommerceError::Core(_)',
-]) {
-  requireText(shipping, value, 'fail-closed unrelated commerce variant');
-}
+]) requireText(profileMapper, value, 'fail-closed unrelated commerce variant');
+
+for (const [value, label] of [
+  ['error: FulfillmentError,', 'owned fulfillment cause'],
+  ['FulfillmentError::Validation(_)', 'option validation mapping'],
+  ['FulfillmentError::ShippingOptionNotFound(_)', 'option not-found mapping'],
+  ['FulfillmentError::FulfillmentNotFound(_)', 'unexpected fulfillment not-found mapping'],
+  ['FulfillmentError::InvalidTransition { .. }', 'option transition mapping'],
+  ['FulfillmentError::Database(_)', 'option database mapping'],
+  ['StatusCode::BAD_REQUEST', 'option bad-request status'],
+  ['StatusCode::NOT_FOUND', 'option not-found status'],
+  ['StatusCode::CONFLICT', 'option conflict status'],
+  ['StatusCode::SERVICE_UNAVAILABLE', 'option unavailable status'],
+  ['"commerce_admin_fulfillment_invalid"', 'option validation code'],
+  ['"commerce_admin_not_found"', 'option not-found code'],
+  ['"commerce_admin_fulfillment_state_conflict"', 'option conflict code'],
+  ['"commerce_admin_fulfillment_storage_unavailable"', 'option storage code'],
+  ['"Fulfillment request is invalid"', 'static option validation message'],
+  ['"Commerce resource not found"', 'static option not-found message'],
+  [
+    '"Fulfillment operation conflicts with the current state"',
+    'static option conflict message',
+  ],
+  ['"Fulfillment storage is temporarily unavailable"', 'static option storage message'],
+  ['error = ?error', 'option typed internal cause'],
+  ['owner = ADMIN_SHIPPING_OPTION_OWNER', 'option owner logging'],
+  ['tenant_id = %context.tenant_id', 'option tenant logging'],
+  ['shipping_option_id = ?context.shipping_option_id', 'option identity logging'],
+  ['operation = %context.operation', 'option operation logging'],
+  ['error_kind,', 'option error-kind logging'],
+  ['public_code = code', 'option public-code logging'],
+  ['status = %status', 'option status logging'],
+  ['boundary = ADMIN_SHIPPING_BOUNDARY', 'option boundary logging'],
+  ['HttpError::new(status, code, message)', 'option static envelope construction'],
+]) requireText(optionMapper, value, label);
 
 for (const [value, label] of [
   ['Database(#[from] sea_orm::DbErr)', 'owner database variant'],
@@ -91,9 +151,7 @@ for (const [value, label] of [
   ['CannotDeletePublished', 'owner published-delete variant'],
   ['Rich(#[source] Box<RichError>)', 'owner rich variant'],
   ['Core(#[from] CoreError)', 'owner core variant'],
-]) {
-  requireText(commerceErrors, value, label);
-}
+]) requireText(commerceErrors, value, label);
 
 for (const [value, label] of [
   ['Validation(String)', 'fulfillment validation variant'],
@@ -101,18 +159,17 @@ for (const [value, label] of [
   ['FulfillmentNotFound(Uuid)', 'fulfillment resource variant'],
   ['InvalidTransition { from: String, to: String }', 'fulfillment transition variant'],
   ['Database(#[from] DbErr)', 'fulfillment database variant'],
-]) {
-  requireText(fulfillmentErrors, value, label);
-}
+]) requireText(fulfillmentErrors, value, label);
 
 for (const [value, label] of [
   ['CommerceError::Validation(error.to_string())', 'shipping service validation construction'],
-  ['CommerceError::ShippingProfileNotFound(shipping_profile_id)', 'shipping service not-found construction'],
+  [
+    'CommerceError::ShippingProfileNotFound(shipping_profile_id)',
+    'shipping service not-found construction',
+  ],
   ['CommerceError::DuplicateShippingProfileSlug(', 'shipping service conflict construction'],
   ['active_profile.insert(&self.db).await?;', 'shipping service database propagation'],
-]) {
-  requireText(shippingService, value, label);
-}
+]) requireText(shippingService, value, label);
 
 for (const [value, label] of [
   ['pub async fn list_shipping_profiles(', 'profile list handler'],
@@ -145,9 +202,7 @@ for (const [value, label] of [
   ['option.currency_code.eq_ignore_ascii_case(currency_code)', 'currency filter'],
   ['option.provider_id.eq_ignore_ascii_case(provider_id)', 'provider filter'],
   ['option.name.to_ascii_lowercase().contains(&search)', 'search filter'],
-]) {
-  requireText(shipping, value, label);
-}
+]) requireText(shipping, value, label);
 
 for (const value of [
   'err.to_string()',
@@ -155,31 +210,27 @@ for (const value of [
   'HttpError::bad_request("commerce_operation_failed"',
   'super::map_shipping_profile_error',
   'super::validate_shipping_option_profile_inputs',
-]) {
-  forbidText(shipping, value, 'unsafe admin shipping public conversion');
-}
+  '.map_err(super::map_fulfillment_error)?;',
+  'format!("Fulfillment request is invalid:',
+]) forbidText(shipping, value, 'unsafe admin shipping public conversion');
 
 const profileMapperUses = shipping.match(/map_shipping_profile_error\(/g) ?? [];
 if (profileMapperUses.length !== 8) {
   failures.push(`expected profile mapper definition plus seven uses, found ${profileMapperUses.length}`);
 }
 
-const fulfillmentMapperUses =
-  shipping.match(/\.map_err\(super::map_fulfillment_error\)\?;/g) ?? [];
-if (fulfillmentMapperUses.length !== 6) {
-  failures.push(`expected six shipping-option fulfillment mapper callsites, found ${fulfillmentMapperUses.length}`);
+const optionMapperUses =
+  shipping.match(
+    /map_admin_shipping_option_error\(\s+AdminShippingOptionErrorContext::new\(/g,
+  ) ?? [];
+if (optionMapperUses.length !== 6) {
+  failures.push(`expected six context-aware shipping-option mapper callsites, found ${optionMapperUses.length}`);
 }
 
 const localValidationUses = shipping.match(/validate_shipping_option_profile_inputs\(/g) ?? [];
 if (localValidationUses.length !== 3) {
   failures.push(`expected local validation helper definition plus two uses, found ${localValidationUses.length}`);
 }
-
-requireText(
-  admin,
-  'pub(crate) fn map_fulfillment_error(error: FulfillmentError)',
-  'shared fulfillment mapper used by shipping options',
-);
 
 if (failures.length > 0) {
   console.error('Commerce admin shipping HTTP error-safety verification failed:');
@@ -188,5 +239,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin shipping profile and option errors use stable typed public envelopes',
+  '✔ Commerce admin shipping profile and option errors use stable context-aware public envelopes',
 );
