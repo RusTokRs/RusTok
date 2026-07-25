@@ -4,10 +4,10 @@ use axum::{
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{FulfillmentError, FulfillmentService};
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
-use rustok_web::HttpResult;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -18,6 +18,9 @@ use super::{
 use crate::dto::{
     CancelOrderInput, DeliverOrderInput, MarkPaidOrderInput, OrderResponse, ShipOrderInput,
 };
+
+const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_order_detail";
+const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";
 
 /// Show admin ecommerce order
 #[utoipa::path(
@@ -105,13 +108,60 @@ pub async fn show_order(
     let fulfillment = FulfillmentService::new(runtime.db_clone())
         .find_by_order(tenant.id, id)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(|error| map_order_detail_fulfillment_error(tenant.id, id, error))?;
 
     Ok(Json(AdminOrderDetailResponse {
         order,
         payment_collection,
         fulfillment,
     }))
+}
+
+fn map_order_detail_fulfillment_error(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    error: FulfillmentError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        FulfillmentError::Validation(_) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        FulfillmentError::ShippingOptionNotFound(_)
+        | FulfillmentError::FulfillmentNotFound(_) => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        FulfillmentError::InvalidTransition { .. } => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+            "Fulfillment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        FulfillmentError::Database(_) => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+            "database",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER,
+        tenant_id = %tenant_id,
+        order_id = %order_id,
+        operation = ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_order_detail_http",
+        "commerce admin order detail fulfillment lookup failed"
+    );
+    HttpError::new(status, code, message)
 }
 
 /// Mark admin ecommerce order as paid
