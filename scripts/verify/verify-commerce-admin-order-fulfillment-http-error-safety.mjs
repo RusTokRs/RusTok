@@ -251,16 +251,11 @@ if (fulfillmentOrchestrationUses.length !== 4) {
   );
 }
 
-const remainingAdminDynamicStrings = admin.match(/other\.to_string\(\)/g) ?? [];
-if (remainingAdminDynamicStrings.length !== 1) {
-  failures.push(
-    `expected only the separately scoped shipping-profile mapper to retain other.to_string(), found ${remainingAdminDynamicStrings.length}`,
-  );
-}
+forbidText(admin, 'other.to_string()', 'unsafe shared admin dynamic string conversion');
 requireText(
   admin,
   'pub(crate) fn map_shipping_profile_error(error: crate::CommerceError)',
-  'separately scoped shipping-profile mapper',
+  'shared static shipping-profile mapper',
 );
 
 if (failures.length > 0) {
