@@ -98,6 +98,7 @@ for (const table of contract.tables ?? []) {
   requireText(migration, table, `category audience migration is missing ${table}`);
 }
 for (const marker of [
+  "CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_categories_tenant_id",
   "FOREIGN KEY (tenant_id, category_id)",
   "REFERENCES forum_categories (tenant_id, id)",
   "REFERENCES forum_category_audience_policies (tenant_id, category_id)",
