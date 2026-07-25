@@ -3,6 +3,7 @@ pub mod entities;
 pub mod error;
 mod fanout;
 mod fanout_worker;
+mod inbox;
 pub mod migrations;
 pub mod model;
 mod outbox_intake;
@@ -33,6 +34,9 @@ pub use fanout_worker::{
     NotificationFanoutSourceWorkItem, NotificationFanoutWorker,
     NotificationFanoutWorkerBatchResult, NotificationFanoutWorkerFailure,
     NotificationFanoutWorkerStage,
+};
+pub use inbox::{
+    NotificationInboxOpenDecision, NotificationInboxOpenRequest, NotificationInboxOpenService,
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
