@@ -46,7 +46,7 @@ use rustok_fulfillment::FulfillmentService;
 use rustok_product::CatalogService;
 
 mod support {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
 }
 
 fn sample_cart(customer_id: Option<Uuid>) -> CartResponse {

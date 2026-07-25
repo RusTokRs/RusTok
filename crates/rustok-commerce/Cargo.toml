@@ -58,10 +58,9 @@ rustok-taxonomy.workspace = true
 sea-orm-migration.workspace = true
 
 # `autotests = false` in [package] combined with explicit test targets below prevents
-# support.rs from being auto-discovered as a standalone integration-test root. Without this
-# Cargo (and rust-analyzer) treat every .rs file in tests/ as a binary root; support.rs is
-# only ever used via `mod support;` inside the real roots below, so including it as a root
-# causes spurious "unresolved import" diagnostics in IDEs.
+# support/mod.rs from being auto-discovered as a standalone integration-test root. Without this
+# Cargo (and rust-analyzer) treat every .rs file in tests/ as a binary root; support/mod.rs is
+# only ever used via `mod support;` inside the real roots below.
 [[test]]
 name = "catalog_service_test"
 path = "tests/catalog_service_test.rs"

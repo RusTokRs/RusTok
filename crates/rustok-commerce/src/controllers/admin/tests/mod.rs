@@ -30,7 +30,7 @@ use rustok_order::OrderService;
 use rustok_payment::{PaymentRefundCreationService, PaymentService as DomainPaymentService};
 
 mod support {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
 }
 
 /// Compatibility wrapper for older controller fixtures. It deliberately does not

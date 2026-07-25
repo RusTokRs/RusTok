@@ -1337,7 +1337,7 @@ mod tests {
     mod support {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../rustok-commerce/tests/support.rs"
+            "/../../rustok-commerce/tests/support/mod.rs"
         ));
     }
 
