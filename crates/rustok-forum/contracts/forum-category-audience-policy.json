@@ -1,9 +1,11 @@
 {
   "schema_version": 1,
   "task": "FORUM-20G",
+  "delivered_through": "FORUM-20H",
   "scope": "Normalized persistence and conjunctive inheritance for category audience layers",
   "owner_file": "crates/rustok-forum/src/services/category_audience.rs",
   "audience_contract_file": "crates/rustok-forum/src/audience.rs",
+  "topic_contract": "crates/rustok-forum/contracts/forum-topic-audience-policy.json",
   "migration_file": "crates/rustok-forum/src/migrations/m20260725_000001_add_forum_category_audience_policy.rs",
   "migration_registry_file": "crates/rustok-forum/src/migrations/mod.rs",
   "entities_file": "crates/rustok-forum/src/entities/mod.rs",
@@ -42,14 +44,13 @@
   "composition": {
     "category_storage": true,
     "category_inheritance": true,
-    "topic_narrowing_storage": false,
+    "topic_narrowing_storage": true,
     "category_topic_reply_reads": false,
     "write_audiences": false,
     "provider_adapters": false,
     "notifications_search_seo_deep_links": false
   },
   "not_delivered": [
-    "topic narrowing persistence and commands",
     "category topic and reply read composition",
     "create reply and moderate audience write policy",
     "channel and group provider adapters",
@@ -61,7 +62,9 @@
   "verification": {
     "commands": [
       "cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test topic_audience_policy_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-category-audience-policy.mjs",
+      "node scripts/verify/verify-forum-topic-audience-policy.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"
