@@ -37,8 +37,10 @@ const TOPIC_CREATED_TYPE: &str = "forum.topic.created";
 const USER_MENTION_ADDED_TYPE: &str = "forum.mention.user_added";
 const FORUM_TOPIC_TARGET: &str = "forum.topic";
 const FORUM_REPLY_TARGET: &str = "forum.reply";
+const MENTION_DESCRIBE_ACTOR: &str = "forum-notification-mention-describe";
+const MENTION_AUDIENCE_ACTOR: &str = "forum-notification-mention-audience";
 const TARGET_OPEN_ACTOR: &str = "forum-notification-target-open";
-const TARGET_OPEN_DEADLINE: Duration = Duration::from_secs(2);
+const RECIPIENT_CONTEXT_DEADLINE: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Default)]
 pub(crate) struct ForumNotificationSourceProviderFactory;
@@ -268,6 +270,68 @@ impl ForumNotificationSourceProvider {
         .await
     }
 
+    async fn load_mention_target_for_recipient(
+        &self,
+        event: &forum_domain_event::Model,
+        payload: &ForumUserMentionPayload,
+        actor: &'static str,
+    ) -> NotificationProviderResult<ForumTargetAvailability> {
+        if self.recipient_context_port.is_none() {
+            return self
+                .load_public_target(event.tenant_id, &payload.source_kind, payload.source_id)
+                .await;
+        }
+
+        let Some(viewer) = self
+            .resolve_recipient_viewer(
+                recipient_operation_context(
+                    event.tenant_id,
+                    payload.mentioned_user_id,
+                    payload.source_id,
+                    actor,
+                ),
+                event.tenant_id,
+                payload.mentioned_user_id,
+            )
+            .await?
+        else {
+            return Ok(ForumTargetAvailability::Unavailable);
+        };
+        self.load_target_for_viewer(
+            event.tenant_id,
+            &payload.source_kind,
+            payload.source_id,
+            &viewer,
+        )
+        .await
+    }
+
+    async fn resolve_recipient_viewer(
+        &self,
+        caller_context: PortContext,
+        tenant_id: Uuid,
+        recipient_id: Uuid,
+    ) -> NotificationProviderResult<Option<ForumTopicAudienceViewer>> {
+        let Some(port) = self.recipient_context_port.clone() else {
+            return Ok(None);
+        };
+        let resolver = ForumNotificationRecipientContextResolver::new(Some(port));
+        let recipient = match resolver
+            .resolve(caller_context, tenant_id, recipient_id)
+            .await
+        {
+            Ok(recipient) => recipient,
+            Err(ForumError::CapabilityFailure {
+                retryable: false, ..
+            }) => return Ok(None),
+            Err(error) => return Err(forum_owner_error(error)),
+        };
+        recipient
+            .into_topic_viewer()
+            .map(Some)
+            .map_err(forum_owner_error)
+    }
+
     async fn row_is_active(
         &self,
         table: &'static str,
@@ -469,7 +533,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     return Err(NotificationProviderError::InvalidEvent);
                 }
                 match self
-                    .load_public_target(event.tenant_id, &payload.source_kind, payload.source_id)
+                    .load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)
                     .await?
                 {
                     ForumTargetAvailability::Visible(target) => {
@@ -568,7 +632,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     return Err(NotificationProviderError::InvalidEvent);
                 }
                 match self
-                    .load_public_target(event.tenant_id, &payload.source_kind, payload.source_id)
+                    .load_mention_target_for_recipient(&event, &payload, MENTION_AUDIENCE_ACTOR)
                     .await?
                 {
                     ForumTargetAvailability::Visible(_) => {}
@@ -609,23 +673,17 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             return Ok(NotificationOpenAuthorization::Unavailable);
         };
 
-        let availability = if let Some(port) = self.recipient_context_port.clone() {
-            let resolver = ForumNotificationRecipientContextResolver::new(Some(port));
-            let recipient = match resolver
-                .resolve(
+        let availability = if self.recipient_context_port.is_some() {
+            let Some(viewer) = self
+                .resolve_recipient_viewer(
                     target_open_context(&request),
                     request.tenant_id,
                     request.recipient_id,
                 )
-                .await
-            {
-                Ok(recipient) => recipient,
-                Err(ForumError::CapabilityFailure {
-                    retryable: false, ..
-                }) => return Ok(NotificationOpenAuthorization::Unavailable),
-                Err(error) => return Err(forum_owner_error(error)),
+                .await?
+            else {
+                return Ok(NotificationOpenAuthorization::Unavailable);
             };
-            let viewer = recipient.into_topic_viewer().map_err(forum_owner_error)?;
             self.load_target_for_viewer(
                 request.tenant_id,
                 source_kind,
@@ -651,17 +709,28 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
     }
 }
 
-fn target_open_context(request: &AuthorizeNotificationTargetRequest) -> PortContext {
+fn recipient_operation_context(
+    tenant_id: Uuid,
+    recipient_id: Uuid,
+    target_id: Uuid,
+    actor: &'static str,
+) -> PortContext {
     PortContext::new(
-        request.tenant_id.to_string(),
-        PortActor::service(TARGET_OPEN_ACTOR),
+        tenant_id.to_string(),
+        PortActor::service(actor),
         "und",
-        format!(
-            "forum-target-open:{}:{}",
-            request.recipient_id, request.target.id
-        ),
+        format!("{actor}:{recipient_id}:{target_id}"),
     )
-    .with_deadline(TARGET_OPEN_DEADLINE)
+    .with_deadline(RECIPIENT_CONTEXT_DEADLINE)
+}
+
+fn target_open_context(request: &AuthorizeNotificationTargetRequest) -> PortContext {
+    recipient_operation_context(
+        request.tenant_id,
+        request.recipient_id,
+        request.target.id,
+        TARGET_OPEN_ACTOR,
+    )
 }
 
 fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError {
