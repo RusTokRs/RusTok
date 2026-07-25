@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
-  "task": "FORUM-20G",
-  "delivered_through": "FORUM-20H",
-  "scope": "Normalized persistence and conjunctive inheritance for category audience layers",
-  "owner_file": "crates/rustok-forum/src/services/category_audience.rs",
+  "task": "FORUM-20H",
+  "scope": "Normalized topic narrowing persistence composed after inherited category audience layers",
+  "owner_file": "crates/rustok-forum/src/services/topic_audience.rs",
+  "category_owner_file": "crates/rustok-forum/src/services/category_audience.rs",
   "audience_contract_file": "crates/rustok-forum/src/audience.rs",
-  "topic_contract": "crates/rustok-forum/contracts/forum-topic-audience-policy.json",
-  "migration_file": "crates/rustok-forum/src/migrations/m20260725_000001_add_forum_category_audience_policy.rs",
+  "category_contract": "crates/rustok-forum/contracts/forum-category-audience-policy.json",
+  "migration_file": "crates/rustok-forum/src/migrations/m20260725_000002_add_forum_topic_audience_policy.rs",
   "migration_registry_file": "crates/rustok-forum/src/migrations/mod.rs",
   "entities_file": "crates/rustok-forum/src/entities/mod.rs",
   "services_file": "crates/rustok-forum/src/services/mod.rs",
   "crate_file": "crates/rustok-forum/src/lib.rs",
-  "test_file": "crates/rustok-forum/tests/category_audience_policy_sqlite.rs",
+  "test_file": "crates/rustok-forum/tests/topic_audience_policy_sqlite.rs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "tables": [
-    "forum_category_audience_policies",
-    "forum_category_audience_roles",
-    "forum_category_audience_channels",
-    "forum_category_audience_groups",
-    "forum_category_audience_users"
+    "forum_topic_audience_policies",
+    "forum_topic_audience_roles",
+    "forum_topic_audience_channels",
+    "forum_topic_audience_groups",
+    "forum_topic_audience_users"
   ],
   "bounds": {
     "category_tree_nodes": 512,
@@ -33,13 +33,16 @@
   "policy": {
     "local_positive_selectors": "union",
     "local_explicit_deny": "wins",
-    "inheritance": "root-to-target conjunction of non-empty local layers",
-    "empty_input": "deletes the local layer and restores inheritance",
-    "child_broadening": "impossible because every inherited layer remains independently required",
+    "effective_order": "root category layers then descendant category layers then optional topic layer",
+    "effective_composition": "conjunction of every non-empty layer",
+    "topic_broadening": "impossible because inherited category layers remain independently required",
+    "empty_input": "deletes only the topic layer and preserves inherited category layers",
     "storage": "normalized typed tables without JSON",
-    "policy_details_scope": "forum categories manage",
+    "policy_details_scope": "forum topics manage",
     "policy_and_relation_updates": "immutable; owner replacement uses delete plus insert",
-    "tenant_integrity": "tenant-composite category and policy foreign keys"
+    "tenant_integrity": "tenant-composite topic and policy foreign keys",
+    "lock_order": "tenant category tree then exact topic audience",
+    "category_snapshot_owner": "category audience owner is the single bounded inheritance resolver"
   },
   "composition": {
     "category_storage": true,
@@ -61,9 +64,7 @@
   ],
   "verification": {
     "commands": [
-      "cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test topic_audience_policy_sqlite -- --nocapture",
-      "node scripts/verify/verify-forum-category-audience-policy.mjs",
       "node scripts/verify/verify-forum-topic-audience-policy.mjs",
       "cargo xtask module validate forum"
     ],

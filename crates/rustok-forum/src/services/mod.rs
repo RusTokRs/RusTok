@@ -50,6 +50,7 @@ mod topic {
     include!("topic_inline.rs");
     include!("topic_visibility_list.rs");
 }
+mod topic_audience;
 mod topic_facade;
 mod topic_owner {
     include!("topic_owner.rs");
@@ -87,6 +88,9 @@ pub use storefront_read_state::{
     ForumTopicUnreadSummary,
 };
 pub use subscription::SubscriptionService;
+pub use topic_audience::{
+    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, SetForumTopicAudiencePolicyInput,
+};
 pub use topic_facade::TopicService;
 pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,

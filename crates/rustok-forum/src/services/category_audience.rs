@@ -244,7 +244,7 @@ async fn insert_users(
     Ok(())
 }
 
-async fn load_category_audience_policy<C>(
+pub(crate) async fn load_category_audience_policy<C>(
     db: &C,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -468,7 +468,7 @@ fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {
         && constraints.deny_user_ids.is_empty()
 }
 
-async fn lock_category_tree_in_tx(
+pub(crate) async fn lock_category_tree_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
 ) -> ForumResult<()> {
