@@ -1,5 +1,9 @@
 use super::*;
 
+#[path = "../line_item_resolution.rs"]
+mod line_item_resolution;
+use line_item_resolution::resolve_store_line_item_input;
+
 #[tokio::test]
 async fn store_products_transport_rejects_disabled_channel_module() {
     let db = setup_test_db().await;
@@ -374,14 +378,8 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
     .expect_err("hidden inventory should reject storefront line item resolution");
 
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
-    assert_eq!(error.code, "commerce_store_invalid");
-    assert_eq!(
-        error.message,
-        format!(
-            "Variant {} does not have enough available inventory for the current channel",
-            variant.id
-        )
-    );
+    assert_eq!(error.code, "commerce_store_inventory_insufficient");
+    assert_eq!(error.message, "Requested quantity is not available");
 }
 
 #[tokio::test]

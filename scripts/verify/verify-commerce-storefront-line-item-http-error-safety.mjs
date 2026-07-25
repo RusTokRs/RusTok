@@ -16,6 +16,7 @@ const boundary = read(
 );
 const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
 const inventoryOwner = read('crates/rustok-inventory/src/services/public_channel.rs');
+const productTests = read('crates/rustok-commerce/src/controllers/store/tests/products.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -88,6 +89,29 @@ for (const [value, label] of [
   ['CommerceError', 'typed inventory error import'],
   ['boundary = "commerce_storefront_line_item_http"', 'line-item boundary name'],
 ]) requireText(boundary, value, label);
+
+for (const [value, label] of [
+  ['use crate::controllers::store::{ResolvedStoreLineItemInput, StoreLineItemResolution};', 'context-independent store imports'],
+  ['crate::controllers::store::store_line_item_pricing_port_context(', 'absolute pricing context helper'],
+  ['crate::controllers::store::storefront_cart_pricing_snapshot(', 'absolute pricing snapshot helper'],
+  ['crate::controllers::store::pick_product_translation(', 'absolute product translation helper'],
+  ['crate::controllers::store::pick_variant_translation(', 'absolute variant translation helper'],
+  ['crate::controllers::store::merge_metadata(', 'absolute metadata merge helper'],
+  ['crate::controllers::store::seller_snapshot_metadata(', 'absolute seller snapshot helper'],
+]) requireText(boundary, value, label);
+forbidText(boundary, 'super::super::', 'context-dependent line-item helper path');
+
+for (const [value, label] of [
+  ['#[path = "../line_item_resolution.rs"]', 'typed test module path'],
+  ['mod line_item_resolution;', 'typed test module declaration'],
+  ['use line_item_resolution::resolve_store_line_item_input;', 'typed test resolver import'],
+  ['"commerce_store_inventory_insufficient"', 'typed inventory test code'],
+  ['"Requested quantity is not available"', 'typed inventory test message'],
+]) requireText(productTests, value, label);
+for (const value of [
+  '"commerce_store_invalid"',
+  'does not have enough available inventory for the current channel',
+]) forbidText(productTests, value, 'legacy inventory test contract');
 
 for (const [value, label] of [
   ['owner = "rustok_product.persistence"', 'catalog persistence owner'],
