@@ -33,13 +33,18 @@ const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_file ?? "");
 const crate = read(contract.crate_file ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
+const downstream = JSON.parse(read(contract.downstream_contract ?? "") || "{}");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("forum notification recipient context contract must use schema_version=1");
+if (contract.schema_version !== 2) {
+  failures.push("forum notification recipient context contract must use schema_version=2");
 }
-if (contract.task !== "FORUM-20L" || contract.upstream_task !== "FORUM-20K") {
-  failures.push("forum notification recipient context contract must belong to FORUM-20L after FORUM-20K");
+if (
+  contract.task !== "FORUM-20L" ||
+  contract.upstream_task !== "FORUM-20K" ||
+  contract.downstream_task !== "FORUM-20M"
+) {
+  failures.push("forum notification recipient context contract must connect FORUM-20K/L/M");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("recipient context source publication must not claim unexecuted evidence");
@@ -58,6 +63,8 @@ for (const delivered of [
   "typed_missing_capability",
   "retryable_failure_mapping",
   "inline_contract_tests",
+  "host_adapter_implementation",
+  "host_runtime_publication",
 ]) {
   if (contract.composition?.[delivered] !== true) {
     failures.push(`forum notification recipient context contract must record ${delivered} as delivered`);
@@ -65,8 +72,6 @@ for (const delivered of [
 }
 
 for (const residual of [
-  "host recipient context adapter implementation",
-  "host runtime publication of the recipient context capability",
   "notification source factory consumption of the recipient context capability",
   "recipient-specific audience filtering for non-public topics",
   "recipient-specific target-open authorization for non-public topics and replies",
@@ -80,16 +85,29 @@ for (const residual of [
     failures.push(`forum notification recipient context contract must keep ${residual} explicitly open`);
   }
 }
+for (const staleResidual of [
+  "host recipient context adapter implementation",
+  "host runtime publication of the recipient context capability",
+]) {
+  if (contract.not_delivered?.includes(staleResidual)) {
+    failures.push(`forum notification recipient context contract must remove delivered residual ${staleResidual}`);
+  }
+}
 
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20L") {
-  failures.push("forum recipient context contract must require the canonical ledger through FORUM-20L");
+const deliveredSlices = [
+  "FORUM-20H",
+  "FORUM-20I",
+  "FORUM-20J",
+  "FORUM-20K",
+  "FORUM-20L",
+  "FORUM-20M",
+];
+if (planSync.required_ledger_through !== "FORUM-20M") {
+  failures.push("forum recipient context contract must require the canonical ledger through FORUM-20M");
 }
-if (
-  JSON.stringify(planSync.required_delivered_sections) !==
-  JSON.stringify(["FORUM-20H", "FORUM-20I", "FORUM-20J", "FORUM-20K", "FORUM-20L"])
-) {
-  failures.push("forum recipient context contract must require FORUM-20H/I/J/K/L delivered sections");
+if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
+  failures.push("forum recipient context contract must require FORUM-20H through FORUM-20M delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
@@ -100,7 +118,7 @@ if (planSync.status === "pending") {
     "FORUM-20A-G provide",
     "pending canonical plan synchronization must remain grounded in the current FORUM-20A-G ledger row",
   );
-  for (const slice of ["FORUM-20H", "FORUM-20I", "FORUM-20J", "FORUM-20K", "FORUM-20L"]) {
+  for (const slice of deliveredSlices) {
     rejectText(
       plan,
       `### Delivered in \`${slice}\``,
@@ -110,10 +128,10 @@ if (planSync.status === "pending") {
 } else if (planSync.status === "synchronized") {
   requireText(
     plan,
-    "FORUM-20A-L provide",
-    "synchronized canonical plan must advance the FORUM-20 ledger through L",
+    "FORUM-20A-M provide",
+    "synchronized canonical plan must advance the FORUM-20 ledger through M",
   );
-  for (const slice of ["FORUM-20H", "FORUM-20I", "FORUM-20J", "FORUM-20K", "FORUM-20L"]) {
+  for (const slice of deliveredSlices) {
     requireText(
       plan,
       `### Delivered in \`${slice}\``,
@@ -180,6 +198,15 @@ if (
   upstream.composition?.exact_richer_public_owner !== true
 ) {
   failures.push("FORUM-20L recipient context capability must remain grounded in delivered FORUM-20K public visibility composition");
+}
+if (
+  downstream.schema_version !== 1 ||
+  downstream.task !== "FORUM-20M" ||
+  downstream.upstream_task !== "FORUM-20L" ||
+  downstream.composition?.server_adapter !== true ||
+  downstream.composition?.runtime_extension_publication !== true
+) {
+  failures.push("FORUM-20L recipient context capability must remain synchronized with delivered FORUM-20M host composition");
 }
 
 for (const marker of [

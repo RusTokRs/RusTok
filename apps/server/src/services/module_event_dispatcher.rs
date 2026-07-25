@@ -292,6 +292,14 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         extensions.insert(policy);
     }
 
+    #[cfg(feature = "mod-forum")]
+    {
+        let recipient_context = crate::services::forum_notification_recipient_context::ServerForumNotificationRecipientContextPort::shared(
+            db.clone(),
+        );
+        extensions.insert(recipient_context);
+    }
+
     #[cfg(feature = "mod-notifications")]
     {
         let host =
@@ -390,6 +398,8 @@ mod tests {
         assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
+        #[cfg(feature = "mod-forum")]
+        assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
         #[cfg(feature = "mod-notifications")]
         assert!(
             rustok_notifications::api::notification_source_registry_from_extensions(
