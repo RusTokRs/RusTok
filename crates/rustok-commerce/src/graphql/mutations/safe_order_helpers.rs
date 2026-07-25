@@ -7,6 +7,74 @@ pub(crate) use super::cart_safe_helpers::*;
 use crate::storefront_shipping::normalize_shipping_profile_slug;
 use crate::{CommerceError, ShippingProfileService};
 
+const STOREFRONT_ORDER_GRAPHQL_OWNER: &str = "rustok_order.storefront_access";
+const SHIPPING_PROFILE_GRAPHQL_OWNER: &str = "rustok_commerce.shipping_profiles";
+const STOREFRONT_GRAPHQL_HELPER_BOUNDARY: &str = "commerce_storefront_graphql_helper";
+
+type StorefrontGraphqlPolicy = (&'static str, &'static str, bool, &'static str);
+
+#[derive(Clone, Copy)]
+struct StorefrontOrderGraphqlErrorContext {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    customer_id: Uuid,
+    order_id: Option<Uuid>,
+    order_return_id: Option<Uuid>,
+    order_change_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl StorefrontOrderGraphqlErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        customer_id: Uuid,
+        order_id: Uuid,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            customer_id,
+            order_id: Some(order_id),
+            order_return_id: None,
+            order_change_id: None,
+            operation,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ShippingProfileGraphqlErrorContext<'a> {
+    tenant_id: Uuid,
+    requested_slug: Option<&'a str>,
+    requested_profile_count: Option<usize>,
+    shipping_profile_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl<'a> ShippingProfileGraphqlErrorContext<'a> {
+    fn single(tenant_id: Uuid, requested_slug: &'a str, operation: &'static str) -> Self {
+        Self {
+            tenant_id,
+            requested_slug: Some(requested_slug),
+            requested_profile_count: Some(1),
+            shipping_profile_id: None,
+            operation,
+        }
+    }
+
+    fn batch(tenant_id: Uuid, requested_profile_count: usize, operation: &'static str) -> Self {
+        Self {
+            tenant_id,
+            requested_slug: None,
+            requested_profile_count: Some(requested_profile_count),
+            shipping_profile_id: None,
+            operation,
+        }
+    }
+}
+
 fn public_graphql_error(
     message: &'static str,
     code: &'static str,
@@ -18,84 +86,139 @@ fn public_graphql_error(
     })
 }
 
-fn order_graphql_error(
-    tenant_id: Uuid,
-    order_id: Uuid,
-    operation: &'static str,
-    error: OrderError,
-) -> async_graphql::Error {
-    tracing::error!(
-        error = ?error,
-        tenant_id = %tenant_id,
-        order_id = %order_id,
-        operation,
-        "commerce GraphQL storefront order helper failed"
-    );
-
-    let (message, code, retryable) = match &error {
-        OrderError::Validation(_) => ("Order request is invalid", "ORDER_REQUEST_INVALID", false),
-        OrderError::OrderNotFound(_)
-        | OrderError::OrderReturnNotFound(_)
-        | OrderError::OrderChangeNotFound(_) => (
-            "Order resource was not found",
-            "ORDER_RESOURCE_NOT_FOUND",
+fn storefront_order_graphql_error_policy(
+    context: &mut StorefrontOrderGraphqlErrorContext,
+    error: &OrderError,
+) -> StorefrontGraphqlPolicy {
+    match error {
+        OrderError::Validation(_) => (
+            "Order request is invalid",
+            "ORDER_REQUEST_INVALID",
             false,
+            "validation",
         ),
+        OrderError::OrderNotFound(order_id) => {
+            context.order_id = Some(*order_id);
+            (
+                "Order resource was not found",
+                "ORDER_RESOURCE_NOT_FOUND",
+                false,
+                "order_not_found",
+            )
+        }
+        OrderError::OrderReturnNotFound(order_return_id) => {
+            context.order_return_id = Some(*order_return_id);
+            (
+                "Order resource was not found",
+                "ORDER_RESOURCE_NOT_FOUND",
+                false,
+                "order_return_not_found",
+            )
+        }
+        OrderError::OrderChangeNotFound(order_change_id) => {
+            context.order_change_id = Some(*order_change_id);
+            (
+                "Order resource was not found",
+                "ORDER_RESOURCE_NOT_FOUND",
+                false,
+                "order_change_not_found",
+            )
+        }
         OrderError::InvalidTransition { .. } => (
             "Order operation conflicts with the current state",
             "ORDER_STATE_CONFLICT",
             false,
+            "state_conflict",
         ),
         OrderError::Database(_) => (
             "Order service is temporarily unavailable",
             "ORDER_TEMPORARILY_UNAVAILABLE",
             true,
+            "database",
         ),
         OrderError::Core(_) => (
             "Order operation could not be completed safely",
             "ORDER_OPERATION_FAILED",
             false,
+            "core",
         ),
-    };
+    }
+}
 
+fn order_graphql_error(
+    mut context: StorefrontOrderGraphqlErrorContext,
+    error: OrderError,
+) -> async_graphql::Error {
+    let (message, code, retryable, error_kind) =
+        storefront_order_graphql_error_policy(&mut context, &error);
+    tracing::error!(
+        error = ?error,
+        owner = STOREFRONT_ORDER_GRAPHQL_OWNER,
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        customer_id = %context.customer_id,
+        order_id = ?context.order_id,
+        order_return_id = ?context.order_return_id,
+        order_change_id = ?context.order_change_id,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        retryable,
+        boundary = STOREFRONT_GRAPHQL_HELPER_BOUNDARY,
+        "commerce GraphQL storefront order helper failed"
+    );
     public_graphql_error(message, code, retryable)
 }
 
-fn shipping_profile_graphql_error(
-    tenant_id: Uuid,
-    operation: &'static str,
-    error: CommerceError,
-) -> async_graphql::Error {
-    tracing::error!(
-        error = ?error,
-        tenant_id = %tenant_id,
-        operation,
-        "commerce GraphQL shipping profile helper failed"
-    );
-
-    let (message, code, retryable) = match &error {
-        CommerceError::Validation(_)
-        | CommerceError::InvalidPrice(_)
-        | CommerceError::InvalidOptionCombination
-        | CommerceError::NoVariants => (
+fn shipping_profile_graphql_error_policy(
+    context: &mut ShippingProfileGraphqlErrorContext<'_>,
+    error: &CommerceError,
+) -> StorefrontGraphqlPolicy {
+    match error {
+        CommerceError::Validation(_) => (
             "Shipping profile request is invalid",
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
+            "validation",
         ),
-        CommerceError::ShippingProfileNotFound(_) => (
-            "Shipping profile was not found",
-            "SHIPPING_PROFILE_NOT_FOUND",
+        CommerceError::InvalidPrice(_) => (
+            "Shipping profile request is invalid",
+            "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
+            "invalid_price",
         ),
+        CommerceError::InvalidOptionCombination => (
+            "Shipping profile request is invalid",
+            "SHIPPING_PROFILE_REQUEST_INVALID",
+            false,
+            "invalid_option_combination",
+        ),
+        CommerceError::NoVariants => (
+            "Shipping profile request is invalid",
+            "SHIPPING_PROFILE_REQUEST_INVALID",
+            false,
+            "no_variants",
+        ),
+        CommerceError::ShippingProfileNotFound(shipping_profile_id) => {
+            context.shipping_profile_id = Some(*shipping_profile_id);
+            (
+                "Shipping profile was not found",
+                "SHIPPING_PROFILE_NOT_FOUND",
+                false,
+                "shipping_profile_not_found",
+            )
+        }
         CommerceError::DuplicateShippingProfileSlug(_) => (
             "Shipping profile conflicts with the current state",
             "SHIPPING_PROFILE_STATE_CONFLICT",
             false,
+            "duplicate_shipping_profile_slug",
         ),
         CommerceError::Database(_) => (
             "Shipping profile service is temporarily unavailable",
             "SHIPPING_PROFILE_TEMPORARILY_UNAVAILABLE",
             true,
+            "database",
         ),
         CommerceError::ProductNotFound(_)
         | CommerceError::VariantNotFound(_)
@@ -108,9 +231,31 @@ fn shipping_profile_graphql_error(
             "Shipping profile operation could not be completed safely",
             "SHIPPING_PROFILE_OPERATION_FAILED",
             false,
+            "unexpected_owner_error",
         ),
-    };
+    }
+}
 
+fn shipping_profile_graphql_error(
+    mut context: ShippingProfileGraphqlErrorContext<'_>,
+    error: CommerceError,
+) -> async_graphql::Error {
+    let (message, code, retryable, error_kind) =
+        shipping_profile_graphql_error_policy(&mut context, &error);
+    tracing::error!(
+        error = ?error,
+        owner = SHIPPING_PROFILE_GRAPHQL_OWNER,
+        tenant_id = %context.tenant_id,
+        requested_slug = ?context.requested_slug,
+        requested_profile_count = ?context.requested_profile_count,
+        shipping_profile_id = ?context.shipping_profile_id,
+        operation = %context.operation,
+        error_kind,
+        public_code = code,
+        retryable,
+        boundary = STOREFRONT_GRAPHQL_HELPER_BOUNDARY,
+        "commerce GraphQL shipping profile helper failed"
+    );
     public_graphql_error(message, code, retryable)
 }
 
@@ -136,7 +281,16 @@ pub(crate) async fn ensure_storefront_order_access(
         .get_order(tenant_id, order_id)
         .await
         .map_err(|error| {
-            order_graphql_error(tenant_id, order_id, "ensure_storefront_order_access", error)
+            order_graphql_error(
+                StorefrontOrderGraphqlErrorContext::new(
+                    tenant_id,
+                    auth.user_id,
+                    customer_id,
+                    order_id,
+                    "ensure_storefront_order_access",
+                ),
+                error,
+            )
         })?;
 
     if order.customer_id != Some(customer_id) {
@@ -153,7 +307,7 @@ pub(crate) async fn validate_product_shipping_profile_input(
     tenant_id: Uuid,
     shipping_profile_slug: Option<&str>,
 ) -> Result<()> {
-    let Some(slug) = shipping_profile_slug.and_then(|s| normalize_shipping_profile_slug(s)) else {
+    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
         return Ok(());
     };
 
@@ -162,8 +316,11 @@ pub(crate) async fn validate_product_shipping_profile_input(
         .await
         .map_err(|error| {
             shipping_profile_graphql_error(
-                tenant_id,
-                "validate_product_shipping_profile_input",
+                ShippingProfileGraphqlErrorContext::single(
+                    tenant_id,
+                    &slug,
+                    "validate_product_shipping_profile_input",
+                ),
                 error,
             )
         })?;
@@ -185,8 +342,11 @@ pub(crate) async fn validate_shipping_option_profile_inputs(
         .await
         .map_err(|error| {
             shipping_profile_graphql_error(
-                tenant_id,
-                "validate_shipping_option_profile_inputs",
+                ShippingProfileGraphqlErrorContext::batch(
+                    tenant_id,
+                    slugs.len(),
+                    "validate_shipping_option_profile_inputs",
+                ),
                 error,
             )
         })?;
