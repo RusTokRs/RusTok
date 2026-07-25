@@ -39,6 +39,7 @@ const FORUM_TOPIC_TARGET: &str = "forum.topic";
 const FORUM_REPLY_TARGET: &str = "forum.reply";
 const MENTION_DESCRIBE_ACTOR: &str = "forum-notification-mention-describe";
 const MENTION_AUDIENCE_ACTOR: &str = "forum-notification-mention-audience";
+const TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR: &str = "forum-notification-topic-subscription-audience";
 const TARGET_OPEN_ACTOR: &str = "forum-notification-target-open";
 const RECIPIENT_CONTEXT_DEADLINE: Duration = Duration::from_secs(2);
 
@@ -304,6 +305,35 @@ impl ForumNotificationSourceProvider {
             &viewer,
         )
         .await
+    }
+
+    async fn topic_subscription_recipient_visible(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        recipient_id: Uuid,
+    ) -> NotificationProviderResult<bool> {
+        if self.recipient_context_port.is_none() {
+            return Ok(true);
+        }
+        let Some(viewer) = self
+            .resolve_recipient_viewer(
+                recipient_operation_context(
+                    tenant_id,
+                    recipient_id,
+                    topic_id,
+                    TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR,
+                ),
+                tenant_id,
+                recipient_id,
+            )
+            .await?
+        else {
+            return Ok(false);
+        };
+        self.load_topic_for_viewer(tenant_id, topic_id, &viewer)
+            .await
+            .map(|topic| topic.is_some())
     }
 
     async fn resolve_recipient_viewer(
@@ -607,12 +637,21 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                 } else {
                     None
                 };
-                let recipients = subscriptions
-                    .into_iter()
-                    .map(|subscription| NotificationAudienceCandidate {
-                        recipient_id: subscription.user_id,
-                    })
-                    .collect();
+                let mut recipients = Vec::with_capacity(subscriptions.len());
+                for subscription in subscriptions {
+                    if self
+                        .topic_subscription_recipient_visible(
+                            event.tenant_id,
+                            topic.id,
+                            subscription.user_id,
+                        )
+                        .await?
+                    {
+                        recipients.push(NotificationAudienceCandidate {
+                            recipient_id: subscription.user_id,
+                        });
+                    }
+                }
                 NotificationAudiencePage::try_new(recipients, next_cursor)
                     .map_err(|_| NotificationProviderError::Internal { retryable: false })
             }
