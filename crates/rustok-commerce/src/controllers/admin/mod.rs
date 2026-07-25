@@ -18,7 +18,6 @@ pub use shipping::*;
 mod tests;
 
 use rust_decimal::Decimal;
-use rustok_fulfillment::error::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_payment::PaymentError;
 use rustok_web::{HttpError, HttpResult};
@@ -27,7 +26,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
+    PostOrderOrchestrationError, ShippingProfileService,
     dto::{FulfillmentResponse, OrderResponse, PaymentCollectionResponse},
     storefront_shipping::normalize_shipping_profile_slug,
 };
