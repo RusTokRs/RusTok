@@ -21,6 +21,19 @@ const workloads = [
   'keyset_page',
   'exact_count',
 ];
+const databaseMetadata = () => ({
+  version: 'PostgreSQL 16 fixture',
+  server_version_num: '160000',
+  shared_buffers: '128MB',
+  effective_cache_size: '4GB',
+  work_mem: '4MB',
+  random_page_cost: '4',
+  jit: 'off',
+  standard_conforming_strings: 'on',
+  timezone: 'UTC',
+  date_style: 'ISO, YMD',
+  extra_float_digits: '3',
+});
 
 const sql = (relation, workload) => {
   if (workload === 'exact_count') {
@@ -33,12 +46,7 @@ const sql = (relation, workload) => {
 };
 
 const report = () => ({
-  database: {
-    standard_conforming_strings: 'on',
-    timezone: 'UTC',
-    date_style: 'ISO, YMD',
-    extra_float_digits: '3',
-  },
+  database: databaseMetadata(),
   source_workloads: workloads.map((name) => ({
     name,
     sql: `${sql('idx_bench_source.product', name)}   \n`,
@@ -55,10 +63,14 @@ const report = () => ({
 const withPacket = (mutate, callback) => {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-read-ordering-'));
   try {
-    const value = report();
-    mutate?.(value);
+    const read = report();
+    const mutation = { database: databaseMetadata() };
+    const maintenance = { database: databaseMetadata() };
+    mutate?.(read, mutation, maintenance);
     mkdirSync(root, { recursive: true });
-    writeFileSync(path.join(root, 'read-report.json'), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    writeFileSync(path.join(root, 'read-report.json'), `${JSON.stringify(read, null, 2)}\n`, 'utf8');
+    writeFileSync(path.join(root, 'mutation-report.json'), `${JSON.stringify(mutation, null, 2)}\n`, 'utf8');
+    writeFileSync(path.join(root, 'maintenance-report.json'), `${JSON.stringify(maintenance, null, 2)}\n`, 'utf8');
     callback(root);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -85,13 +97,31 @@ test('accepts canonical terminal ordering with trailing whitespace', () => {
 test('rejects missing deterministic session metadata', () => {
   expectFailure((value) => {
     delete value.database.standard_conforming_strings;
-  }, /read\.database\.standard_conforming_strings must be on; got undefined/u);
+  }, /read\.database fields mismatch/u);
 });
 
 test('rejects deterministic session metadata drift', () => {
   expectFailure((value) => {
     value.database.timezone = 'Europe/Moscow';
   }, /read\.database\.timezone must be UTC; got Europe\/Moscow/u);
+});
+
+test('rejects mutation database metadata drift from the read session', () => {
+  expectFailure((_read, mutation) => {
+    mutation.database.work_mem = '8MB';
+  }, /mutation-report\.json\.database\.work_mem must match read-report\.json database metadata/u);
+});
+
+test('rejects maintenance report without exact database metadata fields', () => {
+  expectFailure((_read, _mutation, maintenance) => {
+    delete maintenance.database.version;
+  }, /maintenance-report\.json\.database fields mismatch/u);
+});
+
+test('rejects a mutation report without observed database metadata', () => {
+  expectFailure((_read, mutation) => {
+    delete mutation.database;
+  }, /mutation-report\.json\.database must be an object/u);
 });
 
 test('accepts comment tokens inside strings and comments after executable ordering', () => {

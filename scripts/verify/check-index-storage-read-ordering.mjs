@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { comparableDatabaseFields } from './index-storage-database-settings-contract.mjs';
+
 const prefix = '[check-index-storage-read-ordering]';
 const canonicalPrototypes = ['jsonb', 'typed_eav', 'hot_projection'];
 const canonicalReadWorkloads = [
@@ -28,6 +30,11 @@ const canonicalSessionMetadata = new Map([
   ['date_style', 'ISO, YMD'],
   ['extra_float_digits', '3'],
 ]);
+const canonicalDatabaseMetadataFields = Object.freeze([
+  'version',
+  ...comparableDatabaseFields,
+]);
+const canonicalDatabaseMetadataFieldSet = [...canonicalDatabaseMetadataFields].sort();
 
 const fail = (message) => {
   throw new Error(message);
@@ -51,11 +58,35 @@ const requireObject = (value, label) => {
   return value;
 };
 
-const requireSessionMetadata = (read, directory) => {
-  const database = requireObject(read.database, `${directory} read.database`);
+const requireCanonicalSessionMetadata = (database, label) => {
   for (const [field, expected] of canonicalSessionMetadata) {
     if (database[field] !== expected) {
-      fail(`${directory} read.database.${field} must be ${expected}; got ${database[field]}`);
+      fail(`${label}.${field} must be ${expected}; got ${database[field]}`);
+    }
+  }
+};
+
+const requireDatabaseMetadata = (report, label) => {
+  const database = requireObject(report.database, `${label}.database`);
+  const actualFields = Object.keys(database).sort();
+  if (!sameJson(actualFields, canonicalDatabaseMetadataFieldSet)) {
+    fail(
+      `${label}.database fields mismatch: expected ${canonicalDatabaseMetadataFields.join(', ')}, got ${actualFields.join(', ')}`,
+    );
+  }
+  requireCanonicalSessionMetadata(database, `${label}.database`);
+  return database;
+};
+
+const requireSessionMetadata = (read, directory) =>
+  requireDatabaseMetadata(read, `${directory} read`);
+
+const requireSameDatabaseMetadata = (expected, actual, label) => {
+  for (const field of canonicalDatabaseMetadataFields) {
+    if (actual[field] !== expected[field]) {
+      fail(
+        `${label}.database.${field} must match read-report.json database metadata; expected ${expected[field]}, got ${actual[field]}`,
+      );
     }
   }
 };
@@ -168,19 +199,19 @@ export const requireTerminalReadOrdering = (sql, workloadName, label) => {
   }
 };
 
-const readReport = (directory) => {
-  const filename = path.join(directory, 'read-report.json');
-  if (!existsSync(filename)) fail(`missing evidence file: ${filename}`);
+const readReport = (directory, filename = 'read-report.json') => {
+  const reportPath = path.join(directory, filename);
+  if (!existsSync(reportPath)) fail(`missing evidence file: ${reportPath}`);
   try {
-    return JSON.parse(readFileSync(filename, 'utf8'));
+    return JSON.parse(readFileSync(reportPath, 'utf8'));
   } catch (error) {
-    fail(`invalid JSON in ${filename}: ${error.message}`);
+    fail(`invalid JSON in ${reportPath}: ${error.message}`);
   }
 };
 
 export const validatePacketReadOrdering = (directory) => {
   const read = requireObject(readReport(directory), `${directory} read report`);
-  requireSessionMetadata(read, directory);
+  const readDatabase = requireSessionMetadata(read, directory);
   requireExactNames(read.source_workloads, canonicalReadWorkloads, `${directory} source workload order`);
   for (const workload of read.source_workloads) {
     requireObject(workload, `${directory} source/${workload?.name ?? 'unknown'}`);
@@ -203,6 +234,12 @@ export const validatePacketReadOrdering = (directory) => {
         `${directory} ${prototype.prototype}/${workload.name}`,
       );
     }
+  }
+
+  for (const filename of ['mutation-report.json', 'maintenance-report.json']) {
+    const report = requireObject(readReport(directory, filename), `${directory} ${filename}`);
+    const database = requireDatabaseMetadata(report, `${directory} ${filename}`);
+    requireSameDatabaseMetadata(readDatabase, database, `${directory} ${filename}`);
   }
 };
 
@@ -232,7 +269,7 @@ const main = () => {
   const inputs = parseArgs();
   if (inputs === null) return;
   for (const input of inputs) validatePacketReadOrdering(input);
-  console.log(`${prefix} deterministic session metadata and executable terminal ordering verified for ${inputs.length} evidence packet(s)`);
+  console.log(`${prefix} deterministic session metadata and executable terminal ordering verified across read, mutation, and maintenance reports for ${inputs.length} evidence packet(s)`);
 };
 
 const isMain = process.argv[1]
