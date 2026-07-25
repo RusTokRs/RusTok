@@ -35,6 +35,27 @@ const canonicalDatabaseMetadataFields = Object.freeze([
   ...comparableDatabaseFields,
 ]);
 const canonicalDatabaseMetadataFieldSet = [...canonicalDatabaseMetadataFields].sort();
+const canonicalRunProvenanceFields = Object.freeze([
+  'repository',
+  'commit',
+  'ref',
+  'run_id',
+  'run_attempt',
+  'job',
+  'runner_os',
+  'runner_arch',
+]);
+const canonicalRunProvenanceFieldSet = [...canonicalRunProvenanceFields].sort();
+const githubProvenanceEnvironment = new Map([
+  ['repository', 'GITHUB_REPOSITORY'],
+  ['commit', 'GITHUB_SHA'],
+  ['ref', 'GITHUB_REF'],
+  ['run_id', 'GITHUB_RUN_ID'],
+  ['run_attempt', 'GITHUB_RUN_ATTEMPT'],
+  ['job', 'GITHUB_JOB'],
+  ['runner_os', 'RUNNER_OS'],
+  ['runner_arch', 'RUNNER_ARCH'],
+]);
 
 const fail = (message) => {
   throw new Error(message);
@@ -88,6 +109,56 @@ const requireSameDatabaseMetadata = (expected, actual, label) => {
         `${label}.database.${field} must match read-report.json database metadata; expected ${expected[field]}, got ${actual[field]}`,
       );
     }
+  }
+};
+
+const readRunProvenance = (report, label) => {
+  if (!Object.hasOwn(report, 'provenance')) {
+    if (!Object.hasOwn(report, 'generated_at')) return null;
+    fail(`${label}.provenance must be an object`);
+  }
+  const provenance = requireObject(report.provenance, `${label}.provenance`);
+  const actualFields = Object.keys(provenance).sort();
+  if (!sameJson(actualFields, canonicalRunProvenanceFieldSet)) {
+    fail(
+      `${label}.provenance fields mismatch: expected ${canonicalRunProvenanceFields.join(', ')}, got ${actualFields.join(', ')}`,
+    );
+  }
+  for (const field of canonicalRunProvenanceFields) {
+    const value = provenance[field];
+    if (value !== null && (typeof value !== 'string' || value.length === 0)) {
+      fail(`${label}.provenance.${field} must be a non-empty string or null`);
+    }
+  }
+  return provenance;
+};
+
+const requireSameRunProvenance = (expected, actual, label) => {
+  for (const field of canonicalRunProvenanceFields) {
+    if (actual[field] !== expected[field]) {
+      fail(
+        `${label}.provenance.${field} must match read-report.json run provenance; expected ${expected[field]}, got ${actual[field]}`,
+      );
+    }
+  }
+};
+
+const requireCurrentGitHubProvenance = (provenance, label) => {
+  if (process.env.INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE !== '1') return;
+  for (const [field, environmentName] of githubProvenanceEnvironment) {
+    const expected = process.env[environmentName];
+    if (typeof expected !== 'string' || expected.length === 0) {
+      fail(`${environmentName} is required when GitHub provenance is enforced`);
+    }
+    if (provenance[field] !== expected) {
+      fail(`${label}.provenance.${field} must match current ${environmentName}`);
+    }
+  }
+  if (!/^[0-9a-f]{40}$/iu.test(provenance.commit)) {
+    fail(`${label}.provenance.commit must be a full Git SHA`);
+  }
+  if (!/^\d+$/u.test(provenance.run_id) || !/^\d+$/u.test(provenance.run_attempt)) {
+    fail(`${label}.provenance run_id and run_attempt must be numeric strings`);
   }
 };
 
@@ -209,9 +280,22 @@ const readReport = (directory, filename = 'read-report.json') => {
   }
 };
 
+const requireExistingPacketProvenance = (directory, expected) => {
+  if (expected === null) return;
+  const filename = 'provenance.json';
+  if (!existsSync(path.join(directory, filename))) return;
+  const packet = requireObject(readReport(directory, filename), `${directory} ${filename}`);
+  const actual = Object.fromEntries(
+    canonicalRunProvenanceFields.map((field) => [field, packet[field] ?? null]),
+  );
+  requireSameRunProvenance(expected, actual, `${directory} ${filename}`);
+};
+
 export const validatePacketReadOrdering = (directory) => {
   const read = requireObject(readReport(directory), `${directory} read report`);
   const readDatabase = requireSessionMetadata(read, directory);
+  const readProvenance = readRunProvenance(read, `${directory} read`);
+  if (readProvenance !== null) requireCurrentGitHubProvenance(readProvenance, `${directory} read`);
   requireExactNames(read.source_workloads, canonicalReadWorkloads, `${directory} source workload order`);
   for (const workload of read.source_workloads) {
     requireObject(workload, `${directory} source/${workload?.name ?? 'unknown'}`);
@@ -240,7 +324,16 @@ export const validatePacketReadOrdering = (directory) => {
     const report = requireObject(readReport(directory, filename), `${directory} ${filename}`);
     const database = requireDatabaseMetadata(report, `${directory} ${filename}`);
     requireSameDatabaseMetadata(readDatabase, database, `${directory} ${filename}`);
+    const provenance = readRunProvenance(report, `${directory} ${filename}`);
+    if ((readProvenance === null) !== (provenance === null)) {
+      fail(`${directory} reports must either all contain run provenance or all be incomplete core fixtures`);
+    }
+    if (readProvenance !== null && provenance !== null) {
+      requireSameRunProvenance(readProvenance, provenance, `${directory} ${filename}`);
+      requireCurrentGitHubProvenance(provenance, `${directory} ${filename}`);
+    }
   }
+  requireExistingPacketProvenance(directory, readProvenance);
 };
 
 const usage = () => {
@@ -253,6 +346,7 @@ const parseArgs = () => {
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--help' || argument === '-h') {
+      if (args.length !== 1) fail('help must be the only argument');
       usage();
       return null;
     }
@@ -269,7 +363,7 @@ const main = () => {
   const inputs = parseArgs();
   if (inputs === null) return;
   for (const input of inputs) validatePacketReadOrdering(input);
-  console.log(`${prefix} deterministic session metadata and executable terminal ordering verified across read, mutation, and maintenance reports for ${inputs.length} evidence packet(s)`);
+  console.log(`${prefix} benchmark run provenance, deterministic session metadata, and executable terminal ordering verified across read, mutation, and maintenance reports for ${inputs.length} evidence packet(s)`);
 };
 
 const isMain = process.argv[1]

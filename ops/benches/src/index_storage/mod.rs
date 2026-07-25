@@ -4,10 +4,11 @@ mod database_metadata;
 mod explain;
 mod maintenance_runner;
 mod mutation_runner;
+mod report_provenance;
 mod runner;
 mod sql;
 
-pub use config::{BenchmarkConfig, DatasetConfig, DatasetScale};
+pub use config::{BenchmarkConfig, BenchmarkRunProvenance, DatasetConfig, DatasetScale};
 pub(crate) use connection::connect as connect_benchmark_database;
 pub use database_metadata::DatabaseMetadata;
 pub(crate) use database_metadata::{ensure_database_metadata_stable, read_database_metadata};
@@ -15,6 +16,7 @@ pub use maintenance_runner::{
     MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
 };
 pub use mutation_runner::{MutationBenchmarkReport, run_mutations, write_mutation_report};
+pub use report_provenance::write_provenance_bound_report;
 pub use runner::{BenchmarkReport, run, write_report};
 pub(crate) use sql::read_workload_contract;
 pub use sql::{
@@ -26,6 +28,6 @@ pub use sql::{
 pub async fn run_from_env() -> anyhow::Result<BenchmarkReport> {
     let config = BenchmarkConfig::from_env()?;
     let report = run(&config).await?;
-    write_report(&config.output_path, &report)?;
+    write_provenance_bound_report(&config.output_path, &report, &config.run_provenance)?;
     Ok(report)
 }
