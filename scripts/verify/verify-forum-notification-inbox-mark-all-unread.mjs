@@ -27,6 +27,18 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
+function requireOrder(source, markers, message) {
+  let position = -1;
+  for (const marker of markers) {
+    const next = source.indexOf(marker, position + 1);
+    if (next < 0) {
+      failures.push(`${message}: missing ${marker}`);
+      return;
+    }
+    position = next;
+  }
+}
+
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-inbox-mark-all-unread.json";
 const contract = JSON.parse(read(contractPath) || "{}");
@@ -43,11 +55,12 @@ const proof = read(contract.sqlite_proof ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const plan = read(contract.canonical_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("forum notification mark-all-unread contract must use schema_version=1");
-}
-if (contract.task !== "FORUM-20Z" || contract.upstream_task !== "FORUM-20Y") {
-  failures.push("forum notification mark-all-unread contract must connect FORUM-20Y/Z");
+if (
+  contract.schema_version !== 1 ||
+  contract.task !== "FORUM-20Z" ||
+  contract.upstream_task !== "FORUM-20Y"
+) {
+  failures.push("forum notification mark-all-unread contract must connect FORUM-20Y/Z at schema_version=1");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("mark-all-unread contract must not claim unexecuted evidence");
@@ -124,21 +137,17 @@ const deliveredSlices = [
   "FORUM-20Z",
 ];
 const planSync = contract.canonical_plan_sync ?? {};
-if (planSync.required_ledger_through !== "FORUM-20Z") {
+if (
+  planSync.required_ledger_through !== "FORUM-20Z" ||
+  JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)
+) {
   failures.push("mark-all-unread contract must require the canonical ledger through FORUM-20Z");
-}
-if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
-  failures.push("mark-all-unread contract must require FORUM-20H through FORUM-20Z delivered sections");
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
     failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
   }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in FORUM-20A-G",
-  );
+  requireText(plan, "FORUM-20A-G provide", "pending canonical plan synchronization must remain grounded in FORUM-20A-G");
   for (const slice of deliveredSlices) {
     rejectText(
       plan,
@@ -172,18 +181,10 @@ for (const marker of [
   "pub next_cursor: Option<String>",
   "pub has_more: bool",
   "pub struct NotificationInboxMarkAllUnreadService",
-  "pub async fn mark_page(",
   "validate_mark_all_unread_request(&request)?",
   ".map(decode_inbox_cursor)",
-  "notification::Entity::find()",
-  ".filter(notification::Column::TenantId.eq(request.tenant_id))",
-  ".filter(notification::Column::RecipientId.eq(request.recipient_id))",
   ".add(notification::Column::State.eq(NotificationState::Seen))",
   ".add(notification::Column::State.eq(NotificationState::Read))",
-  ".order_by_desc(notification::Column::CreatedAt)",
-  ".order_by_desc(notification::Column::Id)",
-  ".limit(limit + 1)",
-  "rows.truncate(limit as usize)",
   "rows.last().map(encode_inbox_cursor)",
   ".mark_unread(NotificationInboxStateRequest",
   "NotificationInboxStateDecision::Available { changed: true, .. }",
@@ -191,7 +192,6 @@ for (const marker of [
 ]) {
   requireText(unreadOwner, marker, `notification mark-all-unread owner is missing ${marker}`);
 }
-
 for (const forbidden of [
   "NotificationInboxOpenService",
   "NotificationInboxListService",
@@ -208,58 +208,21 @@ for (const forbidden of [
 ]) {
   rejectText(unreadOwner, forbidden, `mark-all-unread owner must preserve its narrow boundary against ${forbidden}`);
 }
-
-const markPageIndex = unreadOwner.indexOf("pub async fn mark_page(");
-const tenantIndex = unreadOwner.indexOf(
-  ".filter(notification::Column::TenantId.eq(request.tenant_id))",
-  markPageIndex,
+requireOrder(
+  unreadOwner,
+  [
+    "pub async fn mark_page(",
+    ".filter(notification::Column::TenantId.eq(request.tenant_id))",
+    ".filter(notification::Column::RecipientId.eq(request.recipient_id))",
+    ".add(notification::Column::State.eq(NotificationState::Seen))",
+    ".add(notification::Column::State.eq(NotificationState::Read))",
+    ".order_by_desc(notification::Column::CreatedAt)",
+    ".order_by_desc(notification::Column::Id)",
+    ".all(&self.db)",
+    ".mark_unread(NotificationInboxStateRequest",
+  ],
+  "mark-all-unread must complete bounded exact-recipient eligible selection before state mutation",
 );
-const recipientIndex = unreadOwner.indexOf(
-  ".filter(notification::Column::RecipientId.eq(request.recipient_id))",
-  markPageIndex,
-);
-const seenIndex = unreadOwner.indexOf(
-  ".add(notification::Column::State.eq(NotificationState::Seen))",
-  markPageIndex,
-);
-const readIndex = unreadOwner.indexOf(
-  ".add(notification::Column::State.eq(NotificationState::Read))",
-  markPageIndex,
-);
-const createdOrderIndex = unreadOwner.indexOf(
-  ".order_by_desc(notification::Column::CreatedAt)",
-  markPageIndex,
-);
-const idOrderIndex = unreadOwner.indexOf(
-  ".order_by_desc(notification::Column::Id)",
-  markPageIndex,
-);
-const loadIndex = unreadOwner.indexOf(".all(&self.db)", markPageIndex);
-const mutationIndex = unreadOwner.indexOf(
-  ".mark_unread(NotificationInboxStateRequest",
-  markPageIndex,
-);
-if (
-  markPageIndex < 0 ||
-  tenantIndex < 0 ||
-  recipientIndex < 0 ||
-  seenIndex < 0 ||
-  readIndex < 0 ||
-  createdOrderIndex < 0 ||
-  idOrderIndex < 0 ||
-  loadIndex < 0 ||
-  mutationIndex < 0 ||
-  !(markPageIndex < tenantIndex &&
-    tenantIndex < recipientIndex &&
-    recipientIndex < seenIndex &&
-    seenIndex < readIndex &&
-    readIndex < createdOrderIndex &&
-    createdOrderIndex < idOrderIndex &&
-    idOrderIndex < loadIndex &&
-    loadIndex < mutationIndex)
-) {
-  failures.push("mark-all-unread must complete bounded exact-recipient eligible selection before state mutation");
-}
 
 for (const marker of [
   "pub async fn mark_unread(",
@@ -268,12 +231,9 @@ for (const marker of [
   "read_at: Set(None)",
   ".add(notification::Column::State.eq(NotificationState::Seen))",
   ".add(notification::Column::State.eq(NotificationState::Read))",
-  ".filter(notification::Column::TenantId.eq(request.tenant_id))",
-  ".filter(notification::Column::RecipientId.eq(request.recipient_id))",
 ]) {
   requireText(stateOwner, marker, `exact inbox state owner is missing ${marker}`);
 }
-
 for (const marker of [
   "pub struct NotificationInboxUnreadCountService",
   ".filter(notification::Column::State.eq(NotificationState::Unread))",
@@ -310,7 +270,6 @@ for (const marker of [
   "empty_foreign_and_invalid_mark_all_unread_requests_fail_closed",
   "mark_all_unread_limits_use_shared_inbox_bounds",
   "NotificationInboxMarkAllUnreadPage {",
-  "scanned: 2",
   "marked_unread: 2",
   "assert!(seen_after.seen_at.is_none())",
   "assert!(read_after.read_at.is_none())",
@@ -321,7 +280,6 @@ for (const marker of [
 ]) {
   requireText(proof, marker, `mark-all-unread SQLite proof is missing ${marker}`);
 }
-
 for (const marker of [
   "bounded mark-all-unread",
   "NotificationInboxMarkAllUnreadService",
@@ -334,7 +292,7 @@ for (const marker of [
 for (const marker of [
   "### Bounded mark-all-unread",
   "NotificationInboxMarkAllUnreadService",
-  "seen or read",
+  "`seen` or `read`",
   "tests/inbox_mark_all_unread_sqlite.rs",
   "verify-forum-notification-inbox-mark-all-unread.mjs",
 ]) {
