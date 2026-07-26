@@ -25,6 +25,8 @@ Counts intentionally reflect stored Notifications owner state. Current privacy o
 
 This slice does not deliver group-level mark-read, mark-unread, or archive commands. External GraphQL/native transport, admin/storefront grouped UI, tenant-wide scheduled reconciliation, payload redaction, channel delivery, and PostgreSQL runtime execution evidence remain open.
 
+The canonical Forum ledger still physically ends at `FORUM-20G`, and the Notifications owner-local ledger still physically ends at `FORUM-20AA`. The machine contract records both synchronizations as pending through `FORUM-20AE` rather than replacing either large concurrently edited plan wholesale.
+
 ## Evidence
 
 SQLite source evidence is in `tests/inbox_group_summary_sqlite.rs`. It covers exact stored counts, archived exclusion, latest-row ordering, cursor continuation, sparse authorization, owner isolation, validation, retryable abort, unchanged inbox state, and zero delivery attempts.
