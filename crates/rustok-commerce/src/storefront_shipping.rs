@@ -7,9 +7,11 @@ use crate::{
     CommerceResult,
     dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
 };
-use rustok_fulfillment::{FulfillmentResult, FulfillmentService};
+use rustok_fulfillment::{FulfillmentError, FulfillmentResult, FulfillmentService};
 
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
+const STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY: &str =
+    "commerce_storefront_shipping_enrichment";
 
 pub fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
     let normalized = value.trim().to_ascii_lowercase();
@@ -173,6 +175,7 @@ pub async fn enrich_cart_delivery_groups(
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> CommerceResult<CartResponse> {
+    let cart_id = cart.id;
     enrich_cart_delivery_groups_typed(
         db,
         tenant_id,
@@ -182,7 +185,79 @@ pub async fn enrich_cart_delivery_groups(
         tenant_default_locale,
     )
     .await
-    .map_err(|error| crate::CommerceError::Validation(error.to_string()))
+    .map_err(|error| {
+        log_cart_delivery_group_enrichment_error(
+            &error,
+            tenant_id,
+            cart_id,
+            public_channel_slug,
+            requested_locale,
+            tenant_default_locale,
+        );
+        crate::CommerceError::Validation(error.to_string())
+    })
+}
+
+fn log_cart_delivery_group_enrichment_error(
+    error: &FulfillmentError,
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) {
+    let (owner_code, owner_kind, owner_retryable) = match error {
+        FulfillmentError::Validation(_) => ("fulfillment.validation", "validation", false),
+        FulfillmentError::ShippingOptionNotFound(_) => (
+            "fulfillment.shipping_option_not_found",
+            "not_found",
+            false,
+        ),
+        FulfillmentError::FulfillmentNotFound(_) => {
+            ("fulfillment.fulfillment_not_found", "not_found", false)
+        }
+        FulfillmentError::InvalidTransition { .. } => {
+            ("fulfillment.invalid_transition", "conflict", false)
+        }
+        FulfillmentError::Database(_) => (
+            "fulfillment.database_unavailable",
+            "unavailable",
+            true,
+        ),
+    };
+
+    match error {
+        FulfillmentError::Database(_) => tracing::error!(
+            error = ?error,
+            owner = "rustok_fulfillment",
+            tenant_id = %tenant_id,
+            cart_id = %cart_id,
+            public_channel_slug = ?public_channel_slug,
+            requested_locale = ?requested_locale,
+            tenant_default_locale = ?tenant_default_locale,
+            operation = "list_shipping_options",
+            owner_code,
+            owner_kind,
+            owner_retryable,
+            boundary = STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY,
+            "storefront cart shipping enrichment owner read failed"
+        ),
+        _ => tracing::warn!(
+            error = ?error,
+            owner = "rustok_fulfillment",
+            tenant_id = %tenant_id,
+            cart_id = %cart_id,
+            public_channel_slug = ?public_channel_slug,
+            requested_locale = ?requested_locale,
+            tenant_default_locale = ?tenant_default_locale,
+            operation = "list_shipping_options",
+            owner_code,
+            owner_kind,
+            owner_retryable,
+            boundary = STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY,
+            "storefront cart shipping enrichment owner read was rejected"
+        ),
+    }
 }
 
 fn extract_allowed_shipping_profile_slugs_from_metadata(
