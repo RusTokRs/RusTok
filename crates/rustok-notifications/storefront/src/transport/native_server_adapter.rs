@@ -274,8 +274,7 @@ async fn authenticated_context(
 
     use leptos::prelude::expect_context;
     use rustok_api::{
-        AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
-        request::RequestContext,
+        AuthContext, HostRuntimeContext, PortContext, TenantContext, request::RequestContext,
     };
     use uuid::Uuid;
 
@@ -292,10 +291,16 @@ async fn authenticated_context(
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new("notification storefront tenant mismatch"));
     }
+    if !auth.is_human_user_principal() {
+        return Err(ServerFnError::new(
+            "notification inbox access requires an authenticated user",
+        ));
+    }
 
+    let actor = auth.port_actor();
     let mut context = PortContext::new(
         tenant.id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
+        actor,
         request.locale,
         format!("notifications-storefront-{operation}-{}", Uuid::new_v4()),
     )
