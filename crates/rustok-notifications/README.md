@@ -8,8 +8,10 @@ pipeline now covers durable outbox intake, source materialization, bounded
 audience expansion, recipient policy, one idempotent in-app notification, exact
 open-time authorization, bounded authorized inbox listing, exact
 seen/read/mark-unread/archive state APIs, exact unread counting, bounded
-mark-all-read, bounded mark-all-unread, bounded mark-all-archive, and bounded
-exact-recipient reconciliation. Channel delivery remains a later workflow.
+mark-all-read, bounded mark-all-unread, bounded mark-all-archive, bounded
+selected-ID state commands, bounded exact-recipient reconciliation, durable
+target group-key population, and bounded exact-group listing. Channel delivery
+remains a later workflow.
 
 ## Responsibilities
 
@@ -25,9 +27,13 @@ exact-recipient reconciliation. Channel delivery remains a later workflow.
 - serialize final candidate creation with PostgreSQL tenant lifecycle toggles;
 - apply preferences, recipient privacy, and current target authorization before
   creating an inbox row;
+- assign and backfill stable target group keys at the Notifications persistence
+  boundary while preserving explicit keys;
 - recheck recipient privacy and source target authorization at inbox open/list
   time;
 - list exact-recipient inbox rows through bounded sparse keyset pages;
+- list one exact stored notification group through the same authorization-aware
+  sparse pagination contract;
 - apply exact-item seen/read/mark-unread/archive transitions with terminal archive;
 - count exact-recipient unread owner state without deriving totals from list pages;
 - mark one bounded exact-recipient unread/seen page as read through the exact state
@@ -36,6 +42,7 @@ exact-recipient reconciliation. Channel delivery remains a later workflow.
   owner;
 - archive one bounded exact-recipient non-archived page through the exact state
   owner;
+- apply one bounded explicit-ID state command set through the exact state owner;
 - reconcile one bounded exact-recipient page against current privacy/source policy;
 - own replay, reconciliation, retention, and delivery lifecycle.
 
@@ -59,29 +66,39 @@ exact-recipient reconciliation. Channel delivery remains a later workflow.
 - `NotificationRecipientPolicy` / `NotificationRecipientPolicyRuntime`;
 - `NotificationInboxOpenService` and exact open request/decision contracts;
 - `NotificationInboxListService` and bounded list request/page/read-model contracts;
+- `NotificationInboxGroupListService` and bounded exact-group request contracts;
 - `NotificationInboxStateService` and exact state request/decision/snapshot contracts;
 - `NotificationInboxUnreadCountService` and exact count request/result contracts;
 - `NotificationInboxMarkAllReadService` and bounded request/page contracts;
 - `NotificationInboxMarkAllUnreadService` and bounded request/page contracts;
 - `NotificationInboxMarkAllArchiveService` and bounded request/page contracts;
+- `NotificationInboxSelectedStateService` and bounded explicit-ID state contracts;
 - `NotificationInboxReconcileService` and bounded reconciliation request/page contracts;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
 ## Persistence
 
-The owner exposes five ordered PostgreSQL/SQLite migrations:
+The owner exposes six ordered PostgreSQL/SQLite migrations:
 
 1. `m20260721_000010_create_notification_persistence`;
 2. `m20260722_000011_create_notification_source_inbox`;
 3. `m20260722_000012_add_candidate_processing`;
 4. `m20260723_000013_add_outbox_intake_receipts`;
-5. `m20260723_000014_add_outbox_intake_rejections`.
+5. `m20260723_000014_add_outbox_intake_rejections`;
+6. `m20260726_000015_populate_notification_group_keys`.
 
 Accepted outbox envelopes receive a durable receipt linked to the semantic source
 inbox row. Permanently invalid envelopes receive an owner-local quarantine row;
 retryable failures receive no terminal record. Accepted and rejected outcomes are
 mutually exclusive. The schema stores no source-private payload, rendered HTML,
 email address, phone number, or plaintext push endpoint.
+
+The sixth migration backfills missing notification group keys and installs
+backend-specific insert triggers. Missing keys become
+`g1:{target_owner}:{target_id}`; explicit non-null keys are preserved. The format
+is bounded by the existing 191-byte group-key contract and groups notification
+variants for one source-owned target UUID without changing target authorization
+metadata.
 
 Global `rustok-migrations` composition remains a maintainer verification gate.
 
@@ -150,6 +167,10 @@ policy, and reauthorizes the source target. The final notification transaction t
 6. rechecks preferences;
 7. inserts or validates one notification and completes the candidate.
 
+The persistence trigger assigns a missing durable group key before PostgreSQL
+insert completion or within the same SQLite transaction. Candidate code remains
+neutral and does not need producer-specific grouping fields.
+
 The manifest is not reloaded through another pool connection while the final
 transaction is active. This avoids a small-pool/SQLite connection deadlock and
 keeps the commit guard limited to transaction-bound owner reads. Manifest mutation
@@ -208,13 +229,9 @@ decision.
 
 The service exposes only state and inbox timestamps, calls no privacy/source or
 delivery owner, and creates no delivery attempt. SQLite owner evidence is
-`tests/inbox_state_sqlite.rs`. Exact-item mark-unread and bounded mark-all-read,
-mark-all-unread, and mark-all-archive are delivered; arbitrary selected-ID bulk
-mutations, grouped inbox views, transport adapters, and UI remain closed.
-
-The former `mark-unread, bulk/mark-all` residual is now narrowed. Its historical
-`bulk/mark-all mutations and grouped inbox views` wording now refers only to
-selected-ID bulk mutations and grouped views.
+`tests/inbox_state_sqlite.rs`. Exact-item and bounded mark-all/selected-ID state
+commands are delivered. Aggregate grouped views, transport adapters, and UI remain
+closed.
 
 ### 6. Exact unread count
 
@@ -251,10 +268,7 @@ The command calls no privacy/source/target/delivery owner and creates or mutates
 delivery attempt. Earlier exact transitions are durable and idempotent if a later
 database operation fails, so callers may resume from the same request cursor.
 SQLite evidence is `tests/inbox_mark_all_read_sqlite.rs`; the source guard is
-`scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`. `FORUM-20Y`
-originally left mark-all-unread/archive open; both follow-up commands are now
-provided. Arbitrary selected-ID bulk commands, transport adapters, grouped views,
-and UI remain closed.
+`scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`.
 
 ### 8. Bounded mark-all-unread
 
@@ -275,9 +289,6 @@ delivery attempt. Earlier exact transitions are durable and idempotent if a late
 database operation fails, so callers may resume from the same request cursor.
 SQLite evidence is `tests/inbox_mark_all_unread_sqlite.rs`; the source guard is
 `scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs`.
-`FORUM-20Z` left mark-all-archive and arbitrary selected-ID bulk commands open at
-that milestone; mark-all-archive is now delivered, while selected-ID bulk,
-transport adapters, grouped views, and UI remain closed.
 
 ### 9. Bounded mark-all-archive
 
@@ -298,8 +309,7 @@ The command calls no privacy/source/target/delivery owner and creates or mutates
 delivery attempt. Earlier exact transitions are durable and idempotent if a later
 database operation fails, so callers may resume from the same request cursor.
 SQLite evidence is `tests/inbox_mark_all_archive_sqlite.rs`; the source guard is
-`scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs`. Arbitrary
-selected-ID bulk commands, transport adapters, grouped views, and UI remain closed.
+`scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs`.
 
 ### 10. Bounded inbox reconciliation
 
@@ -321,6 +331,23 @@ it contains no route, source target, or notification identity. SQLite evidence i
 `tests/inbox_reconcile_sqlite.rs`. Tenant-wide scheduled reconciliation, payload
 redaction, transport wiring, and UI remain closed.
 
+### 11. Group-key population and exact-group listing
+
+`m20260726_000015_populate_notification_group_keys` assigns every missing group key
+as `g1:{target_owner}:{target_id}` and backfills historical null values. Explicit
+keys remain unchanged. PostgreSQL uses a `BEFORE INSERT` trigger; SQLite uses an
+`AFTER INSERT` trigger whose update completes inside the inserting transaction.
+
+`NotificationInboxGroupListService` then selects one exact tenant, recipient, and
+stored group key with an optional exact state filter. It reuses the shared 20/64
+bounds, the versioned `i1` cursor, and the open-time privacy/source authorization
+pipeline. Sparse pages advance by raw rows. The read mutates no inbox timestamp and
+creates no delivery attempt.
+
+SQLite evidence is `tests/group_key_population_sqlite.rs` and
+`tests/inbox_group_listing_sqlite.rs`. Group summaries, per-group unread totals,
+latest-item projections, transport adapters, and grouped UI remain open.
+
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
 
@@ -340,8 +367,8 @@ continue to succeed when the module is absent or disabled.
 
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
-- grouping and moderator-directory expansion;
-- arbitrary selected-ID bulk mutations plus grouped inbox views;
+- group summaries, group unread totals, latest-item projections, and
+  moderator-directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and module-owned UI;
 - channel delivery enqueue with delivery-time authorization;
