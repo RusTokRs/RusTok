@@ -11,6 +11,7 @@
   "notifications_lib_file": "crates/rustok-notifications/src/lib.rs",
   "notifications_readme": "crates/rustok-notifications/README.md",
   "notifications_live_contract": "crates/rustok-notifications/docs/README.md",
+  "notifications_local_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "sqlite_proof": "crates/rustok-notifications/tests/inbox_group_summary_sqlite.rs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-notification-group-key-population.json",
   "source_verifier": "scripts/verify/verify-forum-notification-inbox-group-summaries.mjs",
@@ -47,6 +48,12 @@
     ],
     "current_plan_through": "FORUM-20G",
     "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+  },
+  "notifications_local_plan_sync": {
+    "status": "pending",
+    "required_ledger_through": "FORUM-20AE",
+    "current_plan_through": "FORUM-20AA",
+    "follow_up": "Synchronize the owner-local implementation ledger without replacing the large file wholesale"
   },
   "policy": {
     "ownership_scope": "one exact non-nil tenant and recipient supplied by an authorized caller",
