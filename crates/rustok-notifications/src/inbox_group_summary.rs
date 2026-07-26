@@ -18,7 +18,7 @@ use crate::error::{NotificationError, NotificationResult};
 use crate::inbox::{
     DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_PAGE_SIZE,
     NotificationInboxItem, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
-    NotificationInboxOpenService, decode_inbox_cursor,
+    NotificationInboxOpenService, decode_inbox_cursor, encode_inbox_position_cursor,
 };
 use crate::inbox_group::MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES;
 use crate::model::{NotificationPriorityValue, NotificationState};
@@ -239,12 +239,7 @@ fn validate_stored_summary(row: &StoredGroupSummary) -> NotificationResult<()> {
 }
 
 fn encode_summary_cursor(created_at: &DateTime<FixedOffset>, id: Uuid) -> String {
-    format!(
-        "i1:{}:{}:{}",
-        created_at.timestamp(),
-        created_at.timestamp_subsec_nanos(),
-        id
-    )
+    encode_inbox_position_cursor(created_at, id)
 }
 
 fn materialize_item(stored: notification::Model) -> NotificationResult<NotificationInboxItem> {
