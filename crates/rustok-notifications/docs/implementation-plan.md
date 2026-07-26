@@ -45,14 +45,15 @@ while the final transaction is active. PostgreSQL lifecycle tenant toggles advan
 the cursor inside their tenant-state transaction, serializing candidate commit and
 tenant enable/disable by commit order.
 
-Exact inbox open, bounded listing, exact-item read-state, and bounded
-exact-recipient reconciliation services are now owner-public. Open requests recheck
-current recipient privacy and source target authorization. Listing scans
+Exact inbox open, bounded listing, exact-item read-state, exact unread count, and
+bounded exact-recipient reconciliation services are now owner-public. Open requests
+recheck current recipient privacy and source target authorization. Listing scans
 exact-recipient rows in bounded descending keyset pages and supports sparse pages.
 State commands provide exact seen/read/mark-unread/archive transitions without
-foreign owner calls, while archived remains terminal. Reconciliation reuses
-open-time policy and archives currently unavailable rows through the state owner.
-No external transport, bulk/mark-all, count, grouped-view, tenant-wide scheduler,
+foreign owner calls, while archived remains terminal. The unread count is an exact
+owner-table aggregate and is never derived from bounded list pages. Reconciliation
+reuses open-time policy and archives currently unavailable rows through the state
+owner. No external transport, bulk/mark-all, grouped-view, tenant-wide scheduler,
 payload-redaction, or UI contract is published yet.
 
 ## Invariants
@@ -93,6 +94,12 @@ payload-redaction, or UI contract is published yet.
 - state commands rewrite `updated_at` only on an actual transition;
 - inbox state commands call no recipient policy, source provider, target, or
   delivery owner and create no delivery attempts;
+- exact unread counts require non-nil tenant and recipient identities;
+- unread counting applies tenant, recipient, and `unread` state filters before the
+  owner-table aggregate and reuses `idx_notifications_inbox`;
+- unread totals are never derived from bounded or privacy-filtered list pages;
+- unread counting returns only the aggregate, calls no foreign owner, and mutates no
+  inbox timestamp, reconciliation state, or delivery attempt;
 - recipient reconciliation scans only exact-recipient non-archived rows in bounded
   `created_at DESC, id DESC` pages;
 - reconciliation raw selection completes before privacy or source owner calls;
@@ -337,6 +344,26 @@ payload-redaction, or UI contract is published yet.
   verifier `scripts/verify/verify-forum-notification-inbox-mark-unread.mjs`, and
   SQLite evidence `tests/inbox_state_sqlite.rs`.
 
+### `FORUM-20X`
+
+- `NotificationInboxUnreadCountService` counts only exact-recipient rows in stored
+  owner state `unread` after validating non-nil tenant and recipient identities;
+- tenant, recipient, and state filters precede aggregation and reuse the existing
+  `idx_notifications_inbox` index;
+- the Notifications owner table is authoritative, so callers must not derive totals
+  from bounded or privacy-filtered list pages;
+- empty, missing, cross-tenant, and cross-recipient scopes all return zero without
+  exposing notification identity;
+- current privacy or source-policy changes affect the count after exact or scheduled
+  reconciliation archives unavailable rows;
+- the count calls no privacy/source/target/delivery owner, mutates no inbox or
+  delivery state, and returns no source, target, route, notification, or cursor data;
+- transport, UI, bulk/mark-all mutations, and grouped views remain closed;
+- contract
+  `crates/rustok-forum/contracts/forum-notification-inbox-unread-count.json`,
+  verifier `scripts/verify/verify-forum-notification-inbox-unread-count.mjs`, and
+  SQLite evidence `tests/inbox_count_sqlite.rs`.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
@@ -370,8 +397,9 @@ payload-redaction, or UI contract is published yet.
 
 Admin and storefront remain module-owned. Until owner inbox services are exposed
 through matching module-owned transport adapters and UI packages, they expose only
-foundation/unavailable states and must not invent unread counts, mark-unread,
-bulk/mark-all mutations, or shadow inbox storage.
+foundation/unavailable states and must not invent unread counts outside
+`NotificationInboxUnreadCountService`, expose mark-unread or bulk/mark-all
+mutations, or create shadow inbox storage.
 
 ## Maintainer verification set
 
@@ -390,6 +418,7 @@ cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_count_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
@@ -414,13 +443,14 @@ node scripts/verify/verify-forum-notification-inbox-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
 node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
+node scripts/verify/verify-forum-notification-inbox-unread-count.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
-`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V/20W` source slices.
-`Cargo.lock` was not regenerated because this work does not change the package
-dependency graph.
+`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V/20W/20X` source
+slices. `Cargo.lock` was not regenerated because this work does not change the
+package dependency graph.
 
 ## Update rules
 
