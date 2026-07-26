@@ -83,14 +83,14 @@ available only for actionable domain errors.
   identities plus the same channel/locale context, while pricing keeps its existing
   correlation-aware `PortContext`. Catalog lookup, visibility, pricing, availability,
   title, shipping-profile, metadata, and public response contracts remain unchanged.
-- `rustok-commerce` GraphQL storefront cart helper facade: customer and cart owner-port
-  failures plus the intercepted legacy enrichment, shipping, line-item, pricing, and
-  inventory helper failures retain the original cause only in structured diagnostics.
-  Every diagnostic records an explicit owner, operation, stable public code and
-  retryability, and one GraphQL transport boundary; customer reads also retain their
-  canonical correlation and tenant identity, while legacy helpers retain truthful tenant
-  and resource identity. Existing GraphQL messages, codes, retryability, layered routing,
-  and helper call behavior remain unchanged.
+- `rustok-commerce` GraphQL storefront cart helper facade: customer and intercepted
+  legacy helper failures retain their original cause only in structured diagnostics.
+  The shared cart-envelope mapper records the commerce GraphQL boundary owner and derives
+  `source_owner` only from canonical `cart.*` and `pricing.*` owner codes; unprefixed or
+  foreign codes remain `unknown` instead of being falsely attributed to cart. Stable
+  public code/retryability, the common GraphQL boundary, customer correlation/tenant
+  identity, legacy tenant/resource identity, all existing GraphQL messages and codes,
+  layered routing, helper signatures, owner calls, and success behavior remain unchanged.
 - `rustok-commerce` admin fulfillment reconciliation: list, quarantine, manual resolve,
   and retry paths retain the typed fulfillment or orchestration cause with owner, tenant,
   truthful optional provider-operation identity, operation, stable code, status, and HTTP
@@ -240,9 +240,9 @@ available only for actionable domain errors.
 - `cargo check -p rustok-tax --all-features`
 - Targeted cart promotion, storefront staged checkout recovery, HTTP completion,
   payment-collection, order-refund and line-item owner mapping, GraphQL storefront cart
-  helper diagnostics, order payment settlement, order checkout recovery, order checkout
-  compensation, pricing, payment collection, fulfillment checkout execution, admin
-  fulfillment reconciliation, admin fulfillment routes, admin shipping-option, admin
+  helper source-owner diagnostics, order payment settlement, order checkout recovery,
+  order checkout compensation, pricing, payment collection, fulfillment checkout execution,
+  admin fulfillment reconciliation, admin fulfillment routes, admin shipping-option, admin
   order-route, admin checkout-operation, admin payment-route, admin product-route and
   product shipping-profile prevalidation, order-change owner and orchestration mapping,
   admin order-return owner and orchestration mapping, admin order-detail payment and
