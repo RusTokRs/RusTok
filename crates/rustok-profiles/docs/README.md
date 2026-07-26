@@ -13,7 +13,7 @@
 - expose Media-selected direct or immutable capability image descriptors through a public-safe Profiles DTO without constructing URLs locally;
 - select embedded or extracted Media presentation through a typed runtime provider rather than transport-specific consumer code;
 - publish a profile-by-handle storefront page and authenticated follow/unfollow control without moving domain ownership into the host application;
-- expose stable operation names, error codes, outcomes, duration, and retryability for owner writes without recording profile content or infrastructure secrets.
+- expose stable operation names, error codes, outcomes, duration, and retryability for GraphQL owner writes, event publication, and CLI backfill without recording profile content or infrastructure secrets.
 
 ## Scope
 
@@ -27,8 +27,8 @@
 - public handle, display name, bio, avatar/banner references, locale, and visibility policy;
 - GraphQL read/write surfaces for public profile lookup and self-service edit paths;
 - `rustok-profiles-storefront` with `core`, explicit native/GraphQL `transport`, locale bundles, and Leptos UI;
-- `PROFILE_OPERATION_TARGET`, `ProfileOperation`, `ProfileOperationTimer`, and stable `ProfileError` code/retryability classification;
-- event contract `profile.updated` and backfill path for existing users.
+- `PROFILE_OPERATION_TARGET`, `PROFILE_BACKFILL_OPERATION`, `ProfileOperation`, `ProfileOperationTimer`, `ProfileBackfillTimer`, and stable `ProfileError` code/retryability classification;
+- event contract `profile.updated` and owner-local CLI backfill path for existing users.
 
 ## Integration
 
@@ -44,7 +44,8 @@
 - `apps/storefront` mounts the manifest-declared `ProfilesView`; it does not own profile policy, Media provider selection, or follow state;
 - native storefront server functions and GraphQL adapters use the same Profiles, Media, and Social Graph owner contracts and never fall back between their own page-data transports;
 - GraphQL self-service writes and `profile.updated` publication emit `rustok_profiles::operations` records containing only operation, tenant/user correlation, outcome, duration, stable error code, and retryability;
-- operation telemetry must not contain handle, display copy, bio, locale values, Media ids/URLs, object keys, storage paths, or provider endpoints.
+- CLI backfill emits one aggregate `profile.backfill` record per command with tenant scope, dry-run/event flags, stage, counters, outcome, duration, stable error code, and retryability; it does not emit per-user telemetry;
+- operation telemetry must not contain source email, generated handle, display copy, bio, locale values, Media ids/URLs, object keys, storage paths, or provider endpoints.
 
 ## Extraction boundary
 
@@ -61,7 +62,7 @@ Media control-plane descriptor selection may be embedded or remote because both 
 - `cargo test -p rustok-social-graph --test follow_sqlite -- --nocapture`
 - `node scripts/verify/verify-media-public-image-proxy.mjs`
 - `node scripts/verify/verify-profiles-storefront-boundary.mjs`
-- targeted tests for handle policy, locale fallback, summary batching, GraphQL self-service/public visibility, profile backfill, privacy audience/tenant isolation, follower overlay policy, media owner/tenant/MIME validation, public descriptor presentation, provider selection, stable operation/error classification, sensitive-field telemetry exclusion, storefront input preparation, transport contract strings, and profile presentation helpers;
+- targeted tests for handle policy, locale fallback, summary batching, GraphQL self-service/public visibility, profile backfill, privacy audience/tenant isolation, follower overlay policy, media owner/tenant/MIME validation, public descriptor presentation, provider selection, stable operation/error classification, aggregate backfill stages/counters, sensitive-field telemetry exclusion, storefront input preparation, transport contract strings, and profile presentation helpers;
 - storefront route/i18n/module-package and operation-telemetry verification after maintainer compilation.
 
 ## Related documents
