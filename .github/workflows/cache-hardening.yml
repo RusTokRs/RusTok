@@ -171,7 +171,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
@@ -254,7 +254,7 @@ jobs:
       RUSTOK_CHANNEL_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
       RUSTOK_FLEX_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
@@ -284,7 +284,7 @@ jobs:
       RUSTOK_CACHE_REAL_REDIS_URL: redis://127.0.0.1:6379/
       RUSTOK_CACHE_REDIS_SERVER_BIN: /usr/bin/redis-server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
