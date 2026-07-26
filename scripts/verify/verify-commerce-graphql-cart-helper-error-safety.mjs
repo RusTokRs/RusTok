@@ -49,7 +49,6 @@ for (const [value, label] of [
   ['owner = "rustok_customer"', 'customer owner logging'],
   ['owner = "rustok_commerce.graphql_cart_helper"', 'commerce boundary owner logging'],
   ['source_owner = cart_port_source_owner(&error)', 'typed source owner logging'],
-  ['owner = "rustok_commerce.graphql_cart_helper"', 'legacy helper owner logging'],
   ['correlation_id = %context.correlation_id', 'customer correlation logging'],
   ['tenant_id = %context.tenant_id', 'customer tenant logging'],
   ['owner_code = %error.code', 'owner code logging'],
@@ -90,6 +89,7 @@ for (const [pattern, expected, label] of [
   [/public_code = code/g, 3, 'public code log count'],
   [/public_retryable = retryable/g, 3, 'public retryability log count'],
   [/boundary = STOREFRONT_CART_HELPER_BOUNDARY/g, 3, 'boundary log count'],
+  [/owner = "rustok_commerce\.graphql_cart_helper"/g, 2, 'commerce boundary owner count'],
   [/source_owner = cart_port_source_owner\(&error\)/g, 1, 'source owner log count'],
 ]) {
   const count = facadeSource.match(pattern)?.length ?? 0;
