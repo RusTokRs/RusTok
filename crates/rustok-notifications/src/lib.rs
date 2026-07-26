@@ -12,6 +12,7 @@ mod inbox_group_summary;
 mod inbox_reconcile;
 mod inbox_selected;
 mod inbox_state;
+mod inbox_storefront_port;
 pub mod migrations;
 pub mod model;
 mod outbox_intake;
@@ -84,6 +85,12 @@ pub use inbox_selected::{
 pub use inbox_state::{
     NotificationInboxStateDecision, NotificationInboxStateRequest, NotificationInboxStateService,
     NotificationInboxStateSnapshot,
+};
+pub use inbox_storefront_port::{
+    NotificationInboxStorefrontGroupItemsRequest, NotificationInboxStorefrontGroupStateRequest,
+    NotificationInboxStorefrontGroupSummaryRequest, NotificationInboxStorefrontOpenDecision,
+    NotificationInboxStorefrontOpenRequest, NotificationInboxStorefrontPort,
+    NotificationInboxStorefrontService, in_process_notification_inbox_storefront_port,
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
