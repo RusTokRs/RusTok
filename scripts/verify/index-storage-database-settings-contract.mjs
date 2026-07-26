@@ -14,12 +14,28 @@ export const comparableDatabaseFields = Object.freeze([
 export const databaseSettingsSource =
   'read-report.json database metadata observed from the active PostgreSQL benchmark session after exact equality was verified against mutation-report.json and maintenance-report.json active-session metadata';
 
+export const comparisonMethodologyKeys = Object.freeze([
+  'source_oracle',
+  'result_digest',
+  'evidence_validation',
+  'first_run',
+  'warm_run',
+  'automatic_winner_selection',
+  'comparable_database_fields',
+  'database_settings_source',
+]);
+
 const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) => {
   const methodology = comparison?.methodology;
   if (!methodology || typeof methodology !== 'object' || Array.isArray(methodology)) {
     fail('comparison.methodology must be an object');
+  }
+  const actualKeys = Object.keys(methodology).sort();
+  const expectedKeys = [...comparisonMethodologyKeys].sort();
+  if (!sameJson(actualKeys, expectedKeys)) {
+    fail('comparison methodology must contain exactly the canonical methodology fields');
   }
   if (!sameJson(methodology.comparable_database_fields, comparableDatabaseFields)) {
     fail(
@@ -28,7 +44,7 @@ export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =
   }
   if (methodology.database_settings_source !== databaseSettingsSource) {
     fail(
-      'comparison methodology database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata; database_settings_source must identify metadata observed from the active PostgreSQL benchmark session',
+      'comparison methodology database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata',
     );
   }
   return methodology;
