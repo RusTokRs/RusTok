@@ -85,6 +85,11 @@ const scale = (name, factor) => ({
 const comparison = () => ({
   generated_at: '2026-07-24T12:00:00Z',
   methodology: {
+    source_oracle: 'normalized idx_bench_source workload result digests',
+    result_digest: 'ordered_length_prefixed_json_v1',
+    evidence_validation: 'fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities',
+    first_run: 'first EXPLAIN ANALYZE repetition',
+    warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
     automatic_winner_selection: false,
     comparable_database_fields: [...comparableDatabaseFields],
     database_settings_source: databaseSettingsSource,
@@ -142,6 +147,7 @@ const prepare = (root) => {
 
 const completeDecision = (decision) => ({
   ...decision,
+  status: 'accepted',
   selection_rationale: 'Typed EAV provides the selected balance of measured query behavior and schema evolution.',
   rejection_rationales: {
     jsonb: 'JSONB was not selected because its measured and operational trade-offs were less suitable.',
@@ -175,6 +181,7 @@ test('prepares an exact-comparison-bound manual decision draft', () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const decision = JSON.parse(readFileSync(decisionPath, 'utf8'));
     assert.equal(Object.hasOwn(decision, '$schema'), false);
+    assert.equal(decision.status, 'proposed');
     assert.equal(decision.comparison_commit, commit);
     assert.equal(decision.comparison_sha256, sha256(comparisonBytes));
     assert.equal(decision.selected_prototype, 'typed_eav');
@@ -198,7 +205,7 @@ test('rejects a comparison without the canonical database-settings methodology',
       '--output', decisionPath,
     ]);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract/u);
+    assert.match(result.stderr, /comparison methodology must contain exactly the canonical methodology fields/u);
     assert.equal(existsSync(decisionPath), false);
   });
 });
@@ -241,6 +248,9 @@ test('rejects an unedited prepared decision', () => {
   withFixture((root) => {
     const fixture = prepare(root);
     assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const decision = JSON.parse(readFileSync(fixture.decisionPath, 'utf8'));
+    decision.status = 'accepted';
+    writeJson(fixture.decisionPath, decision);
     const result = run(finalizeScript, [
       '--comparison', fixture.comparisonPath,
       '--decision', fixture.decisionPath,

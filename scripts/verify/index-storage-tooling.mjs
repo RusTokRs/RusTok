@@ -65,6 +65,7 @@ const runContract = (args) => {
     'verify-index-storage-router-arguments.mjs',
     'verify-index-storage-comparator-lifecycle.mjs',
     'verify-index-storage-methodology-envelope.mjs',
+    'verify-index-storage-finalizer-lifecycle.mjs',
   ]) {
     runScript(script);
   }
@@ -81,6 +82,7 @@ const runFixtures = (args) => {
     scriptPath('compare-index-storage-evidence-lifecycle.test.mjs'),
     scriptPath('comparison-methodology-envelope.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
+    scriptPath('finalize-index-storage-adr-decision-contract.test.mjs'),
     scriptPath('index-storage-decision-tooling.test.mjs'),
     scriptPath('prepare-index-storage-decision-lifecycle.test.mjs'),
     scriptPath('storage-decision-schema-text.test.mjs'),
