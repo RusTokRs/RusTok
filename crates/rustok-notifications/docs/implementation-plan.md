@@ -46,18 +46,18 @@ the cursor inside their tenant-state transaction, serializing candidate commit a
 tenant enable/disable by commit order.
 
 Exact inbox open, bounded listing, exact-item read-state, exact unread count,
-bounded mark-all-read, and bounded exact-recipient reconciliation services are now
-owner-public. Open requests recheck current recipient privacy and source target
-authorization. Listing scans exact-recipient rows in bounded descending keyset
-pages and supports sparse pages. State commands provide exact
-seen/read/mark-unread/archive transitions without foreign owner calls, while
-archived remains terminal. The unread count is an exact owner-table aggregate and
-is never derived from bounded list pages. Bounded mark-all-read scans only unread
-or seen rows and delegates every transition to the exact state owner.
-Reconciliation reuses open-time policy and archives currently unavailable rows
-through the state owner. No external transport, other bulk state command,
-grouped-view, tenant-wide scheduler, payload-redaction, or UI contract is published
-yet.
+bounded mark-all-read, bounded mark-all-unread, and bounded exact-recipient
+reconciliation services are now owner-public. Open requests recheck current
+recipient privacy and source target authorization. Listing scans exact-recipient
+rows in bounded descending keyset pages and supports sparse pages. State commands
+provide exact seen/read/mark-unread/archive transitions without foreign owner calls,
+while archived remains terminal. The unread count is an exact owner-table aggregate
+and is never derived from bounded list pages. Bounded mark-all-read scans only
+unread or seen rows; bounded mark-all-unread scans only seen or read rows. Both
+commands delegate every transition to the exact state owner. Reconciliation reuses
+open-time policy and archives currently unavailable rows through the state owner.
+No external transport, mark-all-archive or selected-ID bulk command, grouped-view,
+tenant-wide scheduler, payload-redaction, or UI contract is published yet.
 
 ## Invariants
 
@@ -108,13 +108,28 @@ yet.
 - mark-all-read reuses the `i1` cursor and orders eligible rows by
   `created_at DESC, id DESC`;
 - only unread and seen rows are selected; read and archived rows remain outside the
-  command;
-- one bounded raw page is loaded before any exact state mutation;
-- every selected row delegates to `NotificationInboxStateService::mark_read`,
-  preserving unread/seen timestamp invariants;
+  mark-all-read command;
+- one bounded raw mark-all-read page is loaded before any exact state mutation;
+- every selected mark-all-read row delegates to
+  `NotificationInboxStateService::mark_read`, preserving unread/seen timestamp
+  invariants;
 - mark-all-read progress is derived from the last scanned raw eligible row and the
   response exposes only scanned/marked counts plus continuation metadata;
 - mark-all-read calls no privacy, source, target, or delivery owner and creates no
+  delivery attempt;
+- mark-all-unread requires non-nil tenant and recipient identities, defaults to 20
+  rows and is capped at 64;
+- mark-all-unread reuses the `i1` cursor and orders eligible rows by
+  `created_at DESC, id DESC`;
+- only seen and read rows are selected; unread and archived rows remain outside the
+  mark-all-unread command;
+- one bounded raw mark-all-unread page is loaded before any exact state mutation;
+- every selected mark-all-unread row delegates to
+  `NotificationInboxStateService::mark_unread`, clearing `seen_at` and `read_at`
+  while archived remains terminal;
+- mark-all-unread progress is derived from the last scanned raw eligible row and the
+  response exposes only scanned/marked counts plus continuation metadata;
+- mark-all-unread calls no privacy, source, target, or delivery owner and creates no
   delivery attempt;
 - recipient reconciliation scans only exact-recipient non-archived rows in bounded
   `created_at DESC, id DESC` pages;
@@ -397,11 +412,34 @@ yet.
 - the response exposes only scanned/marked counts and continuation metadata, calls
   no privacy/source/target/delivery owner, and leaves delivery attempts unchanged;
 - mark-all-unread, mark-all-archive, arbitrary selected-ID bulk commands, grouped
-  views, transport, and UI remain closed;
+  views, transport, and UI remain closed at this milestone;
 - contract
   `crates/rustok-forum/contracts/forum-notification-inbox-mark-all-read.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`, and
   SQLite evidence `tests/inbox_mark_all_read_sqlite.rs`.
+
+### `FORUM-20Z`
+
+- `NotificationInboxMarkAllUnreadService` scans one exact-recipient page of seen or
+  read rows in `created_at DESC, id DESC` order after non-nil identity validation;
+- requests default to 20 rows, cap at 64, and reuse the versioned `i1` cursor with
+  nanosecond timestamp and UUID tie-breaker validation;
+- one bounded raw page is selected before any mutation and continuation derives from
+  the last scanned raw eligible row;
+- every selected row delegates to `NotificationInboxStateService::mark_unread`,
+  clearing `seen_at` and `read_at` while archived remains terminal;
+- unread and archived rows remain outside selection, while empty and foreign scopes
+  return an empty page without notification identity;
+- earlier exact transitions remain durable and idempotent if a later database
+  operation fails;
+- the response exposes only scanned/marked counts and continuation metadata, calls
+  no privacy/source/target/delivery owner, and leaves delivery attempts unchanged;
+- mark-all-archive, arbitrary selected-ID bulk commands, grouped views, transport,
+  and UI remain closed;
+- contract
+  `crates/rustok-forum/contracts/forum-notification-inbox-mark-all-unread.json`,
+  verifier `scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs`, and
+  SQLite evidence `tests/inbox_mark_all_unread_sqlite.rs`.
 
 ## Remaining `NOTIFY-01`
 
@@ -409,9 +447,9 @@ yet.
   composition;
 - retention, tenant-wide scheduled reconciliation, payload redaction, repair,
   quarantine replay/purge, and administrative command state;
-- keep mark-all-unread/archive, arbitrary selected-ID bulk commands, preferences,
-  digests, delivery transports, and external inbox adapters closed until matching
-  owner commands exist.
+- keep mark-all-archive, arbitrary selected-ID bulk commands, preferences, digests,
+  delivery transports, and external inbox adapters closed until matching owner
+  commands exist.
 
 ## Remaining `NOTIFY-03`
 
@@ -439,8 +477,8 @@ Admin and storefront remain module-owned. Until owner inbox services are exposed
 through matching module-owned transport adapters and UI packages, they expose only
 foundation/unavailable states and must not invent unread counts outside
 `NotificationInboxUnreadCountService`, expose exact mark-unread or bounded
-mark-all-read without authorized transport composition, expose other bulk state
-mutations, or create shadow inbox storage.
+mark-all-read/mark-all-unread without authorized transport composition, expose
+other bulk state mutations, or create shadow inbox storage.
 
 ## Maintainer verification set
 
@@ -461,6 +499,7 @@ cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_count_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_mark_all_read_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_mark_all_unread_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
@@ -487,13 +526,14 @@ node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
 node scripts/verify/verify-forum-notification-inbox-unread-count.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs
+node scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
-`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V/20W/20X/20Y`
-source slices. `Cargo.lock` was not regenerated because this work does not change
-the package dependency graph.
+`NOTIFY-03D/03E/03F/03G/03H/03I` and
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z` source slices. `Cargo.lock` was not
+regenerated because this work does not change the package dependency graph.
 
 ## Update rules
 
