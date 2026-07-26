@@ -38,6 +38,32 @@ pub enum ProfileError {
     Database(#[from] DbErr),
 }
 
+impl ProfileError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::EmptyDisplayName => "profiles.display_name_empty",
+            Self::DisplayNameTooLong => "profiles.display_name_too_long",
+            Self::EmptyHandle => "profiles.handle_empty",
+            Self::InvalidHandle => "profiles.handle_invalid",
+            Self::HandleTooShort => "profiles.handle_too_short",
+            Self::HandleTooLong => "profiles.handle_too_long",
+            Self::ReservedHandle(_) => "profiles.handle_reserved",
+            Self::InvalidLocale(_) => "profiles.locale_invalid",
+            Self::ProfileNotFound(_) => "profiles.profile_not_found",
+            Self::ProfileByHandleNotFound(_) => "profiles.profile_by_handle_not_found",
+            Self::LocalizedCopyNotFound(_) => "profiles.localized_copy_not_found",
+            Self::DuplicateHandle(_) => "profiles.handle_duplicate",
+            Self::Validation(_) => "profiles.validation_failed",
+            Self::PresentationUnavailable => "profiles.presentation_unavailable",
+            Self::Database(_) => "profiles.storage_unavailable",
+        }
+    }
+
+    pub const fn is_retryable(&self) -> bool {
+        matches!(Self::PresentationUnavailable | Self::Database(_), self)
+    }
+}
+
 impl From<rustok_taxonomy::TaxonomyError> for ProfileError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
         match value {
@@ -51,5 +77,28 @@ impl From<rustok_taxonomy::TaxonomyError> for ProfileError {
                 Self::Validation(format!("taxonomy term not found: {term_id}"))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProfileError;
+
+    #[test]
+    fn public_error_codes_do_not_include_sensitive_values() {
+        assert_eq!(
+            ProfileError::ReservedHandle("private-handle".into()).code(),
+            "profiles.handle_reserved"
+        );
+        assert_eq!(
+            ProfileError::InvalidLocale("private-locale".into()).code(),
+            "profiles.locale_invalid"
+        );
+    }
+
+    #[test]
+    fn only availability_failures_are_retryable() {
+        assert!(ProfileError::PresentationUnavailable.is_retryable());
+        assert!(!ProfileError::InvalidHandle.is_retryable());
     }
 }
