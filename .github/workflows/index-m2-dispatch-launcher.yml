@@ -6,26 +6,26 @@ on:
       - main
     types:
       - opened
+      - synchronize
 
 permissions:
   actions: write
   contents: read
-  issues: write
 
 jobs:
   dispatch:
     name: Dispatch canonical replacement evidence
-    if: ${{ github.head_ref == 'agent/index-m2-dispatch-16e9795' }}
+    if: ${{ github.head_ref == 'agent/index-m2-dispatch-16e9795' && github.event.action == 'synchronize' }}
     runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:
-      - name: Dispatch exact evidence ref and publish run identity
+      - name: Dispatch exact evidence ref and resolve run identity
         uses: actions/github-script@v7
         with:
           script: |
             const workflowId = 'index-storage-scale-evidence.yml';
-            const ref = 'agent/index-m2-evidence-16e9795';
-            const expectedSha = '16e9795c07094c8a96c10e2111f7b26b75b359e7';
+            const ref = 'agent/index-m2-evidence-eae5f74';
+            const expectedSha = 'eae5f74241e9431bffe2fd8c43cd046fc1c1f679';
             const startedAfter = Date.now() - 10_000;
 
             await github.rest.actions.createWorkflowDispatch({
@@ -35,7 +35,6 @@ jobs:
               ref,
             });
 
-            let dispatchedRun = null;
             for (let attempt = 0; attempt < 30; attempt += 1) {
               await new Promise((resolve) => setTimeout(resolve, 2_000));
               const response = await github.rest.actions.listWorkflowRuns({
@@ -46,27 +45,14 @@ jobs:
                 branch: ref,
                 per_page: 20,
               });
-              dispatchedRun = response.data.workflow_runs.find((run) => (
-                run.head_sha === expectedSha
-                && new Date(run.created_at).getTime() >= startedAfter
+              const run = response.data.workflow_runs.find((candidate) => (
+                candidate.head_sha === expectedSha
+                && new Date(candidate.created_at).getTime() >= startedAfter
               ));
-              if (dispatchedRun) break;
+              if (run) {
+                core.info(`Canonical Index M2 replacement run ${run.id}: ${run.html_url}`);
+                return;
+              }
             }
 
-            if (!dispatchedRun) {
-              throw new Error(`no canonical run appeared for ${ref}@${expectedSha}`);
-            }
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                `Canonical Index M2 replacement run: **${dispatchedRun.id}**`,
-                `- evidence ref: \`${ref}\``,
-                `- exact commit: \`${expectedSha}\``,
-                `- run: ${dispatchedRun.html_url}`,
-                '',
-                'The run executes the lightweight contract, replacement 100k and 1m packets, and the same-run comparison.',
-              ].join('\n'),
-            });
+            throw new Error(`no canonical run appeared for ${ref}@${expectedSha}`);
