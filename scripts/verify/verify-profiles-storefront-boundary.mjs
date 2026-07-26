@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Profiles storefront owner-boundary, optimistic recovery, Media presentation, and accessibility guardrails.
+// Profiles storefront owner-boundary, transport selection, optimistic recovery, Media presentation, and accessibility guardrails.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -95,6 +95,12 @@ for (const [source, sourcePath] of [
   assertNotContains(source, '"/api/media/public/images', `${sourcePath}: must not own Media route strings`);
 }
 assertContains(mediaPublic, "MediaImagePublicUrlPolicy::ProxyRequired", `${paths.mediaPublic}: storage-relative proxy policy missing`);
+
+assertContains(core, '"native" => ProfilesStorefrontTransportProfile::Native', `${paths.core}: explicit native selector missing`);
+assertContains(core, '"graphql" => ProfilesStorefrontTransportProfile::Graphql', `${paths.core}: explicit GraphQL selector missing`);
+assertContains(core, 'panic!("unsupported profiles storefront transport profile', `${paths.core}: invalid transport configuration must fail closed`);
+assertNotContains(core, "_ => ProfilesStorefrontTransportProfile::Native", `${paths.core}: unknown transport values must not silently fall back to native`);
+assertContains(core, "fn invalid_transport_profile_fails_closed()", `${paths.core}: invalid transport regression test missing`);
 
 assertContains(core, "pub fn recovered_follow_state", `${paths.core}: pure recovery selector missing`);
 assertContains(ui, "recovered_follow_state", `${paths.ui}: UI must use validated recovery state`);
