@@ -83,6 +83,14 @@ fn customer_port_graphql_error(
     public_graphql_error(message, code, retryable)
 }
 
+fn cart_port_source_owner(error: &PortError) -> &'static str {
+    match error.code.split_once('.') {
+        Some(("cart", _)) => "rustok_cart",
+        Some(("pricing", _)) => "rustok_pricing",
+        _ => "unknown",
+    }
+}
+
 pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
     let (message, code, retryable) = match &error.kind {
         PortErrorKind::Validation => ("Cart request is invalid", "CART_REQUEST_INVALID", false),
@@ -115,7 +123,8 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
 
     tracing::error!(
         error = ?error,
-        owner = "rustok_cart",
+        owner = "rustok_commerce.graphql_cart_helper",
+        source_owner = cart_port_source_owner(&error),
         operation = "storefront_cart_port",
         owner_code = %error.code,
         owner_kind = ?error.kind,
@@ -123,7 +132,7 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
         public_code = code,
         public_retryable = retryable,
         boundary = STOREFRONT_CART_HELPER_BOUNDARY,
-        "commerce GraphQL storefront cart owner port failed"
+        "commerce GraphQL storefront cart or pricing owner port failed"
     );
 
     public_graphql_error(message, code, retryable)
