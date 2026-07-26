@@ -150,8 +150,8 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 5);
-        assert_eq!(module.migration_dependencies().len(), 5);
+        assert_eq!(module.migrations().len(), 6);
+        assert_eq!(module.migration_dependencies().len(), 6);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module
