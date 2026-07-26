@@ -142,6 +142,7 @@ const prepare = (root) => {
 
 const completeDecision = (decision) => ({
   ...decision,
+  status: 'accepted',
   selection_rationale: 'Typed EAV provides the selected balance of measured query behavior and schema evolution.',
   rejection_rationales: {
     jsonb: 'JSONB was not selected because its measured and operational trade-offs were less suitable.',
@@ -175,6 +176,7 @@ test('prepares an exact-comparison-bound manual decision draft', () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const decision = JSON.parse(readFileSync(decisionPath, 'utf8'));
     assert.equal(Object.hasOwn(decision, '$schema'), false);
+    assert.equal(decision.status, 'proposed');
     assert.equal(decision.comparison_commit, commit);
     assert.equal(decision.comparison_sha256, sha256(comparisonBytes));
     assert.equal(decision.selected_prototype, 'typed_eav');
@@ -241,6 +243,9 @@ test('rejects an unedited prepared decision', () => {
   withFixture((root) => {
     const fixture = prepare(root);
     assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const decision = JSON.parse(readFileSync(fixture.decisionPath, 'utf8'));
+    decision.status = 'accepted';
+    writeJson(fixture.decisionPath, decision);
     const result = run(finalizeScript, [
       '--comparison', fixture.comparisonPath,
       '--decision', fixture.decisionPath,

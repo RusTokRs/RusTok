@@ -23,6 +23,7 @@ const preparer = read('scripts/verify/prepare-index-storage-decision.mjs');
 const finalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
 const verifier = read('scripts/verify/verify-index-storage-adr.mjs');
 const fixture = read('scripts/verify/index-storage-decision-tooling.test.mjs');
+const finalizerContractFixture = read('scripts/verify/finalize-index-storage-adr-decision-contract.test.mjs');
 const guide = read('crates/rustok-index/docs/storage-decision.md');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
 const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
@@ -44,6 +45,7 @@ requireMarkers(router, 'storage tooling router', [
   "'verify-index-storage-adr-integrity.mjs'",
   "scriptPath('check-index-storage-read-ordering.test.mjs')",
   "scriptPath('index-storage-standalone-tools.test.mjs')",
+  "scriptPath('finalize-index-storage-adr-decision-contract.test.mjs')",
   "runScript('check-index-storage-read-ordering.mjs', ['--input', packetRoot])",
   "runScript('check-index-storage-read-ordering.mjs', orderingArgs)",
   "case 'prepare':",
@@ -176,20 +178,78 @@ forbidMarkers(preparer, 'decision preparer', [
 ]);
 
 requireMarkers(finalizer, 'ADR finalizer', [
+  "const allowedArguments = new Set(['--comparison', '--decision', '--output'])",
+  "if (args.length === 1 && (args[0] === '--help' || args[0] === '-h'))",
+  "fail('--help/-h must be the only argument')",
+  'if (!allowedArguments.has(argument)) fail(`unknown argument: ${argument}`)',
   'const requiredDecisionKeys = [',
   "const allowedDecisionKeys = new Set(['$schema', ...requiredDecisionKeys])",
   'decision is missing required field ${key}',
   'decision contains unsupported field ${key}',
   'decision.$schema must reference ./storage-decision.schema.json when present',
+  'const requireAcceptedDecision = (decision) =>',
+  'decision.status must be accepted before ADR finalization',
+  'const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);',
+  'year === 0 || month < 1 || month > 12 || day < 1 || day > monthLengths[month - 1]',
+  'decision.decision_date must be a real ISO calendar date',
+  'requireAcceptedDecision(decision.value);',
   'still contains a preparation placeholder',
+  'const stagedOutput = `${args.output}.tmp-${process.pid}`;',
+  'ADR staging path must not overwrite the ${label} input',
+  'rmSync(args.output, { force: true });',
+  'rmSync(stagedOutput, { force: true });',
   'writeFileSync(comparisonPath, comparison.bytes)',
   'writeFileSync(decisionPath, decision.bytes)',
   "path.join(scriptDirectory, 'render-index-storage-adr.mjs')",
   'Decision SHA-256:',
-  'const stagedOutput = `${args.output}.tmp-${process.pid}`',
   'rmSync(temporaryRoot, { recursive: true, force: true })',
 ]);
+const finalizerOutputCollisionGate = finalizer.indexOf(
+  'if (resolvedOutput === resolvedInput) fail(`--output must not overwrite the ${label} input`);',
+);
+const finalizerStagingCollisionGate = finalizer.indexOf(
+  'if (resolvedStagedOutput === resolvedInput)',
+);
+const finalizerOutputRevocation = finalizer.indexOf('rmSync(args.output, { force: true });');
+const finalizerStagingRevocation = finalizer.indexOf('rmSync(stagedOutput, { force: true });');
+const finalizerEvidenceRead = finalizer.indexOf("const comparison = readJsonBytes(args.comparison, 'comparison');");
+if (finalizerOutputCollisionGate < 0
+    || finalizerStagingCollisionGate < 0
+    || finalizerOutputRevocation < 0
+    || finalizerStagingRevocation < 0
+    || finalizerEvidenceRead < 0
+    || finalizerOutputCollisionGate > finalizerStagingCollisionGate
+    || finalizerStagingCollisionGate > finalizerOutputRevocation
+    || finalizerOutputRevocation > finalizerStagingRevocation
+    || finalizerStagingRevocation > finalizerEvidenceRead) {
+  fail('ADR finalizer must check output and staging collisions, revoke stale publication paths, then read evidence');
+}
 forbidMarkers(finalizer, 'ADR finalizer', ['shell: true', 'execSync(', 'process.exit(']);
+
+requireMarkers(finalizerContractFixture, 'ADR finalizer decision-contract fixture', [
+  "test('finalizer accepts help only as the sole argument'",
+  "test('finalizer rejects mixed help without changing an existing ADR'",
+  "test('finalizer rejects unknown options without changing an existing ADR'",
+  "test('finalizer output collision preserves the comparison bytes'",
+  "test('finalizer staging collision preserves the comparison bytes'",
+  "test('real finalization attempts revoke stale ADR and staging before evidence access'",
+  "test('finalizer rejects impossible decision dates without leaving stale output'",
+  "test('finalizer accepts a real leap date before renderer validation'",
+  "test('finalizer rejects a proposed decision without leaving stale output'",
+  "test('renderer failure leaves neither stale ADR nor staged output'",
+  '--help/-h must be the only argument',
+  'unknown argument: --format',
+  "source_oracle: 'normalized idx_bench_source workload result digests'",
+  "result_digest: 'ordered_length_prefixed_json_v1'",
+  'comparable_database_fields: [...comparableDatabaseFields]',
+  'database_settings_source: databaseSettingsSource',
+  "'0000-01-01'",
+  "decision({ decision_date: '2024-02-29' })",
+  'decision.status must be accepted before ADR finalization',
+  'decision.decision_date must be a real ISO calendar date',
+  'assert.equal(existsSync(outputPath), false)',
+  'assert.deepEqual(stagingEntries(root), [])',
+]);
 
 requireMarkers(verifier, 'saved ADR verifier', [
   "const prefix = '[verify-index-storage-adr]'",
@@ -212,6 +272,9 @@ requireMarkers(fixture, 'decision tooling fixture', [
   "test('rejects unsupported fields in the decision envelope'",
   "test('finalizes an ADR bound to exact comparison and decision bytes'",
   "test('rejects a saved ADR changed after finalization'",
+  "assert.equal(decision.status, 'proposed')",
+  "status: 'accepted'",
+  "decision.status = 'accepted';",
   "Object.hasOwn(decision, '$schema'), false",
   'String.fromCharCode(96)',
   'ADR bytes differ from deterministic finalization',
@@ -224,7 +287,12 @@ requireMarkers(guide, 'storage decision guide', [
   'Only `comparison.json` emitted through the official comparator wrapper is valid decision input.',
   'Direct output from `compare-index-storage-evidence-core.mjs` is intentionally incomplete',
   'exact ordered `comparable_database_fields` contract',
-  'The comparator rejects cross-scale drift in any field',
+  'The comparator rejects intra-packet or cross-scale drift in any field',
+  'The generated draft has `status: proposed`.',
+  'Change it to `accepted` only after the evidence and rationales have been reviewed.',
+  'a year from `0001` through `9999`',
+  'Malformed command lines and output paths that collide with either input are non-destructive.',
+  'A valid replacement attempt revokes any existing ADR and process-specific staged output before evidence is read.',
   'The standalone renderer enforces the same methodology contract even when invoked directly.',
   'Recomputing `comparison_sha256` after removing or changing the methodology does not make the input acceptable.',
   'Comparison SHA-256',
@@ -262,4 +330,4 @@ for (const [label, workflow] of [
   ]);
 }
 
-console.log('[verify-index-storage-adr-integrity] executable SQL ordering, observed database-settings methodology, standalone evidence entrypoints, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
+console.log('[verify-index-storage-adr-integrity] executable SQL ordering, observed database-settings methodology, standalone evidence entrypoints, atomic decision preparation, strict finalizer CLI and replacement lifecycle, accepted byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
