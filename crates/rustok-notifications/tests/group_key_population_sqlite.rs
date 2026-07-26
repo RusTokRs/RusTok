@@ -4,8 +4,8 @@ use rustok_notifications::entities::{delivery_attempt, notification};
 use rustok_notifications::model::{NotificationPriorityValue, NotificationState};
 use rustok_notifications::NotificationsModule;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, EntityTrait, PaginatorTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
+    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -241,6 +241,7 @@ async fn load_notification(db: &DatabaseConnection, id: Uuid) -> notification::M
 
 async fn delivery_count(db: &DatabaseConnection, tenant_id: Uuid) -> u64 {
     delivery_attempt::Entity::find()
+        .filter(delivery_attempt::Column::TenantId.eq(tenant_id))
         .count(db)
         .await
         .expect("delivery attempt count should succeed")
