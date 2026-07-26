@@ -45,6 +45,7 @@ const paths = {
   graphql: "crates/rustok-profiles/storefront/src/transport/graphql_adapter.rs",
   profileGraphql: "crates/rustok-profiles/src/graphql/types.rs",
   profileMutation: "crates/rustok-profiles/src/graphql/mutation.rs",
+  profileQuery: "crates/rustok-profiles/src/graphql/query.rs",
   profileError: "crates/rustok-profiles/src/error.rs",
   profileLib: "crates/rustok-profiles/src/lib.rs",
   observability: "crates/rustok-profiles/src/observability.rs",
@@ -65,6 +66,7 @@ const native = readRepo(paths.native);
 const graphql = readRepo(paths.graphql);
 const profileGraphql = readRepo(paths.profileGraphql);
 const profileMutation = readRepo(paths.profileMutation);
+const profileQuery = readRepo(paths.profileQuery);
 const profileError = readRepo(paths.profileError);
 const profileLib = readRepo(paths.profileLib);
 const observability = readRepo(paths.observability);
@@ -137,7 +139,12 @@ for (const operationVariant of [
 }
 assertContains(profileMutation, "timer.finish_profile_result(&result)", `${paths.profileMutation}: owner result telemetry missing`);
 assertContains(profileMutation, "timer.finish_failure(PROFILE_EVENT_PUBLISH_ERROR, true)", `${paths.profileMutation}: event failure telemetry missing`);
-assertContains(profileMutation, "ProfileError::PresentationUnavailable", `${paths.profileMutation}: presentation-unavailable error mapping missing`);
+for (const [source, sourcePath] of [
+  [profileMutation, paths.profileMutation],
+  [profileQuery, paths.profileQuery],
+]) {
+  assertContains(source, "ProfileError::PresentationUnavailable", `${sourcePath}: presentation-unavailable error mapping missing`);
+}
 assertContains(profileError, '"profiles.presentation_unavailable"', `${paths.profileError}: presentation error code missing`);
 assertContains(profileError, '"profiles.storage_unavailable"', `${paths.profileError}: storage error code missing`);
 assertContains(profileError, "pub const fn is_retryable", `${paths.profileError}: retryability classification missing`);
