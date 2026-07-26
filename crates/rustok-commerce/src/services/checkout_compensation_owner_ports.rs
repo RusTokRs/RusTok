@@ -38,8 +38,10 @@ const COMPENSATION_PORT_DEADLINE_SECONDS: u64 = 3;
 const CHECKOUT_COMPENSATION_OWNER_BOUNDARY: &str = "checkout_compensation_owner_port";
 const PAYMENT_COMPENSATION_OWNER: &str = "rustok_payment";
 const ORDER_COMPENSATION_OWNER: &str = "rustok_order";
+const INVENTORY_COMPENSATION_OWNER: &str = "rustok_inventory";
 const PAYMENT_COMPENSATION_OPERATION: &str = "compensate_checkout_payment";
 const ORDER_COMPENSATION_OPERATION: &str = "compensate_checkout_order";
+const INVENTORY_COMPENSATION_OPERATION: &str = "release_inventory_by_identity";
 const ORDER_MANUAL_RECONCILIATION_CODE: &str = "order.checkout_compensation_manual_reconciliation";
 const PAYMENT_MANUAL_RECONCILIATION_CODE: &str =
     "payment.checkout_compensation_manual_reconciliation";
@@ -364,22 +366,31 @@ impl CheckoutCompensationService {
                 status if status == CheckoutInventoryReservationStatus::Planned.as_str() => {}
                 status if status == CheckoutInventoryReservationStatus::Released.as_str() => {}
                 status if status == CheckoutInventoryReservationStatus::Reserved.as_str() => {
+                    let inventory_context = inventory_context(
+                        tenant_id,
+                        operation,
+                        &reservation,
+                        self.port_deadline,
+                    );
                     let released = self
                         .reservation_port
                         .release_inventory_by_identity(
-                            inventory_context(
-                                tenant_id,
-                                operation,
-                                &reservation,
-                                self.port_deadline,
-                            ),
+                            inventory_context.clone(),
                             InventoryIdentityReservationReleaseRequest {
                                 reservation_id: reservation.reservation_id,
                                 external_id: reservation.external_id.clone(),
                             },
                         )
                         .await
-                        .map_err(|error| boundary_error("release_inventory", error))?;
+                        .map_err(|error| {
+                            owner_boundary_error(
+                                &inventory_context,
+                                INVENTORY_COMPENSATION_OWNER,
+                                INVENTORY_COMPENSATION_OPERATION,
+                                "release_inventory",
+                                error,
+                            )
+                        })?;
                     if released.reservation_id != reservation.reservation_id
                         || released.external_id != reservation.external_id
                         || released.variant_id != reservation.variant_id
