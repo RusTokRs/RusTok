@@ -7,6 +7,7 @@ mod inbox;
 mod inbox_bulk;
 mod inbox_count;
 mod inbox_reconcile;
+mod inbox_selected;
 mod inbox_state;
 pub mod migrations;
 pub mod model;
@@ -59,6 +60,11 @@ pub use inbox_count::{
 pub use inbox_reconcile::{
     NotificationInboxReconcilePage, NotificationInboxReconcileRequest,
     NotificationInboxReconcileService,
+};
+pub use inbox_selected::{
+    MAX_NOTIFICATION_INBOX_SELECTED_IDS, NotificationInboxSelectedAction,
+    NotificationInboxSelectedStateRequest, NotificationInboxSelectedStateResult,
+    NotificationInboxSelectedStateService,
 };
 pub use inbox_state::{
     NotificationInboxStateDecision, NotificationInboxStateRequest, NotificationInboxStateService,
