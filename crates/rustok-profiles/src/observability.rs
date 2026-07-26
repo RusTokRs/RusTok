@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::ProfileError;
 
 pub const PROFILE_OPERATION_TARGET: &str = "rustok_profiles::operations";
+pub const PROFILE_BACKFILL_OPERATION: &str = "profile.backfill";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileOperation {
@@ -83,9 +84,74 @@ impl ProfileOperationTimer {
     }
 }
 
+#[derive(Debug)]
+pub struct ProfileBackfillTimer {
+    tenant_id: Uuid,
+    dry_run: bool,
+    emit_events: bool,
+    started_at: Instant,
+}
+
+impl ProfileBackfillTimer {
+    pub fn start(tenant_id: Uuid, dry_run: bool, emit_events: bool) -> Self {
+        Self {
+            tenant_id,
+            dry_run,
+            emit_events,
+            started_at: Instant::now(),
+        }
+    }
+
+    pub fn finish_success(
+        &self,
+        scanned_users: usize,
+        skipped_existing: usize,
+        planned_creates: usize,
+        created_profiles: usize,
+        published_events: usize,
+    ) {
+        tracing::info!(
+            target: PROFILE_OPERATION_TARGET,
+            operation = PROFILE_BACKFILL_OPERATION,
+            tenant_id = %self.tenant_id,
+            dry_run = self.dry_run,
+            emit_events = self.emit_events,
+            outcome = "success",
+            scanned_users,
+            skipped_existing,
+            planned_creates,
+            created_profiles,
+            published_events,
+            duration_ms = self.started_at.elapsed().as_millis() as u64,
+            "Profile backfill operation completed"
+        );
+    }
+
+    pub fn finish_failure(
+        &self,
+        stage: &'static str,
+        error_code: &'static str,
+        retryable: bool,
+    ) {
+        tracing::warn!(
+            target: PROFILE_OPERATION_TARGET,
+            operation = PROFILE_BACKFILL_OPERATION,
+            tenant_id = %self.tenant_id,
+            dry_run = self.dry_run,
+            emit_events = self.emit_events,
+            outcome = "failure",
+            stage,
+            error_code,
+            retryable,
+            duration_ms = self.started_at.elapsed().as_millis() as u64,
+            "Profile backfill operation failed"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ProfileOperation;
+    use super::{PROFILE_BACKFILL_OPERATION, ProfileOperation};
 
     #[test]
     fn operation_names_are_stable_and_owner_scoped() {
@@ -98,5 +164,6 @@ mod tests {
             ProfileOperation::PublishUpdatedEvent.as_str(),
             "profile.publish_updated_event"
         );
+        assert_eq!(PROFILE_BACKFILL_OPERATION, "profile.backfill");
     }
 }
