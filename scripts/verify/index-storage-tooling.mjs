@@ -58,6 +58,7 @@ const runContract = (args) => {
     'verify-index-storage-standalone-tools.mjs',
     'verify-index-storage-adr-tooling.mjs',
     'verify-index-storage-adr-integrity.mjs',
+    'verify-index-storage-renderer-lifecycle.mjs',
   ]) {
     runScript(script);
   }
