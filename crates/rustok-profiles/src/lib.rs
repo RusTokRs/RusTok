@@ -10,6 +10,7 @@ pub mod graphql;
 pub mod loader;
 pub mod media;
 pub mod migrations;
+pub mod observability;
 pub mod presentation;
 pub mod privacy;
 pub mod reader;
@@ -22,6 +23,9 @@ pub use loader::{ProfileSummaryLoader, ProfileSummaryLoaderKey};
 pub use media::{
     ProfileImagePresentation, ProfileMediaPublicImageProvider, ProfileMediaSlot,
     profile_image_presentation, validate_profile_media_asset,
+};
+pub use observability::{
+    PROFILE_OPERATION_TARGET, ProfileOperation, ProfileOperationTimer,
 };
 pub use presentation::ProfilePresentationService;
 pub use privacy::{
