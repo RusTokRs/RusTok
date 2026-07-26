@@ -406,7 +406,149 @@ mod source {
         }
     }
 
+    mod rustok_fulfillment_shim {
+        use ::rustok_fulfillment::{
+            FulfillmentError, FulfillmentResponse, FulfillmentResult, ShippingOptionResponse,
+        };
+        use ::sea_orm::DatabaseConnection;
+        use ::uuid::Uuid;
+
+        const GRAPHQL_QUERY_FULFILLMENT_BOUNDARY: &str =
+            "commerce_graphql_query_fulfillment_facade";
+
+        pub struct FulfillmentService {
+            inner: ::rustok_fulfillment::FulfillmentService,
+        }
+
+        impl FulfillmentService {
+            pub fn new(db: DatabaseConnection) -> Self {
+                Self {
+                    inner: ::rustok_fulfillment::FulfillmentService::new(db),
+                }
+            }
+
+            pub async fn list_shipping_options(
+                &self,
+                tenant_id: Uuid,
+                requested_locale: Option<&str>,
+                tenant_default_locale: Option<&str>,
+            ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+                self.inner
+                    .list_shipping_options(
+                        tenant_id,
+                        requested_locale,
+                        tenant_default_locale,
+                    )
+                    .await
+                    .map_err(|error| {
+                        log_fulfillment_query_error(
+                            &error,
+                            tenant_id,
+                            "storefront_shipping_options",
+                            "list_shipping_options",
+                            None,
+                            requested_locale,
+                            tenant_default_locale,
+                        );
+                        error
+                    })
+            }
+
+            pub async fn find_by_order(
+                &self,
+                tenant_id: Uuid,
+                order_id: Uuid,
+            ) -> FulfillmentResult<Option<FulfillmentResponse>> {
+                self.inner
+                    .find_by_order(tenant_id, order_id)
+                    .await
+                    .map_err(|error| {
+                        log_fulfillment_query_error(
+                            &error,
+                            tenant_id,
+                            "order",
+                            "find_by_order",
+                            Some(order_id),
+                            None,
+                            None,
+                        );
+                        error
+                    })
+            }
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn log_fulfillment_query_error(
+            error: &FulfillmentError,
+            tenant_id: Uuid,
+            query_field: &'static str,
+            operation: &'static str,
+            order_id: Option<Uuid>,
+            requested_locale: Option<&str>,
+            tenant_default_locale: Option<&str>,
+        ) {
+            let (owner_code, owner_kind, owner_retryable) = match error {
+                FulfillmentError::Validation(_) =>
+                    ("fulfillment.validation", "validation", false),
+                FulfillmentError::ShippingOptionNotFound(_) => (
+                    "fulfillment.shipping_option_not_found",
+                    "not_found",
+                    false,
+                ),
+                FulfillmentError::FulfillmentNotFound(_) => (
+                    "fulfillment.fulfillment_not_found",
+                    "not_found",
+                    false,
+                ),
+                FulfillmentError::InvalidTransition { .. } => (
+                    "fulfillment.invalid_transition",
+                    "conflict",
+                    false,
+                ),
+                FulfillmentError::Database(_) => (
+                    "fulfillment.database_unavailable",
+                    "unavailable",
+                    true,
+                ),
+            };
+
+            match error {
+                FulfillmentError::Database(_) => tracing::error!(
+                    error = ?error,
+                    owner = "rustok_fulfillment",
+                    tenant_id = %tenant_id,
+                    query_field,
+                    operation,
+                    order_id = ?order_id,
+                    requested_locale = ?requested_locale,
+                    tenant_default_locale = ?tenant_default_locale,
+                    owner_code,
+                    owner_kind,
+                    owner_retryable,
+                    boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
+                    "commerce GraphQL query fulfillment owner read failed"
+                ),
+                _ => tracing::warn!(
+                    error = ?error,
+                    owner = "rustok_fulfillment",
+                    tenant_id = %tenant_id,
+                    query_field,
+                    operation,
+                    order_id = ?order_id,
+                    requested_locale = ?requested_locale,
+                    tenant_default_locale = ?tenant_default_locale,
+                    owner_code,
+                    owner_kind,
+                    owner_retryable,
+                    boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
+                    "commerce GraphQL query fulfillment owner read was rejected"
+                ),
+            }
+        }
+    }
+
     use self::rustok_api_shim as rustok_api;
+    use self::rustok_fulfillment_shim as rustok_fulfillment;
 
     include!("query.rs");
 }
