@@ -27,14 +27,15 @@ pub enum ProfilesStorefrontInputError {
 }
 
 pub fn selected_transport_profile(value: Option<&str>) -> ProfilesStorefrontTransportProfile {
-    match value
+    let normalized = value
         .unwrap_or_default()
         .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
+        .to_ascii_lowercase();
+
+    match normalized.as_str() {
+        "" | "native" => ProfilesStorefrontTransportProfile::Native,
         "graphql" => ProfilesStorefrontTransportProfile::Graphql,
-        _ => ProfilesStorefrontTransportProfile::Native,
+        invalid => panic!("unsupported profiles storefront transport profile: {invalid}"),
     }
 }
 
@@ -102,15 +103,25 @@ mod tests {
     }
 
     #[test]
-    fn transport_selection_defaults_to_native() {
+    fn transport_selection_accepts_supported_profiles_and_defaults_to_native() {
         assert_eq!(
             selected_transport_profile(Some("graphql")),
             ProfilesStorefrontTransportProfile::Graphql
         );
         assert_eq!(
+            selected_transport_profile(Some("native")),
+            ProfilesStorefrontTransportProfile::Native
+        );
+        assert_eq!(
             selected_transport_profile(None),
             ProfilesStorefrontTransportProfile::Native
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported profiles storefront transport profile")]
+    fn invalid_transport_profile_fails_closed() {
+        let _ = selected_transport_profile(Some("rest"));
     }
 
     #[test]
