@@ -29,14 +29,18 @@ const usage = () => {
 
 const parseArgs = () => {
   const values = new Map();
+  const allowedArguments = new Set(['--comparison', '--decision', '--adr']);
   const args = process.argv.slice(2);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--help' || argument === '-h') {
+      if (args.length !== 1) fail('help must be the only argument');
       usage();
       return null;
     }
-    if (!argument.startsWith('--') || !args[index + 1] || args[index + 1].startsWith('--')) {
+    if (!allowedArguments.has(argument)
+        || !args[index + 1]
+        || args[index + 1].startsWith('--')) {
       fail(`unknown or incomplete argument: ${argument}`);
     }
     if (values.has(argument)) fail(`${argument} was provided more than once`);
