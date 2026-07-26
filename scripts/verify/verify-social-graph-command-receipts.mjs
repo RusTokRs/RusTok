@@ -70,23 +70,27 @@ const test = readRepo(paths.test);
 assertContains(cargo, "serde_json.workspace = true", `${paths.cargo}: receipt serialization dependency missing`);
 assertContains(entities, "pub mod command_receipt;", `${paths.entities}: receipt entity not wired`);
 assertContains(entity, 'table_name = "social_graph_command_receipts"', `${paths.entity}: receipt table ownership missing`);
-for (const field of ["tenant_id", "idempotency_key", "request_json", "status", "response_json", "completed_at"]) {
+for (const field of ["tenant_id", "idempotency_key", "schema_version", "request_json", "status", "response_json", "completed_at"]) {
   assertContains(entity, `pub ${field}`, `${paths.entity}: receipt field missing: ${field}`);
 }
 
 assertContains(migration, "ux_social_graph_command_receipt_identity", `${paths.migration}: unique receipt identity missing`);
 assertContains(migration, "(tenant_id, idempotency_key)", `${paths.migration}: tenant/key uniqueness missing`);
+assertContains(migration, "schema_version INTEGER NOT NULL DEFAULT 1", `${paths.migration}: receipt schema version missing`);
+assertContains(migration, "schema_version = 1", `${paths.migration}: receipt schema version constraint missing`);
 assertContains(migration, "status IN ('processing', 'completed')", `${paths.migration}: receipt status constraint missing`);
 assertContains(migration, "status = 'completed' AND response_json IS NOT NULL", `${paths.migration}: completed receipt integrity missing`);
 assertContains(migrations, "m20260726_000003_create_command_receipts", `${paths.migrations}: receipt migration not registered`);
 assertContains(lib, "mod receipts;", `${paths.lib}: receipt implementation must remain owner-private`);
 
 for (const marker of [
+  "COMMAND_RECEIPT_SCHEMA_VERSION: i32 = 1",
   "MAX_IDEMPOTENCY_KEY_BYTES: usize = 191",
   "OnConflict::columns",
   "command_receipt::Column::TenantId",
   "command_receipt::Column::IdempotencyKey",
   ".do_nothing()",
+  "receipt.schema_version != COMMAND_RECEIPT_SCHEMA_VERSION",
   "receipt.request_json != expected_json",
   "SocialGraphError::IdempotencyConflict",
   "receipt.status != STATUS_COMPLETED",
