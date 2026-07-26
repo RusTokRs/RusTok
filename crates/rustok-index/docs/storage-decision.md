@@ -27,6 +27,8 @@ node scripts/verify/index-storage-tooling.mjs compare \
 
 The router dispatches Node directly without shell evaluation. It exposes the canonical static guards, packet validator, comparator, exact-byte hashing, decision preparation, ADR finalization, and saved-ADR verification paths.
 
+Global `--help` and `-h` are accepted only as the sole router argument. The `packet` command rejects repeated `--scale` or `--root` options before invoking ordering checks or evidence validation. This prevents malformed scripted invocations from silently changing the effective evidence scale or packet root.
+
 Only `comparison.json` emitted through the official comparator wrapper is valid decision input. Direct output from `compare-index-storage-evidence-core.mjs` is intentionally incomplete because it does not finalize the observed PostgreSQL database-settings methodology. Do not add the missing fields by hand.
 
 The accepted methodology contains the exact ordered `comparable_database_fields` contract:
