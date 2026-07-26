@@ -46,6 +46,7 @@ const paths = {
   profileGraphql: "crates/rustok-profiles/src/graphql/types.rs",
   profileMutation: "crates/rustok-profiles/src/graphql/mutation.rs",
   profileQuery: "crates/rustok-profiles/src/graphql/query.rs",
+  profileCli: "crates/rustok-profiles/cli/src/lib.rs",
   profileError: "crates/rustok-profiles/src/error.rs",
   profileLib: "crates/rustok-profiles/src/lib.rs",
   observability: "crates/rustok-profiles/src/observability.rs",
@@ -67,6 +68,7 @@ const graphql = readRepo(paths.graphql);
 const profileGraphql = readRepo(paths.profileGraphql);
 const profileMutation = readRepo(paths.profileMutation);
 const profileQuery = readRepo(paths.profileQuery);
+const profileCli = readRepo(paths.profileCli);
 const profileError = readRepo(paths.profileError);
 const profileLib = readRepo(paths.profileLib);
 const observability = readRepo(paths.observability);
@@ -108,7 +110,9 @@ assertContains(mediaPublic, "MediaImagePublicUrlPolicy::ProxyRequired", `${paths
 
 assertContains(profileLib, "pub mod observability;", `${paths.profileLib}: operation telemetry module not wired`);
 assertContains(profileLib, "ProfileOperationTimer", `${paths.profileLib}: operation telemetry contract not exported`);
+assertContains(profileLib, "ProfileBackfillTimer", `${paths.profileLib}: backfill telemetry contract not exported`);
 assertContains(observability, 'PROFILE_OPERATION_TARGET: &str = "rustok_profiles::operations"', `${paths.observability}: stable telemetry target missing`);
+assertContains(observability, 'PROFILE_BACKFILL_OPERATION: &str = "profile.backfill"', `${paths.observability}: stable backfill operation missing`);
 for (const operation of [
   "profile.upsert",
   "profile.update_handle",
@@ -117,13 +121,41 @@ for (const operation of [
   "profile.update_visibility",
   "profile.update_media",
   "profile.publish_updated_event",
+  "profile.backfill",
 ]) {
   assertContains(observability, `"${operation}"`, `${paths.observability}: stable operation missing: ${operation}`);
 }
-for (const field of ["operation =", "tenant_id =", "user_id =", "outcome =", "duration_ms =", "error_code", "retryable"]) {
+for (const field of [
+  "operation =",
+  "tenant_id =",
+  "user_id =",
+  "outcome =",
+  "duration_ms =",
+  "error_code",
+  "retryable",
+  "dry_run =",
+  "emit_events =",
+  "scanned_users",
+  "skipped_existing",
+  "planned_creates",
+  "created_profiles",
+  "published_events",
+]) {
   assertContains(observability, field, `${paths.observability}: telemetry field missing: ${field}`);
 }
-for (const sensitiveField of ["handle =", "bio =", "locale =", "media_id =", "avatar_media_id =", "banner_media_id ="]) {
+for (const sensitiveField of [
+  "handle =",
+  "display_name =",
+  "bio =",
+  "locale =",
+  "preferred_locale =",
+  "email =",
+  "media_id =",
+  "avatar_media_id =",
+  "banner_media_id =",
+  "url =",
+  "endpoint =",
+]) {
   assertNotContains(observability, sensitiveField, `${paths.observability}: telemetry must not record sensitive field: ${sensitiveField}`);
 }
 for (const operationVariant of [
@@ -148,6 +180,30 @@ for (const [source, sourcePath] of [
 assertContains(profileError, '"profiles.presentation_unavailable"', `${paths.profileError}: presentation error code missing`);
 assertContains(profileError, '"profiles.storage_unavailable"', `${paths.profileError}: storage error code missing`);
 assertContains(profileError, "pub const fn is_retryable", `${paths.profileError}: retryability classification missing`);
+
+assertContains(profileCli, "ProfileBackfillTimer::start", `${paths.profileCli}: backfill telemetry must start after normalized options`);
+assertContains(profileCli, "telemetry.finish_success(", `${paths.profileCli}: successful backfill telemetry missing`);
+assertContains(profileCli, "backfill_port_failed", `${paths.profileCli}: port failure telemetry missing`);
+assertContains(profileCli, "backfill_profile_failed", `${paths.profileCli}: profile failure telemetry missing`);
+assertContains(profileCli, "backfill_failed", `${paths.profileCli}: external failure telemetry missing`);
+for (const marker of [
+  "host_resolution",
+  "tenant_read",
+  "user_read",
+  "enrichment_read",
+  "existing_profile_read",
+  "profile_plan",
+  "profile_create",
+  "event_publish",
+  "BACKFILL_HOST_ERROR",
+  "BACKFILL_TENANT_READ_ERROR",
+  "BACKFILL_USER_READ_ERROR",
+  "BACKFILL_ENRICHMENT_READ_ERROR",
+  "BACKFILL_EVENT_PUBLISH_ERROR",
+]) {
+  assertContains(profileCli, marker, `${paths.profileCli}: stable backfill telemetry marker missing: ${marker}`);
+}
+assertNotContains(profileCli, "tracing::", `${paths.profileCli}: CLI must emit telemetry through the Profiles owner contract`);
 
 assertContains(core, '"native" => ProfilesStorefrontTransportProfile::Native', `${paths.core}: explicit native selector missing`);
 assertContains(core, '"graphql" => ProfilesStorefrontTransportProfile::Graphql', `${paths.core}: explicit GraphQL selector missing`);
