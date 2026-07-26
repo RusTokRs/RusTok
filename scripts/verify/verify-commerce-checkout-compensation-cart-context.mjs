@@ -36,6 +36,18 @@ const orchestrationBlock = between(
   '    async fn compensate_payment(',
   'compensation orchestration block',
 );
+const paymentBlock = between(
+  source,
+  '    async fn compensate_payment(',
+  '    async fn compensate_order(',
+  'payment compensation block',
+);
+const orderBlock = between(
+  source,
+  '    async fn compensate_order(',
+  '    async fn release_remaining_reservations(',
+  'order compensation block',
+);
 const inventoryBlock = between(
   source,
   '    async fn release_remaining_reservations(',
@@ -48,11 +60,17 @@ const cartBlock = between(
   '\n}\n\nfn cart_status(',
   'cart release block',
 );
-const inventoryContext = between(
+const cartStatusBlock = between(
   source,
+  'fn cart_status(',
   'fn inventory_context(',
+  'cart status helper',
+);
+const cartContextBlock = between(
+  source,
   'fn cart_context(',
-  'inventory context helper',
+  'fn order_context(',
+  'cart context helper',
 );
 const ownerMapper = between(
   source,
@@ -73,49 +91,72 @@ for (const [value, label] of [
     'const CHECKOUT_COMPENSATION_OWNER_BOUNDARY: &str = "checkout_compensation_owner_port";',
     'stable compensation owner boundary',
   ],
-  ['const INVENTORY_COMPENSATION_OWNER: &str = "rustok_inventory";', 'truthful inventory owner'],
+  ['const CART_COMPENSATION_OWNER: &str = "rustok_cart";', 'truthful cart owner'],
   [
-    'const INVENTORY_COMPENSATION_OPERATION: &str = "release_inventory_by_identity";',
-    'exact inventory owner operation',
+    'const CART_SNAPSHOT_OPERATION: &str = "read_cart_checkout_snapshot";',
+    'exact cart snapshot operation',
+  ],
+  [
+    'const CART_RELEASE_OPERATION: &str = "release_cart_checkout";',
+    'exact cart release operation',
   ],
 ]) requireText(source, value, label);
 
 for (const [value, label] of [
-  ['let inventory_context = inventory_context(', 'retained inventory context'],
-  ['inventory_context.clone()', 'inventory context delegation clone'],
-  ['&inventory_context', 'inventory context mapper input'],
-  ['INVENTORY_COMPENSATION_OWNER', 'inventory mapper owner'],
-  ['INVENTORY_COMPENSATION_OPERATION', 'inventory mapper operation'],
-  ['"release_inventory"', 'inventory commerce stage'],
-  ['InventoryIdentityReservationReleaseRequest {', 'inventory release request'],
-  ['reservation_id: reservation.reservation_id', 'reservation identity input'],
-  ['external_id: reservation.external_id.clone()', 'external identity input'],
-  ['released.reservation_id != reservation.reservation_id', 'reservation response identity check'],
-  ['released.external_id != reservation.external_id', 'external response identity check'],
-  ['released.variant_id != reservation.variant_id', 'variant response identity check'],
-  ['.mark_released(tenant_id, reservation.reservation_id)', 'reservation release checkpoint'],
-  ['CheckoutInventoryReservationStatus::Consumed', 'consumed reservation reconciliation'],
-  ['inventory reservation {} is already consumed', 'consumed reservation message'],
-]) requireText(inventoryBlock, value, label);
+  ['let cart_read_context =', 'retained cart read context'],
+  ['cart_context(tenant_id, operation, self.port_deadline, "read", false)', 'cart read context construction'],
+  ['cart_read_context.clone()', 'cart read context delegation clone'],
+  ['&cart_read_context', 'cart read context mapper input'],
+  ['CART_COMPENSATION_OWNER', 'cart read mapper owner'],
+  ['CART_SNAPSHOT_OPERATION', 'cart snapshot mapper operation'],
+  ['"read_cart"', 'cart read commerce stage'],
+  ['CartCheckoutSnapshotRequest {', 'cart snapshot request'],
+  ['cart_id: operation.cart_id', 'cart snapshot identity'],
+  ['locale: None', 'cart snapshot locale request'],
+  ['let cart_release_context =', 'retained cart release context'],
+  ['cart_context(tenant_id, operation, self.port_deadline, "release", true)', 'cart release context construction'],
+  ['cart_release_context.clone()', 'cart release context delegation clone'],
+  ['&cart_release_context', 'cart release context mapper input'],
+  ['CART_RELEASE_OPERATION', 'cart release mapper operation'],
+  ['"release_cart"', 'cart release commerce stage'],
+  ['CartCheckoutLifecycleRequest {', 'cart release request'],
+  ['CartStatus::CheckingOut', 'checking-out release admission'],
+  ['CartStatus::Active => {}', 'active cart no-op'],
+  ['CartStatus::Completed', 'completed cart reconciliation'],
+  ['CartStatus::Abandoned', 'abandoned cart conflict'],
+  ['cart_status(&released)? != CartStatus::Active', 'released cart active validation'],
+]) requireText(cartBlock, value, label);
 
-const contextBindings = inventoryBlock.match(/let inventory_context\s*=/g) ?? [];
-const contextClones = inventoryBlock.match(/inventory_context\.clone\(\)/g) ?? [];
-const mapperInputs = inventoryBlock.match(/&inventory_context/g) ?? [];
-if (contextBindings.length !== 1 || contextClones.length !== 1 || mapperInputs.length !== 1) {
+const readBindings = cartBlock.match(/let cart_read_context\s*=/g) ?? [];
+const readClones = cartBlock.match(/cart_read_context\.clone\(\)/g) ?? [];
+const readMapperInputs = cartBlock.match(/&cart_read_context/g) ?? [];
+const releaseBindings = cartBlock.match(/let cart_release_context\s*=/g) ?? [];
+const releaseClones = cartBlock.match(/cart_release_context\.clone\(\)/g) ?? [];
+const releaseMapperInputs = cartBlock.match(/&cart_release_context/g) ?? [];
+if (readBindings.length !== 1 || readClones.length !== 1 || readMapperInputs.length !== 1) {
   failures.push(
-    `expected one retained inventory context, one clone, and one mapper input, found ${contextBindings.length}/${contextClones.length}/${mapperInputs.length}`,
+    `expected one retained cart read context, one clone, and one mapper input, found ${readBindings.length}/${readClones.length}/${readMapperInputs.length}`,
+  );
+}
+if (
+  releaseBindings.length !== 1 ||
+  releaseClones.length !== 1 ||
+  releaseMapperInputs.length !== 1
+) {
+  failures.push(
+    `expected one retained cart release context, one clone, and one mapper input, found ${releaseBindings.length}/${releaseClones.length}/${releaseMapperInputs.length}`,
   );
 }
 
 for (const [value, label] of [
-  ['PortActor::service("rustok-commerce.checkout-compensation")', 'inventory service actor'],
-  ['PLATFORM_FALLBACK_LOCALE', 'inventory effective locale'],
-  ['checkout:{}:compensation:inventory:{}', 'inventory correlation identity'],
-  ['operation.id, reservation.cart_line_item_id', 'inventory correlation components'],
-  ['.with_causation_id(operation.id.to_string())', 'inventory causation'],
-  ['.with_idempotency_key(reservation.external_id.clone())', 'inventory idempotency key'],
-  ['.with_deadline(deadline)', 'inventory deadline'],
-]) requireText(inventoryContext, value, label);
+  ['PortActor::service("rustok-commerce.checkout-compensation")', 'cart service actor'],
+  ['PLATFORM_FALLBACK_LOCALE', 'cart effective locale'],
+  ['checkout:{}:compensation:cart:{action}', 'cart correlation identity'],
+  ['.with_causation_id(operation.id.to_string())', 'cart causation'],
+  ['.with_deadline(deadline)', 'cart deadline'],
+  ['if write {', 'cart write semantics branch'],
+  ['.with_idempotency_key(format!(', 'cart release idempotency key'],
+]) requireText(cartContextBlock, value, label);
 
 for (const [value, label] of [
   ['context: &PortContext', 'retained context input'],
@@ -166,12 +207,12 @@ if (
     manualRoutingIndex < boundaryDelegationIndex
   )
 ) {
-  failures.push('inventory owner diagnostics must precede unchanged owner routing and boundary mapping');
+  failures.push('cart owner diagnostics must precede unchanged owner routing and boundary mapping');
 }
 
 for (const [value, label] of [
   ['ORDER_MANUAL_RECONCILIATION_CODE | PAYMENT_MANUAL_RECONCILIATION_CODE', 'manual routing remains payment/order only'],
-  ['boundary_error(stage, error)', 'inventory generic boundary delegation'],
+  ['boundary_error(stage, error)', 'cart generic boundary delegation'],
 ]) requireText(ownerMapper, value, label);
 
 for (const [value, label] of [
@@ -183,32 +224,44 @@ for (const [value, label] of [
 ]) requireText(boundaryMapper, value, label);
 
 for (const [value, label] of [
+  ['cart.lifecycle_status()', 'typed cart lifecycle conversion'],
+  ['cart {} has an unknown lifecycle state', 'unknown lifecycle reconciliation'],
+]) requireText(cartStatusBlock, value, label);
+
+for (const [value, label] of [
   ['self.compensate_payment(tenant_id, actor_id, operation)', 'payment-first orchestration'],
   ['self.compensate_order(tenant_id, actor_id, operation)', 'order-second orchestration'],
   ['self.release_remaining_reservations(tenant_id, operation)', 'inventory-third orchestration'],
   ['self.release_cart(tenant_id, operation)', 'cart-fourth orchestration'],
 ]) requireText(orchestrationBlock, value, label);
 
-for (const [value, label] of [
-  ['read_cart_checkout_snapshot(', 'cart snapshot read remains mounted'],
-  ['release_cart_checkout(', 'cart release remains mounted'],
-]) requireText(cartBlock, value, label);
+for (const [content, value, label] of [
+  [paymentBlock, 'compensate_checkout_payment(', 'payment compensation remains mounted'],
+  [orderBlock, 'compensate_checkout_order(', 'order compensation remains mounted'],
+  [inventoryBlock, 'release_inventory_by_identity(', 'inventory release remains mounted'],
+]) requireText(content, value, label);
 
 for (const [value, label] of [
   [
-    'release_inventory_by_identity(\n                            inventory_context(',
-    'inline inventory context delegation',
+    'read_cart_checkout_snapshot(\n                cart_context(tenant_id, operation, self.port_deadline, "read", false)',
+    'inline cart read context delegation',
   ],
-  ['.map_err(|error| boundary_error("release_inventory", error))?', 'context-dropping inventory mapper'],
-  ['owner_boundary_error("release_inventory", error)', 'legacy inventory owner mapper'],
-]) forbidText(inventoryBlock, value, label);
+  [
+    'release_cart_checkout(\n                        cart_context(tenant_id, operation, self.port_deadline, "release", true)',
+    'inline cart release context delegation',
+  ],
+  ['.map_err(|error| boundary_error("read_cart", error))?', 'context-dropping cart read mapper'],
+  ['.map_err(|error| boundary_error("release_cart", error))?', 'context-dropping cart release mapper'],
+  ['owner_boundary_error("read_cart", error)', 'legacy cart read owner mapper'],
+  ['owner_boundary_error("release_cart", error)', 'legacy cart release owner mapper'],
+]) forbidText(cartBlock, value, label);
 
 if (failures.length > 0) {
-  console.error('Checkout compensation inventory context verification failed:');
+  console.error('Checkout compensation cart context verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Checkout inventory compensation retains owner context without changing payment/order behavior or public envelopes',
+  '✔ Checkout cart compensation retains snapshot and release owner context without changing public envelopes',
 );

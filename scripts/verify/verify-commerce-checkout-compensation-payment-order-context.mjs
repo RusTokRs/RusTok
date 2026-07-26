@@ -204,16 +204,8 @@ for (const [content, value, label] of [
   [orderBlock, 'OrderStatusKind::Cancelled', 'order cancelled validation'],
   [orderBlock, 'order owner returned no compensation result', 'order missing-result reconciliation'],
   [inventoryBlock, 'release_inventory_by_identity(', 'inventory release remains mounted'],
-  [
-    cartBlock,
-    '.map_err(|error| boundary_error("read_cart", error))?',
-    'cart read remains out of scope',
-  ],
-  [
-    cartBlock,
-    '.map_err(|error| boundary_error("release_cart", error))?',
-    'cart release remains out of scope',
-  ],
+  [cartBlock, 'read_cart_checkout_snapshot(', 'cart snapshot read remains mounted'],
+  [cartBlock, 'release_cart_checkout(', 'cart release remains mounted'],
 ]) requireText(content, value, label);
 
 for (const [value, label] of [
@@ -236,5 +228,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Checkout payment/order compensation retain owner context without changing cart paths or public envelopes',
+  '✔ Checkout payment/order compensation retain owner context without changing inventory behavior or public envelopes',
 );
