@@ -105,8 +105,8 @@ impl NotificationInboxGroupSummaryService {
             .map(decode_inbox_cursor)
             .transpose()?;
         let limit = request.bounded_limit();
-        let query_limit = i64::try_from(limit + 1)
-            .map_err(|_| NotificationError::InvalidDescriptor)?;
+        let query_limit =
+            i64::try_from(limit + 1).map_err(|_| NotificationError::InvalidDescriptor)?;
         let backend = self.db.get_database_backend();
         let statement = match (backend, cursor) {
             (DatabaseBackend::Postgres, None) => Statement::from_sql_and_values(
@@ -144,6 +144,7 @@ impl NotificationInboxGroupSummaryService {
                 vec![
                     request.tenant_id.into(),
                     request.recipient_id.into(),
+                    cursor.created_at.to_owned().into(),
                     cursor.created_at.into(),
                     cursor.id.into(),
                     query_limit.into(),
@@ -164,10 +165,12 @@ impl NotificationInboxGroupSummaryService {
             .collect::<Result<Vec<_>, DbErr>>()?;
         let has_more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
-        let next_cursor = has_more.then(|| {
-            rows.last()
-                .map(|row| encode_summary_cursor(&row.latest_created_at, row.latest_id))
-        }).flatten();
+        let next_cursor = has_more
+            .then(|| {
+                rows.last()
+                    .map(|row| encode_summary_cursor(&row.latest_created_at, row.latest_id))
+            })
+            .flatten();
 
         let mut groups = Vec::with_capacity(rows.len());
         for row in rows {
