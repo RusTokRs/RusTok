@@ -63,6 +63,7 @@ const runContract = (args) => {
     'verify-index-storage-decision-preparation-lifecycle.mjs',
     'verify-index-storage-decision-text-schema.mjs',
     'verify-index-storage-router-arguments.mjs',
+    'verify-index-storage-comparator-lifecycle.mjs',
   ]) {
     runScript(script);
   }
@@ -76,6 +77,7 @@ const runFixtures = (args) => {
     scriptPath('check-index-storage-read-ordering.test.mjs'),
     scriptPath('index-storage-standalone-tools.test.mjs'),
     scriptPath('compare-index-storage-evidence.test.mjs'),
+    scriptPath('compare-index-storage-evidence-lifecycle.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
     scriptPath('index-storage-decision-tooling.test.mjs'),
     scriptPath('prepare-index-storage-decision-lifecycle.test.mjs'),
