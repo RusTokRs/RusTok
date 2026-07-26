@@ -129,7 +129,7 @@ const requireIsoCalendarDate = (value, label) => {
 
 const requireDecisionText = (value, label) => {
   if (typeof value !== 'string' || value.trim().length === 0) return;
-  if (value.trim().startsWith(placeholderPrefix)) {
+  if (value.includes(placeholderPrefix)) {
     fail(`${label} still contains a preparation placeholder`);
   }
 };

@@ -67,7 +67,7 @@ The generated draft has `status: proposed`. Change it to `accepted` only after t
 
 The preparation command accepts only `--comparison`, `--selected`, `--owner`, `--date`, and `--output`, plus one standalone `--force` flag. Help is valid only as the sole argument, and unknown, incomplete, mixed-help, or duplicate options fail before changing decision state. A valid forced replacement creates a unique same-directory staging location before withdrawing the stale draft, then validates the comparison and publishes the complete replacement with one rename. Failure after stale-draft withdrawal leaves no decision file and no staging residue.
 
-The generated draft contains `TODO(index-storage-decision):` markers. Replace every marker with measured and operational reasoning before finalization. The finalizer rejects any remaining preparation marker.
+The generated draft contains `TODO(index-storage-decision):` markers. Replace every marker with measured and operational reasoning before finalization. The finalizer rejects the exact marker at any position inside selection, rejection, operations, migration, or rollback rationale text.
 
 [`storage-decision.example.json`](storage-decision.example.json) shows the same decision fields and references [`storage-decision.schema.json`](storage-decision.schema.json). Its relative `$schema` is valid because the two files are colocated in the documentation directory. A generated decision under `evidence/index-storage/...` intentionally omits `$schema` rather than recording a false relative path; `$schema` remains an optional finalizer field when it correctly points to a colocated schema file.
 
@@ -115,7 +115,7 @@ The finalizer fails closed unless:
 - every displayed metric and cross-scale ratio is present and numeric;
 - the decision identifies the same comparison commit;
 - `comparison_sha256` matches the exact comparison-file bytes;
-- no preparation placeholder remains;
+- no preparation placeholder remains anywhere in required rationale text;
 - selection, rejection, operations, migration, and rollback rationales are all present.
 
 The standalone renderer enforces the same methodology contract even when invoked directly. Recomputing `comparison_sha256` after removing or changing the methodology does not make the input acceptable.
