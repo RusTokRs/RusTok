@@ -191,8 +191,9 @@ fn require_human_user(ctx: &Context<'_>) -> Result<AuthContext> {
     Ok(auth)
 }
 
-fn map_profile_error(err: ProfileError) -> async_graphql::Error {
-    match err {
+fn map_profile_error(error: ProfileError) -> async_graphql::Error {
+    let message = error.to_string();
+    match error {
         ProfileError::EmptyDisplayName
         | ProfileError::DisplayNameTooLong
         | ProfileError::EmptyHandle
@@ -203,14 +204,14 @@ fn map_profile_error(err: ProfileError) -> async_graphql::Error {
         | ProfileError::InvalidLocale(_)
         | ProfileError::Validation(_)
         | ProfileError::DuplicateHandle(_) => {
-            <FieldError as GraphQLError>::bad_user_input(&err.to_string())
+            <FieldError as GraphQLError>::bad_user_input(&message)
         }
         ProfileError::ProfileNotFound(_) | ProfileError::ProfileByHandleNotFound(_) => {
-            <FieldError as GraphQLError>::not_found(&err.to_string())
+            <FieldError as GraphQLError>::not_found(&message)
         }
-        ProfileError::LocalizedCopyNotFound(_) | ProfileError::Database(_) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
-        }
+        ProfileError::LocalizedCopyNotFound(_)
+        | ProfileError::PresentationUnavailable
+        | ProfileError::Database(_) => <FieldError as GraphQLError>::internal_error(&message),
     }
 }
 
