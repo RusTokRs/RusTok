@@ -8,6 +8,7 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub idempotency_key: String,
+    pub schema_version: i32,
     pub request_json: Json,
     pub status: String,
     pub response_json: Option<Json>,
