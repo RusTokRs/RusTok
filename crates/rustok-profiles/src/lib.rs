@@ -25,7 +25,8 @@ pub use media::{
     profile_image_presentation, validate_profile_media_asset,
 };
 pub use observability::{
-    PROFILE_OPERATION_TARGET, ProfileOperation, ProfileOperationTimer,
+    PROFILE_BACKFILL_OPERATION, PROFILE_OPERATION_TARGET, ProfileBackfillTimer,
+    ProfileOperation, ProfileOperationTimer,
 };
 pub use presentation::ProfilePresentationService;
 pub use privacy::{
