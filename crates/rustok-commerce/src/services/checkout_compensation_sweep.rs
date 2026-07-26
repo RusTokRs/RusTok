@@ -138,15 +138,18 @@ impl CheckoutCompensationSweepService {
 
 fn safe_error_code(error: &CheckoutCompensationError) -> &'static str {
     match error {
+        CheckoutCompensationError::Boundary {
+            stage: "compensate_payment",
+            ..
+        } => "checkout.compensation_payment_failed",
+        CheckoutCompensationError::Boundary {
+            stage: "compensate_order",
+            ..
+        } => "checkout.compensation_order_failed",
         CheckoutCompensationError::Boundary { .. } => "checkout.compensation_boundary_failed",
         CheckoutCompensationError::ReservationJournal(_) => {
             "checkout.compensation_inventory_failed"
         }
-        CheckoutCompensationError::Payment(_)
-        | CheckoutCompensationError::PaymentOrchestration(_) => {
-            "checkout.compensation_payment_failed"
-        }
-        CheckoutCompensationError::Order(_) => "checkout.compensation_order_failed",
         CheckoutCompensationError::ManualReconciliation(_) => {
             "checkout.compensation_manual_reconciliation"
         }

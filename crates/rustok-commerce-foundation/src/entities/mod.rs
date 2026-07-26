@@ -1,8 +1,5 @@
 pub mod inventory_item;
 pub mod inventory_level;
-pub mod price;
-pub mod price_list;
-pub mod price_list_translation;
 pub mod product;
 pub mod product_image;
 pub mod product_image_translation;
@@ -24,9 +21,6 @@ pub mod variant_translation;
 
 pub use inventory_item::Entity as InventoryItem;
 pub use inventory_level::Entity as InventoryLevel;
-pub use price::Entity as Price;
-pub use price_list::Entity as PriceList;
-pub use price_list_translation::Entity as PriceListTranslation;
 pub use product::Entity as Product;
 pub use product_image::Entity as ProductImage;
 pub use product_image_translation::Entity as ProductImageTranslation;

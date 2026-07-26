@@ -16,6 +16,7 @@ const fixtureFiles = [
   'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
   'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
   'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
+  'crates/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs',
   'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
   'crates/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
@@ -23,14 +24,21 @@ const fixtureFiles = [
   'crates/rustok-product/src/services/catalog_schema_service/attributes.rs',
   'crates/rustok-product/src/services/catalog_schema_service/categories.rs',
   'crates/rustok-product/src/services/catalog_schema_service/schemas.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/values.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs',
   'crates/rustok-product/src/services/catalog_schema_service/virtual_categories.rs',
   'crates/rustok-product/src/services/catalog_schema.rs',
   'crates/rustok-product/src/services/catalog.rs',
+  'crates/rustok-product/src/services/catalog/commands.rs',
+  'crates/rustok-product/src/services/catalog/queries.rs',
+  'crates/rustok-product/src/services/catalog/projection.rs',
+  'crates/rustok-product/src/services/catalog/helpers.rs',
   'crates/rustok-product/src/services/catalog/tags.rs',
   'crates/rustok-product/Cargo.toml',
   'crates/rustok-inventory/src/services/bootstrap.rs',
   'crates/rustok-inventory/src/services/mod.rs',
   'crates/rustok-product/src/services/write_transaction.rs',
+  'crates/rustok-product/src/public_error.rs',
   'crates/rustok-commerce/tests/product_taxonomy_tags.rs',
   'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
   'crates/rustok-commerce/tests/product_event_index_integration_test.rs',
@@ -225,6 +233,25 @@ assert(
   `expected category-tree constraint failure, got ${missingCategoryTreeConstraintResult.stderr}`,
 );
 
+const missingTransitionalColumnCleanup = copyFixture();
+replaceInFixture(
+  missingTransitionalColumnCleanup,
+  'crates/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs',
+  'ALTER COLUMN media_id SET NOT NULL',
+  'ALTER COLUMN media_id DROP NOT NULL',
+);
+const missingTransitionalColumnCleanupResult = run(missingTransitionalColumnCleanup);
+assert(
+  missingTransitionalColumnCleanupResult.status !== 0,
+  'expected missing transitional-column cleanup to fail',
+);
+assert(
+  missingTransitionalColumnCleanupResult.stderr.includes(
+    'ALTER COLUMN media_id SET NOT NULL',
+  ),
+  `expected transitional-column cleanup failure, got ${missingTransitionalColumnCleanupResult.stderr}`,
+);
+
 const missingTenantAwareValueOptionInsert = copyFixture();
 replaceInFixture(
   missingTenantAwareValueOptionInsert,
@@ -242,15 +269,32 @@ assert(
 const missingBatchPriceInsert = copyFixture();
 replaceInFixture(
   missingBatchPriceInsert,
-  'crates/rustok-product/src/services/catalog.rs',
-  'price::Entity::insert_many(price_models)',
-  'price::Entity::insert_one_by_one(price_models)',
+  'crates/rustok-product/src/services/catalog/commands.rs',
+  'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)',
+  'PricingBootstrapService::create_initial_prices_one_by_one(&txn, initial_prices)',
 );
 const missingBatchPriceInsertResult = run(missingBatchPriceInsert);
 assert(missingBatchPriceInsertResult.status !== 0, 'expected missing batch price insert to fail');
 assert(
-  missingBatchPriceInsertResult.stderr.includes('price::Entity::insert_many(price_models)'),
+  missingBatchPriceInsertResult.stderr.includes('PricingBootstrapService::create_initial_prices_in_tx'),
   `expected batch price insert failure, got ${missingBatchPriceInsertResult.stderr}`,
+);
+
+const directSchemaTransaction = copyFixture();
+replaceInFixture(
+  directSchemaTransaction,
+  'crates/rustok-product/src/services/catalog_schema_service/attributes.rs',
+  'ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?',
+  'self.db.begin().await?',
+);
+const directSchemaTransactionResult = run(directSchemaTransaction);
+assert(
+  directSchemaTransactionResult.status !== 0,
+  'expected direct split schema transaction to fail',
+);
+assert(
+  directSchemaTransactionResult.stderr.includes('self.db.begin().await?'),
+  `expected split schema transaction failure, got ${directSchemaTransactionResult.stderr}`,
 );
 
 const missingCatalogTagComponent = copyFixture();
@@ -312,7 +356,7 @@ assert(
 const missingDetachedReadMarker = copyFixture();
 replaceInFixture(
   missingDetachedReadMarker,
-  'crates/rustok-product/src/services/catalog_schema_service.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/values.rs',
   'record.detached = detached_attribute_ids.contains(&record.attribute_id);',
   'record.detached = row.detached;',
 );
@@ -368,7 +412,7 @@ assert(
 const missingSchemaValidation = copyFixture();
 replaceInFixture(
   missingSchemaValidation,
-  'crates/rustok-product/src/services/catalog_schema_service.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/values.rs',
   'attribute {} is outside the product effective schema',
   'attribute outside schema drift',
 );

@@ -10,10 +10,6 @@ pub mod product_translation;
 pub mod product_variant;
 pub mod variant_translation;
 
-// Pricing still owns the price table. Product keeps this narrow bridge until
-// initial price writes move behind a transaction-aware pricing owner port.
-pub use commerce_foundation::entities::price;
-
 pub use product::Entity as Product;
 pub use product_image::Entity as ProductImage;
 pub use product_image_translation::Entity as ProductImageTranslation;

@@ -28,12 +28,7 @@ const ADMIN_ORDER_DETAIL_PAYMENT_OPERATION: &str = "find_latest_payment_collecti
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_order_detail";
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";
 
-type AdminOrderHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminOrderHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 struct AdminOrderErrorContext {
     tenant_id: Uuid,
@@ -98,10 +93,7 @@ fn admin_order_error_policy(error: &OrderError) -> AdminOrderHttpPolicy {
     }
 }
 
-fn map_admin_order_error(
-    mut context: AdminOrderErrorContext,
-    error: OrderError,
-) -> HttpError {
+fn map_admin_order_error(mut context: AdminOrderErrorContext, error: OrderError) -> HttpError {
     if let OrderError::OrderNotFound(id) = &error {
         context.order_id = Some(*id);
     }
@@ -215,13 +207,7 @@ pub async fn show_order(
         .await
         .map_err(|error| {
             map_admin_order_error(
-                AdminOrderErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    Some(id),
-                    None,
-                    "get_order",
-                ),
+                AdminOrderErrorContext::new(tenant.id, auth.user_id, Some(id), None, "get_order"),
                 error,
             )
         })?;
@@ -325,8 +311,7 @@ fn map_order_detail_fulfillment_error(
             "Fulfillment request is invalid",
             "validation",
         ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => (
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             axum::http::StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found",
@@ -448,13 +433,7 @@ pub async fn ship_order(
         .await
         .map_err(|error| {
             map_admin_order_error(
-                AdminOrderErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    Some(id),
-                    None,
-                    "ship_order",
-                ),
+                AdminOrderErrorContext::new(tenant.id, auth.user_id, Some(id), None, "ship_order"),
                 error,
             )
         })?;

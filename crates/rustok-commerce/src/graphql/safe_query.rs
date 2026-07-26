@@ -95,12 +95,40 @@ mod query_error_boundary {
         }
     }
 
-    impl From<crate::CommerceError> for BoundaryError {
-        fn from(error: crate::CommerceError) -> Self {
+    impl From<rustok_product::CommerceError> for BoundaryError {
+        fn from(error: rustok_product::CommerceError) -> Self {
             Self::Graphql(super::super::map_product_service_error(
                 error,
                 "commerce_query",
             ))
+        }
+    }
+
+    impl From<crate::CommerceError> for BoundaryError {
+        fn from(error: crate::CommerceError) -> Self {
+            let (message, code, retryable, error_kind) = match error {
+                crate::CommerceError::Database(_) => (
+                    "Commerce data is temporarily unavailable",
+                    "COMMERCE_QUERY_TEMPORARILY_UNAVAILABLE",
+                    true,
+                    "database",
+                ),
+                _ => (
+                    "Commerce query could not be completed safely",
+                    "COMMERCE_QUERY_OPERATION_FAILED",
+                    false,
+                    "commerce",
+                ),
+            };
+            tracing::error!(
+                error = ?error,
+                error_kind,
+                public_code = code,
+                retryable,
+                boundary = "commerce_graphql_query",
+                "commerce GraphQL owner operation failed"
+            );
+            Self::public(message, code, retryable)
         }
     }
 
@@ -276,7 +304,7 @@ pub(crate) mod types {
 }
 
 pub(crate) fn map_product_service_error(
-    error: rustok_commerce_foundation::CommerceError,
+    error: rustok_product::CommerceError,
     operation: &'static str,
 ) -> query_error_boundary::BoundaryError {
     super::map_product_service_error(error, operation).into()

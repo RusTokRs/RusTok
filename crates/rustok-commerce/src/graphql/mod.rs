@@ -38,82 +38,16 @@ pub(crate) const MODULE_SLUG: &str = "commerce";
 pub(crate) const PRODUCT_MODULE_SLUG: &str = "product";
 
 pub(crate) fn map_product_service_error(
-    error: rustok_commerce_foundation::CommerceError,
+    error: rustok_product::CommerceError,
     operation: &'static str,
 ) -> async_graphql::Error {
-    use rustok_commerce_foundation::CommerceError;
+    let public =
+        rustok_product::map_product_public_error(&error, operation, "commerce_graphql_product");
 
-    let (public_message, code, retryable) = match &error {
-        CommerceError::Database(_) => (
-            "Product data is temporarily unavailable",
-            "PRODUCT_TEMPORARILY_UNAVAILABLE",
-            true,
-        ),
-        CommerceError::ProductNotFound(_) => ("Product was not found", "PRODUCT_NOT_FOUND", false),
-        CommerceError::VariantNotFound(_) => {
-            ("Product variant was not found", "VARIANT_NOT_FOUND", false)
-        }
-        CommerceError::DuplicateHandle { .. } => (
-            "Product handle conflicts with an existing product",
-            "DUPLICATE_HANDLE",
-            false,
-        ),
-        CommerceError::DuplicateSku(_) => (
-            "Product SKU conflicts with an existing product",
-            "DUPLICATE_SKU",
-            false,
-        ),
-        CommerceError::InvalidPrice(_) => ("Product price is invalid", "INVALID_PRICE", false),
-        CommerceError::InsufficientInventory { .. } => (
-            "Product inventory is insufficient",
-            "INSUFFICIENT_INVENTORY",
-            false,
-        ),
-        CommerceError::InvalidOptionCombination => (
-            "Product option combination is invalid",
-            "INVALID_OPTIONS",
-            false,
-        ),
-        CommerceError::Validation(_) => ("Product request is invalid", "PRODUCT_VALIDATION", false),
-        CommerceError::ShippingProfileNotFound(_) => (
-            "Shipping profile was not found",
-            "SHIPPING_PROFILE_NOT_FOUND",
-            false,
-        ),
-        CommerceError::DuplicateShippingProfileSlug(_) => (
-            "Shipping profile slug conflicts with an existing profile",
-            "DUPLICATE_SHIPPING_PROFILE_SLUG",
-            false,
-        ),
-        CommerceError::NoVariants => (
-            "Product requires at least one variant",
-            "NO_VARIANTS",
-            false,
-        ),
-        CommerceError::CannotDeletePublished => (
-            "Published products must be archived before removal",
-            "CANNOT_DELETE_PUBLISHED",
-            false,
-        ),
-        CommerceError::Rich(_) | CommerceError::Core(_) => (
-            "Product operation could not be completed safely",
-            "PRODUCT_OPERATION_FAILED",
-            false,
-        ),
-    };
-
-    tracing::error!(
-        error = ?error,
-        operation,
-        public_code = code,
-        retryable,
-        boundary = "commerce_graphql_product",
-        "product service operation failed"
-    );
-
-    async_graphql::Error::new(public_message).extend_with(|_, extensions| {
-        extensions.set("code", code);
-        extensions.set("retryable", retryable);
+    async_graphql::Error::new(public.message).extend_with(|_, extensions| {
+        extensions.set("code", public.code);
+        extensions.set("retryable", public.retryable);
+        extensions.set("correlation_id", public.correlation_id.to_string());
     })
 }
 

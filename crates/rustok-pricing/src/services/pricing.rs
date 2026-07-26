@@ -20,9 +20,17 @@ use rustok_product::{
 };
 
 use rustok_commerce_foundation::dto::PriceInput;
-use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+
+mod entities {
+    pub use rustok_commerce_foundation::entities::{
+        product, product_translation, product_variant,
+    };
+    pub use rustok_pricing_persistence::entities::{
+        price, price_list, price_list_translation,
+    };
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceResolutionContext {
@@ -1354,7 +1362,8 @@ impl PricingService {
                     locale,
                     Some(fallback_locale),
                 )
-                .await?;
+                .await
+                .map_err(map_product_catalog_error)?;
             items.push(map_admin_list_item(product, locale, fallback_locale));
         }
 
@@ -1384,7 +1393,8 @@ impl PricingService {
                 locale,
                 Some(fallback_locale.unwrap_or(locale)),
             )
-            .await?;
+            .await
+            .map_err(map_product_catalog_error)?;
         let variant_ids = product
             .variants
             .iter()
@@ -1502,7 +1512,8 @@ impl PricingService {
                 page,
                 per_page,
             )
-            .await?;
+            .await
+            .map_err(map_product_catalog_error)?;
         let product_ids = products
             .items
             .iter()
@@ -1605,7 +1616,8 @@ impl PricingService {
                 fallback_locale,
                 public_channel_slug,
             )
-            .await?;
+            .await
+            .map_err(map_product_catalog_error)?;
 
         Ok(product.map(map_product_detail))
     }
@@ -2277,5 +2289,22 @@ fn map_product_status(status: rustok_product::entities::product::ProductStatus) 
         rustok_product::entities::product::ProductStatus::Draft => ProductStatus::Draft,
         rustok_product::entities::product::ProductStatus::Active => ProductStatus::Active,
         rustok_product::entities::product::ProductStatus::Archived => ProductStatus::Archived,
+    }
+}
+
+fn map_product_catalog_error(error: rustok_product::CommerceError) -> CommerceError {
+    match error {
+        rustok_product::CommerceError::Database(error) => CommerceError::Database(error),
+        rustok_product::CommerceError::ProductNotFound(id) => CommerceError::ProductNotFound(id),
+        rustok_product::CommerceError::DuplicateHandle { handle, locale } => {
+            CommerceError::DuplicateHandle { handle, locale }
+        }
+        rustok_product::CommerceError::DuplicateSku(sku) => CommerceError::DuplicateSku(sku),
+        rustok_product::CommerceError::Validation(message) => CommerceError::Validation(message),
+        rustok_product::CommerceError::NoVariants => CommerceError::NoVariants,
+        rustok_product::CommerceError::CannotDeletePublished => {
+            CommerceError::CannotDeletePublished
+        }
+        rustok_product::CommerceError::Core(error) => CommerceError::Core(error),
     }
 }

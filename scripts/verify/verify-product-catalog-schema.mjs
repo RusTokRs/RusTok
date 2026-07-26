@@ -37,6 +37,8 @@ const productChannelVisibilityMigrationPath =
   'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs';
 const productCategoryTreeInvariantMigrationPath =
   'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs';
+const productTransitionalColumnCleanupMigrationPath =
+  'crates/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs';
 const legacyProductMigrationPaths = [
   'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
@@ -46,15 +48,23 @@ const schemaServicePath = 'crates/rustok-product/src/services/catalog_schema_ser
 const schemaAttributesPath = 'crates/rustok-product/src/services/catalog_schema_service/attributes.rs';
 const schemaCategoriesPath = 'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
 const schemaSchemasPath = 'crates/rustok-product/src/services/catalog_schema_service/schemas.rs';
+const schemaValuesPath = 'crates/rustok-product/src/services/catalog_schema_service/values.rs';
+const schemaEffectiveFormsPath =
+  'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs';
 const schemaVirtualCategoriesPath =
   'crates/rustok-product/src/services/catalog_schema_service/virtual_categories.rs';
 const schemaResolverPath = 'crates/rustok-product/src/services/catalog_schema.rs';
 const catalogServicePath = 'crates/rustok-product/src/services/catalog.rs';
+const catalogCommandsPath = 'crates/rustok-product/src/services/catalog/commands.rs';
+const catalogQueriesPath = 'crates/rustok-product/src/services/catalog/queries.rs';
+const catalogProjectionPath = 'crates/rustok-product/src/services/catalog/projection.rs';
+const catalogHelpersPath = 'crates/rustok-product/src/services/catalog/helpers.rs';
 const catalogTagsServicePath = 'crates/rustok-product/src/services/catalog/tags.rs';
 const productManifestPath = 'crates/rustok-product/Cargo.toml';
 const inventoryBootstrapPath = 'crates/rustok-inventory/src/services/bootstrap.rs';
 const inventoryServicesModPath = 'crates/rustok-inventory/src/services/mod.rs';
 const productWriteTransactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
+const productPublicErrorPath = 'crates/rustok-product/src/public_error.rs';
 const productTagsTestPath = 'crates/rustok-commerce/tests/product_taxonomy_tags.rs';
 const shippingGraphqlTestPath = 'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs';
 const productEventTestPath = 'crates/rustok-commerce/tests/product_event_index_integration_test.rs';
@@ -74,19 +84,46 @@ const productIntegrityMigration = read(productIntegrityMigrationPath);
 const productValueInvariantMigration = read(productValueInvariantMigrationPath);
 const productChannelVisibilityMigration = read(productChannelVisibilityMigrationPath);
 const productCategoryTreeInvariantMigration = read(productCategoryTreeInvariantMigrationPath);
+const productTransitionalColumnCleanupMigration = read(
+  productTransitionalColumnCleanupMigrationPath,
+);
 const legacyProductMigrations = legacyProductMigrationPaths.map((path) => [path, read(path)]);
 const schemaService = read(schemaServicePath);
 const schemaAttributes = read(schemaAttributesPath);
 const schemaCategories = read(schemaCategoriesPath);
 const schemaSchemas = read(schemaSchemasPath);
+const schemaValues = read(schemaValuesPath);
+const schemaEffectiveForms = read(schemaEffectiveFormsPath);
 const schemaVirtualCategories = read(schemaVirtualCategoriesPath);
+const schemaServiceAggregate = [
+  schemaService,
+  schemaAttributes,
+  schemaCategories,
+  schemaSchemas,
+  schemaValues,
+  schemaEffectiveForms,
+  schemaVirtualCategories,
+].join('\n');
 const schemaResolver = read(schemaResolverPath);
 const catalogService = read(catalogServicePath);
+const catalogCommands = read(catalogCommandsPath);
+const catalogQueries = read(catalogQueriesPath);
+const catalogProjection = read(catalogProjectionPath);
+const catalogHelpers = read(catalogHelpersPath);
 const catalogTagsService = read(catalogTagsServicePath);
+const catalogServiceAggregate = [
+  catalogService,
+  catalogCommands,
+  catalogQueries,
+  catalogProjection,
+  catalogHelpers,
+  catalogTagsService,
+].join('\n');
 const productManifest = read(productManifestPath);
 const inventoryBootstrap = read(inventoryBootstrapPath);
 const inventoryServicesMod = read(inventoryServicesModPath);
 const productWriteTransaction = read(productWriteTransactionPath);
+const productPublicError = read(productPublicErrorPath);
 const productTagsTest = read(productTagsTestPath);
 const shippingGraphqlTest = read(shippingGraphqlTestPath);
 const productEventTest = read(productEventTestPath);
@@ -188,6 +225,8 @@ for (const marker of [
   'Box::new(m20260711_000004_normalize_product_channel_visibility::Migration)',
   'mod m20260725_000002_enforce_catalog_category_tree_invariants;',
   'Box::new(m20260725_000002_enforce_catalog_category_tree_invariants::Migration)',
+  'mod m20260725_000003_remove_transitional_catalog_columns;',
+  'Box::new(m20260725_000003_remove_transitional_catalog_columns::Migration)',
 ]) {
   requireSource(productMigrationsMod, marker, productMigrationsModPath);
 }
@@ -251,6 +290,22 @@ for (const marker of [
     productCategoryTreeInvariantMigration,
     marker,
     productCategoryTreeInvariantMigrationPath,
+  );
+}
+for (const marker of [
+  'cannot remove transitional product image storage: media_id is missing',
+  'DROP COLUMN IF EXISTS is_gift_card',
+  'DROP COLUMN IF EXISTS subtitle',
+  'DROP COLUMN IF EXISTS name',
+  'ALTER COLUMN media_id SET NOT NULL',
+  'DROP COLUMN IF EXISTS url',
+  'ALTER COLUMN weight TYPE NUMERIC(20, 6)',
+  'DROP COLUMN IF EXISTS hs_code',
+]) {
+  requireSource(
+    productTransitionalColumnCleanupMigration,
+    marker,
+    productTransitionalColumnCleanupMigrationPath,
   );
 }
 for (const marker of [
@@ -338,10 +393,16 @@ for (const marker of [
 for (const marker of [
   'mod attributes;',
   'mod categories;',
+  'mod effective_forms;',
   'mod schemas;',
+  'mod values;',
   'mod virtual_categories;',
+]) {
+  requireSource(schemaService, marker, schemaServicePath);
+}
+for (const marker of [
   'ProductAttributeValuesChanged',
-  'load_effective_product_form_from_storage',
+  'load_effective_form_for_product',
   'record.detached = detached_attribute_ids.contains(&record.attribute_id);',
   'product must have a primary structural category before attribute values can be saved',
   'attribute {} is outside the product effective schema',
@@ -354,7 +415,7 @@ for (const marker of [
   'INSERT INTO product_attribute_value_options (tenant_id, value_id, option_id)',
   'attribute {} is not detached for this product',
 ]) {
-  requireSource(schemaService, marker, schemaServicePath);
+  requireSource(schemaServiceAggregate, marker, 'product catalog schema service aggregate');
 }
 for (const marker of [
   'pub async fn list_attributes',
@@ -422,9 +483,9 @@ for (const marker of [
   'product_option_value::Entity::insert_many(option_value_models)',
   'product_option_value_translation::Entity::insert_many(',
   'variant_translation::Entity::insert_many(variant_translation_models)',
-  'price::Entity::insert_many(price_models)',
+  'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)',
 ]) {
-  requireSource(catalogService, marker, catalogServicePath);
+  requireSource(catalogServiceAggregate, marker, 'product catalog service aggregate');
 }
 for (const marker of [
   'pub async fn load_product_tag_map',
@@ -446,7 +507,7 @@ for (const marker of [
   'BootstrapService::load_available_quantities(&self.db, &variant_ids)',
   'BootstrapService::delete_records_for_variants_in_tx(&txn, &variant_ids)',
 ]) {
-  requireSource(catalogService, marker, catalogServicePath);
+  requireSource(catalogServiceAggregate, marker, 'product catalog service aggregate');
 }
 for (const marker of [
   'pub struct BootstrapService;',
@@ -459,8 +520,8 @@ for (const marker of [
   requireSource(inventoryBootstrap, marker, inventoryBootstrapPath);
 }
 requireSource(inventoryServicesMod, 'pub mod bootstrap;', inventoryServicesModPath);
-forbidSource(catalogService, 'entities::inventory_item', catalogServicePath);
-forbidSource(catalogService, 'entities::inventory_level', catalogServicePath);
+forbidSource(catalogServiceAggregate, 'entities::inventory_item', 'product catalog service aggregate');
+forbidSource(catalogServiceAggregate, 'entities::inventory_level', 'product catalog service aggregate');
 
 for (const marker of [
   'product_tags_are_synced_into_product_tags_without_metadata_mirror',
@@ -533,16 +594,24 @@ for (const marker of [
 ]) {
   requireSource(productWriteTransaction, marker, productWriteTransactionPath);
 }
-for (const source of [catalogService, schemaService]) {
+for (const source of [catalogServiceAggregate, schemaServiceAggregate]) {
   requireSource(source, 'ProductWriteTransaction::begin', 'product write service');
   forbidSource(source, 'self.db.begin().await?', 'product write service');
 }
 for (const marker of [
   'fn map_product_service_error(',
-  '"PRODUCT_OPERATION_FAILED"',
-  '"product service operation failed"',
+  'rustok_product::map_product_public_error',
+  'extensions.set("correlation_id"',
 ]) {
   requireSource(commerceGraphqlModule, marker, commerceGraphqlModulePath);
+}
+for (const marker of [
+  'pub fn map_product_public_error(',
+  '"PRODUCT_OPERATION_FAILED"',
+  '"product service operation failed"',
+  'correlation_id',
+]) {
+  requireSource(productPublicError, marker, productPublicErrorPath);
 }
 for (const marker of [
   'map_product_service_error(error, "product_catalog_mutation")',

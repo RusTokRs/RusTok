@@ -1,9 +1,6 @@
 mod support;
 
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_migrations::Migrator;
@@ -12,12 +9,18 @@ use rustok_product::{
     CatalogService, ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
     VariantProductProjectionRequest,
 };
+use rustok_test_utils::{
+    assert_postgres_column_contract as assert_column_contract,
+    assert_postgres_column_missing as assert_column_missing,
+    assert_postgres_table_missing as assert_table_missing, assert_postgres_url,
+    assert_valid_postgres_database_name as assert_valid_database_name, connect_postgres,
+    create_postgres_database as create_database,
+    drop_postgres_database_if_exists as drop_database_if_exists,
+    postgres_database_url as database_url_from_admin_url, unique_postgres_database_name,
+};
 use sea_orm_migration::{
     prelude::MigratorTrait,
-    sea_orm::{
-        ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
-        TransactionTrait,
-    },
+    sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait},
     MigrationTrait, SchemaManager,
 };
 use support::backfill_fixtures::{
@@ -1108,6 +1111,46 @@ async fn assert_product_migration_schema(
     ] {
         assert_trigger_exists(db, trigger).await?;
     }
+    for (table, columns) in [
+        (
+            "products",
+            &[
+                "is_gift_card",
+                "discountable",
+                "weight",
+                "length",
+                "height",
+                "width",
+                "hs_code",
+                "origin_country",
+                "mid_code",
+                "external_id",
+                "deleted_at",
+            ][..],
+        ),
+        ("product_translations", &["subtitle", "material"][..]),
+        ("product_options", &["name", "values"][..]),
+        ("product_images", &["url", "metadata", "created_at"][..]),
+        (
+            "product_variants",
+            &[
+                "length",
+                "height",
+                "width",
+                "hs_code",
+                "origin_country",
+                "mid_code",
+                "metadata",
+                "deleted_at",
+            ][..],
+        ),
+    ] {
+        for column in columns {
+            assert_column_missing(db, table, column).await?;
+        }
+    }
+    assert_column_contract(db, "product_images", "media_id", "uuid", false).await?;
+    assert_column_contract(db, "product_variants", "weight", "numeric", true).await?;
     Ok(())
 }
 
@@ -1309,48 +1352,6 @@ async fn apply_migrations_incrementally(
     }
 }
 
-async fn connect_postgres(
-    url: &str,
-) -> Result<DatabaseConnection, sea_orm_migration::sea_orm::DbErr> {
-    let mut options = ConnectOptions::new(url.to_string());
-    options
-        .connect_timeout(Duration::from_secs(5))
-        .acquire_timeout(Duration::from_secs(5))
-        .sqlx_logging(false);
-    Database::connect(options).await
-}
-
-async fn create_database(
-    admin: &DatabaseConnection,
-    database_name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    admin
-        .execute(Statement::from_string(
-            DbBackend::Postgres,
-            format!("CREATE DATABASE {}", quoted_identifier(database_name)),
-        ))
-        .await
-        .map_err(|error| format!("failed to create smoke database {database_name}: {error}"))?;
-    Ok(())
-}
-
-async fn drop_database_if_exists(
-    admin: &DatabaseConnection,
-    database_name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    admin
-        .execute(Statement::from_string(
-            DbBackend::Postgres,
-            format!(
-                "DROP DATABASE IF EXISTS {} WITH (FORCE)",
-                quoted_identifier(database_name)
-            ),
-        ))
-        .await
-        .map_err(|error| format!("failed to drop smoke database {database_name}: {error}"))?;
-    Ok(())
-}
-
 async fn assert_table_exists(
     db: &DatabaseConnection,
     table: &str,
@@ -1369,53 +1370,6 @@ async fn assert_table_exists(
         .map_err(|error| format!("table existence result for {table} must decode: {error}"))?;
     if !exists {
         return Err(format!("expected table {table} to exist after migrations").into());
-    }
-    Ok(())
-}
-
-async fn assert_table_missing(
-    db: &DatabaseConnection,
-    table: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let row = db
-        .query_one(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT to_regclass($1) IS NULL AS missing",
-            [format!("public.{table}").into()],
-        ))
-        .await?
-        .ok_or_else(|| format!("table absence query for {table} returned no row"))?;
-    let missing: bool = row.try_get("", "missing")?;
-    if !missing {
-        return Err(format!("expected table {table} to be removed after migration down").into());
-    }
-    Ok(())
-}
-
-async fn assert_column_missing(
-    db: &DatabaseConnection,
-    table: &str,
-    column: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let row = db
-        .query_one(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            r#"
-SELECT NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = $1
-      AND column_name = $2
-) AS missing
-"#,
-            [table.to_owned().into(), column.to_owned().into()],
-        ))
-        .await?
-        .ok_or_else(|| format!("column absence query for {table}.{column} returned no row"))?;
-    let missing: bool = row.try_get("", "missing")?;
-    if !missing {
-        return Err(format!("expected column {table}.{column} to be removed").into());
     }
     Ok(())
 }
@@ -1492,60 +1446,8 @@ fn parse_binary_flag(name: &str, value: Option<&str>) -> Result<bool, Box<dyn st
     }
 }
 
-fn assert_postgres_url(url: &str) {
-    assert!(
-        url.starts_with("postgres://") || url.starts_with("postgresql://"),
-        "RUSTOK_MIGRATION_SMOKE_ADMIN_URL must use postgres:// or postgresql://"
-    );
-}
-
-fn assert_valid_database_name(database_name: &str) {
-    let mut chars = database_name.chars();
-    let Some(first) = chars.next() else {
-        panic!("RUSTOK_MIGRATION_SMOKE_DB_NAME must not be empty");
-    };
-    assert!(
-        first == '_' || first.is_ascii_alphabetic(),
-        "RUSTOK_MIGRATION_SMOKE_DB_NAME must start with a letter or underscore"
-    );
-    assert!(
-        chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric()),
-        "RUSTOK_MIGRATION_SMOKE_DB_NAME may contain only letters, digits, and underscores"
-    );
-}
-
-fn database_url_from_admin_url(admin_url: &str, database_name: &str) -> String {
-    let (base, suffix) = admin_url
-        .split_once('?')
-        .map(|(base, query)| (base, format!("?{query}")))
-        .unwrap_or((admin_url, String::new()));
-    let scheme_end = base
-        .find("://")
-        .expect("PostgreSQL URL must include a scheme separator")
-        + 3;
-    let authority_end = base[scheme_end..]
-        .find('/')
-        .map(|offset| scheme_end + offset)
-        .unwrap_or(base.len());
-    format!(
-        "{}{}/{}{}",
-        &base[..authority_end],
-        "",
-        database_name,
-        suffix
-    )
-}
-
 fn default_database_name() -> String {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock must be after UNIX_EPOCH")
-        .as_millis();
-    format!("rustok_migration_smoke_{millis}_{}", std::process::id())
-}
-
-fn quoted_identifier(identifier: &str) -> String {
-    format!("\"{}\"", identifier.replace('"', "\"\""))
+    unique_postgres_database_name("rustok_migration_smoke")
 }
 
 #[cfg(test)]

@@ -113,6 +113,7 @@ sameSet(evidence.cases[0]?.assertions ?? [], registry.contract_tests.cases[0]?.a
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
 if (fallbackSmoke.generated_from !== registryPath || !['source_smoke_locked', 'runtime_verified'].includes(fallbackSmoke.status)) fail('fallback smoke header drift');
+if (fallbackSmoke.runner !== 'cargo test -p rustok-ai --features server --lib direct_product_attributes_') fail('fallback smoke runtime runner drift');
 if (fallbackSmoke.profile !== registry.contract_tests.fallback_smoke.profiles[0]) fail('fallback smoke profile drift');
 if (fallbackSmoke.degraded_mode !== registry.contract_tests.fallback_smoke.degraded_modes[0]) fail('fallback smoke degraded mode drift');
 sameSet(fallbackSmoke.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'fallback smoke cases');

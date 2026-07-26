@@ -13,6 +13,7 @@ rustok-api.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
+rustok-pricing-persistence.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

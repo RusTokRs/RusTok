@@ -4,10 +4,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_commerce_foundation::{
-    entities,
-    error::{CommerceError, CommerceResult},
-};
+use rustok_commerce_foundation::entities;
 use rustok_core::generate_id;
 
 /// Input for creating inventory state for a newly persisted product variant.
@@ -29,7 +26,7 @@ impl BootstrapService {
     pub async fn ensure_default_location_in_tx<C>(
         conn: &C,
         tenant_id: Uuid,
-    ) -> CommerceResult<entities::stock_location::Model>
+    ) -> Result<entities::stock_location::Model, sea_orm::DbErr>
     where
         C: ConnectionTrait,
     {
@@ -60,8 +57,7 @@ impl BootstrapService {
             deleted_at: Set(None),
         }
         .insert(conn)
-        .await
-        .map_err(CommerceError::from)?;
+        .await?;
 
         entities::stock_location_translation::ActiveModel {
             id: Set(generate_id()),
@@ -70,8 +66,7 @@ impl BootstrapService {
             name: Set("Default".to_owned()),
         }
         .insert(conn)
-        .await
-        .map_err(CommerceError::from)?;
+        .await?;
 
         Ok(location)
     }
@@ -80,7 +75,7 @@ impl BootstrapService {
         conn: &C,
         location: &entities::stock_location::Model,
         input: InitialInventory,
-    ) -> CommerceResult<()>
+    ) -> Result<(), sea_orm::DbErr>
     where
         C: ConnectionTrait,
     {
@@ -116,7 +111,7 @@ impl BootstrapService {
     pub async fn load_available_quantities<C>(
         conn: &C,
         variant_ids: &[Uuid],
-    ) -> CommerceResult<HashMap<Uuid, i32>>
+    ) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr>
     where
         C: ConnectionTrait,
     {
@@ -158,7 +153,7 @@ impl BootstrapService {
     pub async fn delete_records_for_variants_in_tx<C>(
         conn: &C,
         variant_ids: &[Uuid],
-    ) -> CommerceResult<()>
+    ) -> Result<(), sea_orm::DbErr>
     where
         C: ConnectionTrait,
     {

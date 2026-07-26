@@ -20,15 +20,14 @@ mod tests;
 use rust_decimal::Decimal;
 use rustok_order::error::OrderError;
 use rustok_payment::PaymentError;
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    PostOrderOrchestrationError, ShippingProfileService,
+    PostOrderOrchestrationError,
     dto::{FulfillmentResponse, OrderResponse, PaymentCollectionResponse},
-    storefront_shipping::normalize_shipping_profile_slug,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -462,7 +461,6 @@ pub(crate) fn map_order_error(error: OrderError) -> HttpError {
     admin_public_error(&error, "rustok_order", error_kind, status, code, message)
 }
 
-
 pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationError) -> HttpError {
     match error {
         PostOrderOrchestrationError::Order(error) => map_order_error(error),
@@ -487,74 +485,4 @@ pub(crate) fn decision_requires_payments_update(action: &str, has_refund_payload
     }
 
     action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
-}
-
-pub(crate) fn map_shipping_profile_error(error: crate::CommerceError) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        crate::CommerceError::ShippingProfileNotFound(_) => (
-            axum::http::StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        crate::CommerceError::DuplicateShippingProfileSlug(_) => (
-            axum::http::StatusCode::CONFLICT,
-            "commerce_admin_shipping_profile_conflict",
-            "A shipping profile with this slug already exists",
-            "duplicate_slug",
-        ),
-        crate::CommerceError::Validation(_) => (
-            axum::http::StatusCode::BAD_REQUEST,
-            "commerce_admin_shipping_profile_invalid",
-            "Shipping profile request is invalid",
-            "validation",
-        ),
-        crate::CommerceError::Database(_) => (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_shipping_profile_storage_unavailable",
-            "Shipping profile storage is temporarily unavailable",
-            "database",
-        ),
-        crate::CommerceError::ProductNotFound(_)
-        | crate::CommerceError::VariantNotFound(_)
-        | crate::CommerceError::DuplicateHandle { .. }
-        | crate::CommerceError::DuplicateSku(_)
-        | crate::CommerceError::InvalidPrice(_)
-        | crate::CommerceError::InsufficientInventory { .. }
-        | crate::CommerceError::InvalidOptionCombination
-        | crate::CommerceError::NoVariants
-        | crate::CommerceError::CannotDeletePublished
-        | crate::CommerceError::Rich(_)
-        | crate::CommerceError::Core(_) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_shipping_profile_failed",
-            "Shipping profile operation could not be completed safely",
-            "unexpected_commerce_error",
-        ),
-    };
-    admin_public_error(
-        &error,
-        "rustok_commerce.shipping_profile",
-        error_kind,
-        status,
-        code,
-        message,
-    )
-}
-
-pub(crate) async fn validate_product_shipping_profile_input(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    shipping_profile_slug: Option<&str>,
-) -> HttpResult<()> {
-    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
-        return Ok(());
-    };
-
-    ShippingProfileService::new(db.clone())
-        .ensure_shipping_profile_slug_exists(tenant_id, &slug)
-        .await
-        .map_err(map_shipping_profile_error)?;
-
-    Ok(())
 }

@@ -72,7 +72,21 @@ if (registry.evidence?.runtime_fallback_smoke_runner !== smoke.runner) fail('reg
 if (!sameSet(smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime smoke profile drift');
 if (!sameSet(smoke.profiles, contractSmoke.fallback_profiles)) fail('runtime fallback profiles must mirror contract smoke');
 if (registry.contract_tests.fallback_smoke.status !== 'planned_runtime_pending') {
-  fail('fallback smoke must remain planned_runtime_pending until live execution evidence lands');
+  fail('fallback smoke must remain planned_runtime_pending until an external adapter executes');
+}
+if (registry.consumers.some((consumer) => consumer.module === 'pricing')) {
+  fail('pricing must not be declared as a ProductCatalogReadPort consumer');
+}
+for (const staleMode of [
+  'use_cart_product_snapshot',
+  'show_product_refresh_required',
+  'skip_product_enrichment',
+  'graphql_checkout_compat',
+  'graphql_storefront_compat',
+]) {
+  if (JSON.stringify(registry).includes(staleMode) || JSON.stringify(smoke).includes(staleMode)) {
+    fail(`product fallback metadata declares nonexistent runtime mode/profile: ${staleMode}`);
+  }
 }
 if (
   !workspaceModules.includes(
@@ -145,12 +159,12 @@ if (!readBody) fail('read_product_projection implementation body missing');
 assertOrdered(
   readBody,
   [
-    'context.require_policy(PortCallPolicy::read())?',
-    'parse_port_tenant_id(&context)?',
+    '.require_policy(PortCallPolicy::read())',
+    'parse_port_tenant_id(&context, owner_operation)?',
     'request.locale.as_deref().unwrap_or(context.locale.as_str())',
     'self.get_product_with_locale_fallback(',
     'request.fallback_locale.as_deref()',
-    '.map_err(product_error_to_port_error)',
+    'product_error_to_port_error(&context, owner_operation, error)',
   ],
   'read_product_projection',
 );
@@ -160,13 +174,13 @@ if (!listBody) fail('list_published_products implementation body missing');
 assertOrdered(
   listBody,
   [
-    'context.require_policy(PortCallPolicy::read())?',
-    'validate_published_products_request(&request)?',
-    'parse_port_tenant_id(&context)?',
+    '.require_policy(PortCallPolicy::read())',
+    'validate_published_products_request(&context, owner_operation, &request)?',
+    'parse_port_tenant_id(&context, owner_operation)?',
     'request.locale.as_deref().unwrap_or(context.locale.as_str())',
     'self.list_published_products_with_locale_fallback(',
     'request.public_channel_slug.as_deref()',
-    '.map_err(product_error_to_port_error)',
+    'product_error_to_port_error(&context, owner_operation, error)',
   ],
   'list_published_products',
 );
@@ -184,8 +198,9 @@ if (!plan.includes('Product runtime contract, commerce transport, and module met
 }
 for (const marker of [
   'ProductCatalogReadPort` / `product.catalog_read.v1`',
-  'boundary_ready` on no-compile runtime fallback evidence',
-  'transport_verified` still requires live provider execution evidence',
+  'implementation has live PostgreSQL execution evidence',
+  '`rustok-ai` consumer has live unavailable/deadline degraded-path evidence',
+  'Commerce checkout currently treats Product as a hard dependency',
 ]) {
   if (!readme.includes(marker)) fail(`product README lacks FBA marker: ${marker}`);
 }

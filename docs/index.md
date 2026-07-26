@@ -68,6 +68,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Cart Ownership and Guest Capability Adapter Documentation](../crates/rustok-cart/docs/README.md)
 - [Media and Owner-owned GraphQL Documentation](../crates/rustok-media/docs/README.md)
 - [Order and Owner-owned Dashboard Analytics Documentation](../crates/rustok-order/docs/README.md)
+- [Pricing Persistence Owner Contract](../crates/rustok-pricing-persistence/README.md)
 - [Flex and Manifest-composed Owner-owned GraphQL Documentation](../crates/flex/docs/README.md)
 - [Implementation Plans Registry](./modules/implementation-plans-registry.md)
 - [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)

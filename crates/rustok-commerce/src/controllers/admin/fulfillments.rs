@@ -89,12 +89,7 @@ pub async fn list_fulfillments(
         .await
         .map_err(|error| {
             map_admin_fulfillment_error(
-                AdminFulfillmentErrorContext::new(
-                    tenant.id,
-                    None,
-                    None,
-                    "list_fulfillments",
-                ),
+                AdminFulfillmentErrorContext::new(tenant.id, None, None, "list_fulfillments"),
                 error,
             )
         })?;
@@ -178,12 +173,7 @@ pub async fn show_fulfillment(
         .await
         .map_err(|error| {
             map_admin_fulfillment_error(
-                AdminFulfillmentErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    None,
-                    "get_fulfillment",
-                ),
+                AdminFulfillmentErrorContext::new(tenant.id, Some(id), None, "get_fulfillment"),
                 error,
             )
         })?;
@@ -223,12 +213,7 @@ pub async fn ship_fulfillment(
         .await
         .map_err(|error| {
             map_admin_fulfillment_orchestration_error(
-                AdminFulfillmentErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    None,
-                    "ship_fulfillment",
-                ),
+                AdminFulfillmentErrorContext::new(tenant.id, Some(id), None, "ship_fulfillment"),
                 error,
             )
         })?;
@@ -267,12 +252,7 @@ pub async fn deliver_fulfillment(
         .await
         .map_err(|error| {
             map_admin_fulfillment_error(
-                AdminFulfillmentErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    None,
-                    "deliver_fulfillment",
-                ),
+                AdminFulfillmentErrorContext::new(tenant.id, Some(id), None, "deliver_fulfillment"),
                 error,
             )
         })?;
@@ -311,12 +291,7 @@ pub async fn reopen_fulfillment(
         .await
         .map_err(|error| {
             map_admin_fulfillment_error(
-                AdminFulfillmentErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    None,
-                    "reopen_fulfillment",
-                ),
+                AdminFulfillmentErrorContext::new(tenant.id, Some(id), None, "reopen_fulfillment"),
                 error,
             )
         })?;
@@ -356,12 +331,7 @@ pub async fn reship_fulfillment(
         .await
         .map_err(|error| {
             map_admin_fulfillment_orchestration_error(
-                AdminFulfillmentErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    None,
-                    "reship_fulfillment",
-                ),
+                AdminFulfillmentErrorContext::new(tenant.id, Some(id), None, "reship_fulfillment"),
                 error,
             )
         })?;
@@ -401,12 +371,7 @@ pub async fn cancel_fulfillment(
         .await
         .map_err(|error| {
             map_admin_fulfillment_orchestration_error(
-                AdminFulfillmentErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    None,
-                    "cancel_fulfillment",
-                ),
+                AdminFulfillmentErrorContext::new(tenant.id, Some(id), None, "cancel_fulfillment"),
                 error,
             )
         })?;
@@ -425,8 +390,7 @@ fn map_admin_fulfillment_error(
             "Fulfillment request is invalid",
             "validation",
         ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => (
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             axum::http::StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found",

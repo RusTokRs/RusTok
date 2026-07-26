@@ -15,6 +15,11 @@
 
 - `setup_test_db`
 - `db::setup_test_db_with_migrations`
+- `db::connect_postgres`
+- `db::create_postgres_database` / `db::drop_postgres_database_if_exists`
+- `db::postgres_database_url` / `db::unique_postgres_database_name`
+- `db::assert_postgres_table_missing`
+- `db::assert_postgres_column_missing` / `db::assert_postgres_column_contract`
 - `MockEventBus`
 - `fixtures::*`
 - `helpers::*`

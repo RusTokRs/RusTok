@@ -9,7 +9,7 @@ use rustok_api::{
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_fulfillment::{FulfillmentService, error::FulfillmentError};
 use rustok_product::{
-    CatalogService,
+    CatalogService, CommerceError as ProductError,
     entities::{product, product_translation},
 };
 use rustok_region::{RegionListRequest, RegionReadPort};
@@ -36,41 +36,35 @@ use crate::{
 };
 
 fn map_storefront_product_error(
-    error: CommerceError,
+    error: ProductError,
     operation: &'static str,
     tenant_id: Uuid,
     product_id: Option<Uuid>,
 ) -> HttpError {
     let (status, code, message, error_kind) = match &error {
-        CommerceError::Database(_) => (
+        ProductError::Database(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_store_product_unavailable",
             "Product service is temporarily unavailable",
             "database",
         ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
+        ProductError::ProductNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_store_not_found",
             "Commerce resource not found",
             "not_found",
         ),
-        CommerceError::Validation(_) => (
+        ProductError::Validation(_) => (
             StatusCode::BAD_REQUEST,
             "commerce_store_product_invalid",
             "Product request is invalid",
             "validation",
         ),
-        CommerceError::DuplicateHandle { .. }
-        | CommerceError::DuplicateSku(_)
-        | CommerceError::InvalidPrice(_)
-        | CommerceError::InsufficientInventory { .. }
-        | CommerceError::InvalidOptionCombination
-        | CommerceError::ShippingProfileNotFound(_)
-        | CommerceError::DuplicateShippingProfileSlug(_)
-        | CommerceError::NoVariants
-        | CommerceError::CannotDeletePublished
-        | CommerceError::Rich(_)
-        | CommerceError::Core(_) => (
+        ProductError::DuplicateHandle { .. }
+        | ProductError::DuplicateSku(_)
+        | ProductError::NoVariants
+        | ProductError::CannotDeletePublished
+        | ProductError::Core(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_product_failed",
             "Product operation could not be completed safely",
@@ -98,7 +92,7 @@ fn map_storefront_product_database_error(
     product_id: Option<Uuid>,
 ) -> HttpError {
     map_storefront_product_error(
-        CommerceError::Database(error),
+        ProductError::Database(error),
         operation,
         tenant_id,
         product_id,

@@ -19,10 +19,8 @@ use crate::{
     FulfillmentReconciliationService,
 };
 
-const ADMIN_RECONCILIATION_FULFILLMENT_OWNER: &str =
-    "rustok_fulfillment.admin_reconciliation";
-const ADMIN_RECONCILIATION_ORCHESTRATION_OWNER: &str =
-    "rustok_commerce.fulfillment_reconciliation";
+const ADMIN_RECONCILIATION_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_reconciliation";
+const ADMIN_RECONCILIATION_ORCHESTRATION_OWNER: &str = "rustok_commerce.fulfillment_reconciliation";
 const ADMIN_RECONCILIATION_BOUNDARY: &str = "commerce_admin_reconciliation_http";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -139,9 +137,8 @@ async fn resolve_unknown_as_succeeded(
 ) -> HttpResult<Json<provider_operation::Model>> {
     require_manage_permission(&auth)?;
     let provider_reference = input.provider_result.external_reference.clone();
-    let provider_result = serde_json::to_value(input.provider_result).map_err(|error| {
-        map_provider_result_encoding_error(tenant.id, operation_id, error)
-    })?;
+    let provider_result = serde_json::to_value(input.provider_result)
+        .map_err(|error| map_provider_result_encoding_error(tenant.id, operation_id, error))?;
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .resolve_unknown_as_succeeded(tenant.id, operation_id, provider_reference, provider_result)
         .await
@@ -212,8 +209,7 @@ fn map_reconciliation_fulfillment_error(
             "Fulfillment request is invalid",
             "validation",
         ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => (
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             axum::http::StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found",
@@ -254,12 +250,9 @@ fn map_reconciliation_orchestration_error(
     error: FulfillmentOrchestrationError,
 ) -> HttpError {
     match error {
-        FulfillmentOrchestrationError::Fulfillment(error) => map_reconciliation_fulfillment_error(
-            tenant_id,
-            provider_operation_id,
-            operation,
-            error,
-        ),
+        FulfillmentOrchestrationError::Fulfillment(error) => {
+            map_reconciliation_fulfillment_error(tenant_id, provider_operation_id, operation, error)
+        }
         error => {
             let (status, code, message, error_kind) = match &error {
                 FulfillmentOrchestrationError::OrderNotFound(_) => (

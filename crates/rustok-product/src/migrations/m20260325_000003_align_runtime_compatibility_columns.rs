@@ -6,9 +6,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Transitional compatibility columns for the legacy/ecommerce umbrella runtime.
-        // These keep the split module working on real migrations while the remaining
-        // product option/image/translation normalization backlog is closed.
+        // Add columns that are part of the owner-local Product ORM contract.
         let mut vendor = ColumnDef::new(Products::Vendor);
         vendor.string_len(255);
         add_column_if_missing(manager, Products::Table, vendor).await?;
@@ -27,19 +25,10 @@ impl MigrationTrait for Migration {
         alt_text.text();
         add_column_if_missing(manager, ProductImages::Table, alt_text).await?;
 
-        let mut option_name = ColumnDef::new(ProductOptions::Name);
-        option_name.string_len(100).not_null().default("");
-        add_column_if_missing(manager, ProductOptions::Table, option_name).await?;
-        let mut option_values = ColumnDef::new(ProductOptions::Values);
-        option_values.json_binary().not_null().default("[]");
-        add_column_if_missing(manager, ProductOptions::Table, option_values).await?;
-
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        drop_column_if_present(manager, ProductOptions::Table, ProductOptions::Values).await?;
-        drop_column_if_present(manager, ProductOptions::Table, ProductOptions::Name).await?;
         drop_column_if_present(manager, ProductImages::Table, ProductImages::AltText).await?;
         drop_column_if_present(
             manager,
@@ -85,6 +74,12 @@ where
     T: Iden + 'static,
     C: IntoIden,
 {
+    let table_name = table.to_string();
+    let column = column.into_iden();
+    if !manager.has_column(&table_name, &column.to_string()).await? {
+        return Ok(());
+    }
+
     manager
         .alter_table(Table::alter().table(table).drop_column(column).to_owned())
         .await
@@ -108,11 +103,4 @@ enum ProductTranslations {
 enum ProductImages {
     Table,
     AltText,
-}
-
-#[derive(Iden)]
-enum ProductOptions {
-    Table,
-    Name,
-    Values,
 }

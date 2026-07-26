@@ -1,7 +1,13 @@
 use std::collections::HashMap;
 
 use rustok_api::locale_tags_match;
-use rustok_commerce_foundation::entities;
+mod entities {
+    pub use rustok_commerce_foundation::entities::{
+        inventory_item, inventory_level, product, product_translation, product_variant,
+        variant_translation,
+    };
+    pub use rustok_pricing_persistence::entities::price;
+}
 use rustok_commerce_foundation::error::CommerceResult;
 
 use super::policy::inventory_policy_allows_backorder;

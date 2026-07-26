@@ -41,6 +41,75 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
+#[cfg(feature = "ssr")]
+fn map_product_service_error(
+    error: rustok_product::CommerceError,
+    operation: &'static str,
+) -> ServerFnError {
+    ServerFnError::new(
+        rustok_product::map_product_public_error(
+            &error,
+            operation,
+            "product_storefront_native_server",
+        )
+        .to_string(),
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn map_pricing_service_error(
+    error: rustok_commerce_foundation::CommerceError,
+    operation: &'static str,
+) -> ServerFnError {
+    use rustok_commerce_foundation::CommerceError;
+
+    let (message, code, retryable) = match &error {
+        CommerceError::Database(_) => (
+            "Pricing data is temporarily unavailable",
+            "PRICING_TEMPORARILY_UNAVAILABLE",
+            true,
+        ),
+        CommerceError::Validation(_)
+        | CommerceError::InvalidPrice(_)
+        | CommerceError::InvalidOptionCombination => (
+            "Pricing request is invalid",
+            "PRICING_REQUEST_INVALID",
+            false,
+        ),
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
+            "Pricing resource was not found",
+            "PRICING_RESOURCE_NOT_FOUND",
+            false,
+        ),
+        CommerceError::DuplicateHandle { .. }
+        | CommerceError::DuplicateSku(_)
+        | CommerceError::InsufficientInventory { .. }
+        | CommerceError::ShippingProfileNotFound(_)
+        | CommerceError::DuplicateShippingProfileSlug(_)
+        | CommerceError::NoVariants
+        | CommerceError::CannotDeletePublished
+        | CommerceError::Rich(_)
+        | CommerceError::Core(_) => (
+            "Pricing operation could not be completed safely",
+            "PRICING_OPERATION_FAILED",
+            false,
+        ),
+    };
+    let correlation_id = uuid::Uuid::new_v4();
+    tracing::error!(
+        error = ?error,
+        operation,
+        public_code = code,
+        retryable,
+        boundary = "product_storefront_native_pricing",
+        %correlation_id,
+        "pricing service operation failed"
+    );
+    ServerFnError::new(format!(
+        "{message} (code: {code}; reference: {correlation_id})"
+    ))
+}
+
 pub async fn fetch_storefront_products_server(
     selected_handle: Option<String>,
     locale: Option<String>,
@@ -261,7 +330,9 @@ async fn storefront_catalog_search_options_native(
         let category_options = service
             .list_categories(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| {
+                map_product_service_error(error, "storefront_catalog_search_categories")
+            })?
             .into_iter()
             .map(|category| ProductCatalogSearchOption {
                 value: category.id.to_string(),
@@ -271,7 +342,9 @@ async fn storefront_catalog_search_options_native(
         let attribute_options = service
             .list_attributes(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| {
+                map_product_service_error(error, "storefront_catalog_search_attributes")
+            })?
             .into_iter()
             .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
             .map(|attribute| {
@@ -359,7 +432,7 @@ async fn storefront_products_native(
                 12,
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "storefront_product_list"))?;
         let resolved_handle = selected_handle
             .as_deref()
             .map(str::trim)
@@ -382,7 +455,7 @@ async fn storefront_products_native(
                     public_channel_slug.as_deref(),
                 )
                 .await
-                .map_err(ServerFnError::new)?
+                .map_err(|error| map_product_service_error(error, "storefront_product_detail"))?
                 .map(map_product_detail)
         } else {
             None
@@ -426,18 +499,21 @@ async fn storefront_products_native(
                     selected_channel_slug.as_deref(),
                 )
                 .await
-                .map_err(ServerFnError::new)?
+                .map_err(|error| map_pricing_service_error(error, "storefront_product_pricing"))?
                 .map(map_product_pricing_detail);
 
             if let (Some(detail_ref), Some(context)) =
                 (detail.as_mut(), native_resolution_context.as_ref())
             {
                 for variant in &mut detail_ref.variants {
-                    let variant_id = Uuid::parse_str(&variant.id).map_err(ServerFnError::new)?;
+                    let variant_id = Uuid::parse_str(&variant.id)
+                        .map_err(|_| ServerFnError::new("Product variant identifier is invalid"))?;
                     let effective_price = pricing_service
                         .resolve_variant_price(tenant.id, variant_id, context.clone())
                         .await
-                        .map_err(ServerFnError::new)?;
+                        .map_err(|error| {
+                            map_pricing_service_error(error, "storefront_effective_price")
+                        })?;
                     variant.effective_price = effective_price.map(map_effective_price);
                 }
             }

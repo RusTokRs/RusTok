@@ -244,6 +244,7 @@ rustok-profiles = { path = "crates/rustok-profiles" }
 rustok-comments = { path = "crates/rustok-comments", default-features = false }
 rustok-region = { path = "crates/rustok-region" }
 rustok-pricing = { path = "crates/rustok-pricing" }
+rustok-pricing-persistence = { path = "crates/rustok-pricing-persistence" }
 rustok-tax = { path = "crates/rustok-tax" }
 rustok-inventory = { path = "crates/rustok-inventory" }
 rustok-order = { path = "crates/rustok-order" }

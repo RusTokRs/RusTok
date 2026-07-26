@@ -7,7 +7,7 @@ use rustok_api::Permission;
 use rustok_api::locale_tags_match;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_product::{
-    CatalogService,
+    CatalogService, CommerceError,
     entities::{product, product_translation},
 };
 use rustok_telemetry::metrics;
@@ -20,7 +20,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    CommerceError, dto::ProductResponse, search::product_translation_title_search_condition,
+    dto::ProductResponse, search::product_translation_title_search_condition,
     storefront_shipping::product_shipping_profile_slug,
 };
 
@@ -29,19 +29,13 @@ use super::common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_
 const ADMIN_PRODUCT_OWNER: &str = "rustok_product.catalog";
 const ADMIN_PRODUCT_BOUNDARY: &str = "commerce_admin_product_http";
 
-type AdminProductHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminProductHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 #[derive(Clone, Copy)]
 pub(crate) struct AdminProductErrorContext {
     tenant_id: Uuid,
     actor_id: Uuid,
     product_id: Option<Uuid>,
-    variant_id: Option<Uuid>,
     operation: &'static str,
 }
 
@@ -56,7 +50,6 @@ impl AdminProductErrorContext {
             tenant_id,
             actor_id,
             product_id,
-            variant_id: None,
             operation,
         }
     }
@@ -70,7 +63,7 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product storage is temporarily unavailable",
             "database",
         ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
+        CommerceError::ProductNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found",
@@ -88,20 +81,11 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "A product variant with this SKU already exists",
             "duplicate_sku",
         ),
-        CommerceError::InvalidPrice(_)
-        | CommerceError::InvalidOptionCombination
-        | CommerceError::Validation(_)
-        | CommerceError::NoVariants => (
+        CommerceError::Validation(_) | CommerceError::NoVariants => (
             StatusCode::BAD_REQUEST,
             "commerce_admin_product_invalid",
             "Product request is invalid",
             "validation",
-        ),
-        CommerceError::InsufficientInventory { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_product_inventory_conflict",
-            "Product inventory conflicts with the requested operation",
-            "inventory_conflict",
         ),
         CommerceError::CannotDeletePublished => (
             StatusCode::CONFLICT,
@@ -109,10 +93,7 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product operation conflicts with the current state",
             "state_conflict",
         ),
-        CommerceError::ShippingProfileNotFound(_)
-        | CommerceError::DuplicateShippingProfileSlug(_)
-        | CommerceError::Rich(_)
-        | CommerceError::Core(_) => (
+        CommerceError::Core(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_admin_product_failed",
             "Product operation could not be completed safely",
@@ -121,13 +102,9 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
     }
 }
 
-fn adopt_product_error_identity(
-    context: &mut AdminProductErrorContext,
-    error: &CommerceError,
-) {
+fn adopt_product_error_identity(context: &mut AdminProductErrorContext, error: &CommerceError) {
     match error {
         CommerceError::ProductNotFound(id) => context.product_id = Some(*id),
-        CommerceError::VariantNotFound(id) => context.variant_id = Some(*id),
         _ => {}
     }
 }
@@ -144,7 +121,6 @@ pub(crate) fn map_admin_product_error(
         tenant_id = %context.tenant_id,
         actor_id = %context.actor_id,
         product_id = ?context.product_id,
-        variant_id = ?context.variant_id,
         operation = %context.operation,
         error_kind,
         public_code = code,
@@ -199,21 +175,12 @@ pub async fn list_products(
     }
 
     let count_started_at = Instant::now();
-    let total = query
-        .clone()
-        .count(runtime.db())
-        .await
-        .map_err(|error| {
-            map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    None,
-                    "list_products_count",
-                ),
-                CommerceError::Database(error),
-            )
-        })?;
+    let total = query.clone().count(runtime.db()).await.map_err(|error| {
+        map_admin_product_error(
+            AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_products_count"),
+            CommerceError::Database(error),
+        )
+    })?;
     metrics::record_read_path_query(
         "http",
         "commerce.list_products",
@@ -231,12 +198,7 @@ pub async fn list_products(
         .await
         .map_err(|error| {
             map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    None,
-                    "list_products_page",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_products_page"),
                 CommerceError::Database(error),
             )
         })?;
@@ -299,12 +261,7 @@ pub async fn list_products(
         .await
         .map_err(|error| {
             map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    None,
-                    "list_product_tags",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_product_tags"),
                 error,
             )
         })?;
@@ -395,12 +352,7 @@ pub async fn show_product(
         .await
         .map_err(|error| {
             map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    Some(id),
-                    "show_product",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "show_product"),
                 error,
             )
         })?;
@@ -427,12 +379,7 @@ pub async fn delete_product(
         .await
         .map_err(|error| {
             map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    Some(id),
-                    "delete_product",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "delete_product"),
                 error,
             )
         })?;
@@ -459,12 +406,7 @@ pub async fn publish_product(
         .await
         .map_err(|error| {
             map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    Some(id),
-                    "publish_product",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "publish_product"),
                 error,
             )
         })?;

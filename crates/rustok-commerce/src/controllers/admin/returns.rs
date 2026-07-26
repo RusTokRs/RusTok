@@ -33,12 +33,7 @@ const ADMIN_ORDER_RETURN_ORCHESTRATION_OWNER: &str =
     "rustok_commerce.admin_order_return_orchestration";
 const ADMIN_ORDER_RETURN_BOUNDARY: &str = "commerce_admin_order_return_http";
 
-type AdminOrderReturnHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminOrderReturnHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 struct AdminOrderReturnErrorContext {
     tenant_id: Uuid,
@@ -253,10 +248,7 @@ fn map_admin_order_return_orchestration_error(
                 let (status, code, message, error_kind) = admin_payment_error_policy(source);
                 (status, code, message, error_kind, "rustok_payment")
             }
-            PaymentOrchestrationError::ProviderAfterRefundReservation {
-                refund_id,
-                source,
-            } => {
+            PaymentOrchestrationError::ProviderAfterRefundReservation { refund_id, source } => {
                 context.refund_id = Some(*refund_id);
                 let (status, code, message, error_kind) =
                     admin_reserved_refund_error_policy(source);

@@ -38,12 +38,17 @@
   adapters, and Leptos `ProductView`/`SelectedProductCard`/`CatalogRail` live in
   `storefront/src/ui/leptos.rs` as a thin host-context/render layer over
   prepared core state;
-- Shared DTOs, entities and error surface come from `rustok-commerce-foundation`.
+- Product DTOs, product ORM entities, and Product errors are owner-local.
+  Pricing ORM projections and atomic initial-price lifecycle operations come
+  from the owner-owned `rustok-pricing-persistence` support crate; Product does
+  not depend on `rustok-commerce-foundation`.
 - FBA boundary is published as `ProductCatalogReadPort` / `product.catalog_read.v1`.
   Registry `contracts/product-fba-registry.json`, static matrix,
   no-compile runtime contract smoke, source-locked runtime fallback smoke, and
   the live PostgreSQL in-process port fixture maintain status `boundary_ready`;
-  `transport_verified` remains closed until consumer fallback execution evidence.
+  the composed `rustok-ai` consumer has live unavailable/deadline fallback
+  evidence. `transport_verified` remains closed because Commerce checkout is a
+  hard dependency and no external Product adapter has live execution evidence.
 - Canonical vocabulary and attach semantics for product tags live in
   `rustok-taxonomy` + `product_tags`, and the public contract uses a first-class
   `tags` field instead of legacy `metadata.tags`.
@@ -126,9 +131,18 @@ identity belongs to the commerce shipping capability. `products.primary_category
 is the only canonical primary-category source.
 
 `product_images.media_id` stores a Media-owned asset UUID without a direct
-foreign key to Media storage. Product validates media references through the
+foreign key to Media storage and is non-null in the Product target schema.
+Product validates media references through the
 public Media owner contract, so Media can evolve its own persistence schema
 without a product migration-order dependency.
+
+The target-schema migration removes unused compatibility fields from product,
+translation, option, image, and variant storage and aligns
+`product_variants.weight` with the owner ORM's `NUMERIC(20,6)` type. Inventory
+management and quantity fields remain while current owner-port consumers use
+them. The globally visible storefront page path is backed by a partial
+tenant/status/published ordering index whose live plans are checked at 10k,
+100k, and 1M rows.
 
 ```mermaid
 erDiagram
@@ -151,6 +165,11 @@ handle and SKU identities are tenant-scoped; root-category slugs are tenant-
 scoped through a partial unique index. Product status, primary-category, EAV,
 and tag constraints are specified in product-owned migrations.
 
+GraphQL and native admin/storefront boundaries share
+`map_product_public_error`. Internal error detail is logged with operation,
+boundary, stable code, and correlation id; clients receive only the safe public
+descriptor.
+
 ## Verification
 
 - `npm.cmd run verify:product:runtime-fallback-smoke`
@@ -159,6 +178,8 @@ and tag constraints are specified in product-owned migrations.
 - `npm.cmd run test:verify:ecommerce:fba`
 - cargo xtask module validate product
 - cargo xtask module test product
+- ignored owner-local PostgreSQL lifecycle and 10k/100k/1M query-plan tests in
+  `tests/postgres_migrations.rs`
 - targeted commerce tests for the product domain when changing runtime wiring
 
 Cargo checks remain a targeted/live evidence step before promoting product FBA to `transport_verified`; the current fast gate for boundary evidence does not require Rust compilation.

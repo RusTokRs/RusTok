@@ -7,6 +7,12 @@
 ## Responsibilities
 
 - Product entities, translations, options, variants, and product-owned migrations.
+- PostgreSQL target-schema enforcement removes unused compatibility columns,
+  requires Media-owned image identifiers, preserves decimal variant weights,
+  and maintains an indexed globally visible storefront page path.
+- One Product-owned public-error policy redacts internal database details across
+  GraphQL and native admin/storefront transports while preserving stable codes
+  and correlation references.
 - Native catalog categories, category-bound product forms, reusable product
   attribute schemas, product attribute dictionaries, typed product/variant
   attribute values, and highload-ready category/value projections.
@@ -43,6 +49,9 @@
   PostgreSQL constraints reject parent cycles and closure drift at commit.
 - Product-owned relation storage for taxonomy-backed tags (`product_tags`).
 - Product write-side services and publication lifecycle.
+- Responsibility-specific catalog components: commands, queries, product
+  projection, tags, typed values, and effective-form resolution remain behind
+  the stable `CatalogService` and `ProductCatalogSchemaService` entry points.
 - Product-side synchronization of first-class `tags` contract fields with the
   taxonomy-backed dictionary.
 - Product-side normalization of first-class `shipping_profile_slug` onto the
@@ -60,7 +69,8 @@
   published catalog discovery, handle-based product selection, and
   channel-aware inventory visibility.
 - Keep generic catalog price snapshots available for product-owned CRUD and
-  discovery flows, while treating pricing-authoritative reads as the
+  discovery flows through the transaction-aware `rustok-pricing-persistence`
+  owner contract, while treating pricing-authoritative reads as the
   responsibility of `rustok-pricing` surfaces (`adminPricingProduct` /
   `storefrontPricingProduct`).
 - Keep product-owned admin/storefront UI aligned with that split by rendering
@@ -72,8 +82,11 @@
   transport parity.
 - Publish the owner `ProductCatalogReadPort` / `product.catalog_read.v1`
   boundary for catalog-read consumers. The in-process `CatalogService`
-  implementation has live PostgreSQL execution evidence; the module remains
-  `boundary_ready` until declared consumer fallback profiles are observed.
+  implementation has live PostgreSQL execution evidence. The composed
+  `rustok-ai` consumer has live unavailable/deadline degraded-path evidence;
+  Commerce checkout currently treats Product as a hard dependency. The module
+  therefore remains honestly `boundary_ready` until an external adapter and
+  any declared Commerce degraded policy have live execution evidence.
 - Product module metadata for runtime registration.
 - Product-owned catalog search metadata for optional category filters and
   filterable/sortable attribute controls in admin/storefront search UI. Hosts
@@ -85,7 +98,12 @@
 
 ## Interactions
 
-- Depends on `rustok-commerce-foundation` for shared commerce DTOs/entities/errors.
+- Owns Product DTOs, ORM entities, and errors without a
+  `rustok-commerce-foundation` dependency.
+- Depends on `rustok-pricing-persistence` for pricing-owned ORM projections and
+  atomic initial-price lifecycle operations.
+- Depends on `rustok-inventory` for inventory-owned bootstrap and availability
+  operations.
 - Depends on `flex` for shared attached localized-value storage helpers used by
   product custom-field multilingual flows.
 - Depends on `rustok-taxonomy` for shared scope-aware tag dictionary while keeping `product_tags`
@@ -96,9 +114,10 @@
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
 - Consumed by `rustok-search` UI hosts through product-owned catalog search
   metadata helpers for category filters and attribute filter/sort controls.
-- Consumed by commerce, pricing, and `rustok-ai-product` through the
-  `ProductCatalogReadPort` catalog-read contract instead of umbrella product
-  service re-exports.
+- Consumed through `ProductCatalogReadPort` by Commerce checkout and the
+  `rustok-ai-product` support adapter composed by `rustok-ai`. Pricing uses
+  Product owner services directly in the embedded runtime and is not falsely
+  declared as a Product read-port fallback consumer.
 
 ## Entry points
 

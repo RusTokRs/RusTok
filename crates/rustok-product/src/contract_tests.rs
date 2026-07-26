@@ -23,19 +23,21 @@ fn product_declares_owner_local_dto_and_entity_sources() {
         assert!(path.is_file(), "Product owner source is missing: {source}");
     }
 
-    assert!(cargo.contains(
-        "commerce-foundation = { package = \"rustok-commerce-foundation\", path = \"../rustok-commerce-foundation\" }"
-    ));
+    assert!(!cargo.contains("rustok-commerce-foundation"));
+    assert!(cargo.contains("rustok-pricing-persistence.workspace = true"));
     assert!(!cargo.contains("rustok-commerce-foundation.workspace = true"));
 }
 
 #[test]
-fn remaining_foundation_bridge_is_narrow_and_explicit() {
+fn product_owner_boundaries_do_not_depend_on_foundation() {
     let root = include_str!("lib.rs");
     let entities = include_str!("entities/mod.rs");
+    let error = include_str!("error.rs");
 
-    assert!(root.contains("pub use commerce_foundation::error::*;"));
-    assert!(entities.contains("pub use commerce_foundation::entities::price;"));
+    assert!(root.contains("pub mod error;"));
+    assert!(error.contains("pub enum CommerceError"));
+    assert!(!error.contains("commerce_foundation"));
+    assert!(!entities.contains("price"));
     assert!(!entities.contains("inventory_item"));
     assert!(!entities.contains("stock_location"));
 }

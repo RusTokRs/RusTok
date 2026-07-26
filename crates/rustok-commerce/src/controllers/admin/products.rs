@@ -26,12 +26,7 @@ const ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER: &str = "rustok_commerce.shipping_pro
 const ADMIN_PRODUCT_SHIPPING_PROFILE_BOUNDARY: &str =
     "commerce_admin_product_shipping_profile_http";
 
-type AdminProductShippingProfileHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminProductShippingProfileHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 #[derive(Clone, Copy)]
 struct AdminProductShippingProfileErrorContext {
@@ -120,8 +115,7 @@ fn map_admin_product_shipping_profile_error(
     error: CommerceError,
 ) -> HttpError {
     adopt_admin_product_shipping_profile_error_identity(&mut context, &error);
-    let (status, code, message, error_kind) =
-        admin_product_shipping_profile_error_policy(&error);
+    let (status, code, message, error_kind) = admin_product_shipping_profile_error_policy(&error);
     tracing::error!(
         error = ?error,
         owner = ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER,
@@ -218,12 +212,7 @@ pub async fn create_product(
         .await
         .map_err(|error| {
             map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    None,
-                    "create_product",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, None, "create_product"),
                 error,
             )
         })?;
@@ -295,12 +284,7 @@ pub async fn update_product(
         .await
         .map_err(|error| {
             map_admin_product_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    Some(id),
-                    "update_product",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "update_product"),
                 error,
             )
         })?;

@@ -162,8 +162,8 @@ fs.writeFileSync(
   fs
     .readFileSync(syncPlanPath, 'utf8')
     .replace(
-      '[x] maintain sync between product runtime contract, commerce transport and module metadata.',
-      '[ ] maintain sync between product runtime contract, commerce transport and module metadata.',
+      'Product runtime contract, commerce transport, and module metadata remain synchronized.',
+      'Product runtime contract and module metadata are drifted.',
     ),
 );
 const syncMarkerResult = run(missingSyncMarker);

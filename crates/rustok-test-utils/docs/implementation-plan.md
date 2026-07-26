@@ -3,7 +3,8 @@
 ## Current state
 
 `rustok-test-utils` is the shared test-time composition crate. It provides
-SQLite setup and transactions, event-bus/transport doubles, fixtures, identity
+SQLite setup and transactions, validated isolated PostgreSQL database helpers
+and schema assertions, event-bus/transport doubles, fixtures, identity
 helpers, and common assertions. It is used by the server and multiple domain
 modules and must remain confined to test dependencies; it owns no production
 runtime or domain behavior.

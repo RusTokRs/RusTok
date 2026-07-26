@@ -1,19 +1,19 @@
-use crate::entities;
-use rust_decimal::prelude::ToPrimitive;
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match, normalize_locale_tag};
-use rustok_commerce_foundation::dto::{
+use crate::dto::{
     ProductOptionTranslationInput, ProductOptionTranslationResponse,
     ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
     ProductTranslationInput, ProductTranslationResponse,
 };
-use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+use crate::entities;
+use crate::error::{CommerceError, CommerceResult};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match, normalize_locale_tag};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
+pub use rustok_inventory::{is_metadata_visible_for_public_channel, normalize_public_channel_slug};
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
     QueryFilter, QueryOrder, Value as SqlValue, sea_query::Expr,
 };
 use serde_json::Value;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
@@ -91,12 +91,6 @@ pub fn generate_variant_title_from_inputs(
     } else {
         options.join(" / ")
     }
-}
-
-pub fn decimal_to_cents(amount: rust_decimal::Decimal) -> Option<i64> {
-    (amount * rust_decimal::Decimal::from(100))
-        .round_dp(0)
-        .to_i64()
 }
 
 pub fn preferred_product_locale_from_translations(
@@ -678,62 +672,6 @@ where
     .map_err(|error| CommerceError::Validation(error.to_string()))
 }
 
-pub fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
-    channel_slug
-        .map(str::trim)
-        .filter(|slug| !slug.is_empty())
-        .map(|slug| slug.to_ascii_lowercase())
-}
-
-pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
-    let Some(values) = metadata
-        .as_object()
-        .and_then(|object| object.get("channel_visibility"))
-        .and_then(|value| value.as_object())
-        .and_then(|object| object.get("allowed_channel_slugs"))
-        .and_then(|value| value.as_array())
-    else {
-        return Vec::new();
-    };
-
-    let mut normalized = BTreeSet::new();
-    for value in values {
-        if let Some(slug) = value
-            .as_str()
-            .and_then(|value| normalize_public_channel_slug(Some(value)))
-        {
-            normalized.insert(slug);
-        }
-    }
-
-    normalized.into_iter().collect()
-}
-
-pub fn is_allowlist_visible_for_public_channel(
-    allowed_channel_slugs: &[String],
-    public_channel_slug: Option<&str>,
-) -> bool {
-    if allowed_channel_slugs.is_empty() {
-        return true;
-    }
-
-    let Some(public_channel_slug) = normalize_public_channel_slug(public_channel_slug) else {
-        return false;
-    };
-
-    allowed_channel_slugs
-        .iter()
-        .any(|slug| slug == &public_channel_slug)
-}
-
-pub fn is_metadata_visible_for_public_channel(
-    metadata: &Value,
-    public_channel_slug: Option<&str>,
-) -> bool {
-    let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
-    is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
-}
-
 pub fn product_channel_visibility_condition(
     backend: DbBackend,
     public_channel_slug: Option<&str>,
@@ -772,74 +710,6 @@ pub fn product_channel_visibility_condition(
     }
 }
 
-pub async fn load_available_inventory_by_variant_for_public_channel(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    variant_ids: &[Uuid],
-    public_channel_slug: Option<&str>,
-) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
-    if variant_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let inventory_items = commerce_foundation::entities::inventory_item::Entity::find()
-        .filter(
-            commerce_foundation::entities::inventory_item::Column::VariantId
-                .is_in(variant_ids.iter().copied()),
-        )
-        .all(db)
-        .await?;
-    if inventory_items.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-        .iter()
-        .map(|item| (item.id, item.variant_id))
-        .collect();
-    let levels = commerce_foundation::entities::inventory_level::Entity::find()
-        .filter(
-            commerce_foundation::entities::inventory_level::Column::InventoryItemId
-                .is_in(item_to_variant.keys().copied()),
-        )
-        .all(db)
-        .await?;
-    if levels.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let locations = commerce_foundation::entities::stock_location::Entity::find()
-        .filter(commerce_foundation::entities::stock_location::Column::TenantId.eq(tenant_id))
-        .filter(commerce_foundation::entities::stock_location::Column::DeletedAt.is_null())
-        .filter(
-            commerce_foundation::entities::stock_location::Column::Id
-                .is_in(levels.iter().map(|level| level.location_id)),
-        )
-        .all(db)
-        .await?;
-    let visible_location_ids = locations
-        .into_iter()
-        .filter(|location| {
-            is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug)
-        })
-        .map(|location| location.id)
-        .collect::<HashSet<_>>();
-
-    let mut available_by_variant = HashMap::new();
-    for level in levels {
-        if !visible_location_ids.contains(&level.location_id) {
-            continue;
-        }
-
-        if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-            *available_by_variant.entry(*variant_id).or_insert(0) +=
-                level.stocked_quantity - level.reserved_quantity;
-        }
-    }
-
-    Ok(available_by_variant)
-}
-
 pub async fn apply_public_channel_inventory_to_product(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -851,13 +721,14 @@ pub async fn apply_public_channel_inventory_to_product(
         .iter()
         .map(|variant| variant.id)
         .collect::<Vec<_>>();
-    let available_by_variant = load_available_inventory_by_variant_for_public_channel(
-        db,
-        tenant_id,
-        &variant_ids,
-        public_channel_slug,
-    )
-    .await?;
+    let available_by_variant =
+        rustok_inventory::load_available_inventory_by_variant_for_public_channel(
+            db,
+            tenant_id,
+            &variant_ids,
+            public_channel_slug,
+        )
+        .await?;
 
     for variant in &mut product.variants {
         let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);

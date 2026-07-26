@@ -1,9 +1,7 @@
+use crate::dto::{ProductImageResponse, ProductResponse, ProductTranslationResponse};
+use crate::entities::product::ProductStatus;
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
-use rustok_commerce_foundation::dto::{
-    ProductImageResponse, ProductResponse, ProductTranslationResponse,
-};
-use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,

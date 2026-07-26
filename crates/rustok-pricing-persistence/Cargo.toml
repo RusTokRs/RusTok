@@ -1,0 +1,14 @@
+[package]
+name = "rustok-pricing-persistence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pricing-owned ORM entities and transaction-aware persistence bootstrap"
+
+[dependencies]
+rustok-core.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+sea-orm.workspace = true
+serde.workspace = true
+uuid.workspace = true

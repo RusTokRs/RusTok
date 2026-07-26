@@ -1452,7 +1452,7 @@ impl CommerceQuery {
             .await
         {
             Ok(product) => product,
-            Err(CommerceError::ProductNotFound(_)) => return Ok(None),
+            Err(rustok_product::CommerceError::ProductNotFound(_)) => return Ok(None),
             Err(err) => return Err(map_product_service_error(err, "product_query")),
         };
 
@@ -1853,18 +1853,21 @@ impl CommerceQuery {
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
 
         let public_channel_slug = request_public_channel_slug(ctx);
+        let service = CatalogService::new(db.clone(), event_bus.clone());
         let product_id = match (id, handle.as_deref().map(str::trim)) {
-            (Some(id), _) => Some(id),
+            (Some(id), _) => id,
             (None, Some(handle)) if !handle.is_empty() => {
-                find_published_product_id_by_handle(
-                    db,
-                    tenant_id,
-                    handle,
-                    &locale,
-                    tenant.default_locale.as_str(),
-                    public_channel_slug.as_deref(),
-                )
-                .await?
+                return service
+                    .get_published_product_by_handle_with_locale_fallback(
+                        tenant_id,
+                        handle,
+                        &locale,
+                        Some(tenant.default_locale.as_str()),
+                        public_channel_slug.as_deref(),
+                    )
+                    .await
+                    .map_err(|error| map_product_service_error(error, "storefront_product"))
+                    .map(|product| product.map(Into::into));
             }
             _ => {
                 return Err(async_graphql::Error::new(
@@ -1873,11 +1876,6 @@ impl CommerceQuery {
             }
         };
 
-        let Some(product_id) = product_id else {
-            return Ok(None);
-        };
-
-        let service = CatalogService::new(db.clone(), event_bus.clone());
         let mut product = match service
             .get_product_with_locale_fallback(
                 tenant_id,
@@ -1888,7 +1886,7 @@ impl CommerceQuery {
             .await
         {
             Ok(product) => product,
-            Err(CommerceError::ProductNotFound(_)) => return Ok(None),
+            Err(rustok_product::CommerceError::ProductNotFound(_)) => return Ok(None),
             Err(err) => return Err(map_product_service_error(err, "product_query")),
         };
 
@@ -1909,7 +1907,7 @@ impl CommerceQuery {
             public_channel_slug.as_deref(),
         )
         .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        .map_err(|error| map_product_service_error(error.into(), "storefront_product_inventory"))?;
 
         Ok(Some(
             localized_product_response(product, &locale, tenant.default_locale.as_str()).into(),
@@ -1981,14 +1979,17 @@ impl CommerceQuery {
             ));
         }
 
-        let total = query.clone().count(db).await?;
+        let total = query.clone().count(db).await.map_err(|error| {
+            map_product_service_error(error.into(), "storefront_products_count")
+        })?;
         let products = query
             .order_by_desc(product::Column::PublishedAt)
             .order_by_desc(product::Column::CreatedAt)
             .offset(offset)
             .limit(per_page)
             .all(db)
-            .await?;
+            .await
+            .map_err(|error| map_product_service_error(error.into(), "storefront_products_page"))?;
 
         let items = load_product_list_items(
             db,
@@ -2254,7 +2255,10 @@ async fn load_product_list_items(
         product_translation::Entity::find()
             .filter(product_translation::Column::ProductId.is_in(product_ids))
             .all(db)
-            .await?
+            .await
+            .map_err(|error| {
+                map_product_service_error(error.into(), "storefront_product_translations")
+            })?
     };
     metrics::record_read_path_query(
         "graphql",
@@ -2365,96 +2369,6 @@ fn pick_response_translation<'a>(
             })?
         })
         .or_else(|| translations.first())
-}
-
-async fn find_published_product_id_by_handle(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    handle: &str,
-    locale: &str,
-    default_locale: &str,
-    public_channel_slug: Option<&str>,
-) -> Result<Option<Uuid>> {
-    if let Some(product_id) =
-        find_published_product_id_for_locale(db, tenant_id, handle, locale, public_channel_slug)
-            .await?
-    {
-        return Ok(Some(product_id));
-    }
-
-    if !locale_tags_match(default_locale, locale) {
-        if let Some(product_id) = find_published_product_id_for_locale(
-            db,
-            tenant_id,
-            handle,
-            default_locale,
-            public_channel_slug,
-        )
-        .await?
-        {
-            return Ok(Some(product_id));
-        }
-    }
-
-    find_published_product_id_any_locale(db, tenant_id, handle, public_channel_slug).await
-}
-
-async fn find_published_product_id_for_locale(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    handle: &str,
-    locale: &str,
-    public_channel_slug: Option<&str>,
-) -> Result<Option<Uuid>> {
-    let translations = product_translation::Entity::find()
-        .filter(product_translation::Column::Handle.eq(handle))
-        .all(db)
-        .await?
-        .into_iter()
-        .filter(|translation| locale_tags_match(&translation.locale, locale))
-        .collect();
-
-    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
-}
-
-async fn find_published_product_id_any_locale(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    handle: &str,
-    public_channel_slug: Option<&str>,
-) -> Result<Option<Uuid>> {
-    let translations = product_translation::Entity::find()
-        .filter(product_translation::Column::Handle.eq(handle))
-        .all(db)
-        .await?;
-
-    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
-}
-
-async fn find_first_published_product(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    translations: Vec<product_translation::Model>,
-    public_channel_slug: Option<&str>,
-) -> Result<Option<Uuid>> {
-    for translation in translations {
-        let product = product::Entity::find_by_id(translation.product_id)
-            .filter(product::Column::TenantId.eq(tenant_id))
-            .filter(
-                product::Column::Status
-                    .eq(rustok_product::entities::product::ProductStatus::Active),
-            )
-            .filter(product::Column::PublishedAt.is_not_null())
-            .one(db)
-            .await?;
-        if product.as_ref().is_some_and(|product| {
-            is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
-        }) {
-            return Ok(Some(translation.product_id));
-        }
-    }
-
-    Ok(None)
 }
 
 fn product_list_path(path: &'static str) -> &'static str {

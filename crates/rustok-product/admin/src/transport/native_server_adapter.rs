@@ -241,6 +241,17 @@ fn parse_optional_uuid(
 }
 
 #[cfg(feature = "ssr")]
+fn map_product_service_error(
+    error: rustok_product::CommerceError,
+    operation: &'static str,
+) -> ServerFnError {
+    ServerFnError::new(
+        rustok_product::map_product_public_error(&error, operation, "product_admin_native_server")
+            .to_string(),
+    )
+}
+
+#[cfg(feature = "ssr")]
 fn empty_json() -> serde_json::Value {
     serde_json::Value::Object(Default::default())
 }
@@ -533,7 +544,7 @@ async fn product_admin_attributes_native(
         let items = service
             .list_attributes(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| map_product_service_error(error, "list_attributes"))?
             .into_iter()
             .map(map_attribute_record)
             .collect::<Vec<_>>();
@@ -572,7 +583,7 @@ async fn product_admin_categories_native(
         let items = service
             .list_categories(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| map_product_service_error(error, "list_categories"))?
             .into_iter()
             .map(map_category_record)
             .collect::<Vec<_>>();
@@ -604,7 +615,7 @@ async fn product_admin_catalog_search_options_native(
         let categories = service
             .list_categories(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| map_product_service_error(error, "catalog_search_categories"))?
             .into_iter()
             .map(map_category_record)
             .map(|category| ProductCatalogSearchOption {
@@ -615,7 +626,7 @@ async fn product_admin_catalog_search_options_native(
         let attributes = service
             .list_attributes(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| map_product_service_error(error, "catalog_search_attributes"))?
             .into_iter()
             .map(map_attribute_record)
             .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
@@ -664,7 +675,7 @@ async fn product_admin_attribute_schemas_native(
         let items = service
             .list_schemas(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| map_product_service_error(error, "list_schemas"))?
             .into_iter()
             .map(map_schema_record)
             .collect::<Vec<_>>();
@@ -706,7 +717,9 @@ async fn product_admin_effective_form_native(
             (Some(product_id), _) => service
                 .load_effective_form_for_product(tenant.id, parse_uuid(&product_id, "product_id")?)
                 .await
-                .map_err(ServerFnError::new)?,
+                .map_err(|error| {
+                    map_product_service_error(error, "load_effective_form_for_product")
+                })?,
             (None, Some(category_id)) => Some(
                 service
                     .load_effective_form_for_category(
@@ -715,7 +728,9 @@ async fn product_admin_effective_form_native(
                         &[],
                     )
                     .await
-                    .map_err(ServerFnError::new)?,
+                    .map_err(|error| {
+                        map_product_service_error(error, "load_effective_form_for_category")
+                    })?,
             ),
             (None, None) => {
                 return Err(ServerFnError::new(
@@ -729,11 +744,13 @@ async fn product_admin_effective_form_native(
         let group_labels = service
             .load_effective_form_group_labels(tenant.id, form.category_id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                map_product_service_error(error, "load_effective_form_group_labels")
+            })?;
         let definitions = service
             .list_attributes(tenant.id, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| map_product_service_error(error, "effective_form_attributes"))?
             .into_iter()
             .map(|attribute| (attribute.id, attribute))
             .collect::<std::collections::HashMap<_, _>>();
@@ -745,7 +762,7 @@ async fn product_admin_effective_form_native(
         let mut options_by_attribute = service
             .list_attribute_options(tenant.id, &effective_attribute_ids, locale.trim())
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| map_product_service_error(error, "effective_form_attribute_options"))?
             .into_iter()
             .fold(
                 std::collections::HashMap::<String, Vec<ProductAttributeOptionSummary>>::new(),
@@ -837,7 +854,7 @@ async fn product_admin_attribute_values_native(
                 locale.trim(),
             )
             .await
-            .map_err(ServerFnError::new)
+            .map_err(|error| map_product_service_error(error, "load_product_attribute_values"))
             .map(|items| items.into_iter().map(map_attribute_value).collect())
     }
     #[cfg(not(feature = "ssr"))]
@@ -882,7 +899,7 @@ async fn product_admin_save_attribute_values_native(
                 patches,
             )
             .await
-            .map_err(ServerFnError::new)
+            .map_err(|error| map_product_service_error(error, "save_product_attribute_values"))
             .map(|items| items.into_iter().map(map_attribute_value).collect())
     }
     #[cfg(not(feature = "ssr"))]
@@ -930,7 +947,9 @@ async fn product_admin_clear_detached_attribute_values_native(
                 attribute_ids,
             )
             .await
-            .map_err(ServerFnError::new)
+            .map_err(|error| {
+                map_product_service_error(error, "clear_detached_product_attribute_values")
+            })
             .map(|items| items.into_iter().map(map_attribute_value).collect())
     }
     #[cfg(not(feature = "ssr"))]
@@ -993,7 +1012,7 @@ async fn product_admin_create_attribute_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "create_attribute"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1040,7 +1059,7 @@ async fn product_admin_create_attribute_option_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "create_attribute_option"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1093,7 +1112,7 @@ async fn product_admin_create_category_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "create_category"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1139,7 +1158,7 @@ async fn product_admin_create_schema_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "create_schema"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1187,7 +1206,7 @@ async fn product_admin_set_category_schema_mode_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "set_category_schema_mode"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1234,7 +1253,7 @@ async fn product_admin_bind_schema_attribute_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "bind_schema_attribute"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1281,7 +1300,7 @@ async fn product_admin_create_schema_group_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "create_schema_group"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1328,7 +1347,7 @@ async fn product_admin_create_category_group_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "create_category_group"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -1376,7 +1395,7 @@ async fn product_admin_bind_category_attribute_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_product_service_error(error, "bind_category_attribute"))?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]

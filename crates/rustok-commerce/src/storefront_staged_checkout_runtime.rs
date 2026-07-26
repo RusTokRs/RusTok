@@ -17,10 +17,8 @@ use crate::storefront_checkout_runtime::{
     StorefrontCheckoutCompletionCommand, StorefrontCheckoutRuntime,
 };
 
-const STOREFRONT_STAGED_CHECKOUT_OWNER: &str =
-    "rustok_commerce.recovering_staged_checkout";
-const STOREFRONT_STAGED_CHECKOUT_BOUNDARY: &str =
-    "commerce_storefront_staged_checkout_runtime";
+const STOREFRONT_STAGED_CHECKOUT_OWNER: &str = "rustok_commerce.recovering_staged_checkout";
+const STOREFRONT_STAGED_CHECKOUT_BOUNDARY: &str = "commerce_storefront_staged_checkout_runtime";
 
 #[derive(Debug, Error)]
 pub enum StorefrontStagedCheckoutRuntimeError {

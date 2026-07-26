@@ -6,8 +6,6 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_cart::in_process_cart_checkout_port;
-use rustok_order::error::OrderError;
-use rustok_payment::error::PaymentError;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DbErr;
 use serde::{Deserialize, Serialize};
@@ -15,20 +13,12 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::{CommerceHttpRuntime, common::ensure_permissions};
-use crate::{
-    CheckoutCompensationError, CheckoutInventoryReservationError, CheckoutOperationError,
-    PaymentOrchestrationError,
-};
+use crate::{CheckoutCompensationError, CheckoutInventoryReservationError, CheckoutOperationError};
 
 const ADMIN_CHECKOUT_OPERATION_OWNER: &str = "rustok_commerce.admin_checkout_operation";
 const ADMIN_CHECKOUT_OPERATION_BOUNDARY: &str = "commerce_admin_checkout_operation_http";
 
-type AdminCheckoutOperationHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminCheckoutOperationHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 struct AdminCheckoutOperationErrorContext {
     tenant_id: Uuid,
@@ -326,117 +316,6 @@ fn checkout_operation_error_policy(
     }
 }
 
-fn payment_error_policy(error: &PaymentError) -> AdminCheckoutOperationHttpPolicy {
-    match error {
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        PaymentError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_payment_invalid",
-            "Payment request is invalid",
-            "validation",
-        ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_payment_state_conflict",
-            "Payment operation conflicts with the current state",
-            "state_conflict",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_unavailable",
-            "Payment provider is temporarily unavailable",
-            "provider_unavailable",
-        ),
-        PaymentError::ProviderInvalidResponse { .. } => (
-            StatusCode::BAD_GATEWAY,
-            "commerce_admin_payment_provider_invalid_response",
-            "Payment provider returned an invalid response; reconciliation may be required",
-            "provider_invalid_response",
-        ),
-        PaymentError::ProviderOutcomeUnknown { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_payment_reconciliation_required",
-            "Payment provider outcome is unknown and requires reconciliation",
-            "provider_outcome_unknown",
-        ),
-        PaymentError::ProviderConfiguration { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_not_configured",
-            "Payment provider is not configured for this tenant",
-            "provider_configuration",
-        ),
-        PaymentError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_storage_unavailable",
-            "Payment storage is temporarily unavailable",
-            "database",
-        ),
-    }
-}
-
-fn reserved_refund_error_policy(error: &PaymentError) -> AdminCheckoutOperationHttpPolicy {
-    match error {
-        PaymentError::ProviderOutcomeUnknown { .. }
-        | PaymentError::ProviderInvalidResponse { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_refund_reconciliation_required",
-            "Refund remains reserved while the provider outcome is reconciled",
-            "refund_reconciliation_required",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_refund_provider_unavailable",
-            "Refund remains reserved and the provider operation may be retried safely",
-            "refund_provider_unavailable",
-        ),
-        error => payment_error_policy(error),
-    }
-}
-
-fn order_error_policy(error: &OrderError) -> AdminCheckoutOperationHttpPolicy {
-    match error {
-        OrderError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_order_invalid",
-            "Order request is invalid",
-            "validation",
-        ),
-        OrderError::OrderNotFound(_)
-        | OrderError::OrderReturnNotFound(_)
-        | OrderError::OrderChangeNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        OrderError::InvalidTransition { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_order_state_conflict",
-            "Order operation conflicts with the current state",
-            "state_conflict",
-        ),
-        OrderError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_order_storage_unavailable",
-            "Order storage is temporarily unavailable",
-            "database",
-        ),
-        OrderError::Core(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_order_failed",
-            "Order operation could not be completed safely",
-            "core",
-        ),
-    }
-}
-
 fn adopt_operation_error_identity(
     context: &mut AdminCheckoutOperationErrorContext,
     error: &CheckoutOperationError,
@@ -452,30 +331,6 @@ fn adopt_reservation_error_identity(
 ) {
     if let CheckoutInventoryReservationError::NotFound(id) = error {
         context.reservation_id = Some(*id);
-    }
-}
-
-fn adopt_payment_error_identity(
-    context: &mut AdminCheckoutOperationErrorContext,
-    error: &PaymentError,
-) {
-    match error {
-        PaymentError::PaymentCollectionNotFound(id) => context.payment_collection_id = Some(*id),
-        PaymentError::PaymentNotFound(id) => context.payment_id = Some(*id),
-        PaymentError::RefundNotFound(id) => context.refund_id = Some(*id),
-        _ => {}
-    }
-}
-
-fn adopt_order_error_identity(
-    context: &mut AdminCheckoutOperationErrorContext,
-    error: &OrderError,
-) {
-    match error {
-        OrderError::OrderNotFound(id) => context.order_id = Some(*id),
-        OrderError::OrderReturnNotFound(id) => context.order_return_id = Some(*id),
-        OrderError::OrderChangeNotFound(id) => context.order_change_id = Some(*id),
-        _ => {}
     }
 }
 
@@ -553,28 +408,6 @@ fn map_compensation_error(
                 "rustok_commerce.checkout_inventory_reservation",
             )
         }
-        CheckoutCompensationError::Payment(source) => {
-            adopt_payment_error_identity(&mut context, source);
-            (payment_error_policy(source), "rustok_payment")
-        }
-        CheckoutCompensationError::PaymentOrchestration(source) => match source {
-            PaymentOrchestrationError::Provider(source)
-            | PaymentOrchestrationError::Payment(source) => {
-                adopt_payment_error_identity(&mut context, source);
-                (payment_error_policy(source), "rustok_payment")
-            }
-            PaymentOrchestrationError::ProviderAfterRefundReservation {
-                refund_id,
-                source,
-            } => {
-                context.refund_id = Some(*refund_id);
-                (reserved_refund_error_policy(source), "rustok_payment")
-            }
-        },
-        CheckoutCompensationError::Order(source) => {
-            adopt_order_error_identity(&mut context, source);
-            (order_error_policy(source), "rustok_order")
-        }
         CheckoutCompensationError::ManualReconciliation(_) => (
             (
                 StatusCode::CONFLICT,
@@ -594,7 +427,9 @@ fn map_compensation_error(
             "rustok_commerce.checkout_compensation",
         ),
         CheckoutCompensationError::Boundary {
-            retryable: true, ..
+            stage,
+            retryable: true,
+            ..
         } => (
             (
                 StatusCode::CONFLICT,
@@ -602,10 +437,18 @@ fn map_compensation_error(
                 "Checkout compensation will be retried",
                 "retryable_boundary",
             ),
-            "rustok_commerce.checkout_compensation",
+            compensation_boundary_owner(stage),
         ),
-        CheckoutCompensationError::Boundary { .. }
-        | CheckoutCompensationError::CompensationAndJournal { .. } => (
+        CheckoutCompensationError::Boundary { stage, .. } => (
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Checkout compensation is unavailable",
+                "compensation_failed",
+            ),
+            compensation_boundary_owner(stage),
+        ),
+        CheckoutCompensationError::CompensationAndJournal { .. } => (
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
@@ -625,10 +468,17 @@ fn map_compensation_error(
     )
 }
 
-fn map_sweep_error(
-    context: AdminCheckoutOperationErrorContext,
-    error: DbErr,
-) -> HttpError {
+fn compensation_boundary_owner(stage: &str) -> &'static str {
+    match stage {
+        "compensate_payment" => "rustok_payment",
+        "compensate_order" => "rustok_order",
+        "release_inventory" => "rustok_inventory",
+        "read_cart" | "release_cart" => "rustok_cart",
+        _ => "rustok_commerce.checkout_compensation",
+    }
+}
+
+fn map_sweep_error(context: AdminCheckoutOperationErrorContext, error: DbErr) -> HttpError {
     admin_checkout_operation_http_error(
         &context,
         &error,

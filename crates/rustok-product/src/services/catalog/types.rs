@@ -1,4 +1,4 @@
-use rustok_commerce_foundation::entities;
+use crate::entities;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

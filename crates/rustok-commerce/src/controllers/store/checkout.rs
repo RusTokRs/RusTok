@@ -19,16 +19,10 @@ const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const STOREFRONT_CHECKOUT_OWNER: &str = "rustok_commerce.storefront_staged_checkout_runtime";
 const STOREFRONT_CHECKOUT_BOUNDARY: &str = "commerce_storefront_checkout_http";
 const STOREFRONT_PAYMENT_COLLECTION_OWNER: &str = "rustok_payment.storefront_payment_collections";
-const STOREFRONT_PAYMENT_COLLECTION_BOUNDARY: &str =
-    "commerce_storefront_payment_collection_http";
+const STOREFRONT_PAYMENT_COLLECTION_BOUNDARY: &str = "commerce_storefront_payment_collection_http";
 
 type StorefrontCheckoutHttpPolicy = (StatusCode, &'static str);
-type StorefrontPaymentCollectionHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type StorefrontPaymentCollectionHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 #[derive(Clone, Copy)]
 struct StorefrontCheckoutErrorContext<'a> {
@@ -323,16 +317,13 @@ fn storefront_checkout_error_policy(
         StorefrontStagedCheckoutRuntimeError::Validation(_) => {
             (StatusCode::BAD_REQUEST, "validation")
         }
-        StorefrontStagedCheckoutRuntimeError::CartAccess => {
-            (StatusCode::NOT_FOUND, "cart_access")
-        }
+        StorefrontStagedCheckoutRuntimeError::CartAccess => (StatusCode::NOT_FOUND, "cart_access"),
         StorefrontStagedCheckoutRuntimeError::AuthenticationRequired => {
             (StatusCode::UNAUTHORIZED, "authentication_required")
         }
-        StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "temporarily_unavailable",
-        ),
+        StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => {
+            (StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable")
+        }
         StorefrontStagedCheckoutRuntimeError::CheckoutFailed => {
             (StatusCode::INTERNAL_SERVER_ERROR, "checkout_failed")
         }
@@ -372,9 +363,7 @@ fn storefront_checkout_http_error(
     HttpError::new(status, code, message)
 }
 
-fn payment_collection_error_policy(
-    error: &PaymentError,
-) -> StorefrontPaymentCollectionHttpPolicy {
+fn payment_collection_error_policy(error: &PaymentError) -> StorefrontPaymentCollectionHttpPolicy {
     match error {
         PaymentError::Validation(_) => (
             StatusCode::BAD_REQUEST,

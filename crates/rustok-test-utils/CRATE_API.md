@@ -5,6 +5,14 @@
 
 ## Primary Public Types and Signatures
 - `pub async fn setup_test_db(...)`
+- `pub async fn connect_postgres(...)`
+- `pub async fn create_postgres_database(...)`
+- `pub async fn drop_postgres_database_if_exists(...)`
+- `pub fn postgres_database_url(...)`
+- `pub fn unique_postgres_database_name(...)`
+- `pub async fn assert_postgres_table_missing(...)`
+- `pub async fn assert_postgres_column_missing(...)`
+- `pub async fn assert_postgres_column_contract(...)`
 - `pub struct MockEventBus`, `pub struct MockEventTransport`
 - `pub fn mock_transactional_event_bus() -> TransactionalEventBus`
 - Domain entity fixtures in `fixtures::*`.

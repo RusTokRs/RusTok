@@ -9,7 +9,6 @@ description = "Product domain module extracted from rustok-commerce"
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-commerce-foundation = { package = "rustok-commerce-foundation", path = "../rustok-commerce-foundation" }
 rustok-core.workspace = true
 rustok-api.workspace = true
 rustok-events.workspace = true
@@ -19,15 +18,20 @@ rustok-media.workspace = true
 flex.workspace = true
 rustok-taxonomy.workspace = true
 rustok-inventory.workspace = true
+rustok-pricing-persistence.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tracing.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 unicode-normalization.workspace = true
 url = "2.5"
 utoipa.workspace = true
 uuid.workspace = true
 validator.workspace = true
+
+[dev-dependencies]
+rustok-test-utils.workspace = true

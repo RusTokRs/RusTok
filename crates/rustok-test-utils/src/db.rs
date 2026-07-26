@@ -2,8 +2,12 @@
 //!
 //! Provides functions for setting up test databases with migrations.
 
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, TransactionTrait};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    TransactionTrait,
+};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -122,6 +126,215 @@ where
     }
 
     db
+}
+
+/// Connects to a PostgreSQL database with bounded test-friendly timeouts.
+pub async fn connect_postgres(url: &str) -> Result<DatabaseConnection, sea_orm::DbErr> {
+    let mut options = ConnectOptions::new(url.to_owned());
+    options
+        .connect_timeout(Duration::from_secs(5))
+        .acquire_timeout(Duration::from_secs(5))
+        .sqlx_logging(false);
+    Database::connect(options).await
+}
+
+/// Creates an isolated PostgreSQL database after validating its identifier.
+pub async fn create_postgres_database(
+    admin: &DatabaseConnection,
+    database_name: &str,
+) -> Result<(), sea_orm::DbErr> {
+    assert_valid_postgres_database_name(database_name);
+    admin
+        .execute(Statement::from_string(
+            DbBackend::Postgres,
+            format!("CREATE DATABASE {}", quoted_identifier(database_name)),
+        ))
+        .await?;
+    Ok(())
+}
+
+/// Force-drops an isolated PostgreSQL test database when it exists.
+pub async fn drop_postgres_database_if_exists(
+    admin: &DatabaseConnection,
+    database_name: &str,
+) -> Result<(), sea_orm::DbErr> {
+    assert_valid_postgres_database_name(database_name);
+    admin
+        .execute(Statement::from_string(
+            DbBackend::Postgres,
+            format!(
+                "DROP DATABASE IF EXISTS {} WITH (FORCE)",
+                quoted_identifier(database_name)
+            ),
+        ))
+        .await?;
+    Ok(())
+}
+
+/// Replaces the database path in an admin PostgreSQL URL.
+pub fn postgres_database_url(admin_url: &str, database_name: &str) -> String {
+    assert_postgres_url(admin_url);
+    assert_valid_postgres_database_name(database_name);
+    let (base, suffix) = admin_url
+        .split_once('?')
+        .map(|(base, query)| (base, format!("?{query}")))
+        .unwrap_or((admin_url, String::new()));
+    let scheme_end = base
+        .find("://")
+        .expect("PostgreSQL URL must include a scheme separator")
+        + 3;
+    let authority_end = base[scheme_end..]
+        .find('/')
+        .map(|offset| scheme_end + offset)
+        .unwrap_or(base.len());
+    format!(
+        "{}{}/{}{}",
+        &base[..authority_end],
+        "",
+        database_name,
+        suffix
+    )
+}
+
+/// Generates a process-unique PostgreSQL test database name.
+pub fn unique_postgres_database_name(prefix: &str) -> String {
+    assert_valid_postgres_database_name(prefix);
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock must be after UNIX_EPOCH")
+        .as_millis();
+    let name = format!("{prefix}_{millis}_{}", std::process::id());
+    assert_valid_postgres_database_name(&name);
+    name
+}
+
+/// Verifies that a test URL targets PostgreSQL.
+pub fn assert_postgres_url(url: &str) {
+    assert!(
+        url.starts_with("postgres://") || url.starts_with("postgresql://"),
+        "PostgreSQL test URL must use postgres:// or postgresql://"
+    );
+}
+
+/// Verifies that a database name is safe to embed as a quoted identifier.
+pub fn assert_valid_postgres_database_name(database_name: &str) {
+    let mut chars = database_name.chars();
+    let Some(first) = chars.next() else {
+        panic!("PostgreSQL test database name must not be empty");
+    };
+    assert!(
+        first == '_' || first.is_ascii_alphabetic(),
+        "PostgreSQL test database name must start with a letter or underscore"
+    );
+    assert!(
+        chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric()),
+        "PostgreSQL test database name may contain only letters, digits, and underscores"
+    );
+    assert!(
+        database_name.len() <= 63,
+        "PostgreSQL test database name must not exceed 63 bytes"
+    );
+}
+
+/// Verifies that a table is absent from the PostgreSQL `public` schema.
+pub async fn assert_postgres_table_missing(
+    db: &DatabaseConnection,
+    table: &str,
+) -> Result<(), sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT to_regclass($1) IS NULL AS missing",
+            [format!("public.{table}").into()],
+        ))
+        .await?
+        .ok_or_else(|| {
+            sea_orm::DbErr::Custom(format!("table absence query for {table} returned no row"))
+        })?;
+    let missing: bool = row.try_get("", "missing")?;
+    if !missing {
+        return Err(sea_orm::DbErr::Custom(format!(
+            "expected table {table} to be removed"
+        )));
+    }
+    Ok(())
+}
+
+/// Verifies that a column is absent from a PostgreSQL `public` schema table.
+pub async fn assert_postgres_column_missing(
+    db: &DatabaseConnection,
+    table: &str,
+    column: &str,
+) -> Result<(), sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+SELECT NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = $1
+      AND column_name = $2
+) AS missing
+"#,
+            [table.to_owned().into(), column.to_owned().into()],
+        ))
+        .await?
+        .ok_or_else(|| {
+            sea_orm::DbErr::Custom(format!(
+                "column absence query for {table}.{column} returned no row"
+            ))
+        })?;
+    let missing: bool = row.try_get("", "missing")?;
+    if !missing {
+        return Err(sea_orm::DbErr::Custom(format!(
+            "expected column {table}.{column} to be removed"
+        )));
+    }
+    Ok(())
+}
+
+/// Verifies a PostgreSQL column's information-schema type and nullability.
+pub async fn assert_postgres_column_contract(
+    db: &DatabaseConnection,
+    table: &str,
+    column: &str,
+    data_type: &str,
+    nullable: bool,
+) -> Result<(), sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+SELECT data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = $1
+  AND column_name = $2
+"#,
+            [table.to_owned().into(), column.to_owned().into()],
+        ))
+        .await?
+        .ok_or_else(|| {
+            sea_orm::DbErr::Custom(format!(
+                "column contract query for {table}.{column} returned no row"
+            ))
+        })?;
+    let actual_type: String = row.try_get("", "data_type")?;
+    let actual_nullable: String = row.try_get("", "is_nullable")?;
+    let expected_nullable = if nullable { "YES" } else { "NO" };
+    if actual_type != data_type || actual_nullable != expected_nullable {
+        return Err(sea_orm::DbErr::Custom(format!(
+            "column {table}.{column} expected type={data_type}, nullable={expected_nullable}; \
+             got type={actual_type}, nullable={actual_nullable}"
+        )));
+    }
+    Ok(())
+}
+
+fn quoted_identifier(identifier: &str) -> String {
+    format!("\"{}\"", identifier.replace('"', "\"\""))
 }
 
 /// Creates a test transaction that will be rolled back after the test.

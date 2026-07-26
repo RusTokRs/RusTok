@@ -5,10 +5,11 @@ use super::{
     ProductCatalogSchemaService, load_attribute_write_definition, map_schema_resolution_error,
     uuid_filter_values, validate_locale,
 };
-use sea_orm::{ConnectionTrait, FromQueryResult, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 use uuid::Uuid;
 
-use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+use crate::error::{CommerceError, CommerceResult};
+use crate::services::write_transaction::ProductWriteTransaction;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 
@@ -21,7 +22,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<ProductAttributeRecord> {
         input.validate()?;
         let attribute_id = generate_id();
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         txn.execute(Statement::from_sql_and_values(
             txn.get_database_backend(),
@@ -83,14 +84,12 @@ impl ProductCatalogSchemaService {
             .await?;
         }
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeCreated { attribute_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductAttributeCreated { attribute_id },
+        )
+        .await?;
         txn.commit().await?;
 
         Ok(ProductAttributeRecord {
@@ -107,7 +106,7 @@ impl ProductCatalogSchemaService {
         input: CreateProductAttributeOptionInput,
     ) -> CommerceResult<ProductAttributeOptionRecord> {
         input.validate()?;
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         let attribute =
             load_attribute_write_definition(&txn, tenant_id, input.attribute_id).await?;
         let value_type = AttributeValueType::from_storage(&attribute.value_type)
@@ -156,17 +155,15 @@ impl ProductCatalogSchemaService {
             ))
             .await?;
         }
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeOptionCreated {
-                    option_id,
-                    attribute_id: input.attribute_id,
-                },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductAttributeOptionCreated {
+                option_id,
+                attribute_id: input.attribute_id,
+            },
+        )
+        .await?;
         txn.commit().await?;
         Ok(ProductAttributeOptionRecord {
             id: option_id,

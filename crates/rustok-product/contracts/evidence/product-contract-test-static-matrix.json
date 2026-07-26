@@ -52,14 +52,12 @@
   "fallback_smoke": {
     "status": "static_locked_runtime_pending",
     "profiles": [
-      "embedded_native",
-      "graphql_checkout_compat",
-      "graphql_storefront_compat"
+      "embedded_native"
     ],
     "degraded_modes": [
-      "use_cart_product_snapshot",
-      "show_product_refresh_required",
-      "skip_product_enrichment"
+      "generate_from_prompt_only",
+      "skip_catalog_enrichment",
+      "require_operator_review"
     ]
   }
 }

@@ -103,6 +103,7 @@ pub(crate) enum ProviderIntegration {
 }
 
 impl ProviderIntegration {
+    #[cfg(feature = "server")]
     pub(crate) fn from_slug(slug: &ProviderSlug) -> Option<Self> {
         provider_catalog_entry(slug).map(|entry| entry.integration)
     }

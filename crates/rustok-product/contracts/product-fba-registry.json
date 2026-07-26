@@ -23,22 +23,7 @@
     {
       "module": "commerce",
       "profile": "checkout_product_projection",
-      "degraded_modes": [
-        "use_cart_product_snapshot",
-        "show_product_refresh_required"
-      ],
-      "fallback_profiles": [
-        "embedded_native",
-        "graphql_checkout_compat",
-        "graphql_storefront_compat"
-      ]
-    },
-    {
-      "module": "pricing",
-      "profile": "pricing_product_projection",
-      "degraded_modes": [
-        "skip_product_enrichment"
-      ],
+      "degraded_modes": [],
       "fallback_profiles": [
         "embedded_native"
       ]
@@ -117,14 +102,12 @@
     "fallback_smoke": {
       "status": "planned_runtime_pending",
       "profiles": [
-        "embedded_native",
-        "graphql_checkout_compat",
-        "graphql_storefront_compat"
+        "embedded_native"
       ],
       "degraded_modes": [
-        "use_cart_product_snapshot",
-        "show_product_refresh_required",
-        "skip_product_enrichment"
+        "generate_from_prompt_only",
+        "skip_catalog_enrichment",
+        "require_operator_review"
       ]
     }
   }

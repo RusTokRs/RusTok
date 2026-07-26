@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use rustok_commerce_foundation::{
+use crate::{
     entities,
     error::{CommerceError, CommerceResult},
 };

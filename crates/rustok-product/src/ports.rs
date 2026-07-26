@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::StorefrontProductList;
+use crate::dto::ProductResponse;
 use crate::entities::product_variant;
-use rustok_commerce_foundation::dto::ProductResponse;
 
 const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
@@ -276,9 +276,9 @@ fn product_variant_not_found(
 fn product_error_to_port_error(
     context: &PortContext,
     owner_operation: &'static str,
-    error: rustok_commerce_foundation::error::CommerceError,
+    error: crate::error::CommerceError,
 ) -> PortError {
-    use rustok_commerce_foundation::error::CommerceError;
+    use crate::error::CommerceError;
 
     let code = product_error_code(&error);
     tracing::error!(
@@ -312,8 +312,8 @@ fn product_error_to_port_error(
     }
 }
 
-fn product_error_code(error: &rustok_commerce_foundation::error::CommerceError) -> &'static str {
-    use rustok_commerce_foundation::error::CommerceError;
+fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
+    use crate::error::CommerceError;
 
     match error {
         CommerceError::Database(_) => "product.database_unavailable",
@@ -328,8 +328,8 @@ fn product_error_code(error: &rustok_commerce_foundation::error::CommerceError) 
 mod tests {
     use std::time::Duration;
 
+    use crate::error::CommerceError;
     use rustok_api::{PortActor, PortErrorKind};
-    use rustok_commerce_foundation::error::CommerceError;
 
     use super::*;
 

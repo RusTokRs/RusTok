@@ -32,12 +32,7 @@ const ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER: &str =
     "rustok_commerce.admin_order_change_orchestration";
 const ADMIN_ORDER_CHANGE_BOUNDARY: &str = "commerce_admin_order_change_http";
 
-type AdminOrderChangeHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminOrderChangeHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 struct AdminOrderChangeErrorContext {
     tenant_id: Uuid,
@@ -262,8 +257,7 @@ fn map_admin_order_change_orchestration_error(
     let (status, code, message, error_kind, source_owner) = match &error {
         PostOrderOrchestrationError::Order(source) => {
             adopt_order_change_order_error_identity(&mut context, source);
-            let (status, code, message, error_kind) =
-                admin_order_change_order_error_policy(source);
+            let (status, code, message, error_kind) = admin_order_change_order_error_policy(source);
             (status, code, message, error_kind, "rustok_order")
         }
         PostOrderOrchestrationError::Payment(source) => {
@@ -280,10 +274,7 @@ fn map_admin_order_change_orchestration_error(
                     admin_order_change_payment_error_policy(source);
                 (status, code, message, error_kind, "rustok_payment")
             }
-            PaymentOrchestrationError::ProviderAfterRefundReservation {
-                refund_id,
-                source,
-            } => {
+            PaymentOrchestrationError::ProviderAfterRefundReservation { refund_id, source } => {
                 context.refund_id = Some(*refund_id);
                 let (status, code, message, error_kind) =
                     admin_order_change_reserved_refund_error_policy(source);
@@ -351,12 +342,7 @@ pub async fn create_order_change(
         .await
         .map_err(|error| {
             map_admin_order_change_error(
-                AdminOrderChangeErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    None,
-                    "create_order_change",
-                ),
+                AdminOrderChangeErrorContext::new(tenant.id, Some(id), None, "create_order_change"),
                 error,
             )
         })?;
@@ -403,12 +389,7 @@ pub async fn list_order_changes(
         .await
         .map_err(|error| {
             map_admin_order_change_error(
-                AdminOrderChangeErrorContext::new(
-                    tenant.id,
-                    order_id,
-                    None,
-                    "list_order_changes",
-                ),
+                AdminOrderChangeErrorContext::new(tenant.id, order_id, None, "list_order_changes"),
                 error,
             )
         })?;
@@ -448,12 +429,7 @@ pub async fn show_order_change(
         .await
         .map_err(|error| {
             map_admin_order_change_error(
-                AdminOrderChangeErrorContext::new(
-                    tenant.id,
-                    None,
-                    Some(id),
-                    "get_order_change",
-                ),
+                AdminOrderChangeErrorContext::new(tenant.id, None, Some(id), "get_order_change"),
                 error,
             )
         })?;
@@ -545,12 +521,7 @@ pub async fn cancel_order_change(
         .await
         .map_err(|error| {
             map_admin_order_change_error(
-                AdminOrderChangeErrorContext::new(
-                    tenant.id,
-                    None,
-                    Some(id),
-                    "cancel_order_change",
-                ),
+                AdminOrderChangeErrorContext::new(tenant.id, None, Some(id), "cancel_order_change"),
                 error,
             )
         })?;

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use rustok_commerce_foundation::error::CommerceResult;
+use crate::error::CommerceResult;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{

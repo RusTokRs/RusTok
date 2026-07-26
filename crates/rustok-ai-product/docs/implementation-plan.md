@@ -78,6 +78,7 @@ keeps product AI as an adapter and prevents a second product-owned AI route.
 - `npm run verify:ai-product:fba`
 - `npm run verify:ai:domain-verticals`
 - `cargo test -p rustok-ai-product --lib`
+- `cargo test -p rustok-ai --features server --lib direct_product_attributes_`
 
 ## References
 

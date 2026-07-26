@@ -5,8 +5,8 @@ use axum::{
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
-use rustok_payment::error::PaymentError;
 use rustok_payment::PaymentService;
+use rustok_payment::error::PaymentError;
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -15,23 +15,18 @@ use super::{
     super::common::{PaginatedResponse, ensure_permissions},
     ListPaymentCollectionsParams, ListRefundsParams,
 };
+use crate::PaymentOrchestrationError;
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
     CompleteRefundInput, CreateRefundInput, ListPaymentCollectionsInput, ListRefundsInput,
     PaymentCollectionResponse, RefundResponse,
 };
-use crate::PaymentOrchestrationError;
 
 const MAX_REFUND_CREATION_KEY_LENGTH: usize = 191;
 const ADMIN_PAYMENT_OWNER: &str = "rustok_payment.admin_payments";
 const ADMIN_PAYMENT_BOUNDARY: &str = "commerce_admin_payment_http";
 
-type AdminPaymentHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminPaymentHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 #[derive(Clone, Copy)]
 struct AdminPaymentErrorContext {
@@ -119,12 +114,8 @@ pub async fn list_payment_collections(
         .await
         .map_err(|error| {
             map_admin_payment_error(
-                AdminPaymentErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    "list_payment_collections",
-                )
-                .with_filters(order_id, cart_id, customer_id),
+                AdminPaymentErrorContext::new(tenant.id, auth.user_id, "list_payment_collections")
+                    .with_filters(order_id, cart_id, customer_id),
                 error,
             )
         })?;
@@ -157,12 +148,8 @@ pub async fn show_payment_collection(
         .await
         .map_err(|error| {
             map_admin_payment_error(
-                AdminPaymentErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    "show_payment_collection",
-                )
-                .with_payment_collection_id(Some(id)),
+                AdminPaymentErrorContext::new(tenant.id, auth.user_id, "show_payment_collection")
+                    .with_payment_collection_id(Some(id)),
                 error,
             )
         })?;
@@ -271,12 +258,8 @@ pub async fn cancel_payment_collection(
         .await
         .map_err(|error| {
             map_admin_payment_orchestration_error(
-                AdminPaymentErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    "cancel_payment_collection",
-                )
-                .with_payment_collection_id(Some(id)),
+                AdminPaymentErrorContext::new(tenant.id, auth.user_id, "cancel_payment_collection")
+                    .with_payment_collection_id(Some(id)),
                 error,
             )
         })?;

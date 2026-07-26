@@ -13412,6 +13412,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-pricing-persistence",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -14334,6 +14335,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-pricing-persistence",
  "rustok-product",
  "sea-orm",
  "sea-orm-migration",
@@ -14383,6 +14385,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-pricing-persistence"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rust_decimal",
+ "rustok-core",
+ "sea-orm",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-pricing-storefront"
 version = "0.1.0"
 dependencies = [
@@ -14412,18 +14426,20 @@ dependencies = [
  "flex",
  "rust_decimal",
  "rustok-api",
- "rustok-commerce-foundation",
  "rustok-core",
  "rustok-events",
  "rustok-inventory",
  "rustok-media",
  "rustok-outbox",
+ "rustok-pricing-persistence",
  "rustok-seo-targets",
  "rustok-taxonomy",
+ "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "unicode-normalization",
@@ -14474,6 +14490,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 

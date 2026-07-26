@@ -15,6 +15,7 @@ ssr = [
   "dep:rustok-product",
   "dep:rustok-pricing",
   "dep:rustok-outbox",
+  "dep:tracing",
   "rustok-api/server",
 ]
 
@@ -32,6 +33,7 @@ rustok-commerce-foundation = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
 

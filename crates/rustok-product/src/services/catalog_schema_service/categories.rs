@@ -6,11 +6,12 @@ use super::{
     insert_category_group_translation, load_category_group_id, load_category_parent,
     parse_virtual_category_rule_v1, validate_virtual_category_rule_references,
 };
-use sea_orm::{ConnectionTrait, FromQueryResult, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 use serde_json::Value;
 use uuid::Uuid;
 
-use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+use crate::error::{CommerceError, CommerceResult};
+use crate::services::write_transaction::ProductWriteTransaction;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 
@@ -23,7 +24,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<CatalogCategoryRecord> {
         input.validate()?;
         let category_id = generate_id();
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         if input.kind == CatalogCategoryKind::Virtual {
             let rule = parse_virtual_category_rule_v1(&input.rule_config)
@@ -112,14 +113,12 @@ impl ProductCatalogSchemaService {
             .await?;
         }
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategoryCreated { category_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::CatalogCategoryCreated { category_id },
+        )
+        .await?;
         txn.commit().await?;
 
         Ok(CatalogCategoryRecord {
@@ -168,7 +167,7 @@ impl ProductCatalogSchemaService {
         input: CreateCategoryAttributeGroupInput,
     ) -> CommerceResult<ProductAttributeGroupRecord> {
         input.validate()?;
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_structural_category(&txn, tenant_id, input.category_id).await?;
         let group_id = generate_id();
         txn.execute(Statement::from_sql_and_values(
@@ -191,16 +190,14 @@ impl ProductCatalogSchemaService {
         for translation in &input.translations {
             insert_category_group_translation(&txn, group_id, translation).await?;
         }
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategoryAttributesChanged {
-                    category_id: input.category_id,
-                },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::CatalogCategoryAttributesChanged {
+                category_id: input.category_id,
+            },
+        )
+        .await?;
         txn.commit().await?;
 
         Ok(ProductAttributeGroupRecord {
@@ -217,7 +214,7 @@ impl ProductCatalogSchemaService {
         input: SetCategorySchemaModeInput,
     ) -> CommerceResult<()> {
         input.validate()?;
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_structural_category(&txn, tenant_id, input.category_id).await?;
         if let Some(schema_id) = input.schema_id {
             ensure_schema(&txn, tenant_id, schema_id).await?;
@@ -258,16 +255,14 @@ impl ProductCatalogSchemaService {
         ))
         .await?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategorySchemaModeChanged {
-                    category_id: input.category_id,
-                },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::CatalogCategorySchemaModeChanged {
+                category_id: input.category_id,
+            },
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -279,7 +274,7 @@ impl ProductCatalogSchemaService {
         input: BindCategoryAttributeInput,
     ) -> CommerceResult<()> {
         input.validate()?;
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_structural_category(&txn, tenant_id, input.category_id).await?;
         ensure_attribute(&txn, tenant_id, input.attribute_id).await?;
         let group_id = match input.group_code.as_deref() {
@@ -326,16 +321,14 @@ impl ProductCatalogSchemaService {
         ))
         .await?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategoryAttributesChanged {
-                    category_id: input.category_id,
-                },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::CatalogCategoryAttributesChanged {
+                category_id: input.category_id,
+            },
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }

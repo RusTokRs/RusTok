@@ -92,6 +92,195 @@ async fn admin_graphql_rejects_product_write_actor_from_another_tenant() {
 }
 
 #[tokio::test]
+async fn admin_graphql_rejects_foreign_actor_for_every_product_mutation() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let mut foreign_auth = auth_context(Uuid::new_v4());
+    foreign_auth.permissions = vec![
+        Permission::PRODUCTS_CREATE,
+        Permission::PRODUCTS_UPDATE,
+        Permission::PRODUCTS_DELETE,
+        Permission::PRODUCTS_MANAGE,
+    ];
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(foreign_auth),
+    );
+    let id = Uuid::new_v4();
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              create: createProduct(input: {{
+                translations: [{{ locale: "en", title: "Blocked", handle: "blocked" }}]
+                variants: [{{ sku: "BLOCKED", prices: [{{ currencyCode: "EUR", amount: "1.00" }}] }}]
+              }}) {{ id }}
+              update: updateProduct(id: "{id}", input: {{}}) {{ id }}
+              publish: publishProduct(id: "{id}") {{ id }}
+              delete: deleteProduct(id: "{id}")
+              createAttribute: createProductAttribute(locale: "en", input: {{
+                code: "blocked"
+                valueType: "text"
+                label: "Blocked"
+                isLocalized: false
+                isFilterable: false
+                isSearchable: false
+                isSortable: false
+                showOnStorefront: false
+              }})
+              createOption: createProductAttributeOption(locale: "en", input: {{
+                attributeId: "{id}"
+                code: "blocked"
+                label: "Blocked"
+                position: 0
+              }})
+              createCategory: createCatalogCategory(locale: "en", input: {{
+                code: "blocked"
+                slug: "blocked"
+                kind: "structural"
+                name: "Blocked"
+              }})
+              createSchema: createProductAttributeSchema(locale: "en", input: {{
+                code: "blocked"
+                name: "Blocked"
+              }})
+              createSchemaGroup: createProductAttributeSchemaGroup(locale: "en", input: {{
+                schemaId: "{id}"
+                code: "blocked"
+                label: "Blocked"
+                position: 0
+              }})
+              createCategoryGroup: createCatalogCategoryAttributeGroup(locale: "en", input: {{
+                categoryId: "{id}"
+                code: "blocked"
+                label: "Blocked"
+                position: 0
+              }})
+              setSchemaMode: setCatalogCategorySchemaMode(input: {{
+                categoryId: "{id}"
+                mode: "inherit"
+              }})
+              bindSchemaAttribute: bindProductAttributeSchemaAttribute(input: {{
+                schemaId: "{id}"
+                attributeId: "{id}"
+                isRequired: false
+                isDisabled: false
+                position: 0
+              }})
+              bindCategoryAttribute: bindCatalogCategoryAttribute(input: {{
+                categoryId: "{id}"
+                attributeId: "{id}"
+                bindingKind: "addition"
+                isDisabled: false
+              }})
+              saveValues: saveProductAttributeValues(
+                productId: "{id}"
+                locale: "en"
+                patches: []
+              ) {{ attributeId }}
+              clearValues: clearDetachedProductAttributeValues(
+                productId: "{id}"
+                locale: "en"
+                attributeIds: []
+              ) {{ attributeId }}
+            }}
+            "#
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 15, "{:#?}", response.errors);
+    assert!(
+        response
+            .errors
+            .iter()
+            .all(|error| error.message == "Authenticated actor is not bound to the current tenant"),
+        "{:#?}",
+        response.errors
+    );
+}
+
+#[tokio::test]
+async fn admin_native_and_graphql_product_reads_are_equivalent() {
+    let (db, catalog, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let native = catalog
+        .get_product(tenant_id, created.id)
+        .await
+        .expect("native product read should succeed");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              product(tenantId: "{tenant_id}", id: "{product_id}", locale: "de") {{
+                id
+                status
+                translations {{ locale title handle }}
+                variants {{ id sku }}
+              }}
+            }}
+            "#,
+            product_id = created.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL parity errors: {:?}",
+        response.errors
+    );
+    let graphql = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(graphql["product"]["id"], Value::from(native.id.to_string()));
+    let native_status = serde_json::to_value(&native.status)
+        .expect("native status should serialize")
+        .as_str()
+        .expect("native status should serialize as a string")
+        .to_ascii_uppercase();
+    assert_eq!(graphql["product"]["status"], Value::from(native_status));
+    let native_translation = native
+        .translations
+        .iter()
+        .find(|translation| translation.locale == "de")
+        .expect("native product should contain the requested locale");
+    assert_eq!(
+        graphql["product"]["translations"][0]["title"],
+        Value::from(native_translation.title.clone())
+    );
+    assert_eq!(
+        graphql["product"]["translations"][0]["handle"],
+        Value::from(native_translation.handle.clone())
+    );
+    assert_eq!(
+        graphql["product"]["variants"][0]["id"],
+        Value::from(native.variants[0].id.to_string())
+    );
+    assert_eq!(
+        graphql["product"]["variants"][0]["sku"],
+        Value::from(native.variants[0].sku.clone())
+    );
+}
+
+#[tokio::test]
 async fn storefront_graphql_filters_channel_hidden_products() {
     let (db, catalog, _) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -177,14 +366,47 @@ async fn storefront_graphql_filters_channel_hidden_products() {
         .data
         .into_json()
         .expect("GraphQL response must serialize");
-    assert_eq!(visible_json["storefrontProducts"]["total"], Value::from(1));
+    let native_list = catalog
+        .list_published_products_with_locale_fallback(
+            tenant_id,
+            "de",
+            Some("en"),
+            Some("web-store"),
+            1,
+            20,
+        )
+        .await
+        .expect("native storefront list should succeed");
+    let native_visible = catalog
+        .get_published_product_by_handle_with_locale_fallback(
+            tenant_id,
+            &visible_handle,
+            "de",
+            Some("en"),
+            Some("web-store"),
+        )
+        .await
+        .expect("native storefront detail should succeed")
+        .expect("visible product should exist through native storefront read");
+    assert_eq!(
+        visible_json["storefrontProducts"]["total"],
+        Value::from(native_list.total)
+    );
     assert_eq!(
         visible_json["storefrontProducts"]["items"][0]["title"],
-        Value::from("Sichtbares Produkt")
+        Value::from(native_list.items[0].title.clone())
     );
     assert_eq!(
         visible_json["storefrontProduct"]["translations"][0]["handle"],
-        Value::from(visible_handle)
+        Value::from(
+            native_visible
+                .translations
+                .iter()
+                .find(|translation| translation.locale == "de")
+                .expect("native storefront detail should contain de translation")
+                .handle
+                .clone()
+        )
     );
 
     let hidden_query = format!(
@@ -207,6 +429,17 @@ async fn storefront_graphql_filters_channel_hidden_products() {
         .into_json()
         .expect("GraphQL response must serialize");
     assert!(hidden_json["storefrontProduct"].is_null());
+    let native_hidden = catalog
+        .get_published_product_by_handle_with_locale_fallback(
+            tenant_id,
+            &hidden_handle,
+            "de",
+            Some("en"),
+            Some("web-store"),
+        )
+        .await
+        .expect("native hidden-product storefront read should succeed");
+    assert!(native_hidden.is_none());
 }
 
 #[tokio::test]

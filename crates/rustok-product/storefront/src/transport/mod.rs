@@ -52,7 +52,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+    fn selected_transport_matches_the_compiled_runtime_profile() {
+        #[cfg(any(feature = "ssr", feature = "hydrate"))]
+        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
+
+        #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
     }
 

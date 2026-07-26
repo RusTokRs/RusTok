@@ -34,11 +34,7 @@ struct AdminShippingOptionErrorContext {
 }
 
 impl AdminShippingOptionErrorContext {
-    fn new(
-        tenant_id: Uuid,
-        shipping_option_id: Option<Uuid>,
-        operation: &'static str,
-    ) -> Self {
+    fn new(tenant_id: Uuid, shipping_option_id: Option<Uuid>, operation: &'static str) -> Self {
         Self {
             tenant_id,
             shipping_option_id,
@@ -522,11 +518,7 @@ pub async fn show_shipping_option(
         .await
         .map_err(|error| {
             map_admin_shipping_option_error(
-                AdminShippingOptionErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    "get_shipping_option",
-                ),
+                AdminShippingOptionErrorContext::new(tenant.id, Some(id), "get_shipping_option"),
                 error,
             )
         })?;
@@ -572,11 +564,7 @@ pub async fn update_shipping_option(
         .await
         .map_err(|error| {
             map_admin_shipping_option_error(
-                AdminShippingOptionErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    "update_shipping_option",
-                ),
+                AdminShippingOptionErrorContext::new(tenant.id, Some(id), "update_shipping_option"),
                 error,
             )
         })?;

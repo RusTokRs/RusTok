@@ -5,10 +5,11 @@ use super::{
     ProductCatalogSchemaService, ensure_attribute, ensure_schema, insert_schema_group_translation,
     load_schema_group_id,
 };
-use sea_orm::{ConnectionTrait, FromQueryResult, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 use uuid::Uuid;
 
-use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+use crate::error::{CommerceError, CommerceResult};
+use crate::services::write_transaction::ProductWriteTransaction;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 
@@ -21,7 +22,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<ProductAttributeSchemaRecord> {
         input.validate()?;
         let schema_id = generate_id();
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         txn.execute(Statement::from_sql_and_values(
             txn.get_database_backend(),
@@ -57,14 +58,12 @@ impl ProductCatalogSchemaService {
             .await?;
         }
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeSchemaCreated { schema_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductAttributeSchemaCreated { schema_id },
+        )
+        .await?;
         txn.commit().await?;
 
         Ok(ProductAttributeSchemaRecord {
@@ -106,7 +105,7 @@ impl ProductCatalogSchemaService {
         input: CreateProductAttributeSchemaGroupInput,
     ) -> CommerceResult<ProductAttributeGroupRecord> {
         input.validate()?;
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_schema(&txn, tenant_id, input.schema_id).await?;
         let group_id = generate_id();
         txn.execute(Statement::from_sql_and_values(
@@ -129,16 +128,14 @@ impl ProductCatalogSchemaService {
         for translation in &input.translations {
             insert_schema_group_translation(&txn, group_id, translation).await?;
         }
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeSchemaBindingsChanged {
-                    schema_id: input.schema_id,
-                },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductAttributeSchemaBindingsChanged {
+                schema_id: input.schema_id,
+            },
+        )
+        .await?;
         txn.commit().await?;
         Ok(ProductAttributeGroupRecord {
             id: group_id,
@@ -154,7 +151,7 @@ impl ProductCatalogSchemaService {
         input: BindSchemaAttributeInput,
     ) -> CommerceResult<()> {
         input.validate()?;
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_attribute(&txn, tenant_id, input.attribute_id).await?;
         ensure_schema(&txn, tenant_id, input.schema_id).await?;
         let group_id = match input.group_code.as_deref() {
@@ -198,16 +195,14 @@ impl ProductCatalogSchemaService {
         ))
         .await?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeSchemaBindingsChanged {
-                    schema_id: input.schema_id,
-                },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductAttributeSchemaBindingsChanged {
+                schema_id: input.schema_id,
+            },
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }
