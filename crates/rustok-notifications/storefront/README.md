@@ -12,12 +12,12 @@ transport-neutral `NotificationInboxStorefrontPort`. The adapter provides:
 - bounded group mark-read, mark-unread, and archive commands.
 
 Every endpoint extracts `AuthContext`, `TenantContext`, and `RequestContext`, rejects
-auth/tenant mismatch, derives tenant and recipient identity only through
-`PortContext`, and composes the owner service from the materialized notification source
-registry plus recipient-policy runtime already present in `HostRuntimeContext`. Reads
-carry a five-second deadline. Group-state writes additionally carry the caller-supplied
-idempotency key. Transport request DTOs contain no tenant, recipient, or user identity
-field.
+auth/tenant mismatch and OAuth service principals, derives the user actor through the
+canonical `AuthContext::port_actor` mapping, and composes the owner service from the
+materialized notification source registry plus recipient-policy runtime already present
+in `HostRuntimeContext`. Reads carry a five-second deadline. Group-state writes
+additionally carry the caller-supplied idempotency key. Transport request DTOs contain
+no tenant, recipient, or user identity field.
 
 The grouped Leptos inbox view has not been delivered yet, so `NotificationsView`
 continues to render the explicit unavailable state with `unread_count = None`. It does
