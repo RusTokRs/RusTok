@@ -8,6 +8,8 @@ use uuid::Uuid;
 use super::super::types::AddStorefrontCartLineItemInput;
 pub(crate) use super::legacy_helpers::*;
 
+const STOREFRONT_CART_HELPER_BOUNDARY: &str = "commerce_graphql_storefront_cart_helper";
+
 fn public_graphql_error(
     message: &'static str,
     code: &'static str,
@@ -34,17 +36,6 @@ fn customer_port_graphql_error(
     operation: &'static str,
     error: PortError,
 ) -> async_graphql::Error {
-    tracing::error!(
-        error = ?error,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        operation,
-        owner_code = %error.code,
-        owner_kind = ?error.kind,
-        owner_retryable = error.retryable,
-        "commerce GraphQL storefront customer owner port failed"
-    );
-
     let (message, code, retryable) = match &error.kind {
         PortErrorKind::Validation => (
             "Customer request is invalid",
@@ -73,19 +64,26 @@ fn customer_port_graphql_error(
             false,
         ),
     };
+
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_customer",
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        operation,
+        owner_code = %error.code,
+        owner_kind = ?error.kind,
+        owner_retryable = error.retryable,
+        public_code = code,
+        public_retryable = retryable,
+        boundary = STOREFRONT_CART_HELPER_BOUNDARY,
+        "commerce GraphQL storefront customer owner port failed"
+    );
+
     public_graphql_error(message, code, retryable)
 }
 
 pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
-    tracing::error!(
-        error = ?error,
-        operation = "storefront_cart_port",
-        owner_code = %error.code,
-        owner_kind = ?error.kind,
-        owner_retryable = error.retryable,
-        "commerce GraphQL storefront cart owner port failed"
-    );
-
     let (message, code, retryable) = match &error.kind {
         PortErrorKind::Validation => ("Cart request is invalid", "CART_REQUEST_INVALID", false),
         PortErrorKind::NotFound => (
@@ -114,6 +112,20 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
             false,
         ),
     };
+
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_cart",
+        operation = "storefront_cart_port",
+        owner_code = %error.code,
+        owner_kind = ?error.kind,
+        owner_retryable = error.retryable,
+        public_code = code,
+        public_retryable = retryable,
+        boundary = STOREFRONT_CART_HELPER_BOUNDARY,
+        "commerce GraphQL storefront cart owner port failed"
+    );
+
     public_graphql_error(message, code, retryable)
 }
 
@@ -158,9 +170,14 @@ fn legacy_graphql_error(
 ) -> async_graphql::Error {
     tracing::error!(
         error = ?error,
+        owner = "rustok_commerce.graphql_cart_helper",
         tenant_id = %tenant_id,
         resource_id = ?resource_id,
         operation,
+        error_kind = "legacy_graphql_error",
+        public_code = code,
+        public_retryable = retryable,
+        boundary = STOREFRONT_CART_HELPER_BOUNDARY,
         "commerce GraphQL storefront cart helper failed"
     );
     public_graphql_error(message, code, retryable)
