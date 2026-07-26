@@ -65,6 +65,8 @@ The generated draft contains `TODO(index-storage-decision):` markers. Replace ev
 
 [`storage-decision.example.json`](storage-decision.example.json) shows the same decision fields and references [`storage-decision.schema.json`](storage-decision.schema.json). Its relative `$schema` is valid because the two files are colocated in the documentation directory. A generated decision under `evidence/index-storage/...` intentionally omits `$schema` rather than recording a false relative path; `$schema` remains an optional finalizer field when it correctly points to a colocated schema file.
 
+The decision schema requires at least one non-whitespace character in the owner and every selection, rejection, operational, migration, and rollback narrative. Whitespace-only text is rejected before a decision is treated as schema-valid. This keeps schema validation aligned with preparation, rendering, and finalization, which all trim required human-authored text before accepting it.
+
 The example is intentionally not finalizable until its markers are replaced. The decision must explain:
 
 - why the selected prototype is preferred;
