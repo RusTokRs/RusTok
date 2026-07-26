@@ -7,8 +7,9 @@ grouping, digests, retention, and delivery-attempt lifecycle. The implemented
 pipeline now covers durable outbox intake, source materialization, bounded
 audience expansion, recipient policy, one idempotent in-app notification, exact
 open-time authorization, bounded authorized inbox listing, exact
-seen/read/mark-unread/archive state APIs, and bounded exact-recipient
-reconciliation. Channel delivery remains a later workflow.
+seen/read/mark-unread/archive state APIs, exact unread counting, bounded
+mark-all-read, and bounded exact-recipient reconciliation. Channel delivery
+remains a later workflow.
 
 ## Responsibilities
 
@@ -28,6 +29,9 @@ reconciliation. Channel delivery remains a later workflow.
   time;
 - list exact-recipient inbox rows through bounded sparse keyset pages;
 - apply exact-item seen/read/mark-unread/archive transitions with terminal archive;
+- count exact-recipient unread owner state without deriving totals from list pages;
+- mark one bounded exact-recipient unread/seen page as read through the exact state
+  owner;
 - reconcile one bounded exact-recipient page against current privacy/source policy;
 - own replay, reconciliation, retention, and delivery lifecycle.
 
@@ -52,6 +56,8 @@ reconciliation. Channel delivery remains a later workflow.
 - `NotificationInboxOpenService` and exact open request/decision contracts;
 - `NotificationInboxListService` and bounded list request/page/read-model contracts;
 - `NotificationInboxStateService` and exact state request/decision/snapshot contracts;
+- `NotificationInboxUnreadCountService` and exact count request/result contracts;
+- `NotificationInboxMarkAllReadService` and bounded request/page contracts;
 - `NotificationInboxReconcileService` and bounded reconciliation request/page contracts;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
@@ -196,11 +202,50 @@ decision.
 
 The service exposes only state and inbox timestamps, calls no privacy/source or
 delivery owner, and creates no delivery attempt. SQLite owner evidence is
-`tests/inbox_state_sqlite.rs`. The former `mark-unread, bulk/mark-all` residual is
-now narrowed: exact-item mark-unread is delivered, while bulk/mark-all mutations,
-canonical unread counts, grouped views, transport adapters, and UI remain closed.
+`tests/inbox_state_sqlite.rs`. Exact-item mark-unread and bounded mark-all-read are
+delivered; mark-all-unread/archive, arbitrary selected-ID bulk mutations, grouped
+inbox views, transport adapters, and UI remain closed.
 
-### 6. Bounded inbox reconciliation
+### 6. Exact unread count
+
+`NotificationInboxUnreadCountService` counts rows in stored owner state `unread` for
+one exact non-nil tenant and recipient. The query applies tenant, recipient, and
+state filters before aggregation and reuses `idx_notifications_inbox`; callers must
+not derive totals from bounded or privacy-filtered list pages. Empty, missing,
+cross-tenant, and cross-recipient scopes all return `unread_count=0`, without a
+notification-level existence oracle.
+
+The count reflects stored owner state. Current recipient privacy or source changes
+affect it after exact or scheduled reconciliation archives unavailable rows. The
+service invokes no recipient-policy, source, target, or delivery owner, mutates no
+notification timestamps or delivery attempts, and exposes no notification or target
+identity. SQLite evidence is `tests/inbox_count_sqlite.rs`. External transport and
+UI exposure remain closed until an authorized adapter composes this owner read.
+
+### 7. Bounded mark-all-read
+
+`NotificationInboxMarkAllReadService` selects only stored `unread` or `seen` rows
+for one exact non-nil tenant and recipient in `created_at DESC, id DESC` order. A
+request defaults to 20 rows, is capped at 64, and reuses the versioned `i1` inbox
+cursor with timestamp nanoseconds and the UUID tie-breaker. Read and archived rows
+remain outside selection.
+
+One bounded raw page is loaded before mutation. Each selected row delegates to
+`NotificationInboxStateService::mark_read`, preserving direct unread-to-read
+`seen_at/read_at` equality and seen-to-read `seen_at` history. The response exposes
+only `scanned`, `marked_read`, `next_cursor`, and `has_more`. Empty, missing,
+cross-tenant, and cross-recipient scopes return an empty page without notification
+identity.
+
+The command calls no privacy/source/target/delivery owner and creates or mutates no
+delivery attempt. Earlier exact transitions are durable and idempotent if a later
+database operation fails, so callers may resume from the same request cursor.
+SQLite evidence is `tests/inbox_mark_all_read_sqlite.rs`; the source guard is
+`scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`. Mark-all-unread,
+mark-all-archive, arbitrary selected-ID bulk commands, transport adapters, grouped
+views, and UI remain closed.
+
+### 8. Bounded inbox reconciliation
 
 `NotificationInboxReconcileService` scans only non-archived rows for one exact
 tenant/recipient in `created_at DESC, id DESC` order. It uses the same default/hard
@@ -240,7 +285,8 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - grouping and moderator-directory expansion;
-- bulk/mark-all mutations, canonical unread counts, and grouped inbox views;
+- mark-all-unread/archive and arbitrary selected-ID bulk mutations plus grouped
+  inbox views;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and module-owned UI;
 - channel delivery enqueue with delivery-time authorization;

@@ -45,15 +45,19 @@ while the final transaction is active. PostgreSQL lifecycle tenant toggles advan
 the cursor inside their tenant-state transaction, serializing candidate commit and
 tenant enable/disable by commit order.
 
-Exact inbox open, bounded listing, exact-item read-state, and bounded
-exact-recipient reconciliation services are now owner-public. Open requests recheck
-current recipient privacy and source target authorization. Listing scans
-exact-recipient rows in bounded descending keyset pages and supports sparse pages.
-State commands provide exact seen/read/mark-unread/archive transitions without
-foreign owner calls, while archived remains terminal. Reconciliation reuses
-open-time policy and archives currently unavailable rows through the state owner.
-No external transport, bulk/mark-all, count, grouped-view, tenant-wide scheduler,
-payload-redaction, or UI contract is published yet.
+Exact inbox open, bounded listing, exact-item read-state, exact unread count,
+bounded mark-all-read, and bounded exact-recipient reconciliation services are now
+owner-public. Open requests recheck current recipient privacy and source target
+authorization. Listing scans exact-recipient rows in bounded descending keyset
+pages and supports sparse pages. State commands provide exact
+seen/read/mark-unread/archive transitions without foreign owner calls, while
+archived remains terminal. The unread count is an exact owner-table aggregate and
+is never derived from bounded list pages. Bounded mark-all-read scans only unread
+or seen rows and delegates every transition to the exact state owner.
+Reconciliation reuses open-time policy and archives currently unavailable rows
+through the state owner. No external transport, other bulk state command,
+grouped-view, tenant-wide scheduler, payload-redaction, or UI contract is published
+yet.
 
 ## Invariants
 
@@ -93,6 +97,25 @@ payload-redaction, or UI contract is published yet.
 - state commands rewrite `updated_at` only on an actual transition;
 - inbox state commands call no recipient policy, source provider, target, or
   delivery owner and create no delivery attempts;
+- exact unread counts require non-nil tenant and recipient identities;
+- unread counting applies tenant, recipient, and `unread` state filters before the
+  owner-table aggregate and reuses `idx_notifications_inbox`;
+- unread totals are never derived from bounded or privacy-filtered list pages;
+- unread counting returns only the aggregate, calls no foreign owner, and mutates no
+  inbox timestamp, reconciliation state, or delivery attempt;
+- mark-all-read requires non-nil tenant and recipient identities, defaults to 20
+  rows and is capped at 64;
+- mark-all-read reuses the `i1` cursor and orders eligible rows by
+  `created_at DESC, id DESC`;
+- only unread and seen rows are selected; read and archived rows remain outside the
+  command;
+- one bounded raw page is loaded before any exact state mutation;
+- every selected row delegates to `NotificationInboxStateService::mark_read`,
+  preserving unread/seen timestamp invariants;
+- mark-all-read progress is derived from the last scanned raw eligible row and the
+  response exposes only scanned/marked counts plus continuation metadata;
+- mark-all-read calls no privacy, source, target, or delivery owner and creates no
+  delivery attempt;
 - recipient reconciliation scans only exact-recipient non-archived rows in bounded
   `created_at DESC, id DESC` pages;
 - reconciliation raw selection completes before privacy or source owner calls;
@@ -337,14 +360,58 @@ payload-redaction, or UI contract is published yet.
   verifier `scripts/verify/verify-forum-notification-inbox-mark-unread.mjs`, and
   SQLite evidence `tests/inbox_state_sqlite.rs`.
 
+### `FORUM-20X`
+
+- `NotificationInboxUnreadCountService` counts only exact-recipient rows in stored
+  owner state `unread` after validating non-nil tenant and recipient identities;
+- tenant, recipient, and state filters precede aggregation and reuse the existing
+  `idx_notifications_inbox` index;
+- the Notifications owner table is authoritative, so callers must not derive totals
+  from bounded or privacy-filtered list pages;
+- empty, missing, cross-tenant, and cross-recipient scopes all return zero without
+  exposing notification identity;
+- current privacy or source-policy changes affect the count after exact or scheduled
+  reconciliation archives unavailable rows;
+- the count calls no privacy/source/target/delivery owner, mutates no inbox or
+  delivery state, and returns no source, target, route, notification, or cursor data;
+- transport, UI, bulk/mark-all mutations, and grouped views remain closed;
+- contract
+  `crates/rustok-forum/contracts/forum-notification-inbox-unread-count.json`,
+  verifier `scripts/verify/verify-forum-notification-inbox-unread-count.mjs`, and
+  SQLite evidence `tests/inbox_count_sqlite.rs`.
+
+### `FORUM-20Y`
+
+- `NotificationInboxMarkAllReadService` scans one exact-recipient page of unread or
+  seen rows in `created_at DESC, id DESC` order after non-nil identity validation;
+- requests default to 20 rows, cap at 64, and reuse the versioned `i1` cursor with
+  nanosecond timestamp and UUID tie-breaker validation;
+- one bounded raw page is selected before any mutation and continuation derives from
+  the last scanned raw eligible row;
+- every selected row delegates to `NotificationInboxStateService::mark_read`,
+  preserving direct unread-to-read timestamp equality and seen-to-read history;
+- read and archived rows remain outside selection, while empty and foreign scopes
+  return an empty page without notification identity;
+- earlier exact transitions remain durable and idempotent if a later database
+  operation fails;
+- the response exposes only scanned/marked counts and continuation metadata, calls
+  no privacy/source/target/delivery owner, and leaves delivery attempts unchanged;
+- mark-all-unread, mark-all-archive, arbitrary selected-ID bulk commands, grouped
+  views, transport, and UI remain closed;
+- contract
+  `crates/rustok-forum/contracts/forum-notification-inbox-mark-all-read.json`,
+  verifier `scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`, and
+  SQLite evidence `tests/inbox_mark_all_read_sqlite.rs`.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
   composition;
 - retention, tenant-wide scheduled reconciliation, payload redaction, repair,
   quarantine replay/purge, and administrative command state;
-- keep bulk/mark-all, preferences, digests, delivery transports, and external inbox
-  adapters closed until matching owner commands exist.
+- keep mark-all-unread/archive, arbitrary selected-ID bulk commands, preferences,
+  digests, delivery transports, and external inbox adapters closed until matching
+  owner commands exist.
 
 ## Remaining `NOTIFY-03`
 
@@ -370,8 +437,10 @@ payload-redaction, or UI contract is published yet.
 
 Admin and storefront remain module-owned. Until owner inbox services are exposed
 through matching module-owned transport adapters and UI packages, they expose only
-foundation/unavailable states and must not invent unread counts, mark-unread,
-bulk/mark-all mutations, or shadow inbox storage.
+foundation/unavailable states and must not invent unread counts outside
+`NotificationInboxUnreadCountService`, expose exact mark-unread or bounded
+mark-all-read without authorized transport composition, expose other bulk state
+mutations, or create shadow inbox storage.
 
 ## Maintainer verification set
 
@@ -390,6 +459,8 @@ cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_count_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_mark_all_read_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
@@ -414,13 +485,15 @@ node scripts/verify/verify-forum-notification-inbox-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
 node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
+node scripts/verify/verify-forum-notification-inbox-unread-count.mjs
+node scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
-`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V/20W` source slices.
-`Cargo.lock` was not regenerated because this work does not change the package
-dependency graph.
+`NOTIFY-03D/03E/03F/03G/03H/03I` and `FORUM-20R/20S/20T/20U/20V/20W/20X/20Y`
+source slices. `Cargo.lock` was not regenerated because this work does not change
+the package dependency graph.
 
 ## Update rules
 
