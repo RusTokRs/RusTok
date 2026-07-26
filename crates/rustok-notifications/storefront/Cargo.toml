@@ -26,3 +26,6 @@ rustok-api = { workspace = true, default-features = false, optional = true }
 rustok-notifications = { path = "..", optional = true }
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
