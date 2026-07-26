@@ -21,10 +21,6 @@ ALTER TABLE page_translations
     ALTER COLUMN locale TYPE VARCHAR(32);
 ALTER TABLE page_bodies
     ALTER COLUMN locale TYPE VARCHAR(32);
-ALTER TABLE menu_translations
-    ALTER COLUMN locale TYPE VARCHAR(32);
-ALTER TABLE menu_item_translations
-    ALTER COLUMN locale TYPE VARCHAR(32);
 "#,
             )
             .await?;

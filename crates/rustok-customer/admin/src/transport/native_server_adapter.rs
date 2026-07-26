@@ -288,7 +288,7 @@ async fn customer_list_native(
         let (items, total) = service
             .list_customers(
                 tenant.id,
-                rustok_customer::ListCustomersInput {
+                ListCustomersInput {
                     search,
                     page,
                     per_page,

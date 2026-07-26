@@ -38,6 +38,9 @@ The current target platform pattern:
 - heavy localized content may live in `*_bodies`
 - tenant locale policy manages effective locale and fallback, but not ownership
   of localized fields
+- `rustok-tenant` is the only write owner for `tenant_locales`; its revisioned
+  policy port enforces one enabled default, valid enabled fallbacks, no cycles,
+  compare-and-set replacement, and durable idempotency receipts
 - locale storage follows a single normalized contract with a safe width of
   `VARCHAR(32)`
 - widening locale columns to `VARCHAR(32)` is considered a safe forward migration:
@@ -63,7 +66,8 @@ Foundation storage includes:
 
 ### What Matters Here
 
-- `tenants` and `tenant_locales` define the tenant and locale policy layer
+- `tenants`, `tenant_locales`, and `tenant_locale_policy_receipts` define the
+  tenant locale-policy aggregate and its durable replay evidence
 - `sessions` and auth-related tables support the auth/session lifecycle
 - `install_sessions` and `install_step_receipts` capture resumable installer
   state, input checksums, outcomes and diagnostics; secrets are not stored there
@@ -116,10 +120,10 @@ request must resolve a globally unique `client_id` before a tenant context exist
 After resolution, database relations and server queries remain tenant-composite,
 and app state, grant, scope, consent, user, RBAC, and session checks fail closed.
 
-The current inline `oauth_apps.name` and `oauth_apps.description` columns remain
-an open multilingual-contract gap. The auth implementation plan owns their atomic
-cutover to a translation table across storage and all transports; no JSON or
-transport-local translation fallback is allowed.
+OAuth application name and description live in tenant-safe
+`oauth_app_translations`; `oauth_apps` retains protocol identity, credentials
+and lifecycle state. Legacy copy uses storage-only `und`, while runtime reads
+require an exact effective locale and never treat `und` as fallback.
 
 ## Module Artifact Control-Plane Storage
 
@@ -214,21 +218,18 @@ Current-state conclusion:
 
 ## Index/Read-side Tables
 
-`rustok-index` owns denormalized read models, for example:
+The rewritten `rustok-index` currently owns the generic domain/application
+contract and intentionally exposes an empty production migration source until
+its storage ADR selects a physical model. Removed Index v1 tables such as
+`index_content`, `index_products`, `index_product_categories` and
+`index_product_attribute_values` are not part of the current database
+baseline.
 
-- `index_content`
-- `index_products`
-- `index_product_categories`
-- `index_product_attribute_values`
-
-They exist for query/index/search paths and must not be used as
-authoritative write-side storage.
-
-The product indexer updates category and attribute projections by `tenant_id`,
-`product_id` and explicit locale. Attribute projection takes the effective schema from
-the read-only resolver of `rustok-product`, splits multiselect into individual
-option rows and does not index detached values. Localized labels do not use a
-package-local fallback chain.
+Any remaining Search or host caller that names those historical projections is
+a rewrite blocker governed by the live Index implementation plan. New Index
+persistence must use explicit tenant and locale dimensions where the registered
+schema requires them and must never become authoritative write-side storage for
+source modules.
 
 Facet/search/sort rows have channel scope. For active channels, the indexer creates
 a separate set of rows and computes flags with priority `attribute defaults <

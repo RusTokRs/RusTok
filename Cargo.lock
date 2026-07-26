@@ -13008,6 +13008,7 @@ dependencies = [
  "chrono",
  "hex",
  "jsonschema 0.46.10",
+ "rustok-api",
  "rustok-telemetry",
  "schemars 1.2.1",
  "serde",
@@ -13769,11 +13770,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "url",
  "uuid",
 ]
 
@@ -14504,7 +14507,10 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-events",
+ "rustok-media",
  "rustok-outbox",
+ "rustok-social-graph",
+ "rustok-storage",
  "rustok-taxonomy",
  "rustok-test-utils",
  "sea-orm",
@@ -14534,6 +14540,30 @@ dependencies = [
  "rustok-runtime",
  "rustok-tenant",
  "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-profiles-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "leptos-auth",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-media",
+ "rustok-profiles",
+ "rustok-social-graph",
+ "rustok-storage",
+ "rustok-ui-core",
+ "rustok-ui-i18n-leptos",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "tracing",
  "uuid",
 ]
 
@@ -14942,6 +14972,7 @@ dependencies = [
  "rustok-marketplace-seller",
  "rustok-mcp",
  "rustok-media",
+ "rustok-media-transport",
  "rustok-migrations",
  "rustok-moderation",
  "rustok-modules",
@@ -14998,6 +15029,7 @@ dependencies = [
 name = "rustok-social-graph"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
  "chrono",
  "rustok-api",
@@ -15007,6 +15039,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -15088,6 +15121,7 @@ dependencies = [
  "rustok-payment-storefront",
  "rustok-pricing-storefront",
  "rustok-product-storefront",
+ "rustok-profiles-storefront",
  "rustok-region-storefront",
  "rustok-search-storefront",
  "rustok-seo",
@@ -15165,6 +15199,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "hex",
  "rustok-api",
  "rustok-core",
  "rustok-events",
@@ -15173,6 +15208,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -15214,6 +15250,17 @@ dependencies = [
  "tokio",
  "tokio-test",
  "uuid",
+]
+
+[[package]]
+name = "rustok-translation-targets"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-api",
+ "rustok-core",
+ "serde",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -2,6 +2,13 @@
   "schema_version": 1,
   "contracts": [
     {
+      "id": "tenant-locale-policy-invariants",
+      "migration": "m20260726_000001_enforce_tenant_locale_policy",
+      "mode": "none",
+      "owner": "rustok-tenant",
+      "reason": "Adds revision metadata, row-local policy constraints, and durable idempotency receipts without changing existing locale values; legacy rows receive revision 0 and a SQLite-safe epoch updated_at sentinel until the next owner write"
+    },
+    {
       "id": "pages-locale-width-32",
       "migration": "m20260721_000003_expand_pages_locale_storage_columns",
       "mode": "none",
@@ -65,13 +72,6 @@
       "mode": "none",
       "owner": "rustok-search",
       "reason": "Widen search query log locale attribution to the platform locale width; existing observed locale values require no semantic backfill"
-    },
-    {
-      "id": "index-projection-locale-width-32",
-      "migration": "m20260721_000003_expand_index_locale_storage_columns",
-      "mode": "none",
-      "owner": "rustok-index",
-      "reason": "Widen localized content and product projection locale attribution to the platform locale width; projection rows require no semantic backfill"
     },
     {
       "id": "flex-schema-copy-provenance",

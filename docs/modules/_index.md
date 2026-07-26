@@ -37,6 +37,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-outbox` | [docs](../../crates/rustok-outbox/docs/README.md) | [plan](../../crates/rustok-outbox/docs/implementation-plan.md) |
 | `rustok-telemetry` | [docs](../../crates/rustok-telemetry/docs/README.md) | [plan](../../crates/rustok-telemetry/docs/implementation-plan.md) |
 | `rustok-tenant` | [docs](../../crates/rustok-tenant/docs/README.md) | [plan](../../crates/rustok-tenant/docs/implementation-plan.md) |
+| `rustok-translation-targets` | [docs](../../crates/rustok-translation-targets/docs/README.md) | [central Translation plan](./translation-implementation-plan.md) |
 | `rustok-rbac` | [docs](../../crates/rustok-rbac/docs/README.md) | [plan](../../crates/rustok-rbac/docs/implementation-plan.md) |
 | `rustok-cache` | [docs](../../crates/rustok-cache/docs/README.md) | [plan](../../crates/rustok-cache/docs/implementation-plan.md) |
 | `rustok-auth` | [docs](../../crates/rustok-auth/docs/README.md) | [plan](../../crates/rustok-auth/docs/implementation-plan.md) |

@@ -39,15 +39,18 @@ operations, not request-locale selection.
 This is a cross-cutting pre-implementation plan. As of 2026-07-26:
 
 - no `translation` slug or crate exists;
-- no translation target-provider contract exists;
+- `rustok-translation-targets` now defines the neutral provider/resource/field,
+  exact-locale, revision, validation, and apply contract, but no owner provider
+  is registered yet;
 - no module-owned translation UI exists;
 - the proposed ownership decision is recorded in
   `DECISIONS/2026-07-26-translation-control-plane-boundary.md`;
 - the current multilingual storage and runtime locale foundations are
-  substantial, but they are not implementation-ready: baseline verifiers,
-  runtime/storage locale typing, tenant locale ownership, several owner write
-  paths, settings, resource discovery, and AI execution require preparation
-  before broad implementation.
+  substantial. Baseline verifier repair, runtime/storage locale typing, tenant
+  locale-policy ownership, the readiness registry, and the neutral target SPI
+  are implemented on the Phase 0 branch. Owner write paths, remaining ownership
+  drift, settings, provider onboarding, and AI execution still require
+  preparation before broad implementation.
 
 This central plan does not create a live module-plan registry row or FFA/FBA
 readiness row. Those rows become mandatory in the same change that scaffolds
@@ -176,9 +179,9 @@ until after the module exists.
 
 | P0 item | Current evidence | Exit condition |
 | --- | --- | --- |
-| Restore the i18n baseline | `verify:i18n:contract` still references a removed Leptos provider path; DB declarations contain stale Pages/Profiles/Index expectations | Existing UI, contract, Flex, and DB multilingual verifiers all pass against the same documented owner map |
-| Split locale meanings | [`normalize_locale_tag`](../../crates/rustok-api/src/locale.rs) accepts `und`, while runtime policy forbids it as an effective/tenant locale | One shared normalizer backs distinct `RuntimeLocale`/`TenantLocale` and `StoredLocale`/`LocaleProvenance` types; the supported BCP47 subset and `VARCHAR(32)` bound are tested |
-| Establish tenant locale ownership | Server middleware reads `tenant_locales` directly and [`TenantReadPort`](../../crates/rustok-tenant/src/ports.rs) does not expose the complete policy | `rustok-tenant` owns revisioned locale-policy read/write ports and enforces canonical tags, exactly one enabled default, valid enabled fallbacks, no self-reference, and no cycles |
+| Restore the i18n baseline | Completed on the Phase 0 branch: stale host, Pages/Profiles/Index markers were repaired and the existing i18n/Flex/DB contracts are aligned | Keep all existing multilingual verifiers green on the final revision |
+| Split locale meanings | Completed: one normalizer now backs `RuntimeLocale`/`TenantLocale` (no `und`) and `StoredLocale` (explicit `und` provenance), with canonicalization and serde tests | Migrate remaining package-local locale DTOs to the canonical types |
+| Establish tenant locale ownership | Completed: `rustok-tenant` owns revisioned policy read/replace, CAS, durable idempotency receipts, canonical/default/fallback/cycle invariants, and server middleware consumes the port | Add the admin transport over the same owner service without restoring direct SQL |
 | Remove locale DTO drift | Content, Product, Shipping, and Media currently apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
 | Resolve owner/schema drift | Product translation entities are duplicated in `rustok-product` and `rustok-commerce-foundation`; Pages/Navigation, Content/SEO, and Blog/Taxonomy also have stale ownership evidence | Registry/docs/migrations/entities identify one physical and semantic owner per target kind; superseded internal paths are deleted atomically |
 | Make owner writes safe | Some Product and Shipping updates replace all locale rows; several per-locale upserts have no source/target CAS | Each onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, and transactional outbox evidence |
@@ -1046,22 +1049,24 @@ risk, and required data-policy review rather than from module count alone.
 
 Deliverables:
 
-- accept the ADR;
-- repair the existing i18n/DB documentation and verifiers to green;
-- introduce canonical runtime/tenant versus stored-provenance locale types;
-- give `rustok-tenant` ownership of revisioned enabled/default/fallback locale
+- [x] accept the ADR;
+- [x] repair the existing i18n/DB documentation and verifiers to green;
+- [x] introduce canonical runtime/tenant versus stored-provenance locale types;
+- [x] give `rustok-tenant` ownership of revisioned enabled/default/fallback locale
   policy and its invariants;
-- resolve the known Pages/Navigation, Content/SEO, Product/Commerce Foundation,
+- [ ] resolve the known Pages/Navigation, Content/SEO, Product/Commerce Foundation,
   and Blog/Taxonomy ownership drift;
-- add the translatable-surface machine registry and verifier;
-- freeze provider/resource/field/revision/error contracts;
-- classify all current localized tables and fields;
-- replace package-local locale validators and close fallback behavior that would
+- [x] add the translatable-surface machine registry and verifier;
+- [x] freeze the first provider/resource/field/revision/apply contract in
+  `rustok-translation-targets`;
+- [x] classify current candidate surfaces in `translation-surfaces.json`, with
+  named blockers and exclusions;
+- [ ] replace package-local locale validators and close fallback behavior that would
   make exact provider results inconsistent;
-- specify atomic per-locale owner apply, CAS, idempotency, and owner-event
+- [x] specify atomic per-locale owner apply, CAS, idempotency, and owner-event
   evidence;
-- design settings-localized storage and the AI execution port;
-- commit reference provider fixtures and negative fixtures.
+- [ ] design settings-localized storage and the AI execution port;
+- [ ] commit executable reference provider fixtures and negative fixtures.
 
 Done when Gate A and all existing multilingual verification pass, the remaining
 blocked surfaces have named owners/reasons, and no owner or host has to guess
@@ -1071,7 +1076,8 @@ the new module's ownership.
 
 Deliverables:
 
-- scaffold `rustok-translation-targets` and its provider conformance suite;
+- extend `rustok-translation-targets` with executable reference-provider and
+  owner-adapter conformance fixtures;
 - scaffold the optional `rustok-translation` module with local docs, manifest,
   migrations, permissions, workers, FBA evidence, and `not_started` FFA/FBA
   status;

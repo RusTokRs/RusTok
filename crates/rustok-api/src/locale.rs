@@ -1,4 +1,128 @@
+use std::{fmt, str::FromStr};
+
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use thiserror::Error;
+
 pub const PLATFORM_FALLBACK_LOCALE: &str = "en";
+pub const UNKNOWN_PROVENANCE_LOCALE: &str = "und";
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum LocaleTypeError {
+    #[error("invalid locale tag '{value}'")]
+    InvalidTag { value: String },
+    #[error("storage-only locale 'und' cannot be used as a {kind} locale")]
+    UnknownProvenanceNotAllowed { kind: &'static str },
+}
+
+fn normalize_typed_locale(
+    raw: &str,
+    kind: &'static str,
+    allow_unknown_provenance: bool,
+) -> Result<String, LocaleTypeError> {
+    let normalized = normalize_locale_tag(raw).ok_or_else(|| LocaleTypeError::InvalidTag {
+        value: raw.to_string(),
+    })?;
+    if !allow_unknown_provenance && normalized == UNKNOWN_PROVENANCE_LOCALE {
+        return Err(LocaleTypeError::UnknownProvenanceNotAllowed { kind });
+    }
+    Ok(normalized)
+}
+
+macro_rules! define_locale_type {
+    ($name:ident, $kind:literal, $allow_unknown_provenance:literal) => {
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn new(raw: impl AsRef<str>) -> Result<Self, LocaleTypeError> {
+                normalize_typed_locale(raw.as_ref(), $kind, $allow_unknown_provenance).map(Self)
+            }
+
+            pub fn as_str(&self) -> &str {
+                self.0.as_str()
+            }
+
+            pub fn into_inner(self) -> String {
+                self.0
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl FromStr for $name {
+            type Err = LocaleTypeError;
+
+            fn from_str(raw: &str) -> Result<Self, Self::Err> {
+                Self::new(raw)
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = LocaleTypeError;
+
+            fn try_from(raw: String) -> Result<Self, Self::Error> {
+                Self::new(raw)
+            }
+        }
+
+        impl TryFrom<&str> for $name {
+            type Error = LocaleTypeError;
+
+            fn try_from(raw: &str) -> Result<Self, Self::Error> {
+                Self::new(raw)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let raw = String::deserialize(deserializer)?;
+                Self::new(raw).map_err(D::Error::custom)
+            }
+        }
+    };
+}
+
+define_locale_type!(RuntimeLocale, "runtime", false);
+define_locale_type!(TenantLocale, "tenant", false);
+define_locale_type!(StoredLocale, "stored", true);
+
+impl StoredLocale {
+    pub fn is_unknown_provenance(&self) -> bool {
+        self.as_str() == UNKNOWN_PROVENANCE_LOCALE
+    }
+}
+
+impl From<TenantLocale> for RuntimeLocale {
+    fn from(locale: TenantLocale) -> Self {
+        Self(locale.into_inner())
+    }
+}
+
+impl From<TenantLocale> for StoredLocale {
+    fn from(locale: TenantLocale) -> Self {
+        Self(locale.into_inner())
+    }
+}
+
+impl From<RuntimeLocale> for StoredLocale {
+    fn from(locale: RuntimeLocale) -> Self {
+        Self(locale.into_inner())
+    }
+}
 
 pub fn normalize_locale_tag(raw: &str) -> Option<String> {
     let candidate = raw.trim().replace('_', "-");
@@ -142,6 +266,7 @@ pub fn extract_locale_tag_from_header(accept_language: Option<&str>) -> Option<S
 #[cfg(test)]
 mod tests {
     use super::{
+        RuntimeLocale, StoredLocale, TenantLocale, UNKNOWN_PROVENANCE_LOCALE,
         build_locale_candidates, extract_locale_tag_from_header, is_valid_locale_tag,
         locale_primary_language, locale_tags_match, normalize_locale_tag,
     };
@@ -188,5 +313,26 @@ mod tests {
             Some("ru-RU".to_string())
         );
         assert_eq!(extract_locale_tag_from_header(Some("en;q=0")), None);
+    }
+
+    #[test]
+    fn typed_locales_separate_runtime_policy_from_storage_provenance() {
+        assert_eq!(RuntimeLocale::new("pt_br").unwrap().as_str(), "pt-BR");
+        assert_eq!(TenantLocale::new("zh-hant").unwrap().as_str(), "zh-Hant");
+        assert!(RuntimeLocale::new(UNKNOWN_PROVENANCE_LOCALE).is_err());
+        assert!(TenantLocale::new(UNKNOWN_PROVENANCE_LOCALE).is_err());
+
+        let stored = StoredLocale::new(UNKNOWN_PROVENANCE_LOCALE).unwrap();
+        assert!(stored.is_unknown_provenance());
+    }
+
+    #[test]
+    fn typed_locale_deserialization_canonicalizes_and_rejects_und_for_runtime() {
+        let runtime: RuntimeLocale = serde_json::from_str("\"pt_br\"").unwrap();
+        assert_eq!(runtime.as_str(), "pt-BR");
+        assert!(serde_json::from_str::<RuntimeLocale>("\"und\"").is_err());
+
+        let stored: StoredLocale = serde_json::from_str("\"und\"").unwrap();
+        assert!(stored.is_unknown_provenance());
     }
 }

@@ -8,6 +8,9 @@
 
 - Provide `TenantModule` metadata for the runtime registry.
 - Manage tenant CRUD, domain lookup, and legacy low-level module override state.
+- Own the revisioned enabled/default/fallback locale-policy aggregate, including
+  canonical tags, exactly one enabled default, valid enabled fallbacks, and
+  cycle prevention.
 - Publish tenant lifecycle events (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) via transactional outbox when `TenantService` is wired with `TransactionalEventBus`.
 - Publish the typed `tenants:*` and `modules:*` RBAC surface.
 - Keep tenant admin read flows aligned with tenant-scoped RBAC checks for both tenant and module permissions.
@@ -21,6 +24,11 @@
 - Tenant resolver invariants for `header`/`host`/`subdomain` resolution and disabled/not-found
   semantics are covered in `apps/server/tests/tenant_resolver_invariants_test.rs`.
 - Exposes `TenantReadPort` (`tenant.read_projection.v1`) for transport-neutral read projections by tenant id, slug, or domain with shared `rustok_api::PortContext`/`PortError` deadline semantics.
+- Exposes `TenantLocalePolicyPort` for revisioned reads and CAS/idempotent atomic
+  replacement. Durable receipts reject reuse of an idempotency key for a
+  different request.
+- `apps/server` locale middleware consumes `TenantLocalePolicyPort`; it does not
+  query `tenant_locales` directly.
 - `apps/server` tenant resolver now consumes that owner port for cache-miss loads while retaining host-owned cache/coalescing/invalidation concerns.
 - Tenant provisioning/deprovisioning flows in the host use `TenantReadPort` for read-fact inspection/verification and are expected to invalidate tenant cache keys
   (`uuid` / `slug` / `host`) to avoid stale resolver state beyond TTL windows.
@@ -37,6 +45,8 @@
 - `TenantModule`
 - `TenantService` (including `TenantService::with_event_bus` for transactional outbox publishing)
 - `TenantReadPort` / `TenantReadRequest` / `TenantReadSelector`
+- `TenantLocalePolicyPort` / `TenantLocalePolicyProjection`
+- `ReplaceTenantLocalePolicyRequest`
 - `CreateTenantInput`
 - `UpdateTenantInput`
 - `ToggleModuleInput`

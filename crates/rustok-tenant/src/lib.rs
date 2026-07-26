@@ -1,6 +1,7 @@
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod migrations;
 pub mod ports;
 pub mod services;
 
@@ -15,6 +16,7 @@ pub use services::TenantService;
 
 use async_trait::async_trait;
 use rustok_api::Permission;
+use rustok_core::MigrationDependencyDescriptor;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
@@ -22,7 +24,14 @@ pub struct TenantModule;
 
 impl MigrationSource for TenantModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        vec![MigrationDependencyDescriptor::new(
+            "m20260726_000001_enforce_tenant_locale_policy",
+            vec!["m20260405_000001_expand_locale_storage_columns"],
+        )]
     }
 }
 

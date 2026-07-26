@@ -49,7 +49,8 @@ pub use event_delivery::{
     SharedEventDeliveryControl,
 };
 pub use locale::{
-    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, extract_locale_tag_from_header,
+    LocaleTypeError, PLATFORM_FALLBACK_LOCALE, RuntimeLocale, StoredLocale, TenantLocale,
+    UNKNOWN_PROVENANCE_LOCALE, build_locale_candidates, extract_locale_tag_from_header,
     is_valid_locale_tag, locale_primary_language, locale_tags_match, normalize_locale_tag,
     push_locale_candidate,
 };

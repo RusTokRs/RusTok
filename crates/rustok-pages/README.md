@@ -3,15 +3,13 @@
 ## Purpose
 
 `rustok-pages` owns current Fly-backed pages, localized metadata and bodies,
-channel visibility, deterministic published landing artifacts, menus and routes.
+channel visibility, deterministic published landing artifacts and page routes.
 
 ## Responsibilities
 
 - Provide `PagesModule` metadata, permissions and migrations.
 - Own page storage across `pages`, `page_translations`, `page_bodies`,
   `page_channel_visibility`, scenario baselines and landing artifact tables.
-- Own menu storage across `menus`, `menu_translations`, `menu_items` and
-  `menu_item_translations`.
 - Expose module-owned GraphQL and REST adapters.
 - Persist the current visual document in the page body with
   `body.format = "grapesjs"` and `pages[].component` as the component-tree
@@ -56,7 +54,6 @@ compatibility or drop migration is retained.
 - `PageService`
 - `PageBuilderArtifactService`
 - `PageBuilderScenarioBaselineService`
-- `MenuService`
 - `graphql::PagesQuery`
 - `graphql::PagesMutation`
 - `controllers::axum_router`

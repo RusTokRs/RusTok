@@ -2794,7 +2794,17 @@ impl ValidateEvent for DomainEvent {
             | Self::LocaleDisabled { tenant_id, locale } => {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, 32)?;
+                let normalized =
+                    rustok_api::TenantLocale::new(locale.as_str()).map_err(|error| {
+                        EventValidationError::InvalidValue("locale", error.to_string())
+                    })?;
+                if normalized.as_str() != locale {
+                    return Err(EventValidationError::InvalidValue(
+                        "locale",
+                        "tenant locale event tags must already be canonical".to_string(),
+                    ));
+                }
                 Ok(())
             }
             Self::PlatformSettingsChanged {
@@ -3250,6 +3260,30 @@ mod tests {
         };
 
         assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn tenant_locale_events_require_canonical_runtime_locale() {
+        let tenant_id = Uuid::new_v4();
+        assert!(
+            DomainEvent::LocaleEnabled {
+                tenant_id,
+                locale: "pt-BR".to_string(),
+            }
+            .validate()
+            .is_ok()
+        );
+        for locale in ["pt_br", "PT-br", "und"] {
+            assert!(
+                DomainEvent::LocaleDisabled {
+                    tenant_id,
+                    locale: locale.to_string(),
+                }
+                .validate()
+                .is_err(),
+                "{locale} must not cross the event boundary"
+            );
+        }
     }
 
     #[test]

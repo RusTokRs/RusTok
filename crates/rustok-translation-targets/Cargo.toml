@@ -1,0 +1,14 @@
+[package]
+name = "rustok-translation-targets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Owner-neutral translation target provider contracts and runtime registry"
+
+[dependencies]
+async-trait.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+

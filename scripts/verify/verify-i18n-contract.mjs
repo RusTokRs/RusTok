@@ -69,22 +69,22 @@ expectContains(
   "apps/next-admin to use platform fallback locale 'en'",
 );
 expectContains(
-  "apps/admin/src/shared/i18n/mod.rs",
-  "load_locale_from_storage().unwrap_or(Locale::En)",
-  "Leptos admin locale context to default to Locale::En",
+  "apps/admin/build.rs",
+  'Config::new("en")?',
+  "Leptos admin generated i18n module to use platform fallback locale 'en'",
 );
 expectNotContains(
-  "apps/admin/src/shared/i18n/mod.rs",
-  "_ => Locale::Ru",
-  "legacy Locale::Ru fallback in Locale::from_code",
+  "apps/admin/build.rs",
+  'Config::new("ru")?',
+  "legacy Russian default in the Leptos admin generated i18n module",
 );
 expectContains(
-  "apps/server/src/modules/manifest/validation.rs",
-  "normalize_locale_tag(locale)",
-  "manifest i18n validation to normalize locale tags via rustok-core",
+  "crates/rustok-modules/src/static_package.rs",
+  "rustok_api::normalize_locale_tag(locale)",
+  "module UI i18n validation to normalize locale tags via rustok-api",
 );
 expectNotContains(
-  "apps/server/src/modules/manifest/validation.rs",
+  "crates/rustok-modules/src/static_package.rs",
   "is_valid_locale_key(",
   "legacy short-form locale validator in manifest i18n contract",
 );

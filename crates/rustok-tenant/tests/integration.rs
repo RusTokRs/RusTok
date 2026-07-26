@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_tenant::{
-    CreateTenantInput, PortActor, PortContext, PortErrorKind, TenantError, TenantReadPort,
+    CreateTenantInput, PortActor, PortContext, PortErrorKind, ReplaceTenantLocalePolicyRequest,
+    TenantError, TenantLocale, TenantLocalePolicyEntry, TenantLocalePolicyPort, TenantReadPort,
     TenantReadRequest, TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
 };
 use sea_orm::{
@@ -43,6 +44,30 @@ async fn create_sqlite_test_tables(db: &DatabaseConnection) {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )",
+        "CREATE TABLE IF NOT EXISTS tenant_locales (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            native_name TEXT NOT NULL,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            fallback_locale TEXT,
+            policy_revision INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (tenant_id, locale)
+        )",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_locales_one_default
+            ON tenant_locales (tenant_id) WHERE is_default = 1",
+        "CREATE TABLE IF NOT EXISTS tenant_locale_policy_receipts (
+            tenant_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            request_hash TEXT NOT NULL,
+            response TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, idempotency_key)
+        )",
         "CREATE TABLE IF NOT EXISTS sys_events (
             id TEXT PRIMARY KEY NOT NULL,
             event_type TEXT NOT NULL,
@@ -64,6 +89,39 @@ async fn create_sqlite_test_tables(db: &DatabaseConnection) {
         ))
         .await
         .expect("failed to create tenant test table");
+    }
+}
+
+fn locale_port_context(tenant_id: uuid::Uuid, idempotency_key: Option<&str>) -> PortContext {
+    let mut context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user("locale-admin"),
+        "en",
+        format!("tenant-locale-policy-{tenant_id}"),
+    )
+    .with_deadline(Duration::from_secs(5));
+    if let Some(idempotency_key) = idempotency_key {
+        context = context.with_idempotency_key(idempotency_key);
+    }
+    context
+}
+
+fn locale_entry(
+    locale: &str,
+    is_default: bool,
+    is_enabled: bool,
+    fallback_locale: Option<&str>,
+) -> TenantLocalePolicyEntry {
+    TenantLocalePolicyEntry {
+        locale: TenantLocale::new(locale).expect("test locale must be valid"),
+        name: locale.to_string(),
+        native_name: locale.to_string(),
+        is_default,
+        is_enabled,
+        fallback_locale: fallback_locale
+            .map(TenantLocale::new)
+            .transpose()
+            .expect("test fallback locale must be valid"),
     }
 }
 
@@ -404,6 +462,132 @@ async fn module_toggle_flow_legacy() {
         .expect("tenant modules should list");
     assert_eq!(modules.len(), 1);
     assert!(!modules[0].enabled);
+}
+
+#[tokio::test]
+async fn tenant_locale_policy_port_replaces_with_cas_and_replays_idempotently() {
+    let db = setup_db().await;
+    let service = TenantService::new(db);
+    let tenant = service
+        .create_tenant(CreateTenantInput {
+            name: "Locale Policy".to_string(),
+            slug: "locale-policy".to_string(),
+            domain: None,
+        })
+        .await
+        .expect("tenant should be created");
+
+    let initial = service
+        .read_locale_policy(locale_port_context(tenant.id, None))
+        .await
+        .expect("initial locale policy should load");
+    assert_eq!(initial.revision, 1);
+    assert_eq!(initial.default_locale.as_str(), "en");
+    assert_eq!(initial.locales.len(), 1);
+
+    let request = ReplaceTenantLocalePolicyRequest {
+        expected_revision: initial.revision,
+        locales: vec![
+            locale_entry("en", true, true, None),
+            locale_entry("pt_br", false, true, Some("en")),
+        ],
+    };
+    let applied = service
+        .replace_locale_policy(
+            locale_port_context(tenant.id, Some("locale-policy-1")),
+            request.clone(),
+        )
+        .await
+        .expect("locale policy should apply");
+    assert_eq!(applied.revision, 2);
+    assert_eq!(
+        applied
+            .locales
+            .iter()
+            .map(|entry| entry.locale.as_str())
+            .collect::<Vec<_>>(),
+        vec!["en", "pt-BR"]
+    );
+
+    let replay = service
+        .replace_locale_policy(
+            locale_port_context(tenant.id, Some("locale-policy-1")),
+            request,
+        )
+        .await
+        .expect("same idempotency request should replay");
+    assert_eq!(replay, applied);
+
+    let stale = service
+        .replace_locale_policy(
+            locale_port_context(tenant.id, Some("locale-policy-stale")),
+            ReplaceTenantLocalePolicyRequest {
+                expected_revision: 1,
+                locales: applied.locales.clone(),
+            },
+        )
+        .await
+        .expect_err("stale revision must conflict");
+    assert_eq!(stale.kind, PortErrorKind::Conflict);
+}
+
+#[tokio::test]
+async fn tenant_locale_policy_rejects_und_invalid_fallback_and_key_reuse() {
+    assert!(TenantLocale::new("und").is_err());
+
+    let db = setup_db().await;
+    let service = TenantService::new(db);
+    let tenant = service
+        .create_tenant(CreateTenantInput {
+            name: "Locale Validation".to_string(),
+            slug: "locale-validation".to_string(),
+            domain: None,
+        })
+        .await
+        .expect("tenant should be created");
+
+    let invalid_fallback = service
+        .replace_locale_policy(
+            locale_port_context(tenant.id, Some("invalid-fallback")),
+            ReplaceTenantLocalePolicyRequest {
+                expected_revision: 1,
+                locales: vec![
+                    locale_entry("en", true, true, None),
+                    locale_entry("ru", false, false, Some("en")),
+                    locale_entry("de", false, true, Some("ru")),
+                ],
+            },
+        )
+        .await
+        .expect_err("fallback target must be enabled");
+    assert_eq!(invalid_fallback.kind, PortErrorKind::Validation);
+
+    let first = ReplaceTenantLocalePolicyRequest {
+        expected_revision: 1,
+        locales: vec![
+            locale_entry("en", true, true, None),
+            locale_entry("ru", false, true, Some("en")),
+        ],
+    };
+    service
+        .replace_locale_policy(locale_port_context(tenant.id, Some("key-reuse")), first)
+        .await
+        .expect("first request should apply");
+
+    let conflict = service
+        .replace_locale_policy(
+            locale_port_context(tenant.id, Some("key-reuse")),
+            ReplaceTenantLocalePolicyRequest {
+                expected_revision: 2,
+                locales: vec![
+                    locale_entry("en", true, true, None),
+                    locale_entry("de", false, true, Some("en")),
+                ],
+            },
+        )
+        .await
+        .expect_err("same key with a different request must conflict");
+    assert_eq!(conflict.kind, PortErrorKind::Conflict);
 }
 
 #[tokio::test]

@@ -266,6 +266,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
     }
 
     const expectedBackfillContracts = new Map([
+      ["m20260726_000001_enforce_tenant_locale_policy", { owner: "rustok-tenant", mode: "none" }],
       ["m20260721_000003_expand_pages_locale_storage_columns", { owner: "rustok-pages", mode: "none" }],
       ["m20260721_000004_expand_content_locale_storage_columns", { owner: "rustok-content", mode: "none" }],
       ["m20260721_000005_expand_blog_locale_storage_columns", { owner: "rustok-blog", mode: "none" }],
@@ -275,7 +276,6 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       ["m20260721_000010_move_profile_display_name_to_translations", { owner: "rustok-profiles", mode: "fixture" }],
       ["m20260721_000007_align_language_agnostic_locale_contract", { owner: "rustok-commerce", mode: "none" }],
       ["m20260721_000008_expand_search_query_locale_storage", { owner: "rustok-search", mode: "none" }],
-      ["m20260721_000003_expand_index_locale_storage_columns", { owner: "rustok-index", mode: "none" }],
       ["m20260405_000002_split_flex_schema_localized_fields", { owner: "flex", mode: "fixture" }],
       ["m20260407_000001_split_flex_entry_localized_values", { owner: "flex", mode: "fixture" }],
       ["m20260721_000005_drop_seller_legacy_prose_columns", { owner: "rustok-marketplace-seller", mode: "none" }],

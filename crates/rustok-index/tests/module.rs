@@ -8,19 +8,16 @@ fn module_metadata() {
     assert_eq!(module.name(), "Index");
     assert_eq!(
         module.description(),
-        "Cross-module index and read-model substrate."
+        "Cross-module relational index and query engine."
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
 }
 
 #[test]
-fn module_has_migrations() {
+fn module_has_no_legacy_migrations_during_storage_rewrite() {
     let module = IndexModule;
-    let migrations = module.migrations();
     assert!(
-        !migrations.is_empty(),
-        "IndexModule must own its migrations"
+        module.migrations().is_empty(),
+        "IndexModule production persistence remains absent until the storage ADR is accepted"
     );
-    let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-    assert!(names.iter().any(|n| n.contains("create_index_content")));
 }

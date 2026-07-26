@@ -14,10 +14,12 @@ use axum::{
     response::Response,
 };
 use moka::future::Cache;
-use rustok_api::request::{ResolvedRequestLocale, resolve_request_locale};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext,
+    request::{ResolvedRequestLocale, resolve_request_locale},
+};
 use rustok_core::i18n::Locale;
-use sea_orm::ConnectionTrait;
-use sea_orm::sea_query::{Alias, Expr, Order, Query};
+use rustok_tenant::{TenantLocalePolicyPort, TenantService};
 use uuid::Uuid;
 
 use crate::context::TenantContextExt;
@@ -25,6 +27,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_LOCALE_CACHE_TTL: Duration = Duration::from_secs(60);
 const TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
+const TENANT_LOCALE_PORT_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone)]
 struct TenantLocaleRecord {
@@ -199,34 +202,33 @@ async fn load_tenant_locales(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
 ) -> Result<Vec<TenantLocaleRecord>, sea_orm::DbErr> {
-    let statement = Query::select()
-        .from(Alias::new("tenant_locales"))
-        .columns([
-            Alias::new("locale"),
-            Alias::new("is_enabled"),
-            Alias::new("is_default"),
-            Alias::new("fallback_locale"),
-        ])
-        .and_where(Expr::col(Alias::new("tenant_id")).eq(tenant_id))
-        .order_by(Alias::new("is_default"), Order::Desc)
-        .order_by(Alias::new("locale"), Order::Asc)
-        .to_owned();
+    let service = TenantService::new(ctx.db_clone());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-server.locale-resolver"),
+        PLATFORM_FALLBACK_LOCALE,
+        format!("tenant-locale-policy:{tenant_id}"),
+    )
+    .with_deadline(TENANT_LOCALE_PORT_TIMEOUT);
+    let policy = service.read_locale_policy(context).await.map_err(|error| {
+        sea_orm::DbErr::Custom(format!(
+            "tenant locale policy port failed [{}]: {}",
+            error.code, error.message
+        ))
+    })?;
 
-    let rows = ctx
-        .db()
-        .query_all(ctx.db().get_database_backend().build(&statement))
-        .await?;
-
-    rows.into_iter()
-        .map(|row| {
-            Ok(TenantLocaleRecord {
-                locale: row.try_get("", "locale")?,
-                is_enabled: row.try_get("", "is_enabled")?,
-                is_default: row.try_get("", "is_default")?,
-                fallback_locale: row.try_get("", "fallback_locale").ok(),
-            })
+    Ok(policy
+        .locales
+        .into_iter()
+        .map(|locale| TenantLocaleRecord {
+            locale: locale.locale.as_str().to_string(),
+            is_enabled: locale.is_enabled,
+            is_default: locale.is_default,
+            fallback_locale: locale
+                .fallback_locale
+                .map(|fallback| fallback.as_str().to_string()),
         })
-        .collect()
+        .collect())
 }
 
 fn constrain_locale_to_tenant(

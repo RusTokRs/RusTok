@@ -1,7 +1,7 @@
 # `rustok-pages` Documentation
 
 `rustok-pages` is the domain module for Pages metadata, current Fly documents,
-menus, channel visibility and deterministic published artifacts.
+channel visibility and deterministic published artifacts.
 
 ## Purpose
 
@@ -13,10 +13,10 @@ menus, channel visibility and deterministic published artifacts.
 
 ## Scope
 
-- `PageService`, `PageBuilderArtifactService`,
-  `PageBuilderScenarioBaselineService` and `MenuService`;
+- `PageService`, `PageBuilderArtifactService` and
+  `PageBuilderScenarioBaselineService`;
 - storage for pages, translations, bodies, channel visibility, scenario
-  baselines, immutable landing artifacts and menus;
+  baselines and immutable landing artifacts;
 - language-agnostic base rows with normalized `VARCHAR(32)` parallel locale records,
   tenant-composite ownership and one effective locale per response;
 - GraphQL/REST adapters and Leptos admin/storefront packages;
@@ -41,6 +41,8 @@ menus, channel visibility and deterministic published artifacts.
 - `fly` supplies current document validation and deterministic rendering.
 - `rustok-channel` supplies module-level channel gating; Pages owns page-level
   visibility.
+- `rustok-navigation` owns menus and menu-item localization; Pages may compose
+  Navigation public contracts without owning its storage.
 - host applications connect module UI through generated manifest composition.
 
 ## Verification

@@ -20,8 +20,24 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::tenant_locale::Entity")]
+    TenantLocales,
+    #[sea_orm(has_many = "super::tenant_locale_policy_receipt::Entity")]
+    TenantLocalePolicyReceipts,
     #[sea_orm(has_many = "super::tenant_module::Entity")]
     TenantModules,
+}
+
+impl Related<super::tenant_locale::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TenantLocales.def()
+    }
+}
+
+impl Related<super::tenant_locale_policy_receipt::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TenantLocalePolicyReceipts.def()
+    }
 }
 
 impl Related<super::tenant_module::Entity> for Entity {

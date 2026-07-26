@@ -20,7 +20,7 @@ The visual document authority is `pages[].component` stored in the Pages body.
 ## Mission
 
 `rustok-pages` owns page identity, localized metadata and bodies, slugs, channels,
-menus, draft/published lifecycle, immutable landing artifacts, publish/rollback
+draft/published lifecycle, immutable landing artifacts, publish/rollback
 receipts, route/page/artifact cache namespaces and keys, routes and storefront reads.
 Fly/Page Builder owns visual document primitives and capability contracts, not
 Pages persistence, cache scope or tenant policy.
@@ -179,9 +179,11 @@ Pages persistence, cache scope or tenant policy.
 ## Ownership boundaries
 
 - **Pages domain/backend:** identity, translations, slugs, channels, templates,
-  menus, revisions, reviewed publish transaction, immutable artifact manifests,
+  revisions, reviewed publish transaction, immutable artifact manifests,
   rollback transaction, non-builder lifecycle, receipts, artifact selection, cache
   scopes/namespaces/keys, redirects, deletion and audit.
+- **Navigation domain/backend:** menu and menu-item identity, localized copy,
+  channel/location bindings and public navigation composition.
 - **Pages admin FFA:** list/create/select workspace, metadata property
   contributions, Pages persistence facade, publish/rollback actions,
   promoted-scenario selection and permissions.
@@ -399,8 +401,8 @@ Invariants:
 
 - [ ] Serve only the selected immutable published artifact.
 - [ ] Add locale fallback, canonical URLs, redirects and route-collision policy.
-- [ ] Integrate menus, SEO and channel visibility with generation-aware deterministic
-  cache keys.
+- [ ] Compose Navigation-owned menus, SEO and channel visibility with
+  generation-aware deterministic cache keys.
 - [ ] Implement authenticated real-DOM inline editing behind permissions/flags.
 - [ ] Prove anonymous SSR/CSR/hydrate bundles exclude authoring code.
 - [ ] Prove admin preview, published output and inline edit parity.

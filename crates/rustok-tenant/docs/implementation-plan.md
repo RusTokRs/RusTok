@@ -3,9 +3,18 @@
 ## Current state
 
 `rustok-tenant` owns the tenant domain, tenant-module contract, validation,
-tenant lifecycle events, and the `TenantReadPort` read projection. The server
+tenant lifecycle events, the `TenantReadPort` read projection, and the
+revisioned `TenantLocalePolicyPort` aggregate. The server
 owns resolver middleware, cache infrastructure, provisioning orchestration, and
 runtime composition; it must not take over tenant business rules.
+
+Locale-policy replacement is compare-and-set guarded and requires an
+idempotency key. The owner validates canonical non-`und` tenant locales,
+exactly one enabled default, enabled fallback targets, and acyclic fallback
+graphs. It synchronizes `tenants.default_locale`, records a durable replay
+receipt, and emits tenant/locale events in the owner transaction. Server locale
+resolution loads this projection through the port and keeps only host-owned
+cache/invalidation behavior.
 
 The host cache-miss resolver and installer provisioning/verification use
 `TenantReadPort` for typed id, slug, and domain reads. Idempotent installer
@@ -97,6 +106,13 @@ jobs.
    **Done when:** runtime evidence and consumer metadata agree on the published
    `tenant.read_projection.v1` contract.
 
+5. **Keep locale-policy ownership closed.** New runtime, admin, Translation, or
+   installer consumers must use `TenantLocalePolicyPort`; direct
+   `tenant_locales` reads/writes outside the owner are prohibited.
+   **Depends on:** locale-policy migration and shared typed locale contracts.
+   **Done when:** every new consumer uses the port and CAS/idempotency/invariant
+   tests remain green.
+
 ## Verification
 
 - Contract tests cover every public use case.
@@ -105,6 +121,7 @@ jobs.
 - `cargo xtask module validate tenant`
 - `cargo xtask module test tenant`
 - `cargo test -p rustok-tenant tenant_read_port --test integration`
+- `cargo test -p rustok-tenant tenant_locale_policy --test integration`
 - `cargo test -p rustok-server --test tenant_locale_generation_guard`
 - `cargo test -p rustok-server tenant_locale_generation --lib`
 - `RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server cargo test -p rustok-server tenant_locale_generation --lib -- --ignored --nocapture --test-threads=1`
@@ -115,7 +132,8 @@ jobs.
 
 ## Change rules
 
-1. Keep tenancy business logic and `TenantReadPort` in this module.
+1. Keep tenancy business logic, `TenantReadPort`, and
+   `TenantLocalePolicyPort` in this module.
 2. Update the local README, `rustok-module.toml`, and server documentation with
    a public/runtime contract change.
 3. Update this status block and `docs/modules/registry.md` with a UI or

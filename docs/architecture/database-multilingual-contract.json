@@ -32,6 +32,18 @@
             "ALTER COLUMN fallback_locale TYPE VARCHAR(32)",
             "shrinking locale columns can truncate valid BCP47-like tags"
           ]
+        },
+        {
+          "path": "crates/rustok-tenant/src/migrations/m20260726_000001_enforce_tenant_locale_policy.rs",
+          "required_markers": [
+            "PolicyRevision",
+            "TenantLocalePolicyReceipts::Table",
+            "uq_tenant_locales_one_default",
+            "tenant_locales_validate_insert",
+            "invalid tenant locale policy row",
+            "1970-01-01 00:00:00+00:00",
+            "Forward-only"
+          ]
         }
       ]
     },
@@ -43,9 +55,7 @@
           "path": "crates/rustok-pages/src/migrations/m20260328_000001_create_pages_tables.rs",
           "required_markers": [
             "PageTranslations::Table",
-            "PageBodies::Table",
-            "MenuTranslations::Table",
-            "MenuItemTranslations::Table"
+            "PageBodies::Table"
           ]
         },
         {
@@ -53,8 +63,6 @@
           "required_markers": [
             "ALTER TABLE page_translations",
             "ALTER TABLE page_bodies",
-            "ALTER TABLE menu_translations",
-            "ALTER TABLE menu_item_translations",
             "ALTER COLUMN locale TYPE VARCHAR(32)",
             "narrowing locale columns can truncate valid"
           ]
@@ -64,6 +72,32 @@
           "required_markers": [
             "mod m20260721_000003_expand_pages_locale_storage_columns;",
             "Box::new(m20260721_000003_expand_pages_locale_storage_columns::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "navigation",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-navigation/src/migrations/m20260722_000001_create_navigation_tables.rs",
+          "required_markers": [
+            "MenuTranslations::Table",
+            "ColumnDef::new(MenuTranslations::Locale)",
+            "uq_menu_translations_tenant_menu_locale",
+            "MenuItemTranslations::Table",
+            "ColumnDef::new(MenuItemTranslations::Locale)",
+            "uq_menu_item_translations_tenant_menu_item_locale",
+            ".string_len(32)"
+          ]
+        },
+        {
+          "path": "crates/rustok-navigation/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260722_000001_create_navigation_tables;",
+            "Box::new(",
+            "m20260722_000001_create_navigation_tables::Migration"
           ]
         }
       ]
@@ -262,8 +296,7 @@
             "ProfileError::LocalizedCopyNotFound"
           ],
           "forbidden_markers": [
-            "DEFAULT_PROFILE_LOCALE",
-            "active.display_name"
+            "DEFAULT_PROFILE_LOCALE"
           ]
         },
         {
@@ -322,35 +355,6 @@
           "path": "docs/migrations/backfill-contracts.json",
           "required_markers": [
             "search-query-locale-width-32"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "index_projection_locale_attribution",
-      "status": "enforced",
-      "files": [
-        {
-          "path": "crates/rustok-index/src/migrations/m20260721_000003_expand_index_locale_storage_columns.rs",
-          "required_markers": [
-            "ALTER TABLE index_content ALTER COLUMN locale TYPE VARCHAR(32)",
-            "ALTER TABLE index_products ALTER COLUMN locale TYPE VARCHAR(32)",
-            "MODIFY COLUMN locale VARCHAR(32) NOT NULL",
-            "SQLite does not enforce declared VARCHAR lengths",
-            "Forward-only"
-          ]
-        },
-        {
-          "path": "crates/rustok-index/src/migrations/mod.rs",
-          "required_markers": [
-            "mod m20260721_000003_expand_index_locale_storage_columns;",
-            "Box::new(m20260721_000003_expand_index_locale_storage_columns::Migration)"
-          ]
-        },
-        {
-          "path": "docs/migrations/backfill-contracts.json",
-          "required_markers": [
-            "index-projection-locale-width-32"
           ]
         }
       ]

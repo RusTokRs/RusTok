@@ -30,9 +30,13 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
 - **Foundation locale policy** — `tenants.default_locale`,
   `tenant_locales.locale`, and `tenant_locales.fallback_locale` are widened to
   `VARCHAR(32)` by an irreversible PostgreSQL migration.
-- **Pages** — base page/menu rows remain language-agnostic; translations and
-  bodies are parallel records. A forward migration widens page, body, menu, and
-  menu-item locale columns to `VARCHAR(32)`.
+- **Pages** — base page rows remain language-agnostic; translations and bodies
+  are parallel records. A forward migration widens page and body locale columns
+  to `VARCHAR(32)`.
+- **Navigation** — `rustok-navigation` owns language-agnostic menu/menu-item
+  rows and their parallel localized records. Clean schema creation uses
+  `VARCHAR(32)` locale columns and tenant-composite uniqueness; Pages does not
+  migrate Navigation tables.
 - **Forum** — category/topic/reply base rows remain language-agnostic; localized
   records are parallel and the core tenant-integrity migration widens their
   locale columns to `VARCHAR(32)` without narrowing rollback. A later wave
@@ -45,10 +49,12 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   contains no English or arbitrary first-row fallback.
 - **Product catalog** — the product-owned schema verifier remains the delegated
   guard for translation ownership and locale widening.
-- **Search and Index locale attribution** — query logs and localized content/product
-  projections finish at `VARCHAR(32)`. PostgreSQL and MySQL use forward widening;
-  SQLite keeps TEXT affinity and therefore needs no destructive rebuild merely to
-  change a declared `VARCHAR` length.
+- **Search locale attribution** — query logs finish at `VARCHAR(32)`.
+  PostgreSQL and MySQL use forward widening; SQLite keeps TEXT affinity and
+  therefore needs no destructive rebuild merely to change a declared
+  `VARCHAR` length. The rewritten `rustok-index` currently has no production
+  persistence or migrations, so the removed Index v1 projection tables are not
+  claimed as an enforced multilingual surface.
 - **Content, blog, taxonomy, comments, and profiles locale widths** — registered
   forward-only owner migrations widen localized/preference columns to
   `VARCHAR(32)` without narrowing rollback.

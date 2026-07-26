@@ -82,6 +82,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md)
+- [Machine-readable Translation Surface Readiness Registry](./modules/translation-surfaces.json)
+- [`rustok-translation-targets` owner-provider contract](../crates/rustok-translation-targets/docs/README.md)
 - AI support adapter plans for `rustok-ai-media` and `rustok-ai-alloy` are available through the [module documentation index](./modules/_index.md).
 
 ## UI and Client Surfaces
