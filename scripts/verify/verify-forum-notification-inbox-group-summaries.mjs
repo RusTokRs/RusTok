@@ -38,6 +38,7 @@ const migrationRegistry = read(contract.notifications_migration_registry ?? "");
 const library = read(contract.notifications_lib_file ?? "");
 const readme = read(contract.notifications_readme ?? "");
 const liveContract = read(contract.notifications_live_contract ?? "");
+const localPlan = read(contract.notifications_local_plan ?? "");
 const proof = read(contract.sqlite_proof ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const note = read(contract.owner_note ?? "");
@@ -104,10 +105,22 @@ if (sync.required_ledger_through !== "FORUM-20AE") {
 }
 if (sync.status === "pending") {
   if (sync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending plan sync must identify FORUM-20G");
+    failures.push("pending canonical plan sync must identify FORUM-20G");
   }
-  requireText(plan, "FORUM-20A-G provide", "pending plan sync must remain grounded through G");
+  requireText(plan, "FORUM-20A-G provide", "pending canonical plan sync must remain grounded through G");
   rejectText(plan, "### Delivered in `FORUM-20AE`", "canonical plan sync status is stale");
+}
+
+const localSync = contract.notifications_local_plan_sync ?? {};
+if (localSync.required_ledger_through !== "FORUM-20AE") {
+  failures.push("Notifications local ledger must be required through FORUM-20AE");
+}
+if (localSync.status === "pending") {
+  if (localSync.current_plan_through !== "FORUM-20AA") {
+    failures.push("pending Notifications local-plan sync must identify FORUM-20AA");
+  }
+  requireText(localPlan, "### `FORUM-20AA`", "pending Notifications local-plan sync must remain grounded through AA");
+  rejectText(localPlan, "### `FORUM-20AE`", "Notifications local-plan sync status is stale");
 }
 
 for (const marker of [
