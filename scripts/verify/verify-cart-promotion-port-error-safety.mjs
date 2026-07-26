@@ -72,7 +72,15 @@ const ownerMapper = between(
 );
 
 for (const [value, label] of [
+  [
+    'use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};',
+    'typed promotion port imports',
+  ],
   ['const CART_PROMOTION_OWNER: &str = "rustok_cart.promotion";', 'promotion owner constant'],
+  [
+    'const CART_PROMOTION_CONTEXT_BOUNDARY: &str = "cart_promotion_context";',
+    'promotion context boundary constant',
+  ],
   ['const READ_CART_PROMOTION_PREVIEW_OPERATION', 'preview owner operation'],
   ['const APPLY_CART_PROMOTION_OPERATION', 'apply owner operation'],
   ['service: CartService::new(db)', 'direct owner service construction'],
@@ -94,6 +102,12 @@ for (const [value, label] of [
   ],
 ]) {
   requireText(guard, value, label);
+}
+
+const contextMapperCalls =
+  guard.match(/cart_promotion_context_error\(&context, owner_operation, error\)/g) ?? [];
+if (contextMapperCalls.length !== 2) {
+  failures.push(`expected preview/apply context mapper calls, found ${contextMapperCalls.length}`);
 }
 
 for (const [source, label] of [
@@ -118,10 +132,6 @@ for (const [source, value, label] of [
   [targetValidation, 'line_item_present = request.line_item_id.is_some()', 'promotion target line detail'],
   [tenantParser, 'error = ?error', 'promotion tenant parse cause'],
   [tenantParser, 'internal_tenant_id = %context.tenant_id', 'promotion tenant internal identity'],
-  [contextMapper, 'internal_code = %error.code', 'promotion context internal code'],
-  [contextMapper, 'internal_message = %error.message', 'promotion context internal message'],
-  [contextMapper, 'kind = ?error.kind', 'promotion context kind'],
-  [contextMapper, 'retryable = error.retryable', 'promotion context retryability'],
   [ownerMapper, 'error = ?error', 'promotion raw owner cause'],
   [ownerMapper, 'let code = cart_promotion_error_code(&error);', 'promotion stable code selection'],
 ]) {
@@ -129,9 +139,51 @@ for (const [source, value, label] of [
 }
 
 for (const [value, label] of [
-  ['code = "cart.tenant_id_invalid"', 'tenant stable code'],
-  ['code = "cart.promotion_context_invalid"', 'context stable code'],
+  ['log_cart_promotion_context_rejection(context, owner_operation, &error);', 'diagnostic before sanitization'],
+  ['fn log_cart_promotion_context_rejection(', 'shared context rejection diagnostic'],
+  ['error = ?error', 'original context PortError'],
+  ['internal_code = %error.code', 'promotion context internal code'],
+  ['internal_message = %error.message', 'promotion context internal message'],
+  ['actor = ?context.actor', 'promotion context actor'],
+  ['locale = %context.locale', 'promotion context locale'],
+  ['causation_id = ?context.causation_id', 'promotion context causation'],
+  ['traceparent = ?context.traceparent', 'promotion context traceparent'],
+  ['idempotency_key = ?context.idempotency_key', 'promotion context idempotency key'],
+  ['deadline_ms = ?context.deadline_ms', 'promotion context deadline'],
+  ['error_kind = ?error.kind', 'promotion context typed kind'],
+  ['retryable = error.retryable', 'promotion context retryability'],
+  ['boundary = CART_PROMOTION_CONTEXT_BOUNDARY', 'promotion context boundary'],
+  [
+    'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
+    'promotion context severity classification',
+  ],
+  ['tracing::error!(', 'promotion technical failure severity'],
+  ['tracing::warn!(', 'promotion rejection severity'],
+  ['"cart promotion call context failed"', 'promotion failure event'],
+  ['"cart promotion call context was rejected"', 'promotion rejection event'],
+]) {
+  requireText(contextMapper, value, label);
+}
+
+const diagnosticIndex = contextMapper.indexOf(
+  'log_cart_promotion_context_rejection(context, owner_operation, &error);',
+);
+const sanitizationIndex = contextMapper.indexOf('match error.kind {');
+if (!(diagnosticIndex >= 0 && diagnosticIndex < sanitizationIndex)) {
+  failures.push('promotion context diagnostics must run before public sanitization');
+}
+
+for (const [value, label] of [
+  ['PortErrorKind::Timeout =>', 'timeout context branch'],
+  ['PortError::timeout(error.code, "cart promotion request context is invalid")', 'timeout stable envelope'],
+  ['PortErrorKind::Validation =>', 'validation context branch'],
+  [
+    'PortError::validation(error.code, "cart promotion request context is invalid")',
+    'validation stable envelope',
+  ],
+  ['"cart.promotion_context_invalid"', 'fallback stable context code'],
   ['"cart promotion request context is invalid"', 'stable context message'],
+  ['code = "cart.tenant_id_invalid"', 'tenant stable code'],
   ['"cart promotion request is invalid"', 'stable validation message'],
   ['"cart was not found"', 'stable cart not-found message'],
   ['"cart line item was not found"', 'stable line-item not-found message'],
@@ -159,7 +211,13 @@ for (const value of [
 for (const [value, label] of [
   ['pub struct PortContext {', 'shared port context'],
   ['pub correlation_id: String', 'shared correlation field'],
+  ['pub actor: PortActor', 'shared actor field'],
   ['pub channel: Option<String>', 'shared channel field'],
+  ['pub locale: String', 'shared locale field'],
+  ['pub causation_id: Option<String>', 'shared causation field'],
+  ['pub traceparent: Option<String>', 'shared trace field'],
+  ['pub idempotency_key: Option<String>', 'shared idempotency field'],
+  ['pub deadline_ms: Option<u64>', 'shared deadline field'],
   ['pub struct PortError {', 'shared port error'],
 ]) {
   requireText(portContract, value, label);
@@ -178,5 +236,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Cart promotion preview/apply retain owner, channel, correlation, and stable public error envelopes',
+  '✔ Cart promotion preview/apply retain full context diagnostics and stable public error envelopes',
 );
