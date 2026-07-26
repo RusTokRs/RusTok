@@ -27,6 +27,16 @@ UI remain deferred until matching owner contracts are implemented.
 - GraphQL `isFollowing`, `followState`, `followUser`, and `unfollowUser` are human-user-only,
   tenant-bound, and call owner ports with deadline and idempotency semantics;
 - GraphQL optimistic revisions are represented as positive 64-bit integer strings;
+- `SocialGraphCommandPort` persists a versioned owner-private command receipt in the
+  same transaction as each committed relation state change;
+- receipt identity is unique by tenant and normalized idempotency key, while the
+  stored request payload binds source, target, relation kind, requested state, and
+  expected revision;
+- exact replay returns the original relation response snapshot without rewinding
+  newer live relation state; reuse of a key for a different command returns
+  `social_graph.idempotency_conflict`;
+- receipt payloads are limited to schema version `1`, processing/completed state is
+  constrained in PostgreSQL and SQLite, and corrupt/incomplete records fail closed;
 - `SocialGraphCommandPort` emits stable owner-operation telemetry for block/unblock,
   mute/unmute, and follow/unfollow through `rustok_social_graph::operations`;
 - command telemetry records only operation, tenant/source/target identifiers,
@@ -42,6 +52,8 @@ cargo check -p rustok-social-graph --features graphql --all-targets
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test follow_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test follow_state_sqlite -- --nocapture
+cargo test -p rustok-social-graph --test command_receipts_sqlite -- --nocapture
 node scripts/verify/verify-social-graph-notification-policy.mjs
+node scripts/verify/verify-social-graph-command-receipts.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 ```
