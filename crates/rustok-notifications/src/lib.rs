@@ -4,6 +4,7 @@ pub mod error;
 mod fanout;
 mod fanout_worker;
 mod inbox;
+mod inbox_count;
 mod inbox_reconcile;
 mod inbox_state;
 pub mod migrations;
@@ -42,6 +43,10 @@ pub use inbox::{
     MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationInboxItem, NotificationInboxListRequest,
     NotificationInboxListService, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
     NotificationInboxOpenService, NotificationInboxPage,
+};
+pub use inbox_count::{
+    NotificationInboxUnreadCount, NotificationInboxUnreadCountRequest,
+    NotificationInboxUnreadCountService,
 };
 pub use inbox_reconcile::{
     NotificationInboxReconcilePage, NotificationInboxReconcileRequest,
