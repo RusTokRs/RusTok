@@ -1,0 +1,72 @@
+name: Index M2 Evidence Dispatch Launcher
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  dispatch:
+    name: Dispatch canonical replacement evidence
+    if: ${{ github.head_ref == 'agent/index-m2-dispatch-16e9795' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch exact evidence ref and publish run identity
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const workflowId = 'index-storage-scale-evidence.yml';
+            const ref = 'agent/index-m2-evidence-16e9795';
+            const expectedSha = '16e9795c07094c8a96c10e2111f7b26b75b359e7';
+            const startedAfter = Date.now() - 10_000;
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+              ref,
+            });
+
+            let dispatchedRun = null;
+            for (let attempt = 0; attempt < 30; attempt += 1) {
+              await new Promise((resolve) => setTimeout(resolve, 2_000));
+              const response = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflowId,
+                event: 'workflow_dispatch',
+                branch: ref,
+                per_page: 20,
+              });
+              dispatchedRun = response.data.workflow_runs.find((run) => (
+                run.head_sha === expectedSha
+                && new Date(run.created_at).getTime() >= startedAfter
+              ));
+              if (dispatchedRun) break;
+            }
+
+            if (!dispatchedRun) {
+              throw new Error(`no canonical run appeared for ${ref}@${expectedSha}`);
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                `Canonical Index M2 replacement run: **${dispatchedRun.id}**`,
+                `- evidence ref: \`${ref}\``,
+                `- exact commit: \`${expectedSha}\``,
+                `- run: ${dispatchedRun.html_url}`,
+                '',
+                'The run executes the lightweight contract, replacement 100k and 1m packets, and the same-run comparison.',
+              ].join('\n'),
+            });
