@@ -179,6 +179,9 @@ mark-all-read, and bounded mark-all-unread are delivered; mark-all-archive,
 arbitrary selected-ID bulk mutations, grouped inbox views, external transport
 adapters, and module-owned UI remain closed.
 
+The historical mark-unread, bulk/mark-all residual is now narrowed to
+mark-all-archive, selected-ID bulk mutations, and grouped views.
+
 ### Exact unread count
 
 `NotificationInboxUnreadCountService` returns `unread_count` for one exact non-nil
