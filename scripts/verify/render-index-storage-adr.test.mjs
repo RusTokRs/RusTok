@@ -98,6 +98,11 @@ const ratios = {
 const validComparison = () => ({
   generated_at: '2026-07-24T12:00:00Z',
   methodology: {
+    source_oracle: 'normalized idx_bench_source workload result digests',
+    result_digest: 'ordered_length_prefixed_json_v1',
+    evidence_validation: 'fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities',
+    first_run: 'first EXPLAIN ANALYZE repetition',
+    warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
     automatic_winner_selection: false,
     comparable_database_fields: [...comparableDatabaseFields],
     database_settings_source: databaseSettingsSource,
@@ -179,7 +184,20 @@ test('rejects core-only comparison without observed database-settings methodolog
     assert.notEqual(result.status, 0);
     assert.match(
       result.stderr,
-      /comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract/u,
+      /comparison methodology must contain exactly the canonical methodology fields/u,
+    );
+  });
+});
+
+test('rejects an additional methodology field before rendering', () => {
+  withFixture((root) => {
+    const comparison = validComparison();
+    comparison.methodology.unreviewed_note = 'must not reach the ADR';
+    const { result } = run(root, comparison, validDecision(comparison));
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /comparison methodology must contain exactly the canonical methodology fields/u,
     );
   });
 });
