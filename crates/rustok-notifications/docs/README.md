@@ -3,11 +3,11 @@
 ## Responsibility zone
 
 Notifications owns inbox/read state, exact unread counts, bounded mark-all-read,
-preferences, bounded fanout, grouping, digests, retention, delivery attempts,
-intake receipts/quarantine, and replay/reconciliation. Source modules own semantic
-state, subscriptions, audience facts, visibility, target authorization, and routes.
-Profiles and Social Graph own recipient privacy. Delivery modules own channel
-transports.
+bounded mark-all-unread, bounded mark-all-archive, preferences, bounded fanout,
+grouping, digests, retention, delivery attempts, intake receipts/quarantine, and
+replay/reconciliation. Source modules own semantic state, subscriptions, audience
+facts, visibility, target authorization, and routes. Profiles and Social Graph own
+recipient privacy. Delivery modules own channel transports.
 
 ## Integration boundary
 
@@ -175,9 +175,12 @@ service calls no recipient-policy, source-provider, target, or delivery owner an
 does not create delivery attempts.
 
 SQLite evidence is `tests/inbox_state_sqlite.rs`. Exact-item mark-unread and bounded
-mark-all-read are delivered; mark-all-unread/archive, arbitrary selected-ID bulk
-mutations, grouped inbox views, external transport adapters, and module-owned UI
-remain closed.
+mark-all-read, mark-all-unread, and mark-all-archive are delivered; arbitrary
+selected-ID bulk mutations, grouped inbox views, external transport adapters, and
+module-owned UI remain closed.
+
+The historical mark-unread, bulk/mark-all residual is now narrowed to selected-ID
+bulk mutations and grouped views.
 
 ### Exact unread count
 
@@ -217,8 +220,55 @@ and creates or mutates no delivery attempt. Earlier exact transitions are durabl
 and idempotent if a later database operation fails, so a caller can retry the same
 request cursor. SQLite evidence is `tests/inbox_mark_all_read_sqlite.rs`; the source
 guard is `scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`.
-Mark-all-unread, mark-all-archive, arbitrary selected-ID bulk commands, grouped
-views, transport adapters, and UI remain closed.
+`FORUM-20Y` originally left mark-all-unread and mark-all-archive open. Both
+follow-up commands are now delivered.
+
+### Bounded mark-all-unread
+
+`NotificationInboxMarkAllUnreadService` selects one exact tenant/recipient page of
+stored `seen` or `read` rows in `created_at DESC, id DESC` order. Requests default
+to 20 rows, are capped at 64, and reuse the versioned `i1` cursor with timestamp
+nanoseconds plus the UUID tie-breaker. Already-unread and archived rows remain
+outside selection.
+
+One bounded raw page is loaded before mutation. Every selected row delegates to
+`NotificationInboxStateService::mark_unread`, clearing `seen_at` and `read_at`
+while archived remains terminal. The response returns only `scanned`,
+`marked_unread`, `next_cursor`, and `has_more`; it exposes no source, target, route,
+or notification identity. Empty, missing, cross-tenant, and cross-recipient scopes
+return an empty page.
+
+The command calls no recipient-policy, source-provider, target, or delivery owner
+and creates or mutates no delivery attempt. Earlier exact transitions are durable
+and idempotent if a later database operation fails, so a caller can retry the same
+request cursor. SQLite evidence is `tests/inbox_mark_all_unread_sqlite.rs`; the
+source guard is
+`scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs`.
+`FORUM-20Z` left mark-all-archive and arbitrary selected-ID bulk commands open at
+that milestone; mark-all-archive is now delivered.
+
+### Bounded mark-all-archive
+
+`NotificationInboxMarkAllArchiveService` selects one exact tenant/recipient page of
+stored `unread`, `seen`, or `read` rows in `created_at DESC, id DESC` order.
+Requests default to 20 rows, are capped at 64, and reuse the versioned `i1` cursor
+with timestamp nanoseconds plus the UUID tie-breaker. Already-archived rows remain
+outside selection.
+
+One bounded raw page is loaded before mutation. Every selected row delegates to
+`NotificationInboxStateService::archive`, preserving existing `seen_at` and
+`read_at`, assigning `archived_at`, and keeping archive terminal. The response
+returns only `scanned`, `marked_archived`, `next_cursor`, and `has_more`; it exposes
+no source, target, route, or notification identity. Empty, missing, cross-tenant,
+and cross-recipient scopes return an empty page.
+
+The command calls no recipient-policy, source-provider, target, or delivery owner
+and creates or mutates no delivery attempt. Earlier exact transitions are durable
+and idempotent if a later database operation fails, so a caller can retry the same
+request cursor. SQLite evidence is `tests/inbox_mark_all_archive_sqlite.rs`; the
+source guard is
+`scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs`. Arbitrary
+selected-ID bulk commands, grouped views, transport adapters, and UI remain closed.
 
 ### Bounded inbox reconciliation
 
@@ -260,8 +310,7 @@ remains deferred.
   policy changes with final candidate commits;
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
-- mark-all-unread/archive and arbitrary selected-ID bulk mutations plus grouped
-  views;
+- arbitrary selected-ID bulk mutations plus grouped views;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and full module-owned UI;
 - channel delivery enqueue and transports with delivery-time authorization;
@@ -285,6 +334,8 @@ cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_count_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_mark_all_read_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_mark_all_unread_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_mark_all_archive_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
@@ -304,11 +355,13 @@ node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
 node scripts/verify/verify-forum-notification-inbox-unread-count.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs
+node scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs
+node scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y`.
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA`.
 
 ## Related documents
 

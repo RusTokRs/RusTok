@@ -12,7 +12,7 @@ pub mod checkout;
 pub mod fulfillment;
 #[path = "safe_order_helpers.rs"]
 pub mod helpers;
-#[path = "helpers.rs"]
+#[path = "safe_legacy_helpers.rs"]
 mod legacy_helpers;
 pub mod pricing;
 pub mod provider_operations;

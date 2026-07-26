@@ -142,3 +142,264 @@ fn validate_request(request: &NotificationInboxMarkAllReadRequest) -> Notificati
     }
     Ok(())
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationInboxMarkAllUnreadRequest {
+    pub tenant_id: Uuid,
+    pub recipient_id: Uuid,
+    #[serde(default)]
+    pub cursor: Option<String>,
+    #[serde(default)]
+    pub limit: u16,
+}
+
+impl NotificationInboxMarkAllUnreadRequest {
+    pub fn bounded_limit(&self) -> u64 {
+        let requested = if self.limit == 0 {
+            DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE
+        } else {
+            self.limit
+        };
+        u64::from(requested.min(MAX_NOTIFICATION_INBOX_PAGE_SIZE))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationInboxMarkAllUnreadPage {
+    pub scanned: u16,
+    pub marked_unread: u16,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+/// Marks one bounded exact-recipient page of seen or read notifications as unread.
+///
+/// Selection is stable and cursor-based. Every selected row delegates to the exact state owner,
+/// which clears seen/read timestamps and keeps archived terminal. Already-unread and archived rows
+/// are outside selection. Empty and foreign scopes return an empty page without exposing any
+/// notification identity. No recipient-policy, source, target, or delivery owner is invoked.
+#[derive(Clone)]
+pub struct NotificationInboxMarkAllUnreadService {
+    db: DatabaseConnection,
+    state: NotificationInboxStateService,
+}
+
+impl NotificationInboxMarkAllUnreadService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self {
+            db: db.clone(),
+            state: NotificationInboxStateService::new(db),
+        }
+    }
+
+    pub async fn mark_page(
+        &self,
+        request: NotificationInboxMarkAllUnreadRequest,
+    ) -> NotificationResult<NotificationInboxMarkAllUnreadPage> {
+        validate_mark_all_unread_request(&request)?;
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_inbox_cursor)
+            .transpose()?;
+        let limit = request.bounded_limit();
+
+        let mut select = notification::Entity::find()
+            .filter(notification::Column::TenantId.eq(request.tenant_id))
+            .filter(notification::Column::RecipientId.eq(request.recipient_id))
+            .filter(
+                Condition::any()
+                    .add(notification::Column::State.eq(NotificationState::Seen))
+                    .add(notification::Column::State.eq(NotificationState::Read)),
+            );
+        if let Some(cursor) = cursor {
+            select = select.filter(
+                Condition::any()
+                    .add(notification::Column::CreatedAt.lt(cursor.created_at.to_owned()))
+                    .add(
+                        Condition::all()
+                            .add(notification::Column::CreatedAt.eq(cursor.created_at))
+                            .add(notification::Column::Id.lt(cursor.id)),
+                    ),
+            );
+        }
+
+        let mut rows = select
+            .order_by_desc(notification::Column::CreatedAt)
+            .order_by_desc(notification::Column::Id)
+            .limit(limit + 1)
+            .all(&self.db)
+            .await?;
+        let has_more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        let next_cursor = has_more
+            .then(|| rows.last().map(encode_inbox_cursor))
+            .flatten();
+        let scanned = rows.len() as u16;
+        let mut marked_unread = 0_u16;
+
+        for stored in rows {
+            if matches!(
+                self.state
+                    .mark_unread(NotificationInboxStateRequest {
+                        tenant_id: request.tenant_id,
+                        recipient_id: request.recipient_id,
+                        notification_id: stored.id,
+                    })
+                    .await?,
+                NotificationInboxStateDecision::Available { changed: true, .. }
+            ) {
+                marked_unread += 1;
+            }
+        }
+
+        Ok(NotificationInboxMarkAllUnreadPage {
+            scanned,
+            marked_unread,
+            next_cursor,
+            has_more,
+        })
+    }
+}
+
+fn validate_mark_all_unread_request(
+    request: &NotificationInboxMarkAllUnreadRequest,
+) -> NotificationResult<()> {
+    if request.tenant_id.is_nil() || request.recipient_id.is_nil() {
+        return Err(NotificationError::Validation(
+            "notification inbox mark-all-unread identity must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationInboxMarkAllArchiveRequest {
+    pub tenant_id: Uuid,
+    pub recipient_id: Uuid,
+    #[serde(default)]
+    pub cursor: Option<String>,
+    #[serde(default)]
+    pub limit: u16,
+}
+
+impl NotificationInboxMarkAllArchiveRequest {
+    pub fn bounded_limit(&self) -> u64 {
+        let requested = if self.limit == 0 {
+            DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE
+        } else {
+            self.limit
+        };
+        u64::from(requested.min(MAX_NOTIFICATION_INBOX_PAGE_SIZE))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationInboxMarkAllArchivePage {
+    pub scanned: u16,
+    pub marked_archived: u16,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+/// Archives one bounded exact-recipient page of non-archived notifications.
+///
+/// Selection is stable and cursor-based. Every selected row delegates to the exact state owner,
+/// preserving any existing seen/read timestamps and keeping archive terminal. Already-archived rows
+/// are outside selection. Empty and foreign scopes return an empty page without exposing any
+/// notification identity. No recipient-policy, source, target, or delivery owner is invoked.
+#[derive(Clone)]
+pub struct NotificationInboxMarkAllArchiveService {
+    db: DatabaseConnection,
+    state: NotificationInboxStateService,
+}
+
+impl NotificationInboxMarkAllArchiveService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self {
+            db: db.clone(),
+            state: NotificationInboxStateService::new(db),
+        }
+    }
+
+    pub async fn mark_page(
+        &self,
+        request: NotificationInboxMarkAllArchiveRequest,
+    ) -> NotificationResult<NotificationInboxMarkAllArchivePage> {
+        validate_mark_all_archive_request(&request)?;
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_inbox_cursor)
+            .transpose()?;
+        let limit = request.bounded_limit();
+
+        let mut select = notification::Entity::find()
+            .filter(notification::Column::TenantId.eq(request.tenant_id))
+            .filter(notification::Column::RecipientId.eq(request.recipient_id))
+            .filter(
+                Condition::any()
+                    .add(notification::Column::State.eq(NotificationState::Unread))
+                    .add(notification::Column::State.eq(NotificationState::Seen))
+                    .add(notification::Column::State.eq(NotificationState::Read)),
+            );
+        if let Some(cursor) = cursor {
+            select = select.filter(
+                Condition::any()
+                    .add(notification::Column::CreatedAt.lt(cursor.created_at.to_owned()))
+                    .add(
+                        Condition::all()
+                            .add(notification::Column::CreatedAt.eq(cursor.created_at))
+                            .add(notification::Column::Id.lt(cursor.id)),
+                    ),
+            );
+        }
+
+        let mut rows = select
+            .order_by_desc(notification::Column::CreatedAt)
+            .order_by_desc(notification::Column::Id)
+            .limit(limit + 1)
+            .all(&self.db)
+            .await?;
+        let has_more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        let next_cursor = has_more
+            .then(|| rows.last().map(encode_inbox_cursor))
+            .flatten();
+        let scanned = rows.len() as u16;
+        let mut marked_archived = 0_u16;
+
+        for stored in rows {
+            if matches!(
+                self.state
+                    .archive(NotificationInboxStateRequest {
+                        tenant_id: request.tenant_id,
+                        recipient_id: request.recipient_id,
+                        notification_id: stored.id,
+                    })
+                    .await?,
+                NotificationInboxStateDecision::Available { changed: true, .. }
+            ) {
+                marked_archived += 1;
+            }
+        }
+
+        Ok(NotificationInboxMarkAllArchivePage {
+            scanned,
+            marked_archived,
+            next_cursor,
+            has_more,
+        })
+    }
+}
+
+fn validate_mark_all_archive_request(
+    request: &NotificationInboxMarkAllArchiveRequest,
+) -> NotificationResult<()> {
+    if request.tenant_id.is_nil() || request.recipient_id.is_nil() {
+        return Err(NotificationError::Validation(
+            "notification inbox mark-all-archive identity must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
