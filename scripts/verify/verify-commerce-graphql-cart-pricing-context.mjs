@@ -10,7 +10,9 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
+const routing = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
 const facade = read('crates/rustok-commerce/src/graphql/mutations/safe_cart.rs');
+const legacyFacade = read('crates/rustok-commerce/src/graphql/mutations/safe_legacy_helpers.rs');
 const source = read('crates/rustok-commerce/src/graphql/mutations/cart.rs');
 const helperSource = read('crates/rustok-commerce/src/graphql/mutations/helpers.rs');
 const helperFacade = read('crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
@@ -34,9 +36,10 @@ for (const [value, label] of [
   ['impl PricingReadPort for ContextualPricingReadPort', 'complete pricing adapter implementation'],
   ['inner: Arc<dyn PricingReadPort>', 'pricing owner delegation'],
   ['inner: ::rustok_pricing::in_process_pricing_read_port(db, event_bus)', 'canonical pricing constructor'],
-  ['mod rustok_pricing_shim {', 'pricing import shim'],
+  ['pub(crate) use pricing_read_owner_boundary::in_process_pricing_read_port as contextual_pricing_read_port;', 'shared contextual pricing export'],
+  ['mod rustok_pricing_shim {', 'resolver pricing import shim'],
   ['use self::rustok_pricing_shim as rustok_pricing;', 'resolver pricing shim alias'],
-  ['pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;', 'contextual pricing constructor export'],
+  ['pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;', 'resolver contextual constructor export'],
   ['pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};', 'resolver pricing API re-export'],
   ['correlation_id = %context.correlation_id', 'correlation logging'],
   ['tenant_id = %context.tenant_id', 'tenant logging'],
@@ -88,6 +91,28 @@ for (const value of [
 }
 
 for (const [value, label] of [
+  ['#[path = "safe_legacy_helpers.rs"]\nmod legacy_helpers;', 'safe legacy helper routing'],
+]) {
+  requireText(routing, value, label);
+}
+for (const value of ['#[path = "helpers.rs"]\nmod legacy_helpers;']) {
+  forbidText(routing, value, 'unsafe legacy helper routing');
+}
+
+for (const [value, label] of [
+  ['mod rustok_pricing_shim {', 'legacy pricing shim'],
+  ['PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest, ResolvedPrice,', 'legacy pricing API re-export'],
+  ['super::super::cart::contextual_pricing_read_port as in_process_pricing_read_port', 'shared contextual pricing constructor reuse'],
+  ['use self::rustok_pricing_shim as rustok_pricing;', 'legacy pricing shim alias'],
+  ['include!("helpers.rs");', 'unchanged legacy helper inclusion'],
+]) {
+  requireText(legacyFacade, value, label);
+}
+for (const value of ['::rustok_pricing::in_process_pricing_read_port']) {
+  forbidText(legacyFacade, value, 'legacy canonical constructor bypass');
+}
+
+for (const [value, label] of [
   ['use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};', 'resolver pricing constructor import'],
   ['rustok_pricing::ResolvedPrice', 'resolver pricing result type'],
   ['.map_err(cart_port_error)?', 'existing public cart mapper callsites'],
@@ -101,9 +126,17 @@ const resolverPricingConstructors = source.match(/in_process_pricing_read_port\(
 if (resolverPricingConstructors.length !== 2) {
   failures.push(`expected two resolver pricing constructors, found ${resolverPricingConstructors.length}`);
 }
+for (const [value, label] of [
+  ['let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus.clone());', 'legacy repricing constructor'],
+  ['storefront_pricing_port_context(tenant_id, request_context, cart.id, line_item.id)', 'legacy repricing context'],
+  ['.resolve_product_price(', 'legacy pricing owner call'],
+  ['.map_err(cart_port_error)?', 'legacy public cart mapper'],
+]) {
+  requireText(helperSource, value, label);
+}
 const legacyPricingConstructors = helperSource.match(/in_process_pricing_read_port\(/g) ?? [];
 if (legacyPricingConstructors.length !== 1) {
-  failures.push(`expected one still-open legacy helper pricing constructor, found ${legacyPricingConstructors.length}`);
+  failures.push(`expected one legacy helper pricing constructor routed through the facade, found ${legacyPricingConstructors.length}`);
 }
 
 for (const [value, label] of [
@@ -127,5 +160,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL cart resolver pricing calls retain their original PortContext and exact owner operation while public CART_* envelopes remain unchanged',
+  '✔ Commerce GraphQL cart resolver and legacy repricing calls share contextual pricing owner diagnostics while public CART_* envelopes remain unchanged',
 );
