@@ -26,8 +26,8 @@ Read calls receive a five-second deadline before owner access. The group-state w
 also receives the caller-supplied idempotency key. Permissions are retained as port
 claims and the channel is recorded as `storefront`.
 
-Authentication and tenant admission occur before notification UUID parsing. Invalid
-IDs therefore do not bypass authentication admission.
+For the open endpoint, authentication and tenant admission occur before notification
+UUID parsing. Invalid IDs therefore do not bypass authentication admission.
 
 ## Runtime composition
 
