@@ -1,15 +1,26 @@
+use std::{future::Future, time::Duration};
+
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
-    AuthContext, TenantContext,
+    AuthContext, PortContext, PortError, PortErrorKind, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
 };
 use rustok_events::DomainEvent;
+use rustok_media::{MediaAssetReadPort, MediaService};
 use rustok_outbox::TransactionalEventBus;
+use rustok_storage::StorageRuntime;
 use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
-use crate::{ProfileError, ProfileService};
+use crate::{
+    ProfileError, ProfileMediaSlot, ProfileOperation, ProfileOperationTimer, ProfileRecord,
+    ProfileResult, ProfileService, validate_profile_media_asset,
+};
 
 use super::{MODULE_SLUG, types::*};
+
+const PROFILE_MEDIA_READ_DEADLINE: Duration = Duration::from_secs(2);
+const PROFILE_EVENT_PUBLISH_ERROR: &str = "profiles.event_publish_unavailable";
 
 #[derive(Default)]
 pub struct ProfilesMutation;
@@ -27,16 +38,28 @@ impl ProfilesMutation {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
+        validate_profile_media_references(
+            ctx,
+            &auth,
+            tenant.id,
+            input.avatar_media_id,
+            input.banner_media_id,
+        )
+        .await?;
+
         let service = ProfileService::new(db.clone());
-        let profile = service
-            .upsert_profile(
+        let profile = observe_profile_write(
+            ProfileOperation::Upsert,
+            tenant.id,
+            auth.user_id,
+            service.upsert_profile(
                 tenant.id,
                 auth.user_id,
                 input.into(),
                 Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(map_profile_error)?;
+            ),
+        )
+        .await?;
         publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
@@ -52,16 +75,20 @@ impl ProfilesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let service = ProfileService::new(db.clone());
 
-        let profile = ProfileService::new(db.clone())
-            .update_profile_handle(
+        let profile = observe_profile_write(
+            ProfileOperation::UpdateHandle,
+            tenant.id,
+            auth.user_id,
+            service.update_profile_handle(
                 tenant.id,
                 auth.user_id,
                 &handle,
                 Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(map_profile_error)?;
+            ),
+        )
+        .await?;
         publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
@@ -77,17 +104,21 @@ impl ProfilesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let service = ProfileService::new(db.clone());
 
-        let profile = ProfileService::new(db.clone())
-            .update_profile_content(
+        let profile = observe_profile_write(
+            ProfileOperation::UpdateContent,
+            tenant.id,
+            auth.user_id,
+            service.update_profile_content(
                 tenant.id,
                 auth.user_id,
                 &input.display_name,
                 input.bio.as_deref(),
                 Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(map_profile_error)?;
+            ),
+        )
+        .await?;
         publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
@@ -103,16 +134,20 @@ impl ProfilesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let service = ProfileService::new(db.clone());
 
-        let profile = ProfileService::new(db.clone())
-            .update_profile_locale(
+        let profile = observe_profile_write(
+            ProfileOperation::UpdateLocale,
+            tenant.id,
+            auth.user_id,
+            service.update_profile_locale(
                 tenant.id,
                 auth.user_id,
                 preferred_locale.as_deref(),
                 Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(map_profile_error)?;
+            ),
+        )
+        .await?;
         publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
@@ -128,16 +163,20 @@ impl ProfilesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let service = ProfileService::new(db.clone());
 
-        let profile = ProfileService::new(db.clone())
-            .update_profile_visibility(
+        let profile = observe_profile_write(
+            ProfileOperation::UpdateVisibility,
+            tenant.id,
+            auth.user_id,
+            service.update_profile_visibility(
                 tenant.id,
                 auth.user_id,
                 visibility.into(),
                 Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(map_profile_error)?;
+            ),
+        )
+        .await?;
         publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
@@ -154,19 +193,111 @@ impl ProfilesMutation {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let profile = ProfileService::new(db.clone())
-            .update_profile_media(
+        validate_profile_media_references(
+            ctx,
+            &auth,
+            tenant.id,
+            input.avatar_media_id,
+            input.banner_media_id,
+        )
+        .await?;
+
+        let service = ProfileService::new(db.clone());
+        let profile = observe_profile_write(
+            ProfileOperation::UpdateMedia,
+            tenant.id,
+            auth.user_id,
+            service.update_profile_media(
                 tenant.id,
                 auth.user_id,
                 input.avatar_media_id,
                 input.banner_media_id,
                 Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(map_profile_error)?;
+            ),
+        )
+        .await?;
         publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
+    }
+}
+
+async fn observe_profile_write<F>(
+    operation: ProfileOperation,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    future: F,
+) -> Result<ProfileRecord>
+where
+    F: Future<Output = ProfileResult<ProfileRecord>>,
+{
+    let timer = ProfileOperationTimer::start(operation, tenant_id, user_id);
+    let result = future.await;
+    timer.finish_profile_result(&result);
+    result.map_err(map_profile_error)
+}
+
+async fn validate_profile_media_references(
+    ctx: &Context<'_>,
+    auth: &AuthContext,
+    tenant_id: Uuid,
+    avatar_media_id: Option<Uuid>,
+    banner_media_id: Option<Uuid>,
+) -> Result<()> {
+    if auth.tenant_id != tenant_id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Profile media updates must use the current tenant",
+        ));
+    }
+
+    if avatar_media_id.is_none() && banner_media_id.is_none() {
+        return Ok(());
+    }
+
+    let db = ctx.data::<DatabaseConnection>()?;
+    let storage = ctx.data::<StorageRuntime>()?;
+    let media = MediaService::new(db.clone(), storage.clone());
+
+    for (slot, media_id) in [
+        (ProfileMediaSlot::Avatar, avatar_media_id),
+        (ProfileMediaSlot::Banner, banner_media_id),
+    ] {
+        let Some(media_id) = media_id else {
+            continue;
+        };
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            auth.port_actor(),
+            "und",
+            format!(
+                "profile-media:{}:{}:{}",
+                slot.as_str(),
+                auth.user_id,
+                media_id
+            ),
+        )
+        .with_deadline(PROFILE_MEDIA_READ_DEADLINE);
+        let asset = media
+            .get_asset(context, media_id)
+            .await
+            .map_err(|error| map_profile_media_read_error(slot, error))?;
+        validate_profile_media_asset(tenant_id, auth.user_id, slot, &asset)
+            .map_err(map_profile_error)?;
+    }
+
+    Ok(())
+}
+
+fn map_profile_media_read_error(
+    slot: ProfileMediaSlot,
+    error: PortError,
+) -> async_graphql::Error {
+    match &error.kind {
+        PortErrorKind::NotFound => <FieldError as GraphQLError>::bad_user_input(&format!(
+            "profile {} media asset was not found",
+            slot.as_str()
+        )),
+        _ => <FieldError as GraphQLError>::internal_error(&error.message),
     }
 }
 
@@ -185,11 +316,16 @@ fn require_human_user(ctx: &Context<'_>) -> Result<AuthContext> {
 
 async fn publish_profile_updated(
     event_bus: &TransactionalEventBus,
-    tenant_id: uuid::Uuid,
-    actor_id: uuid::Uuid,
-    profile: &crate::ProfileRecord,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    profile: &ProfileRecord,
 ) -> Result<()> {
-    event_bus
+    let timer = ProfileOperationTimer::start(
+        ProfileOperation::PublishUpdatedEvent,
+        tenant_id,
+        profile.user_id,
+    );
+    let result = event_bus
         .publish(
             tenant_id,
             Some(actor_id),
@@ -199,12 +335,25 @@ async fn publish_profile_updated(
                 locale: profile.preferred_locale.clone(),
             },
         )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
+        .await;
+
+    match result {
+        Ok(()) => {
+            timer.finish_success();
+            Ok(())
+        }
+        Err(error) => {
+            timer.finish_failure(PROFILE_EVENT_PUBLISH_ERROR, true);
+            Err(<FieldError as GraphQLError>::internal_error(
+                &error.to_string(),
+            ))
+        }
+    }
 }
 
-fn map_profile_error(err: ProfileError) -> async_graphql::Error {
-    match err {
+fn map_profile_error(error: ProfileError) -> async_graphql::Error {
+    let message = error.to_string();
+    match error {
         ProfileError::EmptyDisplayName
         | ProfileError::DisplayNameTooLong
         | ProfileError::EmptyHandle
@@ -215,13 +364,13 @@ fn map_profile_error(err: ProfileError) -> async_graphql::Error {
         | ProfileError::InvalidLocale(_)
         | ProfileError::Validation(_)
         | ProfileError::DuplicateHandle(_) => {
-            <FieldError as GraphQLError>::bad_user_input(&err.to_string())
+            <FieldError as GraphQLError>::bad_user_input(&message)
         }
         ProfileError::ProfileNotFound(_) | ProfileError::ProfileByHandleNotFound(_) => {
-            <FieldError as GraphQLError>::not_found(&err.to_string())
+            <FieldError as GraphQLError>::not_found(&message)
         }
-        ProfileError::LocalizedCopyNotFound(_) | ProfileError::Database(_) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
-        }
+        ProfileError::LocalizedCopyNotFound(_)
+        | ProfileError::PresentationUnavailable
+        | ProfileError::Database(_) => <FieldError as GraphQLError>::internal_error(&message),
     }
 }

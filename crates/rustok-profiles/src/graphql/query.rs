@@ -1,12 +1,15 @@
 use async_graphql::{Context, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::{
-    AuthContext, TenantContext,
+    AuthContext, PortError, TenantContext,
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{ProfileError, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey};
+use crate::{
+    ProfileAccessAudience, ProfileError, ProfilePrivacyDecision, ProfilePrivacyService,
+    ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
+};
 
 use super::{MODULE_SLUG, types::*};
 
@@ -26,6 +29,7 @@ impl ProfilesQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = current_tenant_id(tenant, tenant_id)?;
+        let audience = profile_access_audience(ctx, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = ProfileService::new(db.clone());
@@ -38,7 +42,17 @@ impl ProfilesQuery {
             )
             .await
         {
-            Ok(profile) => Ok(Some(profile.into())),
+            Ok(profile) => {
+                let decision = ProfilePrivacyService::new(db.clone())
+                    .evaluate_access(tenant_id, profile.user_id, audience)
+                    .await
+                    .map_err(map_profile_privacy_error)?;
+                if public_profile_decision_allows_result(decision) {
+                    Ok(Some(profile.into()))
+                } else {
+                    Ok(None)
+                }
+            }
             Err(ProfileError::ProfileByHandleNotFound(_)) => Ok(None),
             Err(err) => Err(map_profile_error(err)),
         }
@@ -88,7 +102,16 @@ impl ProfilesQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = current_tenant_id(tenant, tenant_id)?;
+        let audience = profile_access_audience(ctx, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        let decision = ProfilePrivacyService::new(db.clone())
+            .evaluate_access(tenant_id, user_id, audience)
+            .await
+            .map_err(map_profile_privacy_error)?;
+        if !public_profile_decision_allows_result(decision) {
+            return Ok(None);
+        }
 
         if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
             let summary = loader
@@ -119,6 +142,33 @@ impl ProfilesQuery {
     }
 }
 
+fn profile_access_audience(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+) -> Result<ProfileAccessAudience> {
+    let Some(auth) = ctx.data_opt::<AuthContext>() else {
+        return Ok(ProfileAccessAudience::Anonymous);
+    };
+
+    if auth.tenant_id != tenant_id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Authenticated profile reads must use the current tenant",
+        ));
+    }
+
+    if auth.is_service_principal() {
+        Ok(ProfileAccessAudience::TrustedService { actor_id: None })
+    } else {
+        Ok(ProfileAccessAudience::Authenticated {
+            actor_id: auth.user_id,
+        })
+    }
+}
+
+fn public_profile_decision_allows_result(decision: ProfilePrivacyDecision) -> bool {
+    decision == ProfilePrivacyDecision::Allow
+}
+
 fn current_tenant_id(tenant: &TenantContext, requested: Option<Uuid>) -> Result<Uuid> {
     if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -141,8 +191,9 @@ fn require_human_user(ctx: &Context<'_>) -> Result<AuthContext> {
     Ok(auth)
 }
 
-fn map_profile_error(err: ProfileError) -> async_graphql::Error {
-    match err {
+fn map_profile_error(error: ProfileError) -> async_graphql::Error {
+    let message = error.to_string();
+    match error {
         ProfileError::EmptyDisplayName
         | ProfileError::DisplayNameTooLong
         | ProfileError::EmptyHandle
@@ -153,20 +204,25 @@ fn map_profile_error(err: ProfileError) -> async_graphql::Error {
         | ProfileError::InvalidLocale(_)
         | ProfileError::Validation(_)
         | ProfileError::DuplicateHandle(_) => {
-            <FieldError as GraphQLError>::bad_user_input(&err.to_string())
+            <FieldError as GraphQLError>::bad_user_input(&message)
         }
         ProfileError::ProfileNotFound(_) | ProfileError::ProfileByHandleNotFound(_) => {
-            <FieldError as GraphQLError>::not_found(&err.to_string())
+            <FieldError as GraphQLError>::not_found(&message)
         }
-        ProfileError::LocalizedCopyNotFound(_) | ProfileError::Database(_) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
-        }
+        ProfileError::LocalizedCopyNotFound(_)
+        | ProfileError::PresentationUnavailable
+        | ProfileError::Database(_) => <FieldError as GraphQLError>::internal_error(&message),
     }
+}
+
+fn map_profile_privacy_error(err: PortError) -> async_graphql::Error {
+    <FieldError as GraphQLError>::internal_error(&err.message)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::current_tenant_id;
+    use super::{current_tenant_id, public_profile_decision_allows_result};
+    use crate::ProfilePrivacyDecision;
     use rustok_api::TenantContext;
     use uuid::Uuid;
 
@@ -191,5 +247,18 @@ mod tests {
             current
         );
         assert!(current_tenant_id(&tenant(current), Some(Uuid::new_v4())).is_err());
+    }
+
+    #[test]
+    fn restricted_or_unavailable_profiles_are_hidden_from_public_queries() {
+        assert!(public_profile_decision_allows_result(
+            ProfilePrivacyDecision::Allow
+        ));
+        assert!(!public_profile_decision_allows_result(
+            ProfilePrivacyDecision::Restricted
+        ));
+        assert!(!public_profile_decision_allows_result(
+            ProfilePrivacyDecision::RecipientUnavailable
+        ));
     }
 }

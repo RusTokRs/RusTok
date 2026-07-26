@@ -51,6 +51,8 @@ const cargoPath = "crates/rustok-customer/admin/Cargo.toml";
 const readmePath = "crates/rustok-customer/admin/README.md";
 const localPlanPath = "crates/rustok-customer/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
+const profilePresentationPath = "crates/rustok-profiles/src/presentation.rs";
+const profileLoaderPath = "crates/rustok-profiles/src/loader.rs";
 
 for (const filePath of [
   libPath,
@@ -62,6 +64,8 @@ for (const filePath of [
   readmePath,
   localPlanPath,
   registryPath,
+  profilePresentationPath,
+  profileLoaderPath,
 ]) {
   assertExists(filePath, `${filePath}: expected customer admin boundary file`);
 }
@@ -79,6 +83,8 @@ const cargoToml = readRepo(cargoPath);
 const readme = readRepo(readmePath);
 const localPlan = readRepo(localPlanPath);
 const registry = readRepo(registryPath);
+const profilePresentation = readRepo(profilePresentationPath);
+const profileLoader = readRepo(profileLoaderPath);
 
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
@@ -115,6 +121,67 @@ for (const endpoint of [
 }
 assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
 assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native adapter must build services from the neutral DB handle`);
+assertContains(
+  nativeAdapter,
+  "rustok_profiles::ProfilePresentationService",
+  `${nativeAdapterPath}: customer profile enrichment must use the Profiles owner presentation service`,
+);
+assertContains(
+  nativeAdapter,
+  "ProfileAccessAudience::TrustedService { actor_id: None }",
+  `${nativeAdapterPath}: service principals must not claim profile ownership`,
+);
+assertContains(
+  nativeAdapter,
+  "ProfileAccessAudience::Authenticated {",
+  `${nativeAdapterPath}: human operators must use an authenticated profile audience`,
+);
+assertContains(
+  nativeAdapter,
+  "actor_id: auth.user_id",
+  `${nativeAdapterPath}: human profile audience must bind the authenticated actor`,
+);
+assertNotContains(
+  nativeAdapter,
+  "rustok_profiles::ProfileService",
+  `${nativeAdapterPath}: custom-host presentation must not pass raw ProfileService`,
+);
+const audienceFactoryCalls = nativeAdapter.match(/profile_service\(&runtime_ctx, &auth\)/g) ?? [];
+if (audienceFactoryCalls.length < 3) {
+  fail(`${nativeAdapterPath}: detail/create/update must all construct audience-bound profile presentation`);
+}
+
+assertContains(
+  profilePresentation,
+  "ProfilePrivacyService::new",
+  `${profilePresentationPath}: owner presentation must evaluate profile privacy`,
+);
+assertContains(
+  profilePresentation,
+  ".evaluate_access_batch",
+  `${profilePresentationPath}: owner presentation must use bounded batch privacy`,
+);
+assertContains(
+  profilePresentation,
+  ".find_profile_summaries_map",
+  `${profilePresentationPath}: owner presentation must load summaries only after policy`,
+);
+if (
+  profilePresentation.indexOf(".evaluate_access_batch") >
+  profilePresentation.indexOf(".find_profile_summaries_map")
+) {
+  fail(`${profilePresentationPath}: privacy evaluation must precede localized summary loading`);
+}
+assertContains(
+  profileLoader,
+  "ProfilePresentationService::for_audience",
+  `${profileLoaderPath}: GraphQL DataLoader must delegate to the owner presentation service`,
+);
+assertNotContains(
+  profileLoader,
+  "ProfilePrivacyService::new",
+  `${profileLoaderPath}: DataLoader must not duplicate privacy composition`,
+);
 
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must consume core helpers`);
 assertContains(ui, "use crate::i18n::t;", `${uiPath}: Leptos adapter must consume package i18n facade`);

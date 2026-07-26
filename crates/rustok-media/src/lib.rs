@@ -8,6 +8,7 @@ pub mod image;
 pub mod lifecycle;
 pub mod migrations;
 pub mod ports;
+pub mod public_image;
 pub mod service;
 
 use async_trait::async_trait;
@@ -29,6 +30,10 @@ pub use image::{
 };
 pub use lifecycle::{AssetState, BlobState, RenditionState, UploadState};
 pub use ports::*;
+pub use public_image::{
+    MEDIA_PUBLIC_IMAGE_PATH_PREFIX, MediaPublicImageAsset, MediaPublicImageBody,
+    MediaPublicImageReadPort, MediaPublicImageService, public_image_path,
+};
 pub use service::{
     MediaReconciliationDecision, MediaReconciliationReport, MediaService, MediaUsageSnapshot,
     load_media_usage_snapshot,

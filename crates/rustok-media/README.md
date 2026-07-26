@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`rustok-media` owns media asset uploads, metadata, translations, and transport adapters for RusToK.
+`rustok-media` owns media asset uploads, metadata, translations, delivery descriptors, and transport adapters for RusToK.
 
 ## Responsibilities
 
@@ -15,71 +15,64 @@
 - Generate immutable source and rendition keys through the canonical tenant/date/shard policy.
 - Own validated image edit recipes and bounded pure-Rust processing.
 - Publish the module-local `rustok-media-cli` adapter with `media reconcile`, keeping CLI/runtime assembly outside the domain crate.
-- Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers, delivery profile, public URL policy, and proxy path helper) for SEO and other read-side consumers.
+- Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers, delivery profile, and public URL policy) for SEO and other read-side consumers.
 - Publish `MediaAssetReadPort` / `media.asset_read.v1` source-locked FBA evidence, including deadline/context guards, typed `PortError` retryability mapping, and `MediaAssetSummary` kind/usage metadata for consumers.
-- Publish `MediaAssetWritePort` / `media.asset_write.v1` for upload preparation/completion,
-  deletion, translations, and tenant-scoped reconciliation. Local uploads use the Media-owned
-  streaming REST target; S3-compatible runtimes issue short-lived presigned PUT sessions.
-  Binary bodies never enter generic port DTOs.
+- Publish `MediaAssetWritePort` / `media.asset_write.v1` for upload preparation/completion, deletion, translations, and tenant-scoped reconciliation. Binary bodies never enter generic write-port DTOs.
+- Publish `MediaPublicImageReadPort` for embedded public presentation. It returns the canonical `MediaItem` plus a Media-issued descriptor: direct-public URLs remain unchanged, storage-relative image paths become immutable capability URLs, and opaque references remain unavailable.
+- Serve capability URLs at `/api/media/public/images/{id}/{checksum_sha256}`. The handler verifies tenant, active asset/blob, ready state, image MIME, active-blob SHA-256, and object size before returning bytes with immutable cache headers and ETag.
 
 ## Interactions
 
 - Depends on `rustok-core` for shared runtime helpers such as `generate_id()`.
 - Depends on `object_store` directly for blob operations and on `rustok-storage` only for runtime construction, delivery configuration, and key policy.
-- Depends on `rustok-api` for shared tenant/auth and GraphQL helper contracts.
-- Exposes its own GraphQL and REST adapters; `apps/server` now acts only as a composition root
-  and re-export shim for media transport entry points.
+- Depends on `rustok-api` for shared tenant/auth and port contracts.
+- Exposes its own GraphQL and REST adapters; `apps/server` acts only as a composition root and re-export shim for media transport entry points.
 - Exposes `mediaUsage` from the owner `MediaQuery`; `apps/server` only composes the module query.
-- REST adapters require authenticated `AuthContext`; GraphQL resolvers keep the existing
-  module-enabled guard and tenant-explicit contract.
-- `rustok-seo` and owner SEO providers consume `MediaImageDescriptor` to build OG/Twitter/schema
-  fallback surfaces without raw media blob coupling.
-- `rustok-media-admin` uses native Leptos `#[server]` functions as the default internal data layer,
-  keeps GraphQL as the selected path for `list/detail/translations/delete/usage`, and preserves REST primary
-  upload via `/api/media`.
-- Media is the first whole-module remote extraction pilot. The modular
-  monolith uses the embedded provider; `rustok-media-transport` supplies a
-  loopback-verified gRPC provider with the same owner service, DTO, deadline,
-  typed-error, database/schema, storage-credential, and port semantics.
-  Remote tonic servers require host-authenticated `TrustedMediaAuthority` with
-  an explicit `MediaGrpcOperation` allow-list in request extensions;
-  serialized caller tenant/principal claims are not trusted.
+- Media-library REST adapters require authenticated `AuthContext`; the public-image capability GET is intentionally unauthenticated and derives tenant authority from `TenantContext`, while an invalid id/checksum/tenant/lifecycle/MIME combination is indistinguishable as not found.
+- `rustok-seo`, Profiles, and owner SEO providers consume Media-owned image descriptors without raw media blob coupling.
+- Profiles revalidates tenant, uploader, and image MIME on the `MediaItem` returned alongside the descriptor; it never constructs the capability path.
+- `rustok-media-admin` uses native Leptos `#[server]` functions as the default internal data layer, keeps GraphQL as the selected path for list/detail/translations/delete/usage, and preserves REST upload via `/api/media`.
+- Media is the whole-module remote extraction pilot. `rustok-media-transport` supplies gRPC adapters for the existing metadata/control ports. The new public-image capability is currently an embedded DB/storage owner surface; remote provider parity and deployment evidence remain required before it can participate in an extracted Media provider.
 
 ## Entry points
 
 - `MediaService`
+- `MediaPublicImageService` / `MediaPublicImageReadPort`
 - `MediaHttpRuntime`
 - `load_media_usage_snapshot`
-- `graphql::MediaQuery` (`mediaUsage`, media list/detail/translations)
-- `graphql::MediaMutation`
+- `graphql::MediaQuery` / `graphql::MediaMutation`
 - `controllers::axum_router`
 - `rustok-media-admin`
 - `MediaReconciliationDecision` / `MediaReconciliationReport`
 - `rustok-media-cli` (`media reconcile [--limit <count>]`)
 - `MediaAssetSummary` / `MediaAssetKind` / `MediaAssetUsageProfile`
-- `MediaAssetWritePort` / `MediaUploadRequest` / `MediaUploadTarget`
+- `MediaAssetReadPort` / `MediaAssetWritePort`
+- `MediaUploadRequest` / `MediaUploadTarget`
 - `rustok-media-transport::{GrpcMediaProvider, MediaGrpcService}`
 - `CreateRenditionInput` / `MediaRenditionItem` / `ImageWorker`
 - `PrepareUploadSessionInput` / `PreparedUploadSession`
 - `MediaImageDescriptor` / `MediaImageDeliveryProfile` / `MediaImagePublicUrlPolicy`
-- `MediaItem`
-- `MediaTranslationItem`
-- `UploadInput`
-- `UpsertTranslationInput` / `NormalizedTranslationInput`
+- `MediaItem` / `MediaTranslationItem`
+- `UploadInput` / `UpsertTranslationInput` / `NormalizedTranslationInput`
 
 ## Runtime notes
 
 - Translation upserts normalize locale and text payloads before persistence: locale values are trimmed/lowercased, blank optional text fields become `None`, and translation lists are returned in locale order.
-- Reconciliation prioritizes delete tombstones, rotates ready blobs through
-  persisted progress, and preserves owner-local lifecycle evidence. Missing
-  rendition output is isolated from a healthy source asset.
-- Upload-session reconciliation removes completed or expired staging objects and preserves
-  retryable failures. Repeating finalization returns the asset already bound to the session.
-- `media reconcile` creates storage explicitly from the CLI's `storage` settings snapshot and requires the CLI database runtime. Its limit is global across tenants, so it bounds one maintenance invocation without changing owner-local lifecycle policy.
-- FBA provider calls require non-zero `PortContext.deadline_ms`, UUID tenant context, non-retryable domain validation/access errors, and retryable unavailable errors for storage/database failures. Descriptor consumers must emit only direct public URLs into public metadata; storage-relative descriptors are explicitly marked `ProxyRequired` and can derive a host proxy path with `MediaImageDescriptor::proxy_path`. `MediaAssetSummary` classifies media by MIME kind and usage profile without exposing raw blobs.
+- Reconciliation prioritizes delete tombstones, rotates ready blobs through persisted progress, and preserves owner-local lifecycle evidence. Missing rendition output is isolated from a healthy source asset.
+- Upload-session reconciliation removes completed or expired staging objects and preserves retryable failures. Repeating finalization returns the asset already bound to the session.
+- Public-image capability URLs bind the stable asset id to the active blob checksum. Changing the active blob changes the URL; deleting or failing the asset/blob makes the old URL unavailable.
+- The public image handler returns `Cache-Control: public, max-age=31536000, immutable`, a checksum ETag, `nosniff`, and the owner MIME/length. It never exposes storage keys in the URL or an error body.
+- Port calls require deadline semantics, UUID tenant context, non-retryable domain validation/access errors, and retryable unavailable errors for storage/database failures.
+
+## Verification
+
+- `cargo test -p rustok-media --test public_image_proxy -- --nocapture`
+- `node scripts/verify/verify-media-public-image-proxy.mjs`
+- existing Media module, lifecycle, FBA, admin-boundary, Local, and S3 verification commands remain maintainer-run.
 
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Implementation plan](./docs/implementation-plan.md)
 - [Media and Search extraction ADR](../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md)
 - [Platform docs index](../../docs/index.md)

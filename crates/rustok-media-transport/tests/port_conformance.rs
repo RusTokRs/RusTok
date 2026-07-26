@@ -3,8 +3,9 @@ use std::{sync::Arc, time::Duration};
 use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetWritePort, MediaReconciliationRequest, MediaService,
-    MediaUploadRequest, MediaUploadTransport, UploadInput, UpsertTranslationInput, migrations,
+    MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort, MediaPublicImageService,
+    MediaReconciliationRequest, MediaService, MediaUploadRequest, MediaUploadTransport, UploadInput,
+    UpsertTranslationInput, migrations,
 };
 use rustok_media_transport::{
     GrpcMediaProvider, MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority,
@@ -18,7 +19,12 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Endpoint, Server};
 use uuid::Uuid;
 
-async fn test_service() -> (Arc<MediaService>, DatabaseConnection, tempfile::TempDir) {
+async fn test_service() -> (
+    Arc<MediaService>,
+    Arc<MediaPublicImageService>,
+    DatabaseConnection,
+    tempfile::TempDir,
+) {
     let database = Database::connect("sqlite::memory:")
         .await
         .expect("SQLite test database should connect");
@@ -41,13 +47,14 @@ async fn test_service() -> (Arc<MediaService>, DatabaseConnection, tempfile::Tem
     let directory = tempfile::tempdir().expect("temporary object directory should be created");
     let storage = StorageRuntime::local(&LocalStorageConfig {
         base_dir: directory.path().display().to_string(),
-        base_url: "/media".to_string(),
+        base_url: String::new(),
         fsync: false,
     })
-    .expect("local object store should initialize");
+    .expect("local object store should initialize without a direct public URL");
 
     (
-        Arc::new(MediaService::new(database.clone(), storage)),
+        Arc::new(MediaService::new(database.clone(), storage.clone())),
+        Arc::new(MediaPublicImageService::new(database.clone(), storage)),
         database,
         directory,
     )
@@ -99,6 +106,7 @@ fn png_upload(tenant_id: Uuid, name: &str) -> UploadInput {
 
 async fn exercise_provider(
     read: &dyn MediaAssetReadPort,
+    public_images: &dyn MediaPublicImageReadPort,
     write: &dyn MediaAssetWritePort,
     tenant_id: Uuid,
     asset_id: Uuid,
@@ -133,6 +141,32 @@ async fn exercise_provider(
         (item.width, item.height)
     );
     assert_eq!(descriptor.url, item.public_url);
+    assert_eq!(item.public_url, item.storage_path);
+
+    let public_asset = public_images
+        .get_public_image_asset(
+            read_context(tenant_id),
+            asset_id,
+            Some("  Public profile image  ".to_string()),
+        )
+        .await
+        .expect("public image selection should cross the provider boundary");
+    assert_eq!(public_asset.asset.id, item.id);
+    assert_eq!(public_asset.asset.tenant_id, tenant_id);
+    let public_descriptor = public_asset
+        .descriptor
+        .expect("storage-relative image should receive an owner capability URL");
+    assert_eq!(public_descriptor.alt.as_deref(), Some("Public profile image"));
+    assert_eq!(
+        (public_descriptor.width, public_descriptor.height),
+        (item.width, item.height)
+    );
+    assert!(
+        public_descriptor
+            .url
+            .starts_with(&format!("/api/media/public/images/{asset_id}/"))
+    );
+    assert_ne!(public_descriptor.url, item.storage_path);
 
     assert!(
         read.get_translations(read_context(tenant_id), asset_id)
@@ -219,11 +253,17 @@ async fn exercise_provider(
         Uuid::new_v4().to_string(),
     );
     let policy_error = read
-        .get_asset(missing_deadline, asset_id)
+        .get_asset(missing_deadline.clone(), asset_id)
         .await
         .expect_err("deadline policy should cross the provider boundary");
     assert_eq!(policy_error.kind, PortErrorKind::Timeout);
     assert_eq!(policy_error.code, "port.deadline_required");
+    let public_policy_error = public_images
+        .get_public_image_asset(missing_deadline, asset_id, None)
+        .await
+        .expect_err("public image deadline policy should cross the provider boundary");
+    assert_eq!(public_policy_error.kind, PortErrorKind::Timeout);
+    assert_eq!(public_policy_error.code, "port.deadline_required");
 
     write
         .delete_asset(write_context(tenant_id, "delete"), asset_id)
@@ -235,11 +275,17 @@ async fn exercise_provider(
         .expect_err("deleted asset should retain typed not-found semantics");
     assert_eq!(deleted.kind, PortErrorKind::NotFound);
     assert_eq!(deleted.code, "media.not_found");
+    let deleted_public = public_images
+        .get_public_image_asset(read_context(tenant_id), asset_id, None)
+        .await
+        .expect_err("deleted public image should retain typed not-found semantics");
+    assert_eq!(deleted_public.kind, PortErrorKind::NotFound);
+    assert_eq!(deleted_public.code, "media.public_image_not_found");
 }
 
 #[tokio::test]
 async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
-    let (service, database, _directory) = test_service().await;
+    let (service, public_images, database, _directory) = test_service().await;
     let tenant_id = Uuid::new_v4();
     seed_tenant(&database, tenant_id).await;
 
@@ -249,6 +295,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         .expect("embedded asset should upload");
     exercise_provider(
         service.as_ref(),
+        public_images.as_ref(),
         service.as_ref(),
         tenant_id,
         embedded_asset.id,
@@ -271,6 +318,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         MediaGrpcOperation::GetAsset,
         MediaGrpcOperation::ListAssets,
         MediaGrpcOperation::GetImageDescriptor,
+        MediaGrpcOperation::GetPublicImageAsset,
         MediaGrpcOperation::GetTranslations,
         MediaGrpcOperation::PrepareUpload,
         MediaGrpcOperation::CompleteUpload,
@@ -279,7 +327,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         MediaGrpcOperation::ReconcileStorage,
     ]);
     let server_service = MediaServiceServer::with_interceptor(
-        MediaGrpcService::new(service.clone()),
+        MediaGrpcService::new(service.clone()).with_public_image_provider(public_images.clone()),
         move |mut request: tonic::Request<()>| {
             request.extensions_mut().insert(authority.clone());
             Ok(request)
@@ -306,7 +354,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         .upload(png_upload(tenant_id, "remote.png"))
         .await
         .expect("remote asset should upload through the Media-owned binary path");
-    exercise_provider(&remote, &remote, tenant_id, remote_asset.id).await;
+    exercise_provider(&remote, &remote, &remote, tenant_id, remote_asset.id).await;
 
     let _ = shutdown_tx.send(());
     server.await.expect("loopback server task should stop");

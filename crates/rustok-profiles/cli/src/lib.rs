@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::Utc;
-use rustok_api::{PortActor, PortContext};
+use rustok_api::{PortActor, PortContext, PortError};
 use rustok_auth::{
     AuthUserBackfillDbReader, AuthUserBackfillReadPort, AuthUserBackfillReadRequest,
 };
@@ -14,10 +14,18 @@ use rustok_core::events::EventTransport;
 use rustok_customer::CustomerService;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use rustok_profiles::{ProfileService, ProfileVisibility, ProfilesReader};
+use rustok_profiles::{
+    ProfileBackfillTimer, ProfileError, ProfileService, ProfileVisibility, ProfilesReader,
+};
 use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_tenant::{TenantReadPort, TenantReadRequest, TenantReadSelector, TenantService};
 use uuid::Uuid;
+
+const BACKFILL_HOST_ERROR: &str = "profiles.backfill_host_unavailable";
+const BACKFILL_TENANT_READ_ERROR: &str = "profiles.backfill_tenant_read_failed";
+const BACKFILL_USER_READ_ERROR: &str = "profiles.backfill_user_read_failed";
+const BACKFILL_ENRICHMENT_READ_ERROR: &str = "profiles.backfill_enrichment_read_failed";
+const BACKFILL_EVENT_PUBLISH_ERROR: &str = "profiles.backfill_event_publish_failed";
 
 pub struct ProfilesCommandProvider {
     runtime: RuntimeComposition,
@@ -55,10 +63,16 @@ impl ProfilesCommandProvider {
         let visibility = visibility(options)?;
         let dry_run = request.dry_run || flag(options, "dry_run");
         let emit_events = flag(options, "emit_events");
-        let host = self
-            .runtime
-            .require_host()
-            .map_err(|error| command_failed(error.to_string()))?;
+        let telemetry = ProfileBackfillTimer::start(tenant_id, dry_run, emit_events);
+        let host = self.runtime.require_host().map_err(|error| {
+            backfill_failed(
+                &telemetry,
+                "host_resolution",
+                BACKFILL_HOST_ERROR,
+                false,
+                error,
+            )
+        })?;
         let db = db_clone(host);
         let context = port_context(tenant_id);
         let tenant = TenantService::new(db.clone())
@@ -70,18 +84,41 @@ impl ProfilesCommandProvider {
                 },
             )
             .await
-            .map_err(|error| command_failed(error.message))?;
+            .map_err(|error| {
+                backfill_port_failed(
+                    &telemetry,
+                    "tenant_read",
+                    BACKFILL_TENANT_READ_ERROR,
+                    error,
+                )
+            })?;
         let users = AuthUserBackfillDbReader::new(db.clone())
             .list_users_for_profile_backfill(AuthUserBackfillReadRequest { tenant_id, limit })
             .await
-            .map_err(command_failed)?;
+            .map_err(|error| {
+                backfill_failed(
+                    &telemetry,
+                    "user_read",
+                    BACKFILL_USER_READ_ERROR,
+                    true,
+                    error,
+                )
+            })?;
         let enrichments = CustomerService::new(db.clone())
             .list_profile_enrichment(
                 tenant_id,
                 &users.iter().map(|user| user.id).collect::<Vec<_>>(),
             )
             .await
-            .map_err(command_failed)?
+            .map_err(|error| {
+                backfill_failed(
+                    &telemetry,
+                    "enrichment_read",
+                    BACKFILL_ENRICHMENT_READ_ERROR,
+                    true,
+                    error,
+                )
+            })?
             .into_iter()
             .map(|item| (item.user_id, item))
             .collect::<HashMap<_, _>>();
@@ -99,7 +136,7 @@ impl ProfilesCommandProvider {
                 Some(&tenant.default_locale),
             )
             .await
-            .map_err(command_failed)?;
+            .map_err(|error| backfill_profile_failed(&telemetry, "existing_profile_read", error))?;
         let scanned_users = users.len();
         let mut items = Vec::new();
         let mut skipped_existing = 0usize;
@@ -127,7 +164,7 @@ impl ProfilesCommandProvider {
                     visibility,
                 )
                 .await
-                .map_err(command_failed)?;
+                .map_err(|error| backfill_profile_failed(&telemetry, "profile_plan", error))?;
             if dry_run {
                 planned_creates += 1;
                 items.push(serde_json::json!({"user_id": user.id, "email": user.email, "handle": plan.handle, "display_name": plan.display_name, "preferred_locale": plan.preferred_locale, "action": "planned", "event_published": false}));
@@ -144,7 +181,7 @@ impl ProfilesCommandProvider {
                     Some(&tenant.default_locale),
                 )
                 .await
-                .map_err(command_failed)?;
+                .map_err(|error| backfill_profile_failed(&telemetry, "profile_create", error))?;
             let mut event_published = false;
             if result.created {
                 created_profiles += 1;
@@ -159,7 +196,15 @@ impl ProfilesCommandProvider {
                         },
                     )
                     .await
-                    .map_err(command_failed)?;
+                    .map_err(|error| {
+                        backfill_failed(
+                            &telemetry,
+                            "event_publish",
+                            BACKFILL_EVENT_PUBLISH_ERROR,
+                            true,
+                            error,
+                        )
+                    })?;
                     published_events += 1;
                     event_published = true;
                 }
@@ -168,6 +213,13 @@ impl ProfilesCommandProvider {
             }
             items.push(serde_json::json!({"user_id": user.id, "email": user.email, "handle": result.profile.handle, "display_name": result.profile.display_name, "preferred_locale": result.profile.preferred_locale, "action": if result.created { "created" } else { "skipped" }, "event_published": event_published}));
         }
+        telemetry.finish_success(
+            scanned_users,
+            skipped_existing,
+            planned_creates,
+            created_profiles,
+            published_events,
+        );
         Ok(CommandOutcome::success("Profiles backfill complete").with_data(serde_json::json!({"generated_at": Utc::now().to_rfc3339(), "tenant_id": tenant.id, "tenant_slug": tenant.slug, "tenant_default_locale": tenant.default_locale, "dry_run": dry_run, "emit_events": emit_events, "visibility": visibility.to_string(), "limit": limit, "scanned_users": scanned_users, "skipped_existing": skipped_existing, "planned_creates": planned_creates, "created_profiles": created_profiles, "published_events": published_events, "items": items})))
     }
 }
@@ -270,6 +322,33 @@ fn display_name(item: &rustok_customer::CustomerProfileEnrichment) -> Option<Str
         (None, Some(last)) => Some(last.to_string()),
         (None, None) => None,
     }
+}
+fn backfill_port_failed(
+    telemetry: &ProfileBackfillTimer,
+    stage: &'static str,
+    error_code: &'static str,
+    error: PortError,
+) -> CliCoreError {
+    telemetry.finish_failure(stage, error_code, error.retryable);
+    command_failed(error.message)
+}
+fn backfill_profile_failed(
+    telemetry: &ProfileBackfillTimer,
+    stage: &'static str,
+    error: ProfileError,
+) -> CliCoreError {
+    telemetry.finish_failure(stage, error.code(), error.is_retryable());
+    command_failed(error)
+}
+fn backfill_failed(
+    telemetry: &ProfileBackfillTimer,
+    stage: &'static str,
+    error_code: &'static str,
+    retryable: bool,
+    error: impl std::fmt::Display,
+) -> CliCoreError {
+    telemetry.finish_failure(stage, error_code, retryable);
+    command_failed(error)
 }
 fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
     CliCoreError::CommandFailed {

@@ -52,6 +52,8 @@ ssr = [
   "rustok-pricing-storefront/ssr",
   "dep:rustok-product-storefront",
   "rustok-product-storefront/ssr",
+  "dep:rustok-profiles-storefront",
+  "rustok-profiles-storefront/ssr",
   "dep:rustok-region-storefront",
   "rustok-region-storefront/ssr",
   "dep:rustok-search-storefront",
@@ -104,6 +106,7 @@ rustok-navigation-storefront = { path = "../../crates/rustok-navigation/storefro
 rustok-payment-storefront = { path = "../../crates/rustok-payment/storefront", default-features = false, optional = true }
 rustok-pricing-storefront = { path = "../../crates/rustok-pricing/storefront", default-features = false, optional = true }
 rustok-product-storefront = { path = "../../crates/rustok-product/storefront", default-features = false, optional = true }
+rustok-profiles-storefront = { path = "../../crates/rustok-profiles/storefront", default-features = false, optional = true }
 rustok-region-storefront = { path = "../../crates/rustok-region/storefront", default-features = false, optional = true }
 rustok-search-storefront = { path = "../../crates/rustok-search/storefront", default-features = false, optional = true }
 console_error_panic_hook = "0.1"
@@ -142,6 +145,7 @@ normal = [
   "rustok-payment-storefront",
   "rustok-pricing-storefront",
   "rustok-product-storefront",
+  "rustok-profiles-storefront",
   "rustok-region-storefront",
   "rustok-search-storefront",
 ]

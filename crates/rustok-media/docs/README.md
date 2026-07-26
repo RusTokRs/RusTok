@@ -1,59 +1,65 @@
 # Documentation `rustok-media`
 
-`rustok-media` is the domain owner and metadata index for media asset
-management on the platform. It handles images, video and PDF assets while
-calling the host-provided `object_store` runtime directly; `rustok-storage`
-only constructs that runtime and enforces canonical keys.
+`rustok-media` is the domain owner and metadata index for media asset management on the platform. It handles images, video and PDF assets while calling the host-provided `object_store` runtime directly; `rustok-storage` only constructs that runtime and enforces canonical keys.
 
 ## Purpose
 
-- publish the canonical runtime media contract for upload, list, delete and translation scenarios;
-- keep media metadata, classification, validation and transport surfaces inside the module;
-- provide a platform media capability without diluting domain logic across the host layer.
+- publish the canonical runtime media contract for upload, list, delete, translation, and public image delivery scenarios;
+- keep media metadata, classification, validation, byte delivery, and transport surfaces inside the module;
+- provide a platform media capability without diluting domain logic across host or consumer layers.
 
 ## Scope
 
-- `MediaService`, media entities/DTOs and the translation update contract with locale/text normalization at the runtime boundary;
-- REST upload/list/get/delete/translation handlers on a narrow `MediaHttpRuntime` with explicit DB/storage handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a framework adapter;
-- typed cross-module image contract `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile`, `MediaImagePublicUrlPolicy` and `proxy_path` helper for explicit direct-public/proxy-required/not-addressable URL policy;
-- FBA provider contract `MediaAssetReadPort` / `media.asset_read.v1` with source-locked evidence for deadline/context guards, typed `PortError` retryability and `MediaAssetSummary` kind/usage metadata;
-- FBA owner control contract `MediaAssetWritePort` / `media.asset_write.v1` for upload target
-  preparation/completion, delete, translation, and tenant-scoped reconciliation; binary bytes stay
-  on Media-owned streaming REST or short-lived presigned S3 PUT targets, outside generic port DTOs;
-- loopback-verified `rustok-media-transport` tonic adapters for all read/write
-  control operations; gRPC propagates deadlines and exact typed owner errors
-  while binary bodies remain outside the service. Remote calls require a
-  server-side `TrustedMediaAuthority` extension; caller-supplied tenant and
-  principal fields are never authoritative;
+- `MediaService`, media entities/DTOs, and translation update normalization;
+- REST upload/list/get/delete/translation handlers on a narrow `MediaHttpRuntime` with explicit DB/storage handles;
+- typed cross-module image contract `MediaImageDescriptor`, delivery profile, and direct-public/proxy-required/not-addressable URL policy;
+- `MediaAssetReadPort` and `MediaAssetWritePort` metadata/control contracts;
+- `MediaPublicImageReadPort`, which returns one owner result containing the canonical `MediaItem` and the public descriptor selected by Media policy;
+- `MediaPublicImageService`, which turns only storage-relative image descriptors into `/api/media/public/images/{id}/{checksum_sha256}` capability URLs;
+- an unauthenticated Media-owned capability GET that derives tenant authority from `TenantContext`, verifies the active ready image blob and checksum, reads the object, and returns immutable bytes with ETag, content length/type, and `nosniff`;
+- loopback-verified `rustok-media-transport` tonic adapters for the existing generic metadata/control operations. Binary bodies remain outside gRPC; parity for the new public-image capability remains an explicit future extraction gate;
 - GraphQL and REST adapters of the module;
 - upload validation by size/MIME policy and tenant isolation before accessing storage;
-- module-owned admin UI package `rustok-media-admin` with FFA split `core`/`transport`/`ui/leptos`; native server functions use `HostRuntimeContext` and the host-provided `StorageRuntime` instead of a host-wide `AppContext`;
-- observability signals for upload, delete, rendition latency/outcome, upload sessions,
-  reconciliation outcomes, and storage health;
-- translation normalization: `locale` trim/lowercase, empty `title`/`alt_text`/`caption` are stored as `None`, translation lists are returned in stable order by locale;
-- owner-local lifecycle persistence in `media_assets`, `media_blobs`, `media_renditions`, `media_upload_sessions`, `media_translations`, and durable `media_port_operations`; the former Content-owned `media` migration no longer exists.
-- reconciliation contract: `reconcile_storage` probes exact immutable object keys with a rotating persisted cursor, marks a missing active blob as failed without deleting evidence, isolates missing rendition results, retries transient failures, completes persisted delete tombstones, and removes only eligible staging objects; `MediaReconciliationReport` exposes healthy, missing, deletion, and retry counts.
-- `rustok-media-cli` provides `media reconcile`; it explicitly builds `StorageRuntime` from the host-neutral CLI storage settings and invokes the Media service across tenants.
-- the image pipeline emits immutable JPEG, PNG, WebP, and AVIF renditions with golden-output,
-  orientation, animated-input rejection, memory, timeout, and concurrency tests;
-- Local and env-gated S3-compatible integration tests exercise the same Media lifecycle;
+- module-owned admin UI package `rustok-media-admin`;
+- observability signals for upload, delete, rendition, upload sessions, reconciliation, and storage health;
+- owner-local lifecycle persistence and restart-safe reconciliation;
+- immutable image renditions with bounded processing;
+- Local and env-gated S3-compatible lifecycle integration sources.
+
+## Public image delivery contract
+
+1. A consumer requests a public image descriptor through `MediaPublicImageReadPort` with a deadline-bound `PortContext`.
+2. Media loads only the tenant-scoped active asset and ready active blob.
+3. Media returns the canonical `MediaItem` so the consumer can apply its own owner relation rule, such as Profiles uploader validation.
+4. Absolute/root-relative public URLs remain unchanged.
+5. Storage-relative image paths are replaced inside Media with a capability URL containing the asset id and active blob SHA-256. Consumers do not see or reconstruct the object key.
+6. Opaque or non-image references return no descriptor.
+7. The capability GET repeats tenant, lifecycle, image MIME, checksum, and object-size validation before reading bytes.
+8. Invalid id, checksum, tenant, lifecycle, state, or MIME combinations are exposed uniformly as not found. Storage/database failures use static unavailable responses and retain details only in logs.
+9. The URL is immutable for one active blob and carries one-year immutable cache semantics. A new active blob receives a different checksum URL; a deleted/failed asset no longer resolves.
+
+Direct-public media has the same public-delivery revocation model as before: once a public URL is disclosed, intermediary/client cache lifetime is governed by its immutable content identity. Consumers must not use this capability for private binary delivery.
 
 ## Integration
 
-- uses the host-provided direct `object_store` runtime; Media rows keep immutable object
-  references and lifecycle metadata, never a backend/driver name;
-- `apps/server` remains the composition root and wiring layer for media routes/graphql;
-- runtime guard relies on tenant-scoped module enablement for public surfaces;
-- upload remains REST-owned, GraphQL is preserved for read/mutation flows without multipart extension, and the Leptos admin adapter calls the transport facade instead of the raw API module; the transport facade inside the admin package splits native server functions, the GraphQL selected path and REST upload adapters, while upload/detail presentation state remains in Leptos-free `admin/src/core.rs`;
-- `rustok-seo` and owner SEO providers consume `MediaImageDescriptor` as the sole image boundary for OG/Twitter/schema fallback; descriptor normalization covers explicit MIME, dropping invalid sizes, cleaning query/fragment, delivery profile classification and public URL policy for storage-relative paths requiring a proxy;
-- `MediaAssetReadPort` requires deadline semantics, UUID tenant context and returns typed `PortError`: validation/access/not-found errors are non-retryable, while storage/database failures are returned as retryable unavailable; descriptor consumers must not directly publish storage-relative paths in public metadata and must route `ProxyRequired` descriptors through the host proxy.
+- uses the host-provided direct `object_store` runtime; Media rows keep immutable object references and lifecycle metadata;
+- `apps/server` remains the composition root and wiring layer for media routes/GraphQL;
+- runtime guard relies on tenant resolution for public image delivery and tenant-scoped module enablement for other public surfaces;
+- Profiles consumes the owner descriptor and separately revalidates tenant, profile uploader, and image MIME before presentation;
+- `rustok-seo` and other metadata consumers may emit only Media-approved public descriptors;
+- no consumer reads Media tables, object keys, or storage handles directly;
+- whole-module remote extraction must define how the Media-owned public URL and byte endpoint are reached before claiming provider parity. The current capability is embedded-runtime source-complete only.
 
 ## Verification
 
+- `cargo test -p rustok-media --test public_image_proxy -- --nocapture`
+- `node scripts/verify/verify-media-public-image-proxy.mjs`
 - `cargo xtask module validate media`
 - `cargo xtask module test media`
 - `cargo test -p rustok-media-transport`
-- targeted tests for upload validation, translation normalization, reconciliation classification, local object lifecycle and admin-facing read/write contracts
+- existing targeted upload, translation, lifecycle, reconciliation, admin, Local, and S3 suites.
+
+These commands are maintainer-run and were not executed while publishing this slice.
 
 ## Related documents
 
@@ -62,9 +68,3 @@ only constructs that runtime and enforces canonical keys.
 - [Admin package](../admin/README.md)
 - [gRPC transport](../../rustok-media-transport/docs/README.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
-
-## Host boundary notes
-
-- `load_media_usage_snapshot` remains an owner service API for usage statistics.
-- The GraphQL field `mediaUsage` and DTO `MediaUsageStats` belong to `rustok-media::graphql::MediaQuery`;
-  `apps/server::SystemQuery` does not import the media API and only participates in the overall schema composition.

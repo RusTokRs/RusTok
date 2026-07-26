@@ -18,6 +18,15 @@ canonical-document write/read projection for the Next admin contract. Do not
 add new `rt_json`/Markdown aliases, `content_json` fields, or local renderers;
 the Leptos/storefront and storage-schema cutover must finish atomically.
 
+The host GraphQL composition binds `rustok-profiles::ProfileSummaryLoader` to
+the current request audience. Existing Blog post/list author batches therefore
+apply the Profiles owner visibility matrix before localized profile/tag loading.
+Anonymous requests receive only active public authors, authenticated requests
+also receive active authenticated authors and their own private profile, and
+service principals never claim profile ownership. Restricted, hidden, blocked,
+missing, and cross-tenant summaries remain absent without per-author reads or a
+Blog GraphQL schema change.
+
 The host path limiter protects `/api/*`, including Blog REST and GraphQL. Blog
 adds field-aware GraphQL classification backed by the host
 `SharedApiRateLimiter`. Anonymous keys use only the host-resolved client IP.
@@ -86,6 +95,7 @@ outbox publication.
 - Category HTTP errors retain typed status semantics.
 - GraphQL rate-limit exceeded responses preserve HTTP `Retry-After`.
 - Comment public/admin projections remain isolated by owner contracts.
+- Blog GraphQL author cards use the request-scoped Profiles privacy loader.
 - Blog Next post forms use one shared `RichTextDocument` editor and consume
   server-rendered `RichTextView` HTML; no format selector or local post
   renderer remains in that path.
@@ -138,10 +148,13 @@ outbox publication.
     parser, constants, OAuth groups, built-in roles, public authority, Blog owner,
     HTTP adapter, module registration, tests, evidence, and guardrails.
 12. Removed alternate category permission paths and made
-   `TransactionalEventBus` a required `CategoryService` constructor argument.
+    `TransactionalEventBus` a required `CategoryService` constructor argument.
 13. Added the Blog article richtext owner boundary: fixed `article` profile
     validation, canonical root JSON writes, and server HTML/plain-text
     projections for the Next admin post API/form.
+14. Bound GraphQL post/list `authorProfile` batches to the request audience through
+    the Profiles owner privacy loader, preserving one base-row privacy query per
+    batch and omitting restricted summaries before localized profile/tag reads.
 
 ## Next results
 
@@ -189,6 +202,9 @@ outbox publication.
 - `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
 - `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`
+- request-audience composition and `ProfileSummaryLoader` privacy tests cover
+  anonymous, authenticated, owner-private, service-principal, hidden, missing,
+  and cross-tenant author summaries
 - `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `node scripts/verify/verify-comments-thread-write-invariants.mjs`

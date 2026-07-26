@@ -18,6 +18,7 @@ default = [
     "embed-storefront",
     "mod-product",
     "mod-profiles",
+    "mod-social_graph",
     "mod-region",
     "mod-pricing",
     "mod-inventory",
@@ -52,7 +53,8 @@ embed-storefront = ["dep:rustok-storefront"]
 mod-cart      = ["dep:rustok-cart", "rustok-distribution/mod-cart"]
 mod-customer  = ["dep:rustok-customer", "rustok-distribution/mod-customer"]
 mod-product   = ["dep:rustok-product", "mod-taxonomy", "rustok-distribution/mod-product"]
-mod-profiles  = ["dep:rustok-profiles", "mod-taxonomy", "rustok-distribution/mod-profiles"]
+mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport", "mod-media", "mod-taxonomy", "rustok-distribution/mod-profiles"]
+mod-social_graph = ["rustok-social-graph/graphql"]
 mod-groups    = ["dep:rustok-groups", "rustok-groups/graphql", "rustok-distribution/mod-groups"]
 mod-region    = ["dep:rustok-region", "rustok-distribution/mod-region"]
 mod-pricing   = ["dep:rustok-pricing", "mod-product", "rustok-distribution/mod-pricing"]
@@ -137,6 +139,7 @@ rustok-taxonomy  = { workspace = true, optional = true }
 rustok-storage   = { workspace = true, features = ["s3"] }
 object_store.workspace = true
 rustok-media     = { workspace = true, optional = true }
+rustok-media-transport = { workspace = true, optional = true }
 rustok-seo       = { workspace = true, optional = true }
 rustok-index.workspace = true
 rustok-search = { workspace = true, features = ["graphql"] }

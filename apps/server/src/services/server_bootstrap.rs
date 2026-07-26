@@ -10,6 +10,7 @@ use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
 use crate::services::cache_runtime::ensure_cache_service;
 use crate::services::channel_cache_invalidation::start_channel_cache_invalidation_listener;
+use crate::services::profile_media_public_image_deployment::configure_profile_media_public_image_deployment;
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::rbac_invalidation_generation::start_rbac_invalidation_generation_watchdog;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
@@ -122,6 +123,7 @@ pub async fn bootstrap_application_router(
     rustok_settings: RustokSettings,
 ) -> Result<AxumRouter> {
     tracing::info!("RusTok application bootstrap started");
+    configure_profile_media_public_image_deployment(&runtime_ctx).await?;
     let runtime =
         bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
