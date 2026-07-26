@@ -37,6 +37,7 @@ const indexMigration = read(contract.notifications_index_migration_file ?? "");
 const migrationRegistry = read(contract.notifications_migration_registry ?? "");
 const library = read(contract.notifications_lib_file ?? "");
 const readme = read(contract.notifications_readme ?? "");
+const liveContract = read(contract.notifications_live_contract ?? "");
 const proof = read(contract.sqlite_proof ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const note = read(contract.owner_note ?? "");
@@ -74,6 +75,7 @@ for (const key of [
   "delivery_attempts_unchanged",
   "sqlite_contract_proof",
   "owner_contract_note",
+  "live_contract_synchronized",
 ]) {
   if (contract.composition?.[key] !== true) {
     failures.push(`group-summary contract must record ${key}`);
@@ -239,6 +241,28 @@ for (const marker of [
 ]) {
   requireText(readme, marker, `notifications README is missing ${marker}`);
 }
+
+for (const marker of [
+  "Seven ordered module-local PostgreSQL/SQLite migrations",
+  "NotificationInboxSelectedStateService",
+  "NotificationInboxGroupListService",
+  "NotificationInboxGroupSummaryService",
+  "idx_notifications_group_summary",
+  "inbox_group_summary_sqlite",
+  "FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE",
+]) {
+  requireText(liveContract, marker, `notifications live contract is missing ${marker}`);
+}
+rejectText(
+  liveContract,
+  "Five module-local PostgreSQL/SQLite migrations",
+  "notifications live contract must not retain the five-migration claim",
+);
+rejectText(
+  liveContract,
+  "arbitrary selected-ID bulk mutations plus grouped views",
+  "notifications live contract must not retain delivered selected/grouped residuals",
+);
 
 if (
   upstream.schema_version !== 1 ||
