@@ -10,9 +10,9 @@ open-time authorization, bounded authorized inbox listing, exact
 seen/read/mark-unread/archive state APIs, exact unread counting, bounded
 mark-all-read, bounded mark-all-unread, bounded mark-all-archive, bounded
 selected-ID state commands, bounded exact-recipient reconciliation, durable
-target group-key population, bounded exact-group listing, and bounded group
-summaries with stored counts plus an authorized latest-item projection. Channel
-delivery remains a later workflow.
+target group-key population, bounded exact-group listing, bounded group
+summaries with stored counts plus an authorized latest-item projection, and
+bounded exact-group state commands. Channel delivery remains a later workflow.
 
 ## Responsibilities
 
@@ -46,6 +46,8 @@ delivery remains a later workflow.
 - archive one bounded exact-recipient non-archived page through the exact state
   owner;
 - apply one bounded explicit-ID state command set through the exact state owner;
+- apply one bounded exact-group mark-read, mark-unread, or archive command through
+  the exact state owner;
 - reconcile one bounded exact-recipient page against current privacy/source policy;
 - own replay, reconciliation, retention, and delivery lifecycle.
 
@@ -71,6 +73,7 @@ delivery remains a later workflow.
 - `NotificationInboxListService` and bounded list request/page/read-model contracts;
 - `NotificationInboxGroupListService` and bounded exact-group request contracts;
 - `NotificationInboxGroupSummaryService` and bounded group-summary request/page contracts;
+- `NotificationInboxGroupStateService` and bounded exact-group state request/page contracts;
 - `NotificationInboxStateService` and exact state request/decision/snapshot contracts;
 - `NotificationInboxUnreadCountService` and exact count request/result contracts;
 - `NotificationInboxMarkAllReadService` and bounded request/page contracts;
@@ -107,7 +110,8 @@ metadata.
 
 The seventh migration adds `idx_notifications_group_summary`, a partial index over
 non-archived grouped rows ordered by exact recipient latest activity. Existing
-`idx_notifications_group` continues to serve exact group scans and stored counts.
+`idx_notifications_group` continues to serve exact group scans, bounded group-state
+selection, and stored counts.
 
 Global `rustok-migrations` composition remains a maintainer verification gate.
 
@@ -238,9 +242,8 @@ decision.
 
 The service exposes only state and inbox timestamps, calls no privacy/source or
 delivery owner, and creates no delivery attempt. SQLite owner evidence is
-`tests/inbox_state_sqlite.rs`. Exact-item and bounded mark-all/selected-ID state
-commands are delivered. Group-level state commands, transport adapters, and UI
-remain closed.
+`tests/inbox_state_sqlite.rs`. Exact-item, bounded mark-all, selected-ID, and bounded
+exact-group state commands are delivered. External transport adapters and grouped UI remain closed.
 
 ### 6. Exact unread count
 
@@ -372,8 +375,26 @@ group cursor advances. Retryable owner failures abort without a partial result.
 Counts reflect stored owner state rather than privacy-filtered rows and converge
 after reconciliation archives unavailable rows. The read changes no state or inbox
 timestamp and creates no delivery attempt. SQLite evidence is
-`tests/inbox_group_summary_sqlite.rs`. Group-level mark-read, mark-unread, and
-archive commands, transport adapters, and grouped UI remain open.
+`tests/inbox_group_summary_sqlite.rs`.
+
+### 13. Bounded exact-group state commands
+
+`NotificationInboxGroupStateService` accepts one exact tenant, recipient, opaque
+group key, typed action, optional cursor, and limit. Requests default to 20 eligible
+rows and are capped at 64. Selection is ordered by `created_at DESC, id DESC` and
+is action-specific: unread/seen for `mark_read`, seen/read for `mark_unread`, and
+all non-archived rows for `archive`.
+
+Each selected identity delegates to `NotificationInboxStateService`, preserving
+direct unread-to-read timestamp equality, seen-to-read history, mark-unread timestamp
+clearing, and terminal archive. Continuation derives from the last scanned eligible
+row. The response exposes only `scanned`, `changed`, `next_cursor`, and `has_more`.
+Missing, foreign, and already-satisfied scopes are empty without notification
+identity. The command calls no privacy/source/target/delivery owner and changes no
+delivery attempt.
+
+SQLite evidence is `tests/inbox_group_state_sqlite.rs`; the source guard is
+`scripts/verify/verify-forum-notification-inbox-group-state.mjs`.
 
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
@@ -394,8 +415,7 @@ continue to succeed when the module is absent or disabled.
 
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
-- group-level mark-read, mark-unread, and archive commands plus moderator-directory
-  expansion;
+- bounded moderator-directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and module-owned grouped UI;
 - channel delivery enqueue with delivery-time authorization;
