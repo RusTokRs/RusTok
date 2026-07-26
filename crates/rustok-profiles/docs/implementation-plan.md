@@ -50,8 +50,8 @@ GraphQL self-service profile writes now emit one stable owner-operation telemetr
    **Next verification:** compile and exercise `rustok-cli profiles backfill` against supported runtime inputs, then bind the same stable operation telemetry without logging source email or generated handle values.
 
 5. **Add audit and operational capabilities from defined owner contracts.**
-   **Status:** in progress. Stable GraphQL self-service operation names, success/failure outcomes, duration, stable non-value-bearing `ProfileError` codes, retryability, and `profile.updated` publication outcomes are source-complete and locked by the Profiles source verifier. `PresentationUnavailable` is now handled by the mutation error mapper instead of leaving a non-exhaustive branch.
-   **Remaining:** extend telemetry to CLI backfill and Social Graph follow commands, define durable audit/command receipts and reconciliation, add rollout/rollback guidance, reconcile the central readiness registries after updating the branch from current `main`, and collect retained runtime evidence.
+   **Status:** in progress. Stable GraphQL self-service operation names, success/failure outcomes, duration, stable non-value-bearing `ProfileError` codes, retryability, and `profile.updated` publication outcomes are source-complete and locked by the Profiles source verifier. `PresentationUnavailable` is handled by both GraphQL query and mutation error mappers.
+   **Remaining:** extend telemetry to CLI backfill and Social Graph follow commands, define durable audit/command receipts and reconciliation, add rollout/rollback guidance, reconcile the central FFA/FBA readiness board after updating the branch from current `main`, and collect retained runtime evidence.
    **Done when:** operations have typed owner ports, stable error/recovery guidance, retained evidence, and no auth/customer leakage.
 
 ## Recheck checkpoint — 2026-07-26
@@ -60,8 +60,9 @@ GraphQL self-service profile writes now emit one stable owner-operation telemetr
 - Rechecked privacy-before-presentation ordering, bounded followers-only reads, owner-scoped follow commands, Media-owned public descriptors, shared provider composition, optimistic revision recovery, and the no-write-retry rule at source level.
 - Closed the storefront transport-policy gap: unknown configured transport values no longer silently select Native, and the source verifier now locks this fail-closed behavior.
 - Added the first stable owner-operation telemetry contract for GraphQL self-service writes and `profile.updated` publication, with duration/outcome/error classification and explicit sensitive-field exclusions.
-- Fixed the missing GraphQL mutation mapping for `ProfileError::PresentationUnavailable`.
-- Central `docs/modules/registry.md` and `docs/modules/implementation-plans-registry.md` still contain the pre-UI Profiles status on current `main`; reconcile them after the branch is updated so concurrent registry changes are preserved.
+- Fixed missing GraphQL query and mutation mappings for `ProfileError::PresentationUnavailable`.
+- Synchronized `docs/modules/implementation-plans-registry.md` with the current Profiles status and nearest priority using the current `main` version as the base.
+- `docs/modules/registry.md` still contains the pre-UI Profiles FFA/FBA row; reconcile that large readiness board only from a complete current-main file so concurrent registry changes are preserved.
 - Compilation, tests, formatters, verifier execution, workflows, and runtime evidence remain maintainer-run and were not executed for this checkpoint.
 
 ## Verification
