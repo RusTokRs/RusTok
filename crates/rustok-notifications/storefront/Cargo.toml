@@ -11,8 +11,18 @@ crate-type = ["rlib"]
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr"]
+ssr = [
+  "leptos/ssr",
+  "rustok-api/server",
+  "dep:leptos_axum",
+  "dep:rustok-api",
+  "dep:rustok-notifications",
+]
 
 [dependencies]
 leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+rustok-api = { workspace = true, default-features = false, optional = true }
+rustok-notifications = { path = "..", optional = true }
 serde = { workspace = true, features = ["derive"] }
+uuid.workspace = true
