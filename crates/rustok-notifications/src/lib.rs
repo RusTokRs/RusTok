@@ -7,6 +7,7 @@ mod inbox;
 mod inbox_bulk;
 mod inbox_count;
 mod inbox_group;
+mod inbox_group_state;
 mod inbox_group_summary;
 mod inbox_reconcile;
 mod inbox_selected;
@@ -62,6 +63,10 @@ pub use inbox_count::{
 pub use inbox_group::{
     MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES, NotificationInboxGroupListRequest,
     NotificationInboxGroupListService,
+};
+pub use inbox_group_state::{
+    NotificationInboxGroupStateAction, NotificationInboxGroupStatePage,
+    NotificationInboxGroupStateRequest, NotificationInboxGroupStateService,
 };
 pub use inbox_group_summary::{
     NotificationInboxGroupSummary, NotificationInboxGroupSummaryPage,
