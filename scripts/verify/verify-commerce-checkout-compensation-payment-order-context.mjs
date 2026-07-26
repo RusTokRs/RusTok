@@ -203,11 +203,7 @@ for (const [content, value, label] of [
   ],
   [orderBlock, 'OrderStatusKind::Cancelled', 'order cancelled validation'],
   [orderBlock, 'order owner returned no compensation result', 'order missing-result reconciliation'],
-  [
-    inventoryBlock,
-    '.map_err(|error| boundary_error("release_inventory", error))?',
-    'inventory release remains out of scope',
-  ],
+  [inventoryBlock, 'release_inventory_by_identity(', 'inventory release remains mounted'],
   [
     cartBlock,
     '.map_err(|error| boundary_error("read_cart", error))?',
@@ -240,5 +236,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Checkout payment/order compensation retain owner context without changing inventory/cart paths or public envelopes',
+  '✔ Checkout payment/order compensation retain owner context without changing cart paths or public envelopes',
 );
