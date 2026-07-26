@@ -393,6 +393,8 @@ mod pricing_read_owner_boundary {
     }
 }
 
+pub(crate) use pricing_read_owner_boundary::in_process_pricing_read_port as contextual_pricing_read_port;
+
 mod rustok_cart_shim {
     pub use ::rustok_cart::{
         CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
