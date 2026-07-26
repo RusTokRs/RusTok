@@ -10,8 +10,9 @@ open-time authorization, bounded authorized inbox listing, exact
 seen/read/mark-unread/archive state APIs, exact unread counting, bounded
 mark-all-read, bounded mark-all-unread, bounded mark-all-archive, bounded
 selected-ID state commands, bounded exact-recipient reconciliation, durable
-target group-key population, and bounded exact-group listing. Channel delivery
-remains a later workflow.
+target group-key population, bounded exact-group listing, and bounded group
+summaries with stored counts plus an authorized latest-item projection. Channel
+delivery remains a later workflow.
 
 ## Responsibilities
 
@@ -34,6 +35,8 @@ remains a later workflow.
 - list exact-recipient inbox rows through bounded sparse keyset pages;
 - list one exact stored notification group through the same authorization-aware
   sparse pagination contract;
+- summarize non-archived groups through bounded latest-activity pages with exact
+  stored item/unread counts and an authorized latest item;
 - apply exact-item seen/read/mark-unread/archive transitions with terminal archive;
 - count exact-recipient unread owner state without deriving totals from list pages;
 - mark one bounded exact-recipient unread/seen page as read through the exact state
@@ -67,6 +70,7 @@ remains a later workflow.
 - `NotificationInboxOpenService` and exact open request/decision contracts;
 - `NotificationInboxListService` and bounded list request/page/read-model contracts;
 - `NotificationInboxGroupListService` and bounded exact-group request contracts;
+- `NotificationInboxGroupSummaryService` and bounded group-summary request/page contracts;
 - `NotificationInboxStateService` and exact state request/decision/snapshot contracts;
 - `NotificationInboxUnreadCountService` and exact count request/result contracts;
 - `NotificationInboxMarkAllReadService` and bounded request/page contracts;
@@ -78,14 +82,15 @@ remains a later workflow.
 
 ## Persistence
 
-The owner exposes six ordered PostgreSQL/SQLite migrations:
+The owner exposes seven ordered PostgreSQL/SQLite migrations:
 
 1. `m20260721_000010_create_notification_persistence`;
 2. `m20260722_000011_create_notification_source_inbox`;
 3. `m20260722_000012_add_candidate_processing`;
 4. `m20260723_000013_add_outbox_intake_receipts`;
 5. `m20260723_000014_add_outbox_intake_rejections`;
-6. `m20260726_000015_populate_notification_group_keys`.
+6. `m20260726_000015_populate_notification_group_keys`;
+7. `m20260726_000016_add_notification_group_summary_index`.
 
 Accepted outbox envelopes receive a durable receipt linked to the semantic source
 inbox row. Permanently invalid envelopes receive an owner-local quarantine row;
@@ -99,6 +104,10 @@ backend-specific insert triggers. Missing keys become
 is bounded by the existing 191-byte group-key contract and groups notification
 variants for one source-owned target UUID without changing target authorization
 metadata.
+
+The seventh migration adds `idx_notifications_group_summary`, a partial index over
+non-archived grouped rows ordered by exact recipient latest activity. Existing
+`idx_notifications_group` continues to serve exact group scans and stored counts.
 
 Global `rustok-migrations` composition remains a maintainer verification gate.
 
@@ -230,8 +239,8 @@ decision.
 The service exposes only state and inbox timestamps, calls no privacy/source or
 delivery owner, and creates no delivery attempt. SQLite owner evidence is
 `tests/inbox_state_sqlite.rs`. Exact-item and bounded mark-all/selected-ID state
-commands are delivered. Aggregate grouped views, transport adapters, and UI remain
-closed.
+commands are delivered. Group-level state commands, transport adapters, and UI
+remain closed.
 
 ### 6. Exact unread count
 
@@ -338,15 +347,33 @@ as `g1:{target_owner}:{target_id}` and backfills historical null values. Explici
 keys remain unchanged. PostgreSQL uses a `BEFORE INSERT` trigger; SQLite uses an
 `AFTER INSERT` trigger whose update completes inside the inserting transaction.
 
-`NotificationInboxGroupListService` then selects one exact tenant, recipient, and
-stored group key with an optional exact state filter. It reuses the shared 20/64
-bounds, the versioned `i1` cursor, and the open-time privacy/source authorization
-pipeline. Sparse pages advance by raw rows. The read mutates no inbox timestamp and
-creates no delivery attempt.
+`NotificationInboxGroupListService` selects one exact tenant, recipient, and stored
+group key with an optional exact state filter. It reuses the shared 20/64 bounds,
+the versioned `i1` cursor, and the open-time privacy/source authorization pipeline.
+Sparse pages advance by raw rows. The read mutates no inbox timestamp and creates
+no delivery attempt.
 
 SQLite evidence is `tests/group_key_population_sqlite.rs` and
-`tests/inbox_group_listing_sqlite.rs`. Group summaries, per-group unread totals,
-latest-item projections, transport adapters, and grouped UI remain open.
+`tests/inbox_group_listing_sqlite.rs`.
+
+### 12. Bounded group summaries
+
+`NotificationInboxGroupSummaryService` selects only groups with at least one
+non-archived row for one exact tenant and recipient. Raw groups are ordered by their
+latest non-archived `created_at DESC, id DESC` row and use the shared 20/64 page
+bounds plus the versioned `i1` cursor.
+
+Each summary exposes the opaque group key, exact stored non-archived `item_count`,
+exact stored `unread_count`, and the typed latest inbox item without a target route.
+The latest row reuses `NotificationInboxOpenService`, so recipient privacy is
+checked before source authorization. Suppressed groups are omitted while the raw
+group cursor advances. Retryable owner failures abort without a partial result.
+
+Counts reflect stored owner state rather than privacy-filtered rows and converge
+after reconciliation archives unavailable rows. The read changes no state or inbox
+timestamp and creates no delivery attempt. SQLite evidence is
+`tests/inbox_group_summary_sqlite.rs`. Group-level mark-read, mark-unread, and
+archive commands, transport adapters, and grouped UI remain open.
 
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
@@ -367,10 +394,10 @@ continue to succeed when the module is absent or disabled.
 
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
-- group summaries, group unread totals, latest-item projections, and
-  moderator-directory expansion;
+- group-level mark-read, mark-unread, and archive commands plus moderator-directory
+  expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- external inbox transport adapters and module-owned UI;
+- external inbox transport adapters and module-owned grouped UI;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - retention, quarantine replay/purge, and administrative repair.
