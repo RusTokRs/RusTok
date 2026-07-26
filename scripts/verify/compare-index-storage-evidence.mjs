@@ -1,7 +1,17 @@
 #!/usr/bin/env node
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs';
 import {
@@ -10,17 +20,25 @@ import {
 } from './index-storage-database-settings-contract.mjs';
 
 const prefix = '[compare-index-storage-evidence]';
+const corePath = fileURLToPath(new URL('./compare-index-storage-evidence-core.mjs', import.meta.url));
+const scriptPath = fileURLToPath(import.meta.url);
 
 const preflightArgs = (args) => {
   const inputs = [];
   let output = 'evidence/index-storage/comparison';
+  let outputProvided = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (argument === '--help' || argument === '-h') return null;
+    if (argument === '--help' || argument === '-h') {
+      if (args.length !== 1) throw new Error('help must be the only argument');
+      return null;
+    }
     if (argument === '--input' && args[index + 1] && !args[index + 1].startsWith('--')) {
       inputs.push(args[++index]);
     } else if (argument === '--output' && args[index + 1] && !args[index + 1].startsWith('--')) {
+      if (outputProvided) throw new Error('--output was provided more than once');
       output = args[++index];
+      outputProvided = true;
     } else {
       return null;
     }
@@ -90,18 +108,84 @@ const finalizeDatabaseSettingsContract = ({ inputs, output }) => {
   writeFileSync(markdownPath, lines.join('\n'));
 };
 
-const main = async () => {
-  const parsed = preflightArgs(process.argv.slice(2));
-  if (parsed !== null) {
-    for (const input of parsed.inputs) validatePacketReadOrdering(input);
-  }
-  await import('./compare-index-storage-evidence-core.mjs');
-  if (parsed !== null) finalizeDatabaseSettingsContract(parsed);
+const forwardOutput = (stream, value) => {
+  if (typeof value === 'string' && value.length !== 0) stream.write(value);
 };
 
-try {
-  await main();
-} catch (error) {
-  console.error(`${prefix} ${error.message}`);
-  process.exitCode = 1;
+const runCore = ({ args, spawn = spawnSync, stdout = process.stdout, stderr = process.stderr }) => {
+  const result = spawn(process.execPath, [corePath, ...args], {
+    encoding: 'utf8',
+    env: process.env,
+  });
+  forwardOutput(stdout, result.stdout);
+  forwardOutput(stderr, result.stderr);
+  if (result.error) throw result.error;
+  if (result.signal) throw new Error(`comparator core terminated by signal ${result.signal}`);
+  return result.status ?? 1;
+};
+
+export const runComparatorCoreWithAtomicComparison = ({
+  inputs,
+  output,
+  spawn = spawnSync,
+  finalizeComparison = finalizeDatabaseSettingsContract,
+  rename = renameSync,
+  stdout = process.stdout,
+  stderr = process.stderr,
+}) => {
+  const outputJson = path.join(output, 'comparison.json');
+  const outputMarkdown = path.join(output, 'comparison.md');
+  rmSync(outputJson, { force: true });
+  mkdirSync(output, { recursive: true });
+  const stagingRoot = mkdtempSync(path.join(output, '.comparison-staging-'));
+  let published = false;
+  try {
+    const args = inputs.flatMap((input) => ['--input', input]);
+    args.push('--output', stagingRoot);
+    const status = runCore({ args, spawn, stdout, stderr });
+    if (status !== 0) return status;
+
+    finalizeComparison({ inputs, output: stagingRoot });
+    const stagedJson = path.join(stagingRoot, 'comparison.json');
+    const stagedMarkdown = path.join(stagingRoot, 'comparison.md');
+    if (!existsSync(stagedJson) || !existsSync(stagedMarkdown)) {
+      throw new Error('comparator core exited successfully without complete comparison outputs');
+    }
+
+    rename(stagedMarkdown, outputMarkdown);
+    rename(stagedJson, outputJson);
+    published = true;
+    return 0;
+  } finally {
+    try {
+      rmSync(stagingRoot, { recursive: true, force: true });
+    } catch (error) {
+      if (!published) throw error;
+      forwardOutput(stderr, `${prefix} unable to remove staging directory: ${error.message}\n`);
+    }
+  }
+};
+
+const main = () => {
+  const args = process.argv.slice(2);
+  const parsed = preflightArgs(args);
+  if (parsed === null) {
+    const status = runCore({ args });
+    if (status !== 0) process.exitCode = status;
+    return;
+  }
+
+  rmSync(path.join(parsed.output, 'comparison.json'), { force: true });
+  for (const input of parsed.inputs) validatePacketReadOrdering(input);
+  const status = runComparatorCoreWithAtomicComparison(parsed);
+  if (status !== 0) process.exitCode = status;
+};
+
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(scriptPath)) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`${prefix} ${error.message}`);
+    process.exitCode = 1;
+  }
 }

@@ -31,6 +31,8 @@ Global `--help` and `-h` are accepted only as the sole router argument. The `pac
 
 Only `comparison.json` emitted through the official comparator wrapper is valid decision input. Direct output from `compare-index-storage-evidence-core.mjs` is intentionally incomplete because it does not finalize the observed PostgreSQL database-settings methodology. Do not add the missing fields by hand.
 
+A real comparison attempt revokes any previous `comparison.json` decision-input marker before packet ordering preflight. The comparator core and PostgreSQL methodology finalization run in a unique private staging directory. Finalized Markdown is published before `comparison.json`, so JSON is the last success marker exposed to decision preparation. Core failure, incomplete output, methodology failure, or publication failure leaves no decision-input JSON and no staging residue.
+
 The accepted methodology contains the exact ordered `comparable_database_fields` contract:
 
 - `server_version_num`;
