@@ -12,6 +12,7 @@ Module-owned storefront surface for public profiles and follow/unfollow controls
 - self profiles never render a follow action;
 - missing, restricted, hidden, blocked, and cross-tenant profiles share one unavailable state;
 - native and GraphQL transports are selected explicitly and never fall back to each other;
+- missing `RUSTOK_UI_TRANSPORT_PROFILE` deliberately selects Native, while explicit values are limited to `native` and `graphql`; unknown configured values fail closed instead of silently changing transport;
 - optimistic revisions are retained after successful writes and revision-bearing reads;
 - after a failed write, the UI performs one read-only state refresh and never retries the mutation automatically;
 - avatar/banner presentation calls `MediaPublicImageReadPort`, then Profiles revalidates tenant, uploader, and image MIME before rendering;
