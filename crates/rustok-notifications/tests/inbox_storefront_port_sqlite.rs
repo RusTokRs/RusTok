@@ -101,10 +101,12 @@ async fn storefront_port_derives_exact_user_scope_for_reads_and_open() {
     let other_tenant_id = Uuid::from_u128(2);
     let recipient_id = Uuid::from_u128(3);
     let other_recipient_id = Uuid::from_u128(4);
+    let other_tenant_recipient_id = Uuid::from_u128(5);
     insert_tenant(&db, tenant_id).await;
     insert_tenant(&db, other_tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
     insert_user(&db, tenant_id, other_recipient_id).await;
+    insert_user(&db, other_tenant_id, other_tenant_recipient_id).await;
 
     let base = fixed_time();
     seed_notification(
@@ -144,7 +146,7 @@ async fn storefront_port_derives_exact_user_scope_for_reads_and_open() {
         &db,
         Uuid::from_u128(14),
         other_tenant_id,
-        recipient_id,
+        other_tenant_recipient_id,
         GROUP_B,
         Uuid::from_u128(104),
         NotificationState::Unread,
