@@ -34,6 +34,16 @@ const databaseMetadata = () => ({
   date_style: 'ISO, YMD',
   extra_float_digits: '3',
 });
+const runProvenance = () => ({
+  repository: process.env.GITHUB_REPOSITORY ?? 'RusTokRs/RusTok',
+  commit: process.env.GITHUB_SHA ?? 'a'.repeat(40),
+  ref: process.env.GITHUB_REF ?? 'refs/heads/agent/index-evidence',
+  run_id: process.env.GITHUB_RUN_ID ?? '123456',
+  run_attempt: process.env.GITHUB_RUN_ATTEMPT ?? '1',
+  job: process.env.GITHUB_JOB ?? 'evidence',
+  runner_os: process.env.RUNNER_OS ?? 'Linux',
+  runner_arch: process.env.RUNNER_ARCH ?? 'X64',
+});
 
 const sql = (relation, workload) => {
   if (workload === 'exact_count') {
@@ -46,7 +56,9 @@ const sql = (relation, workload) => {
 };
 
 const report = () => ({
+  generated_at: '2026-07-25T00:00:00Z',
   database: databaseMetadata(),
+  provenance: runProvenance(),
   source_workloads: workloads.map((name) => ({
     name,
     sql: `${sql('idx_bench_source.product', name)}   \n`,
@@ -64,8 +76,16 @@ const withPacket = (mutate, callback) => {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-read-ordering-'));
   try {
     const read = report();
-    const mutation = { database: databaseMetadata() };
-    const maintenance = { database: databaseMetadata() };
+    const mutation = {
+      generated_at: '2026-07-25T00:01:00Z',
+      database: databaseMetadata(),
+      provenance: runProvenance(),
+    };
+    const maintenance = {
+      generated_at: '2026-07-25T00:02:00Z',
+      database: databaseMetadata(),
+      provenance: runProvenance(),
+    };
     mutate?.(read, mutation, maintenance);
     mkdirSync(root, { recursive: true });
     writeFileSync(path.join(root, 'read-report.json'), `${JSON.stringify(read, null, 2)}\n`, 'utf8');
@@ -77,7 +97,11 @@ const withPacket = (mutate, callback) => {
   }
 };
 
-const run = (root) => spawnSync(process.execPath, [script, '--input', root], { encoding: 'utf8' });
+const run = (root, env = process.env) => spawnSync(
+  process.execPath,
+  [script, '--input', root],
+  { encoding: 'utf8', env },
+);
 
 const expectFailure = (mutate, pattern) => {
   withPacket(mutate, (root) => {
@@ -122,6 +146,56 @@ test('rejects a mutation report without observed database metadata', () => {
   expectFailure((_read, mutation) => {
     delete mutation.database;
   }, /mutation-report\.json\.database must be an object/u);
+});
+
+test('rejects missing report provenance fields', () => {
+  expectFailure((_read, mutation) => {
+    delete mutation.provenance.run_attempt;
+  }, /mutation-report\.json\.provenance fields mismatch/u);
+});
+
+test('rejects cross-report run provenance drift', () => {
+  expectFailure((_read, mutation) => {
+    mutation.provenance.commit = 'b'.repeat(40);
+  }, /mutation-report\.json\.provenance\.commit must match read-report\.json run provenance/u);
+});
+
+test('rejects report provenance from a different current GitHub job', () => {
+  withPacket(null, (root) => {
+    const differentCommit = runProvenance().commit === 'b'.repeat(40)
+      ? 'c'.repeat(40)
+      : 'b'.repeat(40);
+    const result = run(root, {
+      ...process.env,
+      INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE: '1',
+      GITHUB_REPOSITORY: runProvenance().repository,
+      GITHUB_SHA: differentCommit,
+      GITHUB_REF: runProvenance().ref,
+      GITHUB_RUN_ID: runProvenance().run_id,
+      GITHUB_RUN_ATTEMPT: runProvenance().run_attempt,
+      GITHUB_JOB: runProvenance().job,
+      RUNNER_OS: runProvenance().runner_os,
+      RUNNER_ARCH: runProvenance().runner_arch,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /read\.provenance\.commit must match current GITHUB_SHA/u);
+  });
+});
+
+test('rejects stale packet provenance from another report run', () => {
+  withPacket(null, (root) => {
+    const staleCommit = runProvenance().commit === 'b'.repeat(40)
+      ? 'c'.repeat(40)
+      : 'b'.repeat(40);
+    writeFileSync(path.join(root, 'provenance.json'), `${JSON.stringify({
+      ...runProvenance(),
+      commit: staleCommit,
+      packet_contract_version: 2,
+    }, null, 2)}\n`, 'utf8');
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /provenance\.json\.provenance\.commit must match read-report\.json run provenance/u);
+  });
 });
 
 test('accepts comment tokens inside strings and comments after executable ordering', () => {
@@ -200,4 +274,15 @@ test('rejects workload order drift before checking SQL text', () => {
       value.source_workloads[0],
     ];
   }, /source workload order mismatch/u);
+});
+
+test('rejects help combined with evidence arguments', () => {
+  const result = spawnSync(
+    process.execPath,
+    [script, '--help', '--input', 'missing-evidence'],
+    { encoding: 'utf8' },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /help must be the only argument/u);
+  assert.equal(result.stdout, '');
 });

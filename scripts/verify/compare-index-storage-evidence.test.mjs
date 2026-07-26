@@ -138,6 +138,21 @@ function writePacket(root, scale, overrides = {}) {
   const sourceNames = overrides.sourceWorkloads ?? readWorkloads;
   const readRepetitions = overrides.readRepetitions ?? 3;
   const mutationRepetitions = overrides.mutationRepetitions ?? 3;
+  const reportProvenance = {
+    repository: process.env.GITHUB_REPOSITORY ?? 'RusTokRs/RusTok',
+    commit: process.env.GITHUB_SHA ?? '0123456789abcdef0123456789abcdef01234567',
+    ref: process.env.GITHUB_REF ?? 'refs/heads/main',
+    run_id: process.env.GITHUB_RUN_ID ?? (scale === '100k' ? '100' : '101'),
+    run_attempt: process.env.GITHUB_RUN_ATTEMPT ?? '1',
+    job: process.env.GITHUB_JOB ?? 'index-storage-scale',
+    runner_os: process.env.RUNNER_OS ?? 'Linux',
+    runner_arch: process.env.RUNNER_ARCH ?? 'X64',
+  };
+  for (const field of Object.keys(reportProvenance)) {
+    if (Object.hasOwn(overrides.provenance ?? {}, field)) {
+      reportProvenance[field] = overrides.provenance[field];
+    }
+  }
 
   const source_workloads = sourceNames.map((name) => {
     const index = readWorkloads.indexOf(name);
@@ -150,6 +165,7 @@ function writePacket(root, scale, overrides = {}) {
   });
   const read = {
     generated_at: generatedAt,
+    provenance: { ...reportProvenance },
     result_digest_contract: overrides.readDigestContract ?? resultDigestContract,
     database: databaseMetadata(overrides.database),
     dataset: {
@@ -192,6 +208,7 @@ function writePacket(root, scale, overrides = {}) {
 
   const mutation = {
     generated_at: generatedAt,
+    provenance: { ...reportProvenance },
     database: databaseMetadata({ ...overrides.database, ...overrides.mutationDatabase }),
     dataset_scale: values.debug,
     repetitions: 3,
@@ -214,6 +231,7 @@ function writePacket(root, scale, overrides = {}) {
 
   const maintenance = {
     generated_at: generatedAt,
+    provenance: { ...reportProvenance },
     database: databaseMetadata({ ...overrides.database, ...overrides.maintenanceDatabase }),
     dataset_scale: values.serialized,
     cycles: overrides.maintenanceCycles ?? 5,
@@ -235,15 +253,8 @@ function writePacket(root, scale, overrides = {}) {
   const provenance = {
     packet_contract_version: 2,
     generated_at: generatedAt,
-    repository: 'RusTokRs/RusTok',
-    commit: '0123456789abcdef0123456789abcdef01234567',
-    ref: 'refs/heads/main',
-    run_id: scale === '100k' ? '100' : '101',
-    run_attempt: '1',
-    job: 'index-storage-scale',
+    ...reportProvenance,
     postgres_image: 'postgres:16',
-    runner_os: 'Linux',
-    runner_arch: 'X64',
     scale,
     repetitions: 3,
     churn_cycles: 5,
@@ -269,7 +280,13 @@ const runComparator = (inputs, output) => {
   const args = [scriptPath];
   for (const input of inputs) args.push('--input', input);
   args.push('--output', output);
-  return spawnSync('node', args, { encoding: 'utf8' });
+  return spawnSync('node', args, {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE: '0',
+    },
+  });
 };
 const withFixture = (callback) => {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-comparison-'));
@@ -301,7 +318,7 @@ test('same-commit complete 100k and 1m evidence is decision-ready', () => {
     assert.deepEqual(report.methodology.comparable_database_fields, comparableDatabaseFields);
     assert.match(report.methodology.database_settings_source, /observed from the active PostgreSQL benchmark session/u);
     const markdown = readFileSync(path.join(output, 'comparison.md'), 'utf8');
-    for (const field of comparableDatabaseFields) assert.match(markdown, new RegExp(`\\\`${field}\\\``, 'u'));
+    for (const field of comparableDatabaseFields) assert.match(markdown, new RegExp(`\`${field}\``, 'u'));
     assert.equal(report.cross_scale_ratios.source_workloads[0].result_rows_ratio_1m_to_100k, 10);
   });
 });

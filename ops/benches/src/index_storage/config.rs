@@ -96,12 +96,42 @@ impl DatasetConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BenchmarkRunProvenance {
+    pub repository: Option<String>,
+    pub commit: Option<String>,
+    #[serde(rename = "ref")]
+    pub git_ref: Option<String>,
+    pub run_id: Option<String>,
+    pub run_attempt: Option<String>,
+    pub job: Option<String>,
+    pub runner_os: Option<String>,
+    pub runner_arch: Option<String>,
+}
+
+impl BenchmarkRunProvenance {
+    fn from_env() -> Self {
+        let value = |name| env::var(name).ok().filter(|value| !value.is_empty());
+        Self {
+            repository: value("GITHUB_REPOSITORY"),
+            commit: value("GITHUB_SHA"),
+            git_ref: value("GITHUB_REF"),
+            run_id: value("GITHUB_RUN_ID"),
+            run_attempt: value("GITHUB_RUN_ATTEMPT"),
+            job: value("GITHUB_JOB"),
+            runner_os: value("RUNNER_OS"),
+            runner_arch: value("RUNNER_ARCH"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
     pub database_url: String,
     pub dataset: DatasetConfig,
     pub repetitions: u32,
     pub output_path: PathBuf,
+    pub run_provenance: BenchmarkRunProvenance,
 }
 
 impl BenchmarkConfig {
@@ -130,6 +160,7 @@ impl BenchmarkConfig {
             dataset: DatasetConfig::for_scale(scale, locales)?,
             repetitions,
             output_path,
+            run_provenance: BenchmarkRunProvenance::from_env(),
         })
     }
 }

@@ -1,10 +1,12 @@
-use rustok_benchmarks::index_storage::{BenchmarkConfig, run, write_report};
+use rustok_benchmarks::index_storage::{
+    BenchmarkConfig, run, write_provenance_bound_report,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = BenchmarkConfig::from_env()?;
     let report = run(&config).await?;
-    write_report(&config.output_path, &report)?;
+    write_provenance_bound_report(&config.output_path, &report, &config.run_provenance)?;
 
     println!(
         "index storage benchmark complete: scale={:?}, product_rows={}, output={}",
