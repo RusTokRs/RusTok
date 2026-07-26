@@ -71,6 +71,8 @@ for (const key of [
   "client_transport_wrappers",
   "request_dtos_exclude_owner_identity",
   "auth_context_extraction",
+  "service_principal_rejected",
+  "canonical_auth_port_actor_mapping",
   "tenant_context_extraction",
   "request_context_extraction",
   "auth_tenant_match_required",
@@ -107,19 +109,19 @@ for (const key of [
   }
 }
 
-for (const sync of [
-  contract.canonical_plan_sync,
-  contract.notifications_local_plan_sync,
-]) {
-  if (sync?.status !== "pending" || sync.required_ledger_through !== "FORUM-20AH") {
-    failures.push("Forum and Notifications ledgers must remain pending through FORUM-20AH");
-  }
+if (
+  contract.canonical_plan_sync?.status !== "pending" ||
+  contract.canonical_plan_sync?.required_ledger_through !== "FORUM-20AH" ||
+  contract.canonical_plan_sync?.current_plan_through !== "FORUM-20G"
+) {
+  failures.push("canonical Forum ledger must remain pending from FORUM-20G through FORUM-20AH");
 }
-if (contract.canonical_plan_sync?.current_plan_through !== "FORUM-20G") {
-  failures.push("pending canonical plan sync must identify FORUM-20G");
-}
-if (contract.notifications_local_plan_sync?.current_plan_through !== "FORUM-20AA") {
-  failures.push("pending Notifications plan sync must identify FORUM-20AA");
+if (
+  contract.notifications_local_plan_sync?.status !== "pending" ||
+  contract.notifications_local_plan_sync?.required_ledger_through !== "FORUM-20AH" ||
+  contract.notifications_local_plan_sync?.current_plan_through !== "FORUM-20AA"
+) {
+  failures.push("Notifications ledger must remain pending from FORUM-20AA through FORUM-20AH");
 }
 if (
   contract.notifications_owner_docs_sync?.status !== "pending" ||
@@ -134,11 +136,7 @@ requireText(
   "External transport adapters and grouped UI remain closed",
   "pending owner README sync must remain explicit",
 );
-requireText(
-  liveContract,
-  "grouped UI",
-  "pending live-contract sync must remain explicit",
-);
+requireText(liveContract, "grouped UI", "pending live-contract sync must remain explicit");
 
 for (const marker of [
   "pub struct NotificationStorefrontUnreadCount",
@@ -175,14 +173,12 @@ for (const marker of [
   "load_notification_group_items",
   "authorize_notification_open",
   "apply_notification_group_state",
-  "load_notification_storefront_state()",
   "NotificationStorefrontState::foundation()",
 ]) {
   requireText(transport, marker, `storefront transport is missing ${marker}`);
 }
-for (const marker of ["pub use core::*;", "pub use transport::*;"]) {
-  requireText(library, marker, `storefront library is missing ${marker}`);
-}
+requireText(library, "pub use core::*;", "storefront library must export transport models");
+requireText(library, "pub use transport::*;", "storefront library must export native functions");
 
 for (const endpoint of [
   "notifications/storefront/unread-count",
@@ -198,7 +194,8 @@ for (const marker of [
   "leptos_axum::extract::<TenantContext>()",
   "leptos_axum::extract::<RequestContext>()",
   "if auth.tenant_id != tenant.id",
-  "PortActor::user(auth.user_id.to_string())",
+  "if !auth.is_human_user_principal()",
+  "let actor = auth.port_actor();",
   ".with_deadline(Duration::from_secs(5))",
   ".with_channel(\"storefront\")",
   "context = context.with_claim(permission.to_string())",
@@ -219,13 +216,17 @@ for (const marker of [
 ]) {
   requireText(adapter, marker, `native adapter is missing ${marker}`);
 }
+rejectText(
+  adapter,
+  "PortActor::user(auth.user_id.to_string())",
+  "native adapter must not relabel service principals as users",
+);
 
 const authIndex = adapter.indexOf('authenticated_context("open", None).await?');
 const parseIndex = adapter.indexOf("Uuid::parse_str(request.notification_id.as_str())");
 if (!(authIndex >= 0 && parseIndex > authIndex)) {
   failures.push("open endpoint must authenticate before UUID validation");
 }
-
 for (const forbidden of [
   "NotificationSourceRegistry::default",
   "NotificationSourceRegistry::new",
@@ -239,7 +240,6 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  'ssr = [',
   '"rustok-api/server"',
   '"dep:leptos_axum"',
   '"dep:rustok-api"',
@@ -250,12 +250,8 @@ for (const marker of [
 ]) {
   requireText(cargo, marker, `storefront Cargo contract is missing ${marker}`);
 }
-for (const marker of [
-  '"dep:rustok-notifications-storefront"',
-  '"rustok-notifications-storefront/ssr"',
-]) {
-  requireText(appCargo, marker, `application storefront composition is missing ${marker}`);
-}
+requireText(appCargo, '"dep:rustok-notifications-storefront"', "application storefront must enable notifications package");
+requireText(appCargo, '"rustok-notifications-storefront/ssr"', "application storefront must enable notifications SSR adapter");
 
 for (const marker of [
   "native_storefront_requests_do_not_expose_owner_identity_fields",
@@ -278,29 +274,17 @@ for (const marker of [
 ]) {
   requireText(ownerPort, marker, `upstream owner port is missing ${marker}`);
 }
-for (const marker of [
-  "pub fn shared_get<T>",
-  "pub fn db_clone",
-  "with_extension_values",
-]) {
+for (const marker of ["pub fn shared_get<T>", "pub fn db_clone", "with_extension_values"]) {
   requireText(hostRuntime, marker, `host runtime is missing ${marker}`);
 }
-requireText(
-  runtimeExtensions,
-  "pub fn apply_to_host_runtime",
-  "runtime extensions must transfer values to HostRuntimeContext",
-);
-for (const marker of [
-  "materialize_notification_source_registry",
-  "extensions.insert(policy)",
-]) {
-  requireText(serverComposition, marker, `server composition is missing ${marker}`);
-}
+requireText(runtimeExtensions, "pub fn apply_to_host_runtime", "runtime extensions must transfer values to HostRuntimeContext");
+requireText(serverComposition, "materialize_notification_source_registry", "server must materialize source providers");
+requireText(serverComposition, "extensions.insert(policy)", "server must compose recipient policy runtime");
 
 for (const marker of [
   "native Leptos server-function adapter",
-  "AuthContext",
-  "TenantContext",
+  "OAuth service principals",
+  "AuthContext::port_actor",
   "HostRuntimeContext",
   "five-second deadline",
   "idempotency key",
@@ -310,7 +294,8 @@ for (const marker of [
 }
 for (const marker of [
   "# FORUM-20AH native notification storefront adapter",
-  "authentication and tenant admission occur before notification UUID parsing",
+  "OAuth service principals are rejected",
+  "authentication and tenant admission occur before notification",
   "Arc<NotificationSourceRegistry>",
   "NotificationRecipientPolicyRuntime",
   "source-ready / unvalidated",
