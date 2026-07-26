@@ -85,6 +85,11 @@ const scale = (name, factor) => ({
 const comparison = () => ({
   generated_at: '2026-07-24T12:00:00Z',
   methodology: {
+    source_oracle: 'normalized idx_bench_source workload result digests',
+    result_digest: 'ordered_length_prefixed_json_v1',
+    evidence_validation: 'fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities',
+    first_run: 'first EXPLAIN ANALYZE repetition',
+    warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
     automatic_winner_selection: false,
     comparable_database_fields: [...comparableDatabaseFields],
     database_settings_source: databaseSettingsSource,
@@ -198,7 +203,48 @@ test('rejects a comparison without the canonical database-settings methodology',
       '--output', decisionPath,
     ]);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract/u);
+    assert.match(result.stderr, /comparison methodology must contain exactly the canonical methodology fields/u);
+    assert.equal(existsSync(decisionPath), false);
+  });
+});
+
+test('rejects a renamed comparison methodology field', () => {
+  withFixture((root) => {
+    const comparisonPath = path.join(root, 'comparison.json');
+    const decisionPath = path.join(root, 'decision.json');
+    const value = comparison();
+    value.methodology.cold_run = value.methodology.first_run;
+    delete value.methodology.first_run;
+    writeJson(comparisonPath, value);
+    const result = run(prepareScript, [
+      '--comparison', comparisonPath,
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', decisionPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /comparison methodology must contain exactly the canonical methodology fields/u);
+    assert.equal(existsSync(decisionPath), false);
+  });
+});
+
+test('rejects an additional comparison methodology field', () => {
+  withFixture((root) => {
+    const comparisonPath = path.join(root, 'comparison.json');
+    const decisionPath = path.join(root, 'decision.json');
+    const value = comparison();
+    value.methodology.unreviewed_note = 'must not become decision input';
+    writeJson(comparisonPath, value);
+    const result = run(prepareScript, [
+      '--comparison', comparisonPath,
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', decisionPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /comparison methodology must contain exactly the canonical methodology fields/u);
     assert.equal(existsSync(decisionPath), false);
   });
 });
