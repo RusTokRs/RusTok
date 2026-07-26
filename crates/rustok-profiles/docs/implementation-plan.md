@@ -12,14 +12,14 @@ Self-service avatar/banner writes resolve references through the Media owner rea
 
 `rustok-media-transport` implements remote public descriptor reads and now owns validated extracted-client connection policy. The server defaults to embedded Media but may explicitly select `grpc` through environment configuration. External endpoints and public origins require HTTPS with webpki roots; plaintext requires explicit loopback opt-in; connection timeout is bounded; invalid remote variables are not silently ignored in embedded mode. The selected remote adapter is pre-seeded as `ProfileMediaPublicImageProvider` before runtime/schema materialization, and GraphQL plus native storefront receive the same wrapper. Profiles never imports the gRPC adapter type or endpoint configuration.
 
-`rustok-profiles-storefront` owns the first public profile UX slice. It mounts through `rustok-module.toml`, reads `?handle=` through `leptos-ui-routing`, provides SSR-first native server functions and a parallel GraphQL compatibility transport, renders approved avatar/banner descriptors with deterministic fallbacks, and exposes authenticated follow/unfollow controls through Social Graph owner contracts. Native and GraphQL reads consume a revision-bearing owner follow-state contract, and failed writes recover through one read-only refresh without automatic mutation retry. The host only mounts the package.
+`rustok-profiles-storefront` owns the first public profile UX slice. It mounts through `rustok-module.toml`, reads `?handle=` through `leptos-ui-routing`, provides SSR-first native server functions and a parallel GraphQL compatibility transport, renders approved avatar/banner descriptors with deterministic fallbacks, and exposes authenticated follow/unfollow controls through Social Graph owner contracts. Native and GraphQL reads consume a revision-bearing owner follow-state contract, and failed writes recover through one read-only refresh without automatic mutation retry. The host only mounts the package. The compile-time storefront transport accepts only `native` or `graphql`; an unknown configured value fails closed instead of silently selecting another transport.
 
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
 - FBA status: `not_started`
 - Structural shape: `core_transport_ui`
-- The module has a module-owned Leptos storefront package with framework-agnostic input/command/recovery and image-presentation policy, explicit transport selection, native and GraphQL adapters, locale bundles, and a UI adapter.
+- The module has a module-owned Leptos storefront package with framework-agnostic input/command/recovery and image-presentation policy, explicit fail-closed transport selection, native and GraphQL adapters, locale bundles, and a UI adapter.
 - Media has source-level embedded/loopback public-descriptor control-plane parity, and Profiles has source-complete selected-provider host composition plus fail-closed embedded/grpc deployment configuration. FBA remains `not_started` because mutual TLS/client identity, compiled/live provider-consumer behavior, fallback/recovery, public HTTP ingress, Local/S3 capability delivery, and runtime evidence have not been collected.
 
 ## Results and next work
@@ -38,10 +38,10 @@ Self-service avatar/banner writes resolve references through the Media owner rea
    **Done when:** GraphQL, presentation services, privacy ports, backfill, and every downstream author/member/customer card expose the same policy with retained evidence and no direct foreign-domain reads.
 
 3. **Publish module-owned profile storefront UI.**
-   **Status:** source-complete for the first Leptos slice plus optimistic recovery, accessibility hardening, Media capability presentation, shared host-selected public-image provider composition, and server-side embedded/grpc selection. `rustok-profiles-storefront` owns a manifest-mounted `/modules/profiles?handle=<handle>` page, public unavailable state, avatar/banner presentation, authenticated follow/unfollow control, self-profile suppression, package-owned en/ru messages, and explicit native/GraphQL transport selection with a `never falls back` policy. Follow-state reads retain optional owner revision; mutations generate unique idempotency keys and retain returned revisions. A failed mutation triggers one read-only state refresh, applies only a matching target state, and never retries the write automatically.
+   **Status:** source-complete for the first Leptos slice plus optimistic recovery, accessibility hardening, Media capability presentation, shared host-selected public-image provider composition, server-side embedded/grpc selection, and fail-closed storefront transport configuration. `rustok-profiles-storefront` owns a manifest-mounted `/modules/profiles?handle=<handle>` page, public unavailable state, avatar/banner presentation, authenticated follow/unfollow control, self-profile suppression, package-owned en/ru messages, and explicit native/GraphQL transport selection with a `never falls back` policy. Missing configuration defaults deliberately to Native; supported explicit values are `native` and `graphql`; any other configured value is rejected. Follow-state reads retain optional owner revision; mutations generate unique idempotency keys and retain returned revisions. A failed mutation triggers one read-only state refresh, applies only a matching target state, and never retries the write automatically.
    **Boundary:** `apps/storefront` only includes and mounts the package through generated module UI code. It does not own query strings, profile policy, Media URL classification/capability construction, Media transport type/endpoints, Social Graph persistence, or profile view-model logic.
-   **Remaining:** exercise embedded/remote Media providers, public origin routing, and unavailable startup behavior; collect SSR/hydrate/GraphQL route, auth, i18n, Media direct/proxy/fallback degradation, mutation-conflict/recovery, and accessibility runtime evidence; decide whether a profile directory/search contract is required; add operational telemetry.
-   **Done when:** module validation, route/i18n checks, native and GraphQL runtime parity, optimistic conflict recovery, audience states, direct-public/proxy/fallback media states, extracted Media routing, and accessibility have retained evidence.
+   **Remaining:** exercise embedded/remote Media providers, public origin routing, invalid/unavailable startup behavior, and both supported storefront transport profiles; collect SSR/hydrate/GraphQL route, auth, i18n, Media direct/proxy/fallback degradation, mutation-conflict/recovery, and accessibility runtime evidence; decide whether a profile directory/search contract is required; add operational telemetry.
+   **Done when:** module validation, route/i18n checks, native and GraphQL runtime parity, optimistic conflict recovery, audience states, direct-public/proxy/fallback media states, extracted Media routing, fail-closed configuration, and accessibility have retained evidence.
 
 4. **Move profile backfill to an owner-local operations adapter.**
    **Status:** source-complete; compiled/runtime verification pending. The module CLI provider uses owner-owned auth, tenant, and customer reads plus `OutboxTransport` for optional event publishing, preserves dry-run/event semantics, and does not import server models or query customer internals directly.
@@ -51,6 +51,13 @@ Self-service avatar/banner writes resolve references through the Media owner rea
    Introduce profile audit trail, observability, rollout guidance, Social Graph command receipts/outbox/reconciliation, and moderation repair commands without moving owner state into UI or host applications.
    **Depends on:** approved operational requirements and runtime evidence from the storefront/follower slice.
    **Done when:** operations have typed owner ports, stable error/recovery guidance, retained evidence, and no auth/customer leakage.
+
+## Recheck checkpoint — 2026-07-26
+
+- Reconciled the canonical plan with draft PR #2152 and current `main`.
+- Rechecked privacy-before-presentation ordering, bounded followers-only reads, owner-scoped follow commands, Media-owned public descriptors, shared provider composition, optimistic revision recovery, and the no-write-retry rule at source level.
+- Closed the storefront transport-policy gap: unknown configured transport values no longer silently select Native, and the source verifier now locks this fail-closed behavior.
+- Compilation, tests, formatters, verifier execution, workflows, and runtime evidence remain maintainer-run and were not executed for this checkpoint.
 
 ## Verification
 
@@ -78,6 +85,6 @@ Self-service avatar/banner writes resolve references through the Media owner rea
 6. GraphQL hosts must bind `ProfileSummaryLoader` to the current request audience; the schema-level constructor remains anonymous and fail-closed.
 7. Profile media references and descriptors must resolve through Media owner ports. Profiles may expose only Media-selected public descriptors, must revalidate tenant/uploader/MIME, and must never construct storage or capability URLs.
 8. Remote Media selection must be injected through `ProfileMediaPublicImageProvider`; Profiles must not know gRPC endpoints, Media object storage, public route construction, or deployment ingress.
-9. Module-owned UI must live under `crates/rustok-profiles/storefront`, read URL state through shared routing, use package-owned i18n, and keep transports explicit with no automatic fallback.
+9. Module-owned UI must live under `crates/rustok-profiles/storefront`, read URL state through shared routing, use package-owned i18n, keep transports explicit with no automatic fallback, and reject unknown configured transport profiles.
 10. Storefront follow controls must bind authenticated tenant/user through owner ports, suppress self-follow, use idempotency and optimistic revision semantics, recover stale state through read-only refresh, never retry writes automatically, and avoid exposing internal identifiers or transport details.
 11. Update Profiles and affected owner docs with every presentation-boundary change.
