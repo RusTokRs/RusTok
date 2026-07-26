@@ -10,6 +10,7 @@
   "notifications_migration_registry": "crates/rustok-notifications/src/migrations/mod.rs",
   "notifications_lib_file": "crates/rustok-notifications/src/lib.rs",
   "notifications_readme": "crates/rustok-notifications/README.md",
+  "notifications_live_contract": "crates/rustok-notifications/docs/README.md",
   "sqlite_proof": "crates/rustok-notifications/tests/inbox_group_summary_sqlite.rs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-notification-group-key-population.json",
   "source_verifier": "scripts/verify/verify-forum-notification-inbox-group-summaries.mjs",
@@ -86,6 +87,7 @@
     "delivery_attempts_unchanged": true,
     "sqlite_contract_proof": true,
     "owner_contract_note": true,
+    "live_contract_synchronized": true,
     "group_level_state_commands": false,
     "external_transport_adapter": false,
     "grouped_ui": false
