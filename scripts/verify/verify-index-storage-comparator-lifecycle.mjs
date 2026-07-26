@@ -29,7 +29,7 @@ requireMarkers(wrapper, 'comparator lifecycle wrapper', [
   'spawn = spawnSync',
   'finalizeComparison = finalizeDatabaseSettingsContract',
   'rename = renameSync',
-  "rmSync(outputJson, { force: true })",
+  'rmSync(outputJson, { force: true })',
   "const stagingRoot = mkdtempSync(path.join(output, '.comparison-staging-'))",
   "args.push('--output', stagingRoot)",
   'const status = runCore({ args, spawn, stdout, stderr })',
@@ -75,10 +75,12 @@ if ([stagingCreate, coreRun, methodology, markdownPublish, jsonPublish, cleanup]
 }
 
 requireMarkers(core, 'byte-preserved comparator core', [
-  "const prefix = '[compare-index-storage-evidence]'",
-  'decision_ready:',
-  'comparison.json',
-  'comparison.md',
+  'const die = (message) =>',
+  "const resultDigestContract = 'ordered_length_prefixed_json_v1'",
+  'const canonicalPrototypes = [',
+  'decision_ready: decisionContract.required_scales_present',
+  "writeFileSync(path.join(output, 'comparison.json')",
+  "writeFileSync(path.join(output, 'comparison.md')",
 ]);
 
 requireMarkers(fixture, 'comparator lifecycle fixture', [
