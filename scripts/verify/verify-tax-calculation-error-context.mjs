@@ -33,8 +33,14 @@ const between = (content, start, end, label) => {
 const calculationPort = between(
   source,
   'impl TaxCalculationPort for crate::TaxService {',
-  'fn validate_tax_request(',
+  'fn require_tax_calculation_policy(',
   'tax calculation port',
+);
+const policyHelper = between(
+  source,
+  'fn require_tax_calculation_policy(',
+  'fn validate_tax_request(',
+  'tax calculation policy helper',
 );
 const requestMapper = between(
   source,
@@ -56,13 +62,36 @@ const ownerMapper = between(
 );
 
 for (const [value, label] of [
-  ['use rustok_api::{PortCallPolicy, PortContext, PortError};', 'typed port imports'],
-  ['context.require_policy(PortCallPolicy::read())?;', 'read policy requirement'],
+  [
+    'use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};',
+    'typed port imports',
+  ],
   ['let owner_operation = "calculate_tax";', 'owner operation'],
+  [
+    'require_tax_calculation_policy(&context, owner_operation)?;',
+    'read policy requirement',
+  ],
   ['tax_error_to_port_error(&context, owner_operation, error)', 'context-aware owner mapper call'],
   ['validate_tax_request(&context, owner_operation, &request)', 'context-aware request validation'],
   ['validate_tax_result(', 'context-aware result validation'],
 ]) requireText(calculationPort, value, label);
+
+for (const [value, label] of [
+  [
+    'context.require_policy(PortCallPolicy::read()).map_err(|error| {',
+    'unchanged read policy admission',
+  ],
+  [
+    'log_tax_calculation_policy_rejection(context, owner_operation, &error);',
+    'policy rejection diagnostics',
+  ],
+  ['owner = "rustok_tax"', 'policy owner log'],
+  ['correlation_id = %context.correlation_id', 'policy correlation log'],
+  ['tenant_id = %context.tenant_id', 'policy tenant log'],
+  ['channel = ?context.channel', 'policy channel log'],
+  ['operation = owner_operation', 'policy operation log'],
+  ['boundary = TAX_CALCULATION_PORT_BOUNDARY', 'policy boundary log'],
+]) requireText(policyHelper, value, label);
 
 for (const [content, label] of [
   [requestMapper, 'tax request mapper'],
@@ -104,6 +133,7 @@ for (const value of [
   'PortError::validation("tax.validation", message)',
   'PortError::invariant_violation(code, detail)',
   '.map_err(tax_error_to_port_error)',
+  'context.require_policy(PortCallPolicy::read())?;\n        let owner_operation',
 ]) forbidText(source, value, 'unsafe tax public mapping');
 
 for (const [value, label] of [
