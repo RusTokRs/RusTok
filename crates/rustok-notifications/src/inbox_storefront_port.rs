@@ -9,11 +9,23 @@ use uuid::Uuid;
 
 use crate::candidate::NotificationRecipientPolicy;
 use crate::error::NotificationError;
-use crate::inbox::{NotificationInboxOpenDecision, NotificationInboxOpenRequest, NotificationInboxOpenService, NotificationInboxPage};
-use crate::inbox_count::{NotificationInboxUnreadCount, NotificationInboxUnreadCountRequest, NotificationInboxUnreadCountService};
+use crate::inbox::{
+    NotificationInboxOpenDecision, NotificationInboxOpenRequest, NotificationInboxOpenService,
+    NotificationInboxPage,
+};
+use crate::inbox_count::{
+    NotificationInboxUnreadCount, NotificationInboxUnreadCountRequest,
+    NotificationInboxUnreadCountService,
+};
 use crate::inbox_group::{NotificationInboxGroupListRequest, NotificationInboxGroupListService};
-use crate::inbox_group_state::{NotificationInboxGroupStateAction, NotificationInboxGroupStatePage, NotificationInboxGroupStateRequest, NotificationInboxGroupStateService};
-use crate::inbox_group_summary::{NotificationInboxGroupSummaryPage, NotificationInboxGroupSummaryRequest, NotificationInboxGroupSummaryService};
+use crate::inbox_group_state::{
+    NotificationInboxGroupStateAction, NotificationInboxGroupStatePage,
+    NotificationInboxGroupStateRequest, NotificationInboxGroupStateService,
+};
+use crate::inbox_group_summary::{
+    NotificationInboxGroupSummaryPage, NotificationInboxGroupSummaryRequest,
+    NotificationInboxGroupSummaryService,
+};
 use crate::model::NotificationState;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -133,7 +145,9 @@ pub fn in_process_notification_inbox_storefront_port(
     registry: Arc<NotificationSourceRegistry>,
     policy: Arc<dyn NotificationRecipientPolicy>,
 ) -> Arc<dyn NotificationInboxStorefrontPort> {
-    Arc::new(NotificationInboxStorefrontService::new(db, registry, policy))
+    Arc::new(NotificationInboxStorefrontService::new(
+        db, registry, policy,
+    ))
 }
 
 #[async_trait]
@@ -144,7 +158,7 @@ impl NotificationInboxStorefrontPort for NotificationInboxStorefrontService {
     ) -> Result<NotificationInboxUnreadCount, PortError> {
         let scope = resolve_scope(&context, PortCallPolicy::read())?;
         self.unread_count
-            .count(NotificationInboxUnreadCountRequest {
+            .count_unread(NotificationInboxUnreadCountRequest {
                 tenant_id: scope.tenant_id,
                 recipient_id: scope.recipient_id,
             })
@@ -266,7 +280,11 @@ fn resolve_scope(
     })
 }
 
-fn parse_non_nil_uuid(value: &str, code: &'static str, message: &'static str) -> Result<Uuid, PortError> {
+fn parse_non_nil_uuid(
+    value: &str,
+    code: &'static str,
+    message: &'static str,
+) -> Result<Uuid, PortError> {
     Uuid::parse_str(value)
         .ok()
         .filter(|value| !value.is_nil())
@@ -299,9 +317,8 @@ fn notification_error_to_port_error(error: NotificationError) -> PortError {
         | NotificationError::SourceIdentityConflict
         | NotificationError::CursorDidNotAdvance
         | NotificationError::InvalidDescriptor
-        | NotificationError::Serialization(_) => PortError::invariant_violation(
-            code,
-            "notification inbox result is invalid",
-        ),
+        | NotificationError::Serialization(_) => {
+            PortError::invariant_violation(code, "notification inbox result is invalid")
+        }
     }
 }
