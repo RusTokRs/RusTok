@@ -113,6 +113,8 @@ for (const marker of [
 ]) {
   assertContains(service, marker, `${paths.service}: transactional receipt integration missing: ${marker}`);
 }
+assertContains(service, "pub(crate) async fn set_relation_state_with_receipt", `${paths.service}: receipt-aware write path must stay crate-private`);
+assertNotContains(service, "pub async fn set_relation_state(", `${paths.service}: public raw relation mutation bypasses receipt admission`);
 
 assertContains(ports, ".set_relation_state_with_receipt(", `${paths.ports}: command port bypasses receipts`);
 for (const code of [
