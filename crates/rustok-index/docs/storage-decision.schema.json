@@ -32,7 +32,8 @@
     },
     "owner": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "comparison_commit": {
       "type": "string",
@@ -48,22 +49,26 @@
     },
     "selection_rationale": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "rejection_rationales": {
       "type": "object"
     },
     "operational_tradeoffs": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "migration_strategy": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "rollback_strategy": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     }
   },
   "allOf": [
@@ -81,8 +86,8 @@
             "additionalProperties": false,
             "required": ["typed_eav", "hot_projection"],
             "properties": {
-              "typed_eav": { "type": "string", "minLength": 1 },
-              "hot_projection": { "type": "string", "minLength": 1 }
+              "typed_eav": { "type": "string", "minLength": 1, "pattern": "\\S" },
+              "hot_projection": { "type": "string", "minLength": 1, "pattern": "\\S" }
             }
           }
         }
@@ -102,8 +107,8 @@
             "additionalProperties": false,
             "required": ["jsonb", "hot_projection"],
             "properties": {
-              "jsonb": { "type": "string", "minLength": 1 },
-              "hot_projection": { "type": "string", "minLength": 1 }
+              "jsonb": { "type": "string", "minLength": 1, "pattern": "\\S" },
+              "hot_projection": { "type": "string", "minLength": 1, "pattern": "\\S" }
             }
           }
         }
@@ -123,8 +128,8 @@
             "additionalProperties": false,
             "required": ["jsonb", "typed_eav"],
             "properties": {
-              "jsonb": { "type": "string", "minLength": 1 },
-              "typed_eav": { "type": "string", "minLength": 1 }
+              "jsonb": { "type": "string", "minLength": 1, "pattern": "\\S" },
+              "typed_eav": { "type": "string", "minLength": 1, "pattern": "\\S" }
             }
           }
         }
