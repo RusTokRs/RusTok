@@ -209,6 +209,10 @@ delivery owner, and creates no delivery attempt. SQLite owner evidence is
 bounded mark-all-unread are delivered; mark-all-archive, arbitrary selected-ID bulk
 mutations, grouped inbox views, transport adapters, and UI remain closed.
 
+The former `mark-unread, bulk/mark-all` residual is now narrowed. Its historical
+`bulk/mark-all mutations and grouped inbox views` wording now refers only to
+mark-all-archive, selected-ID bulk mutations, and grouped views.
+
 ### 6. Exact unread count
 
 `NotificationInboxUnreadCountService` counts rows in stored owner state `unread` for
