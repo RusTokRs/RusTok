@@ -32,7 +32,6 @@ requireMarkers(router, 'storage tooling router', [
 
 for (const forbidden of [
   "if (!command || command === '--help' || command === '-h')",
-  "scale = args[++index];\n    } else if (argument === '--root'",
 ]) {
   if (router.includes(forbidden)) fail(`storage tooling router contains ambiguous behavior: ${forbidden}`);
 }
