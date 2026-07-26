@@ -80,6 +80,8 @@ node scripts/verify/index-storage-tooling.mjs hash \
   evidence/index-storage/comparison/comparison.json
 ```
 
+Hash help is accepted only as the sole argument. Mixed help/path invocations and zero or multiple comparison paths fail without producing a digest. The helper hashes the exact file bytes without JSON normalization.
+
 ## Finalize the ADR
 
 ```bash

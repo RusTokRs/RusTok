@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -92,6 +93,52 @@ test('forwards hash help to the exact-byte comparison helper', () => {
   const result = run('hash', '--help');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /hash-index-storage-comparison\.mjs <comparison\.json>/u);
+});
+
+test('forwards short hash help to the exact-byte comparison helper', () => {
+  const result = run('hash', '-h');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /hash-index-storage-comparison\.mjs <comparison\.json>/u);
+});
+
+test('rejects mixed hash help in every ordering', () => {
+  for (const args of [
+    ['comparison.json', '--help'],
+    ['--help', 'comparison.json'],
+    ['comparison.json', '-h'],
+    ['-h', 'comparison.json'],
+    ['--help', '--help'],
+  ]) {
+    const result = run('hash', ...args);
+    assert.notEqual(result.status, 0, args.join(' '));
+    assert.match(result.stderr, /--help\/-h must be the only argument/u);
+    assert.equal(result.stdout, '');
+  }
+});
+
+test('rejects missing or multiple comparison hash paths', () => {
+  for (const args of [[], ['left.json', 'right.json']]) {
+    const result = run('hash', ...args);
+    assert.notEqual(result.status, 0, args.join(' '));
+    assert.match(result.stderr, /exactly one comparison\.json path is required/u);
+    assert.equal(result.stdout, '');
+  }
+});
+
+test('hashes the exact comparison bytes through the router', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-tooling-hash-'));
+  try {
+    const comparisonPath = path.join(root, 'comparison.json');
+    const bytes = Buffer.from('{"scale":"100k"}\r\n', 'utf8');
+    writeFileSync(comparisonPath, bytes);
+    const result = run('hash', comparisonPath);
+    assert.equal(result.status, 0, result.stderr);
+    const expected = createHash('sha256').update(bytes).digest('hex');
+    assert.equal(result.stdout, `${expected}\n`);
+    assert.equal(result.stderr, '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('forwards comparator help without rewriting its arguments', () => {
