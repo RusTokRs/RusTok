@@ -106,6 +106,8 @@ The finalizer fails closed unless:
 
 The standalone renderer enforces the same methodology contract even when invoked directly. Recomputing `comparison_sha256` after removing or changing the methodology does not make the input acceptable.
 
+The directly invokable renderer accepts help only as a sole argument and rejects unknown, incomplete, or duplicate options before changing files. Output collisions with comparison or decision inputs are also non-destructive. A real render attempt withdraws any stale output before evidence validation, writes into a unique same-directory staging location, and publishes the completed Markdown with one rename. Failure leaves neither an old final ADR nor staging residue. The stable `index-storage-tooling.mjs render` command continues to use the stricter accepted-decision finalizer.
+
 ## Verify the saved ADR
 
 After saving or reviewing the generated Markdown, verify that it still represents the exact source files:
@@ -118,6 +120,8 @@ node scripts/verify/index-storage-tooling.mjs verify-adr \
 ```
 
 `verify-adr` recalculates both digest lines from exact file bytes, snapshots the same comparison and decision bytes, repeats deterministic finalization including the observed database-settings gate, and requires the saved ADR to match the regenerated Markdown byte for byte. Any manual edit, formatting change, stale decision, replaced evidence file, or methodology drift is rejected.
+
+The saved-ADR verifier accepts only `--comparison`, `--decision`, and `--adr`. Help is valid only as the sole argument; unknown, incomplete, mixed-help, or duplicate options fail before any supplied comparison, decision, or ADR file is read.
 
 The generated ADR includes storage size, read latency, mutation latency, WAL, churn, and VACUUM evidence for all candidates. It never infers or ranks a winner. Its Markdown depends on evidence and decision content, not on the filesystem paths used to invoke the tooling.
 
