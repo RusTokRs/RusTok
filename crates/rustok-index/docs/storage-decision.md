@@ -63,6 +63,8 @@ node scripts/verify/index-storage-tooling.mjs prepare \
 
 `prepare` requires an explicit prototype choice. It does not rank candidates or select a winner. It validates the decision-ready comparison and its exact observed database-settings methodology, copies the evidence commit, computes the SHA-256 of the exact comparison-file bytes, creates rejection entries for exactly the two unselected prototypes, and refuses to overwrite an existing decision unless `--force` is provided. The draft is written to a staged file and renamed only after the complete JSON is on disk.
 
+The generated draft has `status: proposed`. Change it to `accepted` only after the evidence and rationales have been reviewed. The finalizer rejects a proposed decision and accepts only a real `YYYY-MM-DD` calendar date with a year from `0001` through `9999`, including the correct Gregorian leap-year rules.
+
 The preparation command accepts only `--comparison`, `--selected`, `--owner`, `--date`, and `--output`, plus one standalone `--force` flag. Help is valid only as the sole argument, and unknown, incomplete, mixed-help, or duplicate options fail before changing decision state. A valid forced replacement creates a unique same-directory staging location before withdrawing the stale draft, then validates the comparison and publishes the complete replacement with one rename. Failure after stale-draft withdrawal leaves no decision file and no staging residue.
 
 The generated draft contains `TODO(index-storage-decision):` markers. Replace every marker with measured and operational reasoning before finalization. The finalizer rejects any remaining preparation marker.
@@ -99,9 +101,13 @@ node scripts/verify/index-storage-tooling.mjs render \
 
 Finalization snapshots the exact comparison and decision bytes before rendering. The generated ADR records both `Comparison SHA-256` and `Decision SHA-256`, so reviewers can verify the two source documents used to produce it.
 
+The finalizer accepts only `--comparison`, `--decision`, and `--output`; help is valid only as the sole argument. Malformed command lines and output paths that collide with either input are non-destructive. A valid replacement attempt revokes any existing ADR and process-specific staged output before evidence is read. If the replacement evidence, accepted decision, renderer, or publication step fails, no stale ADR is left behind.
+
 The finalizer fails closed unless:
 
-- the comparison contains the exact ten-field observed PostgreSQL database-settings methodology;
+- the decision status is `accepted`;
+- `decision_date` is a real ISO calendar date using Gregorian month and leap-year rules;
+- the comparison contains the exact eight-field methodology envelope, including the ordered ten-field observed PostgreSQL database-settings contract;
 - the comparison is decision-ready;
 - every decision-contract flag is true;
 - `100k` and `1m` evidence are present and share the same full commit;

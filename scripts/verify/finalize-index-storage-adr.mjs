@@ -20,6 +20,7 @@ import { requireComparisonDatabaseSettingsMethodology } from './index-storage-da
 const prefix = '[finalize-index-storage-adr]';
 const placeholderPrefix = 'TODO(index-storage-decision):';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const allowedArguments = new Set(['--comparison', '--decision', '--output']);
 const requiredDecisionKeys = [
   'status',
   'decision_date',
@@ -49,19 +50,23 @@ const usage = () => {
 const parseArgs = () => {
   const values = new Map();
   const args = process.argv.slice(2);
+  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) {
+    usage();
+    return null;
+  }
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--help' || argument === '-h') {
-      usage();
-      return null;
+      fail('--help/-h must be the only argument');
     }
-    if (!argument.startsWith('--') || !args[index + 1] || args[index + 1].startsWith('--')) {
-      fail(`unknown or incomplete argument: ${argument}`);
+    if (!allowedArguments.has(argument)) fail(`unknown argument: ${argument}`);
+    if (!args[index + 1] || args[index + 1].startsWith('--')) {
+      fail(`incomplete argument: ${argument}`);
     }
     if (values.has(argument)) fail(`${argument} was provided more than once`);
     values.set(argument, args[++index]);
   }
-  for (const argument of ['--comparison', '--decision', '--output']) {
+  for (const argument of allowedArguments) {
     if (!values.has(argument)) fail(`${argument} is required`);
   }
   return {
@@ -98,6 +103,27 @@ const requireDecisionEnvelope = (decision) => {
   if (Object.hasOwn(decision, '$schema')
       && decision.$schema !== './storage-decision.schema.json') {
     fail('decision.$schema must reference ./storage-decision.schema.json when present');
+  }
+};
+
+const requireAcceptedDecision = (decision) => {
+  if (decision.status !== 'accepted') {
+    fail('decision.status must be accepted before ADR finalization');
+  }
+};
+
+const requireIsoCalendarDate = (value, label) => {
+  const match = typeof value === 'string'
+    ? /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value)
+    : null;
+  if (!match) fail(`${label} must be a real ISO calendar date`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthLengths = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (year === 0 || month < 1 || month > 12 || day < 1 || day > monthLengths[month - 1]) {
+    fail(`${label} must be a real ISO calendar date`);
   }
 };
 
@@ -142,15 +168,25 @@ const insertDecisionDigest = (markdown, decisionSha256) => {
 const main = () => {
   const args = parseArgs();
   if (args === null) return;
+  const stagedOutput = `${args.output}.tmp-${process.pid}`;
   const resolvedOutput = path.resolve(args.output);
+  const resolvedStagedOutput = path.resolve(stagedOutput);
   for (const [label, filename] of [['comparison', args.comparison], ['decision', args.decision]]) {
-    if (resolvedOutput === path.resolve(filename)) fail(`--output must not overwrite the ${label} input`);
+    const resolvedInput = path.resolve(filename);
+    if (resolvedOutput === resolvedInput) fail(`--output must not overwrite the ${label} input`);
+    if (resolvedStagedOutput === resolvedInput) {
+      fail(`ADR staging path must not overwrite the ${label} input`);
+    }
   }
+  rmSync(args.output, { force: true });
+  rmSync(stagedOutput, { force: true });
 
   const comparison = readJsonBytes(args.comparison, 'comparison');
   const decision = readJsonBytes(args.decision, 'decision');
   requireComparisonDatabaseSettingsMethodology(comparison.value, fail);
   requireDecisionEnvelope(decision.value);
+  requireAcceptedDecision(decision.value);
+  requireIsoCalendarDate(decision.value.decision_date, 'decision.decision_date');
   rejectPlaceholders(decision.value);
 
   const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-'));
@@ -177,7 +213,6 @@ const main = () => {
     const markdown = insertDecisionDigest(readFileSync(renderedPath, 'utf8'), decision.sha256);
     const parent = path.dirname(args.output);
     if (parent && parent !== '.') mkdirSync(parent, { recursive: true });
-    const stagedOutput = `${args.output}.tmp-${process.pid}`;
     try {
       writeFileSync(stagedOutput, markdown, 'utf8');
       renameSync(stagedOutput, args.output);
