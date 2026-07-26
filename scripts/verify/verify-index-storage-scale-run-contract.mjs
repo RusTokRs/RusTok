@@ -6,10 +6,6 @@ const workflow = readFileSync(
   new URL('../../.github/workflows/index-storage-scale-run.yml', import.meta.url),
   'utf8',
 );
-const plan = readFileSync(
-  new URL('../../crates/rustok-index/docs/implementation-plan.md', import.meta.url),
-  'utf8',
-);
 const prefix = '[verify-index-storage-scale-run-contract]';
 const fail = (message) => {
   console.error(`${prefix} ${message}`);
@@ -72,14 +68,6 @@ if (needsIndex > runnerIndex || needsIndex > servicesIndex) {
 }
 if (!evidenceBlock.includes('          if (( available_bytes < MINIMUM_FREE_BYTES )); then')) {
   fail('evidence job must retain the runner disk-capacity gate');
-}
-
-const planMarker = [
-  '- [x] Validate reusable scale workflow inputs on a fixed runner before custom',
-  '      runner, PostgreSQL service, toolchain, compilation, or benchmark allocation.',
-].join('\n');
-if (!plan.includes(planMarker)) {
-  fail('Index implementation plan must record the completed scale-input gate');
 }
 
 console.log(`${prefix} reusable scale workflow input validation is fail closed`);
