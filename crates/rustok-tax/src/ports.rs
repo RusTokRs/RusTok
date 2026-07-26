@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use std::{collections::HashSet, sync::Arc};
 use uuid::Uuid;
 
 use crate::{CalculatedTaxLine, TaxCalculationInput, TaxCalculationResult, TaxError};
+
+const TAX_CALCULATION_PORT_BOUNDARY: &str = "tax_calculation_port";
 
 /// Transport-neutral owner boundary for tax calculation.
 #[async_trait]
@@ -29,8 +31,8 @@ impl TaxCalculationPort for crate::TaxService {
         context: PortContext,
         request: TaxCalculationInput,
     ) -> Result<TaxCalculationResult, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
         let owner_operation = "calculate_tax";
+        require_tax_calculation_policy(&context, owner_operation)?;
         let expected_currency = validate_tax_request(&context, owner_operation, &request)?;
         let customer_tax_exempt = request.customer_tax_exempt;
         let taxable_targets = request
@@ -52,6 +54,67 @@ impl TaxCalculationPort for crate::TaxService {
             &result,
         )?;
         Ok(result)
+    }
+}
+
+fn require_tax_calculation_policy(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::read()).map_err(|error| {
+        log_tax_calculation_policy_rejection(context, owner_operation, &error);
+        error
+    })
+}
+
+fn log_tax_calculation_policy_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = "rustok_tax",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                code = %error.code,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = TAX_CALCULATION_PORT_BOUNDARY,
+                "tax calculation policy admission failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = "rustok_tax",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                code = %error.code,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = TAX_CALCULATION_PORT_BOUNDARY,
+                "tax calculation policy admission was rejected"
+            );
+        }
     }
 }
 
