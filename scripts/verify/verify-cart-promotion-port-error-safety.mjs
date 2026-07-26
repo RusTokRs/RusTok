@@ -81,6 +81,10 @@ for (const [value, label] of [
     'const CART_PROMOTION_CONTEXT_BOUNDARY: &str = "cart_promotion_context";',
     'promotion context boundary constant',
   ],
+  [
+    'const CART_PROMOTION_OWNER_BOUNDARY: &str = "cart_promotion_owner_service";',
+    'promotion owner-service boundary constant',
+  ],
   ['const READ_CART_PROMOTION_PREVIEW_OPERATION', 'preview owner operation'],
   ['const APPLY_CART_PROMOTION_OPERATION', 'apply owner operation'],
   ['service: CartService::new(db)', 'direct owner service construction'],
@@ -109,6 +113,11 @@ const contextMapperCalls =
 if (contextMapperCalls.length !== 2) {
   failures.push(`expected preview/apply context mapper calls, found ${contextMapperCalls.length}`);
 }
+const ownerMapperCalls =
+  guard.match(/cart_promotion_error\(&context, owner_operation, error\)/g) ?? [];
+if (ownerMapperCalls.length !== 2) {
+  failures.push(`expected preview/apply owner mapper calls, found ${ownerMapperCalls.length}`);
+}
 
 for (const [source, label] of [
   [targetValidation, 'promotion target validation'],
@@ -133,7 +142,8 @@ for (const [source, value, label] of [
   [tenantParser, 'error = ?error', 'promotion tenant parse cause'],
   [tenantParser, 'internal_tenant_id = %context.tenant_id', 'promotion tenant internal identity'],
   [ownerMapper, 'error = ?error', 'promotion raw owner cause'],
-  [ownerMapper, 'let code = cart_promotion_error_code(&error);', 'promotion stable code selection'],
+  [ownerMapper, 'let owner_code = cart_promotion_error_code(&error);', 'promotion owner code selection'],
+  [ownerMapper, 'let public_error = match &error {', 'promotion public mapping before diagnostics'],
 ]) {
   requireText(source, value, label);
 }
@@ -174,6 +184,37 @@ if (!(diagnosticIndex >= 0 && diagnosticIndex < sanitizationIndex)) {
 }
 
 for (const [value, label] of [
+  ['actor = ?context.actor', 'promotion owner actor'],
+  ['locale = %context.locale', 'promotion owner locale'],
+  ['causation_id = ?context.causation_id', 'promotion owner causation'],
+  ['traceparent = ?context.traceparent', 'promotion owner traceparent'],
+  ['idempotency_key = ?context.idempotency_key', 'promotion owner idempotency key'],
+  ['deadline_ms = ?context.deadline_ms', 'promotion owner deadline'],
+  ['owner_code,', 'promotion owner internal code'],
+  ['public_code = %public_error.code', 'promotion mapped public code'],
+  ['error_kind = ?public_error.kind', 'promotion mapped error kind'],
+  ['retryable = public_error.retryable', 'promotion mapped retryability'],
+  ['boundary = CART_PROMOTION_OWNER_BOUNDARY', 'promotion owner-service boundary'],
+  ['match &public_error.kind {', 'promotion mapped severity selection'],
+  [
+    'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
+    'promotion owner technical severity classification',
+  ],
+  ['"cart promotion owner operation failed"', 'promotion owner failure event'],
+  ['"cart promotion owner operation was rejected"', 'promotion owner rejection event'],
+  ['public_error\n}', 'promotion mapped error return'],
+]) {
+  requireText(ownerMapper, value, label);
+}
+
+const publicMappingIndex = ownerMapper.indexOf('let public_error = match &error {');
+const ownerSeverityIndex = ownerMapper.indexOf('match &public_error.kind {');
+const ownerReturnIndex = ownerMapper.lastIndexOf('public_error');
+if (!(publicMappingIndex >= 0 && publicMappingIndex < ownerSeverityIndex && ownerSeverityIndex < ownerReturnIndex)) {
+  failures.push('promotion owner mapper must map, diagnose, then return the same public error');
+}
+
+for (const [value, label] of [
   ['PortErrorKind::Timeout =>', 'timeout context branch'],
   ['PortError::timeout(error.code, "cart promotion request context is invalid")', 'timeout stable envelope'],
   ['PortErrorKind::Validation =>', 'validation context branch'],
@@ -204,6 +245,7 @@ for (const value of [
   'format!("cart storage unavailable: {error}")',
   'format!("cart {id} not found")',
   'format!("cart line item {id} not found")',
+  'let code = cart_promotion_error_code(&error);',
 ]) {
   forbidText(guard, value, 'promotion public error mapping');
 }
