@@ -41,6 +41,8 @@ const paths = {
   followRead: "crates/rustok-social-graph/src/follow_read.rs",
   socialLib: "crates/rustok-social-graph/src/lib.rs",
   socialGraphql: "crates/rustok-social-graph/src/graphql.rs",
+  socialPorts: "crates/rustok-social-graph/src/ports.rs",
+  socialObservability: "crates/rustok-social-graph/src/observability.rs",
   native: "crates/rustok-profiles/storefront/src/transport/native_server_adapter.rs",
   graphql: "crates/rustok-profiles/storefront/src/transport/graphql_adapter.rs",
   profileGraphql: "crates/rustok-profiles/src/graphql/types.rs",
@@ -63,6 +65,8 @@ for (const value of Object.values(paths)) assertExists(value);
 const followRead = readRepo(paths.followRead);
 const socialLib = readRepo(paths.socialLib);
 const socialGraphql = readRepo(paths.socialGraphql);
+const socialPorts = readRepo(paths.socialPorts);
+const socialObservability = readRepo(paths.socialObservability);
 const native = readRepo(paths.native);
 const graphql = readRepo(paths.graphql);
 const profileGraphql = readRepo(paths.profileGraphql);
@@ -90,6 +94,52 @@ assertContains(socialGraphql, "revision: state.revision.map", `${paths.socialGra
 assertContains(graphql, "followState(userId: $userId)", `${paths.graphql}: storefront must request revision-bearing state`);
 assertContains(graphql, "revision: Option<String>", `${paths.graphql}: missing relation must keep null revision`);
 assertNotContains(graphql, "isFollowing(userId", `${paths.graphql}: storefront must not downgrade to bool-only follow reads`);
+
+assertContains(socialLib, "pub mod observability;", `${paths.socialLib}: Social Graph operation telemetry module not wired`);
+assertContains(socialLib, "SocialGraphCommandTimer", `${paths.socialLib}: Social Graph command telemetry contract not exported`);
+assertContains(
+  socialObservability,
+  'SOCIAL_GRAPH_OPERATION_TARGET: &str = "rustok_social_graph::operations"',
+  `${paths.socialObservability}: stable Social Graph telemetry target missing`,
+);
+for (const operation of [
+  "social_graph.block",
+  "social_graph.unblock",
+  "social_graph.mute",
+  "social_graph.unmute",
+  "social_graph.follow",
+  "social_graph.unfollow",
+]) {
+  assertContains(socialObservability, `"${operation}"`, `${paths.socialObservability}: stable command operation missing: ${operation}`);
+}
+for (const field of [
+  "operation =",
+  "tenant_id =",
+  "source_user_id =",
+  "target_user_id =",
+  "outcome =",
+  "duration_ms =",
+  "error_code",
+  "retryable",
+]) {
+  assertContains(socialObservability, field, `${paths.socialObservability}: command telemetry field missing: ${field}`);
+}
+for (const sensitiveField of [
+  "idempotency_key =",
+  "expected_revision =",
+  "correlation_id =",
+  "locale =",
+  "channel =",
+  "claims =",
+  "roles =",
+]) {
+  assertNotContains(socialObservability, sensitiveField, `${paths.socialObservability}: command telemetry must not record field: ${sensitiveField}`);
+}
+assertContains(socialPorts, "SocialGraphCommandTimer::start", `${paths.socialPorts}: owner command port telemetry must start after tenant parsing`);
+assertContains(socialPorts, "SocialGraphCommandOperation::from_relation_state", `${paths.socialPorts}: owner command operation classifier missing`);
+assertContains(socialPorts, "timer.finish_failure(&error.code, error.retryable)", `${paths.socialPorts}: policy/actor failure telemetry missing`);
+assertContains(socialPorts, "timer.finish_port_result(&result)", `${paths.socialPorts}: owner command result telemetry missing`);
+assertNotContains(socialGraphql, "tracing::", `${paths.socialGraphql}: GraphQL adapter must not own Social Graph command telemetry`);
 
 assertContains(native, "ProfilePresentationService::for_audience", `${paths.native}: native profile read must use owner presentation service`);
 assertNotContains(native, "ProfilePrivacyService::new", `${paths.native}: native adapter must not duplicate privacy composition`);
