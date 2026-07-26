@@ -22,6 +22,10 @@ server function extracts `AuthContext`, `TenantContext`, and `RequestContext`, r
 an auth/tenant mismatch, and builds `PortContext` with the authenticated user as the
 recipient actor.
 
+OAuth service principals are rejected before owner access. Human-user principal kind
+is retained through the canonical `AuthContext::port_actor` mapping rather than by
+relabeling an arbitrary authenticated subject as a user.
+
 Read calls receive a five-second deadline before owner access. The group-state write
 also receives the caller-supplied idempotency key. Permissions are retained as port
 claims and the channel is recorded as `storefront`.
