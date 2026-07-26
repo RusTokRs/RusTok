@@ -1,0 +1,37 @@
+name: Index Storage Scale Run Contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/index-storage-scale-run.yml"
+      - ".github/workflows/index-storage-scale-run-contract.yml"
+      - "scripts/verify/verify-index-storage-scale-run-contract.mjs"
+      - "crates/rustok-index/docs/implementation-plan.md"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - ".github/workflows/index-storage-scale-run.yml"
+      - ".github/workflows/index-storage-scale-run-contract.yml"
+      - "scripts/verify/verify-index-storage-scale-run-contract.mjs"
+      - "crates/rustok-index/docs/implementation-plan.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Reusable scale workflow contract
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify contract script syntax
+        run: node --check scripts/verify/verify-index-storage-scale-run-contract.mjs
+      - name: Verify fail-closed scale workflow inputs
+        run: node scripts/verify/verify-index-storage-scale-run-contract.mjs
