@@ -174,10 +174,14 @@ fn validate_request(request: &NotificationInboxGroupListRequest) -> Notification
             "notification inbox group list identity must not be nil".to_string(),
         ));
     }
-    if request.group_key.is_empty()
-        || request.group_key != request.group_key.trim()
-        || request.group_key.len() > MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES
-        || request.group_key.chars().any(char::is_control)
+    validate_inbox_group_key(&request.group_key)
+}
+
+pub(crate) fn validate_inbox_group_key(group_key: &str) -> NotificationResult<()> {
+    if group_key.is_empty()
+        || group_key != group_key.trim()
+        || group_key.len() > MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES
+        || group_key.chars().any(char::is_control)
     {
         return Err(NotificationError::Validation(format!(
             "notification inbox group key must contain between 1 and {MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES} safe bytes"

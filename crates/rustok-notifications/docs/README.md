@@ -2,13 +2,13 @@
 
 ## Responsibility zone
 
-Notifications owns inbox/read state, exact unread counts, bounded mark-all and
-selected-ID state commands, durable grouping, exact-group reads, bounded group
-summaries, preferences, bounded fanout, digests, retention, delivery attempts,
-intake receipts/quarantine, and replay/reconciliation. Source modules own semantic
-state, subscriptions, audience facts, visibility, target authorization, and routes.
-Profiles and Social Graph own recipient privacy. Delivery modules own channel
-transports.
+Notifications owns inbox/read state, exact unread counts, bounded mark-all,
+selected-ID state commands, bounded exact-group state commands, durable grouping,
+exact-group reads, bounded group summaries, preferences, bounded fanout, digests,
+retention, delivery attempts, intake receipts/quarantine, and
+replay/reconciliation. Source modules own semantic state, subscriptions, audience
+facts, visibility, target authorization, and routes. Profiles and Social Graph own
+recipient privacy. Delivery modules own channel transports.
 
 ## Integration boundary
 
@@ -53,7 +53,7 @@ non-null keys remain authoritative. PostgreSQL assigns missing keys before inser
 SQLite assigns them inside the inserting transaction. The partial
 `idx_notifications_group_summary` index orders non-archived grouped rows by exact
 recipient latest activity. Existing `idx_notifications_group` supports exact group
-scans and stored counts.
+scans, bounded group-state selection, and stored counts.
 
 The schema stores no source-private payload, rendered HTML, contact address, phone
 number, or plaintext push endpoint. Global server migration composition remains a
@@ -161,6 +161,13 @@ applies one of the four commands to at most 64 explicit IDs in input order. Miss
 foreign, already-satisfied, and protected selected rows are all reported only as
 `not_changed`, reducing existence-oracle detail.
 
+`NotificationInboxGroupStateService` applies one bounded `mark_read`, `mark_unread`,
+or `archive` action to one exact tenant/recipient/group. It validates the same opaque
+191-byte group-key boundary as exact-group listing, selects only action-eligible rows
+in `created_at DESC, id DESC` order, reuses the shared 20/64 bounds and `i1` cursor,
+and delegates every selected identity to `NotificationInboxStateService`. Its page
+returns only `scanned`, `changed`, `next_cursor`, and `has_more`.
+
 These state owners call no privacy/source/target/delivery owner and create no
 delivery attempt. Earlier per-row transitions remain durable and idempotent if a
 later operation fails.
@@ -204,6 +211,18 @@ Retryable failures abort without a partial result. Counts intentionally reflect
 stored owner state and converge after reconciliation. The read mutates no inbox
 state or delivery attempt.
 
+### Bounded group state commands
+
+`NotificationInboxGroupStateService` completes the owner-side grouped command set.
+`mark_read` selects unread/seen rows, `mark_unread` selects seen/read rows, and
+`archive` selects all non-archived rows for one exact group. Direct unread-to-read,
+seen-history preservation, mark-unread timestamp clearing, and terminal archive are
+inherited from the exact state owner. Missing, foreign, and already-satisfied groups
+return an empty page without notification identity.
+
+SQLite source evidence is `tests/inbox_group_state_sqlite.rs`; the static contract is
+`scripts/verify/verify-forum-notification-inbox-group-state.mjs`.
+
 The server starts workers in intake → fanout → candidate order. Invalid or unreadable
 flags remain disabled.
 
@@ -220,8 +239,7 @@ or restricted sources fail closed. Moderator audience expansion remains deferred
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
-- group-level mark-read, mark-unread, and archive commands plus bounded moderator
-  directory expansion;
+- bounded moderator directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and full module-owned grouped UI;
 - channel delivery enqueue and transports with delivery-time authorization;
@@ -252,6 +270,7 @@ cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test group_key_population_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_group_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_group_summary_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_group_state_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -276,12 +295,13 @@ node scripts/verify/verify-forum-notification-inbox-selected-state.mjs
 node scripts/verify/verify-forum-notification-group-key-population.mjs
 node scripts/verify/verify-forum-notification-inbox-group-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-group-summaries.mjs
+node scripts/verify/verify-forum-notification-inbox-group-state.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing
 `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE`.
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF`.
 
 ## Related documents
 
