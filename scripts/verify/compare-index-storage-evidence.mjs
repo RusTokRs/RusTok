@@ -129,6 +129,7 @@ export const runComparatorCoreWithAtomicComparison = ({
   output,
   spawn = spawnSync,
   finalizeComparison = finalizeDatabaseSettingsContract,
+  rename = renameSync,
   stdout = process.stdout,
   stderr = process.stderr,
 }) => {
@@ -151,8 +152,8 @@ export const runComparatorCoreWithAtomicComparison = ({
       throw new Error('comparator core exited successfully without complete comparison outputs');
     }
 
-    renameSync(stagedMarkdown, outputMarkdown);
-    renameSync(stagedJson, outputJson);
+    rename(stagedMarkdown, outputMarkdown);
+    rename(stagedJson, outputJson);
     published = true;
     return 0;
   } finally {
