@@ -4,14 +4,17 @@ use chrono::Utc;
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, TransactionTrait,
 };
 use uuid::Uuid;
 
 use crate::entities::relation;
 use crate::error::{SocialGraphError, SocialGraphResult};
 use crate::model::SocialRelationKind;
+use crate::receipts::{
+    self, SocialGraphCommandReceiptAdmission, SocialGraphCommandReceiptRequest,
+};
 
 #[derive(Clone, Debug)]
 pub struct SocialGraphService {
@@ -50,12 +53,80 @@ impl SocialGraphService {
     ) -> SocialGraphResult<relation::Model> {
         validate_pair(source_user_id, target_user_id)?;
         let txn = self.db.begin().await?;
+        let model = self
+            .set_relation_state_in(
+                &txn,
+                tenant_id,
+                source_user_id,
+                target_user_id,
+                relation_kind,
+                active,
+                expected_revision,
+            )
+            .await?;
+        txn.commit().await?;
+        Ok(model)
+    }
+
+    pub async fn set_relation_state_with_receipt(
+        &self,
+        tenant_id: Uuid,
+        source_user_id: Uuid,
+        target_user_id: Uuid,
+        relation_kind: SocialRelationKind,
+        active: bool,
+        expected_revision: Option<i64>,
+        idempotency_key: String,
+    ) -> SocialGraphResult<relation::Model> {
+        validate_pair(source_user_id, target_user_id)?;
+        let request = SocialGraphCommandReceiptRequest {
+            source_user_id,
+            target_user_id,
+            relation_kind,
+            active,
+            expected_revision,
+        };
+
+        match receipts::admit(&self.db, tenant_id, idempotency_key, &request).await? {
+            SocialGraphCommandReceiptAdmission::Replay(receipt) => {
+                receipts::replay(receipt, &request)
+            }
+            SocialGraphCommandReceiptAdmission::New(receipt) => {
+                let result = self
+                    .set_relation_state_in(
+                        &receipt.transaction,
+                        tenant_id,
+                        source_user_id,
+                        target_user_id,
+                        relation_kind,
+                        active,
+                        expected_revision,
+                    )
+                    .await;
+                match result {
+                    Ok(model) => receipts::complete(receipt, &model).await,
+                    Err(error) => receipts::rollback(receipt, error).await,
+                }
+            }
+        }
+    }
+
+    async fn set_relation_state_in(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        source_user_id: Uuid,
+        target_user_id: Uuid,
+        relation_kind: SocialRelationKind,
+        active: bool,
+        expected_revision: Option<i64>,
+    ) -> SocialGraphResult<relation::Model> {
         let existing = relation::Entity::find()
             .filter(relation::Column::TenantId.eq(tenant_id))
             .filter(relation::Column::SourceUserId.eq(source_user_id))
             .filter(relation::Column::TargetUserId.eq(target_user_id))
             .filter(relation::Column::RelationKind.eq(relation_kind))
-            .one(&txn)
+            .one(txn)
             .await?;
 
         let model = match existing {
@@ -64,7 +135,6 @@ impl SocialGraphService {
                     return Err(SocialGraphError::RevisionConflict);
                 }
                 if existing.active == active {
-                    txn.commit().await?;
                     return Ok(existing);
                 }
 
@@ -79,14 +149,14 @@ impl SocialGraphService {
                     .col_expr(relation::Column::UpdatedAt, Expr::value(now))
                     .filter(relation::Column::Id.eq(existing.id))
                     .filter(relation::Column::Revision.eq(existing.revision))
-                    .exec(&txn)
+                    .exec(txn)
                     .await?;
                 if updated.rows_affected != 1 {
                     return Err(SocialGraphError::RevisionConflict);
                 }
 
                 relation::Entity::find_by_id(existing.id)
-                    .one(&txn)
+                    .one(txn)
                     .await?
                     .ok_or(SocialGraphError::RevisionConflict)?
             }
@@ -103,15 +173,14 @@ impl SocialGraphService {
                     relation_kind: Set(relation_kind),
                     active: Set(active),
                     revision: Set(1),
-                    created_at: Set(now.clone()),
+                    created_at: Set(now),
                     updated_at: Set(now),
                 }
-                .insert(&txn)
+                .insert(txn)
                 .await?
             }
         };
 
-        txn.commit().await?;
         Ok(model)
     }
 
