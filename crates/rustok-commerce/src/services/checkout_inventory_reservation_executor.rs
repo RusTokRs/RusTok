@@ -1,4 +1,6 @@
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
+};
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,
@@ -19,6 +21,7 @@ use super::{
 };
 
 const DEFAULT_INVENTORY_PORT_DEADLINE_SECONDS: u64 = 2;
+const CHECKOUT_INVENTORY_BOUNDARY: &str = "commerce_checkout_inventory_reservation";
 
 #[derive(Debug, Error)]
 pub enum CheckoutInventoryExecutionError {
@@ -134,19 +137,20 @@ impl CheckoutInventoryReservationExecutor {
                 }
             }
 
+            let port_context = inventory_port_context(InventoryPortContextInput {
+                tenant_id,
+                actor: actor.clone(),
+                snapshot,
+                operation_id,
+                cart_line_item_id: line.id,
+                idempotency_key: planned.external_id.as_str(),
+                deadline: self.port_deadline,
+                action: "reserve",
+            });
             let provider_result = self
                 .reservation_port
                 .reserve_inventory_by_identity(
-                    inventory_port_context(InventoryPortContextInput {
-                        tenant_id,
-                        actor: actor.clone(),
-                        snapshot,
-                        operation_id,
-                        cart_line_item_id: line.id,
-                        idempotency_key: planned.external_id.as_str(),
-                        deadline: self.port_deadline,
-                        action: "reserve",
-                    }),
+                    port_context.clone(),
                     InventoryIdentityReservationRequest {
                         reservation_id: planned.reservation_id,
                         external_id: planned.external_id.clone(),
@@ -169,6 +173,8 @@ impl CheckoutInventoryReservationExecutor {
                 Err(boundary) => {
                     return Err(self
                         .record_boundary_failure(
+                            &port_context,
+                            "reserve_inventory_by_identity",
                             tenant_id,
                             line.id,
                             planned.reservation_id,
@@ -188,7 +194,14 @@ impl CheckoutInventoryReservationExecutor {
                     "inventory owner returned a reservation that does not match the persisted checkout identity",
                 );
                 return Err(self
-                    .record_boundary_failure(tenant_id, line.id, planned.reservation_id, boundary)
+                    .record_boundary_failure(
+                        &port_context,
+                        "reserve_inventory_by_identity",
+                        tenant_id,
+                        line.id,
+                        planned.reservation_id,
+                        boundary,
+                    )
                     .await);
             }
 
@@ -244,19 +257,20 @@ impl CheckoutInventoryReservationExecutor {
                 }
                 status if status == CheckoutInventoryReservationStatus::Planned.as_str() => {}
                 status if status == CheckoutInventoryReservationStatus::Reserved.as_str() => {
+                    let port_context = inventory_port_context(InventoryPortContextInput {
+                        tenant_id,
+                        actor: actor.clone(),
+                        snapshot,
+                        operation_id,
+                        cart_line_item_id: reservation.cart_line_item_id,
+                        idempotency_key: reservation.external_id.as_str(),
+                        deadline: self.port_deadline,
+                        action: "release",
+                    });
                     let boundary = self
                         .reservation_port
                         .release_inventory_by_identity(
-                            inventory_port_context(InventoryPortContextInput {
-                                tenant_id,
-                                actor: actor.clone(),
-                                snapshot,
-                                operation_id,
-                                cart_line_item_id: reservation.cart_line_item_id,
-                                idempotency_key: reservation.external_id.as_str(),
-                                deadline: self.port_deadline,
-                                action: "release",
-                            }),
+                            port_context.clone(),
                             InventoryIdentityReservationReleaseRequest {
                                 reservation_id: reservation.reservation_id,
                                 external_id: reservation.external_id.clone(),
@@ -268,6 +282,8 @@ impl CheckoutInventoryReservationExecutor {
                         Err(error) => {
                             return Err(self
                                 .record_boundary_failure(
+                                    &port_context,
+                                    "release_inventory_by_identity",
                                     tenant_id,
                                     reservation.cart_line_item_id,
                                     reservation.reservation_id,
@@ -286,6 +302,8 @@ impl CheckoutInventoryReservationExecutor {
                         );
                         return Err(self
                             .record_boundary_failure(
+                                &port_context,
+                                "release_inventory_by_identity",
                                 tenant_id,
                                 reservation.cart_line_item_id,
                                 reservation.reservation_id,
@@ -340,11 +358,20 @@ impl CheckoutInventoryReservationExecutor {
 
     async fn record_boundary_failure(
         &self,
+        port_context: &PortContext,
+        owner_operation: &'static str,
         tenant_id: Uuid,
         cart_line_item_id: Uuid,
         reservation_id: Uuid,
         boundary: PortError,
     ) -> CheckoutInventoryExecutionError {
+        log_checkout_inventory_boundary_failure(
+            port_context,
+            owner_operation,
+            cart_line_item_id,
+            reservation_id,
+            &boundary,
+        );
         match self
             .reservation_journal
             .record_error(
@@ -370,6 +397,63 @@ impl CheckoutInventoryReservationExecutor {
                 retryable: boundary.retryable,
                 journal: Box::new(journal),
             },
+        }
+    }
+}
+
+fn log_checkout_inventory_boundary_failure(
+    context: &PortContext,
+    owner_operation: &'static str,
+    cart_line_item_id: Uuid,
+    reservation_id: Uuid,
+    boundary_error: &PortError,
+) {
+    match &boundary_error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?boundary_error,
+                owner = "rustok_inventory",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                cart_line_item_id = %cart_line_item_id,
+                reservation_id = %reservation_id,
+                code = %boundary_error.code,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_INVENTORY_BOUNDARY,
+                "checkout inventory owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?boundary_error,
+                owner = "rustok_inventory",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                cart_line_item_id = %cart_line_item_id,
+                reservation_id = %reservation_id,
+                code = %boundary_error.code,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_INVENTORY_BOUNDARY,
+                "checkout inventory owner boundary was rejected"
+            );
         }
     }
 }
