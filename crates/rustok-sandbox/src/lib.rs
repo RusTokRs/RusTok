@@ -39,6 +39,6 @@ pub use rhai_binding::{
 pub use runtime::{ExecutionObserver, NoopExecutionObserver, SandboxRuntime};
 pub use types::{
     ExecutionMetrics, ExecutionPhase, ExecutionRecord, ExecutionStatus, SandboxCancellation,
-    SandboxContext, SandboxExecutorKind, SandboxOutcome, SandboxPayload, SandboxRequest,
-    SandboxSubject,
+    SandboxContext, SandboxExecutorKind, SandboxExecutorPlacement, SandboxOutcome, SandboxPayload,
+    SandboxRequest, SandboxSubject,
 };

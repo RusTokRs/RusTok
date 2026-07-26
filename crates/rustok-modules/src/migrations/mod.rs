@@ -35,6 +35,8 @@ mod m20260722_000034_static_promotions;
 mod m20260722_000035_static_distribution_rollouts;
 mod m20260722_000036_artifact_security_state;
 mod m20260722_000037_policy_revision_cursors;
+mod m20260726_000038_artifact_data_object_deletions;
+mod m20260726_000039_artifact_data_record_deletions;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -77,5 +79,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260722_000035_static_distribution_rollouts::Migration),
         Box::new(m20260722_000036_artifact_security_state::Migration),
         Box::new(m20260722_000037_policy_revision_cursors::Migration),
+        Box::new(m20260726_000038_artifact_data_object_deletions::Migration),
+        Box::new(m20260726_000039_artifact_data_record_deletions::Migration),
     ]
 }

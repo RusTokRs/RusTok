@@ -1,15 +1,17 @@
 use crate::services::platform_composition::{PlatformCompositionError, PlatformCompositionService};
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleControlPlane, ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
-    ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
-    ModuleLifecycleDbWriterError, TenantModuleOverrideSnapshot,
+    EffectivePolicyCacheIdentity, ModuleControlPlane, ModuleEffectivePolicy,
+    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyMaintenanceInput,
+    ModuleEffectivePolicyNodeReadinessInput, ModuleLifecycleDbWriterError,
+    TenantModuleOverrideSnapshot,
 };
 use sea_orm::{DatabaseConnection, DbErr};
 
 #[derive(Clone, Debug)]
 pub struct EffectiveModulePolicySnapshot {
     pub policy: ModuleEffectivePolicy,
+    pub cache_identity: EffectivePolicyCacheIdentity,
     pub default_enabled_modules: Vec<String>,
 }
 
@@ -28,8 +30,12 @@ impl EffectiveModulePolicyService {
             .resolve(tenant_id)
             .await
             .map_err(map_effective_policy_error)?;
+        let cache_identity = policy
+            .cache_identity(tenant_id)
+            .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))?;
         Ok(EffectiveModulePolicySnapshot {
             policy,
+            cache_identity,
             default_enabled_modules,
         })
     }

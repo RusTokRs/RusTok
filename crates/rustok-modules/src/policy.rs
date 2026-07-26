@@ -170,10 +170,66 @@ pub struct ModuleEffectivePolicyDecision {
     pub denial_reasons: Vec<ModuleEffectivePolicyDenialReason>,
 }
 
+/// Tenant-scoped content identity for a resolved effective-policy cache entry.
+///
+/// A TTL, process generation, or tenant id alone is never sufficient for a
+/// cache hit. Consumers must match both fields against the current owner
+/// decision before using cached policy facts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EffectivePolicyCacheIdentity {
+    tenant_id: uuid::Uuid,
+    policy_revision: String,
+}
+
+impl EffectivePolicyCacheIdentity {
+    fn new(
+        tenant_id: uuid::Uuid,
+        policy_revision: String,
+    ) -> Result<Self, ModuleEffectivePolicyError> {
+        let identity = Self {
+            tenant_id,
+            policy_revision,
+        };
+        identity.validate()?;
+        Ok(identity)
+    }
+
+    pub fn tenant_id(&self) -> uuid::Uuid {
+        self.tenant_id
+    }
+
+    pub fn policy_revision(&self) -> &str {
+        &self.policy_revision
+    }
+
+    pub fn validate(&self) -> Result<(), ModuleEffectivePolicyError> {
+        if self.tenant_id.is_nil() {
+            return Err(ModuleEffectivePolicyError::InvalidCacheIdentity(
+                "tenant_id must be a non-nil UUID".to_string(),
+            ));
+        }
+        if !valid_digest(&self.policy_revision) {
+            return Err(ModuleEffectivePolicyError::InvalidCacheIdentity(
+                "policy_revision must be a sha256 digest".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn matches(&self, tenant_id: uuid::Uuid, policy_revision: &str) -> bool {
+        self.validate().is_ok()
+            && self.tenant_id == tenant_id
+            && self.policy_revision == policy_revision
+    }
+}
+
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ModuleEffectivePolicyError {
     #[error("effective module policy revision could not be encoded: {0}")]
     RevisionEncoding(String),
+    #[error("effective module policy cache identity is invalid: {0}")]
+    InvalidCacheIdentity(String),
     #[error("effective module policy channel input is invalid: {0}")]
     InvalidChannelInput(String),
     #[error("effective module policy maintenance input is invalid: {0}")]
@@ -871,6 +927,13 @@ impl ModuleEffectivePolicy {
         &self.policy_revision
     }
 
+    pub fn cache_identity(
+        &self,
+        tenant_id: uuid::Uuid,
+    ) -> Result<EffectivePolicyCacheIdentity, ModuleEffectivePolicyError> {
+        EffectivePolicyCacheIdentity::new(tenant_id, self.policy_revision.clone())
+    }
+
     pub fn contains(&self, module_slug: &str) -> bool {
         self.enabled_modules.contains(module_slug)
     }
@@ -1487,7 +1550,129 @@ mod tests {
     }
 
     #[test]
+    fn cache_identity_requires_exact_tenant_and_policy_revision() {
+        let catalog = ModuleDefinitionCatalog::from_static_registry(
+            &ModuleRegistry::new().register(ModulesModule),
+        )
+        .expect("catalog");
+        let tenant_id = Uuid::new_v4();
+        let enabled = ModuleEffectivePolicyQuery::new(&catalog, ["modules".to_string()], [], [])
+            .execute()
+            .expect("enabled policy");
+        let identity = enabled.cache_identity(tenant_id).expect("cache identity");
+
+        assert!(identity.matches(tenant_id, enabled.policy_revision()));
+        assert!(!identity.matches(Uuid::new_v4(), enabled.policy_revision()));
+
+        let disabled = ModuleEffectivePolicyQuery::new(&catalog, [], [], [])
+            .execute()
+            .expect("disabled policy");
+        assert_ne!(disabled.policy_revision(), enabled.policy_revision());
+        assert!(!identity.matches(tenant_id, disabled.policy_revision()));
+        assert!(matches!(
+            enabled.cache_identity(Uuid::nil()),
+            Err(super::ModuleEffectivePolicyError::InvalidCacheIdentity(_))
+        ));
+    }
+
+    #[test]
     fn selected_artifact_requires_exact_runtime_evidence() {
+        let catalog = artifact_catalog();
+
+        let unavailable =
+            ModuleEffectivePolicyQuery::new(&catalog, ["artifact".to_string()], [], [])
+                .execute()
+                .expect("unavailable policy");
+        assert_eq!(
+            unavailable.decision("artifact").denial_reasons,
+            vec![ModuleEffectivePolicyDenialReason::ArtifactInstallationUnavailable]
+        );
+
+        let available = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            ["artifact".to_string()],
+            [],
+            [artifact_runtime(
+                ModuleArtifactSecurityStatus::Clear,
+                ModuleArtifactRegistryReleaseStatus::Unlisted,
+            )],
+        )
+        .execute()
+        .expect("available policy");
+        let decision = available.decision("artifact");
+        assert!(decision.enabled);
+        assert!(decision.denial_reasons.is_empty());
+        assert!(decision.facts.iter().any(|fact| matches!(
+            fact,
+            ModuleEffectivePolicyFact::CapabilityPolicy {
+                capability_grant_revision: 7
+            }
+        )));
+    }
+
+    #[test]
+    fn security_enforcement_preserves_tenant_intent_and_keeps_yanking_non_emergency() {
+        let catalog = artifact_catalog();
+        let tenant_intent = [TenantModuleOverride {
+            module_slug: "artifact".to_string(),
+            enabled: true,
+        }];
+
+        for (status, expected_denial) in [
+            (
+                ModuleArtifactSecurityStatus::Quarantined,
+                ModuleEffectivePolicyDenialReason::Quarantined,
+            ),
+            (
+                ModuleArtifactSecurityStatus::Revoked,
+                ModuleEffectivePolicyDenialReason::Revoked,
+            ),
+        ] {
+            let policy = ModuleEffectivePolicyQuery::new(
+                &catalog,
+                [],
+                tenant_intent.clone(),
+                [artifact_runtime(
+                    status,
+                    ModuleArtifactRegistryReleaseStatus::Active,
+                )],
+            )
+            .execute()
+            .expect("security-enforced policy");
+            let decision = policy.decision("artifact");
+
+            assert!(!decision.enabled);
+            assert_eq!(decision.denial_reasons, vec![expected_denial]);
+            assert!(decision.facts.iter().any(|fact| matches!(
+                fact,
+                ModuleEffectivePolicyFact::TenantOverride { enabled: true }
+            )));
+        }
+
+        let yanked = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            [],
+            tenant_intent,
+            [artifact_runtime(
+                ModuleArtifactSecurityStatus::Clear,
+                ModuleArtifactRegistryReleaseStatus::Yanked,
+            )],
+        )
+        .execute()
+        .expect("yanked release policy");
+        let yanked_decision = yanked.decision("artifact");
+
+        assert!(yanked_decision.enabled);
+        assert!(yanked_decision.denial_reasons.is_empty());
+        assert!(yanked_decision.facts.iter().any(|fact| matches!(
+            fact,
+            ModuleEffectivePolicyFact::RegistryRelease {
+                status: ModuleArtifactRegistryReleaseStatus::Yanked
+            }
+        )));
+    }
+
+    fn artifact_catalog() -> ModuleDefinitionCatalog {
         let mut catalog = ModuleDefinitionCatalog::default();
         catalog
             .insert(ModuleDefinition {
@@ -1510,59 +1695,42 @@ mod tests {
                 capabilities: Vec::new(),
             })
             .expect("artifact definition");
+        catalog
+    }
 
-        let unavailable =
-            ModuleEffectivePolicyQuery::new(&catalog, ["artifact".to_string()], [], [])
-                .execute()
-                .expect("unavailable policy");
-        assert_eq!(
-            unavailable.decision("artifact").denial_reasons,
-            vec![ModuleEffectivePolicyDenialReason::ArtifactInstallationUnavailable]
-        );
-
-        let available = ModuleEffectivePolicyQuery::new(
-            &catalog,
-            ["artifact".to_string()],
-            [],
-            [ModuleEffectivePolicyRuntimeInput {
-                module_slug: "artifact".to_string(),
-                installation: Some(ModuleEffectivePolicyInstallationFact {
-                    installation_id: uuid::Uuid::from_u128(1),
-                    scope: ModuleInstallationScope::Platform,
-                    release_digest: digest('a'),
-                    payload_kind: ArtifactPayloadKind::Rhai,
-                    dependency_graph_revision: 4,
-                    dependency_graph_digest: digest('b'),
-                    capability_grant_revision: 7,
-                }),
-                capability_policy_revision: Some(7),
-                executor_available: true,
-                security: Some(ModuleArtifactSecuritySnapshot {
-                    release: ArtifactReleaseRef {
-                        slug: "artifact".to_string(),
-                        version: "1.2.3".to_string(),
-                        digest: digest('a'),
-                    },
-                    revision: 0,
-                    status: ModuleArtifactSecurityStatus::Clear,
-                    registry_status: ModuleArtifactRegistryReleaseStatus::Unlisted,
-                    policy_revision: None,
-                    reason_code: None,
-                    reason_detail: None,
-                }),
-            }],
-        )
-        .execute()
-        .expect("available policy");
-        let decision = available.decision("artifact");
-        assert!(decision.enabled);
-        assert!(decision.denial_reasons.is_empty());
-        assert!(decision.facts.iter().any(|fact| matches!(
-            fact,
-            ModuleEffectivePolicyFact::CapabilityPolicy {
-                capability_grant_revision: 7
-            }
-        )));
+    fn artifact_runtime(
+        status: ModuleArtifactSecurityStatus,
+        registry_status: ModuleArtifactRegistryReleaseStatus,
+    ) -> ModuleEffectivePolicyRuntimeInput {
+        ModuleEffectivePolicyRuntimeInput {
+            module_slug: "artifact".to_string(),
+            installation: Some(ModuleEffectivePolicyInstallationFact {
+                installation_id: uuid::Uuid::from_u128(1),
+                scope: ModuleInstallationScope::Platform,
+                release_digest: digest('a'),
+                payload_kind: ArtifactPayloadKind::Rhai,
+                dependency_graph_revision: 4,
+                dependency_graph_digest: digest('b'),
+                capability_grant_revision: 7,
+            }),
+            capability_policy_revision: Some(7),
+            executor_available: true,
+            security: Some(ModuleArtifactSecuritySnapshot {
+                release: ArtifactReleaseRef {
+                    slug: "artifact".to_string(),
+                    version: "1.2.3".to_string(),
+                    digest: digest('a'),
+                },
+                revision: u64::from(status != ModuleArtifactSecurityStatus::Clear),
+                status,
+                registry_status,
+                policy_revision: (status != ModuleArtifactSecurityStatus::Clear)
+                    .then(|| "artifact-security-policy".to_string()),
+                reason_code: (status != ModuleArtifactSecurityStatus::Clear)
+                    .then(|| "security_hold".to_string()),
+                reason_detail: None,
+            }),
+        }
     }
 
     fn digest(character: char) -> String {

@@ -37,6 +37,10 @@ Implemented:
 - local authoring/test harness over the same runtime request, policy, execution,
   cancellation, and error contracts with an explicit fixture-only capability
   broker and no infrastructure clients.
+- mandatory executor placement registration: every caller selects
+  `in_process` or `isolated_worker`, duplicate kinds are rejected across
+  placements, and runtime readiness exposes the selected placement without a
+  fallback.
 
 Remaining:
 
@@ -45,8 +49,9 @@ Remaining:
 - richer capability constraints and call budgets;
 - sidecar executor after its entry conditions are met.
 - a production isolated-worker deployment profile for untrusted Rhai;
-- removal of unbounded thread-per-host-call behavior in favor of an
-  async-compatible or strictly bounded bridge.
+- the versioned worker transport, capability callback, supervision, and
+  deployment resource controls behind the registered `isolated_worker`
+  placement.
 
 ## Local Work Phases
 
@@ -74,7 +79,10 @@ Remaining:
   Wasmtime reports observed aggregate non-shared guest linear-memory peak while
   excluding failed growth; Rhai peak-memory and executor cache-observation
   metrics remain pending without substituting configured limits for usage.
-- Add one shared in-process/isolated-worker executor placement contract.
+- [x] Add one shared in-process/isolated-worker executor placement contract.
+  Registration is explicit and atomic across all current callers, duplicate
+  kinds cannot create a fallback across placements, and runtime readiness
+  exposes the selected placement.
 - Run untrusted production Rhai in the supervised isolated worker without
   giving it infrastructure clients; keep in-process Rhai an explicit
   local/reviewed profile only.
@@ -118,6 +126,11 @@ Remaining:
 
 ## Local Verification
 
+- Current placement slice: 13 neutral runtime-contract tests and three Rhai
+  executor tests pass; six `rustok-modules` artifact-runtime tests and one
+  focused Alloy draft-extension test also pass after every caller moved to the
+  explicit registration API. No server or workspace-wide compile claim is
+  made.
 - Executor registration/selection and stable error-code tests.
 - Default-deny and constrained capability tests for every executor.
 - Draft/artifact Rhai parity tests.

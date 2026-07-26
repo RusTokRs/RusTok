@@ -1,17 +1,18 @@
 use sea_orm::DatabaseConnection;
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use rustok_core::ModuleRegistry;
 use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
-    ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer, ArtifactDataSnapshotAuthorizer,
-    ArtifactDataSnapshotCollectionAuthorizer, ArtifactDataSnapshotRetentionAuthorizer,
-    ArtifactEventDeliveryConfig, ArtifactEventDeliveryError, ArtifactLifecycleExecutor,
-    ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer,
-    ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
-    ControlPlaneInfrastructure, ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog,
-    ModuleDefinitionError, ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
+    ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer, ArtifactDataQuotaPolicy,
+    ArtifactDataSnapshotAuthorizer, ArtifactDataSnapshotCollectionAuthorizer,
+    ArtifactDataSnapshotRetentionAuthorizer, ArtifactEventDeliveryConfig,
+    ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactScheduleDeliveryConfig,
+    ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer,
+    ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer, ControlPlaneInfrastructure,
+    ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
+    ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
     ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
     ModuleLifecycleDbWriter, ModuleStaticDistributionAuthorizer,
     ModuleStaticDistributionReleaseAuthorizer, ModuleStaticDistributionReleaseVerifier,
@@ -304,6 +305,16 @@ impl ModuleControlPlane {
         SeaOrmArtifactDataCapabilityBrokerResolver::new(self.db.clone())
     }
 
+    /// Returns the same owner capability with a deployment-owned quota policy.
+    /// The policy receives the exact policy-revisioned namespace only after
+    /// installation and capability admission have succeeded.
+    pub fn artifact_data_capability_with_quota_policy(
+        &self,
+        quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
+    ) -> SeaOrmArtifactDataCapabilityBrokerResolver {
+        SeaOrmArtifactDataCapabilityBrokerResolver::with_quota_policy(self.db.clone(), quota_policy)
+    }
+
     /// Returns the owner-scoped private-object capability resolver. Storage is
     /// deployment infrastructure; the returned resolver never exposes it to a
     /// sandbox guest.
@@ -315,6 +326,21 @@ impl ModuleControlPlane {
             self.db.clone(),
             storage,
             self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the private-object capability with the same exact deployment
+    /// quota policy used for structured data.
+    pub fn artifact_data_object_capability_with_quota_policy(
+        &self,
+        storage: StorageRuntime,
+        quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
+    ) -> SeaOrmArtifactDataObjectCapabilityBrokerResolver {
+        SeaOrmArtifactDataObjectCapabilityBrokerResolver::with_infrastructure_and_quota_policy(
+            self.db.clone(),
+            storage,
+            self.infrastructure.clone(),
+            quota_policy,
         )
     }
 

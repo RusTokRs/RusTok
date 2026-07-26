@@ -483,6 +483,13 @@ explicit `module.effective_policy_revision_changed` event to the owner
 transaction. Existing security and distribution revisions remain separate
 contracts and must not be routed through this publisher.
 
+Resolved policy snapshots now also expose a tenant-scoped
+`EffectivePolicyCacheIdentity`. It binds any future cache entry to both the
+tenant and the exact content-addressed policy revision; a TTL or process-local
+generation cannot make a stale decision current. The server carries this
+identity with its effective-policy snapshot. Shared cache storage and durable
+invalidation wiring remain open.
+
 The current Phase 8 security slice adds `SeaOrmModuleArtifactSecurityService`.
 It persists global `clear/quarantined/revoked` state keyed by immutable artifact
 release identity, separates ordinary registry yanking from emergency
@@ -490,7 +497,10 @@ enforcement, and uses exact idempotency receipts plus revision CAS. Quarantine
 can be cleared only through an authorized command; revocation is terminal. A
 tenant's enablement row is never rewritten by these transitions. The read-only
 security resolver contributes registry status and redacted security evidence to
-`ModuleEffectivePolicy`.
+`ModuleEffectivePolicy`. Focused policy evidence now asserts the complete
+execution distinction: quarantine and emergency revocation deny a still
+tenant-enabled module, while ordinary registry yanking does not stop an
+already-installed clear release.
 
 The server constructs the compile-time `ModuleRegistry` exactly once during
 runtime bootstrap and shares that static implementation registry with the
@@ -677,8 +687,11 @@ object names and explicit prefix/operation grants. Small reads and writes use
 at most 44 KiB decoded base64; large writes use durable owner-owned upload
 sessions with ordered 44 KiB chunks, final size/SHA-256 verification, expiry
 reaping, and retention-GC hand-off before private-object publication. It never exposes
-physical storage identity. Secret, MCP, and every other capability remain default-deny
-until their deployment adapters are available.
+physical storage identity. The server also registers `platform.secrets` through
+`SeaOrmArtifactSecretHandlePolicy`; it repeats exact installation, lifecycle,
+capability-revision, explicit-grant, and derived-scope validation immediately
+before the logical binding read. MCP and every other unregistered capability
+remain default-deny until their owner deployment adapters are available.
 
 `resolve_granted_artifact_capability` is the shared gate for every dynamic
 owner route. It resolves the exact immutable installation, applies active
@@ -691,8 +704,13 @@ named explicit grant before a broker is constructed. The concrete
 result. The sandbox host already enforces data operation/prefix, logical-secret,
 object-data prefix/operation, logical-secret, and MCP server/tool grant
 constraints before a route runs. The composed server executor registers
-`platform.data` and `platform.data.objects`; secret and MCP routes await their
-explicit deployment adapters, and there is no default or network fallback broker.
+`platform.data`, `platform.data.objects`, and `platform.secrets`. The secret
+route returns only an owner-issued logical handle and revision; it never
+resolves a value or discloses resolver identity. MCP remains unregistered until
+the MCP owner provides a configured server-alias registry plus its
+access-policy and audit-aware invoker. There is no default or network fallback
+broker. Artifact event delivery is durable ingress into admitted bindings and
+is not modeled as an outbound guest capability.
 
 `ArtifactBindingExecutionContext` carries only bounded host-supplied actor and
 trace identities through generic artifact dispatch, sandbox capability calls,
@@ -1011,11 +1029,20 @@ metadata so the dynamic capability router can select that scope; it is never
 artifact input or an artifact-readable capability value.
 The neutral `platform.data` grant limits the sandbox adapter to
 injected tenant/module/data-contract scope, declared logical-key prefixes, and
-the `get`/`put`/bounded-`put_batch`/bounded-`list` input shapes.
+the `get`/`put`/bounded-`put_batch`/`delete`/bounded-`list` input shapes.
 `SeaOrmArtifactDataCapabilityBroker` routes those operations to this owner
 service after tenant/subject checks; batch entries must have distinct keys and
 idempotency keys under declared prefixes, while list queries use an escaped
 logical-prefix filter and continuation validation.
+Structured `delete` requires an exact positive revision and UUID idempotency
+key, obtains a distinct host authorization decision, removes all materialized
+indexes for the logical key in the same transaction, and persists its replay
+receipt under tenant/data-contract/policy scope.
+Structured and direct-object put receipts now use that same policy revision in
+their durable idempotency primary keys, so a UUID result from an older
+capability policy cannot replay under a newer policy. Owner-only export evidence
+and namespace-purge receipts also persist the exact policy revision used for
+authorization.
 An authorized namespace purge removes structured records and private-object
 metadata in its transaction and queues every unreachable private key. The
 tenant-scoped `SeaOrmArtifactDataObjectGcService` deletes a queued key only
@@ -1034,14 +1061,21 @@ configured server-alias implementation.
 The sandbox object capability limits each base64 call to 44 KiB. Larger objects
 use durable owner-owned upload sessions with ordered bounded chunks, final
 owner-side size/digest verification, expiry reaping, and retention-GC hand-off;
-true streaming object I/O, indexed-query, and export remain separate unfinished
-work. Object metadata and all durable digest columns require canonical lowercase
+true streaming WIT object I/O remains future work. Object metadata and all
+durable digest columns require canonical lowercase
 `sha256:` values, and upload idempotency is isolated by immutable policy scope.
 The owner enforces the 32 MiB object quota across the full durable chunk set,
 not merely at completion.
 Completion claims a durable `completing` state before publication; expiry reaping
 atomically transitions only expired open/completing sessions before queuing
 chunks, so completion and collection cannot race the same session.
+The object broker also exposes an explicitly granted logical `delete`
+operation. It requires an exact positive object revision and UUID idempotency
+key, obtains a distinct `ObjectDelete` host authorization decision, removes
+only matching metadata, persists the replay receipt under tenant RLS, and
+queues the private storage key for retention-aware GC in the same transaction.
+The guest receives only the logical name and deleted revision; it cannot
+request or observe inline physical deletion.
 
 The immutable persistence contract now reserves bounded logical scalar indexes:
 each declaration has a host-validated name, a narrow logical JSON pointer, and
@@ -1060,7 +1094,24 @@ query plans are unavailable.
 `put_batch` accepts at most 32 distinct logical keys and
 idempotency keys. It validates every schema and host authorization decision
 before opening one tenant-RLS transaction, then commits all structured writes
-and their idempotency facts together. The durable secret-reference slice now stores a
+and their idempotency facts together. `ArtifactDataQuota` is the host-selected
+quota snapshot for the exact policy-scoped broker. Artifacts cannot set or
+increase it, and custom deployment limits cannot exceed the platform ceilings:
+10,000 structured records/64 MiB of canonical JSON, 1,024 live objects/256 MiB,
+sixteen active upload sessions, and 64 MiB of staged chunks per namespace.
+Projected structured/object count and byte usage is checked under the same
+namespace lock and transaction as the revision write. Replacements subtract
+the prior value, batches see earlier writes in their transaction and roll back
+fully on rejection, logical deletion releases live capacity, and staging
+limits aggregate every active session in the tenant/module/data-contract
+namespace across policy revisions. Guarded restore receives its target quota
+from `ArtifactDataSnapshotAuthorizer` and rejects an oversized canonical
+manifest inside the restore transaction before publishing rows.
+`ArtifactDataQuotaPolicy` is the standalone owner port for resolving stricter
+deployment limits after exact installation/capability admission;
+`ModuleControlPlane` composes the same policy into both structured and object
+capability resolvers.
+The durable secret-reference slice now stores a
 tenant/module/data-contract-scoped logical name and a host-authorized
 `SecretRef` in a separate revisioned/idempotent table with a redacted outbox
 fact. The returned artifact handle contains only logical name and revision.
@@ -1292,6 +1343,23 @@ and installation lifecycle preconditions before that command may delete data.
   static-promotion rules.
 
 ## Verification
+
+### 2026-07-26 artifact-data quota closure
+
+The owner data broker now applies a host-selected `ArtifactDataQuotaPolicy`
+after exact installation/capability resolution. Structured and object writes
+enforce projected namespace-wide count/byte limits under the lifecycle lock;
+batch rollback, replacement accounting, logical-delete capacity release,
+active upload-session/staging aggregation, and guarded restore limits have
+focused regression coverage. The targeted `data::tests` set passes 20 tests,
+and the quota filter passes four tests including the hard-ceiling policy and restore-manifest unit
+case. Touched Rust files pass edition-2024 `rustfmt --check`; no workspace-wide
+compile or test claim is made.
+The final Phase 3 composition slice registers the production logical-secret
+route and adds a durable-state policy test covering successful authorization,
+stale policy scope, foreign installation identity, inactive lifecycle, and
+grant removal. Phase 3 is complete; MCP server-alias invocation remains a
+separate owner-integration item.
 
 ### 2026-07-22 quality and isolation audit
 

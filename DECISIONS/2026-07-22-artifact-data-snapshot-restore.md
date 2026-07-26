@@ -35,7 +35,10 @@ manifest and every private object, and requires an empty active target at the
 expected namespace revision. One transaction restores logical values, object
 metadata, index projections, the index contract, namespace revision CAS, audit
 operation, and outbox event. Restore never clears a purge tombstone and never
-replaces live data.
+replaces live data. The restore authorizer returns the exact target
+`ArtifactDataQuota`; the owner revalidates that immutable quota and checks
+structured count/bytes plus object count/bytes against the canonical manifest
+inside the guarded transaction before any restored row becomes live.
 
 ## Consequences
 

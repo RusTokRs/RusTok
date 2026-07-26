@@ -13,11 +13,20 @@ and runtime must not imply that such declarations are supported.
 
 ## Decision
 
-V1 forbids declarative DDL, arbitrary SQL, native migrations, and physical
+The current architecture forbids declarative DDL, arbitrary SQL, native migrations, and physical
 storage paths in artifact descriptors. Artifact migrations remain limited to
 the admitted bounded `data_upgrade` binding and brokered structured values.
 Static-promoted modules continue to use reviewed owner-provided
 `MigrationSource` migrations in a distribution build.
+
+The same owner boundary selects immutable per-policy data quotas; an artifact
+cannot declare or increase them. Structured values, live objects, active upload
+sessions, and staged chunks have separate count/byte ceilings. Projected usage
+is checked while holding the namespace lifecycle lock in the mutation
+transaction, so concurrent writes and atomic batches cannot over-admit
+capacity. Guarded restore obtains its exact target quota from the owner
+authorizer and validates the canonical manifest again inside the restore
+transaction.
 
 Any future declarative DDL feature requires a new accepted ADR and a separate
 implementation plan that proves all of the following before admission is

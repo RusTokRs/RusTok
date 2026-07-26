@@ -29,6 +29,7 @@ impl MigrationTrait for Migration {
                     tenant_id UUID NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key UUID NOT NULL,\
                     expected_namespace_revision BIGINT NOT NULL CHECK (expected_namespace_revision > 0),\
                     namespace_revision BIGINT NOT NULL CHECK (namespace_revision > 0),\
@@ -36,7 +37,7 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     purged_records BIGINT NOT NULL CHECK (purged_records >= 0),\
                     completed_at TIMESTAMPTZ NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
                 )",
                 "ALTER TABLE module_artifact_data_purge_operations ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_purge_operations_scope ON module_artifact_data_purge_operations \
@@ -58,6 +59,7 @@ impl MigrationTrait for Migration {
                     tenant_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key TEXT NOT NULL,\
                     expected_namespace_revision INTEGER NOT NULL CHECK (expected_namespace_revision > 0),\
                     namespace_revision INTEGER NOT NULL CHECK (namespace_revision > 0),\
@@ -65,7 +67,7 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     purged_records INTEGER NOT NULL CHECK (purged_records >= 0),\
                     completed_at TEXT NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
                 )",
             ],
             backend => {

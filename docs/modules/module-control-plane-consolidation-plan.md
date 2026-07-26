@@ -29,8 +29,8 @@ The ownership decision is fixed by
 
 ## Execution Checkpoint
 
-- Current phase: `runtime_foundation_and_control_plane_extraction`.
-- Last updated: 2026-07-22.
+- Current phase: `sandbox_worker_and_build_closure`.
+- Last updated: 2026-07-26.
 - Completed foundation:
   - neutral sandbox request, policy, broker, executor, outcome, error, and audit
     contracts;
@@ -45,21 +45,34 @@ The ownership decision is fixed by
   - module-owned tenant toggle, journal, settings persistence, recovery plan,
     and post-hook retry operations.
 - Current critical path:
-  1. freeze shared error, revision, and facade contracts;
-  2. replace compile-time identity/lifecycle with the artifact-aware definition
-     catalog and dispatcher;
-  3. add admitted artifact CAS and exact dependency lock graphs;
-  4. route Alloy draft execution through `SandboxRuntime`;
-  5. move platform composition and registry governance behind the
-     `rustok-modules` facade;
-  6. replace server and admin bypass paths;
-  7. add isolated build, signing, SBOM, publication, and admission stages.
+  1. complete isolated sandbox-worker profiles and deterministic resource
+     metrics;
+  2. close isolated OCI build-job and author SDK/CLI gaps;
+  3. close the remaining registry transport boundary evidence;
+  4. implement Alloy authoring/release evolution on the admitted runtime;
+  5. complete GraphQL/native/admin marketplace parity;
+  6. finish desired-state activation reconciliation and operational gates.
 - Targeted verification is current through the dirty-worktree boundary:
   `rustok-forum`, `rustok-pricing`, `rustok-commerce`, `rustok-groups`,
   `rustok-server --no-default-features`, and
   `rustok-admin --no-default-features --features ssr` all pass `cargo check`
   (warnings only). No workspace-wide compile or test claim is made.
 - Open architecture blockers: none.
+- Latest bounded artifact-data evidence: namespace quota tests cover projected
+  structured/object usage, atomic batch rollback, capacity release through
+  logical deletion, active upload-session/staging aggregation, and guarded
+  restore rejection. The production `platform.secrets` route now uses an owner
+  policy that rechecks exact installation identity, active lifecycle,
+  capability revision, grant, and derived namespace immediately before a
+  logical handle is read. Its durable-state test covers allow, stale scope,
+  foreign installation, deactivation, and grant removal. Phase 3 is complete;
+  no workspace-wide compile or test claim is made.
+- Latest sandbox-placement evidence: the ambiguous executor registration API is
+  removed from all current callers. Thirteen neutral runtime-contract tests,
+  three Rhai executor tests, six artifact-runtime tests, and one focused Alloy
+  draft-extension test pass with explicit placement registration. The server
+  and Alloy still register Rhai in process, so this is readiness/fallback
+  evidence rather than a claim that the isolated worker exists.
 
 ## Quality and Isolation Audit Checkpoint (2026-07-22)
 
@@ -538,14 +551,22 @@ The crate is the contract owner; executor placement is a deployment decision.
 It does not create a second sandbox API.
 
 - [ ] Define `in_process` and `isolated_worker` executor adapters behind the same
-  `SandboxExecutor`/runtime contract.
+  `SandboxExecutor`/runtime contract. The registry contract is now explicit:
+  callers must use `register_in_process` or `register_isolated_worker`, the
+  former ambiguous registration API is removed, duplicate kinds are rejected
+  across placements, and `SandboxRuntime::executor_placement` exposes the
+  selected adapter for readiness checks. The item remains open until the
+  generated worker transport supplies the real isolated adapter.
 - [ ] Permit in-process Wasmtime where its threat model and resource controls are
   accepted.
 - [ ] Run AI-generated or otherwise untrusted Rhai in an isolated sandbox worker
   in production so interpreter/runtime defects and hard memory/process limits do
   not affect the server process.
 - [ ] Keep in-process Rhai only as an explicit local-development or reviewed
-  profile; it is not a silent production fallback.
+  profile; it is not a silent production fallback. Current callers now name
+  their in-process placement explicitly and cannot install a same-kind worker
+  plus fallback. Server and Alloy production composition still require the
+  isolated-worker cutover before this item can close.
 - [ ] Use a versioned framed RPC over a local channel; reject raw stdin/stdout
   ambiguity, oversized frames, unsolicited output, and protocol drift. Prefer
   the workspace `tonic`/`prost` generated contract over a custom codec.
@@ -1291,12 +1312,15 @@ of an admitted blob.
 For v1, untrusted artifact modules do not supply executable SeaORM/Rust
 migrations or arbitrary SQL.
 
-- [ ] Provide brokered namespaced storage capabilities for structured values,
+- [x] Provide brokered namespaced storage capabilities for structured values,
   objects/files, indexes/query patterns supported by the platform, and
   secret-reference handles. The durable data owner provides bounded structured
   JSON values and a private object broker through a host-owned
   tenant/module/revision namespace with optimistic revisions and durable
-  idempotency results. Object metadata exposes logical name, content type, size,
+  idempotency results. Structured `delete` requires an exact positive record
+  revision and UUID idempotency key, removes matching materialized indexes in
+  the same transaction, and stores a policy-revision-scoped replay receipt
+  under tenant RLS. Object metadata exposes logical name, content type, size,
   digest, and revision only; its SeaORM/storage adapter generates and retains
   the physical key privately, derives the digest from accepted bytes, and
   re-hashes every private read before returning bytes. Secret references now
@@ -1304,8 +1328,12 @@ migrations or arbitrary SQL.
   idempotency, actor/reason audit data, and a redacted transactional-outbox fact;
   the injected `acquire_handle` broker returns only the logical handle and
   revision after per-execution host authorization. `platform.data.objects` now
-  admits owner-scoped `get_metadata`, `read`, `put`, and `list` calls only under
-  separately declared object-prefix/operation grants. Its JSON/base64 bridge is
+  admits owner-scoped `get_metadata`, `read`, `put`, `delete`, and `list` calls
+  only under separately declared object-prefix/operation grants. Logical delete
+  requires an exact positive object revision plus a UUID idempotency key,
+  persists an immutable replay receipt under tenant RLS, removes metadata with
+  revision CAS, and queues the unreachable private key for retention-aware GC
+  in the same transaction. Its JSON/base64 bridge is
   deliberately capped at 44 KiB of decoded bytes per call. Larger objects use
   durable owner-owned upload sessions with ordered chunks, final owner-side
   size/digest verification, expiry reaping, and retention-GC hand-off; a true
@@ -1332,8 +1360,24 @@ migrations or arbitrary SQL.
   express sorting, ranges, joins, offsets, or query plans.
   Value-consuming secret use now passes through the host-only exact-revision
   service described below; `platform.secrets` itself remains handle-only so it
-  cannot become a value-exfiltration capability.
-- [ ] Scope every operation by tenant, module slug, data-contract revision, and
+  cannot become a value-exfiltration capability. The production server
+  registers that route with `SeaOrmArtifactSecretHandlePolicy`, which repeats
+  exact installation, lifecycle, policy-revision, explicit-grant, and
+  owner-derived-scope validation immediately before the binding read. Event
+  delivery remains durable owner-queued ingress into admitted bindings rather
+  than an outbound guest capability. `platform.mcp` stays default-deny in
+  server composition until the MCP owner provides a configured server-alias
+  registry plus its access-policy and audit-aware invoker; that separate
+  integration gap does not weaken the completed namespaced-data contract.
+- [x] Add revision-guarded logical object deletion to the brokered data
+  capability. The guest receives only logical name and deleted revision;
+  physical bytes remain private and cannot be collected until the independent
+  retention policy approves their durable GC candidate.
+- [x] Add revision-guarded logical structured-record deletion. The owner
+  authorizes `Delete` separately from writes, removes the record and every
+  materialized scalar index atomically, and returns only its logical key and
+  deleted revision through an exact policy-scoped idempotency replay.
+- [x] Scope every operation by tenant, module slug, data-contract revision, and
   policy; the guest cannot choose a physical schema/table/bucket path. The
   structured-data validator is host-constructed with the immutable installation
   ID, so it resolves only that RLS-scoped admitted descriptor and persistence
@@ -1345,9 +1389,14 @@ migrations or arbitrary SQL.
   object metadata and transactionally queues now-unreferenced private bytes for
   retention/GC. The tenant-scoped GC owner deletes only queued keys approved by
   an explicit snapshot rule after legal-hold, audit-hold, rollback-hold, and
-  expiry checks; a missing rule fails closed. The remaining broker capability
-  kinds still need the same boundary.
-- [ ] Validate data/settings/action payloads with bundled JSON Schema using the
+  expiry checks; a missing rule fails closed. Individual object deletion uses
+  the same immutable scope, a distinct `ObjectDelete` authorization decision,
+  and revision CAS. Structured/object put and delete idempotency identities,
+  purge receipts, export evidence, upload sessions, snapshot operations, GC
+  candidates, and secret bindings all carry the exact current policy scope.
+  Future capability kinds must use the same owner-derived boundary before they
+  can be registered in the fail-closed router.
+- [x] Validate data/settings/action payloads with bundled JSON Schema using the
   maintained `jsonschema` validator and bounded regular-expression settings.
   Structured-value writes now require a host-owned schema-validation port before
   persistence. `SeaOrmArtifactDataSchemaValidator` resolves the exact admitted
@@ -1365,22 +1414,42 @@ migrations or arbitrary SQL.
   with the same infrastructure and admitted lifecycle executor. Binding inputs
   and decoded outputs, including command/action payloads,
   already use the same bounded compiled-validator cache in `ArtifactRuntime`.
-  The checklist remains open only for the Phase 7 declarative admin-action to
-  admitted-binding presentation/transport adapter; no such UI action adapter is
-  claimed here.
-- [ ] Define quotas, pagination, transactions/batches, optimistic revisions,
+  The Phase 7 declarative admin-action presentation/transport adapter remains
+  separately tracked; it must route through this admitted binding path and
+  cannot introduce another payload-validation implementation.
+- [x] Define quotas, pagination, transactions/batches, optimistic revisions,
   idempotency, backup/export, retention, and deletion semantics.
+  `ArtifactDataQuota` is an owner-selected immutable policy snapshot; artifact
+  payloads cannot provide or raise it. The platform hard ceilings are 10,000
+  structured records and 64 MiB of canonical structured JSON, 1,024 logical
+  objects and 256 MiB of live object bytes, sixteen active upload sessions,
+  and 64 MiB of staged chunks per tenant/module/data-contract namespace.
+  Production composition may only tighten those limits. Structured and object
+  writes compute projected count/byte usage under the same namespace lock and
+  transaction as their revision mutation; overwrites replace the prior byte
+  contribution, batch writes observe earlier writes in the same transaction,
+  and a rejected batch rolls back in full. Logical delete releases live
+  capacity while private object bytes remain retention-GC governed. Upload
+  session and staging-byte limits cover every active session in the namespace,
+  not only one guest execution or policy revision. Restore authorization now
+  returns the exact target quota snapshot, which is revalidated against the
+  canonical manifest inside the guarded restore transaction before rows become
+  live.
   Structured-value writes currently have a 256-byte logical-key bound, a
   64 KiB JSON-payload bound, per-record optimistic revisions, and durable
-  idempotency. Their namespace lifecycle serializes writes against explicit
+  idempotency. Per-record deletion requires exact revision CAS, durable
+  idempotency, and atomic materialized-index cleanup. Their namespace lifecycle
+  serializes writes and deletes against explicit
   purge, retains a tombstone after purge, and requires a host authorization
   port for lifecycle/retention/legal-hold checks before the audited outbox
   operation. Authorized keyset pagination is bounded to 100 records and uses
   only a logical-key continuation. `put_batch` accepts at most 32 distinct
   logical keys and idempotency keys, validates every schema and authorization
   decision before opening its transaction, and commits all writes and their
-  durable idempotency facts atomically. Object overwrite and authorized purge
-  queue replaced/unreachable private keys for retention-guarded collection.
+  durable idempotency facts atomically. Object overwrite, logical object
+  deletion, and authorized namespace purge queue replaced/unreachable private
+  keys for retention-guarded collection. Individual deletion requires exact
+  revision CAS and durable idempotency; it never removes private bytes inline.
   The owner now also provides an audited bounded export page: a separate host
   authorizer, active namespace revision CAS, lifecycle lock, audit row, and
   redacted outbox fact protect each export. It never appears as a sandbox
@@ -1414,8 +1483,7 @@ migrations or arbitrary SQL.
   snapshot identity. Blob deletion is idempotent, interrupted collection
   resumes without losing the original decision, and the final transaction
   deletes manifest-owned rows while preserving retention/restore/collection
-  audit facts and emits `module.artifact.data_snapshot_collected`. The remaining
-  broker capability types are still pending.
+  audit facts and emits `module.artifact.data_snapshot_collected`.
 - [x] Keep secret values outside settings and module data; store only brokered
   secret references. The secret-binding store persists only a host-authorized
   resolver reference in its separate owner table; structured data, sandbox
@@ -2336,23 +2404,29 @@ workers, transports, and UI.
 
 ### Deliverables
 
-- [ ] Return decision, contributing facts, policy revision, and denial reasons.
+- [x] Return decision, contributing facts, policy revision, and denial reasons.
+  `ModuleEffectivePolicyDecision` now covers every declared Phase 8 input with
+  typed facts and stable denial reasons under one deterministic `sha256:`
+  policy revision. Focused owner tests cover catalog/default/tenant intent,
+  artifact installation and capability evidence, dependencies, channel,
+  maintenance, node readiness, registry state, quarantine, revocation, and
+  unknown modules.
 - [x] Return the current catalog/default/tenant-intent decision slice as one
   serializable `ModuleEffectivePolicy`: its deterministic `sha256:` revision
   covers the exact definition catalog, normalized platform defaults, and
   persisted tenant overrides; every known module carries typed contributing
   facts and stable denial reasons, and unknown modules are explicitly denied.
   Artifact runtime evidence is covered by the following slices; channel,
-  quarantine, revocation, and maintenance are now owner inputs, while
-  node-readiness remains open under the aggregate Phase 8 deliverable above.
+  quarantine, revocation, maintenance, and node readiness are owner inputs
+  described by the following slices.
 - [x] Extend that same decision with exact artifact runtime availability:
   selected artifact definitions resolve only through the existing tenant-RLS
   active-installation owner, require the exact durable capability-policy
   revision, require an injected isolated executor, and fail closed across the
   complete dependency closure. The policy revision includes these redacted
   facts; grant contents and resolver error text are excluded. Channel and
-  node-readiness inputs remain open; quarantine and emergency
-  revocation are covered by the following owner aggregate.
+  node-readiness inputs, quarantine, and emergency revocation are covered by
+  the following owner slices.
 - [ ] Use the same decision in lifecycle writes, runtime dispatch, routing,
   events, scheduler, APIs, and admin UI.
 - [x] Wire lifecycle tenant-toggle writes to the same effective-policy
@@ -2382,8 +2456,19 @@ workers, transports, and UI.
   `EffectiveModulePolicyService`; they consume the canonical owner decision and
   no longer reconstruct enablement from `tenant_modules` in routing code.
 - [ ] Invalidate/cache decisions using explicit revision dependencies.
-- [ ] Quarantine blocks new execution without silently changing tenant intent.
-- [ ] Revocation policy distinguishes emergency stop from ordinary yanking.
+- [x] Define the first fail-closed cache identity slice. A resolved owner
+  decision produces an `EffectivePolicyCacheIdentity` containing the exact
+  tenant and content-addressed policy revision; neither tenant identity, TTL,
+  nor a process generation can authorize a cache hit alone. The server policy
+  snapshot carries this identity for downstream consumers. Shared cache
+  storage/invalidation wiring remains open under the aggregate item above.
+- [x] Quarantine blocks new execution without silently changing tenant intent.
+  The effective-policy decision records the still-enabled tenant override as a
+  contributing fact while returning `quarantined` and denying new execution.
+- [x] Revocation policy distinguishes emergency stop from ordinary yanking.
+  Terminal security revocation returns the distinct `revoked` denial, while a
+  clear already-installed release whose registry lifecycle is `yanked`
+  remains executable; yanking affects discovery and new installation only.
 - [x] Add the current artifact security owner aggregate: explicit quarantine,
   authorized quarantine clear, and terminal emergency revoke are persisted by
   immutable release identity with revision CAS, exact idempotency receipts, and

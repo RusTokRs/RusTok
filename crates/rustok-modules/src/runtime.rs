@@ -639,7 +639,7 @@ mod tests {
         let observed = Arc::new(Mutex::new(None));
         let mut executors = ExecutorRegistry::new();
         executors
-            .register(RecordingExecutor::new(
+            .register_in_process(RecordingExecutor::new(
                 Arc::clone(&observed),
                 json!({ "executed": true }),
             ))
@@ -774,7 +774,7 @@ mod tests {
         let observed = Arc::new(Mutex::new(None));
         let mut executors = ExecutorRegistry::new();
         executors
-            .register(RecordingExecutor::new(
+            .register_in_process(RecordingExecutor::new(
                 Arc::clone(&observed),
                 json!({ "executed": true }),
             ))
@@ -811,7 +811,7 @@ mod tests {
         let observed = Arc::new(Mutex::new(None));
         let mut executors = ExecutorRegistry::new();
         executors
-            .register(RecordingExecutor::new(
+            .register_in_process(RecordingExecutor::new(
                 Arc::clone(&observed),
                 json!({ "executed": "invalid" }),
             ))

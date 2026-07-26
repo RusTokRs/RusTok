@@ -82,6 +82,13 @@ transaction, and lends the resolved `SecretString` only to a fixed-purpose host
 consumer whose result type is `()`. The resulting receipt contains only logical
 reference, revision, and purpose; resolver keys, values, and consumer output are
 not serializable through this boundary.
+The production server registers this capability through
+`SeaOrmArtifactSecretHandlePolicy`. The dynamic resolver first checks the exact
+active installation and durable grant, and the policy repeats that check
+immediately before the binding read so a lifecycle or capability-revision
+change cannot leave a stale broker authorized. The repeated check derives the
+tenant/module/data-contract/policy scope from owner installation state; neither
+the guest nor a secret resolver supplies it.
 
 `OciDistributionArtifactRegistry` resolves only digest-pinned references. It
 requires the returned manifest digest to match the requested reference, reads
@@ -265,6 +272,30 @@ Structured-data and object-data list calls validate bounded keyset continuation
 inside the requested logical prefix before invoking any capability broker. A
 custom broker therefore cannot receive a continuation that escapes the admitted
 namespace even if it does not repeat owner validation internally.
+Structured-data deletion is a distinct granted and host-authorized operation.
+It requires an exact positive record revision plus UUID idempotency key, removes
+the logical record and all of its materialized indexes atomically, and persists
+a policy-revision-scoped tenant-RLS replay receipt.
+Structured/object put receipts use the same policy revision in their durable
+idempotency identity. Export evidence and destructive namespace-purge receipts
+also record that revision, preventing a result authorized under one capability
+policy from being reused as evidence for another.
+`ArtifactDataQuota` is selected by the host for the exact broker policy; it is
+not descriptor or capability input. Structured record/byte, live object/byte,
+active upload-session, and staged-chunk limits are evaluated as projected
+namespace-wide usage under the owner namespace lock. Replacement subtracts the
+old byte contribution, atomic batches cannot partially consume capacity, and
+logical deletion releases live capacity without bypassing retention-aware
+physical GC. A restore authorizer returns the exact target quota and the owner
+checks the canonical snapshot manifest again inside the restore transaction.
+Deployments inject stricter exact-scope limits through
+`ArtifactDataQuotaPolicy`; `ModuleControlPlane` exposes matching composition
+entrypoints for both structured and object capability resolvers.
+Object-data deletion is a distinct granted operation. It requires the exact
+positive logical-object revision and a UUID idempotency key, persists a
+tenant-RLS replay receipt, and queues the now-unreachable private key for the
+same retention-aware GC used by replacement and namespace purge. It never
+returns or deletes the physical storage key inline.
 
 Durable artifact-data backup is owner-only and separate from bounded export
 pages. `ModuleControlPlane::artifact_data_snapshot` creates a resumable,

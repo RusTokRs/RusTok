@@ -104,7 +104,7 @@ pub fn create_alloy_sandbox_runtime(
     broker: std::sync::Arc<dyn CapabilityBroker>,
 ) -> SandboxResult<SandboxRuntime> {
     let mut executors = ExecutorRegistry::new();
-    executors.register(create_sandbox_rhai_executor())?;
+    executors.register_in_process(create_sandbox_rhai_executor())?;
     Ok(SandboxRuntime::new(executors, broker))
 }
 

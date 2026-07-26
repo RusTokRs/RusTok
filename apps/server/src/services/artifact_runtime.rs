@@ -12,7 +12,8 @@ use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver, ArtifactRuntime,
     ArtifactRuntimeLifecycleExecutor, ModuleControlPlane, ModuleEffectivePolicy,
-    ResolvingArtifactCapabilityBroker, SharedArtifactBindingExecutor,
+    ResolvingArtifactCapabilityBroker, SeaOrmArtifactSecretHandlePolicy,
+    SharedArtifactBindingExecutor,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, RhaiCapabilityBridge, SandboxRuntime};
 use rustok_storage::StorageRuntime;
@@ -59,7 +60,10 @@ pub fn compose_artifact_binding_executor(
     let object_data_capability = CapabilityName::new("platform.data.objects").map_err(|error| {
         Error::Message(format!("invalid artifact object-data capability: {error}"))
     })?;
+    let secret_capability = CapabilityName::new("platform.secrets")
+        .map_err(|error| Error::Message(format!("invalid artifact secret capability: {error}")))?;
     let control_plane = ModuleControlPlane::new(ctx.db_clone());
+    let secret_policy = SeaOrmArtifactSecretHandlePolicy::new(ctx.db_clone());
     let resolver = ArtifactCapabilityBrokerResolverRouter::new()
         .route(
             data_capability,
@@ -71,16 +75,22 @@ pub fn compose_artifact_binding_executor(
                 Arc::new(control_plane.artifact_data_object_capability(storage.clone())),
             )
         })
+        .and_then(|router| {
+            router.route(
+                secret_capability,
+                Arc::new(control_plane.artifact_secret_capability(secret_policy)),
+            )
+        })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))?;
     let mut executors = ExecutorRegistry::new();
     executors
-        .register(
+        .register_in_process(
             rustok_sandbox::rhai::RhaiExecutor::new()
                 .with_extension(Arc::new(RhaiCapabilityBridge)),
         )
         .map_err(|error| Error::Message(format!("artifact Rhai executor failed: {error}")))?;
     executors
-        .register(rustok_sandbox::wasm::WasmComponentExecutor::new())
+        .register_in_process(rustok_sandbox::wasm::WasmComponentExecutor::new())
         .map_err(|error| Error::Message(format!("artifact WASM executor failed: {error}")))?;
 
     let sandbox = SandboxRuntime::new(

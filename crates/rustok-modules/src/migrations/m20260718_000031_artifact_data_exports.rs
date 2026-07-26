@@ -16,6 +16,7 @@ impl MigrationTrait for Migration {
                     tenant_id UUID NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     namespace_revision BIGINT NOT NULL CHECK (namespace_revision > 0),\
                     actor_id UUID NOT NULL,\
                     prefix TEXT NOT NULL CHECK (length(prefix) BETWEEN 2 AND 256),\
@@ -26,7 +27,7 @@ impl MigrationTrait for Migration {
                     completed_at TIMESTAMPTZ NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_data_exports_scope_idx \
-                 ON module_artifact_data_exports (tenant_id, module_slug, data_contract_revision, completed_at, export_id)",
+                 ON module_artifact_data_exports (tenant_id, module_slug, data_contract_revision, policy_revision, completed_at, export_id)",
                 "ALTER TABLE module_artifact_data_exports ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_exports_scope ON module_artifact_data_exports \
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
@@ -38,6 +39,7 @@ impl MigrationTrait for Migration {
                     tenant_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     namespace_revision INTEGER NOT NULL CHECK (namespace_revision > 0),\
                     actor_id TEXT NOT NULL,\
                     prefix TEXT NOT NULL CHECK (length(prefix) BETWEEN 2 AND 256),\
@@ -48,7 +50,7 @@ impl MigrationTrait for Migration {
                     completed_at TEXT NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_data_exports_scope_idx \
-                 ON module_artifact_data_exports (tenant_id, module_slug, data_contract_revision, completed_at, export_id)",
+                 ON module_artifact_data_exports (tenant_id, module_slug, data_contract_revision, policy_revision, completed_at, export_id)",
             ],
             backend => {
                 return Err(DbErr::Migration(format!(

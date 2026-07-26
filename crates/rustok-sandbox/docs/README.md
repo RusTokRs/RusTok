@@ -23,10 +23,18 @@ or calling a broker, the host verifies that the call's execution ID, subject,
 phase, tenant, actor and trace context match its active request. The crate has no
 dependency on Alloy, `rustok-modules`, server hosts or domain modules.
 
-`ExecutorRegistry::contains` and `SandboxRuntime::supports_executor` expose
-read-only registry-backed readiness. Owner policy adapters may use this fact to
-deny an admitted payload whose concrete executor is not registered; merely
-injecting an execution port is not readiness evidence.
+Executor registration must select either `register_in_process` or
+`register_isolated_worker`; the former ambiguous `register` entrypoint no
+longer exists. Duplicate kinds are rejected across placements, so a missing
+worker cannot be paired with an in-process fallback for the same executor kind.
+`ExecutorRegistry::contains`, `SandboxRuntime::supports_executor`, and
+`SandboxRuntime::executor_placement` expose read-only registry-backed
+readiness. Owner policy adapters may use these facts to deny an admitted
+payload whose concrete executor or required placement is unavailable; merely
+injecting an execution port is not readiness evidence. Placement describes the
+registered adapter, not proof of process isolation. The supervised worker
+transport and deployment resource controls remain required before untrusted
+production Rhai can select `isolated_worker`.
 
 The `platform.http` grant requires typed `hosts`, `methods`, and
 `path_prefixes` constraints. All three lists must be non-empty; host and method
@@ -53,13 +61,18 @@ event topics are denied before the broker is invoked.
 The `platform.data` grant requires typed non-empty `key_prefixes` and
 `operations` lists. The tenant/module/data-contract namespace is injected by
 the host; guests can name only logical keys under an admitted prefix. The
-current contract permits `get`, `put`, and bounded `list` inputs and rejects
-physical storage fields such as a table, bucket, path, or namespace. The
-owner-provided adapter also permits an explicitly granted `put_batch` of at
+current contract permits `get`, `put`, `delete`, and bounded `list` inputs and
+rejects physical storage fields such as a table, bucket, path, or namespace.
+Delete requires an exact positive record revision and UUID idempotency key.
+The owner-provided adapter also permits an explicitly granted `put_batch` of at
 most 32 writes. The sandbox validates every batch entry's logical key and UUID
 idempotency key, requires both to be distinct across the batch, and keeps every
 key inside an admitted prefix before invoking the owner. Listing uses an escaped
 prefix query and continuation that remain inside the admitted logical prefix.
+The separate `platform.data.objects` contract permits only explicitly granted
+logical-name operations. Its `delete` form requires an exact positive revision
+and UUID idempotency key, keeps the name inside an admitted prefix, and exposes
+no bucket, URL, storage key, or inline physical-deletion control.
 
 The `platform.mcp` grant requires typed non-empty exact server/tool pairs and
 the `call` operation. A call may contain only a configured server alias, tool

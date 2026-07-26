@@ -15,11 +15,11 @@ use rustok_events::DomainEvent;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
-    ArtifactDataError, ArtifactDataObject, ArtifactDataRecord, ArtifactDataScope,
-    ControlPlaneInfrastructure,
+    ArtifactDataError, ArtifactDataObject, ArtifactDataQuota, ArtifactDataRecord,
+    ArtifactDataScope, ControlPlaneInfrastructure,
     data::{
-        configure_tenant_scope, namespace_lock_clause, now_expression, placeholder, revision_value,
-        uuid_from_row, uuid_value,
+        artifact_data_value_size, configure_tenant_scope, namespace_lock_clause, now_expression,
+        placeholder, revision_value, uuid_from_row, uuid_value,
     },
 };
 
@@ -197,7 +197,7 @@ pub trait ArtifactDataSnapshotAuthorizer: Send + Sync {
     async fn authorize_restore(
         &self,
         request: &ArtifactDataRestoreRequest,
-    ) -> Result<(), ArtifactDataError>;
+    ) -> Result<ArtifactDataQuota, ArtifactDataError>;
 }
 
 #[derive(Clone)]
@@ -250,7 +250,7 @@ where
         request: ArtifactDataRestoreRequest,
     ) -> Result<ArtifactDataRestoreResult, ArtifactDataError> {
         validate_restore_request(&request)?;
-        self.authorizer.authorize_restore(&request).await?;
+        let quota = self.authorizer.authorize_restore(&request).await?;
         let request_digest = digest_json(&request)?;
         if let Some(result) = self
             .find_restore_operation(&request, &request_digest)
@@ -272,7 +272,14 @@ where
         }
         let copied = self.copy_restore_objects(&request.target, &objects).await?;
         let result = self
-            .commit_restore(&request, &request_digest, &snapshot, &objects, &copied)
+            .commit_restore(
+                &request,
+                &request_digest,
+                &snapshot,
+                &objects,
+                &copied,
+                quota,
+            )
             .await;
         if result.is_err() {
             for storage_key in copied {
@@ -711,6 +718,7 @@ where
         snapshot: &ArtifactDataSnapshot,
         objects: &[SnapshotObject],
         copied: &[String],
+        quota: ArtifactDataQuota,
     ) -> Result<ArtifactDataRestoreResult, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, request.target.tenant_id).await?;
@@ -754,6 +762,7 @@ where
         {
             return Err(ArtifactDataError::SnapshotIntegrity);
         }
+        enforce_restore_quota(&manifest, quota)?;
         persist_restore_rows(&transaction, &request.target, &manifest, objects, copied).await?;
         let namespace_revision = request
             .expected_namespace_revision
@@ -1712,9 +1721,10 @@ async fn persist_restore_rows(
     }
     let backend = transaction.get_database_backend();
     for record in &manifest.records {
+        let value_size_bytes = artifact_data_value_size(&record.value)?;
         transaction.execute(Statement::from_sql_and_values(backend, format!(
-            "INSERT INTO module_artifact_data (tenant_id, module_slug, data_contract_revision, data_key, value, revision, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {})",
-            placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, record.key.clone().into(), record.value.clone().into(), revision_value(record.revision)?])).await.map_err(snapshot_storage_error)?;
+            "INSERT INTO module_artifact_data (tenant_id, module_slug, data_contract_revision, data_key, value, value_size_bytes, revision, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {})",
+            placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), placeholder(backend,7), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, record.key.clone().into(), record.value.clone().into(), revision_value(value_size_bytes)?, revision_value(record.revision)?])).await.map_err(snapshot_storage_error)?;
     }
     for (object, storage_key) in objects.iter().zip(copied) {
         transaction.execute(Statement::from_sql_and_values(backend, format!(
@@ -2070,6 +2080,50 @@ fn manifest_within_limits(manifest: &StoredSnapshotManifest) -> bool {
             .is_some_and(|total| total <= MAX_SNAPSHOT_OBJECT_BYTES)
 }
 
+fn enforce_restore_quota(
+    manifest: &StoredSnapshotManifest,
+    quota: ArtifactDataQuota,
+) -> Result<(), ArtifactDataError> {
+    let quota = quota.validate()?;
+    let structured_records = u64::try_from(manifest.records.len())
+        .map_err(|_| ArtifactDataError::SnapshotLimitExceeded)?;
+    let structured_bytes = manifest.records.iter().try_fold(0_u64, |total, record| {
+        total
+            .checked_add(artifact_data_value_size(&record.value)?)
+            .ok_or(ArtifactDataError::SnapshotLimitExceeded)
+    })?;
+    let objects = u64::try_from(manifest.objects.len())
+        .map_err(|_| ArtifactDataError::SnapshotLimitExceeded)?;
+    let object_bytes = manifest.objects.iter().try_fold(0_u64, |total, object| {
+        total
+            .checked_add(object.object.size_bytes)
+            .ok_or(ArtifactDataError::SnapshotLimitExceeded)
+    })?;
+    for (resource, limit, attempted) in [
+        (
+            "structured_records",
+            quota.max_structured_records,
+            structured_records,
+        ),
+        (
+            "structured_bytes",
+            quota.max_structured_bytes,
+            structured_bytes,
+        ),
+        ("objects", quota.max_objects, objects),
+        ("object_bytes", quota.max_object_bytes, object_bytes),
+    ] {
+        if attempted > limit {
+            return Err(ArtifactDataError::QuotaExceeded {
+                resource,
+                limit,
+                attempted,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn digest_json(value: &impl Serialize) -> Result<String, ArtifactDataError> {
     let canonical = canonical_manifest_snapshot_json(value).map_err(snapshot_storage_error)?;
     Ok(format!("sha256:{}", hash_manifest_snapshot(&canonical)))
@@ -2149,4 +2203,103 @@ fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
 
 fn snapshot_storage_error(error: impl std::fmt::Display) -> ArtifactDataError {
     ArtifactDataError::Storage(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn manifest(
+        records: Vec<ArtifactDataRecord>,
+        objects: Vec<SnapshotObject>,
+    ) -> StoredSnapshotManifest {
+        StoredSnapshotManifest {
+            scope: ArtifactDataScope {
+                tenant_id: Uuid::new_v4(),
+                module_slug: "quota_module".to_string(),
+                data_contract_revision: 1,
+                policy_revision: 1,
+            },
+            source_namespace_revision: 1,
+            records,
+            objects,
+            indexes: Vec::new(),
+            index_contract_digest: None,
+        }
+    }
+
+    #[test]
+    fn restore_rejects_a_snapshot_outside_the_authorized_quota() {
+        let quota = ArtifactDataQuota {
+            max_structured_records: 1,
+            max_structured_bytes: 5,
+            max_objects: 1,
+            max_object_bytes: 4,
+            ..ArtifactDataQuota::default()
+        };
+        let record = |key: &str, value| ArtifactDataRecord {
+            key: key.to_string(),
+            value,
+            revision: 1,
+        };
+        let record_count_error = enforce_restore_quota(
+            &manifest(
+                vec![record("state/one", json!(1)), record("state/two", json!(2))],
+                Vec::new(),
+            ),
+            quota,
+        )
+        .expect_err("record count quota");
+        assert!(matches!(
+            record_count_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "structured_records",
+                limit: 1,
+                attempted: 2,
+            }
+        ));
+
+        let record_bytes_error = enforce_restore_quota(
+            &manifest(vec![record("state/one", json!("1234"))], Vec::new()),
+            quota,
+        )
+        .expect_err("record byte quota");
+        assert!(matches!(
+            record_bytes_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "structured_bytes",
+                limit: 5,
+                attempted: 6,
+            }
+        ));
+
+        let object_bytes_error = enforce_restore_quota(
+            &manifest(
+                Vec::new(),
+                vec![SnapshotObject {
+                    object: ArtifactDataObject {
+                        name: "objects/one.bin".to_string(),
+                        content_type: "application/octet-stream".to_string(),
+                        size_bytes: 5,
+                        digest_sha256: format!("sha256:{}", "0".repeat(64)),
+                        revision: 1,
+                    },
+                    source_storage_key: "private/source".to_string(),
+                    snapshot_storage_key: Some("private/snapshot".to_string()),
+                }],
+            ),
+            quota,
+        )
+        .expect_err("object byte quota");
+        assert!(matches!(
+            object_bytes_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "object_bytes",
+                limit: 4,
+                attempted: 5,
+            }
+        ));
+    }
 }

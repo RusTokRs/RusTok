@@ -93,7 +93,7 @@ impl LocalSandboxHarness {
     #[cfg(feature = "rhai")]
     pub fn rhai() -> SandboxResult<Self> {
         let mut executors = ExecutorRegistry::new();
-        executors.register(crate::rhai::RhaiExecutor::new())?;
+        executors.register_in_process(crate::rhai::RhaiExecutor::new())?;
         Ok(Self::new(executors))
     }
 
@@ -198,7 +198,7 @@ mod tests {
     async fn harness_requires_an_explicit_fixture_response() {
         let mut executors = ExecutorRegistry::new();
         executors
-            .register(FixtureExecutor)
+            .register_in_process(FixtureExecutor)
             .expect("fixture executor");
         let harness = LocalSandboxHarness::new(executors);
 

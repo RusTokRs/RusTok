@@ -45,6 +45,25 @@ impl fmt::Display for SandboxExecutorKind {
     }
 }
 
+/// Deployment placement for one registered executor implementation. Callers
+/// must select it explicitly so an unavailable worker cannot silently fall
+/// back to an in-process implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxExecutorPlacement {
+    InProcess,
+    IsolatedWorker,
+}
+
+impl fmt::Display for SandboxExecutorPlacement {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::InProcess => "in_process",
+            Self::IsolatedWorker => "isolated_worker",
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SandboxSubject {

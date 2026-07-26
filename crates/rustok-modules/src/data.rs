@@ -39,6 +39,12 @@ const MAX_ARTIFACT_DATA_PAGE_SIZE: u32 = 100;
 const MAX_ARTIFACT_DATA_BATCH_SIZE: usize = 32;
 const MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES: usize = 256;
 const MAX_ARTIFACT_OBJECT_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_ARTIFACT_DATA_NAMESPACE_RECORDS: u64 = 10_000;
+const MAX_ARTIFACT_DATA_NAMESPACE_VALUE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_ARTIFACT_DATA_NAMESPACE_OBJECTS: u64 = 1_024;
+const MAX_ARTIFACT_DATA_NAMESPACE_OBJECT_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_ARTIFACT_DATA_NAMESPACE_UPLOAD_SESSIONS: u64 = 16;
+const MAX_ARTIFACT_DATA_NAMESPACE_STAGING_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES: usize = 128;
 const MAX_SANDBOX_ARTIFACT_OBJECT_BYTES: usize = 44 * 1024;
 const MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE: u32 = 100;
@@ -51,6 +57,99 @@ pub struct ArtifactDataScope {
     pub module_slug: String,
     pub data_contract_revision: u64,
     pub policy_revision: u64,
+}
+
+/// Host-selected limits for one exact artifact-data policy decision. An
+/// artifact never supplies these values. Production composition may tighten
+/// them, but cannot exceed the platform hard ceilings validated here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataQuota {
+    pub max_structured_records: u64,
+    pub max_structured_bytes: u64,
+    pub max_objects: u64,
+    pub max_object_bytes: u64,
+    pub max_upload_sessions: u64,
+    pub max_staging_bytes: u64,
+}
+
+impl Default for ArtifactDataQuota {
+    fn default() -> Self {
+        Self {
+            max_structured_records: MAX_ARTIFACT_DATA_NAMESPACE_RECORDS,
+            max_structured_bytes: MAX_ARTIFACT_DATA_NAMESPACE_VALUE_BYTES,
+            max_objects: MAX_ARTIFACT_DATA_NAMESPACE_OBJECTS,
+            max_object_bytes: MAX_ARTIFACT_DATA_NAMESPACE_OBJECT_BYTES,
+            max_upload_sessions: MAX_ARTIFACT_DATA_NAMESPACE_UPLOAD_SESSIONS,
+            max_staging_bytes: MAX_ARTIFACT_DATA_NAMESPACE_STAGING_BYTES,
+        }
+    }
+}
+
+impl ArtifactDataQuota {
+    pub(crate) fn validate(self) -> Result<Self, ArtifactDataError> {
+        if self.max_structured_records == 0
+            || self.max_structured_records > MAX_ARTIFACT_DATA_NAMESPACE_RECORDS
+            || self.max_structured_bytes == 0
+            || self.max_structured_bytes > MAX_ARTIFACT_DATA_NAMESPACE_VALUE_BYTES
+            || self.max_objects == 0
+            || self.max_objects > MAX_ARTIFACT_DATA_NAMESPACE_OBJECTS
+            || self.max_object_bytes == 0
+            || self.max_object_bytes > MAX_ARTIFACT_DATA_NAMESPACE_OBJECT_BYTES
+            || self.max_upload_sessions == 0
+            || self.max_upload_sessions > MAX_ARTIFACT_DATA_NAMESPACE_UPLOAD_SESSIONS
+            || self.max_staging_bytes == 0
+            || self.max_staging_bytes > MAX_ARTIFACT_DATA_NAMESPACE_STAGING_BYTES
+        {
+            return Err(ArtifactDataError::InvalidQuota);
+        }
+        Ok(self)
+    }
+}
+
+/// Deployment-owned quota lookup for an exact tenant/module/data-contract and
+/// policy revision. It is resolved only after installation identity and
+/// capability admission have succeeded.
+#[async_trait]
+pub trait ArtifactDataQuotaPolicy: Send + Sync {
+    async fn quota_for(
+        &self,
+        scope: &ArtifactDataScope,
+    ) -> Result<ArtifactDataQuota, ArtifactDataError>;
+}
+
+/// Standalone policy used by the default control-plane composition and tests.
+/// A deployment can inject a stricter durable policy resolver without changing
+/// the broker or giving an artifact access to policy storage.
+#[derive(Clone, Copy, Debug)]
+pub struct FixedArtifactDataQuotaPolicy {
+    quota: ArtifactDataQuota,
+}
+
+impl FixedArtifactDataQuotaPolicy {
+    pub fn new(quota: ArtifactDataQuota) -> Result<Self, ArtifactDataError> {
+        Ok(Self {
+            quota: quota.validate()?,
+        })
+    }
+}
+
+impl Default for FixedArtifactDataQuotaPolicy {
+    fn default() -> Self {
+        Self {
+            quota: ArtifactDataQuota::default(),
+        }
+    }
+}
+
+#[async_trait]
+impl ArtifactDataQuotaPolicy for FixedArtifactDataQuotaPolicy {
+    async fn quota_for(
+        &self,
+        scope: &ArtifactDataScope,
+    ) -> Result<ArtifactDataQuota, ArtifactDataError> {
+        scope.validate()?;
+        self.quota.validate()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -81,6 +180,23 @@ pub struct ArtifactDataRecord {
     pub revision: u64,
 }
 
+/// Owner command for deleting one logical structured-data record. The exact
+/// revision prevents a stale execution from deleting a newer value.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataDeleteRequest {
+    pub key: String,
+    pub expected_revision: u64,
+    pub idempotency_key: Uuid,
+}
+
+/// Durable structured-data deletion receipt. It contains no schema, table, or
+/// other physical persistence identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataDeleteResult {
+    pub key: String,
+    pub deleted_revision: u64,
+}
+
 /// Immutable logical metadata for one brokered artifact object. It deliberately
 /// excludes the driver storage key, URL, bucket, and any host credential.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +217,23 @@ pub struct ArtifactDataObjectUpload {
     pub data: Bytes,
     pub expected_revision: Option<u64>,
     pub idempotency_key: Uuid,
+}
+
+/// Owner command for deleting one logical object. The exact revision is
+/// mandatory so a stale artifact execution cannot remove a newer value.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectDeleteRequest {
+    pub name: String,
+    pub expected_revision: u64,
+    pub idempotency_key: Uuid,
+}
+
+/// Durable deletion receipt. Physical object identity stays private and the
+/// unreachable bytes remain subject to the retention-aware GC policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectDeleteResult {
+    pub name: String,
+    pub deleted_revision: u64,
 }
 
 /// A durable, resumable owner upload. It contains no physical storage identity
@@ -336,10 +469,12 @@ pub struct ArtifactDataUpgradeApplyResult {
 pub enum ArtifactDataAccess {
     Read { key: String },
     Write { key: String },
+    Delete { key: String },
     List,
     Query { index: String },
     ObjectRead { name: String },
     ObjectWrite { name: String },
+    ObjectDelete { name: String },
     ObjectList,
 }
 
@@ -452,15 +587,21 @@ pub fn validate_artifact_data_prefix(prefix: &str) -> Result<(), ArtifactDataErr
 }
 
 fn validate_artifact_data_value(value: &Value) -> Result<(), ArtifactDataError> {
-    let encoded =
-        serde_json::to_vec(value).map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
-    if encoded.len() > MAX_ARTIFACT_DATA_VALUE_BYTES {
+    let encoded_bytes = artifact_data_value_size(value)?;
+    if encoded_bytes > MAX_ARTIFACT_DATA_VALUE_BYTES as u64 {
         return Err(ArtifactDataError::ValueTooLarge {
             limit: MAX_ARTIFACT_DATA_VALUE_BYTES,
-            actual: encoded.len(),
+            actual: usize::try_from(encoded_bytes).unwrap_or(usize::MAX),
         });
     }
     Ok(())
+}
+
+pub(crate) fn artifact_data_value_size(value: &Value) -> Result<u64, ArtifactDataError> {
+    let encoded =
+        serde_json::to_vec(value).map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    u64::try_from(encoded.len())
+        .map_err(|_| ArtifactDataError::Storage("artifact data value size overflow".to_string()))
 }
 
 fn validate_artifact_data_batch(batch: &ArtifactDataBatchWrite) -> Result<(), ArtifactDataError> {
@@ -595,6 +736,12 @@ pub trait ArtifactDataBroker: Send + Sync {
         batch: ArtifactDataBatchWrite,
     ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError>;
 
+    async fn delete(
+        &self,
+        scope: &ArtifactDataScope,
+        request: ArtifactDataDeleteRequest,
+    ) -> Result<ArtifactDataDeleteResult, ArtifactDataError>;
+
     async fn list(
         &self,
         scope: &ArtifactDataScope,
@@ -632,6 +779,12 @@ pub trait ArtifactDataObjectBroker: Send + Sync {
         scope: &ArtifactDataScope,
         upload: ArtifactDataObjectUpload,
     ) -> Result<ArtifactDataObject, ArtifactDataError>;
+
+    async fn delete_object(
+        &self,
+        scope: &ArtifactDataScope,
+        request: ArtifactDataObjectDeleteRequest,
+    ) -> Result<ArtifactDataObjectDeleteResult, ArtifactDataError>;
 
     async fn list_objects(
         &self,
@@ -1108,6 +1261,7 @@ pub struct SeaOrmArtifactDataBroker<A, V> {
     schema_validator: V,
     indexes: Vec<ArtifactDataIndexField>,
     index_contract_digest: Option<String>,
+    quota: ArtifactDataQuota,
 }
 
 impl<A, V> SeaOrmArtifactDataBroker<A, V>
@@ -1116,13 +1270,13 @@ where
     V: ArtifactDataSchemaValidator,
 {
     pub fn new(db: DatabaseConnection, authorizer: A, schema_validator: V) -> Self {
-        Self {
+        Self::with_indexes_and_quota(
             db,
             authorizer,
             schema_validator,
-            indexes: Vec::new(),
-            index_contract_digest: None,
-        }
+            Vec::new(),
+            ArtifactDataQuota::default(),
+        )
     }
 
     pub fn with_indexes(
@@ -1131,6 +1285,22 @@ where
         schema_validator: V,
         indexes: Vec<ArtifactDataIndexField>,
     ) -> Self {
+        Self::with_indexes_and_quota(
+            db,
+            authorizer,
+            schema_validator,
+            indexes,
+            ArtifactDataQuota::default(),
+        )
+    }
+
+    pub fn with_indexes_and_quota(
+        db: DatabaseConnection,
+        authorizer: A,
+        schema_validator: V,
+        indexes: Vec<ArtifactDataIndexField>,
+        quota: ArtifactDataQuota,
+    ) -> Self {
         let index_contract_digest = index_contract_digest(&indexes);
         Self {
             db,
@@ -1138,6 +1308,7 @@ where
             schema_validator,
             indexes,
             index_contract_digest,
+            quota,
         }
     }
 }
@@ -1215,6 +1386,7 @@ where
             write,
             &self.indexes,
             self.index_contract_digest.as_deref(),
+            self.quota,
         )
         .await?;
         transaction.commit().await.map_err(storage_error)?;
@@ -1252,12 +1424,99 @@ where
                     write,
                     &self.indexes,
                     self.index_contract_digest.as_deref(),
+                    self.quota,
                 )
                 .await?,
             );
         }
         transaction.commit().await.map_err(storage_error)?;
         Ok(records)
+    }
+
+    async fn delete(
+        &self,
+        scope: &ArtifactDataScope,
+        request: ArtifactDataDeleteRequest,
+    ) -> Result<ArtifactDataDeleteResult, ArtifactDataError> {
+        scope.validate()?;
+        validate_artifact_data_key(&request.key)?;
+        if request.expected_revision == 0 || request.idempotency_key.is_nil() {
+            return Err(ArtifactDataError::InvalidIdempotencyKey);
+        }
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::Delete {
+                    key: request.key.clone(),
+                },
+            )
+            .await?;
+
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        ensure_active_namespace(&transaction, scope, backend).await?;
+        if let Some(result) =
+            find_artifact_data_delete_operation(&transaction, scope, &request).await?
+        {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(result);
+        }
+
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT data_key, value, revision FROM module_artifact_data
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND data_key = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                ),
+                scope_values(scope, backend, &request.key)?,
+            ))
+            .await
+            .map_err(storage_error)?
+            .ok_or(ArtifactDataError::RevisionConflict)?;
+        let current = record_from_row(row)?;
+        if current.revision != request.expected_revision {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        let deleted = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND data_key = {} AND revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    request.key.clone().into(),
+                    revision_value(request.expected_revision)?,
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if deleted.rows_affected() != 1 {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        delete_artifact_data_indexes(&transaction, scope, &request.key).await?;
+        persist_artifact_data_delete_operation(&transaction, scope, &request).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(ArtifactDataDeleteResult {
+            key: request.key,
+            deleted_revision: request.expected_revision,
+        })
     }
 
     async fn list(
@@ -1473,6 +1732,7 @@ pub struct SeaOrmArtifactDataObjectBroker<A> {
     storage: StorageRuntime,
     authorizer: A,
     infrastructure: ControlPlaneInfrastructure,
+    quota: ArtifactDataQuota,
 }
 
 impl<A> SeaOrmArtifactDataObjectBroker<A>
@@ -1480,11 +1740,12 @@ where
     A: ArtifactDataAuthorizer,
 {
     pub fn new(db: DatabaseConnection, storage: StorageRuntime, authorizer: A) -> Self {
-        Self::with_infrastructure(
+        Self::with_infrastructure_and_quota(
             db,
             storage,
             authorizer,
             ControlPlaneInfrastructure::default(),
+            ArtifactDataQuota::default(),
         )
     }
 
@@ -1494,11 +1755,28 @@ where
         authorizer: A,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
+        Self::with_infrastructure_and_quota(
+            db,
+            storage,
+            authorizer,
+            infrastructure,
+            ArtifactDataQuota::default(),
+        )
+    }
+
+    pub fn with_infrastructure_and_quota(
+        db: DatabaseConnection,
+        storage: StorageRuntime,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+        quota: ArtifactDataQuota,
+    ) -> Self {
         Self {
             db,
             storage,
             authorizer,
             infrastructure,
+            quota,
         }
     }
 }
@@ -1513,6 +1791,7 @@ pub struct SeaOrmArtifactDataObjectUploadService<A> {
     objects: SeaOrmArtifactDataObjectBroker<A>,
     authorizer: A,
     infrastructure: ControlPlaneInfrastructure,
+    quota: ArtifactDataQuota,
 }
 
 impl<A> SeaOrmArtifactDataObjectUploadService<A>
@@ -1520,11 +1799,12 @@ where
     A: ArtifactDataAuthorizer + Clone,
 {
     pub fn new(db: DatabaseConnection, storage: StorageRuntime, authorizer: A) -> Self {
-        Self::with_infrastructure(
+        Self::with_infrastructure_and_quota(
             db,
             storage,
             authorizer,
             ControlPlaneInfrastructure::default(),
+            ArtifactDataQuota::default(),
         )
     }
 
@@ -1534,17 +1814,35 @@ where
         authorizer: A,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
+        Self::with_infrastructure_and_quota(
+            db,
+            storage,
+            authorizer,
+            infrastructure,
+            ArtifactDataQuota::default(),
+        )
+    }
+
+    pub fn with_infrastructure_and_quota(
+        db: DatabaseConnection,
+        storage: StorageRuntime,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+        quota: ArtifactDataQuota,
+    ) -> Self {
         Self {
-            objects: SeaOrmArtifactDataObjectBroker::with_infrastructure(
+            objects: SeaOrmArtifactDataObjectBroker::with_infrastructure_and_quota(
                 db.clone(),
                 storage.clone(),
                 authorizer.clone(),
                 infrastructure.clone(),
+                quota,
             ),
             db,
             storage,
             authorizer,
             infrastructure,
+            quota,
         }
     }
 
@@ -1553,6 +1851,7 @@ where
         scope: &ArtifactDataScope,
         request: ArtifactDataObjectUploadSessionRequest,
     ) -> Result<ArtifactDataObjectUploadSession, ArtifactDataError> {
+        let quota = self.quota.validate()?;
         scope.validate()?;
         validate_upload_session_request(&request)?;
         self.authorizer
@@ -1567,6 +1866,7 @@ where
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
+        ensure_active_namespace(&transaction, scope, backend).await?;
         if let Some(row) = transaction
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -1594,6 +1894,35 @@ where
             transaction.commit().await.map_err(storage_error)?;
             return Ok(session);
         }
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT COUNT(*) AS session_count
+                     FROM module_artifact_data_object_upload_sessions
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND status IN ('open', 'completing')",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?
+            .ok_or_else(|| {
+                ArtifactDataError::Storage("upload session usage was not computed".to_string())
+            })?;
+        let session_count =
+            nonnegative_usage(row.try_get("", "session_count").map_err(storage_error)?)?;
+        let projected_sessions = session_count.checked_add(1).ok_or_else(|| {
+            ArtifactDataError::Storage("upload session quota overflow".to_string())
+        })?;
+        enforce_quota(
+            "upload_sessions",
+            quota.max_upload_sessions,
+            projected_sessions,
+        )?;
         let session_id = self.infrastructure.new_id();
         transaction.execute(Statement::from_sql_and_values(
             backend,
@@ -1642,6 +1971,7 @@ where
                 ArtifactDataAccess::ObjectWrite { name: session.name },
             )
             .await?;
+        let quota = self.quota.validate()?;
         let digest_sha256 = format!("sha256:{}", hex::encode(Sha256::digest(&chunk.data)));
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
@@ -1661,6 +1991,7 @@ where
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
+        ensure_active_namespace(&transaction, scope, backend).await?;
         let active = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -1720,6 +2051,38 @@ where
             let _ = transaction.rollback().await;
             return Err(ArtifactDataError::InvalidObject);
         }
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT COALESCE(SUM(chunk.size_bytes), 0) AS total_size
+                     FROM module_artifact_data_object_upload_chunks chunk
+                     INNER JOIN module_artifact_data_object_upload_sessions session
+                       ON session.tenant_id = chunk.tenant_id AND session.session_id = chunk.session_id
+                     WHERE session.tenant_id = {} AND session.module_slug = {}
+                       AND session.data_contract_revision = {}
+                       AND session.status IN ('open', 'completing')",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?
+            .ok_or_else(|| {
+                ArtifactDataError::Storage("upload staging usage was not computed".to_string())
+            })?;
+        let staging_bytes =
+            nonnegative_usage(row.try_get("", "total_size").map_err(storage_error)?)?;
+        let projected_staging_bytes = staging_bytes
+            .checked_add(chunk.data.len() as u64)
+            .ok_or_else(|| ArtifactDataError::Storage("staging byte quota overflow".to_string()))?;
+        enforce_quota(
+            "staging_bytes",
+            quota.max_staging_bytes,
+            projected_staging_bytes,
+        )?;
         let key = ObjectKey::chronological(
             "module-artifact-data",
             ObjectZone::Staging,
@@ -2517,6 +2880,7 @@ where
             &upload,
             &requested,
             &uploaded_path,
+            self.quota,
         )
         .await
         {
@@ -2544,6 +2908,83 @@ where
                 .await;
         }
         Ok(stored.object)
+    }
+
+    async fn delete_object(
+        &self,
+        scope: &ArtifactDataScope,
+        request: ArtifactDataObjectDeleteRequest,
+    ) -> Result<ArtifactDataObjectDeleteResult, ArtifactDataError> {
+        scope.validate()?;
+        validate_artifact_data_key(&request.name)?;
+        if request.expected_revision == 0 || request.idempotency_key.is_nil() {
+            return Err(ArtifactDataError::InvalidObject);
+        }
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::ObjectDelete {
+                    name: request.name.clone(),
+                },
+            )
+            .await?;
+
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        ensure_active_namespace(&transaction, scope, backend).await?;
+        if let Some(result) =
+            find_artifact_data_object_delete_operation(&transaction, scope, &request).await?
+        {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(result);
+        }
+
+        let stored = find_artifact_data_object(&transaction, scope, &request.name)
+            .await?
+            .ok_or(ArtifactDataError::RevisionConflict)?;
+        if stored.object.revision != request.expected_revision {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        let deleted = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data_objects
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND object_name = {} AND revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    request.name.clone().into(),
+                    revision_value(request.expected_revision)?,
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if deleted.rows_affected() != 1 {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        queue_artifact_data_object_gc_candidate(
+            &transaction,
+            &self.infrastructure,
+            scope,
+            &stored.storage_key,
+        )
+        .await?;
+        persist_artifact_data_object_delete_operation(&transaction, scope, &request).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(ArtifactDataObjectDeleteResult {
+            name: request.name,
+            deleted_revision: request.expected_revision,
+        })
     }
 
     async fn list_objects(
@@ -2686,6 +3127,100 @@ async fn find_artifact_data_object<C: ConnectionTrait>(
         .transpose()
 }
 
+async fn find_artifact_data_object_delete_operation<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    request: &ArtifactDataObjectDeleteRequest,
+) -> Result<Option<ArtifactDataObjectDeleteResult>, ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT object_name, expected_revision, deleted_revision
+                 FROM module_artifact_data_object_delete_operations
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 AND policy_revision = {} AND idempotency_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend),
+                scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?,
+                revision_value(scope.policy_revision)?,
+                uuid_value(request.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let name: String = row.try_get("", "object_name").map_err(storage_error)?;
+    let expected_revision: i64 = row
+        .try_get("", "expected_revision")
+        .map_err(storage_error)?;
+    let deleted_revision: i64 = row.try_get("", "deleted_revision").map_err(storage_error)?;
+    let expected_revision =
+        u64::try_from(expected_revision).map_err(|_| ArtifactDataError::IdempotencyConflict)?;
+    let deleted_revision =
+        u64::try_from(deleted_revision).map_err(|_| ArtifactDataError::IdempotencyConflict)?;
+    if name != request.name
+        || expected_revision != request.expected_revision
+        || deleted_revision != request.expected_revision
+    {
+        return Err(ArtifactDataError::IdempotencyConflict);
+    }
+    Ok(Some(ArtifactDataObjectDeleteResult {
+        name,
+        deleted_revision,
+    }))
+}
+
+async fn persist_artifact_data_object_delete_operation<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    request: &ArtifactDataObjectDeleteRequest,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    connection
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_data_object_delete_operations
+                 (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key,
+                  object_name, expected_revision, deleted_revision, completed_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
+                placeholder(backend, 7),
+                placeholder(backend, 8),
+                now_expression(backend),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend),
+                scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?,
+                revision_value(scope.policy_revision)?,
+                uuid_value(request.idempotency_key, backend),
+                request.name.clone().into(),
+                revision_value(request.expected_revision)?,
+                revision_value(request.expected_revision)?,
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(())
+}
+
 async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
     connection: &C,
     infrastructure: &ControlPlaneInfrastructure,
@@ -2729,7 +3264,9 @@ async fn persist_artifact_data_object(
     upload: &ArtifactDataObjectUpload,
     requested: &ArtifactDataObject,
     storage_key: &str,
+    quota: ArtifactDataQuota,
 ) -> Result<StoredArtifactDataObject, ArtifactDataError> {
+    let quota = quota.validate()?;
     let backend = transaction.get_database_backend();
     ensure_active_namespace(transaction, scope, backend).await?;
     if let Some((existing, expected_revision)) =
@@ -2739,6 +3276,14 @@ async fn persist_artifact_data_object(
         return Ok(existing);
     }
     let current = find_artifact_data_object(transaction, scope, &requested.name).await?;
+    enforce_object_data_quota(
+        transaction,
+        scope,
+        quota,
+        current.as_ref().map(|stored| stored.object.size_bytes),
+        requested.size_bytes,
+    )
+    .await?;
     let revision = match current {
         Some(current) => {
             if upload.expected_revision != Some(current.object.revision) {
@@ -2830,15 +3375,17 @@ async fn persist_artifact_data_object(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_operations
-                 (tenant_id, module_slug, data_contract_revision, idempotency_key, object_name, storage_key, content_type, size_bytes, digest_sha256, expected_revision, revision, completed_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                 (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key, object_name, storage_key, content_type, size_bytes, digest_sha256, expected_revision, revision, completed_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                 placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
                 placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
-                placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11), now_expression(backend),
+                placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11), placeholder(backend, 12),
+                now_expression(backend),
             ),
             vec![
                 uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?, uuid_value(upload.idempotency_key, backend),
+                revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?,
+                uuid_value(upload.idempotency_key, backend),
                 stored.object.name.clone().into(), stored.storage_key.clone().into(),
                 stored.object.content_type.clone().into(), revision_value(stored.object.size_bytes)?,
                 stored.object.digest_sha256.clone().into(), optional_revision_value(upload.expected_revision)?,
@@ -2848,6 +3395,45 @@ async fn persist_artifact_data_object(
         .await
         .map_err(storage_error)?;
     Ok(stored)
+}
+
+async fn enforce_object_data_quota<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    quota: ArtifactDataQuota,
+    current_size_bytes: Option<u64>,
+    requested_size_bytes: u64,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT COUNT(*) AS object_count, COALESCE(SUM(size_bytes), 0) AS total_bytes
+                 FROM module_artifact_data_objects
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            namespace_values(scope, backend)?,
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or_else(|| {
+            ArtifactDataError::Storage("artifact object usage was not computed".to_string())
+        })?;
+    let object_count = nonnegative_usage(row.try_get("", "object_count").map_err(storage_error)?)?;
+    let total_bytes = nonnegative_usage(row.try_get("", "total_bytes").map_err(storage_error)?)?;
+    let projected_objects = object_count
+        .checked_add(u64::from(current_size_bytes.is_none()))
+        .ok_or_else(|| ArtifactDataError::Storage("object quota overflow".to_string()))?;
+    let projected_bytes = total_bytes
+        .checked_sub(current_size_bytes.unwrap_or(0))
+        .and_then(|bytes| bytes.checked_add(requested_size_bytes))
+        .ok_or_else(|| ArtifactDataError::Storage("object byte quota overflow".to_string()))?;
+    enforce_quota("objects", quota.max_objects, projected_objects)?;
+    enforce_quota("object_bytes", quota.max_object_bytes, projected_bytes)
 }
 
 async fn find_artifact_data_object_operation<C: ConnectionTrait>(
@@ -2862,12 +3448,15 @@ async fn find_artifact_data_object_operation<C: ConnectionTrait>(
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key, expected_revision
                  FROM module_artifact_data_object_operations
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
-                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 AND policy_revision = {} AND idempotency_key = {}",
+                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
+                placeholder(backend, 4), placeholder(backend, 5),
             ),
             vec![
                 uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?, uuid_value(idempotency_key, backend),
+                revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?,
+                uuid_value(idempotency_key, backend),
             ],
         ))
         .await
@@ -2921,13 +3510,109 @@ fn stored_artifact_data_object_from_row(
     })
 }
 
+async fn find_artifact_data_delete_operation<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    request: &ArtifactDataDeleteRequest,
+) -> Result<Option<ArtifactDataDeleteResult>, ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT data_key, expected_revision, deleted_revision
+                 FROM module_artifact_data_delete_operations
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 AND policy_revision = {} AND idempotency_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend),
+                scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?,
+                revision_value(scope.policy_revision)?,
+                uuid_value(request.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let key: String = row.try_get("", "data_key").map_err(storage_error)?;
+    let expected_revision: i64 = row
+        .try_get("", "expected_revision")
+        .map_err(storage_error)?;
+    let deleted_revision: i64 = row.try_get("", "deleted_revision").map_err(storage_error)?;
+    let expected_revision =
+        u64::try_from(expected_revision).map_err(|_| ArtifactDataError::IdempotencyConflict)?;
+    let deleted_revision =
+        u64::try_from(deleted_revision).map_err(|_| ArtifactDataError::IdempotencyConflict)?;
+    if key != request.key
+        || expected_revision != request.expected_revision
+        || deleted_revision != request.expected_revision
+    {
+        return Err(ArtifactDataError::IdempotencyConflict);
+    }
+    Ok(Some(ArtifactDataDeleteResult {
+        key,
+        deleted_revision,
+    }))
+}
+
+async fn persist_artifact_data_delete_operation<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    request: &ArtifactDataDeleteRequest,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    connection
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_data_delete_operations
+                 (tenant_id, module_slug, data_contract_revision, policy_revision,
+                  idempotency_key, data_key, expected_revision, deleted_revision, completed_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
+                placeholder(backend, 7),
+                placeholder(backend, 8),
+                now_expression(backend),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend),
+                scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?,
+                revision_value(scope.policy_revision)?,
+                uuid_value(request.idempotency_key, backend),
+                request.key.clone().into(),
+                revision_value(request.expected_revision)?,
+                revision_value(request.expected_revision)?,
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(())
+}
+
 async fn persist_artifact_data_write(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
     write: ArtifactDataWrite,
     indexes: &[ArtifactDataIndexField],
     index_contract_digest: Option<&str>,
+    quota: ArtifactDataQuota,
 ) -> Result<ArtifactDataRecord, ArtifactDataError> {
+    let quota = quota.validate()?;
     let backend = transaction.get_database_backend();
     ensure_active_namespace(transaction, scope, backend).await?;
     if let Some(index_contract_digest) = index_contract_digest {
@@ -2945,16 +3630,19 @@ async fn persist_artifact_data_write(
             backend,
             format!(
                 "SELECT data_key, value, revision, expected_revision FROM module_artifact_data_operations
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 AND policy_revision = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
                 placeholder(backend, 4),
+                placeholder(backend, 5),
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
                 scope.module_slug.clone().into(),
                 revision_value(scope.data_contract_revision)?,
+                revision_value(scope.policy_revision)?,
                 uuid_value(write.idempotency_key, backend),
             ],
         ))
@@ -2978,11 +3666,12 @@ async fn persist_artifact_data_write(
         return Ok(record);
     }
 
+    let value_size_bytes = artifact_data_value_size(&write.value)?;
     let current = transaction
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT data_key, value, revision FROM module_artifact_data
+                "SELECT data_key, value, value_size_bytes, revision FROM module_artifact_data
                  WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND data_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -2993,6 +3682,22 @@ async fn persist_artifact_data_write(
         ))
         .await
         .map_err(storage_error)?;
+    let current_size_bytes = current
+        .as_ref()
+        .map(|row| {
+            row.try_get::<i64>("", "value_size_bytes")
+                .map_err(storage_error)
+                .and_then(nonnegative_usage)
+        })
+        .transpose()?;
+    enforce_structured_data_quota(
+        transaction,
+        scope,
+        quota,
+        current_size_bytes,
+        value_size_bytes,
+    )
+    .await?;
     let revision = if let Some(row) = current {
         let current = record_from_row(row)?;
         if write.create_only || write.expected_revision != Some(current.revision) {
@@ -3006,20 +3711,22 @@ async fn persist_artifact_data_write(
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "UPDATE module_artifact_data SET value = {}, revision = {}, updated_at = {}
+                    "UPDATE module_artifact_data SET value = {}, value_size_bytes = {}, revision = {}, updated_at = {}
                      WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
                      AND data_key = {} AND revision = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
-                    now_expression(backend),
                     placeholder(backend, 3),
+                    now_expression(backend),
                     placeholder(backend, 4),
                     placeholder(backend, 5),
                     placeholder(backend, 6),
                     placeholder(backend, 7),
+                    placeholder(backend, 8),
                 ),
                 vec![
                     SqlValue::Json(Some(Box::new(write.value.clone()))),
+                    revision_value(value_size_bytes)?,
                     revision_value(next_revision)?,
                     uuid_value(scope.tenant_id, backend),
                     scope.module_slug.clone().into(),
@@ -3043,13 +3750,14 @@ async fn persist_artifact_data_write(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data
-                     (tenant_id, module_slug, data_contract_revision, data_key, value, revision, updated_at)
-                     VALUES ({}, {}, {}, {}, {}, 1, {}) ON CONFLICT DO NOTHING",
+                     (tenant_id, module_slug, data_contract_revision, data_key, value, value_size_bytes, revision, updated_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, 1, {}) ON CONFLICT DO NOTHING",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                     placeholder(backend, 4),
                     placeholder(backend, 5),
+                    placeholder(backend, 6),
                     now_expression(backend),
                 ),
                 vec![
@@ -3058,6 +3766,7 @@ async fn persist_artifact_data_write(
                     revision_value(scope.data_contract_revision)?,
                     write.key.clone().into(),
                     SqlValue::Json(Some(Box::new(write.value.clone()))),
+                    revision_value(value_size_bytes)?,
                 ],
             ))
             .await
@@ -3078,8 +3787,8 @@ async fn persist_artifact_data_write(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_operations
-                 (tenant_id, module_slug, data_contract_revision, idempotency_key, data_key, value, expected_revision, revision, completed_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
+                 (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key, data_key, value, expected_revision, revision, completed_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -3088,12 +3797,14 @@ async fn persist_artifact_data_write(
                 placeholder(backend, 6),
                 placeholder(backend, 7),
                 placeholder(backend, 8),
+                placeholder(backend, 9),
                 now_expression(backend),
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
                 scope.module_slug.clone().into(),
                 revision_value(scope.data_contract_revision)?,
+                revision_value(scope.policy_revision)?,
                 uuid_value(write.idempotency_key, backend),
                 record.key.clone().into(),
                 SqlValue::Json(Some(Box::new(record.value.clone()))),
@@ -3106,29 +3817,61 @@ async fn persist_artifact_data_write(
     Ok(record)
 }
 
+async fn enforce_structured_data_quota<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    quota: ArtifactDataQuota,
+    current_size_bytes: Option<u64>,
+    requested_size_bytes: u64,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT COUNT(*) AS record_count, COALESCE(SUM(value_size_bytes), 0) AS total_bytes
+                 FROM module_artifact_data
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            namespace_values(scope, backend)?,
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or_else(|| {
+            ArtifactDataError::Storage("structured data usage was not computed".to_string())
+        })?;
+    let record_count = nonnegative_usage(row.try_get("", "record_count").map_err(storage_error)?)?;
+    let total_bytes = nonnegative_usage(row.try_get("", "total_bytes").map_err(storage_error)?)?;
+    let projected_records = record_count
+        .checked_add(u64::from(current_size_bytes.is_none()))
+        .ok_or_else(|| ArtifactDataError::Storage("record quota overflow".to_string()))?;
+    let projected_bytes = total_bytes
+        .checked_sub(current_size_bytes.unwrap_or(0))
+        .and_then(|bytes| bytes.checked_add(requested_size_bytes))
+        .ok_or_else(|| ArtifactDataError::Storage("structured byte quota overflow".to_string()))?;
+    enforce_quota(
+        "structured_records",
+        quota.max_structured_records,
+        projected_records,
+    )?;
+    enforce_quota(
+        "structured_bytes",
+        quota.max_structured_bytes,
+        projected_bytes,
+    )
+}
+
 async fn synchronize_artifact_data_indexes(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
     record: &ArtifactDataRecord,
     indexes: &[ArtifactDataIndexField],
 ) -> Result<(), ArtifactDataError> {
+    delete_artifact_data_indexes(transaction, scope, &record.key).await?;
     let backend = transaction.get_database_backend();
-    transaction
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "DELETE FROM module_artifact_data_indexes
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
-                   AND data_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-            ),
-            scope_values(scope, backend, &record.key)?,
-        ))
-        .await
-        .map_err(storage_error)?;
     for index in indexes {
         let Some(value) = record.value.pointer(&index.json_pointer) else {
             continue;
@@ -3167,6 +3910,31 @@ async fn synchronize_artifact_data_indexes(
             .await
             .map_err(storage_error)?;
     }
+    Ok(())
+}
+
+async fn delete_artifact_data_indexes<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    key: &str,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    connection
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "DELETE FROM module_artifact_data_indexes
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                   AND data_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+            ),
+            scope_values(scope, backend, key)?,
+        ))
+        .await
+        .map_err(storage_error)?;
     Ok(())
 }
 
@@ -3211,8 +3979,32 @@ where
         scope: ArtifactDataScope,
         indexes: Vec<ArtifactDataIndexField>,
     ) -> Self {
+        Self::with_quota(
+            db,
+            authorizer,
+            schema_validator,
+            scope,
+            indexes,
+            ArtifactDataQuota::default(),
+        )
+    }
+
+    pub fn with_quota(
+        db: DatabaseConnection,
+        authorizer: A,
+        schema_validator: V,
+        scope: ArtifactDataScope,
+        indexes: Vec<ArtifactDataIndexField>,
+        quota: ArtifactDataQuota,
+    ) -> Self {
         Self {
-            data: SeaOrmArtifactDataBroker::with_indexes(db, authorizer, schema_validator, indexes),
+            data: SeaOrmArtifactDataBroker::with_indexes_and_quota(
+                db,
+                authorizer,
+                schema_validator,
+                indexes,
+                quota,
+            ),
             scope,
         }
     }
@@ -3269,6 +4061,16 @@ where
                     output: json!({ "records": records }),
                 })
             }
+            DataCapabilityCall::Delete { request } => {
+                let result = self
+                    .data
+                    .delete(&self.scope, request)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({ "deletion": result }),
+                })
+            }
             DataCapabilityCall::List { page } => {
                 let page = self
                     .data
@@ -3305,11 +4107,19 @@ where
 #[derive(Clone)]
 pub struct SeaOrmArtifactDataCapabilityBrokerResolver {
     db: DatabaseConnection,
+    quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
 }
 
 impl SeaOrmArtifactDataCapabilityBrokerResolver {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self::with_quota_policy(db, Arc::new(FixedArtifactDataQuotaPolicy::default()))
+    }
+
+    pub fn with_quota_policy(
+        db: DatabaseConnection,
+        quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
+    ) -> Self {
+        Self { db, quota_policy }
     }
 }
 
@@ -3346,6 +4156,11 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let quota = self
+            .quota_policy
+            .quota_for(&scope)
+            .await
+            .map_err(|error| data_capability_error(capability, error))?;
         let indexes = installation
             .descriptor
             .persistence_contract
@@ -3357,12 +4172,13 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
         };
         let schema_validator =
             SeaOrmArtifactDataSchemaValidator::new(self.db.clone(), execution.installation_id);
-        Ok(Arc::new(SeaOrmArtifactDataCapabilityBroker::new(
+        Ok(Arc::new(SeaOrmArtifactDataCapabilityBroker::with_quota(
             self.db.clone(),
             authorizer,
             schema_validator,
             scope,
             indexes,
+            quota,
         )))
     }
 }
@@ -3404,18 +4220,38 @@ where
         scope: ArtifactDataScope,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
+        Self::with_infrastructure_and_quota(
+            db,
+            storage,
+            authorizer,
+            scope,
+            infrastructure,
+            ArtifactDataQuota::default(),
+        )
+    }
+
+    pub fn with_infrastructure_and_quota(
+        db: DatabaseConnection,
+        storage: StorageRuntime,
+        authorizer: A,
+        scope: ArtifactDataScope,
+        infrastructure: ControlPlaneInfrastructure,
+        quota: ArtifactDataQuota,
+    ) -> Self {
         Self {
-            objects: SeaOrmArtifactDataObjectBroker::with_infrastructure(
+            objects: SeaOrmArtifactDataObjectBroker::with_infrastructure_and_quota(
                 db.clone(),
                 storage.clone(),
                 authorizer.clone(),
                 infrastructure.clone(),
+                quota,
             ),
-            uploads: SeaOrmArtifactDataObjectUploadService::with_infrastructure(
+            uploads: SeaOrmArtifactDataObjectUploadService::with_infrastructure_and_quota(
                 db,
                 storage,
                 authorizer,
                 infrastructure,
+                quota,
             ),
             scope,
         }
@@ -3485,6 +4321,16 @@ where
                     output: json!({ "object": object }),
                 })
             }
+            ObjectDataCapabilityCall::Delete { request } => {
+                let result = self
+                    .objects
+                    .delete_object(&self.scope, request)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({ "deletion": result }),
+                })
+            }
             ObjectDataCapabilityCall::BeginUpload { request } => {
                 let session = self
                     .uploads
@@ -3537,11 +4383,17 @@ pub struct SeaOrmArtifactDataObjectCapabilityBrokerResolver {
     db: DatabaseConnection,
     storage: StorageRuntime,
     infrastructure: ControlPlaneInfrastructure,
+    quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
 }
 
 impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
     pub fn new(db: DatabaseConnection, storage: StorageRuntime) -> Self {
-        Self::with_infrastructure(db, storage, ControlPlaneInfrastructure::default())
+        Self::with_infrastructure_and_quota_policy(
+            db,
+            storage,
+            ControlPlaneInfrastructure::default(),
+            Arc::new(FixedArtifactDataQuotaPolicy::default()),
+        )
     }
 
     pub fn with_infrastructure(
@@ -3549,10 +4401,25 @@ impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
         storage: StorageRuntime,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
+        Self::with_infrastructure_and_quota_policy(
+            db,
+            storage,
+            infrastructure,
+            Arc::new(FixedArtifactDataQuotaPolicy::default()),
+        )
+    }
+
+    pub fn with_infrastructure_and_quota_policy(
+        db: DatabaseConnection,
+        storage: StorageRuntime,
+        infrastructure: ControlPlaneInfrastructure,
+        quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
+    ) -> Self {
         Self {
             db,
             storage,
             infrastructure,
+            quota_policy,
         }
     }
 }
@@ -3570,16 +4437,22 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrok
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let quota = self
+            .quota_policy
+            .quota_for(&scope)
+            .await
+            .map_err(|error| data_capability_error(capability, error))?;
         let authorizer = ExactArtifactDataAuthorizer {
             scope: scope.clone(),
         };
         Ok(Arc::new(
-            SeaOrmArtifactDataObjectCapabilityBroker::with_infrastructure(
+            SeaOrmArtifactDataObjectCapabilityBroker::with_infrastructure_and_quota(
                 self.db.clone(),
                 self.storage.clone(),
                 authorizer,
                 scope,
                 self.infrastructure.clone(),
+                quota,
             ),
         ))
     }
@@ -3594,6 +4467,9 @@ enum ObjectDataCapabilityCall {
     },
     Put {
         upload: ArtifactDataObjectUpload,
+    },
+    Delete {
+        request: ArtifactDataObjectDeleteRequest,
     },
     BeginUpload {
         request: ArtifactDataObjectUploadSessionRequest,
@@ -3678,6 +4554,38 @@ fn decode_object_data_capability_call(
                     content_type: required_data_capability_string(call, input, "content_type")?
                         .to_string(),
                     data: Bytes::from(data),
+                    expected_revision,
+                    idempotency_key,
+                },
+            })
+        }
+        "delete" => {
+            reject_data_capability_fields(
+                call,
+                input,
+                &["name", "expected_revision", "idempotency_key"],
+            )?;
+            let expected_revision = input
+                .get("expected_revision")
+                .and_then(Value::as_u64)
+                .filter(|revision| *revision > 0)
+                .ok_or_else(|| {
+                    data_capability_constraint(
+                        call,
+                        "object expected_revision must be a positive integer",
+                    )
+                })?;
+            let idempotency_key = Uuid::parse_str(required_data_capability_string(
+                call,
+                input,
+                "idempotency_key",
+            )?)
+            .map_err(|_| {
+                data_capability_constraint(call, "object idempotency_key must be a UUID")
+            })?;
+            Ok(ObjectDataCapabilityCall::Delete {
+                request: ArtifactDataObjectDeleteRequest {
+                    name: required_data_capability_string(call, input, "name")?.to_string(),
                     expected_revision,
                     idempotency_key,
                 },
@@ -3823,6 +4731,7 @@ enum DataCapabilityCall {
     Get { key: String },
     Put { write: ArtifactDataWrite },
     PutBatch { batch: ArtifactDataBatchWrite },
+    Delete { request: ArtifactDataDeleteRequest },
     List { page: ArtifactDataPageRequest },
     QueryIndex { query: ArtifactDataIndexQuery },
 }
@@ -3862,6 +4771,36 @@ fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapab
             validate_artifact_data_batch(&batch)
                 .map_err(|_| data_capability_constraint(call, "data batch is invalid"))?;
             Ok(DataCapabilityCall::PutBatch { batch })
+        }
+        "delete" => {
+            reject_data_capability_fields(
+                call,
+                input,
+                &["key", "expected_revision", "idempotency_key"],
+            )?;
+            let expected_revision = input
+                .get("expected_revision")
+                .and_then(Value::as_u64)
+                .filter(|revision| *revision > 0)
+                .ok_or_else(|| {
+                    data_capability_constraint(
+                        call,
+                        "data expected_revision must be a positive integer",
+                    )
+                })?;
+            let idempotency_key = Uuid::parse_str(required_data_capability_string(
+                call,
+                input,
+                "idempotency_key",
+            )?)
+            .map_err(|_| data_capability_constraint(call, "data idempotency_key must be a UUID"))?;
+            Ok(DataCapabilityCall::Delete {
+                request: ArtifactDataDeleteRequest {
+                    key: required_data_capability_string(call, input, "key")?.to_string(),
+                    expected_revision,
+                    idempotency_key,
+                },
+            })
         }
         "list" => {
             reject_data_capability_fields(call, input, &["prefix", "after_key", "limit"])?;
@@ -4043,6 +4982,7 @@ fn data_capability_error(
         | ArtifactDataError::InvalidIdempotencyKey
         | ArtifactDataError::IdempotencyConflict
         | ArtifactDataError::ValueTooLarge { .. }
+        | ArtifactDataError::QuotaExceeded { .. }
         | ArtifactDataError::DataContractSchemaViolation
         | ArtifactDataError::PolicyDenied => SandboxError::CapabilityDenied(capability.clone()),
         ArtifactDataError::InvalidUpgrade
@@ -4051,6 +4991,7 @@ fn data_capability_error(
         | ArtifactDataError::MigrationCheckpoint(_)
         | ArtifactDataError::DataContractUnavailable
         | ArtifactDataError::DataContractSchemaInvalid
+        | ArtifactDataError::InvalidQuota
         | ArtifactDataError::ObjectIntegrity
         | ArtifactDataError::SnapshotIntegrity
         | ArtifactDataError::Storage(_) => SandboxError::HostCapability {
@@ -4178,9 +5119,9 @@ where
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_exports
-                     (export_id, tenant_id, module_slug, data_contract_revision, namespace_revision,
+                     (export_id, tenant_id, module_slug, data_contract_revision, policy_revision, namespace_revision,
                       actor_id, prefix, after_key, page_limit, reason, exported_records, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -4192,6 +5133,7 @@ where
                     placeholder(backend, 9),
                     placeholder(backend, 10),
                     placeholder(backend, 11),
+                    placeholder(backend, 12),
                     now_expression(backend),
                 ),
                 vec![
@@ -4199,6 +5141,7 @@ where
                     uuid_value(request.scope.tenant_id, backend),
                     request.scope.module_slug.clone().into(),
                     revision_value(request.scope.data_contract_revision)?,
+                    revision_value(request.scope.policy_revision)?,
                     revision_value(namespace_revision)?,
                     uuid_value(request.actor_id, backend),
                     request.page.prefix.clone().into(),
@@ -4289,16 +5232,19 @@ where
                 format!(
                     "SELECT expected_namespace_revision, actor_id, reason, namespace_revision, purged_records
                      FROM module_artifact_data_purge_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND policy_revision = {} AND idempotency_key = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                     placeholder(backend, 4),
+                    placeholder(backend, 5),
                 ),
                 vec![
                     uuid_value(request.scope.tenant_id, backend),
                     request.scope.module_slug.clone().into(),
                     revision_value(request.scope.data_contract_revision)?,
+                    revision_value(request.scope.policy_revision)?,
                     uuid_value(request.idempotency_key, backend),
                 ],
             ))
@@ -4417,6 +5363,20 @@ where
             ))
             .await
             .map_err(storage_error)?;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data_delete_operations
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(&request.scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
         let object_storage_keys = transaction
             .query_all(Statement::from_sql_and_values(
                 backend,
@@ -4470,6 +5430,20 @@ where
             ))
             .await
             .map_err(storage_error)?;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data_object_delete_operations
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(&request.scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
         let next_revision = u64::try_from(current_revision)
             .ok()
             .and_then(|value| value.checked_add(1))
@@ -4512,9 +5486,9 @@ where
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_purge_operations
-                     (tenant_id, module_slug, data_contract_revision, idempotency_key, expected_namespace_revision,
+                     (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key, expected_namespace_revision,
                       namespace_revision, actor_id, reason, purged_records, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -4524,12 +5498,14 @@ where
                     placeholder(backend, 7),
                     placeholder(backend, 8),
                     placeholder(backend, 9),
+                    placeholder(backend, 10),
                     now_expression(backend),
                 ),
                 vec![
                     uuid_value(request.scope.tenant_id, backend),
                     request.scope.module_slug.clone().into(),
                     revision_value(request.scope.data_contract_revision)?,
+                    revision_value(request.scope.policy_revision)?,
                     uuid_value(request.idempotency_key, backend),
                     revision_value(request.expected_namespace_revision)?,
                     revision_value(next_revision)?,
@@ -4883,6 +5859,26 @@ fn record_from_row(row: sea_orm::QueryResult) -> Result<ArtifactDataRecord, Arti
     })
 }
 
+fn nonnegative_usage(value: i64) -> Result<u64, ArtifactDataError> {
+    u64::try_from(value)
+        .map_err(|_| ArtifactDataError::Storage("artifact data usage is invalid".to_string()))
+}
+
+fn enforce_quota(
+    resource: &'static str,
+    limit: u64,
+    attempted: u64,
+) -> Result<(), ArtifactDataError> {
+    if attempted > limit {
+        return Err(ArtifactDataError::QuotaExceeded {
+            resource,
+            limit,
+            attempted,
+        });
+    }
+    Ok(())
+}
+
 fn storage_error(error: impl std::fmt::Display) -> ArtifactDataError {
     ArtifactDataError::Storage(error.to_string())
 }
@@ -4945,6 +5941,14 @@ pub enum ArtifactDataError {
     IdempotencyConflict,
     #[error("artifact data value exceeds {limit} bytes (received {actual})")]
     ValueTooLarge { limit: usize, actual: usize },
+    #[error("artifact data quota policy is invalid")]
+    InvalidQuota,
+    #[error("artifact data {resource} quota exceeded: limit {limit}, attempted {attempted}")]
+    QuotaExceeded {
+        resource: &'static str,
+        limit: u64,
+        attempted: u64,
+    },
     #[error("artifact data policy denied the operation")]
     PolicyDenied,
     #[error("artifact data storage failed: {0}")]
@@ -4961,11 +5965,15 @@ mod tests {
         },
     };
 
-    use crate::ModuleBindingIdempotency;
+    use crate::{ModuleBindingIdempotency, ModulesModule};
     use async_trait::async_trait;
+    use rustok_core::MigrationSource;
     use rustok_sandbox::{
         CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionPhase, SandboxSubject,
     };
+    use rustok_storage::{LocalStorageConfig, StorageRuntime};
+    use sea_orm::Database;
+    use sea_orm_migration::MigrationTrait;
     use serde_json::json;
 
     use super::*;
@@ -5002,6 +6010,16 @@ mod tests {
             _: &ArtifactDataScope,
             _: ArtifactDataBatchWrite,
         ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError> {
+            Err(ArtifactDataError::Storage(
+                "not used by upgrade planning".to_string(),
+            ))
+        }
+
+        async fn delete(
+            &self,
+            _: &ArtifactDataScope,
+            _: ArtifactDataDeleteRequest,
+        ) -> Result<ArtifactDataDeleteResult, ArtifactDataError> {
             Err(ArtifactDataError::Storage(
                 "not used by upgrade planning".to_string(),
             ))
@@ -5055,6 +6073,46 @@ mod tests {
         ) -> Result<(), ArtifactDataError> {
             assert_eq!(scope.data_contract_revision, 2);
             assert_eq!(value, &json!({ "version": 2 }));
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct AllowSchemaValidator;
+
+    #[async_trait]
+    impl ArtifactDataSchemaValidator for AllowSchemaValidator {
+        async fn validate_data_value(
+            &self,
+            _: &ArtifactDataScope,
+            _: &Value,
+        ) -> Result<(), ArtifactDataError> {
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct AllowPurgeAuthorizer;
+
+    #[async_trait]
+    impl ArtifactDataPurgeAuthorizer for AllowPurgeAuthorizer {
+        async fn authorize_purge(
+            &self,
+            _: &ArtifactDataPurgeRequest,
+        ) -> Result<(), ArtifactDataError> {
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct AllowExportAuthorizer;
+
+    #[async_trait]
+    impl ArtifactDataExportAuthorizer for AllowExportAuthorizer {
+        async fn authorize_export(
+            &self,
+            _: &ArtifactDataExportRequest,
+        ) -> Result<(), ArtifactDataError> {
             Ok(())
         }
     }
@@ -5144,6 +6202,16 @@ mod tests {
             ))
         }
 
+        async fn delete(
+            &self,
+            _: &ArtifactDataScope,
+            _: ArtifactDataDeleteRequest,
+        ) -> Result<ArtifactDataDeleteResult, ArtifactDataError> {
+            Err(ArtifactDataError::Storage(
+                "not used by upgrade application".to_string(),
+            ))
+        }
+
         async fn list(
             &self,
             _: &ArtifactDataScope,
@@ -5205,6 +6273,34 @@ mod tests {
                 Err(ArtifactDataError::InvalidKey)
             ));
         }
+    }
+
+    #[tokio::test]
+    async fn fixed_quota_policy_cannot_raise_platform_ceilings() {
+        let invalid = ArtifactDataQuota {
+            max_structured_records: MAX_ARTIFACT_DATA_NAMESPACE_RECORDS + 1,
+            ..ArtifactDataQuota::default()
+        };
+        assert!(matches!(
+            FixedArtifactDataQuotaPolicy::new(invalid),
+            Err(ArtifactDataError::InvalidQuota)
+        ));
+
+        let scope = ArtifactDataScope {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "quota_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 2,
+        };
+        let quota = ArtifactDataQuota {
+            max_structured_records: 5,
+            ..ArtifactDataQuota::default()
+        };
+        let policy = FixedArtifactDataQuotaPolicy::new(quota).expect("valid fixed quota policy");
+        assert_eq!(
+            policy.quota_for(&scope).await.expect("resolved quota"),
+            quota
+        );
     }
 
     #[test]
@@ -5357,6 +6453,394 @@ mod tests {
     }
 
     #[test]
+    fn sandbox_data_delete_requires_revision_and_idempotency() {
+        let mut call = CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Manual,
+                tenant_id: Some(Uuid::new_v4()),
+                actor_id: None,
+                trace_id: None,
+            },
+            capability: CapabilityName::new("platform.data").expect("capability name"),
+            operation: "delete".to_string(),
+            input: json!({
+                "key": "state/current",
+                "expected_revision": 5,
+                "idempotency_key": Uuid::new_v4(),
+            }),
+        };
+        let decoded = decode_data_capability_call(&call).expect("delete request");
+        assert!(matches!(
+            decoded,
+            DataCapabilityCall::Delete {
+                request: ArtifactDataDeleteRequest {
+                    expected_revision: 5,
+                    ..
+                }
+            }
+        ));
+
+        call.input["expected_revision"] = json!(0);
+        assert!(decode_data_capability_call(&call).is_err());
+        call.input["expected_revision"] = json!(5);
+        call.input["idempotency_key"] = json!("not-a-uuid");
+        assert!(decode_data_capability_call(&call).is_err());
+    }
+
+    #[tokio::test]
+    async fn record_delete_is_revisioned_idempotent_and_removes_indexes() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        rustok_outbox::SysEventsMigration
+            .up(&sea_orm_migration::SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
+        for migration in ModulesModule.migrations() {
+            migration
+                .up(&sea_orm_migration::SchemaManager::new(&database))
+                .await
+                .expect("module migration");
+        }
+        let scope = ArtifactDataScope {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "sample_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 7,
+        };
+        let indexes = vec![ArtifactDataIndexField {
+            name: "status".to_string(),
+            json_pointer: "/status".to_string(),
+            value_type: ArtifactDataIndexValueType::String,
+        }];
+        let broker = SeaOrmArtifactDataBroker::with_indexes(
+            database.clone(),
+            ExactArtifactDataAuthorizer {
+                scope: scope.clone(),
+            },
+            AllowSchemaValidator,
+            indexes.clone(),
+        );
+        let put_idempotency_key = Uuid::new_v4();
+        let record = broker
+            .put(
+                &scope,
+                ArtifactDataWrite {
+                    key: "state/current".to_string(),
+                    value: json!({ "status": "active" }),
+                    expected_revision: None,
+                    create_only: false,
+                    idempotency_key: put_idempotency_key,
+                },
+            )
+            .await
+            .expect("put record");
+        let request = ArtifactDataDeleteRequest {
+            key: record.key.clone(),
+            expected_revision: record.revision,
+            idempotency_key: Uuid::new_v4(),
+        };
+        let deleted = broker
+            .delete(&scope, request.clone())
+            .await
+            .expect("delete record");
+        assert_eq!(deleted.key, record.key);
+        assert_eq!(deleted.deleted_revision, record.revision);
+        assert_eq!(
+            broker
+                .delete(&scope, request.clone())
+                .await
+                .expect("replay delete"),
+            deleted
+        );
+        assert!(matches!(
+            broker
+                .delete(
+                    &scope,
+                    ArtifactDataDeleteRequest {
+                        key: "state/other".to_string(),
+                        expected_revision: record.revision,
+                        idempotency_key: request.idempotency_key,
+                    },
+                )
+                .await,
+            Err(ArtifactDataError::IdempotencyConflict)
+        ));
+        assert!(
+            broker
+                .get(&scope, &record.key)
+                .await
+                .expect("get deleted record")
+                .is_none()
+        );
+
+        for (table, count_column) in [
+            ("module_artifact_data_indexes", "index_count"),
+            ("module_artifact_data_delete_operations", "operation_count"),
+        ] {
+            let row = database
+                .query_one(Statement::from_string(
+                    DbBackend::Sqlite,
+                    format!("SELECT COUNT(*) AS {count_column} FROM {table}"),
+                ))
+                .await
+                .expect("query count")
+                .expect("count row");
+            let count = row.try_get::<i64>("", count_column).expect("row count");
+            let expected = if table == "module_artifact_data_delete_operations" {
+                1
+            } else {
+                0
+            };
+            assert_eq!(count, expected);
+        }
+        assert!(matches!(
+            broker
+                .delete(
+                    &scope,
+                    ArtifactDataDeleteRequest {
+                        key: record.key.clone(),
+                        expected_revision: record.revision,
+                        idempotency_key: Uuid::new_v4(),
+                    },
+                )
+                .await,
+            Err(ArtifactDataError::RevisionConflict)
+        ));
+
+        let next_scope = ArtifactDataScope {
+            policy_revision: 8,
+            ..scope.clone()
+        };
+        let next_broker = SeaOrmArtifactDataBroker::with_indexes(
+            database.clone(),
+            ExactArtifactDataAuthorizer {
+                scope: next_scope.clone(),
+            },
+            AllowSchemaValidator,
+            indexes,
+        );
+        next_broker
+            .put(
+                &next_scope,
+                ArtifactDataWrite {
+                    key: record.key.clone(),
+                    value: json!({ "status": "active" }),
+                    expected_revision: None,
+                    create_only: false,
+                    idempotency_key: put_idempotency_key,
+                },
+            )
+            .await
+            .expect("same idempotency key under a new policy revision");
+        assert!(
+            next_broker
+                .get(&next_scope, &record.key)
+                .await
+                .expect("get recreated record")
+                .is_some()
+        );
+
+        SeaOrmArtifactDataExportService::new(database.clone(), AllowExportAuthorizer)
+            .export(ArtifactDataExportRequest {
+                scope: next_scope.clone(),
+                expected_namespace_revision: 1,
+                page: ArtifactDataPageRequest {
+                    prefix: "state/".to_string(),
+                    after_key: None,
+                    limit: 10,
+                },
+                actor_id: Uuid::new_v4(),
+                reason: "verify policy-scoped export evidence".to_string(),
+            })
+            .await
+            .expect("export data");
+        SeaOrmArtifactDataPurgeService::new(database.clone(), AllowPurgeAuthorizer)
+            .purge(ArtifactDataPurgeRequest {
+                scope: next_scope.clone(),
+                expected_namespace_revision: 1,
+                actor_id: Uuid::new_v4(),
+                reason: "verify policy-scoped purge evidence".to_string(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("purge data");
+        for table in [
+            "module_artifact_data_exports",
+            "module_artifact_data_purge_operations",
+        ] {
+            let row = database
+                .query_one(Statement::from_string(
+                    DbBackend::Sqlite,
+                    format!("SELECT policy_revision FROM {table}"),
+                ))
+                .await
+                .expect("query policy revision")
+                .expect("policy revision row");
+            assert_eq!(
+                row.try_get::<i64>("", "policy_revision")
+                    .expect("policy revision"),
+                i64::try_from(next_scope.policy_revision).expect("policy revision fits i64")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn structured_quota_is_projected_atomically_and_delete_releases_capacity() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        for migration in ModulesModule.migrations() {
+            migration
+                .up(&sea_orm_migration::SchemaManager::new(&database))
+                .await
+                .expect("module migration");
+        }
+        let scope = ArtifactDataScope {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "quota_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 3,
+        };
+        let quota = ArtifactDataQuota {
+            max_structured_records: 2,
+            max_structured_bytes: 8,
+            ..ArtifactDataQuota::default()
+        };
+        let broker = SeaOrmArtifactDataBroker::with_indexes_and_quota(
+            database,
+            ExactArtifactDataAuthorizer {
+                scope: scope.clone(),
+            },
+            AllowSchemaValidator,
+            Vec::new(),
+            quota,
+        );
+        let first = broker
+            .put(
+                &scope,
+                ArtifactDataWrite {
+                    key: "state/one".to_string(),
+                    value: json!("1234"),
+                    expected_revision: None,
+                    create_only: false,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect("first quota-bound write");
+
+        let batch_error = broker
+            .put_batch(
+                &scope,
+                ArtifactDataBatchWrite {
+                    writes: vec![
+                        ArtifactDataWrite {
+                            key: "state/two".to_string(),
+                            value: json!(1),
+                            expected_revision: None,
+                            create_only: false,
+                            idempotency_key: Uuid::new_v4(),
+                        },
+                        ArtifactDataWrite {
+                            key: "state/three".to_string(),
+                            value: json!(2),
+                            expected_revision: None,
+                            create_only: false,
+                            idempotency_key: Uuid::new_v4(),
+                        },
+                    ],
+                },
+            )
+            .await
+            .expect_err("batch must exceed record quota");
+        assert!(matches!(
+            batch_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "structured_records",
+                limit: 2,
+                attempted: 3,
+            }
+        ));
+        for key in ["state/two", "state/three"] {
+            assert!(
+                broker
+                    .get(&scope, key)
+                    .await
+                    .expect("read rolled-back batch key")
+                    .is_none()
+            );
+        }
+
+        let byte_error = broker
+            .put(
+                &scope,
+                ArtifactDataWrite {
+                    key: first.key.clone(),
+                    value: json!("1234567"),
+                    expected_revision: Some(first.revision),
+                    create_only: false,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect_err("overwrite must exceed byte quota");
+        assert!(matches!(
+            byte_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "structured_bytes",
+                limit: 8,
+                attempted: 9,
+            }
+        ));
+        assert_eq!(
+            broker
+                .get(&scope, &first.key)
+                .await
+                .expect("read record after rejected overwrite"),
+            Some(first.clone())
+        );
+
+        broker
+            .delete(
+                &scope,
+                ArtifactDataDeleteRequest {
+                    key: first.key,
+                    expected_revision: first.revision,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect("delete releases quota");
+        let records = broker
+            .put_batch(
+                &scope,
+                ArtifactDataBatchWrite {
+                    writes: ["state/two", "state/three"]
+                        .into_iter()
+                        .map(|key| ArtifactDataWrite {
+                            key: key.to_string(),
+                            value: json!(1),
+                            expected_revision: None,
+                            create_only: false,
+                            idempotency_key: Uuid::new_v4(),
+                        })
+                        .collect(),
+                },
+            )
+            .await
+            .expect("batch fits after delete");
+        assert_eq!(records.len(), 2);
+    }
+
+    #[test]
     fn sandbox_object_data_adapter_accepts_only_bounded_base64_payloads() {
         let mut call = CapabilityCall {
             execution_id: Uuid::new_v4(),
@@ -5393,6 +6877,401 @@ mod tests {
             "idempotency_key": Uuid::new_v4(),
         });
         assert!(decode_object_data_capability_call(&call).is_err());
+    }
+
+    #[test]
+    fn sandbox_object_delete_requires_revision_and_idempotency() {
+        let mut call = CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Manual,
+                tenant_id: Some(Uuid::new_v4()),
+                actor_id: None,
+                trace_id: None,
+            },
+            capability: CapabilityName::new("platform.data.objects").expect("capability name"),
+            operation: "delete".to_string(),
+            input: json!({
+                "name": "exports/report.json",
+                "expected_revision": 4,
+                "idempotency_key": Uuid::new_v4(),
+            }),
+        };
+        let decoded = decode_object_data_capability_call(&call).expect("delete request");
+        assert!(matches!(
+            decoded,
+            ObjectDataCapabilityCall::Delete {
+                request: ArtifactDataObjectDeleteRequest {
+                    expected_revision: 4,
+                    ..
+                }
+            }
+        ));
+
+        call.input["expected_revision"] = json!(0);
+        assert!(decode_object_data_capability_call(&call).is_err());
+        call.input["expected_revision"] = json!(4);
+        call.input["idempotency_key"] = json!("not-a-uuid");
+        assert!(decode_object_data_capability_call(&call).is_err());
+    }
+
+    #[tokio::test]
+    async fn object_delete_is_revisioned_idempotent_and_queues_private_bytes() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        for migration in ModulesModule.migrations() {
+            migration
+                .up(&sea_orm_migration::SchemaManager::new(&database))
+                .await
+                .expect("module migration");
+        }
+        let directory =
+            std::env::temp_dir().join(format!("rustok-artifact-data-{}", Uuid::new_v4()));
+        let storage = StorageRuntime::local(&LocalStorageConfig {
+            base_dir: directory.to_string_lossy().into_owned(),
+            base_url: "/private".to_string(),
+            fsync: false,
+        })
+        .expect("local storage");
+        let scope = ArtifactDataScope {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "sample_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        };
+        let broker = SeaOrmArtifactDataObjectBroker::new(
+            database.clone(),
+            storage.clone(),
+            ExactArtifactDataAuthorizer {
+                scope: scope.clone(),
+            },
+        );
+        let put_idempotency_key = Uuid::new_v4();
+        let object = broker
+            .put_object(
+                &scope,
+                ArtifactDataObjectUpload {
+                    name: "exports/report.json".to_string(),
+                    content_type: "application/json".to_string(),
+                    data: Bytes::from_static(b"{}"),
+                    expected_revision: None,
+                    idempotency_key: put_idempotency_key,
+                },
+            )
+            .await
+            .expect("put object");
+        let request = ArtifactDataObjectDeleteRequest {
+            name: object.name.clone(),
+            expected_revision: object.revision,
+            idempotency_key: Uuid::new_v4(),
+        };
+        let deleted = broker
+            .delete_object(&scope, request.clone())
+            .await
+            .expect("delete object");
+        assert_eq!(deleted.name, object.name);
+        assert_eq!(deleted.deleted_revision, object.revision);
+        assert_eq!(
+            broker
+                .delete_object(&scope, request.clone())
+                .await
+                .expect("replay delete"),
+            deleted
+        );
+        assert!(matches!(
+            broker
+                .delete_object(
+                    &scope,
+                    ArtifactDataObjectDeleteRequest {
+                        name: "exports/other.json".to_string(),
+                        expected_revision: object.revision,
+                        idempotency_key: request.idempotency_key,
+                    },
+                )
+                .await,
+            Err(ArtifactDataError::IdempotencyConflict)
+        ));
+        assert!(
+            broker
+                .get_object(&scope, &object.name)
+                .await
+                .expect("get deleted object")
+                .is_none()
+        );
+
+        let row = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS candidate_count FROM module_artifact_data_object_gc_candidates"
+                    .to_string(),
+            ))
+            .await
+            .expect("query GC candidates")
+            .expect("GC count row");
+        assert_eq!(
+            row.try_get::<i64>("", "candidate_count")
+                .expect("GC candidate count"),
+            1
+        );
+        assert!(matches!(
+            broker
+                .delete_object(
+                    &scope,
+                    ArtifactDataObjectDeleteRequest {
+                        name: object.name.clone(),
+                        expected_revision: object.revision,
+                        idempotency_key: Uuid::new_v4(),
+                    },
+                )
+                .await,
+            Err(ArtifactDataError::RevisionConflict)
+        ));
+
+        let next_scope = ArtifactDataScope {
+            policy_revision: 2,
+            ..scope.clone()
+        };
+        let next_broker = SeaOrmArtifactDataObjectBroker::new(
+            database,
+            storage,
+            ExactArtifactDataAuthorizer {
+                scope: next_scope.clone(),
+            },
+        );
+        next_broker
+            .put_object(
+                &next_scope,
+                ArtifactDataObjectUpload {
+                    name: object.name.clone(),
+                    content_type: "application/json".to_string(),
+                    data: Bytes::from_static(b"{}"),
+                    expected_revision: None,
+                    idempotency_key: put_idempotency_key,
+                },
+            )
+            .await
+            .expect("same idempotency key under a new policy revision");
+        assert!(
+            next_broker
+                .get_object(&next_scope, &object.name)
+                .await
+                .expect("get recreated object")
+                .is_some()
+        );
+        drop(broker);
+        drop(next_broker);
+        if directory.exists() {
+            tokio::fs::remove_dir_all(directory)
+                .await
+                .expect("remove test storage");
+        }
+    }
+
+    #[tokio::test]
+    async fn object_and_staging_quotas_are_namespace_wide_and_reclaimable() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        for migration in ModulesModule.migrations() {
+            migration
+                .up(&sea_orm_migration::SchemaManager::new(&database))
+                .await
+                .expect("module migration");
+        }
+        let directory =
+            std::env::temp_dir().join(format!("rustok-artifact-data-quota-{}", Uuid::new_v4()));
+        let storage = StorageRuntime::local(&LocalStorageConfig {
+            base_dir: directory.to_string_lossy().into_owned(),
+            base_url: "/private".to_string(),
+            fsync: false,
+        })
+        .expect("local storage");
+        let scope = ArtifactDataScope {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "quota_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 5,
+        };
+        let quota = ArtifactDataQuota {
+            max_objects: 1,
+            max_object_bytes: 4,
+            max_upload_sessions: 1,
+            max_staging_bytes: 4,
+            ..ArtifactDataQuota::default()
+        };
+        let authorizer = ExactArtifactDataAuthorizer {
+            scope: scope.clone(),
+        };
+        let broker = SeaOrmArtifactDataObjectBroker::with_infrastructure_and_quota(
+            database.clone(),
+            storage.clone(),
+            authorizer.clone(),
+            ControlPlaneInfrastructure::default(),
+            quota,
+        );
+        let first = broker
+            .put_object(
+                &scope,
+                ArtifactDataObjectUpload {
+                    name: "objects/one.bin".to_string(),
+                    content_type: "application/octet-stream".to_string(),
+                    data: Bytes::from_static(b"1234"),
+                    expected_revision: None,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect("first object");
+        let object_count_error = broker
+            .put_object(
+                &scope,
+                ArtifactDataObjectUpload {
+                    name: "objects/two.bin".to_string(),
+                    content_type: "application/octet-stream".to_string(),
+                    data: Bytes::from_static(b"1"),
+                    expected_revision: None,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect_err("second object must exceed count quota");
+        assert!(matches!(
+            object_count_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "objects",
+                limit: 1,
+                attempted: 2,
+            }
+        ));
+        let object_byte_error = broker
+            .put_object(
+                &scope,
+                ArtifactDataObjectUpload {
+                    name: first.name.clone(),
+                    content_type: first.content_type.clone(),
+                    data: Bytes::from_static(b"12345"),
+                    expected_revision: Some(first.revision),
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect_err("replacement must exceed object byte quota");
+        assert!(matches!(
+            object_byte_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "object_bytes",
+                limit: 4,
+                attempted: 5,
+            }
+        ));
+        broker
+            .delete_object(
+                &scope,
+                ArtifactDataObjectDeleteRequest {
+                    name: first.name,
+                    expected_revision: first.revision,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect("object delete releases quota");
+        broker
+            .put_object(
+                &scope,
+                ArtifactDataObjectUpload {
+                    name: "objects/two.bin".to_string(),
+                    content_type: "application/octet-stream".to_string(),
+                    data: Bytes::from_static(b"1234"),
+                    expected_revision: None,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect("object fits after delete");
+
+        let uploads = SeaOrmArtifactDataObjectUploadService::with_infrastructure_and_quota(
+            database,
+            storage,
+            authorizer,
+            ControlPlaneInfrastructure::default(),
+            quota,
+        );
+        let session = uploads
+            .begin(
+                &scope,
+                ArtifactDataObjectUploadSessionRequest {
+                    name: "uploads/one.bin".to_string(),
+                    content_type: "application/octet-stream".to_string(),
+                    expected_revision: None,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect("first upload session");
+        let session_error = uploads
+            .begin(
+                &scope,
+                ArtifactDataObjectUploadSessionRequest {
+                    name: "uploads/two.bin".to_string(),
+                    content_type: "application/octet-stream".to_string(),
+                    expected_revision: None,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect_err("second active session must exceed quota");
+        assert!(matches!(
+            session_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "upload_sessions",
+                limit: 1,
+                attempted: 2,
+            }
+        ));
+        uploads
+            .append_chunk(
+                &scope,
+                ArtifactDataObjectUploadChunk {
+                    session_id: session.session_id,
+                    sequence: 0,
+                    data: Bytes::from_static(b"1234"),
+                },
+            )
+            .await
+            .expect("staging chunk at quota");
+        let staging_error = uploads
+            .append_chunk(
+                &scope,
+                ArtifactDataObjectUploadChunk {
+                    session_id: session.session_id,
+                    sequence: 1,
+                    data: Bytes::from_static(b"5"),
+                },
+            )
+            .await
+            .expect_err("staging bytes must exceed quota");
+        assert!(matches!(
+            staging_error,
+            ArtifactDataError::QuotaExceeded {
+                resource: "staging_bytes",
+                limit: 4,
+                attempted: 5,
+            }
+        ));
+        drop(broker);
+        drop(uploads);
+        if directory.exists() {
+            tokio::fs::remove_dir_all(directory)
+                .await
+                .expect("remove quota test storage");
+        }
     }
 
     #[test]

@@ -665,7 +665,7 @@ mod tests {
 
         let mut executors = crate::ExecutorRegistry::new();
         executors
-            .register(WasmComponentExecutor::new())
+            .register_in_process(WasmComponentExecutor::new())
             .expect("executor registration");
         let runtime = crate::SandboxRuntime::new(executors, std::sync::Arc::new(NoCapabilities));
         assert!(matches!(

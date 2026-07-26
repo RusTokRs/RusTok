@@ -22,9 +22,10 @@ Alloy drafts and installed module artifacts.
 - Bound synchronous Rhai/WIT broker bridging to one native thread per execution.
 - Admit executions through shared global, executor, tenant, and artifact gates
   with automatic permit release on every terminal path.
-- Register language/runtime executors without depending on their consumers.
+- Register language/runtime executors with an explicit `in_process` or
+  `isolated_worker` placement and no implicit fallback between them.
 - Expose registry-backed executor readiness so owner policy can distinguish an
-  execution port from a registered payload executor.
+  execution port from a registered payload executor and inspect its placement.
 - Publish comparable audit evidence for draft and installed executions.
 
 ## Entry points

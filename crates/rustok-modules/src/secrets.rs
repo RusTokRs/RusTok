@@ -239,6 +239,62 @@ where
     }
 }
 
+/// Standalone production policy for sandbox-visible logical handles. The
+/// dynamic resolver already checks exact admission before broker construction;
+/// this policy repeats that check immediately before the binding read so a
+/// lifecycle or capability-policy change cannot leave a stale broker
+/// authorized. Secret values and resolver identities are not involved.
+#[derive(Clone)]
+pub struct SeaOrmArtifactSecretHandlePolicy {
+    db: DatabaseConnection,
+}
+
+impl SeaOrmArtifactSecretHandlePolicy {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait]
+impl ArtifactSecretHandleAuthorizer for SeaOrmArtifactSecretHandlePolicy {
+    async fn authorize_secret_handle(
+        &self,
+        request: &ArtifactSecretHandleRequest,
+    ) -> Result<(), ArtifactSecretError> {
+        validate_handle_request(request)?;
+        let (installation_id, slug, version, digest) = match &request.subject {
+            SandboxSubject::ModuleArtifact {
+                installation_id,
+                slug,
+                version,
+                digest,
+            } => (*installation_id, slug, version, digest),
+            SandboxSubject::AlloyDraft { .. } => {
+                return Err(ArtifactSecretError::PolicyDenied);
+            }
+        };
+        let capability = CapabilityName::new("platform.secrets")
+            .map_err(|_| ArtifactSecretError::PolicyDenied)?;
+        let execution = ArtifactCapabilityExecution {
+            installation_id,
+            tenant_id: request.scope.tenant_id,
+            slug: slug.clone(),
+            version: version.clone(),
+            digest: digest.clone(),
+        };
+        let installation = resolve_granted_artifact_capability(&self.db, &execution, &capability)
+            .await
+            .map_err(|_| ArtifactSecretError::PolicyDenied)?;
+        let resolved_scope =
+            artifact_data_scope_for_execution(&installation, &execution, &capability)
+                .map_err(|_| ArtifactSecretError::PolicyDenied)?;
+        if resolved_scope != request.scope {
+            return Err(ArtifactSecretError::PolicyDenied);
+        }
+        Ok(())
+    }
+}
+
 /// SeaORM owner service for logical artifact secret bindings. Its storage is a
 /// reference catalog only; it has no secret resolver and never resolves a
 /// secret value.
@@ -1012,25 +1068,35 @@ mod tests {
     use async_trait::async_trait;
     use rustok_core::MigrationSource;
     use rustok_sandbox::{
-        CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionPhase, SandboxSubject,
+        CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityName, ExecutionPhase,
+        SandboxPolicy, SandboxSubject,
     };
     use rustok_secrets::{
         EnvResolver, SecretAccessPolicy, SecretError, SecretRef, SecretResolver,
         SecretResolverRegistry, SecretString,
     };
-    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm::{
+        ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, Value as SqlValue,
+    };
     use sea_orm_migration::SchemaManager;
     use serde_json::json;
     use uuid::Uuid;
 
     use super::{
         ArtifactSecretAuthorizer, ArtifactSecretBindingRequest, ArtifactSecretError,
-        ArtifactSecretHandleRequest, ArtifactSecretPolicy, ArtifactSecretUseContext,
-        ArtifactSecretUseRequest, ArtifactSecretValueConsumer, RegistryArtifactSecretAuthorizer,
+        ArtifactSecretHandleAuthorizer, ArtifactSecretHandleRequest, ArtifactSecretPolicy,
+        ArtifactSecretUseContext, ArtifactSecretUseRequest, ArtifactSecretValueConsumer,
+        RegistryArtifactSecretAuthorizer, SeaOrmArtifactSecretHandlePolicy,
         SeaOrmArtifactSecretUseService, capability_reference, validate_handle_request,
         validate_request, validate_use_request,
     };
-    use crate::{ArtifactDataScope, ArtifactSecretConsumerError, ModulesModule};
+    use crate::{
+        ArtifactDataScope, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPersistenceContract,
+        ArtifactSchemaDocument, ArtifactSecretConsumerError,
+        MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
+        ModuleArtifactDescriptor, ModuleDependencyLockGraph, ModulesModule,
+        canonical_schema_digest,
+    };
 
     fn request() -> ArtifactSecretBindingRequest {
         ArtifactSecretBindingRequest {
@@ -1049,6 +1115,152 @@ mod tests {
             actor_id: Uuid::new_v4(),
             reason: "initial configuration".to_string(),
             idempotency_key: Uuid::new_v4(),
+        }
+    }
+
+    async fn active_secret_policy_fixture(
+        database: &DatabaseConnection,
+    ) -> ArtifactSecretHandleRequest {
+        let tenant_id = Uuid::new_v4();
+        let installation_id = Uuid::new_v4();
+        let capability = CapabilityName::new("platform.secrets").expect("capability name");
+        let payload_digest = format!("sha256:{}", "a".repeat(64));
+        let schema_document = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": true
+        });
+        let schema_digest = canonical_schema_digest(&schema_document);
+        let descriptor = ModuleArtifactDescriptor {
+            schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            payload_kind: ArtifactPayloadKind::Rhai,
+            module_kind: ArtifactModuleKind::Optional,
+            runtime_abi: "rustok:module/runtime@1".to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
+            artifact_digest: payload_digest.clone(),
+            entrypoint: "main".to_string(),
+            capabilities: vec![capability.clone()],
+            bindings: Vec::new(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+            schema_documents: vec![ArtifactSchemaDocument {
+                digest: schema_digest.clone(),
+                document: schema_document,
+            }],
+            settings_schema_digest: None,
+            data_schema_digest: Some(schema_digest.clone()),
+            ui_contributions: Vec::new(),
+            persistence_contract: Some(ArtifactPersistenceContract {
+                revision: 7,
+                schema_digest,
+                indexes: Vec::new(),
+            }),
+        };
+        descriptor.validate().expect("valid fixture descriptor");
+        let dependency_lock =
+            ModuleDependencyLockGraph::create(0, Vec::new()).expect("empty dependency lock");
+        let sandbox_policy = SandboxPolicy {
+            grants: vec![CapabilityGrant {
+                name: capability,
+                constraints: json!({
+                    "references": ["payment_api"],
+                    "operations": ["acquire_handle"]
+                }),
+            }],
+            ..SandboxPolicy::default()
+        };
+        let installed_at = "2026-07-26T12:00:00+00:00";
+
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_installations (
+                    installation_id, scope_kind, tenant_id, registry, repository, manifest_digest,
+                    slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor,
+                    dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at,
+                    previous_installation_id, capability_grant_revision
+                 ) VALUES (
+                    ?1, 'tenant', ?2, 'registry.example', 'modules/sample_module', ?3,
+                    'sample_module', '1.0.0', 'rhai', 'rustok:module/runtime@1', ?4, 'main', ?5,
+                    ?6, ?7, ?8, ?9, NULL, 1
+                 )",
+                vec![
+                    installation_id.to_string().into(),
+                    tenant_id.to_string().into(),
+                    format!("sha256:{}", "b".repeat(64)).into(),
+                    payload_digest.clone().into(),
+                    SqlValue::Json(Some(Box::new(
+                        serde_json::to_value(&descriptor).expect("descriptor JSON"),
+                    ))),
+                    i64::try_from(dependency_lock.graph_revision)
+                        .expect("graph revision")
+                        .into(),
+                    dependency_lock.graph_digest.clone().into(),
+                    SqlValue::Json(Some(Box::new(
+                        serde_json::to_value(&dependency_lock).expect("dependency lock JSON"),
+                    ))),
+                    installed_at.into(),
+                ],
+            ))
+            .await
+            .expect("installation fixture");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_admissions (
+                    stage_id, installation_id, payload_digest, media_type, size_bytes,
+                    verification_evidence, status, revision, committed_at
+                 ) VALUES (?1, ?2, ?3, ?4, 1, ?5, 'active', 1, ?6)",
+                vec![
+                    Uuid::new_v4().to_string().into(),
+                    installation_id.to_string().into(),
+                    payload_digest.clone().into(),
+                    MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE.into(),
+                    SqlValue::Json(Some(Box::new(json!({})))),
+                    installed_at.into(),
+                ],
+            ))
+            .await
+            .expect("active admission fixture");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_sandbox_policies (
+                    installation_id, tenant_id, capability_grant_revision, policy, created_at
+                 ) VALUES (?1, ?2, 1, ?3, ?4)",
+                vec![
+                    installation_id.to_string().into(),
+                    tenant_id.to_string().into(),
+                    SqlValue::Json(Some(Box::new(
+                        serde_json::to_value(&sandbox_policy).expect("sandbox policy JSON"),
+                    ))),
+                    installed_at.into(),
+                ],
+            ))
+            .await
+            .expect("sandbox policy fixture");
+
+        ArtifactSecretHandleRequest {
+            scope: ArtifactDataScope {
+                tenant_id,
+                module_slug: descriptor.slug.clone(),
+                data_contract_revision: 7,
+                policy_revision: 1,
+            },
+            reference: "payment_api".to_string(),
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id,
+                slug: descriptor.slug,
+                version: descriptor.version,
+                digest: payload_digest,
+            },
+            phase: ExecutionPhase::Manual,
+            actor_id: Some("artifact-actor".to_string()),
+            trace_id: Some("trace-1".to_string()),
         }
     }
 
@@ -1185,6 +1397,90 @@ mod tests {
         allowed.secret.key = "forbidden-key".to_string();
         assert!(matches!(
             authorizer.authorize_secret_binding(&allowed).await,
+            Err(ArtifactSecretError::PolicyDenied)
+        ));
+    }
+
+    #[tokio::test]
+    async fn production_handle_policy_rechecks_exact_active_installation_and_grant() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        let manager = SchemaManager::new(&database);
+        for migration in ModulesModule.migrations() {
+            migration.up(&manager).await.expect("module migration");
+        }
+        let request = active_secret_policy_fixture(&database).await;
+        let policy = SeaOrmArtifactSecretHandlePolicy::new(database.clone());
+
+        policy
+            .authorize_secret_handle(&request)
+            .await
+            .expect("exact active installation with current grant");
+
+        let mut stale_scope = request.clone();
+        stale_scope.scope.policy_revision += 1;
+        assert!(matches!(
+            policy.authorize_secret_handle(&stale_scope).await,
+            Err(ArtifactSecretError::PolicyDenied)
+        ));
+
+        let mut foreign_installation = request.clone();
+        let SandboxSubject::ModuleArtifact {
+            installation_id, ..
+        } = &mut foreign_installation.subject
+        else {
+            unreachable!("fixture uses an artifact subject")
+        };
+        *installation_id = Uuid::new_v4();
+        assert!(matches!(
+            policy.authorize_secret_handle(&foreign_installation).await,
+            Err(ArtifactSecretError::PolicyDenied)
+        ));
+
+        let SandboxSubject::ModuleArtifact {
+            installation_id, ..
+        } = &request.subject
+        else {
+            unreachable!("fixture uses an artifact subject")
+        };
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1",
+                vec![installation_id.to_string().into()],
+            ))
+            .await
+            .expect("deactivate fixture");
+        assert!(matches!(
+            policy.authorize_secret_handle(&request).await,
+            Err(ArtifactSecretError::PolicyDenied)
+        ));
+
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'active' WHERE installation_id = ?1",
+                vec![installation_id.to_string().into()],
+            ))
+            .await
+            .expect("reactivate fixture");
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_sandbox_policies SET policy = ?1 WHERE installation_id = ?2",
+                vec![
+                    SqlValue::Json(Some(Box::new(
+                        serde_json::to_value(SandboxPolicy::default())
+                            .expect("default sandbox policy JSON"),
+                    ))),
+                    installation_id.to_string().into(),
+                ],
+            ))
+            .await
+            .expect("remove fixture grant");
+        assert!(matches!(
+            policy.authorize_secret_handle(&request).await,
             Err(ArtifactSecretError::PolicyDenied)
         ));
     }

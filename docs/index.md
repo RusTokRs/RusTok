@@ -41,7 +41,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Module and Application Registry](./modules/registry.md)
 - [FFA/FBA Readiness Board and Boundary Evidence (inside module registry)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
 - [Module Platform Crate Registry](./modules/crates-registry.md)
-- [`rustok-modules` control-plane documentation](../crates/rustok-modules/docs/README.md)
+- [`rustok-modules` control-plane and namespaced-data quota documentation](../crates/rustok-modules/docs/README.md)
 - [`rustok-verification-transport` gRPC documentation](../crates/rustok-verification-transport/docs/README.md)
 - [`rustok-media-transport` gRPC documentation](../crates/rustok-media-transport/docs/README.md)
 - [`rustok-verification-worker` documentation](../crates/rustok-verification-worker/docs/README.md)
@@ -81,6 +81,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
   - [Verification Guide](./backend/module-backend-verification.md) - fast guardrails, targeted Rust checks and FBA evidence
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
+- [Translation Module Implementation Plan](./modules/translation-implementation-plan.md)
 - AI support adapter plans for `rustok-ai-media` and `rustok-ai-alloy` are available through the [module documentation index](./modules/_index.md).
 
 ## UI and Client Surfaces
@@ -106,6 +107,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
+- [ADR: Translation control plane and owner-owned localized data](../DECISIONS/2026-07-26-translation-control-plane-boundary.md)
 - [ADR: Richtext capability boundary and single-document contract](../DECISIONS/2026-07-22-richtext-capability-boundary.md)
 - [ADR: Artifact security state boundary](../DECISIONS/2026-07-22-artifact-security-state-boundary.md)
 - [ADR: Channel binding policy boundary](../DECISIONS/2026-07-22-channel-binding-policy-boundary.md)

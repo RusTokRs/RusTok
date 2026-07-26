@@ -63,6 +63,13 @@ impl SandboxRuntime {
         self.executors.contains(kind)
     }
 
+    pub fn executor_placement(
+        &self,
+        kind: crate::SandboxExecutorKind,
+    ) -> SandboxResult<crate::SandboxExecutorPlacement> {
+        self.executors.placement(kind)
+    }
+
     pub async fn execute(&self, request: SandboxRequest) -> SandboxResult<SandboxOutcome> {
         self.execute_with_cancellation(request, SandboxCancellation::new())
             .await

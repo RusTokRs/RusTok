@@ -18,6 +18,7 @@ impl MigrationTrait for Migration {
                     data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
                     data_key TEXT NOT NULL CHECK (length(data_key) BETWEEN 1 AND 256),\
                     value JSONB NOT NULL,\
+                    value_size_bytes BIGINT NOT NULL CHECK (value_size_bytes > 0 AND value_size_bytes <= 65536),\
                     revision BIGINT NOT NULL CHECK (revision > 0),\
                     updated_at TIMESTAMPTZ NOT NULL,\
                     PRIMARY KEY (tenant_id, module_slug, data_contract_revision, data_key)\
@@ -31,13 +32,14 @@ impl MigrationTrait for Migration {
                     tenant_id UUID NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key UUID NOT NULL,\
                     data_key TEXT NOT NULL CHECK (length(data_key) BETWEEN 1 AND 256),\
                     value JSONB NOT NULL,\
                     expected_revision BIGINT NULL CHECK (expected_revision > 0),\
                     revision BIGINT NOT NULL CHECK (revision > 0),\
                     completed_at TIMESTAMPTZ NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
                 )",
                 "ALTER TABLE module_artifact_data_operations ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_operations_scope ON module_artifact_data_operations \
@@ -51,6 +53,7 @@ impl MigrationTrait for Migration {
                     data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
                     data_key TEXT NOT NULL CHECK (length(data_key) BETWEEN 1 AND 256),\
                     value JSON NOT NULL,\
+                    value_size_bytes INTEGER NOT NULL CHECK (value_size_bytes > 0 AND value_size_bytes <= 65536),\
                     revision INTEGER NOT NULL CHECK (revision > 0),\
                     updated_at TEXT NOT NULL,\
                     PRIMARY KEY (tenant_id, module_slug, data_contract_revision, data_key)\
@@ -60,13 +63,14 @@ impl MigrationTrait for Migration {
                     tenant_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key TEXT NOT NULL,\
                     data_key TEXT NOT NULL CHECK (length(data_key) BETWEEN 1 AND 256),\
                     value JSON NOT NULL,\
                     expected_revision INTEGER NULL CHECK (expected_revision > 0),\
                     revision INTEGER NOT NULL CHECK (revision > 0),\
                     completed_at TEXT NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
                 )",
             ],
             backend => {

@@ -5,9 +5,9 @@ use rustok_sandbox::{
     CapabilityAuditOutcome, CapabilityAuditRecord, CapabilityBroker, CapabilityCall,
     CapabilityCallContext, CapabilityGrant, CapabilityName, CapabilityObserver, CapabilityResponse,
     ExecutionObserver, ExecutionPhase, ExecutionRecord, ExecutionStatus, ExecutorRegistry,
-    SandboxContext, SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost,
-    SandboxOutcome, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxResult, SandboxRuntime,
-    SandboxSubject,
+    SandboxContext, SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxExecutorPlacement,
+    SandboxHost, SandboxOutcome, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxResult,
+    SandboxRuntime, SandboxSubject,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -249,7 +249,7 @@ fn request(granted: bool) -> SandboxRequest {
 async fn runtime_uses_default_deny_capability_policy() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(RhaiFixtureExecutor)
+        .register_in_process(RhaiFixtureExecutor)
         .expect("register fixture executor");
     let runtime = SandboxRuntime::new(registry, Arc::new(TestBroker));
 
@@ -263,7 +263,7 @@ async fn runtime_uses_default_deny_capability_policy() {
 async fn runtime_rejects_a_capability_call_with_another_actor_before_the_broker() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(ContextMismatchExecutor)
+        .register_in_process(ContextMismatchExecutor)
         .expect("register fixture executor");
     let runtime = SandboxRuntime::new(registry, Arc::new(PanicBroker));
 
@@ -283,7 +283,7 @@ async fn runtime_rejects_a_capability_call_with_another_actor_before_the_broker(
 async fn denied_capability_call_emits_redacted_audit_evidence() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(ContextMismatchExecutor)
+        .register_in_process(ContextMismatchExecutor)
         .expect("register fixture executor");
     let records = Arc::new(CapabilityRecords::default());
     let observer: Arc<dyn CapabilityObserver> = records.clone();
@@ -315,7 +315,7 @@ async fn denied_capability_call_emits_redacted_audit_evidence() {
 async fn cancellation_stops_capability_dispatch_before_the_broker() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(CancellationExecutor)
+        .register_in_process(CancellationExecutor)
         .expect("register fixture executor");
     let runtime = SandboxRuntime::new(registry, Arc::new(PanicBroker));
 
@@ -332,7 +332,7 @@ async fn cancellation_stops_capability_dispatch_before_the_broker() {
 async fn execution_audit_excludes_untrusted_error_text() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(SecretFailExecutor)
+        .register_in_process(SecretFailExecutor)
         .expect("register fixture executor");
     let records = Arc::new(Records::default());
     let observer: Arc<dyn ExecutionObserver> = records.clone();
@@ -360,7 +360,7 @@ async fn execution_audit_excludes_untrusted_error_text() {
 async fn runtime_records_queue_execution_and_capability_metrics() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(RhaiFixtureExecutor)
+        .register_in_process(RhaiFixtureExecutor)
         .expect("register fixture executor");
     let records = Arc::new(Records::default());
     let observer: Arc<dyn ExecutionObserver> = records.clone();
@@ -386,7 +386,7 @@ async fn runtime_records_queue_execution_and_capability_metrics() {
 async fn runtime_enforces_capability_call_count_before_the_broker() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(DoubleCapabilityExecutor)
+        .register_in_process(DoubleCapabilityExecutor)
         .expect("register fixture executor");
     let broker = Arc::new(CountingBroker::default());
     let runtime = SandboxRuntime::new(registry, broker.clone());
@@ -412,7 +412,7 @@ async fn runtime_enforces_capability_call_count_before_the_broker() {
 async fn runtime_enforces_capability_rate_before_the_broker() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(DoubleCapabilityExecutor)
+        .register_in_process(DoubleCapabilityExecutor)
         .expect("register fixture executor");
     let broker = Arc::new(CountingBroker::default());
     let runtime = SandboxRuntime::new(registry, broker.clone());
@@ -438,7 +438,7 @@ async fn runtime_enforces_capability_rate_before_the_broker() {
 async fn runtime_rejects_oversized_capability_input_before_the_broker() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(RhaiFixtureExecutor)
+        .register_in_process(RhaiFixtureExecutor)
         .expect("register fixture executor");
     let runtime = SandboxRuntime::new(registry, Arc::new(PanicBroker));
     let mut constrained = request(true);
@@ -462,7 +462,7 @@ async fn runtime_rejects_oversized_capability_input_before_the_broker() {
 async fn alloy_draft_and_module_artifact_share_execution_contract() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(RhaiFixtureExecutor)
+        .register_in_process(RhaiFixtureExecutor)
         .expect("register fixture executor");
     let records = Arc::new(Records::default());
     let observer: Arc<dyn ExecutionObserver> = records.clone();
@@ -497,15 +497,37 @@ async fn alloy_draft_and_module_artifact_share_execution_contract() {
 fn executor_registration_is_unique_by_kind() {
     let mut registry = ExecutorRegistry::new();
     registry
-        .register(RhaiFixtureExecutor)
+        .register_in_process(RhaiFixtureExecutor)
         .expect("first executor");
     let error = registry
-        .register(RhaiFixtureExecutor)
+        .register_isolated_worker(RhaiFixtureExecutor)
         .expect_err("duplicate executor");
 
     assert_eq!(
         error,
         SandboxError::ExecutorAlreadyRegistered(SandboxExecutorKind::Rhai)
+    );
+}
+
+#[test]
+fn executor_placement_is_explicit_and_observable_without_fallback() {
+    let mut registry = ExecutorRegistry::new();
+    registry
+        .register_isolated_worker(RhaiFixtureExecutor)
+        .expect("isolated executor");
+    let runtime = SandboxRuntime::new(registry, Arc::new(TestBroker));
+
+    assert_eq!(
+        runtime
+            .executor_placement(SandboxExecutorKind::Rhai)
+            .expect("registered placement"),
+        SandboxExecutorPlacement::IsolatedWorker
+    );
+    assert_eq!(
+        runtime
+            .executor_placement(SandboxExecutorKind::WasmComponent)
+            .expect_err("missing executor remains unavailable"),
+        SandboxError::ExecutorNotRegistered(SandboxExecutorKind::WasmComponent)
     );
 }
 

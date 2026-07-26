@@ -11,6 +11,10 @@ status: verified
 Platform plan for runtime registry consolidation, composition, tenant lifecycle,
 governance and admin transport: [module control-plane consolidation plan](./module-control-plane-consolidation-plan.md).
 
+Cross-cutting pre-implementation plan for owner-safe business translation,
+progress, memory/glossaries, and the `rustok-ai` machine-translation adapter:
+[translation module implementation plan](./translation-implementation-plan.md).
+
 Module local documentation lives inside the crates themselves at
 `crates/<name>/docs/README.md`. This document provides central navigation only.
 

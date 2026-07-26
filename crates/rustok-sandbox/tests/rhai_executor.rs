@@ -50,7 +50,7 @@ fn request(source: &str) -> SandboxRequest {
 fn runtime() -> SandboxRuntime {
     let mut executors = ExecutorRegistry::new();
     executors
-        .register(RhaiExecutor::new())
+        .register_in_process(RhaiExecutor::new())
         .expect("register Rhai executor");
     SandboxRuntime::new(executors, Arc::new(NoCapabilities))
 }

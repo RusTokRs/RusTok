@@ -461,13 +461,13 @@ impl DataCapabilityConstraints {
         if constraints.operations.iter().any(|operation| {
             !matches!(
                 operation.as_str(),
-                "get" | "put" | "put_batch" | "list" | "query_index"
+                "get" | "put" | "put_batch" | "delete" | "list" | "query_index"
             ) || !operations.insert(operation)
         }) {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: grant.name.clone(),
                 reason:
-                    "data operations must be unique and limited to get, put, put_batch, list, or query_index"
+                    "data operations must be unique and limited to get, put, put_batch, delete, list, or query_index"
                         .to_string(),
             });
         }
@@ -520,6 +520,32 @@ impl DataCapabilityConstraints {
                             "data batch keys and idempotency keys must be distinct",
                         ));
                     }
+                }
+                Ok(())
+            }
+            "delete" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &["key", "expected_revision", "idempotency_key"],
+                )?;
+                self.validate_key(call, required_data_string(call, input, "key")?)?;
+                if input
+                    .get("expected_revision")
+                    .and_then(Value::as_u64)
+                    .filter(|revision| *revision > 0)
+                    .is_none()
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "data delete requires a positive expected_revision",
+                    ));
+                }
+                if Uuid::parse_str(required_data_string(call, input, "idempotency_key")?).is_err() {
+                    return Err(data_constraint_error(
+                        call,
+                        "data idempotency_key must be a UUID",
+                    ));
                 }
                 Ok(())
             }
@@ -687,6 +713,7 @@ impl ObjectCapabilityConstraints {
                 "get_metadata"
                     | "read"
                     | "put"
+                    | "delete"
                     | "list"
                     | "begin_upload"
                     | "append_chunk"
@@ -695,7 +722,7 @@ impl ObjectCapabilityConstraints {
         }) {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: grant.name.clone(),
-                reason: "object-data operations must be unique and limited to get_metadata, read, put, list, begin_upload, append_chunk, or complete_upload".to_string(),
+                reason: "object-data operations must be unique and limited to get_metadata, read, put, delete, list, begin_upload, append_chunk, or complete_upload".to_string(),
             });
         }
         Ok(constraints)
@@ -762,6 +789,32 @@ impl ObjectCapabilityConstraints {
                             "object-data expected_revision must be a positive integer",
                         ));
                     }
+                }
+                Ok(())
+            }
+            "delete" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &["name", "expected_revision", "idempotency_key"],
+                )?;
+                self.validate_name(call, required_data_string(call, input, "name")?)?;
+                if input
+                    .get("expected_revision")
+                    .and_then(Value::as_u64)
+                    .filter(|revision| *revision > 0)
+                    .is_none()
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data delete requires a positive expected_revision",
+                    ));
+                }
+                if Uuid::parse_str(required_data_string(call, input, "idempotency_key")?).is_err() {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data idempotency_key must be a UUID",
+                    ));
                 }
                 Ok(())
             }
@@ -1559,7 +1612,7 @@ mod tests {
             name: CapabilityName::new("platform.data").expect("capability name"),
             constraints: json!({
                 "key_prefixes": ["state/"],
-                "operations": ["get", "put", "put_batch", "list", "query_index"]
+                "operations": ["get", "put", "put_batch", "delete", "list", "query_index"]
             }),
         };
         let constraints =
@@ -1592,6 +1645,16 @@ mod tests {
         });
         assert!(constraints.validate(&data_call).is_ok());
         data_call.input["value"] = json!({ "not": "a scalar" });
+        assert!(constraints.validate(&data_call).is_err());
+
+        data_call.operation = "delete".to_string();
+        data_call.input = json!({
+            "key": "state/answer",
+            "expected_revision": 2,
+            "idempotency_key": Uuid::new_v4().to_string()
+        });
+        assert!(constraints.validate(&data_call).is_ok());
+        data_call.input["key"] = json!("other/answer");
         assert!(constraints.validate(&data_call).is_err());
 
         data_call.operation = "put_batch".to_string();
@@ -1627,7 +1690,7 @@ mod tests {
             name: CapabilityName::new("platform.data.objects").expect("capability name"),
             constraints: json!({
                 "object_prefixes": ["exports/"],
-                "operations": ["get_metadata", "read", "put", "list", "begin_upload", "append_chunk", "complete_upload"]
+                "operations": ["get_metadata", "read", "put", "delete", "list", "begin_upload", "append_chunk", "complete_upload"]
             }),
         };
         let constraints =
@@ -1659,6 +1722,16 @@ mod tests {
             "data_base64": "e30=",
         });
         assert!(constraints.validate(&object_call).is_ok());
+
+        object_call.operation = "delete".to_string();
+        object_call.input = json!({
+            "name": "exports/report.json",
+            "expected_revision": 3,
+            "idempotency_key": Uuid::new_v4().to_string(),
+        });
+        assert!(constraints.validate(&object_call).is_ok());
+        object_call.input["expected_revision"] = json!(0);
+        assert!(constraints.validate(&object_call).is_err());
 
         object_call.input = json!({ "name": "other/report.json" });
         object_call.operation = "read".to_string();

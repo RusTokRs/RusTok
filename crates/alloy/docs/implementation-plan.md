@@ -23,6 +23,9 @@ Implemented:
 - stable runtime hardening contract and static verifier;
 - generic Rhai kernel extraction into `rustok-sandbox`;
 - Alloy adapter over the neutral Rhai engine;
+- explicit `in_process` executor placement for the current adapter, with no
+  same-kind worker fallback; production isolation remains open until Alloy
+  composes the supervised `isolated_worker` adapter;
 - broker-backed HTTP capability bridge with no direct HTTP client;
 - versioned `AlloyDraftRequestBuilder` that pins draft ID, source revision,
   source digest, sandbox phase, tenant, actor, input, grants, and limits;

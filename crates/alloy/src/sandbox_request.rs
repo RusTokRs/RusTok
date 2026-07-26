@@ -774,7 +774,7 @@ mod tests {
             .expect("request");
         let mut executors = ExecutorRegistry::new();
         executors
-            .register(
+            .register_in_process(
                 rustok_sandbox::rhai::RhaiExecutor::new()
                     .with_extension(Arc::new(AlloyDraftScopeExtension)),
             )

@@ -68,6 +68,9 @@ runs native code in process.
   expanded by Rhai helpers, WebAssembly imports or module UI.
 - Draft and installed executions are distinguishable by typed subject metadata
   while remaining comparable in observability and policy evidence.
+- Executor placement is mandatory registration metadata. A caller must select
+  `in_process` or `isolated_worker`; duplicate kinds are rejected across
+  placements, placement is observable for readiness, and an unavailable worker
+  never selects an in-process executor implicitly.
 - Existing native modules do not need immediate conversion; they remain trusted
   static promotions until deliberately ported to a sandboxed artifact.
-
