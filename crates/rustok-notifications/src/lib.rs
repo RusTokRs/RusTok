@@ -7,6 +7,7 @@ mod inbox;
 mod inbox_bulk;
 mod inbox_count;
 mod inbox_group;
+mod inbox_group_summary;
 mod inbox_reconcile;
 mod inbox_selected;
 mod inbox_state;
@@ -61,6 +62,10 @@ pub use inbox_count::{
 pub use inbox_group::{
     MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES, NotificationInboxGroupListRequest,
     NotificationInboxGroupListService,
+};
+pub use inbox_group_summary::{
+    NotificationInboxGroupSummary, NotificationInboxGroupSummaryPage,
+    NotificationInboxGroupSummaryRequest, NotificationInboxGroupSummaryService,
 };
 pub use inbox_reconcile::{
     NotificationInboxReconcilePage, NotificationInboxReconcileRequest,
@@ -150,8 +155,8 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 6);
-        assert_eq!(module.migration_dependencies().len(), 6);
+        assert_eq!(module.migrations().len(), 7);
+        assert_eq!(module.migration_dependencies().len(), 7);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module
