@@ -2,11 +2,12 @@
 
 ## Responsibility zone
 
-Notifications owns inbox/read state, preferences, bounded fanout, grouping,
-digests, retention, delivery attempts, intake receipts/quarantine, and
-replay/reconciliation. Source modules own semantic state, subscriptions, audience
-facts, visibility, target authorization, and routes. Profiles and Social Graph own
-recipient privacy. Delivery modules own channel transports.
+Notifications owns inbox/read state, exact unread counts, preferences, bounded
+fanout, grouping, digests, retention, delivery attempts, intake
+receipts/quarantine, and replay/reconciliation. Source modules own semantic state,
+subscriptions, audience facts, visibility, target authorization, and routes.
+Profiles and Social Graph own recipient privacy. Delivery modules own channel
+transports.
 
 ## Integration boundary
 
@@ -173,10 +174,27 @@ rewritten. The response contains only notification state and inbox timestamps. T
 service calls no recipient-policy, source-provider, target, or delivery owner and
 does not create delivery attempts.
 
-SQLite evidence is `tests/inbox_state_sqlite.rs`. The former
-`mark-unread, bulk/mark-all` residual is narrowed: exact-item mark-unread is now
-delivered; bulk/mark-all mutations, canonical unread counts, grouped inbox views,
-external transport adapters, and module-owned UI remain closed.
+SQLite evidence is `tests/inbox_state_sqlite.rs`. Exact-item mark-unread is now
+delivered; bulk/mark-all mutations and grouped inbox views, external transport
+adapters, and module-owned UI remain closed.
+
+### Exact unread count
+
+`NotificationInboxUnreadCountService` returns `unread_count` for one exact non-nil
+tenant and recipient by counting only rows in stored owner state `unread`. Tenant,
+recipient, and state filters are applied before aggregation, and the query reuses
+`idx_notifications_inbox`. Empty, missing, cross-tenant, and cross-recipient scopes
+all return zero without exposing notification identity. Totals must not be derived
+from bounded authorized list pages.
+
+The result reflects stored owner state. Current privacy or source-policy changes
+become visible after exact or scheduled reconciliation archives unavailable rows.
+The count owner calls no recipient-policy, source-provider, target, or delivery
+owner, mutates no inbox or delivery state, and returns no source, target, route,
+notification, or cursor identity. SQLite evidence is `tests/inbox_count_sqlite.rs`;
+the source guard is
+`scripts/verify/verify-forum-notification-inbox-unread-count.mjs`. Transport and UI
+exposure remain closed until an authorized adapter composes the owner read.
 
 ### Bounded inbox reconciliation
 
@@ -218,7 +236,7 @@ remains deferred.
   policy changes with final candidate commits;
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
-- bulk/mark-all mutations, canonical unread counts, and grouped views;
+- bulk/mark-all mutations and grouped views;
 - tenant-wide scheduled reconciliation and payload redaction;
 - external inbox transport adapters and full module-owned UI;
 - channel delivery enqueue and transports with delivery-time authorization;
@@ -240,6 +258,7 @@ cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_count_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
@@ -257,11 +276,12 @@ node scripts/verify/verify-forum-notification-inbox-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
 node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
+node scripts/verify/verify-forum-notification-inbox-unread-count.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W`.
+`FORUM-20R/20S/20T/20U/20V/20W/20X`.
 
 ## Related documents
 
