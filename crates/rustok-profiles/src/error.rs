@@ -60,7 +60,7 @@ impl ProfileError {
     }
 
     pub const fn is_retryable(&self) -> bool {
-        matches!(Self::PresentationUnavailable | Self::Database(_), self)
+        matches!(self, Self::PresentationUnavailable | Self::Database(_))
     }
 }
 
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn only availability_failures_are_retryable() {
+    fn only_availability_failures_are_retryable() {
         assert!(ProfileError::PresentationUnavailable.is_retryable());
         assert!(!ProfileError::InvalidHandle.is_retryable());
     }
