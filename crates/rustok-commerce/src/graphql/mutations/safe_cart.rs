@@ -97,13 +97,13 @@ mod cart_context_boundary {
 mod cart_storefront_owner_boundary {
     use std::sync::Arc;
 
-    use rustok_api::{PortContext, PortError};
     use ::rustok_cart::{
         CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
         CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
         CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
         CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
     };
+    use rustok_api::{PortContext, PortError};
 
     const CART_GRAPHQL_OWNER_BOUNDARY: &str = "commerce_graphql_cart";
 
@@ -251,6 +251,148 @@ mod cart_storefront_owner_boundary {
     }
 }
 
+mod pricing_read_owner_boundary {
+    use std::sync::Arc;
+
+    use ::rustok_pricing::{
+        ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
+        AdminProductPricingProjectionRequest, PriceListProjectionRequest,
+        PriceListProjectionSnapshot, PreviewVariantDiscountRequest, PricingReadPort,
+        ResolveProductPriceRequest, ResolvedProductPriceSnapshot,
+        StorefrontProductPricingProjectionRequest,
+    };
+    use rustok_api::{PortContext, PortError};
+
+    const PRICING_GRAPHQL_OWNER_BOUNDARY: &str = "commerce_graphql_cart";
+
+    fn retain_pricing_owner_context<T>(
+        context: &PortContext,
+        operation: &'static str,
+        result: Result<T, PortError>,
+    ) -> Result<T, PortError> {
+        result.map_err(|error| {
+            tracing::error!(
+                error = ?error,
+                owner = "rustok_pricing",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                channel = ?context.channel,
+                locale = %context.locale,
+                actor_kind = ?context.actor.kind,
+                actor_id = %context.actor.id,
+                causation_id = ?context.causation_id,
+                operation,
+                owner_code = %error.code,
+                owner_kind = ?error.kind,
+                owner_retryable = error.retryable,
+                boundary = PRICING_GRAPHQL_OWNER_BOUNDARY,
+                "commerce GraphQL storefront cart pricing owner call failed"
+            );
+            error
+        })
+    }
+
+    struct ContextualPricingReadPort {
+        inner: Arc<dyn PricingReadPort>,
+    }
+
+    #[async_trait::async_trait]
+    impl PricingReadPort for ContextualPricingReadPort {
+        async fn resolve_product_price(
+            &self,
+            context: PortContext,
+            request: ResolveProductPriceRequest,
+        ) -> Result<ResolvedProductPriceSnapshot, PortError> {
+            let error_context = context.clone();
+            let result = self.inner.resolve_product_price(context, request).await;
+            retain_pricing_owner_context(&error_context, "resolve_product_price", result)
+        }
+
+        async fn read_price_list_projection(
+            &self,
+            context: PortContext,
+            request: PriceListProjectionRequest,
+        ) -> Result<PriceListProjectionSnapshot, PortError> {
+            let error_context = context.clone();
+            let result = self
+                .inner
+                .read_price_list_projection(context, request)
+                .await;
+            retain_pricing_owner_context(&error_context, "read_price_list_projection", result)
+        }
+
+        async fn list_active_price_list_projections(
+            &self,
+            context: PortContext,
+            request: ActivePriceListProjectionRequest,
+        ) -> Result<Vec<ActivePriceListProjectionSnapshot>, PortError> {
+            let error_context = context.clone();
+            let result = self
+                .inner
+                .list_active_price_list_projections(context, request)
+                .await;
+            retain_pricing_owner_context(
+                &error_context,
+                "list_active_price_list_projections",
+                result,
+            )
+        }
+
+        async fn read_admin_product_pricing_projection(
+            &self,
+            context: PortContext,
+            request: AdminProductPricingProjectionRequest,
+        ) -> Result<::rustok_pricing::AdminPricingProductDetail, PortError> {
+            let error_context = context.clone();
+            let result = self
+                .inner
+                .read_admin_product_pricing_projection(context, request)
+                .await;
+            retain_pricing_owner_context(
+                &error_context,
+                "read_admin_product_pricing_projection",
+                result,
+            )
+        }
+
+        async fn read_storefront_product_pricing_projection(
+            &self,
+            context: PortContext,
+            request: StorefrontProductPricingProjectionRequest,
+        ) -> Result<Option<::rustok_pricing::StorefrontPricingProductDetail>, PortError> {
+            let error_context = context.clone();
+            let result = self
+                .inner
+                .read_storefront_product_pricing_projection(context, request)
+                .await;
+            retain_pricing_owner_context(
+                &error_context,
+                "read_storefront_product_pricing_projection",
+                result,
+            )
+        }
+
+        async fn preview_variant_discount(
+            &self,
+            context: PortContext,
+            request: PreviewVariantDiscountRequest,
+        ) -> Result<::rustok_pricing::PriceAdjustmentPreview, PortError> {
+            let error_context = context.clone();
+            let result = self.inner.preview_variant_discount(context, request).await;
+            retain_pricing_owner_context(&error_context, "preview_variant_discount", result)
+        }
+    }
+
+    pub(crate) fn in_process_pricing_read_port(
+        db: sea_orm::DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> Arc<dyn PricingReadPort> {
+        Arc::new(ContextualPricingReadPort {
+            inner: ::rustok_pricing::in_process_pricing_read_port(db, event_bus),
+        })
+    }
+}
+
 mod rustok_cart_shim {
     pub use ::rustok_cart::{
         CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
@@ -261,6 +403,11 @@ mod rustok_cart_shim {
     pub(crate) use super::cart_storefront_owner_boundary::in_process_cart_storefront_port;
 }
 
+mod rustok_pricing_shim {
+    pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};
+    pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;
+}
+
 mod async_graphql_shim {
     pub use ::async_graphql::{Context, Error, MaybeUndefined, Object};
 
@@ -269,5 +416,6 @@ mod async_graphql_shim {
 
 use self::async_graphql_shim as async_graphql;
 use self::rustok_cart_shim as rustok_cart;
+use self::rustok_pricing_shim as rustok_pricing;
 
 include!("cart.rs");
