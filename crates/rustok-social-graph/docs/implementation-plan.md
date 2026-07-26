@@ -85,6 +85,27 @@ block or mute.
 - the Profiles storefront source verifier locks operation names, fields,
   exclusions, owner-port placement, and the absence of transport-local tracing.
 
+## Delivered durable command receipts
+
+- migration `m20260726_000003_create_command_receipts` owns a PostgreSQL/SQLite
+  `social_graph_command_receipts` table with tenant-scoped unique idempotency
+  identity, bounded keys, versioned JSON payloads, processing/completed state, and
+  completion-integrity checks;
+- the owner command port normalizes keys to 1..191 bytes and admits receipts before
+  mutating relation state;
+- receipt reservation, relation mutation, response snapshot, and completion commit
+  share one database transaction;
+- an exact replay returns the original relation response snapshot even when a later
+  command has advanced the live relation revision;
+- reusing a key with a different source/target/kind/state/expected-revision payload
+  fails with `social_graph.idempotency_conflict` and does not mutate relation state;
+- unsupported receipt schema versions and incomplete/corrupt records fail closed as
+  `social_graph.command_receipt_corrupt`;
+- raw idempotency keys and receipt payloads remain excluded from operation telemetry;
+- a dedicated source verifier locks storage constraints, owner-private placement,
+  transactional integration, stable error codes, telemetry exclusions, and the
+  SQLite replay/conflict scenario.
+
 ## Promoted by `NOTIFY-03C`
 
 - the production candidate worker consumes Social Graph only through the existing
@@ -108,16 +129,15 @@ block or mute.
 
 ## Remaining Social Graph scope
 
-- durable command receipts that bind idempotency keys to command identity;
+- relation outbox events and reconciliation;
+- receipt retention/cleanup policy and PostgreSQL concurrency evidence;
 - friendship request/accept/remove lifecycle;
 - broader profile directory/follow product UX beyond the first storefront profile page;
 - custom lists and list membership;
 - commands/transports for block and mute management;
-- outbox events and reconciliation;
 - moderation/admin repair commands;
-- PostgreSQL concurrency evidence and retention policy;
-- retained runtime evidence for command telemetry success, conflict, policy,
-  actor-mismatch, and storage-unavailable outcomes.
+- retained runtime evidence for command receipt replay/conflict and telemetry success,
+  conflict, policy, actor-mismatch, and storage-unavailable outcomes.
 
 ## Remaining Notifications scope
 
@@ -136,7 +156,9 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --a
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test follow_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test follow_state_sqlite -- --nocapture
+cargo test -p rustok-social-graph --test command_receipts_sqlite -- --nocapture
 node scripts/verify/verify-social-graph-notification-policy.mjs
+node scripts/verify/verify-social-graph-command-receipts.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
 node scripts/verify/verify-notifications-outbox-intake.mjs
