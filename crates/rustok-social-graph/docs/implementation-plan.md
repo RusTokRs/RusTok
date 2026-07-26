@@ -69,6 +69,22 @@ block or mute.
 - the server enables the Social Graph GraphQL feature while non-host consumers may
   keep the transport disabled.
 
+## Delivered owner-operation telemetry
+
+- `SocialGraphCommandPort` owns the telemetry boundary, so GraphQL and future
+  adapters cannot drift into transport-local instrumentation;
+- one command record is emitted for block/unblock, mute/unmute, and
+  follow/unfollow through the stable `rustok_social_graph::operations` target;
+- records contain only operation, tenant/source/target UUIDs, success/failure,
+  bounded duration, stable `PortError.code`, and retryability;
+- missing idempotency/deadline policy and source-actor failures are recorded after
+  tenant parsing, while owner validation/conflict/storage results use the same
+  result classifier;
+- idempotency keys, expected revisions, request correlation, locale, channel,
+  claims, and roles are explicitly excluded;
+- the Profiles storefront source verifier locks operation names, fields,
+  exclusions, owner-port placement, and the absence of transport-local tracing.
+
 ## Promoted by `NOTIFY-03C`
 
 - the production candidate worker consumes Social Graph only through the existing
@@ -99,7 +115,9 @@ block or mute.
 - commands/transports for block and mute management;
 - outbox events and reconciliation;
 - moderation/admin repair commands;
-- PostgreSQL concurrency evidence and retention policy.
+- PostgreSQL concurrency evidence and retention policy;
+- retained runtime evidence for command telemetry success, conflict, policy,
+  actor-mismatch, and storage-unavailable outcomes.
 
 ## Remaining Notifications scope
 
