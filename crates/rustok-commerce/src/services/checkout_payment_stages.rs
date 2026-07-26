@@ -1,6 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
+};
 use rustok_order::{OrderResponse, OrderStatusKind};
 use rustok_payment::{
     AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
@@ -21,6 +23,7 @@ use super::{
 };
 
 const PAYMENT_EXECUTION_PORT_DEADLINE_SECONDS: u64 = 5;
+const CHECKOUT_PAYMENT_STAGE_BOUNDARY: &str = "commerce_checkout_payment_stage";
 
 #[derive(Clone, Debug)]
 pub struct CheckoutPaymentCapturedState {
@@ -115,37 +118,46 @@ impl CheckoutPaymentStageExecutor {
 
             match operation.stage.as_str() {
                 stage if stage == CheckoutOperationStage::PaymentReady.as_str() => {
+                    let prepare_context = payment_write_context(
+                        tenant_id,
+                        operation_id,
+                        plan.payload.context.locale.as_str(),
+                        self.port_deadline,
+                        "prepare",
+                        format!("checkout:{operation_id}:payment:collection"),
+                    );
                     let collection = self
                         .payment_port
                         .prepare_checkout_collection(
-                            payment_write_context(
-                                tenant_id,
-                                operation_id,
-                                plan.payload.context.locale.as_str(),
-                                self.port_deadline,
-                                "prepare",
-                                format!("checkout:{operation_id}:payment:collection"),
-                            ),
+                            prepare_context.clone(),
                             PrepareCheckoutPaymentCollectionRequest {
                                 identity: identity.clone(),
                                 metadata: plan.payload.checkout_metadata.clone(),
                             },
                         )
                         .await
-                        .map_err(|error| boundary_error("prepare", error))?;
+                        .map_err(|error| {
+                            payment_boundary_error(
+                                &prepare_context,
+                                "prepare_checkout_collection",
+                                "prepare",
+                                error,
+                            )
+                        })?;
                     validate_collection(&collection, tenant_id, &identity)?;
 
+                    let authorize_context = payment_write_context(
+                        tenant_id,
+                        operation_id,
+                        plan.payload.context.locale.as_str(),
+                        self.port_deadline,
+                        "authorize",
+                        format!("payment_collection:{}:authorize", collection.id),
+                    );
                     let authorized = self
                         .payment_port
                         .authorize_checkout_collection(
-                            payment_write_context(
-                                tenant_id,
-                                operation_id,
-                                plan.payload.context.locale.as_str(),
-                                self.port_deadline,
-                                "authorize",
-                                format!("payment_collection:{}:authorize", collection.id),
-                            ),
+                            authorize_context.clone(),
                             AuthorizeCheckoutPaymentCollectionRequest {
                                 identity,
                                 collection_id: collection.id,
@@ -155,7 +167,14 @@ impl CheckoutPaymentStageExecutor {
                             },
                         )
                         .await
-                        .map_err(|error| boundary_error("authorize", error))?;
+                        .map_err(|error| {
+                            payment_boundary_error(
+                                &authorize_context,
+                                "authorize_checkout_collection",
+                                "authorize",
+                                error,
+                            )
+                        })?;
                     validate_collection(
                         &authorized,
                         tenant_id,
@@ -188,17 +207,18 @@ impl CheckoutPaymentStageExecutor {
                             operation.id
                         ))
                     })?;
+                    let capture_context = payment_write_context(
+                        tenant_id,
+                        operation_id,
+                        plan.payload.context.locale.as_str(),
+                        self.port_deadline,
+                        "capture",
+                        format!("payment_collection:{collection_id}:capture"),
+                    );
                     let captured = self
                         .payment_port
                         .capture_checkout_collection(
-                            payment_write_context(
-                                tenant_id,
-                                operation_id,
-                                plan.payload.context.locale.as_str(),
-                                self.port_deadline,
-                                "capture",
-                                format!("payment_collection:{collection_id}:capture"),
-                            ),
+                            capture_context.clone(),
                             CaptureCheckoutPaymentCollectionRequest {
                                 identity,
                                 collection_id,
@@ -206,7 +226,14 @@ impl CheckoutPaymentStageExecutor {
                             },
                         )
                         .await
-                        .map_err(|error| boundary_error("capture", error))?;
+                        .map_err(|error| {
+                            payment_boundary_error(
+                                &capture_context,
+                                "capture_checkout_collection",
+                                "capture",
+                                error,
+                            )
+                        })?;
                     validate_collection(
                         &captured,
                         tenant_id,
@@ -279,22 +306,30 @@ impl CheckoutPaymentStageExecutor {
             ))
         })?;
         let identity = payment_identity(&operation, &order, &plan);
+        let read_context = payment_read_context(
+            tenant_id,
+            operation_id,
+            plan.payload.context.locale.as_str(),
+            self.port_deadline,
+        );
         let collection = self
             .payment_port
             .read_checkout_collection(
-                payment_read_context(
-                    tenant_id,
-                    operation_id,
-                    plan.payload.context.locale.as_str(),
-                    self.port_deadline,
-                ),
+                read_context.clone(),
                 ReadCheckoutPaymentCollectionRequest {
                     identity: identity.clone(),
                     collection_id,
                 },
             )
             .await
-            .map_err(|error| boundary_error("read", error))?;
+            .map_err(|error| {
+                payment_boundary_error(
+                    &read_context,
+                    "read_checkout_collection",
+                    "read",
+                    error,
+                )
+            })?;
         validate_collection(&collection, tenant_id, &identity)?;
         if !collection.status_kind().is_captured()
             || collection.captured_amount != order.total_amount
@@ -475,11 +510,71 @@ fn normalize_locale(locale: &str) -> String {
     }
 }
 
-fn boundary_error(stage: &'static str, error: PortError) -> CheckoutPaymentStageError {
+fn payment_boundary_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    stage: &'static str,
+    error: PortError,
+) -> CheckoutPaymentStageError {
+    log_checkout_payment_boundary_failure(context, owner_operation, stage, &error);
     CheckoutPaymentStageError::Boundary {
         stage,
         code: error.code,
         message: error.message,
         retryable: error.retryable,
+    }
+}
+
+fn log_checkout_payment_boundary_failure(
+    context: &PortContext,
+    owner_operation: &'static str,
+    stage: &'static str,
+    boundary_error: &PortError,
+) {
+    match &boundary_error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?boundary_error,
+                owner = "rustok_payment",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage,
+                code = %boundary_error.code,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_PAYMENT_STAGE_BOUNDARY,
+                "checkout payment owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?boundary_error,
+                owner = "rustok_payment",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage,
+                code = %boundary_error.code,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_PAYMENT_STAGE_BOUNDARY,
+                "checkout payment owner boundary was rejected"
+            );
+        }
     }
 }
