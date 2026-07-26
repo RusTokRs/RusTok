@@ -5,7 +5,7 @@ use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, QueryFilter, TransactionTrait,
+    DatabaseTransaction, EntityTrait, QueryFilter,
 };
 use uuid::Uuid;
 
@@ -42,33 +42,7 @@ impl SocialGraphService {
             .await?)
     }
 
-    pub async fn set_relation_state(
-        &self,
-        tenant_id: Uuid,
-        source_user_id: Uuid,
-        target_user_id: Uuid,
-        relation_kind: SocialRelationKind,
-        active: bool,
-        expected_revision: Option<i64>,
-    ) -> SocialGraphResult<relation::Model> {
-        validate_pair(source_user_id, target_user_id)?;
-        let txn = self.db.begin().await?;
-        let model = self
-            .set_relation_state_in(
-                &txn,
-                tenant_id,
-                source_user_id,
-                target_user_id,
-                relation_kind,
-                active,
-                expected_revision,
-            )
-            .await?;
-        txn.commit().await?;
-        Ok(model)
-    }
-
-    pub async fn set_relation_state_with_receipt(
+    pub(crate) async fn set_relation_state_with_receipt(
         &self,
         tenant_id: Uuid,
         source_user_id: Uuid,
