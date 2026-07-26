@@ -98,7 +98,7 @@ mod cart_storefront_owner_boundary {
     use std::sync::Arc;
 
     use rustok_api::{PortContext, PortError};
-    use rustok_cart::{
+    use ::rustok_cart::{
         CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
         CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
         CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
@@ -145,7 +145,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontReadRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self.inner.read_storefront_cart(context, request).await;
             retain_cart_owner_context(&error_context, "read_storefront_cart", result)
@@ -155,7 +155,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontCreateRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self.inner.create_storefront_cart(context, request).await;
             retain_cart_owner_context(&error_context, "create_storefront_cart", result)
@@ -165,7 +165,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontAddLineItemRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self.inner.add_storefront_line_item(context, request).await;
             retain_cart_owner_context(&error_context, "add_storefront_line_item", result)
@@ -175,7 +175,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontContextUpdateRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self.inner.update_storefront_context(context, request).await;
             retain_cart_owner_context(&error_context, "update_storefront_context", result)
@@ -185,7 +185,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontLineItemQuantityRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self
                 .inner
@@ -202,7 +202,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontLineItemPricingRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self
                 .inner
@@ -219,7 +219,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontRemoveLineItemRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self
                 .inner
@@ -232,7 +232,7 @@ mod cart_storefront_owner_boundary {
             &self,
             context: PortContext,
             request: CartStorefrontRepriceRequest,
-        ) -> Result<rustok_cart::CartResponse, PortError> {
+        ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self
                 .inner
@@ -246,7 +246,7 @@ mod cart_storefront_owner_boundary {
         db: sea_orm::DatabaseConnection,
     ) -> Arc<dyn CartStorefrontPort> {
         Arc::new(ContextualCartStorefrontPort {
-            inner: rustok_cart::in_process_cart_storefront_port(db),
+            inner: ::rustok_cart::in_process_cart_storefront_port(db),
         })
     }
 }
