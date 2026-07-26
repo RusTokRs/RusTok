@@ -11,6 +11,7 @@ pub mod migrations;
 pub mod model;
 pub mod observability;
 pub mod ports;
+mod receipts;
 pub mod service;
 
 pub use error::{SocialGraphError, SocialGraphResult};
@@ -68,7 +69,7 @@ mod tests {
         let module = SocialGraphModule;
         assert_eq!(module.slug(), "social_graph");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 2);
-        assert_eq!(module.migration_dependencies().len(), 2);
+        assert_eq!(module.migrations().len(), 3);
+        assert_eq!(module.migration_dependencies().len(), 3);
     }
 }
