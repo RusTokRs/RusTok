@@ -47,7 +47,8 @@ pub use inbox::{
 };
 pub use inbox_bulk::{
     NotificationInboxMarkAllReadPage, NotificationInboxMarkAllReadRequest,
-    NotificationInboxMarkAllReadService,
+    NotificationInboxMarkAllReadService, NotificationInboxMarkAllUnreadPage,
+    NotificationInboxMarkAllUnreadRequest, NotificationInboxMarkAllUnreadService,
 };
 pub use inbox_count::{
     NotificationInboxUnreadCount, NotificationInboxUnreadCountRequest,
