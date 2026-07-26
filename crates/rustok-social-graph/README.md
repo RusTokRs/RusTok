@@ -27,6 +27,11 @@ UI remain deferred until matching owner contracts are implemented.
 - GraphQL `isFollowing`, `followState`, `followUser`, and `unfollowUser` are human-user-only,
   tenant-bound, and call owner ports with deadline and idempotency semantics;
 - GraphQL optimistic revisions are represented as positive 64-bit integer strings;
+- `SocialGraphCommandPort` emits stable owner-operation telemetry for block/unblock,
+  mute/unmute, and follow/unfollow through `rustok_social_graph::operations`;
+- command telemetry records only operation, tenant/source/target identifiers,
+  outcome, bounded duration, stable error code, and retryability; it does not record
+  idempotency keys, expected revisions, locale, channel, claims, roles, or correlation ids;
 - missing/error owner state must not be converted into implicit allow.
 
 ## Verification
