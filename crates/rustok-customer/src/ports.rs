@@ -9,6 +9,7 @@ use crate::dto::{CustomerResponse, ListCustomersInput};
 use crate::error::CustomerError;
 
 const MAX_CUSTOMERS_PER_PAGE: u64 = 100;
+const CUSTOMER_READ_PORT_BOUNDARY: &str = "customer_read_port";
 
 /// Transport-neutral owner boundary for customer read projections used by checkout/order flows.
 #[async_trait]
@@ -87,8 +88,8 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
         let owner_operation = "read_customer_projection";
+        require_customer_read_policy(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.get_customer(tenant_id, request.customer_id)
             .await
@@ -100,8 +101,8 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerUserProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
         let owner_operation = "read_customer_projection_by_user";
+        require_customer_read_policy(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.get_customer_by_user(tenant_id, request.user_id)
             .await
@@ -113,8 +114,8 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerListProjectionRequest,
     ) -> Result<CustomerListProjectionResponse, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
         let owner_operation = "list_customer_projections";
+        require_customer_read_policy(&context, owner_operation)?;
         validate_customer_list_projection_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let (items, total) = self
@@ -136,13 +137,42 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerProfileEnrichmentRequest,
     ) -> Result<Vec<CustomerProfileEnrichment>, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
         let owner_operation = "list_profile_enrichment";
+        require_customer_read_policy(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         crate::CustomerService::list_profile_enrichment(self, tenant_id, &request.user_ids)
             .await
             .map_err(|error| customer_error_to_port_error(&context, owner_operation, error))
     }
+}
+
+fn require_customer_read_policy(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context
+        .require_policy(PortCallPolicy::read())
+        .map_err(|error| {
+            tracing::warn!(
+                error = ?error,
+                owner = "rustok_customer",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                code = %error.code,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CUSTOMER_READ_PORT_BOUNDARY,
+                "customer read port admission was rejected"
+            );
+            error
+        })
 }
 
 fn validate_customer_list_projection_request(
