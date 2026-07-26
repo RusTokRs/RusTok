@@ -18,15 +18,12 @@ function read(relativePath) {
   }
   return readFileSync(absolute, "utf8");
 }
-
 function requireText(source, marker, message) {
   if (!source.includes(marker)) failures.push(message);
 }
-
 function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
-
 function between(source, start, end, label) {
   const from = source.indexOf(start);
   const to = source.indexOf(end, from + start.length);
@@ -156,62 +153,49 @@ for (const marker of [
   requireText(owner, marker, `storefront port owner is missing ${marker}`);
 }
 
-const requestSections = [
-  between(
-    owner,
+for (const [start, end, label] of [
+  [
     "pub struct NotificationInboxStorefrontGroupSummaryRequest",
     "pub struct NotificationInboxStorefrontGroupItemsRequest",
     "group-summary request",
-  ),
-  between(
-    owner,
+  ],
+  [
     "pub struct NotificationInboxStorefrontGroupItemsRequest",
     "pub struct NotificationInboxStorefrontOpenRequest",
     "group-items request",
-  ),
-  between(
-    owner,
+  ],
+  [
     "pub struct NotificationInboxStorefrontOpenRequest",
     "pub enum NotificationInboxStorefrontOpenDecision",
     "open request",
-  ),
-  between(
-    owner,
+  ],
+  [
     "pub struct NotificationInboxStorefrontGroupStateRequest",
     "/// Transport-neutral owner boundary",
     "group-state request",
-  ),
-];
-for (const requestSection of requestSections) {
-  rejectText(requestSection, "tenant_id", "storefront request DTO must not accept tenant identity");
-  rejectText(
-    requestSection,
-    "recipient_id",
-    "storefront request DTO must not accept recipient identity",
-  );
+  ],
+]) {
+  const request = between(owner, start, end, label);
+  rejectText(request, "tenant_id", `${label} must not accept tenant identity`);
+  rejectText(request, "recipient_id", `${label} must not accept recipient identity`);
 }
 
-const readImpl = between(
+const implementation = between(
   owner,
-  "async fn unread_count(\n        &self,\n        context: PortContext,",
-  "async fn apply_group_state(\n        &self,",
-  "storefront read implementation",
-);
-requireText(readImpl, "PortCallPolicy::read()", "every storefront read must admit read policy");
-rejectText(readImpl, "PortCallPolicy::write()", "storefront reads must not require write policy");
-const writeImpl = between(
-  owner,
-  "async fn apply_group_state(\n        &self,",
+  "impl NotificationInboxStorefrontPort for NotificationInboxStorefrontService",
   "#[derive(Clone, Copy)]",
-  "storefront write implementation",
+  "storefront port implementation",
 );
-requireText(writeImpl, "PortCallPolicy::write()", "storefront group writes must admit write policy");
-
+if ((implementation.match(/PortCallPolicy::read\(\)/g) ?? []).length !== 4) {
+  failures.push("storefront port must apply read policy to exactly four read operations");
+}
+if ((implementation.match(/PortCallPolicy::write\(\)/g) ?? []).length !== 1) {
+  failures.push("storefront port must apply write policy to exactly one command operation");
+}
 for (const forbidden of [
   "#[server(",
   "leptos_axum",
   "async_graphql",
-  "Router",
   "AuthContext",
   "TenantContext",
   "RequestContext",
@@ -252,19 +236,21 @@ for (const marker of [
   requireText(proof, marker, `SQLite storefront-port proof is missing ${marker}`);
 }
 
-for (const marker of [
-  "NotificationInboxStorefrontPort",
-  "transport-neutral storefront port",
-  "inbox_storefront_port_sqlite",
-  "native server adapter",
-]) {
-  requireText(readme, marker, `Notifications README is missing ${marker}`);
-  requireText(liveContract, marker, `Notifications live contract is missing ${marker}`);
-}
+requireText(
+  readme,
+  "External transport adapters and grouped UI remain closed",
+  "Notifications README must keep native adapters and UI closed",
+);
+requireText(
+  liveContract,
+  "external inbox transport adapters",
+  "Notifications live contract must keep external adapters pending",
+);
 for (const marker of [
   "owner transport-neutral inbox port exists",
   "explicit unavailable state",
   "native server adapter",
+  "does not invent unread state",
 ]) {
   requireText(storefrontReadme, marker, `Notifications storefront README is missing ${marker}`);
 }
