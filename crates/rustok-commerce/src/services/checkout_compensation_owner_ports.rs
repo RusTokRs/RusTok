@@ -39,9 +39,12 @@ const CHECKOUT_COMPENSATION_OWNER_BOUNDARY: &str = "checkout_compensation_owner_
 const PAYMENT_COMPENSATION_OWNER: &str = "rustok_payment";
 const ORDER_COMPENSATION_OWNER: &str = "rustok_order";
 const INVENTORY_COMPENSATION_OWNER: &str = "rustok_inventory";
+const CART_COMPENSATION_OWNER: &str = "rustok_cart";
 const PAYMENT_COMPENSATION_OPERATION: &str = "compensate_checkout_payment";
 const ORDER_COMPENSATION_OPERATION: &str = "compensate_checkout_order";
 const INVENTORY_COMPENSATION_OPERATION: &str = "release_inventory_by_identity";
+const CART_SNAPSHOT_OPERATION: &str = "read_cart_checkout_snapshot";
+const CART_RELEASE_OPERATION: &str = "release_cart_checkout";
 const ORDER_MANUAL_RECONCILIATION_CODE: &str = "order.checkout_compensation_manual_reconciliation";
 const PAYMENT_MANUAL_RECONCILIATION_CODE: &str =
     "payment.checkout_compensation_manual_reconciliation";
@@ -426,29 +429,49 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         operation: &checkout_operation::Model,
     ) -> CheckoutCompensationResult<()> {
+        let cart_read_context =
+            cart_context(tenant_id, operation, self.port_deadline, "read", false);
         let current = self
             .cart_port
             .read_cart_checkout_snapshot(
-                cart_context(tenant_id, operation, self.port_deadline, "read", false),
+                cart_read_context.clone(),
                 CartCheckoutSnapshotRequest {
                     cart_id: operation.cart_id,
                     locale: None,
                 },
             )
             .await
-            .map_err(|error| boundary_error("read_cart", error))?;
+            .map_err(|error| {
+                owner_boundary_error(
+                    &cart_read_context,
+                    CART_COMPENSATION_OWNER,
+                    CART_SNAPSHOT_OPERATION,
+                    "read_cart",
+                    error,
+                )
+            })?;
         match cart_status(&current)? {
             CartStatus::CheckingOut => {
+                let cart_release_context =
+                    cart_context(tenant_id, operation, self.port_deadline, "release", true);
                 let released = self
                     .cart_port
                     .release_cart_checkout(
-                        cart_context(tenant_id, operation, self.port_deadline, "release", true),
+                        cart_release_context.clone(),
                         CartCheckoutLifecycleRequest {
                             cart_id: operation.cart_id,
                         },
                     )
                     .await
-                    .map_err(|error| boundary_error("release_cart", error))?;
+                    .map_err(|error| {
+                        owner_boundary_error(
+                            &cart_release_context,
+                            CART_COMPENSATION_OWNER,
+                            CART_RELEASE_OPERATION,
+                            "release_cart",
+                            error,
+                        )
+                    })?;
                 if cart_status(&released)? != CartStatus::Active {
                     return Err(CheckoutCompensationError::Conflict(format!(
                         "cart {} is not active after checkout release",
