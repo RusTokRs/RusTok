@@ -9,12 +9,16 @@ pub mod follow_read;
 pub mod graphql;
 pub mod migrations;
 pub mod model;
+pub mod observability;
 pub mod ports;
 pub mod service;
 
 pub use error::{SocialGraphError, SocialGraphResult};
 pub use follow_read::{SocialGraphFollowReadPort, SocialGraphFollowState};
 pub use model::SocialRelationKind;
+pub use observability::{
+    SOCIAL_GRAPH_OPERATION_TARGET, SocialGraphCommandOperation, SocialGraphCommandTimer,
+};
 pub use ports::{
     MAX_SOCIAL_GRAPH_FOLLOW_TARGETS, SetSocialRelationCommand, SocialGraphCommandPort,
     SocialGraphFollowBatchRequest, SocialGraphFollowBatchResult, SocialGraphPairRequest,
