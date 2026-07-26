@@ -6,6 +6,7 @@ mod fanout_worker;
 mod inbox;
 mod inbox_bulk;
 mod inbox_count;
+mod inbox_group;
 mod inbox_reconcile;
 mod inbox_selected;
 mod inbox_state;
@@ -56,6 +57,10 @@ pub use inbox_bulk::{
 pub use inbox_count::{
     NotificationInboxUnreadCount, NotificationInboxUnreadCountRequest,
     NotificationInboxUnreadCountService,
+};
+pub use inbox_group::{
+    MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES, NotificationInboxGroupListRequest,
+    NotificationInboxGroupListService,
 };
 pub use inbox_reconcile::{
     NotificationInboxReconcilePage, NotificationInboxReconcileRequest,
