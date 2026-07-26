@@ -113,7 +113,7 @@ pub fn workloads(context: &WorkloadContext) -> Vec<Workload> {
         Workload {
             name: "price_range_sort",
             sql: format!(
-                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND (payload->>'price_minor')::bigint BETWEEN 20000 AND 80000 ORDER BY (payload->>'price_minor')::bigint, entity_id LIMIT 100"
+                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND (payload->>'price_minor')::bigint BETWEEN 20000 AND 80000 ORDER BY price_minor, entity_id LIMIT 100"
             ),
         },
         Workload {
@@ -131,7 +131,7 @@ pub fn workloads(context: &WorkloadContext) -> Vec<Workload> {
         Workload {
             name: "keyset_page",
             sql: format!(
-                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND ((payload->>'price_minor')::bigint, entity_id) > ({anchor_price}, {anchor_id}) ORDER BY (payload->>'price_minor')::bigint, entity_id LIMIT 100"
+                "SELECT entity_id, (payload->>'price_minor')::bigint AS price_minor FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND module_name = 'product' AND entity_name = 'product' AND schema_version = 1 AND locale = {locale} AND ((payload->>'price_minor')::bigint, entity_id) > ({anchor_price}, {anchor_id}) ORDER BY price_minor, entity_id LIMIT 100"
             ),
         },
         Workload {
