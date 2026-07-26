@@ -116,15 +116,17 @@ impl SocialGraphCommandPort for SocialGraphService {
             timer.finish_failure(&error.code, error.retryable);
             return Err(error);
         }
+        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
 
         let result = self
-            .set_relation_state(
+            .set_relation_state_with_receipt(
                 tenant_id,
                 command.source_user_id,
                 command.target_user_id,
                 command.relation_kind,
                 command.active,
                 command.expected_revision,
+                idempotency_key,
             )
             .await
             .map_err(map_owner_error);
@@ -251,6 +253,18 @@ fn map_owner_error(error: SocialGraphError) -> PortError {
         SocialGraphError::SourceActorMismatch => PortError::forbidden(
             "social_graph.source_actor_mismatch",
             "social graph command actor does not own the relation source",
+        ),
+        SocialGraphError::IdempotencyKeyInvalid => PortError::validation(
+            "social_graph.idempotency_key_invalid",
+            "social graph idempotency key must contain 1 to 191 bytes",
+        ),
+        SocialGraphError::IdempotencyConflict => PortError::conflict(
+            "social_graph.idempotency_conflict",
+            "social graph idempotency key is already bound to another command",
+        ),
+        SocialGraphError::CommandReceiptCorrupt => PortError::invariant_violation(
+            "social_graph.command_receipt_corrupt",
+            "social graph command receipt requires operator review",
         ),
         SocialGraphError::Database(_) => PortError::new(
             PortErrorKind::Unavailable,
