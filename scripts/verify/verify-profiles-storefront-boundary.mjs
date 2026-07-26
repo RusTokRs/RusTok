@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Profiles storefront owner-boundary, transport selection, optimistic recovery, Media presentation, and accessibility guardrails.
+// Profiles storefront owner-boundary, transport selection, operation telemetry, optimistic recovery, Media presentation, and accessibility guardrails.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -44,6 +44,10 @@ const paths = {
   native: "crates/rustok-profiles/storefront/src/transport/native_server_adapter.rs",
   graphql: "crates/rustok-profiles/storefront/src/transport/graphql_adapter.rs",
   profileGraphql: "crates/rustok-profiles/src/graphql/types.rs",
+  profileMutation: "crates/rustok-profiles/src/graphql/mutation.rs",
+  profileError: "crates/rustok-profiles/src/error.rs",
+  profileLib: "crates/rustok-profiles/src/lib.rs",
+  observability: "crates/rustok-profiles/src/observability.rs",
   mediaPublic: "crates/rustok-media/src/public_image.rs",
   core: "crates/rustok-profiles/storefront/src/core.rs",
   ui: "crates/rustok-profiles/storefront/src/ui/leptos.rs",
@@ -60,6 +64,10 @@ const socialGraphql = readRepo(paths.socialGraphql);
 const native = readRepo(paths.native);
 const graphql = readRepo(paths.graphql);
 const profileGraphql = readRepo(paths.profileGraphql);
+const profileMutation = readRepo(paths.profileMutation);
+const profileError = readRepo(paths.profileError);
+const profileLib = readRepo(paths.profileLib);
+const observability = readRepo(paths.observability);
 const mediaPublic = readRepo(paths.mediaPublic);
 const core = readRepo(paths.core);
 const ui = readRepo(paths.ui);
@@ -95,6 +103,44 @@ for (const [source, sourcePath] of [
   assertNotContains(source, '"/api/media/public/images', `${sourcePath}: must not own Media route strings`);
 }
 assertContains(mediaPublic, "MediaImagePublicUrlPolicy::ProxyRequired", `${paths.mediaPublic}: storage-relative proxy policy missing`);
+
+assertContains(profileLib, "pub mod observability;", `${paths.profileLib}: operation telemetry module not wired`);
+assertContains(profileLib, "ProfileOperationTimer", `${paths.profileLib}: operation telemetry contract not exported`);
+assertContains(observability, 'PROFILE_OPERATION_TARGET: &str = "rustok_profiles::operations"', `${paths.observability}: stable telemetry target missing`);
+for (const operation of [
+  "profile.upsert",
+  "profile.update_handle",
+  "profile.update_content",
+  "profile.update_locale",
+  "profile.update_visibility",
+  "profile.update_media",
+  "profile.publish_updated_event",
+]) {
+  assertContains(observability, `"${operation}"`, `${paths.observability}: stable operation missing: ${operation}`);
+}
+for (const field of ["operation =", "tenant_id =", "user_id =", "outcome =", "duration_ms =", "error_code", "retryable"]) {
+  assertContains(observability, field, `${paths.observability}: telemetry field missing: ${field}`);
+}
+for (const sensitiveField of ["handle =", "bio =", "locale =", "media_id =", "avatar_media_id =", "banner_media_id ="]) {
+  assertNotContains(observability, sensitiveField, `${paths.observability}: telemetry must not record sensitive field: ${sensitiveField}`);
+}
+for (const operationVariant of [
+  "ProfileOperation::Upsert",
+  "ProfileOperation::UpdateHandle",
+  "ProfileOperation::UpdateContent",
+  "ProfileOperation::UpdateLocale",
+  "ProfileOperation::UpdateVisibility",
+  "ProfileOperation::UpdateMedia",
+  "ProfileOperation::PublishUpdatedEvent",
+]) {
+  assertContains(profileMutation, operationVariant, `${paths.profileMutation}: write path is missing telemetry: ${operationVariant}`);
+}
+assertContains(profileMutation, "timer.finish_profile_result(&result)", `${paths.profileMutation}: owner result telemetry missing`);
+assertContains(profileMutation, "timer.finish_failure(PROFILE_EVENT_PUBLISH_ERROR, true)", `${paths.profileMutation}: event failure telemetry missing`);
+assertContains(profileMutation, "ProfileError::PresentationUnavailable", `${paths.profileMutation}: presentation-unavailable error mapping missing`);
+assertContains(profileError, '"profiles.presentation_unavailable"', `${paths.profileError}: presentation error code missing`);
+assertContains(profileError, '"profiles.storage_unavailable"', `${paths.profileError}: storage error code missing`);
+assertContains(profileError, "pub const fn is_retryable", `${paths.profileError}: retryability classification missing`);
 
 assertContains(core, '"native" => ProfilesStorefrontTransportProfile::Native', `${paths.core}: explicit native selector missing`);
 assertContains(core, '"graphql" => ProfilesStorefrontTransportProfile::Graphql', `${paths.core}: explicit GraphQL selector missing`);
