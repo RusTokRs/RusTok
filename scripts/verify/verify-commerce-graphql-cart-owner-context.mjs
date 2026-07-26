@@ -67,7 +67,7 @@ for (const operation of [
 
 for (const [pattern, expected, label] of [
   [/let error_context = context\.clone\(\);/g, 8, 'owner context clone count'],
-  [/retain_cart_owner_context\(/g, 9, 'context retention call count'],
+  [/retain_cart_owner_context\(/g, 8, 'context retention call count'],
   [/owner = "rustok_cart"/g, 1, 'cart owner event count'],
   [/::rustok_cart::in_process_cart_storefront_port\(db\)/g, 1, 'canonical constructor count'],
 ]) {
