@@ -21,7 +21,7 @@
 - Expose module-owned GraphQL transport for self-service and public profile lookups, including targeted profile update mutations.
 - Publish a module-owned Leptos storefront profile page with explicit native/GraphQL transport selection and follow/unfollow controls.
 - Publish `profile.updated` through the transactional outbox after successful profile writes.
-- Emit stable owner-operation telemetry for self-service writes and event publication without logging profile copy, locale values, Media references, URLs, or provider/storage details.
+- Emit stable owner-operation telemetry for self-service writes, event publication, and CLI backfill without logging profile copy, source email, generated handles, locale values, Media references, URLs, or provider/storage details.
 - Define reusable profile DTOs and reader contracts that groups, forum, blog, social, and commerce surfaces can consume.
 
 ## Interactions
@@ -39,7 +39,7 @@
 - Serves `rustok-blog` and `rustok-forum` through `ProfilesReader` with batched summary resolution.
 - Serves notification recipient policy through `ProfilePrivacyReadPort` and the minimal `ProfilePrivacyService` owner adapter.
 - Uses `rustok-events` + `rustok-outbox` for downstream synchronization after profile mutations.
-- Publishes operational records through the stable `rustok_profiles::operations` tracing target with operation, tenant/user correlation, outcome, duration, error code, and retryability only.
+- Publishes operational records through the stable `rustok_profiles::operations` tracing target. Per-user writes carry tenant/user correlation; CLI backfill carries tenant scope, dry-run/event flags, aggregate counters, stage, outcome, duration, stable error code, and retryability only.
 - Mounts `rustok-profiles-storefront` through the module manifest; `apps/storefront` only composes the package and does not own profile UX.
 
 ## Entry points
@@ -57,8 +57,10 @@
 - `ProfileSummaryLoader`
 - `ProfileSummaryLoaderKey`
 - `PROFILE_OPERATION_TARGET`
+- `PROFILE_BACKFILL_OPERATION`
 - `ProfileOperation`
 - `ProfileOperationTimer`
+- `ProfileBackfillTimer`
 - `graphql::*`
 - `dto::*`
 - `entities::*`
