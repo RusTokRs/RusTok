@@ -12,6 +12,8 @@ use crate::core::{
     NotificationStorefrontUnreadCount,
 };
 
+const PUBLIC_CAPABILITY_UNAVAILABLE: &str = "notification inbox capability is unavailable";
+
 #[derive(Debug, Clone)]
 pub struct NativeNotificationStorefrontError(pub String);
 
@@ -183,9 +185,9 @@ async fn notification_storefront_open_native(
         };
         use uuid::Uuid;
 
+        let (runtime, context) = authenticated_context("open", None).await?;
         let notification_id = Uuid::parse_str(request.notification_id.as_str())
             .map_err(|_| ServerFnError::new("notification_id must be a UUID"))?;
-        let (runtime, context) = authenticated_context("open", None).await?;
         let decision = storefront_service(&runtime)?
             .authorize_open(
                 context,
@@ -321,15 +323,20 @@ fn storefront_service(
 
     let registry = runtime
         .shared_get::<Arc<NotificationSourceRegistry>>()
-        .ok_or_else(|| ServerFnError::new("notification source registry is unavailable"))?;
+        .ok_or_else(capability_unavailable)?;
     let policy = runtime
         .shared_get::<NotificationRecipientPolicyRuntime>()
-        .ok_or_else(|| ServerFnError::new("notification recipient policy is unavailable"))?;
+        .ok_or_else(capability_unavailable)?;
     Ok(NotificationInboxStorefrontService::new(
         runtime.db_clone(),
         registry,
         policy.policy_arc(),
     ))
+}
+
+#[cfg(feature = "ssr")]
+fn capability_unavailable() -> ServerFnError {
+    ServerFnError::new(PUBLIC_CAPABILITY_UNAVAILABLE)
 }
 
 #[cfg(feature = "ssr")]
