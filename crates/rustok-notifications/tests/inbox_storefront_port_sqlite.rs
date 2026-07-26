@@ -18,9 +18,9 @@ use rustok_notifications::{
     NotificationInboxGroupStateAction, NotificationInboxStorefrontGroupItemsRequest,
     NotificationInboxStorefrontGroupStateRequest, NotificationInboxStorefrontGroupSummaryRequest,
     NotificationInboxStorefrontOpenDecision, NotificationInboxStorefrontOpenRequest,
-    NotificationInboxStorefrontPort, NotificationInboxStorefrontService, NotificationRecipientPolicy,
-    NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
-    NotificationRecipientPolicyRequest, NotificationsModule,
+    NotificationInboxStorefrontPort, NotificationInboxStorefrontService,
+    NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
+    NotificationRecipientPolicyError, NotificationRecipientPolicyRequest, NotificationsModule,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
@@ -95,7 +95,7 @@ impl NotificationSourceProvider for AllowSource {
 }
 
 #[tokio::test]
-async fn storefront_port_derives_exact_user_scope_for_reads_and_open() {
+async fn storefront_reads_derive_exact_scope_and_delegate_authorized_owners() {
     let db = setup().await;
     let tenant_id = Uuid::from_u128(1);
     let other_tenant_id = Uuid::from_u128(2);
@@ -109,54 +109,35 @@ async fn storefront_port_derives_exact_user_scope_for_reads_and_open() {
     insert_user(&db, other_tenant_id, other_tenant_recipient_id).await;
 
     let base = fixed_time();
-    seed_notification(
-        &db,
-        Uuid::from_u128(11),
-        tenant_id,
-        recipient_id,
-        GROUP_A,
-        Uuid::from_u128(101),
-        NotificationState::Unread,
-        base.to_owned() + ChronoDuration::seconds(3),
-    )
-    .await;
-    seed_notification(
-        &db,
-        Uuid::from_u128(12),
-        tenant_id,
-        recipient_id,
-        GROUP_A,
-        Uuid::from_u128(102),
-        NotificationState::Read,
-        base.to_owned() + ChronoDuration::seconds(2),
-    )
-    .await;
-    seed_notification(
-        &db,
-        Uuid::from_u128(13),
-        tenant_id,
-        other_recipient_id,
-        GROUP_A,
-        Uuid::from_u128(103),
-        NotificationState::Unread,
-        base.to_owned() + ChronoDuration::seconds(4),
-    )
-    .await;
-    seed_notification(
-        &db,
-        Uuid::from_u128(14),
-        other_tenant_id,
-        other_tenant_recipient_id,
-        GROUP_B,
-        Uuid::from_u128(104),
-        NotificationState::Unread,
-        base + ChronoDuration::seconds(5),
-    )
-    .await;
+    for (id, row_tenant, row_recipient, group, target, state, seconds) in [
+        (11_u128, tenant_id, recipient_id, GROUP_A, 101_u128, NotificationState::Unread, 3_i64),
+        (12, tenant_id, recipient_id, GROUP_A, 102, NotificationState::Read, 2),
+        (13, tenant_id, other_recipient_id, GROUP_A, 103, NotificationState::Unread, 4),
+        (
+            14,
+            other_tenant_id,
+            other_tenant_recipient_id,
+            GROUP_B,
+            104,
+            NotificationState::Unread,
+            5,
+        ),
+    ] {
+        seed_notification(
+            &db,
+            Uuid::from_u128(id),
+            row_tenant,
+            row_recipient,
+            group,
+            Uuid::from_u128(target),
+            state,
+            base.to_owned() + ChronoDuration::seconds(seconds),
+        )
+        .await;
+    }
 
     let service = service(db.clone());
     let context = read_context(tenant_id, recipient_id);
-
     let count = service
         .unread_count(context.clone())
         .await
@@ -196,7 +177,7 @@ async fn storefront_port_derives_exact_user_scope_for_reads_and_open() {
         vec![Uuid::from_u128(11), Uuid::from_u128(12)]
     );
 
-    let open = service
+    let decision = service
         .authorize_open(
             context,
             NotificationInboxStorefrontOpenRequest {
@@ -205,10 +186,11 @@ async fn storefront_port_derives_exact_user_scope_for_reads_and_open() {
         )
         .await
         .expect("owned storefront notification should authorize");
-    match open {
-        NotificationInboxStorefrontOpenDecision::Allowed { route } => {
-            assert!(route.as_str().contains("101"));
-        }
+    match decision {
+        NotificationInboxStorefrontOpenDecision::Allowed { route } => assert_eq!(
+            route.as_str(),
+            format!("/modules/test?target={}", Uuid::from_u128(101))
+        ),
         NotificationInboxStorefrontOpenDecision::Unavailable => {
             panic!("owned storefront notification should remain available")
         }
@@ -218,7 +200,7 @@ async fn storefront_port_derives_exact_user_scope_for_reads_and_open() {
 }
 
 #[tokio::test]
-async fn storefront_group_writes_require_policy_and_delegate_exact_state_owner() {
+async fn storefront_writes_require_idempotency_and_preserve_exact_state_invariants() {
     let db = setup().await;
     let tenant_id = Uuid::from_u128(20);
     let recipient_id = Uuid::from_u128(21);
@@ -245,7 +227,7 @@ async fn storefront_group_writes_require_policy_and_delegate_exact_state_owner()
     }
 
     let service = service(db.clone());
-    let missing_idempotency = service
+    let error = service
         .apply_group_state(
             read_context(tenant_id, recipient_id),
             NotificationInboxStorefrontGroupStateRequest {
@@ -257,8 +239,8 @@ async fn storefront_group_writes_require_policy_and_delegate_exact_state_owner()
         )
         .await
         .expect_err("write without idempotency key must fail before mutation");
-    assert_eq!(missing_idempotency.kind, PortErrorKind::Validation);
-    assert_eq!(missing_idempotency.code, "port.idempotency_key_required");
+    assert_eq!(error.kind, PortErrorKind::Validation);
+    assert_eq!(error.code, "port.idempotency_key_required");
     assert_eq!(
         load_notification(&db, Uuid::from_u128(31)).await.state,
         NotificationState::Unread
@@ -276,9 +258,7 @@ async fn storefront_group_writes_require_policy_and_delegate_exact_state_owner()
         )
         .await
         .expect("idempotent exact-group write should succeed");
-    assert_eq!(result.scanned, 2);
-    assert_eq!(result.changed, 2);
-    assert!(!result.has_more);
+    assert_eq!((result.scanned, result.changed, result.has_more), (2, 2, false));
 
     let unread = load_notification(&db, Uuid::from_u128(31)).await;
     assert_eq!(unread.state, NotificationState::Read);
@@ -296,7 +276,7 @@ async fn storefront_group_writes_require_policy_and_delegate_exact_state_owner()
 }
 
 #[tokio::test]
-async fn storefront_port_rejects_non_user_invalid_and_unsafe_requests_before_owner_access() {
+async fn storefront_scope_policy_and_owner_errors_fail_closed_without_mutation() {
     let db = setup().await;
     let tenant_id = Uuid::from_u128(40);
     let recipient_id = Uuid::from_u128(41);
@@ -329,33 +309,35 @@ async fn storefront_port_rejects_non_user_invalid_and_unsafe_requests_before_own
     assert_eq!(forbidden.kind, PortErrorKind::Forbidden);
     assert_eq!(forbidden.code, "notifications.storefront.user_required");
 
-    let invalid_tenant = PortContext::new(
-        "not-a-uuid",
-        PortActor::user(recipient_id.to_string()),
-        "en",
-        "corr-tenant",
-    )
-    .with_deadline(Duration::from_secs(5));
-    let tenant_error = service
-        .unread_count(invalid_tenant)
-        .await
-        .expect_err("invalid tenant context must fail before owner access");
-    assert_eq!(tenant_error.kind, PortErrorKind::Validation);
-    assert_eq!(tenant_error.code, "notifications.storefront.tenant_invalid");
-
-    let invalid_user = PortContext::new(
-        tenant_id.to_string(),
-        PortActor::user("not-a-uuid"),
-        "en",
-        "corr-user",
-    )
-    .with_deadline(Duration::from_secs(5));
-    let user_error = service
-        .unread_count(invalid_user)
-        .await
-        .expect_err("invalid user context must fail before owner access");
-    assert_eq!(user_error.kind, PortErrorKind::Validation);
-    assert_eq!(user_error.code, "notifications.storefront.user_invalid");
+    for (context, code) in [
+        (
+            PortContext::new(
+                "not-a-uuid",
+                PortActor::user(recipient_id.to_string()),
+                "en",
+                "corr-tenant",
+            )
+            .with_deadline(Duration::from_secs(5)),
+            "notifications.storefront.tenant_invalid",
+        ),
+        (
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::user("not-a-uuid"),
+                "en",
+                "corr-user",
+            )
+            .with_deadline(Duration::from_secs(5)),
+            "notifications.storefront.user_invalid",
+        ),
+    ] {
+        let error = service
+            .unread_count(context)
+            .await
+            .expect_err("invalid owner identity must fail before access");
+        assert_eq!(error.kind, PortErrorKind::Validation);
+        assert_eq!(error.code, code);
+    }
 
     let no_deadline = PortContext::new(
         tenant_id.to_string(),
