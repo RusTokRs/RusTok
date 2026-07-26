@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset};
 use rustok_notifications_api::{
     NotificationPriority, NotificationSourceRegistry, NotificationSourceSlug,
     NotificationTemplateData, NotificationTemplateKey, NotificationTypeKey,
