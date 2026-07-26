@@ -62,7 +62,7 @@ for (const operation of [
   'reprice_storefront_line_items',
 ]) {
   requireText(facade, `"${operation}"`, `${operation} diagnostic operation`);
-  requireText(facade, `.inner\n                .${operation}(`, `${operation} owner delegation`);
+  requireText(facade, `.${operation}(context, request)`, `${operation} owner delegation`);
 }
 
 for (const [pattern, expected, label] of [
