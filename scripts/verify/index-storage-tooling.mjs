@@ -67,6 +67,7 @@ const runContract = (args) => {
     'verify-index-storage-methodology-envelope.mjs',
     'verify-index-storage-finalizer-lifecycle.mjs',
     'verify-index-storage-placeholder-contract.mjs',
+    'verify-index-storage-hash-cli-contract.mjs',
   ]) {
     runScript(script);
   }
@@ -82,6 +83,7 @@ const runFixtures = (args) => {
     scriptPath('compare-index-storage-evidence.test.mjs'),
     scriptPath('compare-index-storage-evidence-lifecycle.test.mjs'),
     scriptPath('comparison-methodology-envelope.test.mjs'),
+    scriptPath('hash-index-storage-comparison-cli.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
     scriptPath('finalize-index-storage-adr-decision-contract.test.mjs'),
     scriptPath('finalize-index-storage-adr-placeholder.test.mjs'),
