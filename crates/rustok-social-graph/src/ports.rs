@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::entities::relation;
 use crate::error::SocialGraphError;
 use crate::model::SocialRelationKind;
+use crate::observability::{SocialGraphCommandOperation, SocialGraphCommandTimer};
 use crate::service::SocialGraphService;
 
 pub const MAX_SOCIAL_GRAPH_FOLLOW_TARGETS: usize = 100;
@@ -96,19 +97,39 @@ impl SocialGraphCommandPort for SocialGraphService {
         context: PortContext,
         command: SetSocialRelationCommand,
     ) -> Result<relation::Model, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        validate_source_actor(&context, command.source_user_id)?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.set_relation_state(
+        let timer = SocialGraphCommandTimer::start(
+            SocialGraphCommandOperation::from_relation_state(
+                command.relation_kind,
+                command.active,
+            ),
             tenant_id,
             command.source_user_id,
             command.target_user_id,
-            command.relation_kind,
-            command.active,
-            command.expected_revision,
-        )
-        .await
-        .map_err(map_owner_error)
+        );
+
+        if let Err(error) = context.require_policy(PortCallPolicy::write()) {
+            timer.finish_failure(&error.code, error.retryable);
+            return Err(error);
+        }
+        if let Err(error) = validate_source_actor(&context, command.source_user_id) {
+            timer.finish_failure(&error.code, error.retryable);
+            return Err(error);
+        }
+
+        let result = self
+            .set_relation_state(
+                tenant_id,
+                command.source_user_id,
+                command.target_user_id,
+                command.relation_kind,
+                command.active,
+                command.expected_revision,
+            )
+            .await
+            .map_err(map_owner_error);
+        timer.finish_port_result(&result);
+        result
     }
 }
 
