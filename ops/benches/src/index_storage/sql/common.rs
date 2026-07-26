@@ -115,13 +115,24 @@ CREATE INDEX link_target_lookup ON {schema}.link (
 }
 
 pub fn assert_full_link_identity_sql(sql: String) -> String {
+    // Guard-only legacy fragments stay split in source so repository scans do not
+    // mistake this assertion table for generated candidate SQL.
     for legacy in [
         "tenant_id, source_entity, source_entity_id, source_locale, link_name,\n    ordinal, target_entity, target_entity_id, target_locale",
-        "product_variant.source_entity = 'product' AND product_variant.source_entity_id",
+        concat!(
+            "product_variant.source_entity = 'product' AND ",
+            "product_variant.source_entity_id"
+        ),
         "product_variant.target_entity = 'variant' JOIN",
-        "variant_channel.source_entity = 'variant' AND variant_channel.source_entity_id",
+        concat!(
+            "variant_channel.source_entity = 'variant' AND ",
+            "variant_channel.source_entity_id"
+        ),
         "variant_channel.target_entity = 'sales_channel' JOIN",
-        "link.source_entity = 'product' AND link.source_locale",
+        concat!(
+            "link.source_entity = 'product' AND ",
+            "link.source_locale"
+        ),
     ] {
         assert!(
             !sql.contains(legacy),

@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -165,62 +166,82 @@ const insertDecisionDigest = (markdown, decisionSha256) => {
   return markdown.replace(line, `${line}\n- Decision SHA-256: \`${decisionSha256}\``);
 };
 
+const outputStagingPrefix = (output) => `${path.basename(output)}.tmp-`;
+
+const isOutputStagingPath = (filename, output) => {
+  const resolvedInput = path.resolve(filename);
+  const resolvedParent = path.resolve(path.dirname(output) || '.');
+  return path.dirname(resolvedInput) === resolvedParent
+    && path.basename(resolvedInput).startsWith(outputStagingPrefix(output));
+};
+
+const revokePublishedState = (output) => {
+  const parent = path.dirname(output) || '.';
+  if (existsSync(parent)) {
+    for (const entry of readdirSync(parent)) {
+      if (entry.startsWith(outputStagingPrefix(output))) {
+        rmSync(path.join(parent, entry), { recursive: true, force: true });
+      }
+    }
+  }
+  rmSync(output, { force: true });
+};
+
 const main = () => {
   const args = parseArgs();
   if (args === null) return;
-  const stagedOutput = `${args.output}.tmp-${process.pid}`;
   const resolvedOutput = path.resolve(args.output);
-  const resolvedStagedOutput = path.resolve(stagedOutput);
   for (const [label, filename] of [['comparison', args.comparison], ['decision', args.decision]]) {
     const resolvedInput = path.resolve(filename);
     if (resolvedOutput === resolvedInput) fail(`--output must not overwrite the ${label} input`);
-    if (resolvedStagedOutput === resolvedInput) {
+    if (isOutputStagingPath(filename, args.output)) {
       fail(`ADR staging path must not overwrite the ${label} input`);
     }
   }
-  rmSync(args.output, { force: true });
-  rmSync(stagedOutput, { force: true });
 
-  const comparison = readJsonBytes(args.comparison, 'comparison');
-  const decision = readJsonBytes(args.decision, 'decision');
-  requireComparisonDatabaseSettingsMethodology(comparison.value, fail);
-  requireDecisionEnvelope(decision.value);
-  requireAcceptedDecision(decision.value);
-  requireIsoCalendarDate(decision.value.decision_date, 'decision.decision_date');
-  rejectPlaceholders(decision.value);
-
-  const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-'));
+  const parent = path.dirname(args.output) || '.';
+  if (parent !== '.') mkdirSync(parent, { recursive: true });
+  revokePublishedState(args.output);
+  const stagingRoot = mkdtempSync(path.join(parent, outputStagingPrefix(args.output)));
+  const stagedOutput = path.join(stagingRoot, path.basename(args.output));
   try {
-    const comparisonPath = path.join(temporaryRoot, 'comparison.json');
-    const decisionPath = path.join(temporaryRoot, 'decision.json');
-    const renderedPath = path.join(temporaryRoot, 'adr.md');
-    writeFileSync(comparisonPath, comparison.bytes);
-    writeFileSync(decisionPath, decision.bytes);
+    const comparison = readJsonBytes(args.comparison, 'comparison');
+    const decision = readJsonBytes(args.decision, 'decision');
+    requireComparisonDatabaseSettingsMethodology(comparison.value, fail);
+    requireDecisionEnvelope(decision.value);
+    requireAcceptedDecision(decision.value);
+    requireIsoCalendarDate(decision.value.decision_date, 'decision.decision_date');
+    rejectPlaceholders(decision.value);
 
-    const result = spawnSync(process.execPath, [
-      path.join(scriptDirectory, 'render-index-storage-adr.mjs'),
-      '--comparison', comparisonPath,
-      '--decision', decisionPath,
-      '--output', renderedPath,
-    ], { encoding: 'utf8' });
-    if (result.error) fail(`failed to start strict ADR renderer: ${result.error.message}`);
-    if (result.signal) fail(`strict ADR renderer terminated by signal ${result.signal}`);
-    if (result.status !== 0) {
-      const detail = result.stderr?.trim() || result.stdout?.trim() || `exit status ${result.status}`;
-      fail(`strict ADR renderer failed: ${detail}`);
-    }
-
-    const markdown = insertDecisionDigest(readFileSync(renderedPath, 'utf8'), decision.sha256);
-    const parent = path.dirname(args.output);
-    if (parent && parent !== '.') mkdirSync(parent, { recursive: true });
+    const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-'));
     try {
+      const comparisonPath = path.join(temporaryRoot, 'comparison.json');
+      const decisionPath = path.join(temporaryRoot, 'decision.json');
+      const renderedPath = path.join(temporaryRoot, 'adr.md');
+      writeFileSync(comparisonPath, comparison.bytes);
+      writeFileSync(decisionPath, decision.bytes);
+
+      const result = spawnSync(process.execPath, [
+        path.join(scriptDirectory, 'render-index-storage-adr.mjs'),
+        '--comparison', comparisonPath,
+        '--decision', decisionPath,
+        '--output', renderedPath,
+      ], { encoding: 'utf8' });
+      if (result.error) fail(`failed to start strict ADR renderer: ${result.error.message}`);
+      if (result.signal) fail(`strict ADR renderer terminated by signal ${result.signal}`);
+      if (result.status !== 0) {
+        const detail = result.stderr?.trim() || result.stdout?.trim() || `exit status ${result.status}`;
+        fail(`strict ADR renderer failed: ${detail}`);
+      }
+
+      const markdown = insertDecisionDigest(readFileSync(renderedPath, 'utf8'), decision.sha256);
       writeFileSync(stagedOutput, markdown, 'utf8');
       renameSync(stagedOutput, args.output);
     } finally {
-      if (existsSync(stagedOutput)) rmSync(stagedOutput, { force: true });
+      rmSync(temporaryRoot, { recursive: true, force: true });
     }
   } finally {
-    rmSync(temporaryRoot, { recursive: true, force: true });
+    rmSync(stagingRoot, { recursive: true, force: true });
   }
 
   console.log(`${prefix} wrote ${args.output}`);

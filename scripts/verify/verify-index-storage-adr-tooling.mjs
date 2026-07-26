@@ -90,7 +90,7 @@ for (const marker of [
   'read-report.json database metadata observed from the active PostgreSQL benchmark session',
   'export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =>',
   'comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract',
-  'database_settings_source must identify metadata observed from the active PostgreSQL benchmark session',
+  'comparison methodology database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata',
 ]) {
   if (!databaseSettingsContract.includes(marker)) {
     fail(`database settings contract is missing marker: ${marker}`);
@@ -136,8 +136,12 @@ for (const marker of [
   'rendered ADR must contain exactly one Comparison SHA-256 line',
   'Decision SHA-256:',
   '--output must not overwrite the ${label} input',
-  'const stagedOutput = `${args.output}.tmp-${process.pid}`',
+  'const outputStagingPrefix = (output) => `${path.basename(output)}.tmp-`',
+  'const isOutputStagingPath = (filename, output) =>',
+  'const revokePublishedState = (output) =>',
+  'const stagingRoot = mkdtempSync(path.join(parent, outputStagingPrefix(args.output)))',
   'renameSync(stagedOutput, args.output)',
+  'rmSync(stagingRoot, { recursive: true, force: true })',
 ]) {
   if (!adrFinalizer.includes(marker)) fail(`ADR finalizer is missing contract marker: ${marker}`);
 }
@@ -197,7 +201,7 @@ for (const marker of [
   "createHash('sha256')",
   'exactly one comparison.json path is required',
   'readFileSync(filename)',
-  'process.stdout.write(`${digest}\n`)',
+  'process.stdout.write(`${digest}\\n`)',
 ]) {
   if (!digestHelper.includes(marker)) fail(`comparison digest helper is missing marker: ${marker}`);
 }
@@ -325,17 +329,15 @@ for (const [name, workflow, markers] of [
     '--root evidence/index-storage/smoke',
   ]],
   ['scale evidence', scaleWorkflow, [
-    'scripts/verify/index-storage-database-settings-contract.mjs',
-    'scripts/verify/prepare-index-storage-decision.mjs',
-    'scripts/verify/finalize-index-storage-adr.mjs',
-    'scripts/verify/index-storage-decision-tooling.test.mjs',
-    'node --check scripts/verify/index-storage-database-settings-contract.mjs',
-    'node --check scripts/verify/prepare-index-storage-decision.mjs',
-    'node --check scripts/verify/finalize-index-storage-adr.mjs',
+    'scripts/verify/*index-storage*.mjs',
+    'scripts/verify/storage-decision*.mjs',
+    'scripts/verify/*methodology-envelope*.mjs',
+    'find scripts/verify -maxdepth 1 -type f',
     'node scripts/verify/index-storage-tooling.mjs contract',
-    'node --test scripts/verify/index-storage-tooling.test.mjs',
+    'node --test scripts/verify/index-storage-validator-arguments.test.mjs',
     'node scripts/verify/index-storage-tooling.mjs fixtures',
     'node scripts/verify/index-storage-tooling.mjs compare',
+    "if: ${{ github.event_name == 'workflow_dispatch' }}",
   ]],
   ['scale run', scaleRunWorkflow, [
     'node scripts/verify/index-storage-tooling.mjs packet',

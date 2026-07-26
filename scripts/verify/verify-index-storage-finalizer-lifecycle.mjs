@@ -31,17 +31,23 @@ requireMarkers(finalizer, 'accepted ADR finalizer', [
   'decision.status must be accepted before ADR finalization',
   'const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);',
   'year === 0 || month < 1 || month > 12 || day < 1 || day > monthLengths[month - 1]',
-  'const stagedOutput = `${args.output}.tmp-${process.pid}`;',
+  'const outputStagingPrefix = (output) => `${path.basename(output)}.tmp-`;',
+  'const isOutputStagingPath = (filename, output) =>',
   'ADR staging path must not overwrite the ${label} input',
-  'rmSync(args.output, { force: true });',
-  'rmSync(stagedOutput, { force: true });',
+  'const revokePublishedState = (output) =>',
+  'entry.startsWith(outputStagingPrefix(output))',
+  'rmSync(path.join(parent, entry), { recursive: true, force: true });',
+  'rmSync(output, { force: true });',
+  'revokePublishedState(args.output);',
+  'const stagingRoot = mkdtempSync(path.join(parent, outputStagingPrefix(args.output)));',
   "const comparison = readJsonBytes(args.comparison, 'comparison');",
   'requireComparisonDatabaseSettingsMethodology(comparison.value, fail);',
   'requireAcceptedDecision(decision.value);',
   "requireIsoCalendarDate(decision.value.decision_date, 'decision.decision_date');",
   "path.join(scriptDirectory, 'render-index-storage-adr.mjs')",
-  'writeFileSync(stagedOutput, markdown, \'utf8\')',
+  "writeFileSync(stagedOutput, markdown, 'utf8')",
   'renameSync(stagedOutput, args.output)',
+  'rmSync(stagingRoot, { recursive: true, force: true })',
   'rmSync(temporaryRoot, { recursive: true, force: true })',
 ]);
 
@@ -50,9 +56,9 @@ for (const forbidden of ['shell: true', 'execSync(', 'process.exit(']) {
 }
 
 const collision = finalizer.indexOf('if (resolvedOutput === resolvedInput) fail(`--output must not overwrite the ${label} input`);');
-const stagingCollision = finalizer.indexOf('if (resolvedStagedOutput === resolvedInput)');
-const revokeOutput = finalizer.indexOf('rmSync(args.output, { force: true });');
-const revokeStaging = finalizer.indexOf('rmSync(stagedOutput, { force: true });');
+const stagingCollision = finalizer.indexOf('if (isOutputStagingPath(filename, args.output))');
+const revokeState = finalizer.indexOf('revokePublishedState(args.output);');
+const stagingCreate = finalizer.indexOf('const stagingRoot = mkdtempSync(path.join(parent, outputStagingPrefix(args.output)));');
 const evidenceRead = finalizer.indexOf("const comparison = readJsonBytes(args.comparison, 'comparison');");
 const methodology = finalizer.indexOf('requireComparisonDatabaseSettingsMethodology(comparison.value, fail);');
 const accepted = finalizer.indexOf('requireAcceptedDecision(decision.value);');
@@ -60,19 +66,21 @@ const calendarDate = finalizer.indexOf("requireIsoCalendarDate(decision.value.de
 const renderer = finalizer.indexOf('const result = spawnSync(process.execPath, [');
 const stageWrite = finalizer.indexOf("writeFileSync(stagedOutput, markdown, 'utf8')");
 const publish = finalizer.indexOf('renameSync(stagedOutput, args.output)');
-if ([collision, stagingCollision, revokeOutput, revokeStaging, evidenceRead, methodology,
-  accepted, calendarDate, renderer, stageWrite, publish].some((index) => index < 0)
+const stagingCleanup = finalizer.indexOf('rmSync(stagingRoot, { recursive: true, force: true });');
+if ([collision, stagingCollision, revokeState, stagingCreate, evidenceRead, methodology,
+  accepted, calendarDate, renderer, stageWrite, publish, stagingCleanup].some((index) => index < 0)
     || !(collision < stagingCollision
-      && stagingCollision < revokeOutput
-      && revokeOutput < revokeStaging
-      && revokeStaging < evidenceRead
+      && stagingCollision < revokeState
+      && revokeState < stagingCreate
+      && stagingCreate < evidenceRead
       && evidenceRead < methodology
       && methodology < accepted
       && accepted < calendarDate
       && calendarDate < renderer
       && renderer < stageWrite
-      && stageWrite < publish)) {
-  fail('finalizer order must be collision gates -> stale revocation -> evidence/methodology -> accepted decision/date -> renderer -> staged publication');
+      && stageWrite < publish
+      && publish < stagingCleanup)) {
+  fail('finalizer order must be collision gates -> stale-prefix revocation -> unique staging -> evidence/methodology -> accepted decision/date -> renderer -> atomic publication -> cleanup');
 }
 
 requireMarkers(fixture, 'accepted ADR finalizer fixture', [
@@ -115,10 +123,10 @@ requireMarkers(guide, 'storage decision guide', [
   'The generated draft has `status: proposed`.',
   'The finalizer rejects a proposed decision',
   'The finalizer accepts only `--comparison`, `--decision`, and `--output`',
-  'A valid replacement attempt revokes any existing ADR and process-specific staged output before evidence is read.',
+  'A valid replacement attempt rejects any input path inside the output staging namespace, revokes the existing ADR and every matching stale staging path before evidence is read, then publishes through a unique same-directory staging directory.',
   '- the decision status is `accepted`;',
   '- `decision_date` is a real ISO calendar date using Gregorian month and leap-year rules;',
   'the exact eight-field methodology envelope',
 ]);
 
-console.log('[verify-index-storage-finalizer-lifecycle] accepted status, Gregorian dates, non-destructive CLI/collisions, stale-output revocation, staged publication, canonical fixtures, router registration, and docs are cross-guarded');
+console.log('[verify-index-storage-finalizer-lifecycle] accepted status, Gregorian dates, non-destructive CLI/collisions, stale-prefix revocation, unique staged publication, canonical fixtures, router registration, and docs are cross-guarded');

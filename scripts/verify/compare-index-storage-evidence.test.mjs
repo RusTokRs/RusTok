@@ -166,7 +166,9 @@ function writePacket(root, scale, overrides = {}) {
   const read = {
     generated_at: generatedAt,
     provenance: { ...reportProvenance },
-    result_digest_contract: overrides.readDigestContract ?? resultDigestContract,
+    result_digest_contract: Object.hasOwn(overrides, 'readDigestContract')
+      ? overrides.readDigestContract
+      : resultDigestContract,
     database: databaseMetadata(overrides.database),
     dataset: {
       scale: values.serialized,
@@ -349,13 +351,13 @@ test('rejects provenance digest contract drift', () => {
 test('rejects source workload without canonical ordering', () => {
   withFixture((root) => expectFailure(root, {
     sourceSql: { status_equality: 'SELECT entity_id FROM idx_bench_source.product LIMIT 100' },
-  }, /missing canonical ordering marker/));
+  }, /must end with canonical ordering marker/g));
 });
 
 test('rejects candidate workload without canonical ordering', () => {
   withFixture((root) => expectFailure(root, {
     candidateSql: { jsonb: { keyset_page: 'SELECT entity_id, price_minor FROM idx_bench_jsonb.entity LIMIT 100' } },
-  }, /missing canonical ordering marker/));
+  }, /must end with canonical ordering marker/g));
 });
 
 test('rejects missing read execution timing', () => {

@@ -103,7 +103,7 @@ node scripts/verify/index-storage-tooling.mjs render \
 
 Finalization snapshots the exact comparison and decision bytes before rendering. The generated ADR records both `Comparison SHA-256` and `Decision SHA-256`, so reviewers can verify the two source documents used to produce it.
 
-The finalizer accepts only `--comparison`, `--decision`, and `--output`; help is valid only as the sole argument. Malformed command lines and output paths that collide with either input are non-destructive. A valid replacement attempt revokes any existing ADR and process-specific staged output before evidence is read. If the replacement evidence, accepted decision, renderer, or publication step fails, no stale ADR is left behind.
+The finalizer accepts only `--comparison`, `--decision`, and `--output`; help is valid only as the sole argument. Malformed command lines and output paths that collide with either input are non-destructive. A valid replacement attempt rejects any input path inside the output staging namespace, revokes the existing ADR and every matching stale staging path before evidence is read, then publishes through a unique same-directory staging directory. If the replacement evidence, accepted decision, renderer, or publication step fails, no stale ADR or staging residue is left behind.
 
 The finalizer fails closed unless:
 

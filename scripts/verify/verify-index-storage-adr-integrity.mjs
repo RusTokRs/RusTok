@@ -102,8 +102,8 @@ requireMarkers(orderingGuard, 'terminal ordering guard', [
   'executableSql.trimEnd().endsWith(marker)',
   "test('packet runs terminal ordering preflight before the canonical validator'",
   "test('compare runs terminal ordering preflight before the canonical comparator'",
-  'standalone validator must preflight ordering before importing its core',
-  'standalone comparator must preflight every input before importing its core',
+  'standalone validator must revoke stale provenance, preflight ordering/resources, then run its isolated core',
+  'standalone comparator must revoke stale JSON, preflight every input, then run its atomic lifecycle',
   'packet terminal ordering preflight must run before the canonical validator',
   'comparison terminal ordering preflight must run before the canonical comparator',
   'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
@@ -113,8 +113,9 @@ requireMarkers(standaloneGuard, 'standalone evidence guard', [
   "const gitBlobSha = (bytes) => createHash('sha1')",
   "'dabc18d59360c300352ab3afb2510f0a0ff22796'",
   "'97ef0e8a216735e457c4c827d975462b84b009b3'",
-  'validator wrapper must run terminal-ordering preflight before importing its core',
-  'comparator wrapper must preflight every input before importing its core',
+  'runValidatorCoreWithAtomicProvenance',
+  'runComparatorCoreWithAtomicComparison',
+  'has lifecycle markers out of order',
 ]);
 requireMarkers(standaloneFixture, 'standalone evidence fixture', [
   "test('direct validator rejects non-executable terminal ordering before its core'",
@@ -165,9 +166,11 @@ requireMarkers(preparer, 'decision preparer', [
   'refusing to overwrite existing decision without --force',
   'comparison_commit: commit',
   'comparison_sha256: sha256',
-  'const stagedOutput = `${args.output}.tmp-${process.pid}`',
+  "const stagingRoot = mkdtempSync(path.join(parent || '.', `.${path.basename(args.output)}.tmp-`))",
+  'const stagedOutput = path.join(stagingRoot, path.basename(args.output))',
+  'if (args.force) rmSync(args.output, { force: true })',
   'renameSync(stagedOutput, args.output)',
-  'if (existsSync(stagedOutput)) rmSync(stagedOutput, { force: true })',
+  'rmSync(stagingRoot, { recursive: true, force: true })',
 ]);
 forbidMarkers(preparer, 'decision preparer', [
   "$schema: './storage-decision.schema.json'",
@@ -186,7 +189,10 @@ requireMarkers(finalizer, 'ADR finalizer', [
   'writeFileSync(decisionPath, decision.bytes)',
   "path.join(scriptDirectory, 'render-index-storage-adr.mjs')",
   'Decision SHA-256:',
-  'const stagedOutput = `${args.output}.tmp-${process.pid}`',
+  'const outputStagingPrefix = (output) => `${path.basename(output)}.tmp-`',
+  'const revokePublishedState = (output) =>',
+  'const stagingRoot = mkdtempSync(path.join(parent, outputStagingPrefix(args.output)))',
+  'rmSync(stagingRoot, { recursive: true, force: true })',
   'rmSync(temporaryRoot, { recursive: true, force: true })',
 ]);
 forbidMarkers(finalizer, 'ADR finalizer', ['shell: true', 'execSync(', 'process.exit(']);
@@ -224,7 +230,7 @@ requireMarkers(guide, 'storage decision guide', [
   'Only `comparison.json` emitted through the official comparator wrapper is valid decision input.',
   'Direct output from `compare-index-storage-evidence-core.mjs` is intentionally incomplete',
   'exact ordered `comparable_database_fields` contract',
-  'The comparator rejects cross-scale drift in any field',
+  'The comparator rejects intra-packet or cross-scale drift in any field',
   'The standalone renderer enforces the same methodology contract even when invoked directly.',
   'Recomputing `comparison_sha256` after removing or changing the methodology does not make the input acceptable.',
   'Comparison SHA-256',
@@ -238,28 +244,24 @@ forbidMarkers(guide, 'storage decision guide', [
   'Copy the printed 64-character digest into `comparison_sha256`',
 ]);
 
-for (const [label, workflow] of [
-  ['smoke workflow', smokeWorkflow],
-  ['scale workflow', scaleWorkflow],
-]) {
-  requireMarkers(workflow, label, [
-    'scripts/verify/check-index-storage-read-ordering.mjs',
-    'scripts/verify/check-index-storage-read-ordering.test.mjs',
-    'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
-    'scripts/verify/validate-index-storage-evidence-core.mjs',
-    'scripts/verify/compare-index-storage-evidence-core.mjs',
-    'scripts/verify/index-storage-standalone-tools.test.mjs',
-    'scripts/verify/verify-index-storage-standalone-tools.mjs',
-    'node --check scripts/verify/check-index-storage-read-ordering.mjs',
-    'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
-    'node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs',
-    'node --check scripts/verify/index-storage-standalone-tools.test.mjs',
-    'node --check scripts/verify/verify-index-storage-standalone-tools.mjs',
-    'scripts/verify/verify-index-storage-adr.mjs',
-    'node --check scripts/verify/verify-index-storage-adr.mjs',
-    'scripts/verify/verify-index-storage-adr-integrity.mjs',
-    'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
-  ]);
-}
+requireMarkers(smokeWorkflow, 'smoke workflow', [
+  'scripts/verify/check-index-storage-read-ordering.mjs',
+  'scripts/verify/check-index-storage-read-ordering.test.mjs',
+  'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+  'scripts/verify/index-storage-standalone-tools.test.mjs',
+  'scripts/verify/verify-index-storage-standalone-tools.mjs',
+  'scripts/verify/verify-index-storage-adr.mjs',
+  'scripts/verify/verify-index-storage-adr-integrity.mjs',
+  'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
+]);
+requireMarkers(scaleWorkflow, 'scale workflow', [
+  'scripts/verify/*index-storage*.mjs',
+  'scripts/verify/storage-decision*.mjs',
+  'scripts/verify/*methodology-envelope*.mjs',
+  'find scripts/verify -maxdepth 1 -type f',
+  'node scripts/verify/index-storage-tooling.mjs contract',
+  'node scripts/verify/index-storage-tooling.mjs fixtures',
+  "if: ${{ github.event_name == 'workflow_dispatch' }}",
+]);
 
 console.log('[verify-index-storage-adr-integrity] executable SQL ordering, observed database-settings methodology, standalone evidence entrypoints, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
