@@ -10,6 +10,7 @@ use crate::entities::{command_receipt, relation};
 use crate::error::{SocialGraphError, SocialGraphResult};
 use crate::model::SocialRelationKind;
 
+const COMMAND_RECEIPT_SCHEMA_VERSION: i32 = 1;
 const MAX_IDEMPOTENCY_KEY_BYTES: usize = 191;
 const STATUS_PROCESSING: &str = "processing";
 const STATUS_COMPLETED: &str = "completed";
@@ -62,6 +63,7 @@ pub(crate) async fn admit(
         id: Set(receipt_id),
         tenant_id: Set(tenant_id),
         idempotency_key: Set(idempotency_key.clone()),
+        schema_version: Set(COMMAND_RECEIPT_SCHEMA_VERSION),
         request_json: Set(request_json),
         status: Set(STATUS_PROCESSING.to_string()),
         response_json: Set(None),
@@ -103,6 +105,9 @@ pub(crate) fn replay(
 ) -> SocialGraphResult<relation::Model> {
     let expected_json = serde_json::to_value(expected_request)
         .map_err(|_| SocialGraphError::CommandReceiptCorrupt)?;
+    if receipt.schema_version != COMMAND_RECEIPT_SCHEMA_VERSION {
+        return Err(SocialGraphError::CommandReceiptCorrupt);
+    }
     if receipt.request_json != expected_json {
         return Err(SocialGraphError::IdempotencyConflict);
     }
@@ -141,6 +146,7 @@ pub(crate) async fn complete(
         )
         .filter(command_receipt::Column::Id.eq(receipt.receipt_id))
         .filter(command_receipt::Column::TenantId.eq(receipt.tenant_id))
+        .filter(command_receipt::Column::SchemaVersion.eq(COMMAND_RECEIPT_SCHEMA_VERSION))
         .filter(command_receipt::Column::Status.eq(STATUS_PROCESSING))
         .exec(&receipt.transaction)
         .await?;
