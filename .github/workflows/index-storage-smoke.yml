@@ -12,6 +12,9 @@ on:
       - "scripts/verify/check-index-storage-read-ordering.test.mjs"
       - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-runner-resources.mjs"
+      - "scripts/verify/run-index-storage-validator-core.mjs"
+      - "scripts/verify/index-storage-validator-arguments.test.mjs"
       - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
@@ -43,6 +46,9 @@ on:
       - "scripts/verify/check-index-storage-read-ordering.test.mjs"
       - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-runner-resources.mjs"
+      - "scripts/verify/run-index-storage-validator-core.mjs"
+      - "scripts/verify/index-storage-validator-arguments.test.mjs"
       - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
@@ -101,6 +107,9 @@ jobs:
             node --check scripts/verify/check-index-storage-read-ordering.test.mjs
             node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs
             node --check scripts/verify/validate-index-storage-evidence.mjs
+            node --check scripts/verify/validate-index-storage-runner-resources.mjs
+            node --check scripts/verify/run-index-storage-validator-core.mjs
+            node --check scripts/verify/index-storage-validator-arguments.test.mjs
             node --check scripts/verify/validate-index-storage-evidence-core.mjs
             node --check scripts/verify/index-storage-database-settings-contract.mjs
             node --check scripts/verify/compare-index-storage-evidence.mjs
@@ -115,6 +124,7 @@ jobs:
             node scripts/verify/index-storage-tooling.mjs contract
             node --test scripts/verify/index-storage-tooling.test.mjs
             node --test scripts/verify/check-index-storage-read-ordering.test.mjs
+            node --test scripts/verify/index-storage-validator-arguments.test.mjs
             node --test scripts/verify/index-storage-standalone-tools.test.mjs
             node --test scripts/verify/index-storage-decision-tooling.test.mjs
           } 2>&1 | tee evidence/index-storage/contract/verify.log

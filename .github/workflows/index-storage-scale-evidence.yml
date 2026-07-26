@@ -12,6 +12,9 @@ on:
       - "scripts/verify/check-index-storage-read-ordering.test.mjs"
       - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-runner-resources.mjs"
+      - "scripts/verify/run-index-storage-validator-core.mjs"
+      - "scripts/verify/index-storage-validator-arguments.test.mjs"
       - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
@@ -46,6 +49,9 @@ on:
       - "scripts/verify/check-index-storage-read-ordering.test.mjs"
       - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-runner-resources.mjs"
+      - "scripts/verify/run-index-storage-validator-core.mjs"
+      - "scripts/verify/index-storage-validator-arguments.test.mjs"
       - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence-core.mjs"
@@ -111,7 +117,12 @@ jobs:
       - name: Verify scale evidence validator syntax
         run: |
           node --check scripts/verify/validate-index-storage-evidence.mjs
+          node --check scripts/verify/validate-index-storage-runner-resources.mjs
+          node --check scripts/verify/run-index-storage-validator-core.mjs
+          node --check scripts/verify/index-storage-validator-arguments.test.mjs
           node --check scripts/verify/validate-index-storage-evidence-core.mjs
+      - name: Test scale evidence validator arguments
+        run: node --test scripts/verify/index-storage-validator-arguments.test.mjs
       - name: Verify cross-scale comparator syntax
         run: |
           node --check scripts/verify/index-storage-database-settings-contract.mjs
