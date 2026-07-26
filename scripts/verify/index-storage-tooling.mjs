@@ -58,6 +58,7 @@ const runContract = (args) => {
     'verify-index-storage-standalone-tools.mjs',
     'verify-index-storage-adr-tooling.mjs',
     'verify-index-storage-adr-integrity.mjs',
+    'verify-index-storage-placeholder-contract.mjs',
   ]) {
     runScript(script);
   }
@@ -71,6 +72,7 @@ const runFixtures = (args) => {
     scriptPath('index-storage-standalone-tools.test.mjs'),
     scriptPath('compare-index-storage-evidence.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
+    scriptPath('finalize-index-storage-adr-placeholder.test.mjs'),
     scriptPath('index-storage-decision-tooling.test.mjs'),
   ], 'Index storage fixture suites');
 };
