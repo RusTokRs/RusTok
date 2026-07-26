@@ -6,8 +6,9 @@
 grouping, digests, retention, and delivery-attempt lifecycle. The implemented
 pipeline now covers durable outbox intake, source materialization, bounded
 audience expansion, recipient policy, one idempotent in-app notification, exact
-open-time authorization, and bounded authorized inbox listing. Channel delivery
-remains a later workflow.
+open-time authorization, bounded authorized inbox listing, exact
+seen/read/mark-unread/archive state APIs, and bounded exact-recipient
+reconciliation. Channel delivery remains a later workflow.
 
 ## Responsibilities
 
@@ -26,6 +27,8 @@ remains a later workflow.
 - recheck recipient privacy and source target authorization at inbox open/list
   time;
 - list exact-recipient inbox rows through bounded sparse keyset pages;
+- apply exact-item seen/read/mark-unread/archive transitions with terminal archive;
+- reconcile one bounded exact-recipient page against current privacy/source policy;
 - own replay, reconciliation, retention, and delivery lifecycle.
 
 ## Non-responsibilities
@@ -48,6 +51,8 @@ remains a later workflow.
 - `NotificationRecipientPolicy` / `NotificationRecipientPolicyRuntime`;
 - `NotificationInboxOpenService` and exact open request/decision contracts;
 - `NotificationInboxListService` and bounded list request/page/read-model contracts;
+- `NotificationInboxStateService` and exact state request/decision/snapshot contracts;
+- `NotificationInboxReconcileService` and bounded reconciliation request/page contracts;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
 ## Persistence
@@ -173,6 +178,48 @@ The list read model exposes typed semantic/template fields and inbox timestamps 
 adds no dedicated target route or structural target fields. Open and list reads do
 not mutate seen/read/archive timestamps or create delivery attempts.
 
+### 5. Exact inbox state mutations
+
+`NotificationInboxStateService` owns exact notification/tenant/recipient commands.
+`mark_seen` advances only unread rows to seen. `mark_read` advances unread or seen
+rows to read; a direct unread-to-read transition assigns `seen_at` and `read_at`
+from the same instant. `mark_unread` returns seen or read rows to unread and clears
+both `seen_at` and `read_at`. `archive` advances every non-archived state to archived
+and preserves prior seen/read timestamps. This extends the exact seen/read/archive
+state APIs with one explicit reopen command.
+
+Archived remains terminal: `mark_seen`, `mark_read`, and `mark_unread` cannot reopen
+it. Repeated commands for an already matching or protected state return the current
+snapshot with `changed=false` and preserve state timestamps plus `updated_at`.
+Missing, cross-tenant, and cross-recipient rows return the same `Unavailable`
+decision.
+
+The service exposes only state and inbox timestamps, calls no privacy/source or
+delivery owner, and creates no delivery attempt. SQLite owner evidence is
+`tests/inbox_state_sqlite.rs`. The former `mark-unread, bulk/mark-all` residual is
+now narrowed: exact-item mark-unread is delivered, while bulk/mark-all mutations,
+canonical unread counts, grouped views, transport adapters, and UI remain closed.
+
+### 6. Bounded inbox reconciliation
+
+`NotificationInboxReconcileService` scans only non-archived rows for one exact
+tenant/recipient in `created_at DESC, id DESC` order. It uses the same default/hard
+page bounds of 20/64 and reuses the crate-private `i1` inbox cursor with timestamp
+nanoseconds and the UUID tie-breaker.
+
+Every raw row reuses `NotificationInboxOpenService`, preserving current recipient
+privacy before source target authorization. An allowed row remains unchanged. A row
+whose current privacy or source policy returns `Unavailable` is archived through
+`NotificationInboxStateService`, preserving existing seen/read timestamps. Foreign
+owner calls run after raw selection and outside a notification database transaction.
+
+A retryable owner failure stops the page. Any earlier per-row archives are durable
+and idempotent, so restarting from the same cursor safely skips already archived
+rows. The response exposes only scanned/archived counts and continuation metadata;
+it contains no route, source target, or notification identity. SQLite evidence is
+`tests/inbox_reconcile_sqlite.rs`. Tenant-wide scheduled reconciliation, payload
+redaction, transport wiring, and UI remain closed.
+
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
 
@@ -193,10 +240,12 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - grouping and moderator-directory expansion;
-- seen/read/archive mutation APIs;
+- bulk/mark-all mutations, canonical unread counts, and grouped inbox views;
+- tenant-wide scheduled reconciliation and payload redaction;
+- external inbox transport adapters and module-owned UI;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
-- retention, reconciliation, quarantine replay/purge, and module-owned UI.
+- retention, quarantine replay/purge, and administrative repair.
 
 ## Documentation
 

@@ -152,6 +152,54 @@ while still preserving bounded work and forward progress. Retryable policy or so
 failures abort the page without returning a partial result. Listing does not mutate
 `seen/read/archive` state or enqueue delivery attempts.
 
+### Exact inbox state mutations
+
+Exact seen/read/mark-unread/archive state APIs are owner-public through
+`NotificationInboxStateService`. Every request requires non-nil notification,
+tenant, and recipient identities and updates only the exact owned row. Missing,
+cross-tenant, and cross-recipient rows return the same `Unavailable` decision.
+
+The forward order is `unread → seen → read → archived`. `mark_seen` changes only
+unread rows. `mark_read` changes unread or seen rows; direct unread-to-read assigns
+`seen_at` and `read_at` from the same instant, while seen-to-read preserves the
+existing `seen_at`. `mark_unread` is the explicit reopen command for seen and read
+rows: it returns them to unread and clears `seen_at` plus `read_at`. `archive`
+changes every non-archived row and preserves existing seen/read timestamps.
+
+No command downgrades an archived row. No command reopens an archived row. Requests
+already at the requested state or at a protected state are idempotent:
+`changed=false`, state timestamps remain unchanged, and `updated_at` is not
+rewritten. The response contains only notification state and inbox timestamps. The
+service calls no recipient-policy, source-provider, target, or delivery owner and
+does not create delivery attempts.
+
+SQLite evidence is `tests/inbox_state_sqlite.rs`. The former
+`mark-unread, bulk/mark-all` residual is narrowed: exact-item mark-unread is now
+delivered; bulk/mark-all mutations, canonical unread counts, grouped inbox views,
+external transport adapters, and module-owned UI remain closed.
+
+### Bounded inbox reconciliation
+
+`NotificationInboxReconcileService` scans one bounded non-archived page for an
+exact tenant/recipient in `created_at DESC, id DESC` order. It defaults to 20 rows,
+is capped at 64, and reuses the crate-private `i1` inbox cursor with timestamp
+nanoseconds and the UUID tie-breaker.
+
+Every scanned row reuses `NotificationInboxOpenService`, so current recipient
+privacy runs before source target authorization. Allowed rows remain unchanged.
+Rows that current privacy or source policy marks `Unavailable` are archived through
+`NotificationInboxStateService`, preserving existing seen/read timestamps. Raw
+selection completes before any foreign owner call, and no foreign provider runs
+inside a notification database transaction.
+
+Retryable owner failures stop the page. Earlier per-row archives are durable and
+idempotent, allowing a restart from the same cursor to skip already archived rows.
+The response contains only scanned/archived counts and continuation metadata; it
+exposes no route, notification identity, or structural source target fields.
+
+SQLite evidence is `tests/inbox_reconcile_sqlite.rs`. Tenant-wide scheduling and
+payload redaction, transport adapters, and UI remain closed.
+
 The server starts workers in intake → fanout → candidate order. Invalid or
 unreadable flags remain disabled.
 
@@ -170,9 +218,11 @@ remains deferred.
   policy changes with final candidate commits;
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
+- bulk/mark-all mutations, canonical unread counts, and grouped views;
+- tenant-wide scheduled reconciliation and payload redaction;
+- external inbox transport adapters and full module-owned UI;
 - channel delivery enqueue and transports with delivery-time authorization;
-- seen/read/archive state APIs;
-- retention, reconciliation, quarantine replay/purge, and full module-owned UI.
+- retention, quarantine replay/purge, and administrative repair.
 
 ## Maintainer verification
 
@@ -189,6 +239,8 @@ cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_open_authorization_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_listing_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_state_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -202,11 +254,14 @@ node scripts/verify/verify-notifications-fanout-worker.mjs
 node scripts/verify/verify-forum-notification-inbox-open-authorization.mjs
 node scripts/verify/verify-forum-notification-inbox-open-privacy.mjs
 node scripts/verify/verify-forum-notification-inbox-listing.mjs
+node scripts/verify/verify-forum-notification-inbox-state-mutations.mjs
+node scripts/verify/verify-forum-notification-inbox-reconciliation.mjs
+node scripts/verify/verify-forum-notification-inbox-mark-unread.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T`.
+`FORUM-20R/20S/20T/20U/20V/20W`.
 
 ## Related documents
 

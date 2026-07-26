@@ -23,6 +23,8 @@ fn map_storefront_line_item_database_error(
     tenant_id: Uuid,
     variant_id: Option<Uuid>,
     product_id: Option<Uuid>,
+    public_channel_slug: Option<&str>,
+    locale: Option<&str>,
 ) -> HttpError {
     let status = axum::http::StatusCode::SERVICE_UNAVAILABLE;
     let code = "commerce_store_catalog_unavailable";
@@ -33,6 +35,8 @@ fn map_storefront_line_item_database_error(
         tenant_id = %tenant_id,
         variant_id = ?variant_id,
         product_id = ?product_id,
+        channel = ?public_channel_slug,
+        locale = ?locale,
         error_kind = "database",
         public_code = code,
         status = %status,
@@ -73,6 +77,9 @@ fn map_storefront_line_item_inventory_error(
     operation: &'static str,
     tenant_id: Uuid,
     variant_id: Uuid,
+    product_id: Uuid,
+    public_channel_slug: Option<&str>,
+    locale: Option<&str>,
 ) -> HttpError {
     let (status, code, message, error_kind) = match &error {
         CommerceError::Validation(_) => (
@@ -122,6 +129,9 @@ fn map_storefront_line_item_inventory_error(
         operation,
         tenant_id = %tenant_id,
         variant_id = %variant_id,
+        product_id = %product_id,
+        channel = ?public_channel_slug,
+        locale = ?locale,
         error_kind,
         public_code = code,
         status = %status,
@@ -156,6 +166,8 @@ pub(crate) async fn resolve_store_line_item_input(
                 tenant_id,
                 Some(input.variant_id),
                 None,
+                public_channel_slug,
+                Some(locale),
             )
         })?
         .ok_or(HttpError::not_found(
@@ -174,6 +186,8 @@ pub(crate) async fn resolve_store_line_item_input(
                 tenant_id,
                 Some(variant.id),
                 Some(variant.product_id),
+                public_channel_slug,
+                Some(locale),
             )
         })?
         .ok_or(HttpError::not_found(
@@ -201,6 +215,8 @@ pub(crate) async fn resolve_store_line_item_input(
                 tenant_id,
                 Some(variant.id),
                 Some(product_model.id),
+                public_channel_slug,
+                Some(locale),
             )
         })?;
     let variant_translation_models = variant_translation::Entity::find()
@@ -214,6 +230,8 @@ pub(crate) async fn resolve_store_line_item_input(
                 tenant_id,
                 Some(variant.id),
                 Some(product_model.id),
+                public_channel_slug,
+                Some(locale),
             )
         })?;
 
@@ -252,8 +270,15 @@ pub(crate) async fn resolve_store_line_item_input(
             input.quantity,
             &resolved_price,
         );
-    validate_store_variant_inventory(db, tenant_id, &variant, input.quantity, public_channel_slug)
-        .await?;
+    validate_store_variant_inventory(
+        db,
+        tenant_id,
+        &variant,
+        input.quantity,
+        public_channel_slug,
+        Some(locale),
+    )
+    .await?;
 
     let base_title = crate::controllers::store::pick_product_translation(
         &product_translation_models,
@@ -322,6 +347,8 @@ pub(crate) async fn validate_store_line_item_quantity(
                 tenant_id,
                 Some(variant_id),
                 None,
+                public_channel_slug,
+                None,
             )
         })?
         .ok_or(HttpError::not_found(
@@ -335,6 +362,7 @@ pub(crate) async fn validate_store_line_item_quantity(
         &variant,
         requested_quantity,
         public_channel_slug,
+        None,
     )
     .await
 }
@@ -345,6 +373,7 @@ async fn validate_store_variant_inventory(
     variant: &product_variant::Model,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
+    locale: Option<&str>,
 ) -> HttpResult<()> {
     let available = check_variant_availability_for_public_channel(
         db,
@@ -363,6 +392,9 @@ async fn validate_store_variant_inventory(
             "check_variant_availability",
             tenant_id,
             variant.id,
+            variant.product_id,
+            public_channel_slug,
+            locale,
         )
     })?;
     if !available {
