@@ -14,7 +14,7 @@ Self-service avatar/banner writes resolve references through the Media owner rea
 
 `rustok-profiles-storefront` owns the first public profile UX slice. It mounts through `rustok-module.toml`, reads `?handle=` through `leptos-ui-routing`, provides SSR-first native server functions and a parallel GraphQL compatibility transport, renders approved avatar/banner descriptors with deterministic fallbacks, and exposes authenticated follow/unfollow controls through Social Graph owner contracts. Native and GraphQL reads consume a revision-bearing owner follow-state contract, and failed writes recover through one read-only refresh without automatic mutation retry. The host only mounts the package. The compile-time storefront transport accepts only `native` or `graphql`; an unknown configured value fails closed instead of silently selecting another transport.
 
-GraphQL self-service profile writes now emit one stable owner-operation telemetry contract through `rustok_profiles::operations`. Events carry only operation, tenant/user identifiers, outcome, bounded duration, stable error code, and retryability; handle, display copy, bio, locale values, Media identifiers, URLs, and storage details are not telemetry fields. `profile.updated` publication has its own operation outcome, and `ProfileError` provides stable non-value-bearing codes plus retryability classification.
+GraphQL self-service profile writes and the owner-local CLI backfill now emit one stable operation contract through `rustok_profiles::operations`. Per-user writes carry operation, tenant/user identifiers, outcome, bounded duration, stable error code, and retryability. Backfill emits one aggregate `profile.backfill` record per command with tenant scope, dry-run/event flags, stage, counters, outcome, duration, stable error code, and retryability. Neither path emits handle, display copy, source email, generated handle, locale values, Media identifiers, URLs, or storage/provider details. `profile.updated` publication has its own operation outcome, and `ProfileError` provides stable non-value-bearing codes plus retryability classification.
 
 ## FFA/FBA boundary
 
@@ -46,12 +46,12 @@ GraphQL self-service profile writes now emit one stable owner-operation telemetr
    **Done when:** module validation, route/i18n checks, native and GraphQL runtime parity, optimistic conflict recovery, audience states, direct-public/proxy/fallback media states, extracted Media routing, fail-closed configuration, operational telemetry, and accessibility have retained evidence.
 
 4. **Move profile backfill to an owner-local operations adapter.**
-   **Status:** source-complete; compiled/runtime verification pending. The module CLI provider uses owner-owned auth, tenant, and customer reads plus `OutboxTransport` for optional event publishing, preserves dry-run/event semantics, and does not import server models or query customer internals directly.
-   **Next verification:** compile and exercise `rustok-cli profiles backfill` against supported runtime inputs, then bind the same stable operation telemetry without logging source email or generated handle values.
+   **Status:** source-complete; compiled/runtime verification pending. The module CLI provider uses owner-owned auth, tenant, and customer reads plus `OutboxTransport` for optional event publishing, preserves dry-run/event semantics, and does not import server models or query customer internals directly. It emits one aggregate `profile.backfill` operation with stable stages and codes, mode flags, bounded duration, and result counters; no per-user telemetry or source email/generated-handle fields are emitted.
+   **Next verification:** compile and exercise `rustok-cli profiles backfill` against supported runtime inputs, including success, dry-run, owner-read failure, profile-plan/create failure, and event-publication failure paths.
 
 5. **Add audit and operational capabilities from defined owner contracts.**
-   **Status:** in progress. Stable GraphQL self-service operation names, success/failure outcomes, duration, stable non-value-bearing `ProfileError` codes, retryability, and `profile.updated` publication outcomes are source-complete and locked by the Profiles source verifier. `PresentationUnavailable` is handled by both GraphQL query and mutation error mappers.
-   **Remaining:** extend telemetry to CLI backfill and Social Graph follow commands, define durable audit/command receipts and reconciliation, add rollout/rollback guidance, reconcile the central FFA/FBA readiness board after updating the branch from current `main`, and collect retained runtime evidence.
+   **Status:** in progress. Stable GraphQL self-service and CLI backfill operation names, success/failure outcomes, duration, stable non-value-bearing error codes, retryability, aggregate backfill counters/stages, and `profile.updated` publication outcomes are source-complete and locked by the Profiles source verifier. `PresentationUnavailable` is handled by both GraphQL query and mutation error mappers.
+   **Remaining:** extend operation telemetry to Social Graph follow commands, define durable audit/command receipts and reconciliation, add rollout/rollback guidance, reconcile the central FFA/FBA readiness board after updating the branch from current `main`, and collect retained runtime evidence.
    **Done when:** operations have typed owner ports, stable error/recovery guidance, retained evidence, and no auth/customer leakage.
 
 ## Recheck checkpoint — 2026-07-26
@@ -59,7 +59,7 @@ GraphQL self-service profile writes now emit one stable owner-operation telemetr
 - Reconciled the canonical plan with draft PR #2152 and current `main`.
 - Rechecked privacy-before-presentation ordering, bounded followers-only reads, owner-scoped follow commands, Media-owned public descriptors, shared provider composition, optimistic revision recovery, and the no-write-retry rule at source level.
 - Closed the storefront transport-policy gap: unknown configured transport values no longer silently select Native, and the source verifier now locks this fail-closed behavior.
-- Added the first stable owner-operation telemetry contract for GraphQL self-service writes and `profile.updated` publication, with duration/outcome/error classification and explicit sensitive-field exclusions.
+- Added stable owner-operation telemetry for GraphQL self-service writes, `profile.updated` publication, and aggregate CLI backfill, with duration/outcome/error classification and explicit sensitive-field exclusions.
 - Fixed missing GraphQL query and mutation mappings for `ProfileError::PresentationUnavailable`.
 - Synchronized `docs/modules/implementation-plans-registry.md` with the current Profiles status and nearest priority using the current `main` version as the base.
 - `docs/modules/registry.md` still contains the pre-UI Profiles FFA/FBA row; reconcile that large readiness board only from a complete current-main file so concurrent registry changes are preserved.
@@ -79,6 +79,7 @@ GraphQL self-service profile writes now emit one stable owner-operation telemetr
 - `node scripts/verify/verify-media-public-image-proxy.mjs`
 - `node scripts/verify/verify-profiles-media-provider-composition.mjs`
 - `node scripts/verify/verify-profiles-storefront-boundary.mjs`
+- `rustok-cli profiles backfill --tenant-id <uuid> --dry-run`
 - storefront route, module-package, en/ru i18n, Media provider/delivery/degradation, operation telemetry, and accessibility verification
 
 ## Change rules
@@ -93,5 +94,5 @@ GraphQL self-service profile writes now emit one stable owner-operation telemetr
 8. Remote Media selection must be injected through `ProfileMediaPublicImageProvider`; Profiles must not know gRPC endpoints, Media object storage, public route construction, or deployment ingress.
 9. Module-owned UI must live under `crates/rustok-profiles/storefront`, read URL state through shared routing, use package-owned i18n, keep transports explicit with no automatic fallback, and reject unknown configured transport profiles.
 10. Storefront follow controls must bind authenticated tenant/user through owner ports, suppress self-follow, use idempotency and optimistic revision semantics, recover stale state through read-only refresh, never retry writes automatically, and avoid exposing internal identifiers or transport details.
-11. Operational telemetry may record stable operation/error identifiers, tenant/user correlation, outcomes, retryability, and duration only; it must not record handle, display copy, bio, locale values, Media identifiers/URLs, object keys, or provider endpoints.
+11. Operational telemetry may record stable operation/error identifiers, tenant/user correlation for per-user writes, tenant scope and aggregate counters for backfill, mode flags, stages, outcomes, retryability, and duration only; it must not record source email, generated handle, display copy, bio, locale values, Media identifiers/URLs, object keys, or provider endpoints.
 12. Update Profiles and affected owner docs with every presentation-boundary or operational-contract change.
