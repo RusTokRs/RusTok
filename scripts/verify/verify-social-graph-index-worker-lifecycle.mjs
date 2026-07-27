@@ -23,6 +23,10 @@ const files = {
   ),
   health: readFileSync("apps/server/src/controllers/health.rs", "utf8"),
   metrics: readFileSync("apps/server/src/controllers/metrics.rs", "utf8"),
+  telemetry: readFileSync(
+    "crates/rustok-telemetry/src/runtime_consumer_metrics.rs",
+    "utf8",
+  ),
   consumer: readFileSync(
     "crates/rustok-social-graph/src/index_consumer.rs",
     "utf8",
@@ -85,12 +89,16 @@ for (const marker of [
   "StopHandle",
   "receive_next()",
   "project_consumed(consumed)",
+  "publish_consumed_to_dlq",
   "acknowledge_consumed(consumed)",
-  "move_to_dlq_and_acknowledge",
+  "acknowledge_terminal_result",
   "retry_delay",
   "settings.events.dlq.enabled",
   "retrying acknowledgement only",
   "broker offset uncommitted",
+  "runtime_consumer_metrics::ensure_registered()",
+  "runtime_consumer_metrics::begin_delivery",
+  "runtime_consumer_metrics::complete_delivery",
 ]) {
   requireText("server worker", files.worker, marker);
 }
@@ -128,15 +136,34 @@ requireText(
 );
 
 for (const marker of [
+  "rustok_runtime_consumer_received_total",
+  "rustok_runtime_consumer_deliveries_total",
+  "rustok_runtime_consumer_retries_total",
+  "rustok_runtime_consumer_failures_total",
+  "rustok_runtime_consumer_dlq_total",
+  "rustok_runtime_consumer_processing_duration_seconds",
+  "rustok_runtime_consumer_worker_starts_total",
+  "rustok_runtime_consumer_worker_terminations_total",
+  "rustok_runtime_consumer_in_flight",
+  "rustok_runtime_consumer_in_flight_started_timestamp_seconds",
+  "rustok_runtime_consumer_last_success_timestamp_seconds",
+  "rustok_runtime_consumer_source_offset",
+]) {
+  requireText("runtime consumer telemetry", files.telemetry, marker);
+}
+
+for (const marker of [
   "pub const fn stable_code(&self)",
   "pub fn is_retryable(&self)",
   "pub async fn receive_next(",
   "pub async fn project_consumed(",
   "pub async fn acknowledge_consumed(",
+  "pub async fn publish_consumed_to_dlq(",
   "pub async fn move_to_dlq_and_acknowledge(",
   "consumed.raw_payload().to_vec()",
   "self.transport",
   ".move_to_dlq(entry)",
+  "self.publish_consumed_to_dlq(consumed, stable_error_code, retry_count)",
   "self.acknowledge_consumed(consumed).await",
   "DeadLettered",
 ]) {
@@ -154,31 +181,48 @@ for (const marker of [
 const durableApply = files.worker.indexOf(
   "consumer.project_consumed(consumed).await",
 );
-const durableAck = files.worker.indexOf("acknowledge_durable_result(");
+const durableAck = files.worker.indexOf("acknowledge_terminal_result(");
 if (durableApply < 0 || durableAck <= durableApply) {
   failures.push(
-    "worker must enter acknowledgement-only handling only after projection succeeds",
+    "worker must enter terminal acknowledgement-only handling only after projection succeeds",
   );
 }
 
-const dlqPublish = files.consumer.indexOf(".move_to_dlq(entry)");
-const dlqAck = files.consumer.indexOf(
-  "self.acknowledge_consumed(consumed).await",
+const workerDlqPublish = files.worker.indexOf(".publish_consumed_to_dlq(");
+const workerDlqAck = files.worker.indexOf(
+  "return acknowledge_terminal_result(",
+  workerDlqPublish,
 );
-if (dlqPublish < 0 || dlqAck <= dlqPublish) {
-  failures.push("DLQ publication must complete before source acknowledgement");
+if (workerDlqPublish < 0 || workerDlqAck <= workerDlqPublish) {
+  failures.push(
+    "worker must publish poison delivery to DLQ before entering source acknowledgement-only handling",
+  );
+}
+
+const consumerDlqPublish = files.consumer.indexOf(
+  "self.publish_consumed_to_dlq(consumed, stable_error_code, retry_count)",
+);
+const consumerDlqAck = files.consumer.indexOf(
+  "self.acknowledge_consumed(consumed).await",
+  consumerDlqPublish,
+);
+if (consumerDlqPublish < 0 || consumerDlqAck <= consumerDlqPublish) {
+  failures.push(
+    "convenience DLQ operation must publish before source acknowledgement",
+  );
 }
 
 const acknowledgeOnlyStart = files.worker.indexOf(
-  "async fn acknowledge_durable_result(",
+  "async fn acknowledge_terminal_result(",
 );
 const acknowledgeOnlyBody =
   acknowledgeOnlyStart >= 0 ? files.worker.slice(acknowledgeOnlyStart) : "";
 for (const forbidden of [
+  "publish_consumed_to_dlq",
   "move_to_dlq_and_acknowledge",
   "project_consumed(consumed)",
 ]) {
-  forbidText("acknowledgement-only path", acknowledgeOnlyBody, forbidden);
+  forbidText("terminal acknowledgement-only path", acknowledgeOnlyBody, forbidden);
 }
 
 const productionConsumer = files.consumer.split("#[cfg(test)]")[0];
@@ -209,5 +253,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness and aggregate guardrail metrics, bounded retries, result-first acknowledgement-only recovery, exact-byte DLQ-before-ack, and owner-table isolation are locked.",
+  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness, shared Prometheus consumer metrics, bounded retries, result-first acknowledgement-only recovery, staged exact-byte DLQ-before-ack, and owner-table isolation are locked.",
 );
