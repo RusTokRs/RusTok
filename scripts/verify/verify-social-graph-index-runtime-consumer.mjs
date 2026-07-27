@@ -97,7 +97,7 @@ for (const forbidden of [
 for (const marker of [
   "result-first",
   "duplicate/stale",
-  "bounded Social Graph replay",
+  "Bounded Social Graph replay",
   "must not authorize",
 ]) {
   requireText("CRATE_API.md", files.api, marker);
