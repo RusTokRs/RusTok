@@ -12,16 +12,17 @@ ports. Social Graph persistence remains authoritative for drift repair. Profiles
 Notifications, Index, search, and other projections must not read owner tables or
 authorize from replicated relation state.
 
-The source-complete path now includes durable command receipts, bounded cleanup,
+The source-complete path includes durable command receipts, bounded cleanup,
 transactional sealed relation events, bounded owner replay, the approved generic
 Index relation projection, Index-owned tenant schema registration, result-first
 persistent Iggy consumption, one shared EventRuntime Iggy connector, default-off
 server lifecycle, bounded retry, staged exact-byte DLQ-before-ack, graceful shutdown,
-enabled-worker readiness, and bounded per-consumer Prometheus telemetry.
+enabled-worker readiness, bounded per-consumer Prometheus telemetry, and a read-only
+partition-qualified consumer-position observer with completeness-gated total/max lag.
 
 Compilation, source-verifier execution, PostgreSQL concurrency, real-broker restart,
-multi-replica recovery, partition-qualified high-watermark/lag telemetry, and retained
-runtime evidence remain maintainer-run or pending.
+observer reconnect/TLS/auth, multi-replica position semantics, and retained runtime
+evidence remain maintainer-run or pending.
 
 ## Delivered owner relation contract
 
@@ -101,7 +102,7 @@ runtime evidence remain maintainer-run or pending.
 - Permanent or exhausted projection failures may publish exact original broker bytes
   to DLQ only when policy is enabled.
 - `publish_consumed_to_dlq` and `acknowledge_consumed` are staged. DLQ publish completes
-  before the worker enters source acknowledgement-only recovery.
+  before source acknowledgement-only recovery.
 - `move_to_dlq_and_acknowledge` remains a convenience method with the same order.
 - After any durable Index or DLQ result, only acknowledgement is retried; projection is
   not repeated in-process.
@@ -112,28 +113,39 @@ runtime evidence remain maintainer-run or pending.
 ## Delivered durable-consumer observability
 
 - `rustok-telemetry::runtime_consumer_metrics` registers one bounded shared collector
-  in the process Prometheus registry used by `/metrics`.
-- Metrics cover received deliveries, terminal outcomes, projection/ack retries,
-  bounded stage/error failures, DLQ publication success/failure, receive-to-ack
-  duration, worker starts/terminations, in-flight state/timestamp, and last success.
-- Consumer, stage, outcome, result, reason, and stable error-code labels are bounded.
-  Tenant, event, relation, partition, offset, payload, ack-token, and raw error-message
-  values are not labels.
-- Source position and lag metrics are intentionally absent. A shared-topic consumer
-  needs a partition-qualified position vector and broker high-watermarks; a single
-  last offset or event age would be misleading.
+  in the process Prometheus registry rendered by `/metrics`.
+- Delivery metrics cover received/terminal outcomes, projection/ack retries, bounded
+  stage/error failures, DLQ results, receive-to-ack duration, worker lifecycle,
+  in-flight state/timestamp, and last success.
+- A separate `SocialGraphIndexPositionObserver` starts only when the durable consumer
+  is explicitly enabled. It uses the shared transport configuration to open a read-only
+  SDK client to the already-running endpoint; it never starts/stops a broker or mutates
+  offsets.
+- Every poll reads all `domain` topic partitions and persistent group checkpoints.
+  Empty partitions contribute zero; missing or incoherent checkpoints make the
+  snapshot incomplete.
+- Metrics expose snapshot timestamp, partition count, completeness, and exact
+  `rustok_runtime_consumer_lag{aggregation="total|max"}` only from complete snapshots.
+  Incomplete snapshots clear lag gauges and set completeness to zero.
+- Labels remain bounded to consumer, stage, outcome, result, reason, aggregation, and
+  stable error code. Tenant, event, relation, partition, offset, payload, ack token,
+  credentials, and raw error text are not labels.
+- Observer configuration/connection/snapshot failures are recorded by stable code,
+  retried independently, and do not stop projection or enter readiness guardrails.
+- Lag is never inferred from event age, processing duration, a delivered offset, or a
+  local cursor counter.
 - A process crash after successful DLQ publish but before source ack can still republish
-  on redelivery; a durable DLQ identity/receipt decision remains open.
-- Malformed bytes that fail before `ConsumedContractEvent` construction remain
-  unacknowledged pending a connector-level poison-delivery contract.
+  on redelivery; durable DLQ identity remains open.
+- Malformed bytes before `ConsumedContractEvent` construction remain unacknowledged
+  pending a connector-level poison-delivery contract.
 
 ## Remaining Social Graph scope
 
-1. Add connector partition high-watermark observations and a partition-qualified
-   acknowledged-position snapshot, then derive true bounded consumer lag.
-2. Execute PostgreSQL concurrent schema-registration and mutation evidence.
-3. Prove real-Iggy restart/redelivery, ack failure, DLQ failure, connector loss,
-   graceful shutdown, and multi-replica cursor ownership.
+1. Execute PostgreSQL concurrent schema-registration and mutation evidence.
+2. Prove real-Iggy restart/redelivery, ack failure, DLQ failure, connector loss,
+   graceful shutdown, observer snapshot/reconnect, and multi-replica cursor ownership.
+3. Validate lag under concurrent publication, empty/missing checkpoints, TLS/auth
+   failures, rebalancing, and multiple worker replicas before defining alerts.
 4. Corrupt/delete projection state and prove bounded owner replay/rescan repair while
    Profiles privacy remains on authoritative owner ports.
 5. Decide whether DLQ publish-success/source-ack-failure needs a durable owner receipt
@@ -156,6 +168,7 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets
 cargo test -p rustok-index schema_registration --lib -- --nocapture
 node scripts/verify/verify-index-schema-registration.mjs
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
+node scripts/verify/verify-iggy-consumer-position.mjs
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets
 cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets
