@@ -1,9 +1,9 @@
 name: Agent Focused Compile Debug
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/storefront-line-item-typed-errors
+      - main
 
 permissions:
   contents: read
