@@ -76,7 +76,7 @@ requireText(
 requireText(
   "Social Graph plan",
   files.socialPlan,
-  "Profiles privacy continues to use authoritative owner ports",
+  "Profiles privacy stays on authoritative owner ports",
 );
 requireText(
   "Profiles plan",
