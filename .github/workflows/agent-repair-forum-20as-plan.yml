@@ -1,0 +1,30 @@
+name: Agent repair Forum 20AS plan placement
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/forum-topic-create-transport-composition-20as'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Repair FORUM-20AS plan placement
+        run: python scripts/agent/repair_forum_20as_plan.py
+      - name: Commit plan repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "docs(forum): place FORUM-20AS in canonical delivery tail"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
