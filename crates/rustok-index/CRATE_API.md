@@ -4,10 +4,11 @@
 
 - `domain`
 - `application`
+- `migrations`
 
-The active engine contract is database independent. Source-specific Content,
-Product, Flex, search, migration, runtime, and scheduler modules have been
-deleted.
+The active domain/application contract remains database independent. M3 adds only
+module-owned production schema migrations; source-specific Content, Product,
+Flex, search, legacy migration, runtime, and scheduler modules remain deleted.
 
 ## Primary Public Types
 
@@ -38,9 +39,11 @@ and locales, stable schema fingerprints, atomic schema registration,
 deterministic link paths, record/query validation, bounded query complexity,
 and query-scoped keyset cursors.
 
-Storage, source, ingestion, rebuild, query-port, and operator APIs are published
-by their corresponding milestones. No persistence API is stable before the M2
-storage benchmark ADR.
+The accepted M2 ADR selects JSONB, and M3 now registers the canonical schema for
+`index_schemas`, `index_entities`, `index_links`, `index_inbox`, `index_jobs`,
+`index_checkpoints`, and `index_consistency_findings`. This is a migration contract,
+not a runtime persistence API. Source, ingestion, rebuild, query-port, and operator
+APIs are published by their corresponding milestones.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -119,8 +122,10 @@ to owner modules or explicit integration crates.
 - Source events are converted to `IndexMutation` through owner-published
   adapters.
 - Delivery is replayable and idempotent.
-- Mutation application will use inbox deduplication and transactional storage.
-- Mutation application/storage contracts are introduced in M3/M5.
+- `index_inbox` reserves durable deduplication, processing lease, and terminal
+  outcome state for mutation application.
+- Runtime mutation application will use inbox deduplication and atomic entity/link
+  storage; the adapter remains a later M3/M5 contract.
 
 ### Errors / Failure Codes
 

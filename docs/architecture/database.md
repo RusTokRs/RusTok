@@ -218,18 +218,31 @@ Current-state conclusion:
 
 ## Index/Read-side Tables
 
-The rewritten `rustok-index` currently owns the generic domain/application
-contract and intentionally exposes an empty production migration source until
-its storage ADR selects a physical model. Removed Index v1 tables such as
-`index_content`, `index_products`, `index_product_categories` and
-`index_product_attribute_values` are not part of the current database
-baseline.
+The rewritten `rustok-index` owns a generic JSONB persistence schema selected by
+the accepted storage ADR. Its module migration source creates:
 
-Any remaining Search or host caller that names those historical projections is
-a rewrite blocker governed by the live Index implementation plan. New Index
-persistence must use explicit tenant and locale dimensions where the registered
-schema requires them and must never become authoritative write-side storage for
-source modules.
+- `index_schemas` for versioned schema JSON and SHA-256 fingerprints;
+- `index_entities` for tenant-leading schema/entity/locale keys, monotonic source
+  `DECIMAL(20,0)` source versions, payloads, and tombstones;
+- `index_links` for independently relational ordered links bound to the exact
+  source entity version;
+- `index_inbox` for durable delivery deduplication and processing leases;
+- `index_checkpoints` for ingestion and rebuild cursors;
+- `index_jobs` for bounded schema/index/rebuild/reconciliation work;
+- `index_consistency_findings` for drift and repair diagnostics.
+
+Locale-neutral records use the empty locale sentinel in the non-null composite
+key. The first migration is intentionally unpartitioned and does not create a
+general GIN index; registry-managed secondary indexes and partitioning remain
+observable later M3 work. Runtime storage adapters are not part of this schema
+foundation.
+
+Removed Index v1 tables such as `index_content`, `index_products`,
+`index_product_categories`, and `index_product_attribute_values` are not part of
+the database baseline. Any Search or host caller that names those historical
+projections is a rewrite blocker. Index persistence is a derived read model:
+source modules remain authoritative and Index must never query their tables
+directly.
 
 Facet/search/sort rows have channel scope. For active channels, the indexer creates
 a separate set of rows and computes flags with priority `attribute defaults <

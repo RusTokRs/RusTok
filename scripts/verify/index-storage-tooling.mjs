@@ -53,6 +53,7 @@ const runContract = (args) => {
   if (args.length !== 0) fail('contract does not accept arguments');
   for (const script of [
     'verify-index-fba.mjs',
+    'verify-index-storage-migrations.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-standalone-tools.mjs',

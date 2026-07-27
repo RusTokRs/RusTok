@@ -1,0 +1,53 @@
+mod m20260727_000001_create_index_records;
+mod m20260727_000002_create_index_delivery_state;
+mod m20260727_000003_create_index_operations;
+
+use rustok_core::MigrationDependencyDescriptor;
+use sea_orm_migration::sea_orm::DbBackend;
+use sea_orm_migration::prelude::*;
+
+pub(super) fn source_version_column<T: IntoIden>(
+    backend: DbBackend,
+    name: T,
+    default_zero: bool,
+) -> ColumnDef {
+    let mut column = ColumnDef::new(name);
+    match backend {
+        DbBackend::Sqlite => {
+            column.big_integer();
+        }
+        DbBackend::Postgres | DbBackend::MySql => {
+            column.decimal_len(20, 0);
+        }
+    }
+    column.not_null();
+    if default_zero {
+        column.default(0);
+    }
+    column
+}
+
+pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+    vec![
+        Box::new(m20260727_000001_create_index_records::Migration),
+        Box::new(m20260727_000002_create_index_delivery_state::Migration),
+        Box::new(m20260727_000003_create_index_operations::Migration),
+    ]
+}
+
+pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
+    vec![
+        MigrationDependencyDescriptor::new(
+            "m20260727_000001_create_index_records",
+            vec!["m20250101_000001_create_tenants"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260727_000002_create_index_delivery_state",
+            vec!["m20260727_000001_create_index_records"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260727_000003_create_index_operations",
+            vec!["m20260727_000001_create_index_records"],
+        ),
+    ]
+}

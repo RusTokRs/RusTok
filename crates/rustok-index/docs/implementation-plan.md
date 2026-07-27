@@ -13,6 +13,14 @@ modules.
 synonyms, autocomplete, search UX, and external search-engine connectors remain
 owned by `rustok-search`.
 
+## Scope
+
+This plan covers the generic schema and link registry, validated records and
+mutations, PostgreSQL persistence, query planning/execution, incremental
+ingestion, rebuild/reconciliation, operator controls, and the first owner-published
+vertical slices. It excludes text relevance, ranking, autocomplete, external
+search engines, source-table reads, and source-domain semantics in Index core.
+
 ## Rewrite policy
 
 The project is in early development. **Backward compatibility with the rejected
@@ -20,7 +28,7 @@ implementation is not a goal.** Existing code, migrations, APIs, ports,
 adapters, tests, fixtures, evidence, and documentation may be deleted or
 replaced whenever they conflict with the target architecture.
 
-Rules:
+## Update rules
 
 1. Prefer a clean replacement over a compatibility layer.
 2. Do not preserve placeholder APIs or tests that encode rejected architecture.
@@ -37,7 +45,7 @@ Rules:
 The repository owner performs test and benchmark execution during this rewrite.
 Commits record which checks and evidence runs were not executed.
 
-## Current status
+## Current state
 
 - Rewrite status: `in_progress`
 - Current milestone: `M3 - PostgreSQL storage engine`
@@ -53,12 +61,15 @@ Commits record which checks and evidence runs were not executed.
 - M2 comparison provenance contract: `complete`
 - M2 storage benchmark: `complete`
 - M2 storage decision: `JSONB accepted; rejected prototypes removed`
-- Production persistence: intentionally absent until M3 implements the accepted JSONB model
+- M3 storage-schema foundation: `complete`
+- Production persistence: canonical migrations registered; runtime storage adapter not yet implemented
 
-The active production crate contains only the generic domain/application core,
-`IndexModule` metadata, and an intentionally empty migration source. Benchmark
-DDL and generated evidence live under `ops/benches`, outside the production
-module.
+The active production crate contains the generic domain/application core and the
+first M3 production migration foundation. The registered migrations create the
+generic JSONB schema/entity/link envelope plus durable inbox, job, checkpoint,
+and consistency state. Runtime persistence, mutation application, and query
+adapters remain absent until their M3/M4 slices. Benchmark DDL and generated
+evidence stay under `ops/benches`, outside the production module.
 
 ## Ownership
 
@@ -93,6 +104,10 @@ source modules
 crates/rustok-index/src/
   domain/
   application/
+  migrations/
+    m20260727_000001_create_index_records.rs
+    m20260727_000002_create_index_delivery_state.rs
+    m20260727_000003_create_index_operations.rs
   infrastructure/
     postgres/
     events/
@@ -112,8 +127,6 @@ ops/benches/src/index_storage/
     common.rs
     maintenance.rs
     jsonb.rs
-    eav.rs
-    hot.rs
 ```
 
 ## Library decisions
@@ -290,7 +303,7 @@ production persistence and does not reopen the accepted storage decision.
 
 ### M3 - PostgreSQL storage engine
 
-- [ ] Add canonical schema/entity/link/inbox/job/checkpoint/consistency migrations.
+- [x] Add canonical schema/entity/link/inbox/job/checkpoint/consistency migrations.
 - [ ] Add tenant/schema/entity/locale keys and source-version guards.
 - [ ] Add atomic entity/link upsert and delete transactions.
 - [ ] Add locking/leases for schema application.
@@ -298,6 +311,15 @@ production persistence and does not reopen the accepted storage decision.
 - [ ] Add PostgreSQL Testcontainers fixtures.
 - [ ] Cover migration-from-zero, stale mutation, redelivery, rollback,
       concurrency, and tenant/locale isolation.
+
+The first M3 slice registers three fail-closed module-owned migrations that create
+`index_schemas`, `index_entities`, `index_links`, `index_inbox`,
+`index_checkpoints`, `index_jobs`, and `index_consistency_findings`. Their keys
+lead with tenant identity, preserve the complete generic schema/entity/locale
+shape, bind entities and outgoing links to an exact non-negative `DECIMAL(20,0)` source version that preserves the domain `u64` range,
+and use the empty locale sentinel for locale-neutral records. Schema fingerprints
+remain explicit in the entity foreign key. The migration foundation does not yet
+publish a runtime adapter or mark transactional mutation semantics complete.
 
 ### M4 - Query engine v1
 
@@ -369,7 +391,7 @@ Entities: Product, ProductVariant, SalesChannel.
 - [ ] Migrate consumers and delete final compatibility code.
 - [ ] Promote FBA only after compiled/live evidence.
 
-## Quality gates
+## Verification
 
 ```bash
 cargo fmt --all -- --check

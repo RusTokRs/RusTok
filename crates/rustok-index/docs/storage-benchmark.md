@@ -8,7 +8,7 @@
 - Selected-layout persistent churn/VACUUM harness: JSONB-only with committed cycles
 - PostgreSQL session metadata contract: implemented across all three reports
 - Smoke evidence automation: implemented in `.github/workflows/index-storage-smoke.yml`
-- Production migrations: intentionally absent pending M3 implementation
+- Production migration foundation: implemented in `rustok-index`; benchmark DDL remains isolated
 - Smoke evidence: historical harness-sanity packet from Actions run `30041091121`
 - 100k evidence: historical diagnostic packet from Actions run `30051321255`
 - Replacement evidence: validated same-commit 100k and 1m packets from Actions run `30222913450` on `eae5f74241e9431bffe2fd8c43cd046fc1c1f679`

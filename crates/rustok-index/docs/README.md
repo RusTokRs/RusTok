@@ -15,7 +15,7 @@ without runtime fan-out.
   for cross-module filtering, projection, sorting, count, and pagination;
 - scale reads and rebuilds independently from source-module query paths.
 
-## Scope
+## Responsibility Zone
 
 - versioned schema and link registry;
 - generic records and mutations;
@@ -36,6 +36,16 @@ without runtime fan-out.
 - external search-engine connectors;
 - source-module table reads from Index core;
 - source-specific Product, Content, or Flex logic in the engine.
+
+## Integration
+
+- source modules publish generic schemas, records, mutations, and rebuild streams;
+- `IndexModule` contributes the canonical production migrations through the platform
+  migration composition;
+- server, storefront, admin, and `rustok-search` consume stable Index ports rather
+  than reading Index tables directly;
+- benchmark DDL and evidence remain isolated under `ops/benches` and never become
+  runtime migrations.
 
 ## Rewrite policy
 
@@ -96,8 +106,27 @@ size, load, mutation, keyset/count, and maintenance cost.
 
 The archived smoke and original 100k packets remain historical diagnostics.
 Actions run `30222913450` produced validated replacement `100k`/`1m` packets and
-a decision-ready comparison on one commit. The accepted storage ADR selects JSONB;
-production migrations remain absent until M3 implements that model.
+a decision-ready comparison on one commit. The accepted storage ADR selects JSONB.
+
+## M3 storage schema foundation
+
+The module-owned migration source now creates seven generic tables without
+source-domain columns or benchmark schemas:
+
+- `index_schemas` stores exact versioned schema JSON and fingerprints;
+- `index_entities` stores the JSONB payload/tombstone envelope with complete
+  tenant, module, entity, schema-version, entity-ID, and locale identity;
+- `index_links` stores ordered independent links bound to the source entity's
+  exact full-range `DECIMAL(20,0)` source version;
+- `index_inbox` stores deduplication, mutation identity, processing leases, and
+  terminal outcomes;
+- `index_checkpoints` stores ingestion and rebuild cursors;
+- `index_jobs` stores bounded durable schema/index/rebuild/reconciliation work;
+- `index_consistency_findings` stores open/resolved drift findings.
+
+The migration source is production schema only. Runtime entity/link writes,
+transactional inbox application, schema locks, secondary-index lifecycle, and
+query execution remain later M3/M4 slices.
 
 ## Status
 
@@ -110,7 +139,8 @@ production migrations remain absent until M3 implements that model.
 - M2 PostgreSQL storage benchmark: `complete`
 - M2 accepted storage model: `JSONB`
 - M2 rejected prototype cleanup: `complete`
-- Production migrations: intentionally absent pending M3 JSONB implementation
+- M3 storage-schema foundation: `complete`
+- Production migrations: registered; runtime storage adapter not yet implemented
 
 ## Verification
 
@@ -127,7 +157,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release`
 - `cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release`
 
-## Related documents
+## Related Documentation
 
 - [Crate README](../README.md)
 - [Live implementation plan](./implementation-plan.md)

@@ -47,15 +47,26 @@ a rewrite goal.
 - M2 rejected prototype cleanup: complete
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
-configuration, scheduler, errors, and server composition have been deleted.
-Production persistence is intentionally absent until M3 implements the accepted
-JSONB storage envelope.
+configuration, scheduler, errors, and server composition have been deleted. M3
+now registers the canonical production schema, while runtime persistence remains
+absent until the transactional adapter slice.
+
+The module-owned migration source creates:
+
+- `index_schemas` for versioned owner-published schema contracts;
+- `index_entities` for the tenant-leading JSONB entity envelope and full-range `DECIMAL(20,0)` source version;
+- `index_links` for independently relational ordered links;
+- `index_inbox` for durable delivery deduplication and leases;
+- `index_checkpoints` for ingestion/rebuild cursors;
+- `index_jobs` for schema, index, rebuild, reconciliation, and consistency work;
+- `index_consistency_findings` for durable drift diagnostics.
 
 ## Current entry points
 
 - `IndexModule`
 - `rustok_index::domain::*`
 - `rustok_index::application::*`
+- `rustok_index::migrations::*`
 - `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
 - `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
 - `CursorCodec`, `IndexCursor`, and query-scope cursor validation
