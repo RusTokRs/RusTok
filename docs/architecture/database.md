@@ -234,8 +234,9 @@ the accepted storage ADR. Its module migration source creates:
 Locale-neutral records use the empty locale sentinel in the non-null composite
 key. The first migration is intentionally unpartitioned and does not create a
 general GIN index; registry-managed secondary indexes and partitioning remain
-observable later M3 work. Runtime storage adapters are not part of this schema
-foundation.
+observable later M3 work. `PostgresMutationStore` now owns atomic inbox, entity,
+tombstone, and ordered-link writes with monotonic source-version admission; query
+storage remains a later M4 slice.
 
 Removed Index v1 tables such as `index_content`, `index_products`,
 `index_product_categories`, and `index_product_attribute_values` are not part of

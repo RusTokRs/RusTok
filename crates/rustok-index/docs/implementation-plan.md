@@ -62,14 +62,16 @@ Commits record which checks and evidence runs were not executed.
 - M2 storage benchmark: `complete`
 - M2 storage decision: `JSONB accepted; rejected prototypes removed`
 - M3 storage-schema foundation: `complete`
-- Production persistence: canonical migrations registered; runtime storage adapter not yet implemented
+- M3 atomic mutation persistence: `complete`
+- Production persistence: atomic mutation writes implemented; query adapter not yet implemented
 
-The active production crate contains the generic domain/application core and the
-first M3 production migration foundation. The registered migrations create the
-generic JSONB schema/entity/link envelope plus durable inbox, job, checkpoint,
-and consistency state. Runtime persistence, mutation application, and query
-adapters remain absent until their M3/M4 slices. Benchmark DDL and generated
-evidence stay under `ops/benches`, outside the production module.
+The active production crate contains the generic domain/application core, the M3
+production migrations, and an Index-owned transactional mutation adapter. The
+adapter validates each delivery, provides tenant-scoped inbox deduplication,
+monotonic source-version admission, atomic JSONB entity/tombstone plus ordered-link
+replacement, and rollback-safe terminal inbox completion. Query adapters, schema
+leases, partition/index lifecycle, and batch ingestion remain absent. Benchmark
+DDL and generated evidence stay under `ops/benches`, outside the production module.
 
 ## Ownership
 
@@ -304,8 +306,8 @@ production persistence and does not reopen the accepted storage decision.
 ### M3 - PostgreSQL storage engine
 
 - [x] Add canonical schema/entity/link/inbox/job/checkpoint/consistency migrations.
-- [ ] Add tenant/schema/entity/locale keys and source-version guards.
-- [ ] Add atomic entity/link upsert and delete transactions.
+- [x] Add tenant/schema/entity/locale keys and source-version guards.
+- [x] Add atomic entity/link upsert and delete transactions.
 - [ ] Add locking/leases for schema application.
 - [ ] Add partition and secondary-index management.
 - [ ] Add PostgreSQL Testcontainers fixtures.
@@ -316,10 +318,21 @@ The first M3 slice registers three fail-closed module-owned migrations that crea
 `index_schemas`, `index_entities`, `index_links`, `index_inbox`,
 `index_checkpoints`, `index_jobs`, and `index_consistency_findings`. Their keys
 lead with tenant identity, preserve the complete generic schema/entity/locale
-shape, bind entities and outgoing links to an exact non-negative `DECIMAL(20,0)` source version that preserves the domain `u64` range,
+shape, bind entities and outgoing links to an exact non-negative `DECIMAL(20,0)` source
+version that preserves the domain `u64` range,
 and use the empty locale sentinel for locale-neutral records. Schema fingerprints
-remain explicit in the entity foreign key. The migration foundation does not yet
-publish a runtime adapter or mark transactional mutation semantics complete.
+remain explicit in the entity foreign key.
+
+The second M3 slice publishes `PostgresMutationStore`. Every delivery is validated
+through `SchemaRegistry`, bound to a SHA-256 payload identity, claimed by the
+composite inbox key, and applied in one database transaction. The store takes a transaction-scoped PostgreSQL advisory lock on the complete
+entity key, retains a conditional monotonic upsert for the
+concurrent-create race, deletes old links before replacing the source version,
+rebuilds ordered links for live rows, writes payload-free tombstones for deletes,
+and completes the inbox only after all writes succeed. Exact redelivery returns a
+duplicate outcome; stale versions are terminally ignored. SQLite remains a
+contract-test backend with signed source-version limits. PostgreSQL concurrency
+and Testcontainers evidence remain open.
 
 ### M4 - Query engine v1
 

@@ -4,11 +4,13 @@
 
 - `domain`
 - `application`
+- `infrastructure`
 - `migrations`
 
-The active domain/application contract remains database independent. M3 adds only
-module-owned production schema migrations; source-specific Content, Product,
-Flex, search, legacy migration, runtime, and scheduler modules remain deleted.
+The domain/application contract remains database independent. M3 adds module-owned
+production migrations and an Index-owned PostgreSQL mutation adapter;
+source-specific Content, Product, Flex, search, legacy migration, runtime, and
+scheduler modules remain deleted.
 
 ## Primary Public Types
 
@@ -32,6 +34,13 @@ Flex, search, legacy migration, runtime, and scheduler modules remain deleted.
 - `RecordValidationError`, `QueryValidationError`
 - `IndexCursor`, `CursorCodec`, `CursorCodecError`, `CursorValidationError`
 
+### Infrastructure
+
+- `PostgresMutationStore`
+- `MutationDelivery`
+- `MutationApplyOutcome`
+- `MutationStorageError`
+
 ## Contract Status
 
 M1 domain/application contracts are active. They provide canonical identifiers
@@ -41,9 +50,10 @@ and query-scoped keyset cursors.
 
 The accepted M2 ADR selects JSONB, and M3 now registers the canonical schema for
 `index_schemas`, `index_entities`, `index_links`, `index_inbox`, `index_jobs`,
-`index_checkpoints`, and `index_consistency_findings`. This is a migration contract,
-not a runtime persistence API. Source, ingestion, rebuild, query-port, and operator
-APIs are published by their corresponding milestones.
+`index_checkpoints`, and `index_consistency_findings`. The first runtime contract is
+`PostgresMutationStore`, which atomically applies validated entity/link upserts and
+deletes through the durable inbox. Source registries, batch ingestion, rebuild,
+query-port, and operator APIs are published by later milestones.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -122,10 +132,13 @@ to owner modules or explicit integration crates.
 - Source events are converted to `IndexMutation` through owner-published
   adapters.
 - Delivery is replayable and idempotent.
-- `index_inbox` reserves durable deduplication, processing lease, and terminal
-  outcome state for mutation application.
-- Runtime mutation application will use inbox deduplication and atomic entity/link
-  storage; the adapter remains a later M3/M5 contract.
+- `MutationDelivery` binds a source name and delivery ID to one exact serialized
+  `IndexMutation` payload.
+- `PostgresMutationStore` claims the tenant/source/delivery inbox identity,
+  rejects payload reuse, and commits the inbox terminal state with the entity/link
+  mutation.
+- Exact redelivery is `Duplicate`; stale source versions are terminally ignored;
+  live upserts and tombstones replace links atomically.
 
 ### Errors / Failure Codes
 
@@ -135,5 +148,8 @@ to owner modules or explicit integration crates.
   and query failures.
 - `CursorCodecError` and `CursorValidationError` separate malformed cursors from
   scope/schema mismatches.
-- Infrastructure milestones add storage, source, retry, cancellation, and
-  rebuild errors without leaking database details across transport boundaries.
+- `MutationStorageError` separates validation, delivery identity conflict,
+  in-progress/rejected replay, stored-version corruption, backend limits, and
+  database failure. Its public display is generic; transport adapters must still
+  map owner errors rather than returning storage details directly.
+- Later milestones add source, retry, cancellation, and rebuild errors.
