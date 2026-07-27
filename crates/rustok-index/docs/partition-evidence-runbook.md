@@ -7,7 +7,7 @@ relations remain unpartitioned unless one retained packet validates to `admitted
 
 ## Tooling boundary
 
-The evidence flow has five explicit boundaries:
+The evidence flow has six explicit boundaries:
 
 1. `partition-prepare` binds an immutable run manifest to one SHA-256
    `evidence_id` and emits deterministic shadow-only bootstrap SQL.
@@ -16,19 +16,18 @@ The evidence flow has five explicit boundaries:
    integrity, and publishes `baseline.json` plus `shadow.json`.
 3. `index-partition-query-evidence` compares canonical and shadow query behavior in
    one read-only repeatable-read transaction and publishes `query.json`.
-4. The owner executes mutation, maintenance, and cutover rehearsal measurements.
-   `partition-assemble` reads all six exact raw files, calculates their exact-byte
-   SHA-256 identities, and publishes one structurally validated packet.
-5. `partition-validate` recalculates admission metrics and atomically publishes
+4. `index-partition-mutation-evidence` compares rollback-only canonical and shadow
+   mutations and publishes `mutation.json`.
+5. The owner executes maintenance and cutover rehearsal measurements.
+   `partition-assemble` reads all six exact raw files, calculates exact-byte SHA-256
+   identities, and publishes one structurally validated packet.
+6. `partition-validate` recalculates admission metrics and atomically publishes
    `admission.json`.
 
-The preparer, snapshot runner, query runner, and assembler refuse to overwrite
-retained outputs. The validator removes stale admission output before validation
-and writes a new file only after the complete packet is accepted structurally.
-
-None of these tools renames or drops production relations, performs production
-cutover, or starts runtime replay or dual-write. The snapshot runner creates and
-fills only deterministic shadow relations. The query runner is read-only.
+The preparer and all artifact producers refuse to overwrite retained outputs. None
+of the tools renames or drops production relations, performs production cutover, or
+starts runtime replay or dual-write. The mutation runner executes writes only under
+savepoints and rolls back both each sample and the enclosing transaction.
 
 ## Prepare an immutable run
 
@@ -77,9 +76,8 @@ node scripts/verify/index-storage-tooling.mjs partition-prepare \
 
 `evidence_id` is the SHA-256 digest of canonical manifest input. Shadow relation
 names use `tenant_hash_shadow_v1`; the definition hash binds evidence identity,
-strategy, and modulus. Review `bootstrap.sql`. It may contain only shadow parent,
-child, and owner-comment statements. Production `ALTER`, `DROP`, `RENAME`, copy,
-replay, dual-write, and cutover statements are forbidden.
+strategy, and modulus. Review `bootstrap.sql`. Production `ALTER`, `DROP`, `RENAME`,
+copy, replay, dual-write, and cutover statements are forbidden.
 
 ## Audit tenant-scoped query coverage
 
@@ -94,9 +92,7 @@ Create reviewed `query-audit.json` beside the manifest:
 ```
 
 The snapshot runner records these values in `baseline.json`; the admission validator
-calculates tenant-predicate coverage and requires exactly 10,000 basis points. The
-query evidence runner independently requires a tenant identity in every generated
-measurement query.
+calculates tenant-predicate coverage and requires exactly 10,000 basis points.
 
 ## Capture the baseline and shadow snapshot
 
@@ -112,27 +108,17 @@ INDEX_PARTITION_EVIDENCE_ROOT=evidence/index-partition \
 cargo run -p rustok-benchmarks --bin index-partition-snapshot-capture --release
 ```
 
-The explicit copy opt-in is mandatory. The runner:
+The runner requires PostgreSQL 16/JIT off, ordinary unpartitioned canonical tables,
+deterministic shadow names, and a PostgreSQL advisory lock. It copies entities and
+links from one repeatable-read snapshot, adds shadow-only source-version integrity,
+records row/byte/digest/partition/orphan/FK/catch-up evidence, and publishes
+`baseline.json` plus `shadow.json` without overwrite.
 
-- requires PostgreSQL 16 and pins JIT off;
-- rejects canonical entity or link tables that are already partitioned;
-- validates deterministic shadow names and serializes one evidence ID with an
-  advisory lock;
-- creates only tenant-hash shadow parents and children;
-- reads baseline cardinality and logical digests and copies both canonical relations
-  from the same repeatable-read snapshot;
-- creates a shadow-only unique source-version index and validated source foreign key;
-- records rows, bytes, child sizes, SHA-256 logical digests, orphan count, FK state,
-  and post-copy catch-up state;
-- publishes `baseline.json` and `shadow.json` together with no-clobber semantics.
-
-The snapshot runner leaves evidence-ID-bound shadow tables in place. A failed
-attempt may leave partial state for inspection; use a new manifest and run key
-rather than editing or overwriting evidence.
+Query, mutation, maintenance, and cutover artifacts remain separate owner-run
+measurements. A failed attempt may leave partial shadow state for inspection;
+operators must use a fresh run key rather than silently reusing retained output.
 
 ## Capture baseline/shadow query evidence
-
-After the matching snapshot succeeds, run:
 
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
@@ -143,39 +129,54 @@ INDEX_PARTITION_QUERY_SAMPLES=7 \
 cargo run -p rustok-benchmarks --bin index-partition-query-evidence --release
 ```
 
-The explicit query opt-in is mandatory. The runner validates:
+The query runner executes exactly `manifest.repetitions.query` unique tenant-scoped
+runs in one read-only repeatable-read transaction. Each run verifies result digest
+parity, alternates execution order, retains full JSON
+`EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)`, calculates nearest-rank p95 and
+`normalized_partition_plan_v1`, and requires each used shadow relation to prune to
+exactly one entity or link child partition. It publishes `query.json` once.
 
-- the complete canonical manifest identity and deterministic shadow plan;
-- PostgreSQL 16, JIT off, and `enable_partition_pruning=on`;
-- ordinary unpartitioned canonical relations;
-- manifest-bound shadow parent comments, child names, and partition bounds.
+## Capture baseline/shadow mutation and WAL evidence
 
-It then executes exactly `manifest.repetitions.query` unique tenant-scoped runs in
-one read-only repeatable-read transaction. The deterministic template set covers
-entity scope pages, keyset pages, exact counts, link scope pages, and source/link
-joins when link rows exist. Each run:
+Run only after the matching snapshot succeeds and the evidence-ID-bound shadow
+relations remain unchanged:
 
-- calculates baseline and shadow result rows and SHA-256 result digest parity;
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
+INDEX_PARTITION_ALLOW_MUTATION_EVIDENCE=1 \
+INDEX_PARTITION_MANIFEST=evidence/index-partition/manifest.json \
+INDEX_PARTITION_EVIDENCE_ROOT=evidence/index-partition \
+INDEX_PARTITION_MUTATION_SAMPLES=7 \
+cargo run -p rustok-benchmarks --bin index-partition-mutation-evidence --release
+```
+
+The explicit mutation opt-in is mandatory. Before measuring, the runner revalidates
+the canonical manifest identity, PostgreSQL 16, JIT off, partition pruning,
+`synchronous_commit=on`, ordinary canonical tables, shadow comments, child names,
+and partition bounds. It requires canonical/shadow row-count parity and loads only
+byte-for-byte matching generic entity/link anchors.
+
+The runner creates exactly `manifest.repetitions.mutation` unique runs, alternating
+entity timestamp touches and link deletes when matching links exist. The full run
+uses one rollback-only repeatable-read transaction. Every validation and EXPLAIN
+mutation is rolled back to a savepoint, and the outer transaction is rolled back as
+well. No mutation is committed.
+
+Each run:
+
+- requires exactly one affected row on baseline and shadow;
 - alternates baseline/shadow execution order across samples;
-- retains full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` inputs;
+- retains every full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` sample;
 - calculates nearest-rank baseline and shadow p95 latency;
-- calculates `normalized_partition_plan_v1` SHA-256 plan identities;
-- rejects unstable normalized plans or relation reads across samples;
-- rejects baseline access to shadow relations and shadow access to canonical tables;
-- requires a shadow plan to prune to exactly one entity or link child partition for
-  every logical relation used by the query.
+- records `baseline_wal_bytes` and `shadow_wal_bytes` as the conservative maximum
+  per-sample plan-node WAL bytes;
+- rejects unstable affected-row or relation-access evidence;
+- rejects baseline access to shadows and shadow access to canonical relations;
+- requires each shadow mutation target to prune to exactly one child partition.
 
-The plan normalizer excludes runtime timing, buffers/WAL counters, costs, row
-estimates, physical relation/index names, and partition suffixes. It retains the
-logical template, tenant predicate contract, predicates, ordering, join type and
-algorithm, aggregate/sort/limit structure, and collapsed partition scan shape.
-Physical partition fan-out therefore cannot be hidden, while expected
-unpartitioned-versus-single-child scan differences do not create false plan drift.
-
-The runner publishes a top-level JSON array to `query.json` using temporary-file and
-hard-link no-clobber semantics. Besides the packet-required fields (`name`, p95
-latencies, and plan digests), each run retains result parity, relation-read identity,
-and every raw EXPLAIN sample for review. It performs no mutation or cutover work.
+The runner publishes one top-level array to `mutation.json` using temporary-file and
+hard-link no-clobber semantics. WAL values are plan evidence, not persistent bloat
+or post-checkpoint storage measurements.
 
 ## Capture the remaining raw artifacts
 
@@ -184,13 +185,12 @@ The complete bundle contains six regular, non-symlink JSON files:
 - `baseline.json` — produced by the snapshot runner;
 - `shadow.json` — produced by the snapshot runner;
 - `query.json` — produced by the query evidence runner;
-- `mutation.json` — mutation p95 and WAL measurements;
+- `mutation.json` — produced by the mutation/WAL evidence runner;
 - `maintenance.json` — ordinary VACUUM/dead-tuple measurements;
 - `cutover.json` — lock rehearsals and rollback/invariance facts.
 
-The owner still executes mutation, maintenance, and cutover rehearsal evidence.
-Final files are written once and never edited after measurement. A formatting-only
-byte change intentionally changes the raw artifact digest.
+The owner still executes maintenance and cutover rehearsal evidence. Final files are
+written once and never edited after measurement.
 
 Create `capture.json` beside the six artifacts:
 
@@ -228,72 +228,73 @@ Artifact paths are relative to `capture.json` and remain inside the canonical
 bundle. Absolute paths, traversal, duplicates, directories, symbolic links, hard
 link aliases, and input/output aliases fail closed.
 
-## Assemble the measured packet
+## Retained artifact contract
+
+The packet bundle contains six raw JSON artifacts. They must be regular files, never symbolic links.
+The assembler rejects hard-link aliases so two artifact roles cannot reference the same inode.
+The PostgreSQL system identifier binds the database instance used for the run.
+The assembler calculates SHA-256 digests for the retained raw baseline, shadow,
+query, mutation, maintenance, and cutover bytes before parsing their contracts.
+Tenant-predicate coverage is calculated by the validator from the audited template
+counts. The packet cannot supply a precomputed pass/fail value; `packet_digest` and
+all admission metrics are recalculated from retained input.
+
+The reviewed bootstrap file is shadow-only. It must not contain production `ALTER TABLE`, `DROP TABLE`, `RENAME TO`
+statements, copy/replay/dual-write instructions, or cutover authorization.
+
+## Assemble and validate
 
 ```bash
 node scripts/verify/index-storage-tooling.mjs partition-assemble \
   --manifest evidence/index-partition/manifest.json \
   --capture evidence/index-partition/capture.json \
   --output evidence/index-partition/partition-packet.json
-```
 
-The assembler reads each raw artifact exactly once, hashes its exact bytes, parses
-the required shape, constructs `index_partition_evidence_packet_v1`, and runs the
-canonical structural validator. It refuses overwrite and does not accept caller
-supplied hashes, packet fields, admission reasons, or pass/fail flags.
-
-## Required measured evidence
-
-### Baseline and shadow
-
-Baseline records timestamps, distinct tenants, audited query coverage, and exact
-entity/link rows, bytes, and logical digests. Shadow records timestamps, catch-up,
-validated FK state, orphan count, logical parity, and one positive size per child.
-Partition skew and all admission decisions are calculated later.
-
-### Query measurements
-
-Each unique query run records baseline/shadow p95 and SHA-256 plan digests. Both use
-`normalized_partition_plan_v1`. Raw EXPLAIN samples, result digest parity, and exact
-child relation reads remain retained reviewer evidence. The validator calculates
-maximum non-negative latency regression and counts plan digest changes.
-
-### Mutation and WAL measurements
-
-Each run records baseline/shadow p95 and WAL bytes. The validator calculates maximum
-latency regression and WAL amplification.
-
-### Maintenance measurements
-
-Each run records baseline/shadow ordinary VACUUM duration and dead tuples.
-`VACUUM FULL` is invalid evidence.
-
-### Cutover rehearsals
-
-Each rehearsal records lock duration, rollback verification, and confirmation that
-production relations remained unchanged. This is evidence only; production cutover
-is not implemented here.
-
-## Validate and publish admission
-
-```bash
 node scripts/verify/index-storage-tooling.mjs partition-validate \
   --input evidence/index-partition/partition-packet.json \
   --output evidence/index-partition/admission.json
 ```
 
-The validator recomputes manifest identity, provenance, raw hashes, timestamp order,
-repetition counts, tenant coverage, digest parity, latency/WAL regression, partition
-skew, lock duration, rollback facts, and typed rejection reasons. It publishes
-`index_partition_admission_v1` with either `admitted` or `keep_unpartitioned`. A
-structurally invalid packet produces no admission output.
+The assembler reads every raw file once, hashes exact bytes, constructs
+`index_partition_evidence_packet_v1`, and refuses caller-supplied hashes or pass
+flags. The validator recomputes manifest identity, provenance, repetitions, tenant
+coverage, digest parity, query/mutation latency, WAL amplification, partition skew,
+lock duration, rollback facts, and typed reasons. Structurally invalid evidence
+produces no admission output.
+
+## Required measured evidence
+
+### Baseline and shadow
+
+Rows, bytes, tenants, audited query coverage, logical digests, child sizes, catch-up,
+FK validation, and orphan state.
+
+### Query measurements
+
+Unique names, baseline/shadow p95, normalized plan digests, result parity, exact
+child reads, and retained raw EXPLAIN samples.
+
+### Mutation and WAL measurements
+
+Unique names, exactly one affected row, baseline/shadow p95, positive maximum
+per-sample plan-node WAL bytes, exact shadow child pruning, and retained raw EXPLAIN
+samples. The validator calculates mutation latency regression and WAL amplification.
+
+### Maintenance measurements
+
+Baseline/shadow ordinary VACUUM duration and dead tuples. `VACUUM FULL` is invalid.
+
+### Cutover rehearsals
+
+Lock duration, rollback verification, and proof that production relations remained
+unchanged. Production cutover is not implemented by this runbook.
 
 ## Retention and review
 
 Retain together:
 
 - `config.json`, `manifest.json`, `bootstrap.sql`, and `query-audit.json`;
-- all six raw JSON artifacts and their deeper PostgreSQL/EXPLAIN inputs;
+- all six raw JSON artifacts and deeper PostgreSQL/EXPLAIN inputs;
 - `capture.json`, `partition-packet.json`, and `admission.json`;
 - PostgreSQL logs and runner metadata.
 
@@ -309,12 +310,15 @@ The repository owner runs:
 ```bash
 cargo test -p rustok-benchmarks partition_snapshot
 cargo test -p rustok-benchmarks partition_query
+cargo test -p rustok-benchmarks partition_mutation
 cargo check -p rustok-benchmarks --bin index-partition-snapshot-capture
 cargo check -p rustok-benchmarks --bin index-partition-query-evidence
+cargo check -p rustok-benchmarks --bin index-partition-mutation-evidence
 node --test scripts/verify/index-partition-evidence.test.mjs
 node --test scripts/verify/index-partition-evidence-assembly.test.mjs
 node scripts/verify/verify-index-partition-evidence.mjs
 node scripts/verify/verify-index-partition-snapshot-capture.mjs
 node scripts/verify/verify-index-partition-query-evidence.mjs
+node scripts/verify/verify-index-partition-mutation-evidence.mjs
 node scripts/verify/index-storage-tooling.mjs contract
 ```
