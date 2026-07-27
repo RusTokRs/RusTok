@@ -22,6 +22,9 @@
 - `CategoryService::restore_subtree(tenant_id, category_id, security) -> CategorySubtreeLifecycleResponse`
 - `CategoryService::topic_policy(tenant_id, category_id, security) -> CategoryTopicPolicyResponse`
 - `CategoryService::set_topic_policy(tenant_id, category_id, security, UpdateCategoryTopicPolicyInput) -> CategoryTopicPolicyResponse`
+- `pub struct ForumCategoryTopicCreateAudiencePolicyService`
+- `ForumCategoryTopicCreateAudiencePolicyService::get(tenant_id, category_id, security) -> ForumCategoryTopicCreateAudiencePolicy`
+- `ForumCategoryTopicCreateAudiencePolicyService::set(tenant_id, category_id, security, SetForumCategoryTopicCreateAudiencePolicyInput) -> ForumCategoryTopicCreateAudiencePolicy`
 - `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
 - `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
 - `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
@@ -79,6 +82,13 @@
 - GraphQL entry points: `forumCategoryTopicPolicy` and `setForumCategoryTopicPolicy`.
 - PostgreSQL and SQLite reject direct `forum_topics` inserts or category moves into a category whose policy disables topic creation.
 - Existing topics remain unchanged when a category policy is disabled; the policy controls new topic placement only.
+### Category topic-create audience policy
+- `ForumCategoryTopicCreateAudiencePolicyService` stores a separate normalized topic-create audience rule; it does not mutate content visibility.
+- Effective topic-create audience is the root-to-category conjunction of every non-empty local layer.
+- Managed `get` and atomic replacement `set` require `forum_categories:manage`; empty constraints restore inheritance.
+- PostgreSQL and SQLite enforce tenant/category ownership, typed relations, immutable rows, and bounded direct channel/group/user inserts.
+- `FORUM-20AQ` publishes persistence only; `TopicService::create`, REST, GraphQL, and facts-provider enforcement remain unchanged.
+- Run `node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs` after changing this boundary.
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.

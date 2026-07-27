@@ -262,7 +262,7 @@ where
     })
 }
 
-async fn load_category_ancestor_ids<C>(
+pub(crate) async fn load_category_ancestor_ids<C>(
     db: &C,
     tenant_id: Uuid,
     category_id: Uuid,
