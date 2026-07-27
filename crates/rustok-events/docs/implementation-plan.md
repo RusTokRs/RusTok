@@ -55,14 +55,20 @@ relation state.
   unacknowledged pending a connector-level poison-message contract.
 - Missing/stopped/invalid enabled worker state reaches `runtime_guardrails`,
   `/health/ready`, and aggregate guardrail metrics. Disabled execution is healthy.
-- Shared bounded Prometheus metrics cover received deliveries, terminal outcomes,
-  retries, stage/error failures, DLQ publication, receive-to-ack duration, worker
-  starts/terminations, in-flight state/timestamp, and last success.
+- Shared bounded Prometheus delivery metrics cover received/terminal outcomes, retries,
+  stage/error failures, DLQ publication, receive-to-ack duration, worker lifecycle,
+  in-flight state/timestamp, and last success.
+- A read-only Iggy observer connects to the already-running configured endpoint and
+  reads every `domain` partition plus the persistent group checkpoint. It does not
+  consume events, store offsets, publish, acknowledge, or manage a broker process.
+- Position metrics expose snapshot timestamp, partition count, completeness, and exact
+  total/max broker offset lag only when every partition has a coherent result. Empty
+  partitions contribute zero; missing/inconsistent checkpoints make the snapshot
+  incomplete and clear lag gauges.
 - Metric labels are bounded and exclude tenants, event/relation identifiers, partition,
-  offset, payloads, ack tokens, and raw error messages.
-- Source position and lag metrics are intentionally absent. The connector must expose
-  a partition-qualified acknowledged-position vector and partition high-watermarks
-  before a meaningful lag metric can exist.
+  offset, payloads, ack tokens, credentials, and raw error messages.
+- Observer failures are retried independently and do not stop projection or enter the
+  projection worker readiness contract.
 - Bounded Social Graph replay uses the same schema/inbox/source-version path for repair.
 - Profiles privacy remains on synchronous authoritative Social Graph ports.
 
@@ -91,10 +97,11 @@ relation state.
   shutdown, bounded retry, staged exact-byte DLQ-before-ack, and acknowledgement-only
   recovery.
 - [x] Add enabled-worker readiness and aggregate guardrail metrics.
-- [x] Add bounded dedicated remote-consumer Prometheus telemetry.
-- [x] Explicitly defer incomplete source-position/lag metrics.
+- [x] Add bounded dedicated remote-consumer delivery telemetry.
+- [x] Add read-only every-partition committed/high-watermark observation and
+  completeness-gated total/max lag.
 - [x] Add source guards for ordering, connector ownership, readiness, telemetry labels,
-  source-position deferral, and foreign-table isolation.
+  broker-backed lag origin, incomplete-snapshot clearing, and foreign-table isolation.
 
 ## Open results
 
@@ -103,19 +110,17 @@ relation state.
 2. **Keep event types, registry, release artifacts, and consumer imports synchronized.**
    New families require direct `rustok-events` imports, semantic coverage, and owner
    recovery guidance.
-3. **Add true remote-consumer lag.** Extend the connector with partition high-watermark
-   observations and a partition-qualified acknowledged-position snapshot, then derive
-   lag. Do not substitute event age, processing duration, or one global offset.
-4. **Prove remote cursor recovery.** Execute real-Iggy restart, redelivery, ack failure,
-   DLQ failure, connector loss, shutdown, and multi-replica ownership scenarios.
-5. **Prove Index repair and concurrency.** Execute PostgreSQL concurrent schema
+3. **Prove remote cursor and position recovery.** Execute real-Iggy restart, redelivery,
+   ack failure, DLQ failure, connector loss, observer reconnect, shutdown, TLS/auth,
+   rebalance, concurrent snapshot movement, and multi-replica ownership scenarios.
+4. **Prove Index repair and concurrency.** Execute PostgreSQL concurrent schema
    registration/mutation, create drift, and repair through bounded owner replay/rescan
    while privacy remains on owner ports.
-6. **Close the DLQ acknowledgement window.** Decide whether publish-success/source-ack
+5. **Close the DLQ acknowledgement window.** Decide whether publish-success/source-ack
    failure needs a durable owner receipt or another idempotent DLQ identity. Define a
    connector poison shape for undecodable deliveries.
-7. **Synchronize recovery guidance.** Outbox, replay, reindex, metrics, and DLQ runbooks
-   must name exact schemas and avoid transport-owned payload copies.
+6. **Synchronize recovery guidance.** Outbox, replay, reindex, lag, and DLQ runbooks must
+   name exact schemas and avoid transport-owned payload copies.
 
 ## Verification
 
@@ -134,12 +139,13 @@ relation state.
 - `cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture`
 - `cargo test -p rustok-server runtime_guardrails --lib -- --nocapture`
 - `node scripts/verify/verify-index-schema-registration.mjs`
+- `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-relation-event-replay.mjs`
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `node scripts/verify/verify-runtime-consumer-metrics.mjs`
-- Real-broker multi-replica restart/recovery and PostgreSQL evidence.
+- Real-broker multi-replica restart/recovery/position and PostgreSQL evidence.
 
 These commands and scenarios remain maintainer-run and were not executed manually in
 this slice.
@@ -156,8 +162,9 @@ this slice.
    acknowledgement-only recovery.
 8. Enabled durable workers participate in readiness and bounded telemetry; disabled
    optional workers do not degrade the host.
-9. Do not publish source position or lag without partition-qualified connector state
-   and high-watermarks.
-10. Keep producer storage authoritative for bounded repair.
-11. Update module docs, event flow, and recovery guidance with every contract change.
-12. Keep the central plan registry limited to status and nearest priority.
+9. Publish lag only from every-partition broker checkpoints/high-watermarks with an
+   explicit completeness signal; never infer it from event age or one offset.
+10. Position observation is read-only and cannot become event execution or owner policy.
+11. Keep producer storage authoritative for bounded repair.
+12. Update module docs, event flow, and recovery guidance with every contract change.
+13. Keep the central plan registry limited to status and nearest priority.
