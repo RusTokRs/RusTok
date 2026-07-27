@@ -55,14 +55,15 @@ retry.
 - Shared `StopHandle` controls shutdown and `SocialGraphIndexWorkerHandle` participates
   in `runtime_guardrails`, `/health/ready`, and aggregate guardrail metrics only when
   explicitly enabled.
-- Shared Prometheus consumer telemetry now covers received deliveries, terminal
-  outcomes, retries, bounded failures, DLQ results, processing duration, starts,
-  terminations, in-flight state, last success, and received/acknowledged offsets.
-- The metrics use bounded labels and expose no tenant, event, relation, payload,
-  ack-token, or raw error-message values.
-- Received/acknowledged offsets are not represented as true broker lag. High-watermark
-  support, PostgreSQL concurrency, real-Iggy recovery, DLQ-window, and multi-replica
-  evidence remain pending.
+- Shared Prometheus consumer telemetry covers received deliveries, terminal outcomes,
+  retries, bounded failures, DLQ results, processing duration, starts, terminations,
+  in-flight state, and last success.
+- Metrics use bounded labels and expose no tenant, event, relation, partition, offset,
+  payload, ack-token, or raw error-message values.
+- Source position and lag metrics are intentionally deferred until the connector can
+  expose a partition-qualified acknowledged-position vector and broker high-watermarks.
+- PostgreSQL concurrency, real-Iggy recovery, the DLQ acknowledgement window, and
+  multi-replica evidence remain pending.
 - None of this moves privacy policy or relation authority out of Social Graph.
 
 ## FFA/FBA boundary
@@ -120,9 +121,10 @@ retry.
    persisted schema registration, durable terminal recognition, default-off shared
    connector lifecycle, retries, staged DLQ ordering, shutdown, readiness, and bounded
    consumer metrics.
-   **Remaining:** connector high-watermark/true lag, deployment retention approval,
-   PostgreSQL concurrency/retention/replay/rollback, real broker and multi-replica
-   evidence, durable DLQ identity decision, and retained operator packets.
+   **Remaining:** connector high-watermark and partition-qualified position telemetry,
+   deployment retention approval, PostgreSQL concurrency/retention/replay/rollback,
+   real broker and multi-replica evidence, durable DLQ identity decision, and retained
+   operator packets.
 
 ## Recheck checkpoint — 2026-07-27
 
@@ -136,6 +138,8 @@ retry.
   lifecycle, strict `outbox_iggy` gating, one shared Iggy connector, shutdown, bounded
   retry, exact-byte DLQ-before-ack, and acknowledgement-only recovery.
 - Added enabled-worker readiness and shared bounded Prometheus consumer telemetry.
+- Deliberately deferred source-position/lag metrics rather than publish an incomplete
+  cross-partition offset.
 - Tests, formatters, Cargo commands, source verifiers, PostgreSQL, real-broker, and
   multi-replica scenarios remain maintainer-run or pending.
 
@@ -187,4 +191,5 @@ retry.
     publication precedes source ack.
 12. Optional enabled workers participate in readiness and bounded telemetry; disabled
     workers do not degrade presentation availability.
-13. Update Profiles and affected owner docs with every boundary change.
+13. Publish source position/lag only from a partition-qualified connector contract.
+14. Update Profiles and affected owner docs with every boundary change.
