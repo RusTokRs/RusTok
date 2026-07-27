@@ -159,6 +159,8 @@ async fn topic_create_command_enforces_inherited_audience_before_writes() {
         create_category(&db, tenant_id, policy_admin.clone(), "group-child", Some(root)).await;
     let explicit_allow =
         create_category(&db, tenant_id, policy_admin.clone(), "explicit-allow", None).await;
+    let explicit_deny =
+        create_category(&db, tenant_id, policy_admin.clone(), "explicit-deny", None).await;
 
     let policies = ForumCategoryTopicCreateAudiencePolicyService::new(db.clone());
     policies
@@ -219,6 +221,21 @@ async fn topic_create_command_enforces_inherited_audience_before_writes() {
         )
         .await
         .expect("explicit allow topic-create layer should persist");
+    policies
+        .set(
+            tenant_id,
+            explicit_deny,
+            policy_admin.clone(),
+            SetForumCategoryTopicCreateAudiencePolicyInput {
+                constraints: ForumAudienceConstraints {
+                    roles_any: vec![UserRole::Admin],
+                    deny_user_ids: vec![allowed_admin_id],
+                    ..ForumAudienceConstraints::default()
+                },
+            },
+        )
+        .await
+        .expect("explicit deny topic-create layer should persist");
 
     let ordinary = TopicService::new(db.clone(), event_bus.clone());
     ordinary
@@ -245,6 +262,19 @@ async fn topic_create_command_enforces_inherited_audience_before_writes() {
         )
         .await
         .expect("explicit allow should short-circuit unresolved owner facts");
+
+    let count_before_explicit_deny = topic_count(&db).await;
+    assert!(matches!(
+        ordinary
+            .create(
+                tenant_id,
+                allowed_admin.clone(),
+                topic_input(explicit_deny, "explicit-denied"),
+            )
+            .await,
+        Err(ForumError::Forbidden(_))
+    ));
+    assert_eq!(topic_count(&db).await, count_before_explicit_deny);
 
     let count_before_denials = topic_count(&db).await;
     assert!(matches!(

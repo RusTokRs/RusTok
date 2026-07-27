@@ -27,6 +27,16 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
+function between(source, start, end, label) {
+  const from = source.indexOf(start);
+  const to = source.indexOf(end, from + start.length);
+  if (from < 0 || to < 0 || to <= from) {
+    failures.push(`${label}: bounded section is missing`);
+    return "";
+  }
+  return source.slice(from, to);
+}
+
 const contractPath =
   "crates/rustok-forum/contracts/forum-topic-create-audience-enforcement.json";
 const contract = JSON.parse(read(contractPath) || "{}");
@@ -123,13 +133,27 @@ for (const marker of [
   "pub fn with_audience_facts",
   "pub async fn create_with_audience_context",
   "pub async fn create_command_with_audience_context",
-  "require(tenant_id, input.category_id, &security, context)",
-  ".inner.create_command(tenant_id, security, input)",
 ]) {
   requireText(facade, marker, `TopicService facade is missing ${marker}`);
 }
-const requireIndex = facade.indexOf(".require(tenant_id, input.category_id, &security, context)");
-const createIndex = facade.indexOf(".inner.create_command(tenant_id, security, input)");
+const createBlock = between(
+  facade,
+  "async fn create_command_with_optional_audience_context(",
+  "pub async fn get(",
+  "topic-create facade helper",
+);
+for (const marker of [
+  ".require(tenant_id, input.category_id, &security, context)",
+  ".create_command(tenant_id, security, input)",
+]) {
+  requireText(createBlock, marker, `TopicService create helper is missing ${marker}`);
+}
+const requireIndex = createBlock.indexOf(
+  ".require(tenant_id, input.category_id, &security, context)",
+);
+const createIndex = createBlock.indexOf(
+  ".create_command(tenant_id, security, input)",
+);
 if (requireIndex < 0 || createIndex < 0 || requireIndex > createIndex) {
   failures.push("TopicService must authorize before delegating to the topic write owner");
 }
@@ -153,6 +177,9 @@ for (const marker of [
   "category without topic-create audience should preserve compatibility",
   "matching local role should not require owner facts or caller context",
   "explicit allow should short-circuit unresolved owner facts",
+  "explicit deny topic-create layer should persist",
+  "count_before_explicit_deny",
+  "explicit-denied",
   "count_before_denials",
   "Err(ForumError::CapabilityUnavailable",
   "missing-context",
