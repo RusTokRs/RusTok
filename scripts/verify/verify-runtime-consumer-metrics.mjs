@@ -61,9 +61,16 @@ for (const metric of [
   "rustok_runtime_consumer_in_flight",
   "rustok_runtime_consumer_in_flight_started_timestamp_seconds",
   "rustok_runtime_consumer_last_success_timestamp_seconds",
-  "rustok_runtime_consumer_source_offset",
 ]) {
   requireText("runtime consumer telemetry", files.telemetry, metric);
+}
+
+for (const forbiddenMetric of [
+  "rustok_runtime_consumer_source_offset",
+  "rustok_runtime_consumer_source_partition",
+  "rustok_runtime_consumer_lag",
+]) {
+  forbidText("runtime consumer telemetry", files.telemetry, forbiddenMetric);
 }
 
 for (const labelSet of [
@@ -73,7 +80,6 @@ for (const labelSet of [
   '&["consumer", "stage", "error_code"]',
   '&["consumer", "result"]',
   '&["consumer", "reason"]',
-  '&["consumer", "state"]',
 ]) {
   requireText("runtime consumer telemetry labels", files.telemetry, labelSet);
 }
@@ -82,6 +88,8 @@ for (const forbiddenLabel of [
   '"tenant_id"',
   '"event_id"',
   '"partition"',
+  '"offset"',
+  '"state"',
   '"payload"',
   '"ack_token"',
   '"error_message"',
@@ -92,8 +100,6 @@ for (const forbiddenLabel of [
 for (const marker of [
   "pub fn record_worker_start(consumer: &str)",
   "pub fn record_worker_termination(consumer: &str, reason: &str)",
-  '.with_label_values(&[consumer, "received"])',
-  '.with_label_values(&[consumer, "acknowledged"])',
   "runtime_consumer_metrics::ensure_registered()",
   "runtime_consumer_metrics::record_worker_start",
   "runtime_consumer_metrics::record_worker_termination",
@@ -178,5 +184,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Runtime consumer metrics verification passed: shared registry export, bounded labels, throughput/outcome/retry/failure/DLQ/duration/lifecycle/timestamp/offset metrics, clean in-flight lifecycle, staged DLQ publication, and acknowledgement-only recovery are locked.",
+  "Runtime consumer metrics verification passed: shared registry export, bounded labels, throughput/outcome/retry/failure/DLQ/duration/lifecycle/timestamp metrics, explicit source-position deferral, clean in-flight lifecycle, staged DLQ publication, and acknowledgement-only recovery are locked.",
 );
