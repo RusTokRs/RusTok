@@ -54,6 +54,7 @@ const runContract = (args) => {
   for (const script of [
     'verify-index-fba.mjs',
     'verify-index-storage-migrations.mjs',
+    'verify-index-mutation-storage.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-standalone-tools.mjs',

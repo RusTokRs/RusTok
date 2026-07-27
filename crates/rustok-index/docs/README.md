@@ -124,9 +124,18 @@ source-domain columns or benchmark schemas:
 - `index_jobs` stores bounded durable schema/index/rebuild/reconciliation work;
 - `index_consistency_findings` stores open/resolved drift findings.
 
-The migration source is production schema only. Runtime entity/link writes,
-transactional inbox application, schema locks, secondary-index lifecycle, and
-query execution remain later M3/M4 slices.
+The first runtime persistence slice is now implemented by `PostgresMutationStore`.
+A `MutationDelivery` is validated against the in-memory `SchemaRegistry`, claimed
+through the tenant/source/delivery inbox key, serialized by a transaction-scoped
+PostgreSQL advisory lock on the complete entity key, compared with the current
+source version, and then applied as one transaction. Live upserts replace
+the JSONB field payload plus ordered links; deletes replace them with a tombstone.
+Exact redelivery is idempotent, stale delivery is terminally ignored, delivery-ID
+payload reuse fails closed, and any entity/link failure rolls back the inbox claim.
+
+Schema application leases, partition/secondary-index lifecycle, PostgreSQL
+Testcontainers/concurrency evidence, query execution, and batch ingestion remain
+later M3/M4/M5 slices.
 
 ## Status
 
@@ -140,7 +149,8 @@ query execution remain later M3/M4 slices.
 - M2 accepted storage model: `JSONB`
 - M2 rejected prototype cleanup: `complete`
 - M3 storage-schema foundation: `complete`
-- Production migrations: registered; runtime storage adapter not yet implemented
+- M3 atomic mutation persistence: `complete`
+- Production persistence: mutation writes implemented; query adapter not yet implemented
 
 ## Verification
 

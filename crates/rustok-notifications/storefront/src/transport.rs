@@ -3,7 +3,7 @@ mod native_server_adapter;
 
 pub use native_server_adapter::{
     NativeNotificationStorefrontError, apply_notification_group_state,
-    authorize_notification_open,
+    authorize_notification_open as authorize_notification_open_native,
     load_notification_group_items as load_notification_group_items_native,
     load_notification_group_summaries as load_notification_group_summaries_native,
     load_notification_unread_count as load_notification_unread_count_native,
@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::core::{
     NotificationStorefrontGroupItemsPage, NotificationStorefrontGroupItemsRequest,
     NotificationStorefrontGroupSummaryPage, NotificationStorefrontGroupSummaryRequest,
+    NotificationStorefrontOpenDecision, NotificationStorefrontOpenRequest,
     NotificationStorefrontState, NotificationStorefrontUnreadCount,
 };
 
@@ -104,6 +105,22 @@ pub async fn load_notification_group_items_selected(
     .await
 }
 
+pub async fn authorize_notification_open_selected(
+    context: NotificationStorefrontTransportContext,
+    request: NotificationStorefrontOpenRequest,
+) -> UiTransportResult<NotificationStorefrontOpenDecision> {
+    let native_request = request.clone();
+    let access_token = context.access_token;
+    let tenant_slug = context.tenant_slug;
+    execute_selected_transport(
+        "notifications.storefront.open_authorization",
+        selected_storefront_read_transport_path(),
+        move || authorize_notification_open_native(native_request),
+        move || graphql_adapter::authorize_open(access_token, tenant_slug, request),
+    )
+    .await
+}
+
 pub async fn load_notification_unread_count(
 ) -> Result<NotificationStorefrontUnreadCount, NativeNotificationStorefrontError> {
     load_notification_unread_count_selected(current_storefront_transport_context())
@@ -123,6 +140,14 @@ pub async fn load_notification_group_items(
     request: NotificationStorefrontGroupItemsRequest,
 ) -> Result<NotificationStorefrontGroupItemsPage, NativeNotificationStorefrontError> {
     load_notification_group_items_selected(current_storefront_transport_context(), request)
+        .await
+        .map_err(|error| NativeNotificationStorefrontError(error.to_string()))
+}
+
+pub async fn authorize_notification_open(
+    request: NotificationStorefrontOpenRequest,
+) -> Result<NotificationStorefrontOpenDecision, NativeNotificationStorefrontError> {
+    authorize_notification_open_selected(current_storefront_transport_context(), request)
         .await
         .map_err(|error| NativeNotificationStorefrontError(error.to_string()))
 }

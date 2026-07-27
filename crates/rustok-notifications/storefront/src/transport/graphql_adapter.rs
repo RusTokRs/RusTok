@@ -7,7 +7,8 @@ use crate::core::{
     NotificationStorefrontGroupItemsPage, NotificationStorefrontGroupItemsRequest,
     NotificationStorefrontGroupSummary, NotificationStorefrontGroupSummaryPage,
     NotificationStorefrontGroupSummaryRequest, NotificationStorefrontItem,
-    NotificationStorefrontItemState, NotificationStorefrontPriority,
+    NotificationStorefrontItemState, NotificationStorefrontOpenDecision,
+    NotificationStorefrontOpenRequest, NotificationStorefrontPriority,
     NotificationStorefrontUnreadCount,
 };
 
@@ -73,6 +74,14 @@ query NotificationStorefrontGroupItems(
   }
 }
 "#;
+const OPEN_AUTHORIZATION_QUERY: &str = r#"
+query NotificationStorefrontAuthorizeOpen($notificationId: String!) {
+  notificationInboxAuthorizeOpen(notificationId: $notificationId) {
+    decision
+    route
+  }
+}
+"#;
 
 #[derive(Debug, Default, Serialize)]
 struct EmptyVariables {}
@@ -90,6 +99,12 @@ struct GroupItemsVariables {
     state: Option<GroupItemStateWire>,
     cursor: Option<String>,
     limit: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAuthorizationVariables {
+    #[serde(rename = "notificationId")]
+    notification_id: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -126,6 +141,12 @@ struct GroupItemsResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct OpenAuthorizationResponse {
+    #[serde(rename = "notificationInboxAuthorizeOpen")]
+    authorization: OpenAuthorizationWire,
+}
+
+#[derive(Debug, Deserialize)]
 struct GroupSummaryPageWire {
     groups: Vec<GroupSummaryWire>,
     #[serde(rename = "nextCursor")]
@@ -153,6 +174,19 @@ struct GroupSummaryWire {
     unread_count: u64,
     #[serde(rename = "latestItem")]
     latest_item: ItemWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAuthorizationWire {
+    decision: OpenDecisionWire,
+    route: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum OpenDecisionWire {
+    Allowed,
+    Unavailable,
 }
 
 #[derive(Debug, Deserialize)]
@@ -290,6 +324,36 @@ pub async fn load_group_items(
     })
 }
 
+pub async fn authorize_open(
+    access_token: Option<String>,
+    tenant_slug: Option<String>,
+    request: NotificationStorefrontOpenRequest,
+) -> Result<NotificationStorefrontOpenDecision, GraphqlNotificationStorefrontError> {
+    let response: OpenAuthorizationResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            OPEN_AUTHORIZATION_QUERY,
+            Some(OpenAuthorizationVariables {
+                notification_id: request.notification_id,
+            }),
+        ),
+        access_token,
+        tenant_slug,
+        None,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    match response.authorization.decision {
+        OpenDecisionWire::Allowed => response
+            .authorization
+            .route
+            .map(|route| NotificationStorefrontOpenDecision::Allowed { route })
+            .ok_or_else(|| "notification inbox open response is invalid".to_string()),
+        OpenDecisionWire::Unavailable => Ok(NotificationStorefrontOpenDecision::Unavailable),
+    }
+}
+
 fn map_item(item: ItemWire) -> NotificationStorefrontItem {
     NotificationStorefrontItem {
         id: item.id,
@@ -351,11 +415,18 @@ fn graphql_url() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{GROUP_ITEMS_QUERY, GROUP_SUMMARIES_QUERY, UNREAD_COUNT_QUERY};
+    use super::{
+        GROUP_ITEMS_QUERY, GROUP_SUMMARIES_QUERY, OPEN_AUTHORIZATION_QUERY, UNREAD_COUNT_QUERY,
+    };
 
     #[test]
     fn inbox_queries_expose_no_owner_identity_variables() {
-        for query in [UNREAD_COUNT_QUERY, GROUP_SUMMARIES_QUERY, GROUP_ITEMS_QUERY] {
+        for query in [
+            UNREAD_COUNT_QUERY,
+            GROUP_SUMMARIES_QUERY,
+            GROUP_ITEMS_QUERY,
+            OPEN_AUTHORIZATION_QUERY,
+        ] {
             for forbidden in [
                 ["tenant", "Id"].concat(),
                 ["recipient", "Id"].concat(),
@@ -373,5 +444,13 @@ mod tests {
         assert!(GROUP_ITEMS_QUERY.contains("$groupKey: String!"));
         assert!(GROUP_ITEMS_QUERY.contains("$state: NotificationInboxItemState"));
         assert!(GROUP_ITEMS_QUERY.contains("templateData { key value }"));
+    }
+
+    #[test]
+    fn open_query_accepts_only_notification_identity_and_returns_typed_decision() {
+        assert!(OPEN_AUTHORIZATION_QUERY.contains("$notificationId: String!"));
+        assert!(OPEN_AUTHORIZATION_QUERY.contains("notificationInboxAuthorizeOpen"));
+        assert!(OPEN_AUTHORIZATION_QUERY.contains("decision"));
+        assert!(OPEN_AUTHORIZATION_QUERY.contains("route"));
     }
 }

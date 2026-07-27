@@ -136,7 +136,7 @@ for (const [block, values, label] of [
     prepare,
     [
       'require_cart_checkout_write_admission(&context, PREPARE_CHECKOUT_OPERATION)?;',
-      'let tenant_id = parse_tenant_id(&context)?;',
+      'let tenant_id = parse_tenant_id(&context, PREPARE_CHECKOUT_OPERATION)?;',
       '.get_cart(tenant_id, request.cart_id)',
       '.begin_checkout(tenant_id, request.cart_id)',
       '.update_context(tenant_id, request.cart_id, request.input)',
@@ -148,7 +148,7 @@ for (const [block, values, label] of [
     readSnapshot,
     [
       'require_cart_checkout_read_admission(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;',
-      'let tenant_id = parse_tenant_id(&context)?;',
+      'let tenant_id = parse_tenant_id(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;',
       '.get_cart(tenant_id, cart_id)',
       '.and_then(snapshot_from_cart)',
     ],
@@ -158,7 +158,7 @@ for (const [block, values, label] of [
     complete,
     [
       'require_cart_checkout_write_admission(&context, COMPLETE_CHECKOUT_OPERATION)?;',
-      'let tenant_id = parse_tenant_id(&context)?;',
+      'let tenant_id = parse_tenant_id(&context, COMPLETE_CHECKOUT_OPERATION)?;',
       '.complete_cart(tenant_id, request.cart_id)',
       'merge_checkout_order_metadata(cart.metadata, request.order_id)',
       'snapshot_from_cart(cart)',
@@ -169,7 +169,7 @@ for (const [block, values, label] of [
     release,
     [
       'require_cart_checkout_write_admission(&context, RELEASE_CHECKOUT_OPERATION)?;',
-      'let tenant_id = parse_tenant_id(&context)?;',
+      'let tenant_id = parse_tenant_id(&context, RELEASE_CHECKOUT_OPERATION)?;',
       '.abandon_cart(tenant_id, cart_id)',
       'snapshot_from_cart(cart)',
     ],
@@ -178,7 +178,7 @@ for (const [block, values, label] of [
 ]) {
   for (const value of values) requireText(block, value, label);
   const admissionIndex = block.indexOf('require_cart_checkout_');
-  const tenantIndex = block.indexOf('let tenant_id = parse_tenant_id(&context)?;');
+  const tenantIndex = block.indexOf('let tenant_id = parse_tenant_id(&context,');
   if (!(admissionIndex >= 0 && admissionIndex < tenantIndex)) {
     failures.push(`${label}: admission must precede tenant parsing`);
   }
@@ -194,8 +194,8 @@ for (const [pattern, expected, label] of [
   [/require_cart_checkout_read_admission\(/g, 2, 'read helper definition/use count'],
   [/require_cart_checkout_write_admission\(/g, 4, 'write helper definition/use count'],
   [/log_cart_checkout_admission_rejection\(/g, 4, 'diagnostic helper definition/use count'],
-  [/owner = CART_CHECKOUT_OWNER/g, 2, 'owner diagnostic count'],
-  [/boundary = CART_CHECKOUT_BOUNDARY/g, 2, 'boundary diagnostic count'],
+  [/owner = CART_CHECKOUT_OWNER/g, 5, 'owner diagnostic count'],
+  [/boundary = CART_CHECKOUT_BOUNDARY/g, 5, 'boundary diagnostic count'],
   [/"policy"/g, 2, 'policy phase count'],
   [/"write_semantics"/g, 1, 'write semantics phase count'],
 ]) {

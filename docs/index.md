@@ -131,7 +131,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Platform Diagram](./architecture/diagram.md)
 - [Backend Module Guides](./backend/README.md) - target backend module architecture, implementation and verification for `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core`
 - [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`, and the generic Index JSONB migration foundation
-- [`rustok-index` documentation](../crates/rustok-index/docs/README.md) — generic schema/query core, accepted JSONB storage model, M3 migration foundation, and live implementation plan
+- [`rustok-index` documentation](../crates/rustok-index/docs/README.md) — generic schema/query core, accepted JSONB storage model, M3 migration foundation, atomic mutation persistence, and live implementation plan
 - [ADR: Index PostgreSQL storage model](../DECISIONS/2026-07-24-index-storage-layout.md) — evidence-backed JSONB entity envelope, independent links, source-version rules, and migration/rollback strategy
 - [Hybrid Installer ADR](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
 - [Axum Runtime and Operations CLI Boundary](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)
