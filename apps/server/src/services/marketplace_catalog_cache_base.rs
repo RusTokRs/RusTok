@@ -19,8 +19,7 @@ use url::Url;
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion, ModulesManifest};
 use crate::services::marketplace_catalog::{
     MarketplaceCatalogProvider, MarketplaceCatalogQuery, MarketplaceProviderHealthSnapshot,
-    MarketplaceProviderHealthStatus, REGISTRY_CATALOG_SCHEMA_VERSION,
-    RegistryCatalogArtifactRelease, RegistryCatalogEvidenceReference, RegistryCatalogModule,
+    MarketplaceProviderHealthStatus, REGISTRY_CATALOG_SCHEMA_VERSION, RegistryCatalogModule,
     RegistryCatalogResponse, RegistryCatalogVersion, registry_catalog_module_path,
     registry_catalog_path,
 };

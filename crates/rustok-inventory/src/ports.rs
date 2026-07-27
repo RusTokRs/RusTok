@@ -11,7 +11,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 const MAX_RESERVATION_EXTERNAL_ID_LENGTH: usize = 191;
@@ -160,11 +160,6 @@ impl PersistentInventoryReservationIdentityPort {
     }
 }
 
-pub fn in_process_inventory_reservation_identity_port(
-    db: DatabaseConnection,
-) -> Arc<dyn InventoryReservationIdentityPort> {
-    Arc::new(PersistentInventoryReservationIdentityPort::new(db))
-}
 
 #[async_trait]
 impl InventoryReservationPort for crate::InventoryService {
