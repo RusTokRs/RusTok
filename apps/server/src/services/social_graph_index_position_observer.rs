@@ -64,6 +64,7 @@ pub async fn start_social_graph_index_position_observer_if_enabled(
     let poll = match position_poll_interval() {
         Ok(poll) => poll,
         Err(error) => {
+            record_position_unavailable();
             runtime_consumer_metrics::record_failure(
                 METRICS_CONSUMER,
                 STAGE_POSITION_SNAPSHOT,
@@ -108,6 +109,7 @@ async fn position_observer_loop(
     let mut observer = None;
     loop {
         if *stop_rx.borrow() {
+            record_position_unavailable();
             return;
         }
 
@@ -121,6 +123,7 @@ async fn position_observer_loop(
             {
                 Ok(connected) => observer = Some(connected),
                 Err(error) => {
+                    record_position_unavailable();
                     runtime_consumer_metrics::record_failure(
                         METRICS_CONSUMER,
                         STAGE_POSITION_SNAPSHOT,
@@ -162,6 +165,7 @@ async fn position_observer_loop(
                     );
                 }
                 Err(error) => {
+                    record_position_unavailable();
                     runtime_consumer_metrics::record_failure(
                         METRICS_CONSUMER,
                         STAGE_POSITION_SNAPSHOT,
@@ -179,9 +183,14 @@ async fn position_observer_loop(
         }
 
         if wait_or_stop(poll, &mut stop_rx).await {
+            record_position_unavailable();
             return;
         }
     }
+}
+
+fn record_position_unavailable() {
+    runtime_consumer_metrics::record_position_snapshot(METRICS_CONSUMER, 0, 0, None, None);
 }
 
 fn position_poll_interval() -> Result<Duration> {
