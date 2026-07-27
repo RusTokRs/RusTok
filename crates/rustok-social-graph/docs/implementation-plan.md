@@ -20,8 +20,8 @@ server lifecycle, bounded retry, staged exact-byte DLQ-before-ack, graceful shut
 enabled-worker readiness, and bounded per-consumer Prometheus telemetry.
 
 Compilation, source-verifier execution, PostgreSQL concurrency, real-broker restart,
-multi-replica recovery, true broker high-watermark lag, and retained runtime evidence
-remain maintainer-run or pending.
+multi-replica recovery, partition-qualified high-watermark/lag telemetry, and retained
+runtime evidence remain maintainer-run or pending.
 
 ## Delivered owner relation contract
 
@@ -115,14 +115,13 @@ remain maintainer-run or pending.
   in the process Prometheus registry used by `/metrics`.
 - Metrics cover received deliveries, terminal outcomes, projection/ack retries,
   bounded stage/error failures, DLQ publication success/failure, receive-to-ack
-  duration, worker starts/terminations, in-flight state/timestamp, last success, and
-  received/acknowledged source offsets.
+  duration, worker starts/terminations, in-flight state/timestamp, and last success.
 - Consumer, stage, outcome, result, reason, and stable error-code labels are bounded.
-  Tenant, event, relation, partition, payload, ack-token, and raw error-message values
-  are not labels.
-- Received and acknowledged offsets are honest observations, not a broker-lag claim.
-  True offset lag remains unavailable until the connector exposes a partition
-  high-watermark contract.
+  Tenant, event, relation, partition, offset, payload, ack-token, and raw error-message
+  values are not labels.
+- Source position and lag metrics are intentionally absent. A shared-topic consumer
+  needs a partition-qualified position vector and broker high-watermarks; a single
+  last offset or event age would be misleading.
 - A process crash after successful DLQ publish but before source ack can still republish
   on redelivery; a durable DLQ identity/receipt decision remains open.
 - Malformed bytes that fail before `ConsumedContractEvent` construction remain
@@ -130,8 +129,8 @@ remain maintainer-run or pending.
 
 ## Remaining Social Graph scope
 
-1. Add connector partition high-watermark observations and derive true bounded consumer
-   lag without using payload timestamps as a substitute.
+1. Add connector partition high-watermark observations and a partition-qualified
+   acknowledged-position snapshot, then derive true bounded consumer lag.
 2. Execute PostgreSQL concurrent schema-registration and mutation evidence.
 3. Prove real-Iggy restart/redelivery, ack failure, DLQ failure, connector loss,
    graceful shutdown, and multi-replica cursor ownership.
