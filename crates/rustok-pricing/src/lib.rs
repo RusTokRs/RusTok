@@ -11,6 +11,7 @@ pub mod migrations;
 pub mod ports;
 mod read_context;
 pub mod services;
+mod write_context;
 
 pub use ports::{
     ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
@@ -19,9 +20,9 @@ pub use ports::{
     PricingReadPort, PricingWritePort, ResolveProductPriceRequest, ResolvedProductPriceSnapshot,
     SetPriceListPercentageRuleRequest, SetPriceListScopeRequest,
     StorefrontProductPricingProjectionRequest, UpsertVariantPriceRequest,
-    in_process_pricing_write_port,
 };
 pub use read_context::{InProcessPricingReadPort, in_process_pricing_read_port};
+pub use write_context::{InProcessPricingWritePort, in_process_pricing_write_port};
 
 pub use services::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,
