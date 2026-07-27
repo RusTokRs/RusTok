@@ -123,13 +123,18 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                         crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::resolved_config(ctx)
                             .await
                             .map_err(|error| Error::BadRequest(error.to_string()))?;
-                    let transport: Arc<dyn EventTransport> = Arc::new(
+                    let iggy_transport = Arc::new(
                         IggyTransport::new(iggy_config.clone()).await.map_err(|error| {
                             Error::BadRequest(format!(
                                 "outbox_iggy requires a configured and reachable Iggy deployment: {error}"
                             ))
                         })?,
                     );
+                    // Durable inbound consumers must reuse the exact configured connector.
+                    // Creating another bundled transport would start a second native broker
+                    // process on the same ports and split lifecycle ownership.
+                    ctx.shared_insert(Arc::clone(&iggy_transport));
+                    let transport: Arc<dyn EventTransport> = iggy_transport;
                     let (transport, listener_bus) =
                         transport_with_local_delivery(transport, channel_capacity);
                     (transport, listener_bus, Some(iggy_config.mode))
