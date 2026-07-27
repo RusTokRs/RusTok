@@ -202,6 +202,18 @@ impl ForumNotificationSourceProvider {
             .await
     }
 
+    async fn load_topic_for_description(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> NotificationProviderResult<Option<forum_topic::Model>> {
+        if self.recipient_context_port.is_some() {
+            self.load_active_topic(tenant_id, topic_id).await
+        } else {
+            self.load_public_topic(tenant_id, topic_id).await
+        }
+    }
+
     async fn load_topic_for_subscription_audience(
         &self,
         tenant_id: Uuid,
@@ -545,7 +557,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     return Err(NotificationProviderError::InvalidEvent);
                 }
                 let Some(topic) = self
-                    .load_public_topic(event.tenant_id, event.aggregate_id)
+                    .load_topic_for_description(event.tenant_id, event.aggregate_id)
                     .await?
                 else {
                     return Ok(None);

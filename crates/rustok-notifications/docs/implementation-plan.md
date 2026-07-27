@@ -59,8 +59,10 @@ and bounded group-state writes; no transport fallback is permitted. The module-o
 inbox UI pages owner results, uses stale-response guards, refreshes authoritatively after
 writes, navigates only after an `Allowed` open decision, and automatically reloads its
 bootstrap when the reactive auth token or tenant changes. A generic manifest-driven header
-action exposes the localized Notifications route and exact unread badge. Tenant-wide
-scheduling/redaction, delivery transports, and PostgreSQL cross-consumer evidence remain open.
+action exposes the localized Notifications route and exact unread badge. Forum topic-created
+sources also materialize minimal initially non-public descriptors when exact recipient context is
+composed, while audience pages still reauthorize every subscriber. Tenant-wide scheduling/redaction,
+delivery transports, and PostgreSQL cross-consumer evidence remain open.
 
 ## Invariants
 
@@ -547,6 +549,15 @@ scheduling/redaction, delivery transports, and PostgreSQL cross-consumer evidenc
 - one context snapshot is reused for exact unread count and the first bounded summary page;
 - auth-scope changes clear prior mutation feedback without polling or shadow client state.
 
+### `FORUM-20AP`
+
+- active initially non-public topic-created descriptors materialize only when the host publishes
+  exact Forum notification recipient context;
+- descriptors contain topic/category identifiers only and do not carry title, body, route, or
+  recipient identity;
+- bounded category subscription fanout still reauthorizes current Forum visibility for every
+  exact candidate and retains public-only fallback when recipient context is absent.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
@@ -652,13 +663,14 @@ node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs
+node scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
 `NOTIFY-03D/03E/03F/03G/03H/03I` and
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN/20AO` source and documentation slices. `Cargo.lock` was
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN/20AO/20AP` source and documentation slices. `Cargo.lock` was
 not regenerated because this work does not change the package dependency graph.
 
 ## Update rules

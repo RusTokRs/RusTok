@@ -49,15 +49,18 @@ impl ForumNotificationRecipientContextPort for StaticRecipientContextPort {
                 "Forum notification descriptor recipient is unavailable",
             ));
         };
-        Ok(PortContext::new(
+        let mut recipient = PortContext::new(
             request.tenant_id.to_string(),
             PortActor::user(request.recipient_id.to_string()),
-            context.locale,
-            context.correlation_id,
+            context.locale.clone(),
+            context.correlation_id.clone(),
         )
         .with_role(*role)
-        .with_claim(Permission::FORUM_TOPICS_READ.to_string())
-        .with_deadline_ms(context.deadline_ms))
+        .with_claim(Permission::FORUM_TOPICS_READ.to_string());
+        recipient.causation_id = context.causation_id;
+        recipient.traceparent = context.traceparent;
+        recipient.deadline_ms = context.deadline_ms;
+        Ok(recipient)
     }
 }
 
@@ -194,15 +197,17 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
         .await
         .expect("recipient-aware descriptor materialization should complete")
         .expect("active initially non-public topic should materialize a descriptor");
+    let topic_id = topic.id.to_string();
+    let category_id = category.id.to_string();
     assert_eq!(descriptor.target.id, topic.id);
     assert_eq!(descriptor.template_data.len(), 2);
     assert_eq!(
         descriptor.template_data.get("topic_id"),
-        Some(topic.id.to_string().as_str())
+        Some(topic_id.as_str())
     );
     assert_eq!(
         descriptor.template_data.get("category_id"),
-        Some(category.id.to_string().as_str())
+        Some(category_id.as_str())
     );
     for forbidden in ["title", "body", "route", "recipient_id", "audience"] {
         assert!(descriptor.template_data.get(forbidden).is_none());
