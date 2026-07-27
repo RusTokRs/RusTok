@@ -3,8 +3,9 @@ use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::domain::{
-    DomainError, FieldCardinality, FieldName, FieldPath, FilterExpr, IndexField, IndexQuery,
-    IndexRecord, IndexValue, IndexValueType, LinkCardinality, LinkName, LocaleMode, SchemaRef,
+    DomainError, EntityKey, FieldCardinality, FieldName, FieldPath, FilterExpr, IndexField,
+    IndexMutation, IndexQuery, IndexRecord, IndexValue, IndexValueType, LinkCardinality, LinkName,
+    LocaleMode, SchemaRef,
 };
 
 use super::{SchemaRegistry, SchemaRegistryError};
@@ -100,23 +101,27 @@ struct ResolvedField<'a> {
 }
 
 impl SchemaRegistry {
+    pub fn validate_mutation(
+        &self,
+        mutation: &IndexMutation,
+    ) -> Result<(), RecordValidationError> {
+        match mutation {
+            IndexMutation::Upsert { record, .. } => self.validate_record(record),
+            IndexMutation::Delete {
+                key,
+                source_version,
+                ..
+            } => self.validate_delete(key, *source_version),
+        }
+    }
+
     pub fn validate_record(&self, record: &IndexRecord) -> Result<(), RecordValidationError> {
         let registered = self
             .get(&record.key.schema)
             .ok_or_else(|| RecordValidationError::SchemaNotFound(record.key.schema.clone()))?;
         let schema = &registered.schema;
 
-        if record.key.tenant_id.is_nil() {
-            return Err(RecordValidationError::NilTenantId);
-        }
-        if record.key.entity_id.is_nil() {
-            return Err(RecordValidationError::NilEntityId);
-        }
-        validate_record_locale(
-            &schema.reference,
-            schema.locale_mode,
-            record.key.locale.is_some(),
-        )?;
+        validate_entity_key(&record.key, schema.locale_mode)?;
         if record.source_version == 0 {
             return Err(RecordValidationError::ZeroSourceVersion);
         }
@@ -208,6 +213,21 @@ impl SchemaRegistry {
             }
         }
 
+        Ok(())
+    }
+
+    fn validate_delete(
+        &self,
+        key: &EntityKey,
+        source_version: u64,
+    ) -> Result<(), RecordValidationError> {
+        let registered = self
+            .get(&key.schema)
+            .ok_or_else(|| RecordValidationError::SchemaNotFound(key.schema.clone()))?;
+        validate_entity_key(key, registered.schema.locale_mode)?;
+        if source_version == 0 {
+            return Err(RecordValidationError::ZeroSourceVersion);
+        }
         Ok(())
     }
 
@@ -419,6 +439,19 @@ impl SchemaRegistry {
             traverses_many,
         })
     }
+}
+
+fn validate_entity_key(
+    key: &EntityKey,
+    locale_mode: LocaleMode,
+) -> Result<(), RecordValidationError> {
+    if key.tenant_id.is_nil() {
+        return Err(RecordValidationError::NilTenantId);
+    }
+    if key.entity_id.is_nil() {
+        return Err(RecordValidationError::NilEntityId);
+    }
+    validate_record_locale(&key.schema, locale_mode, key.locale.is_some())
 }
 
 fn validate_record_locale(

@@ -53,14 +53,7 @@ impl<'a> ReferenceIndex<'a> {
             return Ok(ApplyOutcome::DuplicateEvent);
         }
 
-        match &mutation {
-            IndexMutation::Upsert { record, .. } => self.registry.validate_record(record)?,
-            IndexMutation::Delete {
-                key,
-                source_version,
-                ..
-            } => self.validate_delete(key, *source_version)?,
-        }
+        self.registry.validate_mutation(&mutation)?;
 
         self.events.insert(mutation.event_id());
         let key = mutation.key().clone();
@@ -176,36 +169,6 @@ impl<'a> ReferenceIndex<'a> {
             order_values,
             entity_id: record.key.entity_id,
         })
-    }
-
-    fn validate_delete(
-        &self,
-        key: &EntityKey,
-        source_version: u64,
-    ) -> Result<(), RecordValidationError> {
-        let schema = self
-            .registry
-            .get(&key.schema)
-            .ok_or_else(|| RecordValidationError::SchemaNotFound(key.schema.clone()))?;
-        if key.tenant_id.is_nil() {
-            return Err(RecordValidationError::NilTenantId);
-        }
-        if key.entity_id.is_nil() {
-            return Err(RecordValidationError::NilEntityId);
-        }
-        match (schema.schema.locale_mode, key.locale.is_some()) {
-            (LocaleMode::Required, false) => {
-                return Err(RecordValidationError::LocaleRequired(key.schema.clone()));
-            }
-            (LocaleMode::None, true) => {
-                return Err(RecordValidationError::LocaleForbidden(key.schema.clone()));
-            }
-            _ => {}
-        }
-        if source_version == 0 {
-            return Err(RecordValidationError::ZeroSourceVersion);
-        }
-        Ok(())
     }
 
     fn compare_records(

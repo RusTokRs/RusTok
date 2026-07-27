@@ -45,11 +45,14 @@ a rewrite goal.
 - M2 PostgreSQL storage benchmark: complete
 - M2 accepted storage model: JSONB
 - M2 rejected prototype cleanup: complete
+- M3 storage-schema foundation: complete
+- M3 atomic mutation persistence: complete
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted. M3
-now registers the canonical production schema, while runtime persistence remains
-absent until the transactional adapter slice.
+registers the canonical production schema and now publishes one Index-owned
+transactional mutation adapter; query execution, schema leases, and secondary-index
+management remain absent.
 
 The module-owned migration source creates:
 
@@ -61,12 +64,24 @@ The module-owned migration source creates:
 - `index_jobs` for schema, index, rebuild, reconciliation, and consistency work;
 - `index_consistency_findings` for durable drift diagnostics.
 
+The `PostgresMutationStore` applies one `MutationDelivery` transactionally. It
+validates the mutation through `SchemaRegistry`, reserves the tenant-scoped inbox
+identity, rejects delivery-ID payload reuse, takes a transaction-scoped advisory
+lock on the complete entity key, reads the current source version, and ignores
+stale updates/deletes, replaces live JSONB fields and ordered links or
+writes a tombstone, and completes the inbox row in the same commit. Exact
+redelivery returns `MutationApplyOutcome::Duplicate`; a failed entity/link write
+rolls back the inbox claim. SQLite support exists only for contract fixtures and
+rejects source versions above its signed integer range; PostgreSQL preserves the
+full domain `u64` range through `DECIMAL(20,0)`.
+
 ## Current entry points
 
 - `IndexModule`
 - `rustok_index::domain::*`
 - `rustok_index::application::*`
 - `rustok_index::migrations::*`
+- `PostgresMutationStore`, `MutationDelivery`, and `MutationApplyOutcome`
 - `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
 - `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
 - `CursorCodec`, `IndexCursor`, and query-scope cursor validation
@@ -85,7 +100,9 @@ The module-owned migration source creates:
 - checksummed keyset cursors bound to tenant, schema, fingerprint, locale, and
   order shape;
 - reference mutation/query engine and property-based invariants for future
-  PostgreSQL equivalence tests.
+  PostgreSQL equivalence tests;
+- atomic tenant-scoped inbox/entity/link mutation persistence with monotonic
+  source-version and tombstone admission.
 
 ## M2 benchmark
 
