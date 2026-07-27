@@ -67,18 +67,21 @@ Commits and pull requests record which checks and evidence runs were not execute
 - M3 partition admission and shadow planning: `complete`
 - M3 partition evidence packet tooling: `complete`
 - M3 partition evidence capture/assembly: `complete`
+- M3 partition baseline/shadow snapshot runner: `complete`
 - Production persistence: mutation writes, schema coordination, secondary-index
-  lifecycle, fail-closed partition admission, evidence assembly, and evidence
-  validation implemented; the retained PostgreSQL partition run, query adapter,
-  and partition copy/cutover lifecycle are not yet implemented
+  lifecycle, fail-closed partition admission, snapshot capture, evidence assembly,
+  and evidence validation implemented; the real query/mutation/maintenance/cutover
+  partition evidence, query adapter, and production partition lifecycle are not yet
+  implemented
 
 The active production crate contains the generic domain/application core, the M3
 production migrations, an Index-owned transactional mutation adapter, a durable
 schema-application lease store, a schema-derived secondary-index manager, and a
 measured partition-admission contract that emits shadow bootstrap plans only. The
-repository also contains immutable partition-manifest preparation, exact-byte raw
-artifact assembly, and measured packet validation tooling. Query adapters,
-retained partition evidence, partition copy/constraint/index attachment,
+repository also contains immutable partition-manifest preparation, owner-operated
+baseline/shadow snapshot capture, exact-byte raw artifact assembly, and measured
+packet validation tooling. Query adapters, retained query/mutation/maintenance/
+cutover partition evidence, production copy/constraint/index attachment,
 replay/cutover, batch ingestion, and PostgreSQL Testcontainers evidence remain
 open. Benchmark DDL and generated evidence stay under `ops/benches`, outside the
 production module.
@@ -134,6 +137,7 @@ ops/benches/src/index_storage/
   runner.rs
   mutation_runner.rs
   maintenance_runner.rs
+  partition_snapshot.rs
   sql/
 ```
 
@@ -156,7 +160,7 @@ Selected additions:
 - `icu_locale` with compiled ICU4X data for UTS #35/CLDR locale alias
   canonicalization;
 - `sha2` for stable schema fingerprints, cursor checksums, secondary-index
-  definitions, and partition shadow-plan identities;
+  definitions, partition shadow-plan identities, and retained evidence digests;
 - `postcard` plus URL-safe Base64 for versioned keyset cursors.
 
 Add when required:
@@ -245,7 +249,8 @@ unpartitioned until a separate shadow packet passes admission.
       owner-operated runbook.
 - [x] Add exact-byte raw-artifact capture assembly with bundle confinement and
       no-clobber packet publication.
-- [ ] Execute retained PostgreSQL partition baseline/shadow evidence.
+- [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.
+- [ ] Execute retained PostgreSQL query, mutation, maintenance, and cutover evidence.
 - [ ] Add partition copy, constraint/index attachment, replay/dual-write, cutover,
       rollback, and durable global operation ownership.
 - [ ] Add PostgreSQL Testcontainers fixtures.
@@ -308,11 +313,24 @@ integration-test assumption that `IndexModule` has no production migrations.
 The seventh M3 slice adds fail-closed raw-artifact packet assembly. A strict
 `index_partition_capture_v1` descriptor points to exactly six unique relative JSON
 files inside one bundle. The assembler rejects absolute paths, traversal,
-directories, symbolic links, duplicate role paths, output aliases, and overwrite
+directories, symbolic links, hard-link aliases, output aliases, and overwrite
 attempts. It reads each artifact once, hashes exact bytes, maps only the required
 baseline/shadow/query/mutation/maintenance/cutover shapes, and runs the canonical
 packet validator before no-clobber publication. It still does not execute
 PostgreSQL measurements or authorize production partitioning.
+
+The eighth M3 slice adds an owner-operated PostgreSQL snapshot runner. It requires
+an explicit shadow-copy opt-in, PostgreSQL 16 with JIT disabled, ordinary
+unpartitioned canonical relations, a deterministic prepared manifest, and a
+reviewed tenant-predicate audit. It serializes one evidence ID with an advisory
+lock, creates only evidence-bound tenant-hash shadow parents and children, and
+copies entities and links from one repeatable-read snapshot. A shadow-only
+source-version unique index and validated source foreign key protect link parity.
+The runner records baseline/shadow rows, physical bytes, logical SHA-256 digests,
+child sizes, orphan state, FK state, and post-copy catch-up, then publishes
+`baseline.json` and `shadow.json` together without overwriting retained evidence.
+It does not execute query, mutation, maintenance, or cutover measurements and never
+renames, drops, or alters the canonical production relations.
 
 ### M4 - Query engine v1
 
@@ -401,6 +419,8 @@ node scripts/verify/index-storage-tooling.mjs fixtures
 node --test scripts/verify/compare-index-storage-evidence.test.mjs
 node --test scripts/verify/index-partition-evidence.test.mjs
 node --test scripts/verify/index-partition-evidence-assembly.test.mjs
+cargo check -p rustok-benchmarks --bin index-partition-snapshot-capture
+cargo test -p rustok-benchmarks partition_snapshot
 ```
 
 Targeted M3 maintainer checks:
@@ -414,6 +434,7 @@ node scripts/verify/verify-index-schema-leases.mjs
 node scripts/verify/verify-index-secondary-index-lifecycle.mjs
 node scripts/verify/verify-index-partition-admission.mjs
 node scripts/verify/verify-index-partition-evidence.mjs
+node scripts/verify/verify-index-partition-snapshot-capture.mjs
 ```
 
 ## Progress log
@@ -436,5 +457,8 @@ node scripts/verify/verify-index-partition-evidence.mjs
   CI guards, and corrected the stale integration migration contract.
 - 2026-07-27: added exact-byte raw-artifact capture assembly, bundle confinement,
   no-symlink/no-alias/no-overwrite publication, fixture coverage, and tooling
-  routing. Repository tests, verifiers, and PostgreSQL evidence remain for the
-  owner to execute.
+  routing.
+- 2026-07-27: added owner-operated PostgreSQL baseline/shadow snapshot capture,
+  repeatable-read copy, shadow integrity validation, logical SHA-256 parity, child
+  size evidence, no-clobber pair publication, and static/CI guards. Repository
+  tests, verifiers, and real PostgreSQL evidence remain for the owner to execute.

@@ -26,7 +26,7 @@ without runtime fan-out.
 - PostgreSQL storage and distributed coordination;
 - schema application and secondary-index lifecycle;
 - measured partition admission and shadow planning;
-- retained partition evidence preparation, capture assembly, and validation;
+- retained partition evidence preparation, snapshot capture, assembly, and validation;
 - SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
@@ -152,9 +152,9 @@ Any failed gate returns `KeepUnpartitioned` with typed reasons.
 An admitted `PartitionShadowPlan` derives stable names and bootstrap SQL only for
 shadow hash-partition parents and children. Hash modulus must be a power of two
 from 2 through 128. The plan cannot rename, drop, or alter production entity/link
-relations. Copy, constraint/index attachment, replay or dual-write, durable global
-operation ownership, cutover, rollback, and retained PostgreSQL evidence remain
-open M3 work.
+relations. Production copy/checkpoint, constraint/index attachment, replay or
+dual-write, durable global operation ownership, cutover, and rollback remain open
+M3 work.
 
 Partition evidence tooling binds one immutable manifest to a SHA-256 `evidence_id`,
 emits deterministic shadow-only bootstrap SQL, and validates exact
@@ -162,10 +162,22 @@ query/mutation/maintenance/cutover repetition groups. The capture/assembly layer
 reads six retained raw JSON artifacts once, confines unique relative paths to one
 bundle, rejects symbolic links and aliases, calculates exact-byte SHA-256 hashes,
 and publishes a structurally validated packet without accepting precomputed packet
-fields or pass flags. Final validation calculates tenant coverage, digest parity,
-latency regression, WAL amplification, partition skew, lock duration, rollback
-state, and typed rejection reasons. The repository owner still executes and
-retains the PostgreSQL packet.
+fields or pass flags.
+
+The owner-operated partition snapshot runner now captures `baseline.json` and
+`shadow.json` from one PostgreSQL repeatable-read snapshot. It requires an explicit
+shadow-copy opt-in, PostgreSQL 16 with JIT disabled, ordinary unpartitioned
+canonical relations, deterministic evidence-ID-bound names, and a reviewed tenant
+query audit. It creates and fills only shadow parents/children, attaches a
+shadow-only source-version uniqueness/FK contract, calculates logical SHA-256
+parity, physical child sizes, orphan state, and post-copy catch-up, and publishes
+the pair without overwriting retained evidence. The real query, mutation,
+maintenance, and cutover measurements remain open.
+
+Final validation calculates tenant coverage, digest parity, latency regression,
+WAL amplification, partition skew, lock duration, rollback state, and typed
+rejection reasons. The repository owner still executes and retains the complete
+PostgreSQL packet.
 
 PostgreSQL Testcontainers/concurrency evidence, query execution, and batch
 ingestion remain later M3/M4/M5 slices.
@@ -188,10 +200,11 @@ ingestion remain later M3/M4/M5 slices.
 - M3 partition admission and shadow planning: `complete`
 - M3 partition evidence packet tooling: `complete`
 - M3 partition evidence capture/assembly: `complete`
+- M3 partition baseline/shadow snapshot runner: `complete`
 - Production persistence: mutation writes, schema/index coordination, partition
-  admission, evidence assembly, and evidence validation implemented; query adapter,
-  retained PostgreSQL partition run, and partition cutover lifecycle not yet
-  implemented
+  admission, snapshot capture, evidence assembly, and evidence validation
+  implemented; query adapter, real query/mutation/maintenance/cutover partition
+  evidence, and production partition lifecycle not yet implemented
 
 ## Verification
 
@@ -202,12 +215,15 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - `cargo xtask module validate index`
 - `cargo xtask module test index`
+- `cargo check -p rustok-benchmarks --bin index-partition-snapshot-capture`
+- `cargo test -p rustok-benchmarks partition_snapshot`
 - `node scripts/verify/index-storage-tooling.mjs contract`
 - `node scripts/verify/index-storage-tooling.mjs fixtures`
 - `node --test scripts/verify/index-partition-evidence-assembly.test.mjs`
 - `node scripts/verify/verify-index-secondary-index-lifecycle.mjs`
 - `node scripts/verify/verify-index-partition-admission.mjs`
 - `node scripts/verify/verify-index-partition-evidence.mjs`
+- `node scripts/verify/verify-index-partition-snapshot-capture.mjs`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
 
