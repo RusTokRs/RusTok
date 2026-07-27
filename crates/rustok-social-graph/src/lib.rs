@@ -12,6 +12,8 @@ pub mod graphql;
 pub mod index;
 #[cfg(feature = "index-consumer")]
 pub mod index_consumer;
+#[cfg(feature = "index-consumer")]
+pub mod index_dlq_receipt;
 pub mod maintenance;
 pub mod migrations;
 pub mod model;
@@ -86,7 +88,7 @@ mod tests {
         let module = SocialGraphModule;
         assert_eq!(module.slug(), "social_graph");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 3);
-        assert_eq!(module.migration_dependencies().len(), 3);
+        assert_eq!(module.migrations().len(), 4);
+        assert_eq!(module.migration_dependencies().len(), 4);
     }
 }
