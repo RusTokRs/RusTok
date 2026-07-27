@@ -143,14 +143,13 @@
   collector in the existing process registry rendered by `/metrics`.
 - Metrics cover received deliveries, terminal outcome throughput, projection and ack
   retries, bounded stage/stable-code failures, DLQ publication results, receive-to-ack
-  duration, starts/terminations, in-flight state/timestamp, last success, and observed
-  received/acknowledged source offsets.
-- Labels are bounded to consumer, stage, outcome, result, reason, stable error code, and
-  offset state.
-- Tenant, event, relation, partition, payload, ack token, and raw error text are not
-  labels.
-- Received/acknowledged offsets are observations only. True broker lag requires a
-  connector partition high-watermark and remains pending.
+  duration, starts/terminations, in-flight state/timestamp, and last success.
+- Labels are bounded to consumer, stage, outcome, result, reason, and stable error code.
+- Tenant, event, relation, partition, offset, payload, ack token, and raw error text are
+  not labels.
+- Source-position and lag metrics are intentionally absent. They require a connector
+  partition high-watermark plus a partition-qualified acknowledged-position snapshot;
+  one global last offset or event age is not a valid substitute.
 
 ## Authority boundary
 
@@ -187,9 +186,9 @@
 - Re-serializing a decoded envelope instead of using exact broker bytes.
 - Republish-to-DLQ on every in-process ack retry instead of staged acknowledgement-only
   recovery.
-- Using tenant/event/relation/payload/error text as metric labels.
-- Calling event age or received-minus-acknowledged offset true broker lag without a
-  high-watermark.
+- Using tenant/event/relation/partition/offset/payload/error text as metric labels.
+- Publishing one global offset or event age as broker lag without partition-qualified
+  acknowledged positions and high-watermarks.
 - Authorizing Profiles visibility from projection state.
 
 ## Errors / stable failure families
