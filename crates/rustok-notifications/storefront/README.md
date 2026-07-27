@@ -35,8 +35,9 @@ inbox authority. One group action intentionally applies at most 64 eligible owne
 When more rows remain, the UI reports that the caller should repeat the action after the
 authoritative refresh.
 
-The unread count, grouped summaries, exact-group item pages, and fresh open authorization
-use one selected read transport facade:
+The unread count, grouped summaries, and exact-group item pages use one selected read
+transport facade. Fresh open authorization now joins the same compile-profile selection
+policy:
 
 - SSR and hydrate builds select the native server functions;
 - CSR and headless builds select the module-owned GraphQL queries through
