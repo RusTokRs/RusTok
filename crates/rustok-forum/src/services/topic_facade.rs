@@ -1,10 +1,11 @@
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{
     CreateTopicCommandInput, CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse,
     UpdateTopicCommandInput, UpdateTopicInput,
@@ -14,6 +15,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::rbac::enforce_scope;
+use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_owner;
 use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 
@@ -24,12 +26,33 @@ use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilitySer
 pub struct TopicService {
     db: DatabaseConnection,
     inner: topic_owner::TopicService,
+    create_audience: ForumTopicCreateAudienceAuthorizationService,
 }
 
 impl TopicService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self::with_optional_audience_facts(db, event_bus, None)
+    }
+
+    pub fn with_audience_facts(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        facts_port: SharedForumAudienceFactsPort,
+    ) -> Self {
+        Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
+    }
+
+    fn with_optional_audience_facts(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        facts_port: Option<SharedForumAudienceFactsPort>,
+    ) -> Self {
         Self {
             inner: topic_owner::TopicService::new(db.clone(), event_bus),
+            create_audience: ForumTopicCreateAudienceAuthorizationService::new(
+                db.clone(),
+                facts_port,
+            ),
             db,
         }
     }
@@ -40,7 +63,29 @@ impl TopicService {
         security: SecurityContext,
         input: CreateTopicInput,
     ) -> ForumResult<TopicResponse> {
-        self.create_command(tenant_id, security, input.into()).await
+        self.create_command_with_optional_audience_context(
+            tenant_id,
+            security,
+            None,
+            input.into(),
+        )
+        .await
+    }
+
+    pub async fn create_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        input: CreateTopicInput,
+    ) -> ForumResult<TopicResponse> {
+        self.create_command_with_optional_audience_context(
+            tenant_id,
+            security,
+            Some(context),
+            input.into(),
+        )
+        .await
     }
 
     pub async fn create_command(
@@ -49,6 +94,36 @@ impl TopicService {
         security: SecurityContext,
         input: CreateTopicCommandInput,
     ) -> ForumResult<TopicResponse> {
+        self.create_command_with_optional_audience_context(tenant_id, security, None, input)
+            .await
+    }
+
+    pub async fn create_command_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        input: CreateTopicCommandInput,
+    ) -> ForumResult<TopicResponse> {
+        self.create_command_with_optional_audience_context(
+            tenant_id,
+            security,
+            Some(context),
+            input,
+        )
+        .await
+    }
+
+    async fn create_command_with_optional_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: Option<PortContext>,
+        input: CreateTopicCommandInput,
+    ) -> ForumResult<TopicResponse> {
+        self.create_audience
+            .require(tenant_id, input.category_id, &security, context)
+            .await?;
         let response = self
             .inner
             .create_command(tenant_id, security, input)

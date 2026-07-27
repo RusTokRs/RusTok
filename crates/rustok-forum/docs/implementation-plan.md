@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-AQ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors; FORUM-20AQ adds normalized inherited category topic-create audience persistence. Topic-create enforcement, reply/moderate audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-AR provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors; FORUM-20AQ adds normalized inherited category topic-create audience persistence; FORUM-20AR enforces that policy in every topic-create owner path. GraphQL/REST/runtime facts composition, reply/moderate audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1334,6 +1334,17 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
 - enforce tenant/category composite ownership, raw relation bounds, immutable stored rows, and
   PostgreSQL/SQLite parity without changing `TopicService::create` or any transport.
 
+### Delivered in `FORUM-20AR`
+
+- enforce `forum_topics:create` before loading the bounded inherited category topic-create
+  policy and require every root-to-category layer to allow the caller;
+- keep unrestricted categories and locally decidable role/explicit-user layers independent of
+  optional owner facts while preserving explicit-deny precedence;
+- require exact tenant/user `PortContext` plus the optional facts capability only when trust,
+  Channel, or Groups selectors remain unresolved, and fail closed when either is absent;
+- gate every public `TopicService` create path before topic, relation, counter, user-stat, or
+  event writes and publish context-aware owner seams without changing GraphQL or REST DTOs.
+
 ### Compatibility and degraded mode
 
 The nullable public/authenticated category floor and the normalized category/topic
@@ -1354,7 +1365,7 @@ supply write deadline and idempotency semantics.
 
 - provide Forum trust and Channel membership facts adapters; keep the delivered Groups
   adapter exact, bounded, and owner-backed;
-- compose topic-create command-time audience enforcement and transports, then add reply and
+- compose GraphQL/REST/runtime topic-create audience composition, then add reply and
   moderation audience policies plus owner write commands;
 - migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
   same exact richer audience decision;
@@ -1405,6 +1416,8 @@ node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs
 node scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs
 node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs
+cargo test -p rustok-forum --test topic_create_audience_enforcement_sqlite -- --nocapture
+node scripts/verify/verify-forum-topic-create-audience-enforcement.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate forum
 npm run verify:forum:storefront-boundary

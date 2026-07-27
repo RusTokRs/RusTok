@@ -12,6 +12,10 @@
 - `ForumQuoteCommandService::set_topic_quotes(tenant_id, topic_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
 - `ForumQuoteCommandService::set_reply_quotes(tenant_id, reply_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
 - `TopicService::create_command(tenant_id, security, CreateTopicCommandInput) -> TopicResponse`
+- `TopicService::create_with_audience_context(tenant_id, security, PortContext, CreateTopicInput) -> TopicResponse`
+- `TopicService::create_command_with_audience_context(tenant_id, security, PortContext, CreateTopicCommandInput) -> TopicResponse`
+- `TopicService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> TopicService`
+- `pub struct ForumTopicCreateAudienceAuthorizationService`, `ForumTopicCreateAudienceAuthorization`
 - `TopicService::update_command(tenant_id, topic_id, security, UpdateTopicCommandInput) -> TopicResponse`
 - `ReplyService::create_command(tenant_id, security, topic_id, CreateReplyCommandInput) -> ReplyResponse`
 - `ReplyService::update_command(tenant_id, reply_id, security, UpdateReplyCommandInput) -> ReplyResponse`
@@ -87,8 +91,12 @@
 - Effective topic-create audience is the root-to-category conjunction of every non-empty local layer.
 - Managed `get` and atomic replacement `set` require `forum_categories:manage`; empty constraints restore inheritance.
 - PostgreSQL and SQLite enforce tenant/category ownership, typed relations, immutable rows, and bounded direct channel/group/user inserts.
-- `FORUM-20AQ` publishes persistence only; `TopicService::create`, REST, GraphQL, and facts-provider enforcement remain unchanged.
-- Run `node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs` after changing this boundary.
+- `FORUM-20AQ` publishes normalized persistence; `FORUM-20AR` composes it into every public topic-create owner method.
+- Categories without a topic-create layer retain historical behavior; local role and explicit-user decisions require no owner facts.
+- Unresolved trust, Channel, or Groups selectors require an exact caller `PortContext` and an injected `SharedForumAudienceFactsPort`; missing composition fails closed.
+- Authorization runs before topic, translation, relation, counter, user-stat, and domain-event writes and returns one generic public denial.
+- GraphQL, REST, and server runtime context/facts composition remain a follow-up after `FORUM-20AR`.
+- Run `node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs` and `node scripts/verify/verify-forum-topic-create-audience-enforcement.mjs` after changing this boundary.
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
