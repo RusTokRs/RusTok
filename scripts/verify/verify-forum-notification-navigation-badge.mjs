@@ -257,7 +257,7 @@ for (const marker of [
 }
 if (groupedGraphqlDelivered) {
   for (const marker of [
-    "unread count, grouped summaries, and exact-group item pages use one selected read",
+    "grouped summaries, exact-group item pages, fresh open authorization",
     "notificationInboxGroupSummaries",
     "notificationInboxGroupItems",
     "Fresh notification open authorization and group-state",
