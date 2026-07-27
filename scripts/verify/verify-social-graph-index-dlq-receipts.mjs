@@ -16,6 +16,10 @@ const files = {
     "crates/rustok-social-graph/src/index_dlq_receipt.rs",
     "utf8",
   ),
+  messageId: readFileSync(
+    "crates/rustok-social-graph/src/index_dlq_message_id.rs",
+    "utf8",
+  ),
   consumer: readFileSync(
     "crates/rustok-social-graph/src/index_consumer.rs",
     "utf8",
@@ -25,6 +29,11 @@ const files = {
     "utf8",
   ),
   dlq: readFileSync("crates/rustok-iggy/src/dlq.rs", "utf8"),
+  dlqPublisher: readFileSync(
+    "crates/rustok-iggy/src/dlq_publisher.rs",
+    "utf8",
+  ),
+  transport: readFileSync("crates/rustok-iggy/src/transport.rs", "utf8"),
 };
 
 const failures = [];
@@ -67,12 +76,13 @@ for (const marker of [
 ]) {
   requireText("DLQ receipt migration registration", files.migrations, marker);
 }
-requireText(
-  "Social Graph public module",
-  files.module,
+for (const marker of [
+  "mod index_dlq_message_id;",
   "pub mod index_dlq_receipt;",
-);
-requireText("Social Graph migration count", files.module, "migrations().len(), 4");
+  "migrations().len(), 4",
+]) {
+  requireText("Social Graph module", files.module, marker);
+}
 
 for (const marker of [
   "pub enum SocialGraphIndexDlqReceiptState",
@@ -112,6 +122,28 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  'b"rustok.social_graph.index.dlq.message_id.v1"',
+  "Sha256::new()",
+  "identity.tenant_id.as_bytes()",
+  "identity.consumer_group.as_bytes()",
+  "identity.event_id.as_bytes()",
+  "identity.source_stream.as_bytes()",
+  "identity.source_topic.as_bytes()",
+  "identity.source_partition.to_be_bytes()",
+  "identity.source_offset.to_be_bytes()",
+  "identity.payload",
+  "bytes[6] = (bytes[6] & 0x0f) | 0x80",
+  "bytes[8] = (bytes[8] & 0x3f) | 0x80",
+  "broker_message_id_is_stable_and_custom_versioned",
+  "broker_message_id_changes_with_exact_payload_or_source_position",
+]) {
+  requireText("deterministic DLQ message identity", files.messageId, marker);
+}
+for (const forbidden of ["Uuid::new_v4", "DefaultHasher", "SystemTime", "retry_count"]){
+  forbidText("deterministic DLQ message identity", files.messageId, forbidden);
+}
+
+for (const marker of [
   "dlq_receipts: SocialGraphIndexDlqReceiptStore",
   "dlq_publisher_id: Uuid",
   "self.consumed_dlq_receipt(consumed).await?",
@@ -120,6 +152,8 @@ for (const marker of [
   "SocialGraphIndexConsumerError::DlqPublishInProgress",
   "reserve_and_claim(",
   "consumed.raw_payload().to_vec()",
+  "social_graph_index_dlq_broker_message_id(&identity)",
+  ".with_broker_message_id(broker_message_id)",
   ".move_to_dlq(entry)",
   ".mark_published(&identity, self.dlq_publisher_id)",
   "PreviouslyPublished",
@@ -136,13 +170,14 @@ const projection = files.consumer.indexOf("self.projector.apply_envelope(&consum
 if (receiptCheck < 0 || projection <= receiptCheck) {
   failures.push("consumer must inspect a durable DLQ receipt before projection");
 }
+const brokerId = files.consumer.indexOf("social_graph_index_dlq_broker_message_id(&identity)");
 const brokerPublish = files.consumer.indexOf(".move_to_dlq(entry)");
 const publishedReceipt = files.consumer.indexOf(
   ".mark_published(&identity, self.dlq_publisher_id)",
   brokerPublish,
 );
-if (brokerPublish < 0 || publishedReceipt <= brokerPublish) {
-  failures.push("consumer must mark the receipt published only after broker publication succeeds");
+if (brokerId < 0 || brokerPublish <= brokerId || publishedReceipt <= brokerPublish) {
+  failures.push("consumer must derive the broker ID, publish, then mark the durable receipt published");
 }
 const brokerAck = files.consumer.indexOf(".acknowledge(consumed)");
 const receiptAck = files.consumer.indexOf(".mark_acknowledged(&identity)", brokerAck);
@@ -172,11 +207,43 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  "broker_message_id: Option<Uuid>",
+  "with_broker_message_id",
+  "broker_message_id(&self)",
+  "publish_event_id = entry.broker_message_id.unwrap_or(entry.event_id)",
   "entry.payload",
   "entry.event_id.to_string()",
-  "connector.publish(request)",
 ]) {
-  requireText("Iggy DLQ exact-byte publication", files.dlq, marker);
+  requireText("Iggy DLQ envelope", files.dlq, marker);
+}
+
+for (const marker of [
+  "pub(crate) struct IggyDlqPublisher",
+  "IggyClient::from_connection_string",
+  "Partitioning::partition_id(partition)",
+  "IggyMessage::builder()",
+  ".id(message_id.as_u128())",
+  ".payload(entry.payload.clone().into())",
+  ".send(vec![message])",
+  "deterministic DLQ broker message ID is required",
+  "calculate_partition",
+  "connection_strings",
+]) {
+  requireText("identified Iggy DLQ publisher", files.dlqPublisher, marker);
+}
+for (const forbidden of ["Uuid::new_v4", ".id(0)", "message_id = 0"]){
+  forbidText("identified Iggy DLQ publisher", files.dlqPublisher, forbidden);
+}
+
+for (const marker of [
+  "dlq_publisher: Mutex<Option<IggyDlqPublisher>>",
+  "if entry.broker_message_id().is_some()",
+  "IggyDlqPublisher::connect(&self.config)",
+  ".publish(&entry)",
+  "*publisher = None",
+  "dropping SDK client for reconnect",
+]) {
+  requireText("Iggy transport DLQ publisher lifecycle", files.transport, marker);
 }
 
 if (failures.length > 0) {
@@ -188,5 +255,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index DLQ receipt verification passed: immutable source identity and bytes, durable reserve/publish/ack states, bounded publish leases, pre-projection recovery, retryable publication, acknowledgement-only redelivery, and no receipt-owned transport token are locked.",
+  "Social Graph Index DLQ receipt verification passed: immutable source identity and bytes, deterministic UUIDv8 broker IDs, explicit Iggy u128 headers, durable reserve/publish/ack states, bounded publish leases, pre-projection recovery, reconnectable publication, acknowledgement-only redelivery, and no receipt-owned transport token are locked.",
 );
