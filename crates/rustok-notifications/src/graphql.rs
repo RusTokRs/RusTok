@@ -11,7 +11,8 @@ use uuid::Uuid;
 use crate::{
     DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, NotificationError, NotificationInboxGroupSummaryPage,
     NotificationInboxItem, NotificationInboxStorefrontGroupItemsRequest,
-    NotificationInboxStorefrontGroupSummaryRequest, NotificationInboxStorefrontPort,
+    NotificationInboxStorefrontGroupSummaryRequest, NotificationInboxStorefrontOpenDecision,
+    NotificationInboxStorefrontOpenRequest, NotificationInboxStorefrontPort,
     NotificationInboxUnreadCountRequest, NotificationInboxUnreadCountService,
     in_process_notification_inbox_storefront_port,
 };
@@ -19,6 +20,7 @@ use crate::{
 const MODULE_SLUG: &str = "notifications";
 const PUBLIC_UNAVAILABLE_MESSAGE: &str = "notification inbox capability is unavailable";
 const GRAPHQL_READ_DEADLINE: Duration = Duration::from_secs(5);
+const MAX_NOTIFICATION_ID_BYTES: usize = 64;
 
 #[derive(Default)]
 pub struct NotificationsQuery;
@@ -71,6 +73,13 @@ pub enum GqlNotificationInboxPriority {
     Urgent,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Enum)]
+#[graphql(name = "NotificationInboxOpenDecision")]
+pub enum GqlNotificationInboxOpenDecision {
+    Allowed,
+    Unavailable,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
 pub struct GqlNotificationTemplateField {
     pub key: String,
@@ -113,6 +122,12 @@ pub struct GqlNotificationInboxGroupItemsPage {
     pub items: Vec<GqlNotificationInboxItem>,
     pub next_cursor: Option<String>,
     pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
+pub struct GqlNotificationInboxOpenAuthorization {
+    pub decision: GqlNotificationInboxOpenDecision,
+    pub route: Option<String>,
 }
 
 #[Object]
@@ -188,6 +203,24 @@ impl NotificationsQuery {
             next_cursor: page.next_cursor,
             has_more: page.has_more,
         })
+    }
+
+    async fn notification_inbox_authorize_open(
+        &self,
+        ctx: &Context<'_>,
+        notification_id: String,
+    ) -> Result<GqlNotificationInboxOpenAuthorization> {
+        let scope = authenticated_scope(ctx)?;
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let notification_id = parse_notification_id(notification_id.as_str())?;
+        let decision = grouped_storefront_port(ctx)?
+            .authorize_open(
+                scope.port_context("open"),
+                NotificationInboxStorefrontOpenRequest { notification_id },
+            )
+            .await
+            .map_err(map_port_error)?;
+        Ok(map_open_decision(decision))
     }
 }
 
@@ -277,6 +310,27 @@ fn parse_limit(limit: Option<i32>) -> Result<u16> {
     })
 }
 
+fn parse_notification_id(value: &str) -> Result<Uuid> {
+    if value.is_empty()
+        || value.len() > MAX_NOTIFICATION_ID_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(invalid_notification_id());
+    }
+    Uuid::parse_str(value)
+        .ok()
+        .filter(|notification_id| !notification_id.is_nil())
+        .ok_or_else(invalid_notification_id)
+}
+
+fn invalid_notification_id() -> async_graphql::Error {
+    public_error(
+        "NOTIFICATION_VALIDATION_ERROR",
+        "notification id is invalid",
+        false,
+    )
+}
+
 fn map_group_summary_page(
     page: NotificationInboxGroupSummaryPage,
 ) -> GqlNotificationInboxGroupSummaryPage {
@@ -293,6 +347,25 @@ fn map_group_summary_page(
             .collect(),
         next_cursor: page.next_cursor,
         has_more: page.has_more,
+    }
+}
+
+fn map_open_decision(
+    decision: NotificationInboxStorefrontOpenDecision,
+) -> GqlNotificationInboxOpenAuthorization {
+    match decision {
+        NotificationInboxStorefrontOpenDecision::Allowed { route } => {
+            GqlNotificationInboxOpenAuthorization {
+                decision: GqlNotificationInboxOpenDecision::Allowed,
+                route: Some(route.as_str().to_string()),
+            }
+        }
+        NotificationInboxStorefrontOpenDecision::Unavailable => {
+            GqlNotificationInboxOpenAuthorization {
+                decision: GqlNotificationInboxOpenDecision::Unavailable,
+                route: None,
+            }
+        }
     }
 }
 
@@ -462,6 +535,27 @@ mod tests {
             extension_json(&error, "code").and_then(|value| value.as_str().map(ToOwned::to_owned)),
             Some("NOTIFICATION_VALIDATION_ERROR".to_string())
         );
+    }
+
+    #[test]
+    fn open_graphql_rejects_invalid_and_nil_notification_ids() {
+        for value in ["not-a-uuid", Uuid::nil().to_string().as_str()] {
+            let error = parse_notification_id(value)
+                .expect_err("invalid notification identifiers must be rejected");
+            assert_eq!(error.message, "notification id is invalid");
+            assert_eq!(
+                extension_json(&error, "code")
+                    .and_then(|value| value.as_str().map(ToOwned::to_owned)),
+                Some("NOTIFICATION_VALIDATION_ERROR".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn unavailable_open_decision_never_exposes_a_route() {
+        let decision = map_open_decision(NotificationInboxStorefrontOpenDecision::Unavailable);
+        assert_eq!(decision.decision, GqlNotificationInboxOpenDecision::Unavailable);
+        assert_eq!(decision.route, None);
     }
 
     #[test]
