@@ -3,10 +3,6 @@
     "navigation": {
       "label": "Notifications",
       "unread": "{count} unread notifications"
-    },
-    "inbox": {
-      "noneUnread": "No unread notifications",
-      "unread": "{count} unread"
     }
   }
 }
