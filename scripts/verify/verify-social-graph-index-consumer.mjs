@@ -71,17 +71,17 @@ requireText("CRATE_API.md", files.api, "that result is committed");
 requireText(
   "Social Graph plan",
   files.socialPlan,
-  "Delivered first approved Index consumer contract",
+  "Delivered approved Index contract and storage boundary",
 );
 requireText(
   "Social Graph plan",
   files.socialPlan,
-  "Profiles privacy stays on authoritative owner ports",
+  "Social Graph persistence remains authoritative for drift repair",
 );
 requireText(
   "Profiles plan",
   files.profilesPlan,
-  "must not replace audience-bound profile authorization",
+  "never authorizes from an event or Index projection",
 );
 requireText(
   "Profiles plan",
@@ -98,5 +98,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index consumer boundary verification passed: sealed event conversion, monotonic source versions, tombstones, optional dependency, durable result-first acknowledgement guidance, and authoritative owner-port privacy are locked.",
+  "Social Graph Index consumer boundary verification passed: sealed event conversion, monotonic source versions, tombstones, optional dependency, result-first acknowledgement guidance, and authoritative owner-port privacy are locked.",
 );
