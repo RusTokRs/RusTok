@@ -50,7 +50,7 @@ for (const marker of [
 }
 for (const marker of [
   "tenant_id.is_nil()",
-  "schema.fingerprint()",
+  ".fingerprint()",
   "serde_json::to_value(schema)",
   "pg_advisory_xact_lock",
   "load_exact_schema",
