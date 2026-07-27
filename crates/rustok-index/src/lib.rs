@@ -2,7 +2,8 @@
 //!
 //! The active implementation contains the database-independent generic engine
 //! core under [`domain`] and [`application`], the canonical M3 PostgreSQL
-//! storage-schema migrations, and the first transactional mutation adapter.
+//! storage-schema migrations, atomic mutation persistence, and durable
+//! schema-application leases.
 
 use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
@@ -17,6 +18,8 @@ pub use application::*;
 pub use domain::*;
 pub use infrastructure::postgres::{
     MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
+    PostgresSchemaLeaseStore, SchemaApplicationLease, SchemaApplicationLeaseRequest,
+    SchemaLeaseAcquireOutcome, SchemaLeaseError,
 };
 
 pub struct IndexModule;

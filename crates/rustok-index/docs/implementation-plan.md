@@ -3,9 +3,8 @@
 ## Mission
 
 `rustok-index` is the platform-owned cross-module relational index and query
-engine. It solves the same problem class as the Medusa Index Module: source
-modules publish generic schemas, records, mutations, and links; Index
-materializes them into optimized relational storage and executes filtering,
+engine. Source modules publish generic schemas, records, mutations, and links;
+Index materializes them into optimized relational storage and executes filtering,
 projection, sorting, counting, and pagination without runtime fan-out to source
 modules.
 
@@ -20,6 +19,10 @@ mutations, PostgreSQL persistence, query planning/execution, incremental
 ingestion, rebuild/reconciliation, operator controls, and the first owner-published
 vertical slices. It excludes text relevance, ranking, autocomplete, external
 search engines, source-table reads, and source-domain semantics in Index core.
+
+Detailed completed-work evidence belongs in the accepted ADRs, committed evidence
+packets, and Git history. This document remains the live roadmap and verification
+contract.
 
 ## Rewrite policy
 
@@ -43,7 +46,7 @@ replaced whenever they conflict with the target architecture.
    `rustok-index` migrations or runtime composition.
 
 The repository owner performs test and benchmark execution during this rewrite.
-Commits record which checks and evidence runs were not executed.
+Commits and pull requests record which checks and evidence runs were not executed.
 
 ## Current state
 
@@ -53,25 +56,19 @@ Commits record which checks and evidence runs were not executed.
 - FBA status: `in_progress`
 - M0 code reset: `complete`
 - M1 domain/application core: `complete`
-- M2 read/query harness: `replacement 100k/1m archived from run 30222913450`
-- M2 transactional mutation/WAL harness: `replacement 100k/1m archived from run 30222913450`
-- M2 persistent churn/VACUUM harness: `replacement 100k/1m archived from run 30222913450`
-- M2 deterministic PostgreSQL session contract: `complete`
-- M2 observed cross-report database metadata contract: `complete`
-- M2 comparison provenance contract: `complete`
-- M2 storage benchmark: `complete`
-- M2 storage decision: `JSONB accepted; rejected prototypes removed`
+- M2 storage benchmark and accepted JSONB decision: `complete`
 - M3 storage-schema foundation: `complete`
 - M3 atomic mutation persistence: `complete`
-- Production persistence: atomic mutation writes implemented; query adapter not yet implemented
+- M3 schema-application leases: `complete`
+- Production persistence: mutation writes and schema coordination implemented;
+  query adapter and secondary-index lifecycle not yet implemented
 
 The active production crate contains the generic domain/application core, the M3
-production migrations, and an Index-owned transactional mutation adapter. The
-adapter validates each delivery, provides tenant-scoped inbox deduplication,
-monotonic source-version admission, atomic JSONB entity/tombstone plus ordered-link
-replacement, and rollback-safe terminal inbox completion. Query adapters, schema
-leases, partition/index lifecycle, and batch ingestion remain absent. Benchmark
-DDL and generated evidence stay under `ops/benches`, outside the production module.
+production migrations, an Index-owned transactional mutation adapter, and a
+durable schema-application lease store. Query adapters, partition/secondary-index
+lifecycle, batch ingestion, and PostgreSQL Testcontainers evidence remain open.
+Benchmark DDL and generated evidence stay under `ops/benches`, outside the
+production module.
 
 ## Ownership
 
@@ -107,11 +104,10 @@ crates/rustok-index/src/
   domain/
   application/
   migrations/
-    m20260727_000001_create_index_records.rs
-    m20260727_000002_create_index_delivery_state.rs
-    m20260727_000003_create_index_operations.rs
   infrastructure/
     postgres/
+      mutation_store.rs
+      schema_lease.rs
     events/
     telemetry.rs
   api/
@@ -124,11 +120,6 @@ ops/benches/src/index_storage/
   mutation_runner.rs
   maintenance_runner.rs
   sql/
-    mod.rs
-    source.rs
-    common.rs
-    maintenance.rs
-    jsonb.rs
 ```
 
 ## Library decisions
@@ -140,7 +131,6 @@ Use existing workspace libraries where possible:
 - `tokio` and `futures-util` for bounded async work;
 - `serde` and `postcard` for DTO/cursor serialization;
 - `thiserror` for typed errors;
-- `validator` for external DTO/config validation only;
 - `tracing`, `rustok-telemetry`, and `prometheus` for observability;
 - `proptest` and `criterion` for invariants and benchmarks;
 - `moka` only for immutable schema/compiled-plan local caching.
@@ -177,162 +167,76 @@ Forbidden in Index core:
 - [x] Replace the implementation plan with the Index Engine roadmap.
 - [x] Record rewrite policy and target ownership in an ADR.
 - [x] Reset local FBA readiness to `in_progress`.
-- [x] Update crate/module documentation.
-- [x] Inventory the active legacy surface.
-- [x] Remove empty Content/Product query services.
-- [x] Remove duplicate read adapters.
-- [x] Remove `DocumentType` and `IndexDocument`.
-- [x] Delete legacy v1 ports, registry, and evidence.
-- [x] Delete the search-specific FTS helper.
-- [x] Detach Index admin from legacy index/search tables.
-- [x] Delete Content/Product/Flex indexers and projection models.
-- [x] Remove all direct source-table SQL from Index.
-- [x] Delete all legacy Index migrations, including the misplaced search table.
-- [x] Remove source-domain Cargo dependencies.
-- [x] Delete the legacy runtime config, scheduler, and operational errors.
-- [x] Remove legacy server dispatcher config and metrics.
-- [x] Add repository guards preventing legacy/source-domain artifacts returning.
-- [x] Synchronize the central module registry and historical FBA overview.
+- [x] Remove legacy v1 ports, adapters, source-specific indexers, projections,
+      migrations, runtime configuration, scheduler, server composition, and direct
+      source-table reads.
+- [x] Remove source-domain dependencies and add guards preventing their return.
+- [x] Synchronize local and central module documentation.
 
-M0 is complete. The central module registry and historical FBA overview now
-record the full removal of Index v1 and keep replacement FBA readiness at
-`in_progress` until new contracts and runtime evidence exist.
+M0 is complete. No compatibility contract exists for deleted Index v1 behavior.
 
 ### M1 - Domain core and schema registry
 
-- [x] Add bounded lowercase identifiers for modules, schemas, entities, fields,
-      links, locales, and versions.
-- [x] Add `IndexValue`, `IndexRecord`, and `IndexMutation`.
-- [x] Add `IndexSchema`, field/link metadata, and contract validation.
-- [x] Add explicit tenant/locale query scope.
-- [x] Add typed link-aware field paths, filter AST, ordering, and pagination.
-- [x] Add ICU4X locale syntax and CLDR alias canonicalization.
+- [x] Add bounded identifiers, canonical locales, schema identities, and versions.
+- [x] Add `IndexValue`, `IndexRecord`, `IndexMutation`, `IndexSchema`, and link
+      metadata.
 - [x] Add stable order-independent SHA-256 schema fingerprints.
-- [x] Add atomic versioned schema registration and conflict rules.
-- [x] Validate link targets, target fields, join-field types, and cardinality.
-- [x] Add deterministic shortest-path resolution through `petgraph`.
-- [x] Validate records against registered schemas and locale/cardinality rules.
-- [x] Validate query selectability, filterability, sortability, operators, types,
-      scope, and complexity limits.
-- [x] Reject ambiguous sorting through `many` links until aggregation is explicit.
-- [x] Add versioned, checksummed, query-scoped keyset cursor encoding.
-- [x] Add a test-only in-memory reference mutation/query engine.
-- [x] Add property tests for tenant isolation, redelivery idempotency, stale
-      tombstones, locale normalization, cursor round-trip, and deterministic
-      planning.
+- [x] Add atomic versioned schema registration and deterministic link-path
+      resolution.
+- [x] Validate records, mutations, query paths, operators, types, cardinality,
+      tenant/locale scope, and complexity bounds.
+- [x] Add versioned checksummed query-scoped keyset cursors.
+- [x] Add a test-only reference mutation/query engine and property invariants.
 
-Acceptance criterion is complete: Product and SalesChannel are representable by
-ordinary generic schemas and links with no Product-specific engine code.
+M1 is complete. Product and SalesChannel are representable by ordinary generic
+schemas and links without Product-specific Index code.
 
 ### M2 - PostgreSQL storage benchmark
 
-Goal: select physical storage from evidence before creating production
-migrations.
+- [x] Define the benchmark contract and keep candidate DDL outside production
+      migrations.
+- [x] Add deterministic smoke, 100k, and 1m datasets and identical read, mutation,
+      and maintenance workloads.
+- [x] Compare JSONB, typed EAV, and specialized hot projection using equal result
+      digests, cardinality, planner/session metadata, WAL, buffers, relation size,
+      churn, and VACUUM evidence.
+- [x] Archive same-commit replacement 100k/1m PostgreSQL evidence.
+- [x] Accept JSONB in the storage ADR and remove rejected prototype implementations.
 
-- [x] Define the benchmark contract and decision rules in
-      `docs/storage-benchmark.md`.
-- [x] Keep all candidate DDL outside production migrations in `ops/benches`.
-- [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.
-- [x] Canonicalize configured locales through `LocaleKey` before SQL generation.
-- [x] Pin every single-session PostgreSQL benchmark connection to
-      `standard_conforming_strings = on`, UTC, `DateStyle = 'ISO, YMD'`, and
-      `extra_float_digits = 3` before generated benchmark SQL runs.
-- [x] Archive one exact eleven-field observed PostgreSQL `database` object in
-      every read, mutation, and maintenance report through one shared Rust type
-      and metadata query.
-- [x] Re-read the observed database/session metadata after every report's
-      workloads and fail before serialization when any field drifts.
-- [x] Require exact metadata shape and equality across read, mutation, and
-      maintenance reports before importing the byte-preserved validator or
-      comparator core.
-- [x] Compare the canonical ten planner/session fields across same-commit scales
-      and bind the recorded methodology through shared ADR preparation,
-      rendering, and finalization gates.
-- [x] Generate Product, Variant, SalesChannel, tags, prices, timestamps, and links
-      without random or wall-clock inputs.
-- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.
-- [x] Prototype normalized typed field-value rows.
-- [x] Preserve complete module/entity/schema-version identity in typed EAV field
-      keys, joins, mutations, and maintenance, with an entity-envelope foreign key.
-- [x] Scope JSONB and typed EAV maintenance entity mutations by the complete schema
-      identity.
-- [x] Add static guards for full-identity EAV and maintenance SQL.
-- [x] Prototype a specialized hot typed projection as the comparison baseline.
-- [x] Represent links independently from entity payload storage in every model.
-- [x] Split source, common-link, JSONB, EAV, hot, and maintenance SQL into
-      independent modules.
-- [x] Run the same equality, range, multi-value, two-hop link, keyset, and count
-      workload definitions against every model.
-- [x] Verify source/candidate entity and link cardinality before timing.
-- [x] Verify identical workload result digests across all candidates.
-- [x] Capture prototype load time, schema bytes, PostgreSQL settings, full SQL,
-      and repeated `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` output.
-- [x] Add a release-mode executable that writes machine-readable JSON evidence.
-- [x] Add deterministic Product batch update and delete workloads for all models.
-- [x] Validate equal affected entity/link counts before mutation timing.
-- [x] Isolate every measured mutation in its own rolled-back transaction.
-- [x] Capture mutation planning/execution time, buffers, full JSON plan, and
-      maximum per-node WAL records, FPI, and bytes.
-- [x] Add a separate release-mode mutation evidence executable/report.
-- [x] Add committed update plus delete/reinsert churn cycles for every candidate.
-- [x] Preserve exact entity/link cardinality through every maintenance phase.
-- [x] Capture baseline, after-churn, and after-VACUUM schema sizes and
-      `pg_stat_user_tables` live/dead/insert/update/delete/HOT counters.
-- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.
-- [x] Add a separate release-mode maintenance evidence executable/report with
-      configurable churn-cycle count.
-- [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a
-      harness sanity check; retain it as historical evidence after later SQL fixes.
-- [x] Record the candidate operational review and ADR completion checklist.
-- [x] Require matching repository, commit, PostgreSQL settings, repetitions,
-      churn cycles, candidate order, and workload shape before `decision_ready`.
-- [x] Add fixture coverage that rejects mixed or incomplete cross-scale provenance.
-- [x] Run and archive replacement 100k Product-locale row read, mutation, and
-      maintenance evidence after the full-identity corrections.
-- [x] Run and archive replacement 1m Product-locale row read, mutation, and
-      maintenance evidence from the same commit as replacement 100k.
-- [x] Compare warm/cold buffers, planner stability, execution latency, ingestion
-      throughput, relation size, WAL, dead tuples, vacuum behavior, and operational
-      complexity.
-- [x] Record the selected model and rejected alternatives in an ADR.
-- [x] Delete benchmark prototypes that are not selected.
-
-Replacement same-commit PostgreSQL evidence is archived, the accepted ADR
-selects JSONB as canonical generic storage, and the rejected typed-EAV and
-hot-projection benchmark implementations are removed. M2 is complete. The
-remaining JSONB benchmark path is a selected-layout regression harness; it is not
-production persistence and does not reopen the accepted storage decision.
+M2 is complete. The remaining JSONB benchmark path is a selected-layout regression
+harness; it is not production persistence and does not reopen the accepted storage
+decision.
 
 ### M3 - PostgreSQL storage engine
 
 - [x] Add canonical schema/entity/link/inbox/job/checkpoint/consistency migrations.
 - [x] Add tenant/schema/entity/locale keys and source-version guards.
 - [x] Add atomic entity/link upsert and delete transactions.
-- [ ] Add locking/leases for schema application.
+- [x] Add locking/leases for schema application.
 - [ ] Add partition and secondary-index management.
 - [ ] Add PostgreSQL Testcontainers fixtures.
 - [ ] Cover migration-from-zero, stale mutation, redelivery, rollback,
-      concurrency, and tenant/locale isolation.
+      concurrency, and tenant/locale isolation in PostgreSQL.
 
-The first M3 slice registers three fail-closed module-owned migrations that create
-`index_schemas`, `index_entities`, `index_links`, `index_inbox`,
-`index_checkpoints`, `index_jobs`, and `index_consistency_findings`. Their keys
-lead with tenant identity, preserve the complete generic schema/entity/locale
-shape, bind entities and outgoing links to an exact non-negative `DECIMAL(20,0)` source
-version that preserves the domain `u64` range,
-and use the empty locale sentinel for locale-neutral records. Schema fingerprints
-remain explicit in the entity foreign key.
+The first M3 slice registers the seven module-owned tables. Their keys lead with
+tenant identity, preserve the complete schema/entity/locale shape, bind entities
+and links to exact non-negative `DECIMAL(20,0)` source versions, and retain schema
+fingerprints in entity foreign keys.
 
 The second M3 slice publishes `PostgresMutationStore`. Every delivery is validated
-through `SchemaRegistry`, bound to a SHA-256 payload identity, claimed by the
-composite inbox key, and applied in one database transaction. The store takes a transaction-scoped PostgreSQL advisory lock on the complete
-entity key, retains a conditional monotonic upsert for the
-concurrent-create race, deletes old links before replacing the source version,
-rebuilds ordered links for live rows, writes payload-free tombstones for deletes,
-and completes the inbox only after all writes succeed. Exact redelivery returns a
-duplicate outcome; stale versions are terminally ignored. SQLite remains a
-contract-test backend with signed source-version limits. PostgreSQL concurrency
-and Testcontainers evidence remain open.
+through `SchemaRegistry`, bound to a SHA-256 payload identity, claimed through the
+composite inbox key, serialized by a transaction-scoped entity advisory lock, and
+applied atomically. Exact redelivery is a duplicate; stale versions are terminally
+ignored; deletes write payload-free tombstones.
+
+The third M3 slice publishes `PostgresSchemaLeaseStore`. It serializes exact
+tenant/module/entity/schema-version application with a transaction-scoped advisory
+lock, verifies the persisted active schema and fingerprint, records durable
+`schema_apply` work in `index_jobs`, and returns `Busy` or `AlreadyApplied` when
+appropriate. Expired work is reclaimed with incremented attempt fencing. Heartbeat,
+success, and failure require the exact job, worker, attempt, running state, and an
+unexpired lease. SQLite remains contract-test-only; PostgreSQL concurrency and
+Testcontainers evidence remain open.
 
 ### M4 - Query engine v1
 
@@ -416,108 +320,28 @@ cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
 npm run verify:index:runtime-fallback-smoke
+node scripts/verify/index-storage-tooling.mjs contract
+node scripts/verify/index-storage-tooling.mjs fixtures
 node --test scripts/verify/compare-index-storage-evidence.test.mjs
 ```
 
-M2 operational commands:
+Targeted M3 maintainer checks:
 
 ```bash
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke \
-  cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke \
-  cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke INDEX_BENCH_CHURN_CYCLES=5 \
-  cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
-
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k \
-  cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k \
-  cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k INDEX_BENCH_CHURN_CYCLES=5 \
-  cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
-
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
-  cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
-  cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
-DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
-  cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
+cargo check -p rustok-index --all-targets
+cargo test -p rustok-index --lib
+node scripts/verify/verify-index-mutation-storage.mjs
+node scripts/verify/verify-index-schema-leases.mjs
 ```
 
 ## Progress log
 
-- 2026-07-23: accepted the destructive rewrite and added the initial generic
-  domain core.
-- 2026-07-23: deleted every legacy query, projection, indexer, migration, port,
-  adapter, scheduler, runtime config, error type, and server composition path.
-- 2026-07-23: completed M1 with canonical identifiers/locales, schema
-  fingerprints, atomic registry, deterministic link graph, scoped validation,
-  bounded queries, keyset cursors, reference evaluator, and property invariants.
-- 2026-07-23: moved the active milestone to the PostgreSQL storage benchmark;
-  no production persistence will be added before the benchmark ADR.
-- 2026-07-23: implemented deterministic M2 datasets, JSONB/EAV/hot candidates,
-  independent link storage, shared workloads, PostgreSQL execution, and JSON
-  EXPLAIN evidence output.
-- 2026-07-23: modularized candidate SQL and added fail-fast entity/link cardinality
-  plus semantic result-digest parity before any plan comparison.
-- 2026-07-23: added isolated update/delete write-amplification workloads with
-  affected-row/link validation, rollback isolation, WAL/BUFFERS evidence, and a
-  separate machine-readable mutation report.
-- 2026-07-23: added persistent committed churn with delete/reinsert restoration,
-  baseline/after-churn/after-VACUUM size and table-stat snapshots, cardinality
-  guards, and a dedicated maintenance report.
-- 2026-07-23: archived PostgreSQL 16 smoke evidence from Actions run `30041091121`
-  as artifact `index-storage-smoke-8efd318091098bb5bce0d5f83b8b51653dc4934c`.
-  All candidates preserved 1,216 entities and 2,400 links, produced identical
-  read-workload digests, validated equal mutation effects, and preserved exact
-  cardinality through five committed churn cycles and VACUUM. This packet remains
-  historical harness-sanity evidence after later SQL corrections.
-- 2026-07-24: synchronized the central module registry and FBA overview with
-  complete Index v1 removal, removed references to deleted registry/evidence
-  and read-model contracts, and reset central FBA readiness to `in_progress`.
-- 2026-07-24: inspected Actions run `30051321255` and artifact
-  `index-storage-100k-84a11b147689b226ca161f5a0287990c1e8489d4`.
-  PostgreSQL 16 preserved 300,080 entities and 600,000 links across JSONB,
-  typed EAV, and hot projection candidates; all read digests, mutation effects,
-  five churn cycles, and post-VACUUM cardinalities matched. That run's 1m stage
-  failed closed because `INDEX_BENCH_LARGE_RUNNER` was unset. The workflow now
-  prefers that explicit runner when configured and otherwise uses `ubuntu-latest`,
-  while the reusable job still rejects any runner below 35 GB free disk.
-- 2026-07-24: runner evidence showed 93,030,404,096 free bytes before the 100k
-  packet and 88,893,792,256 after it. Enabled a guarded `ubuntu-latest` fallback
-  for the 1m stage while preserving `INDEX_BENCH_LARGE_RUNNER` as an override
-  and the existing 35 GB fail-closed disk check.
-- 2026-07-24: inspected the 100k `two_hop_channel_filter` EXPLAIN tree. The
-  Product-to-Variant reverse lookup performed about 1.64 million shared-hit
-  buffer accesses because both link hops omitted their known `target_entity`
-  discriminators. Added `variant` and `sales_channel` target predicates to all
-  three candidate queries and locked them in `verify-index-fba.mjs`; the prior
-  two-hop latency is retained only as pre-fix diagnostic evidence.
-- 2026-07-24: re-audited the M2 physical identity contract. Typed EAV field rows
-  omitted module and schema version, and JSONB/EAV maintenance entity mutations
-  still relied on `entity_name` alone. Added complete field identity, an entity
-  foreign key, full-identity query/mutation/maintenance predicates, static guards,
-  and the canonical operational review. The original 100k packet is now historical
-  diagnostic evidence; replacement same-commit 100k/1m evidence remains the next
-  open M2 action.
-- 2026-07-24: made `decision_ready` fail closed unless replacement 100k/1m packets
-  share repository, commit, PostgreSQL settings, repetitions, churn contract, and
-  candidate/workload shape. Added fixture coverage for valid same-commit input and
-  mixed or incomplete provenance; tests were not run by the assistant.
-- 2026-07-24: pinned every M2 benchmark connection to
-  `standard_conforming_strings = on` before source or candidate SQL runs, and
-  added a permanent source guard so server, database, or role defaults cannot
-  change archived SQL semantics. Tests were not run by the assistant.
-- 2026-07-25: expanded the deterministic session contract to UTC,
-  `DateStyle = 'ISO, YMD'`, and `extra_float_digits = 3`, captured the exact
-  observed PostgreSQL metadata from each active read, mutation, and maintenance
-  session, and re-checked it after all workloads before writing reports.
-- 2026-07-25: made packet preflight fail closed on missing, extra, or unequal
-  eleven-field database metadata across the three reports before byte-preserved
-  validation or comparison, and unified all runners on one shared Rust metadata
-  owner.
-- 2026-07-25: bound the official ten-field cross-scale methodology to comparison,
-  decision preparation, direct ADR rendering, finalization, integrity guards, and
-  documentation. Core-only output remains incomplete, while replacement same-
-  commit 100k/1m evidence and the accepted storage ADR remain open. Tests,
-  verifiers, workflows, and benchmarks were not run by the assistant.
+- 2026-07-23: completed the destructive reset and generic M1 core.
+- 2026-07-24 through 2026-07-27: completed the deterministic M2 PostgreSQL
+  comparison, archived same-commit replacement evidence, accepted JSONB, and
+  removed rejected prototypes.
+- 2026-07-27: registered the canonical M3 storage schema and added atomic
+  mutation/inbox/entity/link persistence.
+- 2026-07-27: added durable schema-application exclusion, expiry reclaim,
+  heartbeat, terminal completion, and attempt fencing. Tests and verifiers were
+  left for the repository owner to execute.
