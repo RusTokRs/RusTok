@@ -5,6 +5,8 @@ use super::marketplace_financial::MarketplaceFinancialMutation;
 #[path = "safe_cart.rs"]
 pub mod cart;
 #[path = "safe_helpers.rs"]
+mod legacy_cart_safe_helpers;
+#[path = "typed_line_item_helpers.rs"]
 mod cart_safe_helpers;
 pub mod catalog;
 #[path = "safe_checkout.rs"]
