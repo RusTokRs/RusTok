@@ -9,6 +9,8 @@ use super::super::types::AddStorefrontCartLineItemInput;
 pub(crate) use super::legacy_helpers::*;
 
 const STOREFRONT_CART_HELPER_BOUNDARY: &str = "commerce_graphql_storefront_cart_helper";
+const STOREFRONT_CUSTOMER_OWNER: &str = "rustok_customer";
+const STOREFRONT_CUSTOMER_OWNER_OPERATION: &str = "read_customer_projection_by_user";
 
 fn public_graphql_error(
     message: &'static str,
@@ -33,7 +35,7 @@ fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortConte
 
 fn customer_port_graphql_error(
     context: &PortContext,
-    operation: &'static str,
+    consumer_operation: &'static str,
     error: PortError,
 ) -> async_graphql::Error {
     let (message, code, retryable) = match &error.kind {
@@ -65,20 +67,58 @@ fn customer_port_graphql_error(
         ),
     };
 
-    tracing::error!(
-        error = ?error,
-        owner = "rustok_customer",
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        operation,
-        owner_code = %error.code,
-        owner_kind = ?error.kind,
-        owner_retryable = error.retryable,
-        public_code = code,
-        public_retryable = retryable,
-        boundary = STOREFRONT_CART_HELPER_BOUNDARY,
-        "commerce GraphQL storefront customer owner port failed"
-    );
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = STOREFRONT_CUSTOMER_OWNER,
+                owner_operation = STOREFRONT_CUSTOMER_OWNER_OPERATION,
+                consumer_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                owner_retryable = error.retryable,
+                public_code = code,
+                public_retryable = retryable,
+                boundary = STOREFRONT_CART_HELPER_BOUNDARY,
+                "commerce GraphQL storefront customer owner port failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = STOREFRONT_CUSTOMER_OWNER,
+                owner_operation = STOREFRONT_CUSTOMER_OWNER_OPERATION,
+                consumer_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                owner_retryable = error.retryable,
+                public_code = code,
+                public_retryable = retryable,
+                boundary = STOREFRONT_CART_HELPER_BOUNDARY,
+                "commerce GraphQL storefront customer owner port was rejected"
+            );
+        }
+    }
 
     public_graphql_error(message, code, retryable)
 }
@@ -147,11 +187,10 @@ pub(crate) async fn resolve_optional_storefront_customer_id(
         return Ok(None);
     };
 
-    let port_context = storefront_customer_port_context(tenant_id, auth.user_id);
-    let error_context = port_context.clone();
+    let customer_context = storefront_customer_port_context(tenant_id, auth.user_id);
     match in_process_customer_read_port(db.clone())
         .read_customer_projection_by_user(
-            port_context,
+            customer_context.clone(),
             CustomerUserProjectionRequest {
                 user_id: auth.user_id,
             },
@@ -161,7 +200,7 @@ pub(crate) async fn resolve_optional_storefront_customer_id(
         Ok(customer) => Ok(Some(customer.id)),
         Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
         Err(error) => Err(customer_port_graphql_error(
-            &error_context,
+            &customer_context,
             "resolve_optional_storefront_customer_id",
             error,
         )),
