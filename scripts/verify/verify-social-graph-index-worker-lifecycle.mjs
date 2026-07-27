@@ -17,6 +17,12 @@ const files = {
     "apps/server/src/services/social_graph_index_worker.rs",
     "utf8",
   ),
+  guardrails: readFileSync(
+    "apps/server/src/services/runtime_guardrails.rs",
+    "utf8",
+  ),
+  health: readFileSync("apps/server/src/controllers/health.rs", "utf8"),
+  metrics: readFileSync("apps/server/src/controllers/metrics.rs", "utf8"),
   consumer: readFileSync(
     "crates/rustok-social-graph/src/index_consumer.rs",
     "utf8",
@@ -96,6 +102,30 @@ for (const forbidden of [
 ]) {
   forbidText("server worker", files.worker, forbidden);
 }
+
+for (const marker of [
+  "SocialGraphIndexWorkerHandle",
+  "social_graph_index_consumer_enabled",
+  "observe_social_graph_index_worker",
+  "Ok(false) => {}",
+  "Ok(true) => observe_worker(",
+  "Social Graph Index durable consumer",
+  "handle.is_ready()",
+  "RuntimeGuardrailStatus::Critical",
+  "Social Graph Index consumer enablement is invalid",
+]) {
+  requireText("runtime guardrails", files.guardrails, marker);
+}
+requireText(
+  "readiness endpoint",
+  files.health,
+  "checks.push(check_runtime_guardrails(&ctx).await);",
+);
+requireText(
+  "aggregate guardrail metrics",
+  files.metrics,
+  "payload.push_str(&render_runtime_guardrail_metrics(&ctx).await);",
+);
 
 for (const marker of [
   "pub const fn stable_code(&self)",
@@ -179,5 +209,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, bounded retries, result-first acknowledgement-only recovery, exact-byte DLQ-before-ack, and owner-table isolation are locked.",
+  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness and aggregate guardrail metrics, bounded retries, result-first acknowledgement-only recovery, exact-byte DLQ-before-ack, and owner-table isolation are locked.",
 );
