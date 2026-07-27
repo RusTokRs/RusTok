@@ -3,10 +3,14 @@ mod native_server_adapter;
 
 pub use native_server_adapter::{
     NativeNotificationStorefrontError, apply_notification_group_state,
-    authorize_notification_open, load_notification_group_items,
-    load_notification_group_summaries, load_notification_unread_count,
+    authorize_notification_open,
+    load_notification_group_items as load_notification_group_items_native,
+    load_notification_group_summaries as load_notification_group_summaries_native,
+    load_notification_unread_count as load_notification_unread_count_native,
 };
 
+use leptos::prelude::*;
+use leptos_auth::AuthContext;
 use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +48,16 @@ fn selected_storefront_read_transport_path() -> UiTransportPath {
     }
 }
 
+fn current_storefront_transport_context() -> NotificationStorefrontTransportContext {
+    let auth = use_context::<AuthContext>();
+    let access_token = auth.as_ref().and_then(AuthContext::get_token);
+    let tenant_slug = auth
+        .as_ref()
+        .and_then(AuthContext::get_tenant)
+        .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
+    NotificationStorefrontTransportContext::new(access_token, tenant_slug)
+}
+
 pub async fn load_notification_unread_count_selected(
     context: NotificationStorefrontTransportContext,
 ) -> UiTransportResult<NotificationStorefrontUnreadCount> {
@@ -52,7 +66,7 @@ pub async fn load_notification_unread_count_selected(
     execute_selected_transport(
         "notifications.storefront.unread_count",
         selected_storefront_read_transport_path(),
-        load_notification_unread_count,
+        load_notification_unread_count_native,
         move || graphql_adapter::load_navigation_unread_count(access_token, tenant_slug),
     )
     .await
@@ -68,7 +82,7 @@ pub async fn load_notification_group_summaries_selected(
     execute_selected_transport(
         "notifications.storefront.group_summaries",
         selected_storefront_read_transport_path(),
-        move || load_notification_group_summaries(native_request),
+        move || load_notification_group_summaries_native(native_request),
         move || graphql_adapter::load_group_summaries(access_token, tenant_slug, request),
     )
     .await
@@ -84,10 +98,33 @@ pub async fn load_notification_group_items_selected(
     execute_selected_transport(
         "notifications.storefront.group_items",
         selected_storefront_read_transport_path(),
-        move || load_notification_group_items(native_request),
+        move || load_notification_group_items_native(native_request),
         move || graphql_adapter::load_group_items(access_token, tenant_slug, request),
     )
     .await
+}
+
+pub async fn load_notification_unread_count(
+) -> Result<NotificationStorefrontUnreadCount, NativeNotificationStorefrontError> {
+    load_notification_unread_count_selected(current_storefront_transport_context())
+        .await
+        .map_err(|error| NativeNotificationStorefrontError(error.to_string()))
+}
+
+pub async fn load_notification_group_summaries(
+    request: NotificationStorefrontGroupSummaryRequest,
+) -> Result<NotificationStorefrontGroupSummaryPage, NativeNotificationStorefrontError> {
+    load_notification_group_summaries_selected(current_storefront_transport_context(), request)
+        .await
+        .map_err(|error| NativeNotificationStorefrontError(error.to_string()))
+}
+
+pub async fn load_notification_group_items(
+    request: NotificationStorefrontGroupItemsRequest,
+) -> Result<NotificationStorefrontGroupItemsPage, NativeNotificationStorefrontError> {
+    load_notification_group_items_selected(current_storefront_transport_context(), request)
+        .await
+        .map_err(|error| NativeNotificationStorefrontError(error.to_string()))
 }
 
 pub async fn load_notification_navigation_unread_count(
