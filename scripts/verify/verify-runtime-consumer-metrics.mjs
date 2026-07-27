@@ -13,6 +13,11 @@ const files = {
     "apps/server/src/services/social_graph_index_worker.rs",
     "utf8",
   ),
+  positionObserver: readFileSync(
+    "apps/server/src/services/social_graph_index_position_observer.rs",
+    "utf8",
+  ),
+  position: readFileSync("crates/rustok-iggy/src/position.rs", "utf8"),
   consumer: readFileSync(
     "crates/rustok-social-graph/src/index_consumer.rs",
     "utf8",
@@ -61,6 +66,10 @@ for (const metric of [
   "rustok_runtime_consumer_in_flight",
   "rustok_runtime_consumer_in_flight_started_timestamp_seconds",
   "rustok_runtime_consumer_last_success_timestamp_seconds",
+  "rustok_runtime_consumer_position_snapshot_timestamp_seconds",
+  "rustok_runtime_consumer_position_partition_count",
+  "rustok_runtime_consumer_position_complete",
+  "rustok_runtime_consumer_lag",
 ]) {
   requireText("runtime consumer telemetry", files.telemetry, metric);
 }
@@ -68,7 +77,6 @@ for (const metric of [
 for (const forbiddenMetric of [
   "rustok_runtime_consumer_source_offset",
   "rustok_runtime_consumer_source_partition",
-  "rustok_runtime_consumer_lag",
 ]) {
   forbidText("runtime consumer telemetry", files.telemetry, forbiddenMetric);
 }
@@ -80,6 +88,7 @@ for (const labelSet of [
   '&["consumer", "stage", "error_code"]',
   '&["consumer", "result"]',
   '&["consumer", "reason"]',
+  '&["consumer", "aggregation"]',
 ]) {
   requireText("runtime consumer telemetry labels", files.telemetry, labelSet);
 }
@@ -100,6 +109,12 @@ for (const forbiddenLabel of [
 for (const marker of [
   "pub fn record_worker_start(consumer: &str)",
   "pub fn record_worker_termination(consumer: &str, reason: &str)",
+  "pub fn record_position_snapshot(",
+  "let complete = total_lag.is_some() && max_lag.is_some();",
+  '.with_label_values(&[consumer, "total"])',
+  '.with_label_values(&[consumer, "max"])',
+  '.set(metric_value(total_lag.unwrap_or(0)))',
+  '.set(metric_value(max_lag.unwrap_or(0)))',
   "runtime_consumer_metrics::ensure_registered()",
   "runtime_consumer_metrics::record_worker_start",
   "runtime_consumer_metrics::record_worker_termination",
@@ -124,6 +139,27 @@ for (const marker of [
     ? files.worker
     : files.telemetry;
   requireText("runtime consumer metrics contract", source, marker);
+}
+
+for (const marker of [
+  "IggyConsumerPositionObserver::connect(",
+  "connected.snapshot().await",
+  "runtime_consumer_metrics::record_position_snapshot(",
+  "snapshot.total_lag()",
+  "snapshot.max_lag()",
+  "projection remains active",
+]) {
+  requireText("position observer metrics integration", files.positionObserver, marker);
+}
+for (const marker of [
+  "self.high_watermark.checked_sub(offset)",
+  "if self.messages_count == 0",
+  "self.partitions.iter().all(|position| position.lag().is_some())",
+  "total.checked_add(position.lag()?)",
+  ".get_topic(&self.stream_id, &self.topic_id)",
+  ".get_consumer_offset(",
+]) {
+  requireText("broker-backed position contract", files.position, marker);
 }
 
 const inFlightClearMarker = `.in_flight
@@ -184,5 +220,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Runtime consumer metrics verification passed: shared registry export, bounded labels, throughput/outcome/retry/failure/DLQ/duration/lifecycle/timestamp metrics, explicit source-position deferral, clean in-flight lifecycle, staged DLQ publication, and acknowledgement-only recovery are locked.",
+  "Runtime consumer metrics verification passed: shared registry export, bounded labels, throughput/outcome/retry/failure/DLQ/duration/lifecycle timestamps, broker-backed complete total/max lag, incomplete-snapshot clearing, clean in-flight lifecycle, staged DLQ publication, and acknowledgement-only recovery are locked.",
 );
