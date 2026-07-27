@@ -209,11 +209,11 @@ impl SocialGraphIndexConsumer {
             .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
     }
 
-    /// Publishes the exact original broker bytes to DLQ, then commits the source offset.
+    /// Publishes the exact original broker bytes to DLQ without committing the source offset.
     ///
-    /// This method is valid only for a delivery that has not produced a durable Index
-    /// result. A failed DLQ publication or acknowledgement leaves the source replayable.
-    pub async fn move_to_dlq_and_acknowledge(
+    /// Hosts use this staged operation to distinguish DLQ publication failures from source
+    /// acknowledgement failures and to retry acknowledgement without republishing in-process.
+    pub async fn publish_consumed_to_dlq(
         &self,
         consumed: &ConsumedContractEvent,
         stable_error_code: &'static str,
@@ -230,7 +230,23 @@ impl SocialGraphIndexConsumer {
         self.transport
             .move_to_dlq(entry)
             .await
-            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
+    }
+
+    /// Publishes the exact original broker bytes to DLQ, then commits the source offset.
+    ///
+    /// This convenience method is valid only for a delivery that has not produced a durable
+    /// Index result. Hosts requiring retry metrics should use [`Self::publish_consumed_to_dlq`]
+    /// followed by [`Self::acknowledge_consumed`] so acknowledgement can be retried without
+    /// republishing the DLQ entry in the same process.
+    pub async fn move_to_dlq_and_acknowledge(
+        &self,
+        consumed: &ConsumedContractEvent,
+        stable_error_code: &'static str,
+        retry_count: u32,
+    ) -> Result<(), SocialGraphIndexConsumerError> {
+        self.publish_consumed_to_dlq(consumed, stable_error_code, retry_count)
+            .await?;
         self.acknowledge_consumed(consumed).await
     }
 
