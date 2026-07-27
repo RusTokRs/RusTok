@@ -19,6 +19,10 @@ struct RuntimeConsumerMetrics {
     in_flight: IntGaugeVec,
     in_flight_started_timestamp_seconds: IntGaugeVec,
     last_success_timestamp_seconds: IntGaugeVec,
+    position_snapshot_timestamp_seconds: IntGaugeVec,
+    position_partition_count: IntGaugeVec,
+    position_complete: IntGaugeVec,
+    lag: IntGaugeVec,
 }
 
 impl RuntimeConsumerMetrics {
@@ -116,6 +120,38 @@ impl RuntimeConsumerMetrics {
                 &["consumer"],
             )
             .expect("Failed to create runtime consumer success timestamp gauge"),
+            position_snapshot_timestamp_seconds: IntGaugeVec::new(
+                Opts::new(
+                    "rustok_runtime_consumer_position_snapshot_timestamp_seconds",
+                    "Unix timestamp of the last broker-backed consumer-position snapshot",
+                ),
+                &["consumer"],
+            )
+            .expect("Failed to create runtime consumer position timestamp gauge"),
+            position_partition_count: IntGaugeVec::new(
+                Opts::new(
+                    "rustok_runtime_consumer_position_partition_count",
+                    "Topic partitions included in the last consumer-position snapshot",
+                ),
+                &["consumer"],
+            )
+            .expect("Failed to create runtime consumer partition-count gauge"),
+            position_complete: IntGaugeVec::new(
+                Opts::new(
+                    "rustok_runtime_consumer_position_complete",
+                    "Whether every topic partition has a coherent committed offset and high-watermark",
+                ),
+                &["consumer"],
+            )
+            .expect("Failed to create runtime consumer position-completeness gauge"),
+            lag: IntGaugeVec::new(
+                Opts::new(
+                    "rustok_runtime_consumer_lag",
+                    "Exact broker offset lag from a complete partition-qualified snapshot",
+                ),
+                &["consumer", "aggregation"],
+            )
+            .expect("Failed to create runtime consumer lag gauge"),
         }
     }
 }
@@ -134,6 +170,10 @@ impl Collector for RuntimeConsumerMetrics {
         descriptions.extend(self.in_flight.desc());
         descriptions.extend(self.in_flight_started_timestamp_seconds.desc());
         descriptions.extend(self.last_success_timestamp_seconds.desc());
+        descriptions.extend(self.position_snapshot_timestamp_seconds.desc());
+        descriptions.extend(self.position_partition_count.desc());
+        descriptions.extend(self.position_complete.desc());
+        descriptions.extend(self.lag.desc());
         descriptions
     }
 
@@ -150,6 +190,10 @@ impl Collector for RuntimeConsumerMetrics {
         families.extend(self.in_flight.collect());
         families.extend(self.in_flight_started_timestamp_seconds.collect());
         families.extend(self.last_success_timestamp_seconds.collect());
+        families.extend(self.position_snapshot_timestamp_seconds.collect());
+        families.extend(self.position_partition_count.collect());
+        families.extend(self.position_complete.collect());
+        families.extend(self.lag.collect());
         families
     }
 }
@@ -197,6 +241,26 @@ pub fn record_worker_start(consumer: &str) {
     let _ = RUNTIME_CONSUMER_METRICS
         .last_success_timestamp_seconds
         .with_label_values(&[consumer]);
+    RUNTIME_CONSUMER_METRICS
+        .position_snapshot_timestamp_seconds
+        .with_label_values(&[consumer])
+        .set(0);
+    RUNTIME_CONSUMER_METRICS
+        .position_partition_count
+        .with_label_values(&[consumer])
+        .set(0);
+    RUNTIME_CONSUMER_METRICS
+        .position_complete
+        .with_label_values(&[consumer])
+        .set(0);
+    RUNTIME_CONSUMER_METRICS
+        .lag
+        .with_label_values(&[consumer, "total"])
+        .set(0);
+    RUNTIME_CONSUMER_METRICS
+        .lag
+        .with_label_values(&[consumer, "max"])
+        .set(0);
 }
 
 pub fn record_worker_termination(consumer: &str, reason: &str) {
@@ -278,9 +342,59 @@ pub fn complete_delivery(
         .set(0);
 }
 
+/// Records a complete or explicitly incomplete broker-backed position snapshot.
+///
+/// Lag values are accepted only as a pair. An incomplete snapshot clears both lag gauges and
+/// sets `position_complete` to zero so old values cannot be mistaken for current group lag.
+pub fn record_position_snapshot(
+    consumer: &str,
+    captured_at_unix_seconds: u64,
+    partition_count: usize,
+    total_lag: Option<u64>,
+    max_lag: Option<u64>,
+) {
+    RUNTIME_CONSUMER_METRICS
+        .position_snapshot_timestamp_seconds
+        .with_label_values(&[consumer])
+        .set(metric_value(captured_at_unix_seconds));
+    RUNTIME_CONSUMER_METRICS
+        .position_partition_count
+        .with_label_values(&[consumer])
+        .set(metric_value(u64::try_from(partition_count).unwrap_or(u64::MAX)));
+
+    let complete = total_lag.is_some() && max_lag.is_some();
+    RUNTIME_CONSUMER_METRICS
+        .position_complete
+        .with_label_values(&[consumer])
+        .set(i64::from(complete));
+    RUNTIME_CONSUMER_METRICS
+        .lag
+        .with_label_values(&[consumer, "total"])
+        .set(metric_value(total_lag.unwrap_or(0)));
+    RUNTIME_CONSUMER_METRICS
+        .lag
+        .with_label_values(&[consumer, "max"])
+        .set(metric_value(max_lag.unwrap_or(0)));
+}
+
 fn unix_timestamp_seconds() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| i64::try_from(duration.as_secs()).unwrap_or(i64::MAX))
         .unwrap_or(0)
+}
+
+fn metric_value(value: u64) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metric_values_saturate_instead_of_wrapping() {
+        assert_eq!(metric_value(1), 1);
+        assert_eq!(metric_value(u64::MAX), i64::MAX);
+    }
 }
