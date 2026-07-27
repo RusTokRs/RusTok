@@ -59,18 +59,46 @@
 - `SocialGraphIndexConsumer::open(Arc<IggyTransport>, DatabaseConnection)` opens the
   dedicated `rustok-social-graph-index` persistent contract consumer group on the
   shared `domain` topic and owns one projector.
-- `process_next(&mut self)` serializes receive/project/ack for one cursor. It validates
-  the sealed family, creates a stable `MutationDelivery`, persists the tenant schema,
-  durably applies or terminally recognizes duplicate/stale delivery in the Index inbox,
-  and acknowledges only after that result is committed. A registration, apply, or
-  acknowledgement failure remains replayable.
+- Staged methods `receive_next`, `project_consumed`, and `acknowledge_consumed` let a
+  host retain one unacknowledged delivery across bounded retries without allowing a
+  later cursor item to overtake it.
+- `process_next(&mut self)` remains the direct serialized receive/project/ack path.
+  It validates the sealed family, persists the tenant schema, durably applies or
+  terminally recognizes duplicate/stale delivery in the Index inbox, and acknowledges
+  only after that result is committed.
+- `SocialGraphIndexConsumerError::{stable_code,is_retryable}` exposes bounded host
+  classification without publishing schema JSON, payloads, or database causes.
+- `move_to_dlq_and_acknowledge` publishes the exact retained broker bytes with connector
+  metadata and only then commits the source offset. It is valid only before a durable
+  Index result exists.
 - Other sealed event families on the shared domain topic are acknowledged as unrelated
   by this dedicated consumer group without schema registration or Index mutation.
 - Bounded Social Graph replay republishes the same sealed relation facts and therefore
-  uses the same result-first schema/inbox path for repair. Host lifecycle composition,
-  retry scheduling, DLQ policy, and retained multi-replica evidence remain separate.
-- Neither adapter, projector, nor consumer reads Social Graph tables or makes the Index
-  projection authoritative. Profiles privacy must not authorize from projection state.
+  uses the same result-first schema/inbox path for repair.
+- Neither adapter, projector, consumer, nor host worker reads Social Graph tables or
+  makes the Index projection authoritative. Profiles privacy must not authorize from
+  projection state.
+
+## Server-owned optional lifecycle
+- The server `mod-social_graph` feature composes `index-consumer`, but execution is
+  default-off until `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED=true`.
+- Explicit enablement requires a worker-capable host and effective event delivery
+  profile `outbox_iggy`; startup fails rather than silently consuming another profile.
+- `SocialGraphIndexWorkerHandle` exposes task completion/readiness source state and the
+  worker subscribes to the shared `StopHandle` for graceful shutdown.
+- Projection failures use bounded exponential retry from the reviewed event relay
+  retry settings. Permanent or exhausted failures are moved to DLQ only when the
+  reviewed event DLQ setting is enabled.
+- DLQ publication uses exact original JSON/MessagePack bytes and precedes source ack.
+  When DLQ is disabled or DLQ publication fails, the worker exits with the offset
+  uncommitted.
+- Once a durable Index result exists, only acknowledgement is retried. Ack failure is
+  never converted into a poison delivery because redelivery is safe through Index
+  duplicate/stale recognition.
+- Malformed bytes that fail before `ConsumedContractEvent` construction remain
+  unacknowledged; a lower-level connector poison-delivery contract is still pending.
+- The worker handle is available for readiness composition, but wiring it into the
+  server `/health/ready` response and retained operator metrics remains pending.
 
 ## Owner-local CLI adapter
 - `rustok-social-graph-cli::command_provider(RuntimeComposition)` exposes selected
@@ -107,7 +135,7 @@
 - `rustok-index` is optional and used by the feature-gated owner conversion,
   Index-owned tenant schema registration, and durable projection consumer.
 - `rustok-iggy` is optional and used only by feature `index-consumer` for a persistent
-  typed-event cursor and result-first broker acknowledgement.
+  typed-event cursor, exact payload retention, DLQ publication, and result-first ack.
 - `rustok-outbox` for the transactional event bus.
 - `rustok-cli-core` and `rustok-runtime` are used only by sibling
   `rustok-social-graph-cli`, not by the owner domain crate.
@@ -131,8 +159,12 @@
 - Writes `index_schemas` directly from Social Graph instead of using the Index owner API.
 - Acknowledges the broker message before tenant schema registration and the Index
   inbox/result are durable.
+- Enables the host worker without `outbox_iggy`, or enables it implicitly by compiling
+  the module feature.
+- DLQs a delivery after the Index result committed instead of retrying ack only.
+- Re-serializes a decoded envelope for DLQ rather than using exact broker bytes.
 - Runs concurrent receive/apply/ack operations on one persistent cursor instead of
-  preserving the consumer's serialized `&mut self` boundary.
+  preserving one outstanding delivery.
 - Treats an unrelated sealed event on the shared domain topic as a Social Graph relation.
 - Runs receipt cleanup for a user actor, future cutoff, unbounded batch, or
   without validating all candidates before deletion.
@@ -155,6 +187,8 @@
 - Index runtime consumption requires the `index-consumer` feature, an initialized
   Iggy transport, an Index database connection, tenant rows, Index migrations, and
   successful Index-owned persisted schema registration.
+- Server execution additionally requires explicit enablement, a worker host,
+  `outbox_iggy`, positive bounded attempts/backoff, and reviewed DLQ configuration.
 
 ### Domain Invariants
 - Relation identity is unique by tenant/source/target/kind.
@@ -176,7 +210,10 @@
 - Tenant schema persistence precedes mutation apply. Exact active registration is
   idempotent; conflict, retired, lower-version, or storage failure prevents acknowledgement.
 - Index inbox outcomes `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable
-  results and may be acknowledged; schema/storage/validation/transport failures are not.
+  results and may be acknowledged.
+- Before a durable result, exhausted/permanent failures may be acknowledged only after
+  successful exact-byte DLQ publication under enabled policy. After a durable result,
+  only source acknowledgement may be retried.
 
 ### Events / Outbox Side Effects
 - Root and local manifests declare the Outbox dependency before write composition.
@@ -202,5 +239,5 @@
 - `social_graph.relation_event_replay_limit_invalid`
 - `social_graph.storage_unavailable`
 - Index projection additionally preserves typed `SchemaRegistrationError`,
-  `SchemaRegistryError`, and `MutationStorageError` internally; transports must map
-  them without publishing schema JSON or storage causes.
+  `SchemaRegistryError`, and `MutationStorageError` internally and maps them to stable
+  `social_graph.index.*` host codes without publishing schema JSON or storage causes.
