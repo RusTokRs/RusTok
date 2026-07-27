@@ -8,9 +8,9 @@
 - `migrations`
 
 The domain/application contract remains database independent. M3 adds module-owned
-production migrations and an Index-owned PostgreSQL mutation adapter;
-source-specific Content, Product, Flex, search, legacy migration, runtime, and
-scheduler modules remain deleted.
+production migrations, an Index-owned PostgreSQL mutation adapter, and durable
+schema-application leases; source-specific Content, Product, Flex, search, legacy
+migration, runtime, and scheduler modules remain deleted.
 
 ## Primary Public Types
 
@@ -40,6 +40,11 @@ scheduler modules remain deleted.
 - `MutationDelivery`
 - `MutationApplyOutcome`
 - `MutationStorageError`
+- `PostgresSchemaLeaseStore`
+- `SchemaApplicationLeaseRequest`
+- `SchemaApplicationLease`
+- `SchemaLeaseAcquireOutcome`
+- `SchemaLeaseError`
 
 ## Contract Status
 
@@ -50,10 +55,13 @@ and query-scoped keyset cursors.
 
 The accepted M2 ADR selects JSONB, and M3 now registers the canonical schema for
 `index_schemas`, `index_entities`, `index_links`, `index_inbox`, `index_jobs`,
-`index_checkpoints`, and `index_consistency_findings`. The first runtime contract is
-`PostgresMutationStore`, which atomically applies validated entity/link upserts and
-deletes through the durable inbox. Source registries, batch ingestion, rebuild,
-query-port, and operator APIs are published by later milestones.
+`index_checkpoints`, and `index_consistency_findings`. `PostgresMutationStore`
+atomically applies validated entity/link upserts and deletes through the durable
+inbox. `PostgresSchemaLeaseStore` serializes exact tenant/schema application,
+reclaims expired jobs with attempt fencing, and requires current ownership for
+heartbeat and terminal completion. Source registries, batch ingestion, rebuild,
+query-port, secondary-index lifecycle, and operator APIs are published by later
+milestones.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -77,6 +85,8 @@ to owner modules or explicit integration crates.
 - Accepting a cursor without checking tenant, schema, fingerprint, locale, and
   order arity.
 - Sorting through a `many` link without an explicit aggregate policy.
+- Completing or heartbeating schema work without exact worker and attempt
+  fencing.
 - Restoring deleted v1 or source-specific code as a compatibility layer.
 
 ## Minimum Contract Set
@@ -86,6 +96,8 @@ to owner modules or explicit integration crates.
 - `IndexSchema`, `IndexRecord`, `IndexMutation`, and `IndexQuery` are the current
   input contracts.
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
+- `SchemaApplicationLeaseRequest` binds one tenant, exact schema reference,
+  computed fingerprint, worker identity, and bounded whole-second lease duration.
 - Construction and validation preserve tenant, schema, entity, locale, and
   source-version identity.
 - Identifiers use bounded lowercase ASCII grammar; locales use ICU4X
@@ -116,6 +128,19 @@ to owner modules or explicit integration crates.
 - Link paths resolve deterministically through the registered graph.
 - Schema fingerprints ignore declaration order but include all semantic field,
   link, locale, and version metadata.
+
+### Schema Application Lease
+
+- Acquisition is scoped by tenant, module, entity, and schema version.
+- PostgreSQL acquisition takes a transaction-scoped advisory lock before reading
+  persisted schema and job state.
+- The persisted schema must be active and match the request fingerprint.
+- A non-expired running owner returns `Busy`; a succeeded application returns
+  `AlreadyApplied`.
+- Expired work is reclaimed by increasing `attempt_count` on the same job.
+- Heartbeat, success, and failure require the exact job, worker, attempt, running
+  state, and an unexpired lease.
+- Failed terminal jobs permit a new job; succeeded jobs remain terminal.
 
 ### Cursor Contract
 
@@ -152,4 +177,6 @@ to owner modules or explicit integration crates.
   in-progress/rejected replay, stored-version corruption, backend limits, and
   database failure. Its public display is generic; transport adapters must still
   map owner errors rather than returning storage details directly.
+- `SchemaLeaseError` separates request validation, missing/retired/conflicting
+  schema state, malformed durable jobs, lost ownership, and database failure.
 - Later milestones add source, retry, cancellation, and rebuild errors.

@@ -47,12 +47,13 @@ a rewrite goal.
 - M2 rejected prototype cleanup: complete
 - M3 storage-schema foundation: complete
 - M3 atomic mutation persistence: complete
+- M3 schema-application leases: complete
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted. M3
-registers the canonical production schema and now publishes one Index-owned
-transactional mutation adapter; query execution, schema leases, and secondary-index
-management remain absent.
+registers the canonical production schema, publishes an Index-owned transactional
+mutation adapter, and now owns durable schema-application leases. Query execution
+and partition/secondary-index management remain absent.
 
 The module-owned migration source creates:
 
@@ -76,6 +77,15 @@ rolls back the inbox claim. SQLite support exists only for contract fixtures and
 rejects source versions above its signed integer range; PostgreSQL preserves the
 full domain `u64` range through `DECIMAL(20,0)`.
 
+The `PostgresSchemaLeaseStore` coordinates one `schema_apply` job per exact
+tenant/module/entity/schema-version scope. Acquisition is serialized with a
+transaction-scoped PostgreSQL advisory lock, verifies the persisted schema and
+fingerprint, returns `Busy` while another non-expired owner holds the lease, and
+returns `AlreadyApplied` after terminal success. Expired work is reclaimed with an
+incremented attempt fence; heartbeat, success, and failure require the exact job,
+worker, attempt, running state, and unexpired lease so an old owner cannot commit
+after takeover. SQLite support remains contract-test-only.
+
 ## Current entry points
 
 - `IndexModule`
@@ -83,6 +93,8 @@ full domain `u64` range through `DECIMAL(20,0)`.
 - `rustok_index::application::*`
 - `rustok_index::migrations::*`
 - `PostgresMutationStore`, `MutationDelivery`, and `MutationApplyOutcome`
+- `PostgresSchemaLeaseStore`, `SchemaApplicationLeaseRequest`,
+  `SchemaApplicationLease`, and `SchemaLeaseAcquireOutcome`
 - `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
 - `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
 - `CursorCodec`, `IndexCursor`, and query-scope cursor validation
@@ -103,7 +115,9 @@ full domain `u64` range through `DECIMAL(20,0)`.
 - reference mutation/query engine and property-based invariants for future
   PostgreSQL equivalence tests;
 - atomic tenant-scoped inbox/entity/link mutation persistence with monotonic
-  source-version and tombstone admission.
+  source-version and tombstone admission;
+- durable schema-application exclusion, expiry reclaim, heartbeat, terminal
+  completion, and attempt fencing.
 
 ## M2 benchmark
 
