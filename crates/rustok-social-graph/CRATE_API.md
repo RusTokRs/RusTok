@@ -5,6 +5,7 @@
 - `error`
 - `follow_read`
 - `graphql` behind the `graphql` feature
+- `index` behind the `index` feature
 - `maintenance`
 - `migrations`
 - `model`
@@ -35,6 +36,23 @@
   counts and the next UUID cursor.
 - `SocialRelationKind::{Block, Mute, Follow}` and `SocialRelationKind::as_str()`
   define canonical persistence and event kind values.
+
+## Optional Index consumer adapter
+- Feature `index` enables the owner-published generic Index contract without making
+  Index a runtime dependency of Social Graph.
+- `social_graph_relation_index_schema()` declares non-localized active relation
+  records keyed by tenant and relation id with source user, target user, and kind fields.
+- `social_graph_relation_index_mutation(tenant_id, event_id, event)` accepts only the
+  sealed validated `SocialGraphRelationEvent` and maps its positive relation revision
+  to the Index `source_version`.
+- Active revisions become `IndexMutation::Upsert`; inactive revisions become
+  revisioned `IndexMutation::Delete` tombstones.
+- Index inbox dedupe and source-version guards may terminally recognize exact
+  redelivery and ignore duplicate/lower revisions. A broker delivery is acknowledged
+  only after that Index-owned result is durable.
+- The adapter does not read Social Graph tables, bypass the event contract, provide a
+  broker worker, or make the Index projection authoritative. Bounded Social Graph
+  replay/rescan remains the drift-repair source.
 
 ## Owner-local CLI adapter
 - `rustok-social-graph-cli::command_provider(RuntimeComposition)` exposes selected
@@ -68,6 +86,7 @@
 - `rustok-api` for neutral port context, actor, deadline, idempotency, event-replay policy, and typed errors.
 - `rustok-core` for module and migration contracts.
 - `rustok-events` for the sealed relation event family.
+- `rustok-index` is optional and used only by the feature-gated owner conversion adapter.
 - `rustok-outbox` for the transactional event bus.
 - `rustok-cli-core` and `rustok-runtime` are used only by sibling
   `rustok-social-graph-cli`, not by the owner domain crate.
@@ -84,7 +103,9 @@
 - Logs the raw replay UUID cursor or per-relation identifiers in aggregate maintenance telemetry.
 - Adds idempotency keys, expected revision, request context, claims, roles,
   locale, channel, or receipt snapshots to the external event.
-- Lets a consumer projection become authoritative for block/mute/follow state.
+- Lets an Index or other consumer projection become authoritative for block/mute/follow state.
+- Builds the Index mutation from owner tables or an unsealed transport-local payload.
+- Acknowledges the broker message before the Index inbox/result is durable.
 - Runs receipt cleanup for a user actor, future cutoff, unbounded batch, or
   without validating all candidates before deletion.
 - Gives the CLI an implicit retention default or lets it query receipt tables directly.
@@ -102,6 +123,7 @@
   derives the cutoff before delegating to the owner port.
 - Relation-event replay requires service/system actor, `event_replay` policy,
   optional exclusive UUID cursor, explicit dry-run mode, and limit from 1 to 1000.
+- Index conversion requires non-nil tenant/event ids and one validated sealed relation event.
 
 ### Domain Invariants
 - Relation identity is unique by tenant/source/target/kind.
@@ -118,6 +140,8 @@
   transaction and rolls the complete page back if one append fails.
 - Historical replay starts only after event-aware writers are active, so concurrent new
   relation rows are covered by the live path rather than relying on UUID insertion order.
+- Index relation records are non-localized, keyed by relation id, and use relation
+  revision as source version. Inactive state is a tombstone, not a second truth source.
 
 ### Events / Outbox Side Effects
 - Root and local manifests declare the Outbox dependency before write composition.
@@ -127,6 +151,7 @@
 - Replay uses the same sealed event mapper and transactional bus as live relation changes.
 - The `rustok-events` digest artifact must be regenerated and reviewed whenever
   the sealed relation event changes the registry or typed wire schemas.
+- The Index adapter changes no event schema or digest; it consumes the existing v1 family.
 
 ### Errors / Failure Codes
 - `social_graph.idempotency_key_invalid`
