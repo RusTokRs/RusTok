@@ -76,7 +76,11 @@ for (const marker of [
 ]) {
   requireText(canonical, marker, `canonical plan is missing ${marker}`);
 }
-rejectText(canonical, "current category/topic/reply reads remain unchanged until a later owner-read", "canonical plan must not retain the pre-composition FORUM-20G residual");
+rejectText(
+  canonical,
+  "current category/topic/reply reads remain unchanged until a later owner-read",
+  "canonical plan must not retain the pre-composition FORUM-20G residual",
+);
 
 for (const marker of [
   "### `FORUM-20AB`",
@@ -90,7 +94,11 @@ for (const marker of [
 ]) {
   requireText(local, marker, `Notifications local plan is missing ${marker}`);
 }
-rejectText(local, "No external transport, selected-ID bulk", "Notifications local plan must not retain the pre-storefront residual");
+rejectText(
+  local,
+  "No external transport, selected-ID bulk",
+  "Notifications local plan must not retain the pre-storefront residual",
+);
 
 for (const marker of [
   "NotificationInboxStorefrontPort",
@@ -108,14 +116,27 @@ for (const marker of [
   requireText(live, marker, `Notifications live contract is missing ${marker}`);
 }
 
-for (const key of ["canonical_plan_sync", "notifications_local_plan_sync", "notifications_owner_docs_sync"]) {
+const synchronizationContract =
+  "crates/rustok-forum/contracts/forum-notification-plan-sync.json";
+for (const key of ["canonical_plan_sync", "notifications_local_plan_sync"]) {
   if (
     upstream[key]?.status !== "synchronized_by_FORUM-20AM" ||
-    upstream[key]?.sync_contract !==
-      "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+    upstream[key]?.required_ledger_through !== "FORUM-20AL" ||
+    upstream[key]?.current_plan_through !== "FORUM-20AL" ||
+    upstream[key]?.sync_contract !== synchronizationContract
   ) {
-    failures.push(`FORUM-20AL handoff must synchronize ${key} through FORUM-20AM`);
+    failures.push(`FORUM-20AL handoff must synchronize ${key} through FORUM-20AL`);
   }
+}
+if (
+  upstream.notifications_owner_docs_sync?.status !== "synchronized_by_FORUM-20AM" ||
+  upstream.notifications_owner_docs_sync?.required_contract_through !== "FORUM-20AL" ||
+  upstream.notifications_owner_docs_sync?.current_contract_through !== "FORUM-20AL" ||
+  upstream.notifications_owner_docs_sync?.sync_contract !== synchronizationContract
+) {
+  failures.push(
+    "FORUM-20AL handoff must synchronize Notifications owner documents through FORUM-20AL",
+  );
 }
 
 for (const marker of [
