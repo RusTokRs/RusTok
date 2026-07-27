@@ -46,15 +46,16 @@ for (const [value, label] of [
   ['#[path = "helpers.rs"]\nmod legacy_helpers;', 'private legacy helper routing'],
   ['#[path = "safe_helpers.rs"]\nmod cart_safe_helpers;', 'private cart safe helper routing'],
   ['#[path = "safe_order_helpers.rs"]\npub mod helpers;', 'public layered safe helper routing'],
+  ['pub(crate) use super::legacy_helpers::*;', 'crate-private legacy helper facade'],
 ]) {
-  requireText(moduleSource, value, label);
+  requireText(`${moduleSource}\n${facadeSource}`, value, label);
 }
 
 for (const value of [
   'async_graphql::Error::new(error.message)',
   'async_graphql::Error::new(error.to_string())',
   'async_graphql::Error::new(format!("{error}"))',
-  'pub(crate) use super::legacy_helpers::*',
+  'pub use super::legacy_helpers::*;',
 ]) {
   forbidText(facadeSource, value, 'storefront cart safe helper facade');
 }
