@@ -23,6 +23,13 @@
       "reason": "Creates empty durable idempotency receipt storage for future relation commands; historical request identities and committed response snapshots do not exist and must not be fabricated"
     },
     {
+      "id": "social-graph-index-dlq-receipts-bootstrap",
+      "migration": "m20260727_000004_create_index_dlq_receipts",
+      "mode": "none",
+      "owner": "rustok-social-graph",
+      "reason": "Creates empty durable poison-delivery receipt storage for future Social Graph Index failures; historical broker publication and source-ack outcomes cannot be reconstructed safely and must not be fabricated"
+    },
+    {
       "id": "profiles-tables-bootstrap",
       "migration": "m20260326_000001_create_profiles_tables",
       "mode": "none",
@@ -76,35 +83,35 @@
       "migration": "m20260721_000004_expand_content_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-content",
-      "reason": "DDL-only widening of Content-owned translation, body, and URL locale columns; existing values require no backfill"
+      "reason": "DDL-only widening of Content-owned translation, body, and URL locale columns; existing values require no semantic backfill"
     },
     {
       "id": "blog-locale-width-32",
       "migration": "m20260721_000005_expand_blog_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-blog",
-      "reason": "DDL-only widening of Blog post and category translation locales; existing values require no backfill"
+      "reason": "DDL-only widening of Blog post and category translation locales; existing values require no semantic backfill"
     },
     {
       "id": "taxonomy-locale-width-32",
       "migration": "m20260721_000006_expand_taxonomy_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-taxonomy",
-      "reason": "DDL-only widening of taxonomy translation and alias locales; existing values require no backfill"
+      "reason": "DDL-only widening of taxonomy translation and alias locales; existing values require no semantic backfill"
     },
     {
       "id": "comments-locale-width-32",
       "migration": "m20260721_000007_expand_comment_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-comments",
-      "reason": "DDL-only widening of comment body locales; existing values require no backfill"
+      "reason": "DDL-only widening of comment body locales; existing values require no semantic backfill"
     },
     {
       "id": "profiles-locale-width-32",
       "migration": "m20260721_000009_expand_profile_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-profiles",
-      "reason": "DDL-only widening of profile preference and translation locale columns; existing values require no backfill"
+      "reason": "DDL-only widening of profile preference and translation locale columns; existing values require no semantic backfill"
     },
     {
       "id": "profiles-display-name-translations",
