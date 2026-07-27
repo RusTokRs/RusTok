@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20AP",
+  "upstream_task": "FORUM-20AO",
+  "residual_contract": "crates/rustok-forum/contracts/forum-notification-visibility-composition.json",
+  "scope": "Recipient-capability-gated materialization of initially non-public forum.topic.created descriptors",
+  "notification_source_file": "crates/rustok-forum/src/notification_source.rs",
+  "recipient_context_file": "crates/rustok-forum/src/notification_recipient.rs",
+  "runtime_test_file": "crates/rustok-forum/tests/notification_topic_descriptor_materialization_sqlite.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20ap-topic-descriptor-materialization.md",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "notifications_local_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "source_verifier": "scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs",
+  "composition": {
+    "topic_created_descriptor_materialization": true,
+    "active_topic_required": true,
+    "recipient_context_capability_gate": true,
+    "public_only_fallback_without_capability": true,
+    "initially_non_public_topic_supported": true,
+    "minimal_identifier_template_data": true,
+    "title_not_materialized": true,
+    "body_not_materialized": true,
+    "route_not_materialized": true,
+    "exact_recipient_subscription_reauthorization": true,
+    "current_category_and_topic_audience_recheck": true,
+    "actor_exclusion_preserved": true,
+    "bounded_raw_subscription_cursor_preserved": true,
+    "missing_closed_deleted_topic_non_oracular": true,
+    "owner_port_unchanged": true,
+    "notification_storage_unchanged": true,
+    "migration_changed": false,
+    "dependency_changed": false
+  },
+  "not_delivered": [
+    "Forum trust facts adapter",
+    "Channel membership facts adapter",
+    "create reply and moderate audience write policies",
+    "search index SEO and deep-link migration",
+    "visibility-scoped category and all-read commands",
+    "tenant-wide scheduled reconciliation and payload redaction",
+    "channel delivery enqueue and delivery-time authorization",
+    "PostgreSQL concurrency and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-forum --test notification_topic_descriptor_materialization_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test notification_richer_visibility_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs",
+      "node scripts/verify/verify-forum-notification-visibility-composition.mjs",
+      "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs",
+      "node scripts/verify/verify-forum-notification-plan-sync.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
