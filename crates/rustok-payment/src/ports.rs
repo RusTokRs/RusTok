@@ -7,6 +7,11 @@ use uuid::Uuid;
 
 use crate::{PaymentCollectionResponse, PaymentCollectionStatusKind};
 
+const PAYMENT_COLLECTION_PORT_BOUNDARY: &str = "payment_collection_port";
+const PAYMENT_COLLECTION_OWNER: &str = "rustok_payment";
+const CREATE_OR_REUSE_COLLECTION_OPERATION: &str = "create_or_reuse_collection";
+const READ_COLLECTION_STATUS_OPERATION: &str = "read_collection_status";
+
 /// Transport-neutral owner boundary for payment collection create/reuse flows.
 #[async_trait]
 pub trait PaymentCollectionPort: Send + Sync {
@@ -74,8 +79,8 @@ impl PaymentCollectionPort for crate::PaymentService {
         context: PortContext,
         request: PaymentCollectionCreateOrReuseRequest,
     ) -> Result<PaymentCollectionResponse, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        let owner_operation = CREATE_OR_REUSE_COLLECTION_OPERATION;
+        require_payment_collection_write_admission(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context)?;
 
         if let Some(cart_id) = request.cart_id {
@@ -141,15 +146,99 @@ impl PaymentCollectionPort for crate::PaymentService {
         context: PortContext,
         request: PaymentCollectionStatusRequest,
     ) -> Result<PaymentCollectionStatusSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        let owner_operation = READ_COLLECTION_STATUS_OPERATION;
+        require_payment_collection_read_admission(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let response = self
             .get_collection(tenant_id, request.collection_id)
             .await
-            .map_err(|error| {
-                payment_error_to_port_error(&context, "read_collection_status", error)
-            })?;
+            .map_err(|error| payment_error_to_port_error(&context, owner_operation, error))?;
         Ok(PaymentCollectionStatusSnapshot::from_response(&response))
+    }
+}
+
+fn require_payment_collection_read_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::read()).map_err(|error| {
+        log_payment_collection_admission_rejection(context, owner_operation, "policy", &error);
+        error
+    })
+}
+
+fn require_payment_collection_write_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::write()).map_err(|error| {
+        log_payment_collection_admission_rejection(context, owner_operation, "policy", &error);
+        error
+    })?;
+    context.require_write_semantics().map_err(|error| {
+        log_payment_collection_admission_rejection(
+            context,
+            owner_operation,
+            "write_semantics",
+            &error,
+        );
+        error
+    })
+}
+
+fn log_payment_collection_admission_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    admission: &'static str,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = PAYMENT_COLLECTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                admission,
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+                "payment collection admission failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = PAYMENT_COLLECTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                admission,
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+                "payment collection admission was rejected"
+            );
+        }
     }
 }
 
