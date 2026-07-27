@@ -4,6 +4,7 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod checkout_compensation;
+mod checkout_compensation_context;
 #[allow(dead_code)]
 pub mod checkout_execution;
 #[cfg(feature = "server")]
@@ -24,7 +25,12 @@ pub mod services;
 #[cfg(feature = "stripe")]
 pub mod stripe_provider;
 
-pub use checkout_compensation::*;
+pub use checkout_compensation::{
+    CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
+};
+pub use checkout_compensation_context::{
+    InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,
+};
 pub use checkout_execution::*;
 pub use dto::*;
 pub use entities::*;
