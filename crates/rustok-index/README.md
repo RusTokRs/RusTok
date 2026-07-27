@@ -48,12 +48,14 @@ a rewrite goal.
 - M3 storage-schema foundation: complete
 - M3 atomic mutation persistence: complete
 - M3 schema-application leases: complete
+- M3 secondary-index lifecycle: complete
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted. M3
 registers the canonical production schema, publishes an Index-owned transactional
-mutation adapter, and now owns durable schema-application leases. Query execution
-and partition/secondary-index management remain absent.
+mutation adapter, owns durable schema-application leases, and now manages
+deterministic schema-derived secondary indexes. Query execution and partition
+management remain absent.
 
 The module-owned migration source creates:
 
@@ -71,11 +73,11 @@ identity, rejects delivery-ID payload reuse, takes a transaction-scoped advisory
 lock on the complete entity key, reads the current source version, and either
 terminally ignores a stale delivery or replaces the live JSONB fields and ordered
 links with the incoming state. Deletes write a tombstone. The inbox row is
-completed in the same commit. Exact
-redelivery returns `MutationApplyOutcome::Duplicate`; a failed entity/link write
-rolls back the inbox claim. SQLite support exists only for contract fixtures and
-rejects source versions above its signed integer range; PostgreSQL preserves the
-full domain `u64` range through `DECIMAL(20,0)`.
+completed in the same commit. Exact redelivery returns
+`MutationApplyOutcome::Duplicate`; a failed entity/link write rolls back the inbox
+claim. SQLite support exists only for contract fixtures and rejects source versions
+above its signed integer range; PostgreSQL preserves the full domain `u64` range
+through `DECIMAL(20,0)`.
 
 The `PostgresSchemaLeaseStore` coordinates one `schema_apply` job per exact
 tenant/module/entity/schema-version scope. Acquisition is serialized with a
@@ -86,6 +88,17 @@ incremented attempt fence; heartbeat, success, and failure require the exact job
 worker, attempt, running state, and unexpired lease so an old owner cannot commit
 after takeover. SQLite support remains contract-test-only.
 
+`SecondaryIndexPlan` derives one deterministic index specification for every
+filterable or sortable field. Scalar fields use typed partial B-tree expressions;
+filterable `many` fields use field-local JSONB containment GIN. Expressions follow
+the production tagged `IndexValue` payload contract through each field's `value`
+member. Stable names bind tenant, schema reference, schema fingerprint, field type,
+cardinality, and index kind. `PostgresSecondaryIndexManager` coordinates ensure,
+reindex, and retirement through fenced `secondary_index` jobs, executes PostgreSQL
+`CONCURRENTLY` DDL, records owner definition comments, and verifies `indisready`
+and `indisvalid` before completion. Retire remains available for retired schemas;
+SQLite is contract-test-only.
+
 ## Current entry points
 
 - `IndexModule`
@@ -95,6 +108,8 @@ after takeover. SQLite support remains contract-test-only.
 - `PostgresMutationStore`, `MutationDelivery`, and `MutationApplyOutcome`
 - `PostgresSchemaLeaseStore`, `SchemaApplicationLeaseRequest`,
   `SchemaApplicationLease`, and `SchemaLeaseAcquireOutcome`
+- `SecondaryIndexPlan`, `SecondaryIndexSpec`, `SecondaryIndexRequest`,
+  `SecondaryIndexLease`, and `PostgresSecondaryIndexManager`
 - `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
 - `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
 - `CursorCodec`, `IndexCursor`, and query-scope cursor validation
@@ -117,7 +132,10 @@ after takeover. SQLite support remains contract-test-only.
 - atomic tenant-scoped inbox/entity/link mutation persistence with monotonic
   source-version and tombstone admission;
 - durable schema-application exclusion, expiry reclaim, heartbeat, terminal
-  completion, and attempt fencing.
+  completion, and attempt fencing;
+- deterministic tenant/schema/fingerprint-bound secondary-index names,
+  tagged-payload expressions, concurrent lifecycle, owner verification, catalog
+  readiness checks, and operation fencing.
 
 ## M2 benchmark
 
