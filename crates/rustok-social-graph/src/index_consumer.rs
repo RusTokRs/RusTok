@@ -67,40 +67,24 @@ pub fn social_graph_index_delivery_from_envelope(
     )?))
 }
 
-/// Result-first durable consumer for `social_graph.relation.state_changed`.
+/// Transport-neutral durable projector used by live and replay-oriented consumers.
 ///
-/// The consumer owns one persistent broker cursor, one validated source schema,
-/// and Index-owned schema/mutation stores. It acknowledges the exact broker message
-/// only after the tenant schema exists and `PostgresMutationStore` commits an
-/// applied result or terminally recognizes duplicate/stale delivery. A failed
-/// registration, apply, or acknowledgement leaves the message replayable.
-pub struct SocialGraphIndexConsumer {
-    _transport: Arc<IggyTransport>,
-    group: PersistentContractConsumerGroup,
+/// It persists or exactly recognizes the tenant schema through the Index owner,
+/// then applies or terminally recognizes one mutation through the Index inbox.
+/// It never acknowledges transport messages and never reads Social Graph storage.
+pub struct SocialGraphIndexProjector {
     schema: IndexSchema,
     schema_store: PostgresSchemaRegistrationStore,
     store: PostgresMutationStore,
     registry: SchemaRegistry,
 }
 
-impl SocialGraphIndexConsumer {
-    pub async fn open(
-        transport: Arc<IggyTransport>,
-        db: DatabaseConnection,
-    ) -> Result<Self, SocialGraphIndexConsumerError> {
-        let group = transport
-            .open_persistent_contract_consumer_group(
-                SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
-                SOCIAL_GRAPH_INDEX_TOPIC,
-            )
-            .await
-            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
+impl SocialGraphIndexProjector {
+    pub fn new(db: DatabaseConnection) -> Result<Self, SocialGraphIndexConsumerError> {
         let schema = social_graph_relation_index_schema()?;
         let mut registry = SchemaRegistry::new();
         registry.register(schema.clone())?;
         Ok(Self {
-            _transport: transport,
-            group,
             schema,
             schema_store: PostgresSchemaRegistrationStore::new(db.clone()),
             store: PostgresMutationStore::new(db),
@@ -127,6 +111,43 @@ impl SocialGraphIndexConsumer {
         let outcome = self.store.apply(&self.registry, &delivery).await?;
         Ok(SocialGraphIndexProcessOutcome::Projected(outcome))
     }
+}
+
+/// Result-first durable consumer for `social_graph.relation.state_changed`.
+///
+/// The consumer owns one persistent broker cursor and one transport-neutral
+/// projector. It acknowledges the exact broker message only after the tenant
+/// schema exists and `PostgresMutationStore` commits an applied result or
+/// terminally recognizes duplicate/stale delivery. A failed registration, apply,
+/// or acknowledgement leaves the message replayable.
+pub struct SocialGraphIndexConsumer {
+    _transport: Arc<IggyTransport>,
+    group: PersistentContractConsumerGroup,
+    projector: SocialGraphIndexProjector,
+}
+
+impl SocialGraphIndexConsumer {
+    pub async fn open(
+        transport: Arc<IggyTransport>,
+        db: DatabaseConnection,
+    ) -> Result<Self, SocialGraphIndexConsumerError> {
+        let group = transport
+            .open_persistent_contract_consumer_group(
+                SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
+                SOCIAL_GRAPH_INDEX_TOPIC,
+            )
+            .await
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
+        Ok(Self {
+            _transport: transport,
+            group,
+            projector: SocialGraphIndexProjector::new(db)?,
+        })
+    }
+
+    pub fn projector(&self) -> &SocialGraphIndexProjector {
+        &self.projector
+    }
 
     /// Receives, durably registers/applies/recognizes, and then acknowledges one message.
     ///
@@ -143,7 +164,7 @@ impl SocialGraphIndexConsumer {
         else {
             return Ok(None);
         };
-        let outcome = self.apply_envelope(&consumed.envelope).await?;
+        let outcome = self.projector.apply_envelope(&consumed.envelope).await?;
         self.group
             .acknowledge(&consumed)
             .await
@@ -154,29 +175,71 @@ impl SocialGraphIndexConsumer {
 
 #[cfg(test)]
 mod tests {
+    use rustok_core::MigrationSource;
     use rustok_events::{ContractEventEnvelope, DomainEvent, SocialGraphRelationEvent};
-    use rustok_index::IndexMutation;
+    use rustok_index::{IndexModule, IndexMutation};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::SchemaManager;
     use uuid::Uuid;
 
     use super::*;
 
-    #[test]
-    fn relation_envelope_becomes_stable_index_delivery() {
-        let tenant_id = Uuid::from_u128(1);
-        let envelope = ContractEventEnvelope::new(
+    fn relation_event(
+        tenant_id: Uuid,
+        relation_id: Uuid,
+        active: bool,
+        revision: i64,
+    ) -> ContractEventEnvelope {
+        ContractEventEnvelope::new(
             tenant_id,
             None,
             SocialGraphRelationEvent::RelationStateChanged {
-                relation_id: Uuid::from_u128(2),
+                relation_id,
                 source_user_id: Uuid::from_u128(3),
                 target_user_id: Uuid::from_u128(4),
                 relation_kind: "follow".to_string(),
-                active: true,
-                revision: 9,
+                active,
+                revision,
             },
         )
-        .unwrap();
+        .unwrap()
+    }
 
+    async fn projector_fixture() -> (DatabaseConnection, SocialGraphIndexProjector, Uuid) {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .unwrap();
+        db.execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY)")
+            .await
+            .unwrap();
+        let tenant_id = Uuid::from_u128(1);
+        db.execute_unprepared(&format!(
+            "INSERT INTO tenants (id) VALUES ('{tenant_id}')"
+        ))
+        .await
+        .unwrap();
+        let manager = SchemaManager::new(&db);
+        for migration in IndexModule.migrations() {
+            migration.up(&manager).await.unwrap();
+        }
+        let projector = SocialGraphIndexProjector::new(db.clone()).unwrap();
+        (db, projector, tenant_id)
+    }
+
+    async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
+        db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "value")
+            .unwrap()
+    }
+
+    #[test]
+    fn relation_envelope_becomes_stable_index_delivery() {
+        let tenant_id = Uuid::from_u128(1);
+        let envelope = relation_event(tenant_id, Uuid::from_u128(2), true, 9);
         let delivery = social_graph_index_delivery_from_envelope(&envelope)
             .unwrap()
             .expect("relation event must produce an Index delivery");
@@ -206,6 +269,44 @@ mod tests {
             social_graph_index_delivery_from_envelope(&envelope)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn projector_persists_schema_before_result_first_mutation_apply() {
+        let (db, projector, tenant_id) = projector_fixture().await;
+        let relation_id = Uuid::from_u128(2);
+        let first = relation_event(tenant_id, relation_id, true, 1);
+        assert_eq!(
+            projector.apply_envelope(&first).await.unwrap(),
+            SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Applied {
+                source_version: 1,
+            })
+        );
+        assert_eq!(
+            projector.apply_envelope(&first).await.unwrap(),
+            SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Duplicate {
+                source_version: 1,
+            })
+        );
+        let second = relation_event(tenant_id, relation_id, false, 2);
+        assert_eq!(
+            projector.apply_envelope(&second).await.unwrap(),
+            SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Applied {
+                source_version: 2,
+            })
+        );
+        assert_eq!(
+            scalar_i64(&db, "SELECT COUNT(*) AS value FROM index_schemas").await,
+            1
+        );
+        assert_eq!(
+            scalar_i64(
+                &db,
+                "SELECT COUNT(*) AS value FROM index_entities WHERE is_deleted = TRUE AND source_version = 2"
+            )
+            .await,
+            1
         );
     }
 }
