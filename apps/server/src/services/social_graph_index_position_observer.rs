@@ -19,6 +19,7 @@ const DEFAULT_POLL_MS: u64 = 5_000;
 const MAX_POLL_MS: u64 = 300_000;
 const METRICS_CONSUMER: &str = "social_graph_index";
 const STAGE_POSITION_SNAPSHOT: &str = "position_snapshot";
+const POSITION_CONFIG_ERROR: &str = "iggy.consumer_position.configuration_invalid";
 
 pub struct SocialGraphIndexPositionObserverHandle {
     _handle: JoinHandle<()>,
@@ -60,7 +61,22 @@ pub async fn start_social_graph_index_position_observer_if_enabled(
         )
     })?;
     let config = transport.config().clone();
-    let poll = position_poll_interval()?;
+    let poll = match position_poll_interval() {
+        Ok(poll) => poll,
+        Err(error) => {
+            runtime_consumer_metrics::record_failure(
+                METRICS_CONSUMER,
+                STAGE_POSITION_SNAPSHOT,
+                POSITION_CONFIG_ERROR,
+            );
+            tracing::warn!(
+                worker = METRICS_CONSUMER,
+                error = %error,
+                "Consumer-position observer configuration is invalid; projection remains active"
+            );
+            return Ok(());
+        }
+    };
 
     if !ctx.shared_contains::<StopHandle>() {
         let (stop_handle, _stop_rx) = StopHandle::new();
@@ -120,22 +136,28 @@ async fn position_observer_loop(
             }
         }
 
-        if let Some(connected) = observer.as_ref() {
-            match connected.snapshot().await {
+        let snapshot_result = match observer.as_ref() {
+            Some(connected) => Some(connected.snapshot().await),
+            None => None,
+        };
+        if let Some(snapshot_result) = snapshot_result {
+            match snapshot_result {
                 Ok(snapshot) => {
+                    let total_lag = snapshot.total_lag();
+                    let max_lag = snapshot.max_lag();
                     runtime_consumer_metrics::record_position_snapshot(
                         METRICS_CONSUMER,
                         snapshot.captured_at_unix_seconds,
                         snapshot.partition_count(),
-                        snapshot.total_lag(),
-                        snapshot.max_lag(),
+                        total_lag,
+                        max_lag,
                     );
                     tracing::debug!(
                         worker = METRICS_CONSUMER,
                         partitions = snapshot.partition_count(),
                         complete = snapshot.is_complete(),
-                        total_lag = ?snapshot.total_lag(),
-                        max_lag = ?snapshot.max_lag(),
+                        total_lag = ?total_lag,
+                        max_lag = ?max_lag,
                         "Recorded partition-qualified Social Graph Index consumer position"
                     );
                 }
