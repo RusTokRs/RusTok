@@ -81,7 +81,7 @@ impl PaymentCollectionPort for crate::PaymentService {
     ) -> Result<PaymentCollectionResponse, PortError> {
         let owner_operation = CREATE_OR_REUSE_COLLECTION_OPERATION;
         require_payment_collection_write_admission(&context, owner_operation)?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
 
         if let Some(cart_id) = request.cart_id {
             if let Some(collection) = self
@@ -148,7 +148,7 @@ impl PaymentCollectionPort for crate::PaymentService {
     ) -> Result<PaymentCollectionStatusSnapshot, PortError> {
         let owner_operation = READ_COLLECTION_STATUS_OPERATION;
         require_payment_collection_read_admission(&context, owner_operation)?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let response = self
             .get_collection(tenant_id, request.collection_id)
             .await
@@ -242,12 +242,38 @@ fn log_payment_collection_admission_rejection(
     }
 }
 
-fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
-        PortError::validation(
+fn parse_port_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|parse_error| {
+        let error = PortError::validation(
             "payment.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for payment ports",
-        )
+        );
+        tracing::warn!(
+            parse_error = ?parse_error,
+            error = ?error,
+            owner = PAYMENT_COLLECTION_OWNER,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            operation = owner_operation,
+            validation = "tenant_id",
+            code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            "payment collection tenant context was rejected"
+        );
+        error
     })
 }
 

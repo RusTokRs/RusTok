@@ -80,7 +80,7 @@ for (const [content, values, label] of [
     [
       'let owner_operation = CREATE_OR_REUSE_COLLECTION_OPERATION;',
       'require_payment_collection_write_admission(&context, owner_operation)?;',
-      'let tenant_id = parse_port_tenant_id(&context)?;',
+      'let tenant_id = parse_port_tenant_id(&context, owner_operation)?;',
     ],
     'write admission ordering',
   ],
@@ -89,7 +89,7 @@ for (const [content, values, label] of [
     [
       'let owner_operation = READ_COLLECTION_STATUS_OPERATION;',
       'require_payment_collection_read_admission(&context, owner_operation)?;',
-      'let tenant_id = parse_port_tenant_id(&context)?;',
+      'let tenant_id = parse_port_tenant_id(&context, owner_operation)?;',
     ],
     'read admission ordering',
   ],
@@ -173,6 +173,7 @@ forbidText(readBlock, 'context.require_policy(', 'direct read policy admission')
 forbidText(source, 'context.require_policy(PortCallPolicy::write())?;', 'context-dropping write policy rejection');
 forbidText(source, 'context.require_write_semantics()?;', 'context-dropping write semantics rejection');
 forbidText(source, 'context.require_policy(PortCallPolicy::read())?;', 'context-dropping read policy rejection');
+forbidText(source, 'parse_port_tenant_id(&context)?', 'operation-free tenant parsing');
 
 if (failures.length > 0) {
   console.error('Payment collection admission context verification failed:');
