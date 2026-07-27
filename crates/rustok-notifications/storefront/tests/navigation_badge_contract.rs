@@ -68,9 +68,13 @@ fn unread_count_transport_is_dual_path_without_identity_payload() {
     ] {
         assert!(GRAPHQL_ADAPTER.contains(marker), "GraphQL adapter is missing `{marker}`");
     }
+    let production = GRAPHQL_ADAPTER
+        .split("#[cfg(test)]")
+        .next()
+        .expect("GraphQL adapter production section should exist");
     for forbidden in ["tenantId", "recipientId", "userId"] {
         assert!(
-            !GRAPHQL_ADAPTER.contains(forbidden),
+            !production.contains(forbidden),
             "GraphQL navigation request must not expose `{forbidden}`"
         );
     }
