@@ -46,6 +46,8 @@ replaced whenever they conflict with the target architecture.
    `rustok-index` migrations or runtime composition.
 9. Partition cutover remains forbidden until retained PostgreSQL shadow evidence
    satisfies an explicit admission policy.
+10. Source modules publish schema contracts through Index-owned APIs; they never
+    write `index_schemas` or other Index-owned tables directly.
 
 The repository owner performs test and benchmark execution during this rewrite.
 Commits and pull requests record which checks and evidence runs were not executed.
@@ -62,24 +64,31 @@ Commits and pull requests record which checks and evidence runs were not execute
 - M2 storage decision: `JSONB accepted; rejected prototypes removed`
 - M3 storage-schema foundation: `complete`
 - M3 atomic mutation persistence: `complete`
+- M3 persisted source schema registration: `complete`
 - M3 schema-application leases: `complete`
 - M3 secondary-index lifecycle: `complete`
 - M3 partition admission and shadow planning: `complete`
 - M3 partition evidence packet tooling: `complete`
-- Production persistence: mutation writes, schema coordination, secondary-index
-  lifecycle, fail-closed partition admission, and evidence validation implemented;
-  the retained PostgreSQL partition run, query adapter, and partition copy/cutover
-  lifecycle are not yet implemented
+- M3 partition evidence capture/assembly: `complete`
+- M3 partition baseline/shadow snapshot runner: `complete`
+- Production persistence: tenant-scoped schema registration, mutation writes,
+  schema coordination, secondary-index lifecycle, fail-closed partition admission,
+  snapshot capture, evidence assembly, and evidence validation implemented; the
+  real query/mutation/maintenance/cutover partition evidence, query adapter, and
+  production partition lifecycle are not yet implemented
 
 The active production crate contains the generic domain/application core, the M3
-production migrations, an Index-owned transactional mutation adapter, a durable
-schema-application lease store, a schema-derived secondary-index manager, and a
-measured partition-admission contract that emits shadow bootstrap plans only. The
-repository also contains immutable partition-manifest preparation and measured
-packet validation tooling. Query adapters, retained partition evidence,
-partition copy/constraint/index attachment, replay/cutover, batch ingestion, and
-PostgreSQL Testcontainers evidence remain open. Benchmark DDL and generated
-evidence stay under `ops/benches`, outside the production module.
+production migrations, an Index-owned tenant schema registration store, an
+Index-owned transactional mutation adapter, a durable schema-application lease
+store, a schema-derived secondary-index manager, and a measured
+partition-admission contract that emits shadow bootstrap plans only. The repository
+also contains immutable partition-manifest preparation, owner-operated
+baseline/shadow snapshot capture, exact-byte raw artifact assembly, and measured
+packet validation tooling. Query adapters, retained query/mutation/maintenance/
+cutover partition evidence, production copy/constraint/index attachment,
+replay/cutover, batch ingestion, source-provider runtime registry, and PostgreSQL
+Testcontainers evidence remain open. Benchmark DDL and generated evidence stay
+under `ops/benches`, outside the production module.
 
 ## Ownership
 
@@ -91,7 +100,8 @@ operator diagnostics.
 
 Source modules own normalized domain data, schema declarations, conversion to
 generic Index records/mutations, paginated rebuild scan/load adapters, and
-source ordering/version information.
+source ordering/version information. They call Index-owned schema and mutation
+APIs and never write Index storage directly.
 
 `rustok-search` owns text relevance, ranking, typo tolerance, synonyms,
 autocomplete, search UX, external search engines, and search-specific result
@@ -101,6 +111,8 @@ enrichment through stable Index contracts.
 
 ```text
 source modules
+    -> owner-published IndexSchema
+    -> PostgresSchemaRegistrationStore
     -> IndexSource / IndexMutation
     -> ingestion and rebuild engines
     -> PostgreSQL index storage
@@ -118,6 +130,7 @@ crates/rustok-index/src/
   infrastructure/
     postgres/
       mutation_store.rs
+      schema_registration.rs
       schema_lease.rs
       secondary_index.rs
       partition_admission.rs
@@ -132,6 +145,7 @@ ops/benches/src/index_storage/
   runner.rs
   mutation_runner.rs
   maintenance_runner.rs
+  partition_snapshot.rs
   sql/
 ```
 
@@ -154,7 +168,7 @@ Selected additions:
 - `icu_locale` with compiled ICU4X data for UTS #35/CLDR locale alias
   canonicalization;
 - `sha2` for stable schema fingerprints, cursor checksums, secondary-index
-  definitions, and partition shadow-plan identities;
+  definitions, partition shadow-plan identities, and retained evidence digests;
 - `postcard` plus URL-safe Base64 for versioned keyset cursors.
 
 Add when required:
@@ -173,6 +187,7 @@ Forbidden in Index core:
 - source-table reads;
 - source-domain crate dependencies;
 - unvalidated JSON-only public queries;
+- source-owned direct writes to Index tables;
 - destructive partition cutover without retained evidence and rollback proof.
 
 ## Milestones
@@ -235,18 +250,23 @@ unpartitioned until a separate shadow packet passes admission.
 - [x] Add canonical schema/entity/link/inbox/job/checkpoint/consistency migrations.
 - [x] Add tenant/schema/entity/locale keys and source-version guards.
 - [x] Add atomic entity/link upsert and delete transactions.
+- [x] Add tenant-scoped persisted source schema registration with exact idempotency,
+      monotonic versions, retired-state protection, and source-neutral ownership.
 - [x] Add locking/leases for schema application.
 - [x] Add secondary-index planning and lifecycle management.
 - [x] Add fail-closed partition admission and deterministic tenant-hash shadow
       planning.
 - [x] Add immutable partition evidence manifest, measured packet validator, and
       owner-operated runbook.
-- [ ] Execute retained PostgreSQL partition baseline/shadow evidence.
+- [x] Add exact-byte raw-artifact capture assembly with bundle confinement and
+      no-clobber packet publication.
+- [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.
+- [ ] Execute retained PostgreSQL query, mutation, maintenance, and cutover evidence.
 - [ ] Add partition copy, constraint/index attachment, replay/dual-write, cutover,
       rollback, and durable global operation ownership.
 - [ ] Add PostgreSQL Testcontainers fixtures.
-- [ ] Cover migration-from-zero, stale mutation, redelivery, rollback,
-      concurrency, and tenant/locale isolation in PostgreSQL.
+- [ ] Cover migration-from-zero, schema registration concurrency, stale mutation,
+      redelivery, rollback, and tenant/locale isolation in PostgreSQL.
 
 The first M3 slice registers the seven module-owned tables. Their keys lead with
 tenant identity, preserve the complete schema/entity/locale shape, bind entities
@@ -301,6 +321,39 @@ reasons before atomically publishing an outcome. The repository owner still must
 execute and retain the PostgreSQL packet. This slice also removes the stale
 integration-test assumption that `IndexModule` has no production migrations.
 
+The seventh M3 slice adds fail-closed raw-artifact packet assembly. A strict
+`index_partition_capture_v1` descriptor points to exactly six unique relative JSON
+files inside one bundle. The assembler rejects absolute paths, traversal,
+directories, symbolic links, hard-link aliases, output aliases, and overwrite
+attempts. It reads each artifact once, hashes exact bytes, maps only the required
+baseline/shadow/query/mutation/maintenance/cutover shapes, and runs the canonical
+packet validator before no-clobber publication. It still does not execute
+PostgreSQL measurements or authorize production partitioning.
+
+The eighth M3 slice adds an owner-operated PostgreSQL snapshot runner. It requires
+an explicit shadow-copy opt-in, PostgreSQL 16 with JIT disabled, ordinary
+unpartitioned canonical relations, a deterministic prepared manifest, and a
+reviewed tenant-predicate audit. It serializes one evidence ID with an advisory
+lock, creates only evidence-bound tenant-hash shadow parents and children, and
+copies entities and links from one repeatable-read snapshot. A shadow-only
+source-version unique index and validated source foreign key protect link parity.
+The runner records baseline/shadow rows, physical bytes, logical SHA-256 digests,
+child sizes, orphan state, FK state, and post-copy catch-up, then publishes
+`baseline.json` and `shadow.json` together without overwriting retained evidence.
+It does not execute query, mutation, maintenance, or cutover measurements and never
+renames, drops, or alters the canonical production relations.
+
+The ninth M3 slice publishes `PostgresSchemaRegistrationStore`, the generic
+source-to-Index schema persistence boundary. Registration validates the owner
+schema and tenant, calculates the canonical fingerprint and semantic JSON, and on
+PostgreSQL serializes one tenant/module/entity identity with a transaction advisory
+lock. Exact active re-registration is `Unchanged`; a new greater version is
+`Inserted`. Same-version contract reuse, a missing lower version after a newer
+version, retired reactivation, nil tenant, malformed persisted state, unsupported
+backend, and storage failure fail closed. A conflict race is verified after
+`ON CONFLICT DO NOTHING`. SQLite provides contract-test coverage. Source modules
+never import Index entities or write `index_schemas` directly.
+
 ### M4 - Query engine v1
 
 - [ ] Produce deterministic executable query plans from validated queries.
@@ -313,12 +366,12 @@ integration-test assumption that `IndexModule` has no production migrations.
 
 ### M5 - Incremental ingestion
 
-- [ ] Add source and mutation registries.
-- [ ] Add inbox deduplication and monotonic source versions.
+- [ ] Add source-provider and mutation runtime registries over persisted schemas.
+- [x] Add inbox deduplication and monotonic source versions.
 - [ ] Add batch transactions, retry classification, backoff, dead-letter state,
       and lag metrics.
-- [ ] Protect against out-of-order update/delete delivery.
-- [ ] Cover crash between commit and acknowledgement.
+- [x] Protect single-record mutation storage against out-of-order update/delete delivery.
+- [ ] Cover crash between commit and acknowledgement in a composed worker.
 
 ### M6 - Rebuild and reconciliation
 
@@ -334,12 +387,17 @@ integration-test assumption that `IndexModule` has no production migrations.
 
 Entities: Product, ProductVariant, SalesChannel.
 
-- [ ] Register owner-published schemas and links.
+- [ ] Register owner-published schemas and links through the persisted owner API.
 - [ ] Implement mutations and rebuild sources.
 - [ ] Support tenant, locale, status, projection, link filters, sorting, and
       cursor pagination.
 - [ ] Move one Storefront query to Index.
 - [ ] Prove no source-module filtering fan-out.
+
+The Social Graph relation projection is an earlier bounded infrastructure consumer
+used to prove sealed-event conversion, tenant schema registration, mutation inbox
+semantics, and result-first acknowledgement. It does not replace the Product-first
+query vertical and is never an authorization source.
 
 ### M8 - Commerce scale slice
 
@@ -356,9 +414,9 @@ Entities: Product, ProductVariant, SalesChannel.
 
 ### M10 - Horizontal scaling
 
-- [ ] Test multiple workers/server instances, concurrent schema application and
-      rebuild, redelivery, slow sources, connection loss, tenant hotspots, and
-      backpressure.
+- [ ] Test multiple workers/server instances, concurrent schema registration and
+      application, rebuild, redelivery, slow sources, connection loss, tenant
+      hotspots, and backpressure.
 - [ ] Add graceful shutdown and task-ownership evidence.
 - [ ] Split core/postgres/worker crates only when measurements justify it.
 
@@ -387,6 +445,9 @@ node scripts/verify/index-storage-tooling.mjs contract
 node scripts/verify/index-storage-tooling.mjs fixtures
 node --test scripts/verify/compare-index-storage-evidence.test.mjs
 node --test scripts/verify/index-partition-evidence.test.mjs
+node --test scripts/verify/index-partition-evidence-assembly.test.mjs
+cargo check -p rustok-benchmarks --bin index-partition-snapshot-capture
+cargo test -p rustok-benchmarks partition_snapshot
 ```
 
 Targeted M3 maintainer checks:
@@ -396,10 +457,12 @@ cargo check -p rustok-index --all-targets
 cargo test -p rustok-index --lib
 cargo test -p rustok-index --test module
 node scripts/verify/verify-index-mutation-storage.mjs
+node scripts/verify/verify-index-schema-registration.mjs
 node scripts/verify/verify-index-schema-leases.mjs
 node scripts/verify/verify-index-secondary-index-lifecycle.mjs
 node scripts/verify/verify-index-partition-admission.mjs
 node scripts/verify/verify-index-partition-evidence.mjs
+node scripts/verify/verify-index-partition-snapshot-capture.mjs
 ```
 
 ## Progress log
@@ -410,6 +473,9 @@ node scripts/verify/verify-index-partition-evidence.mjs
   removed rejected prototypes.
 - 2026-07-27: registered the canonical M3 storage schema and added atomic
   mutation/inbox/entity/link persistence.
+- 2026-07-27: added generic tenant-scoped persisted source schema registration,
+  exact re-registration, version/conflict/retired guards, owner-neutral tests,
+  documentation, and a static boundary verifier.
 - 2026-07-27: added durable schema-application exclusion, expiry reclaim,
   heartbeat, terminal completion, and attempt fencing.
 - 2026-07-27: added schema-derived typed/containment secondary-index planning,
@@ -419,5 +485,11 @@ node scripts/verify/verify-index-partition-evidence.mjs
   tenant-hash shadow planning without destructive production cutover SQL.
 - 2026-07-27: added immutable partition evidence manifests, calculated packet
   admission, non-clobbering shadow bootstrap publication, owner runbook, lightweight
-  CI guards, and corrected the stale integration migration contract. Repository
-  tests, verifiers, and PostgreSQL evidence remain for the owner to execute.
+  CI guards, and corrected the stale integration migration contract.
+- 2026-07-27: added exact-byte raw-artifact capture assembly, bundle confinement,
+  no-symlink/no-alias/no-overwrite publication, fixture coverage, and tooling
+  routing.
+- 2026-07-27: added owner-operated PostgreSQL baseline/shadow snapshot capture,
+  repeatable-read copy, shadow integrity validation, logical SHA-256 parity, child
+  size evidence, no-clobber pair publication, and static/CI guards. Repository
+  tests, verifiers, and real PostgreSQL evidence remain for the owner to execute.
