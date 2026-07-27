@@ -9,10 +9,11 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    NotificationError, NotificationInboxGroupSummaryPage, NotificationInboxItem,
-    NotificationInboxStorefrontGroupItemsRequest, NotificationInboxStorefrontGroupSummaryRequest,
-    NotificationInboxStorefrontPort, NotificationInboxUnreadCountRequest,
-    NotificationInboxUnreadCountService, in_process_notification_inbox_storefront_port,
+    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, NotificationError, NotificationInboxGroupSummaryPage,
+    NotificationInboxItem, NotificationInboxStorefrontGroupItemsRequest,
+    NotificationInboxStorefrontGroupSummaryRequest, NotificationInboxStorefrontPort,
+    NotificationInboxUnreadCountRequest, NotificationInboxUnreadCountService,
+    in_process_notification_inbox_storefront_port,
 };
 
 const MODULE_SLUG: &str = "notifications";
@@ -266,7 +267,7 @@ fn grouped_storefront_port(
 }
 
 fn parse_limit(limit: Option<i32>) -> Result<u16> {
-    let limit = limit.unwrap_or_default();
+    let limit = limit.unwrap_or(i32::from(DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE));
     u16::try_from(limit).map_err(|_| {
         public_error(
             "NOTIFICATION_VALIDATION_ERROR",
@@ -442,6 +443,14 @@ mod tests {
         assert_eq!(
             extension_json(&error, "retryable").and_then(|value| value.as_bool()),
             Some(false)
+        );
+    }
+
+    #[test]
+    fn grouped_graphql_limit_uses_canonical_default() {
+        assert_eq!(
+            parse_limit(None).expect("omitted limit should use canonical default"),
+            DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE
         );
     }
 
