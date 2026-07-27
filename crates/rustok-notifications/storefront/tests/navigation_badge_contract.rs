@@ -86,8 +86,10 @@ fn owner_graphql_derives_scope_and_sanitizes_failures() {
         "NotificationInboxUnreadCountService::new(db)",
         "NOTIFICATION_INBOX_UNAVAILABLE",
         "PUBLIC_UNAVAILABLE_MESSAGE",
+        "other.is_retryable()",
     ] {
         assert!(OWNER_GRAPHQL.contains(marker), "owner GraphQL is missing `{marker}`");
     }
-    assert!(!OWNER_GRAPHQL.contains("secret database detail\".to_string(),\n        )))\n        .to_string"));
+    assert!(!OWNER_GRAPHQL.contains("async_graphql::Error::new(error.to_string())"));
+    assert!(!OWNER_GRAPHQL.contains("format!(\"{error}\")"));
 }
