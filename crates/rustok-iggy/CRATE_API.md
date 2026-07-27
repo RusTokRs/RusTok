@@ -13,6 +13,7 @@
 - `pub struct TopologyManager`, `ConsumedEvent`, `PersistentConsumerGroup`
 - `pub struct ConsumedContractEvent`, `PersistentContractConsumerGroup`
 - `ConsumedContractEvent::raw_payload()` exposes exact received JSON or MessagePack bytes for lossless owner-directed DLQ publication.
+- `DlqEntry::with_broker_message_id(Uuid)` attaches a stable owner-derived Iggy message-header identity without changing the original event ID.
 - `IggyConsumerPositionObserver::connect(&IggyConfig, group, topic)` opens a read-only SDK client to the already-running configured endpoint.
 - `IggyConsumerPositionObserver::snapshot()` returns `ConsumerPositionSnapshot` with every topic partition, its committed group offset, current high-watermark, and message count.
 - `ConsumerPartitionPosition::lag()` returns an exact checked offset difference, zero for an empty partition, and `None` for missing or incoherent checkpoints.
@@ -28,6 +29,16 @@
 - Supports DLQ movement and entry-based retry without silently interpreting family events as `DomainEvent`.
 - Replay remains unavailable until bounded broker reads, republish, durable progress, and real-broker evidence exist.
 
+## Deterministic DLQ publication
+- A `DlqEntry` may carry a non-nil stable broker message UUID while retaining the original event ID, payload, source metadata, error code, and retry count separately.
+- `IggyTransport::move_to_dlq` uses the established connector path for entries without a broker ID.
+- For an identified entry, `IggyTransport` lazily opens one dedicated SDK publisher connection to the same configured endpoint and publishes to the existing `dlq` topology with `IggyMessage::builder().id(uuid.as_u128())`.
+- The publisher uses the same reviewed TCP addresses, credentials, TLS options, one-based partition routing, topic partition count, and replication factor as the primary transport configuration.
+- Publication failure drops the dedicated client; the owner worker keeps the source delivery unacknowledged and its bounded retry reconnects.
+- Shutdown drops the dedicated publisher before stopping the primary connector/process.
+- A deterministic header ID enables Iggy's optional per-partition duplicate suppression only when the deployment enables it and its bounded cache/expiry still covers the retry window.
+- The durable owner receipt remains authoritative. This crate does not claim broker exactly-once from a message ID, an optional cache, or a successful SDK return alone.
+
 ## Consumer-position observation
 - Position observation is read-only and feature-gated with the real Iggy SDK.
 - Bundled mode connects to the already-running loopback endpoint; it never starts or stops another broker process.
@@ -41,7 +52,7 @@
 - `rustok-core`
 - `rustok-events`
 - `rustok-iggy-connector`
-- optional upstream `iggy` SDK for the read-only position observer and real transport feature
+- optional upstream `iggy` SDK for deterministic DLQ headers, the read-only position observer, and real transport features
 
 ## Common AI Mistakes
 - Skips the tenant partition key and breaks processing order.
@@ -51,9 +62,11 @@
 - Re-serializes a decoded contract envelope for DLQ instead of preserving exact received bytes.
 - Acknowledges an event with metadata from another stream/topic/partition cursor.
 - Lets transport choose poison policy before the owner defines its durable-result boundary.
+- Treats a deterministic Iggy message ID as durable exactly-once or assumes server deduplication is enabled/unbounded.
+- Generates a random DLQ message ID on each retry or includes retry count/time in the ID.
+- Starts another bundled broker instead of opening a client connection to the shared endpoint.
 - Calls event age, processing duration, a delivered offset, or a single partition observation consumer lag.
 - Treats an incomplete position snapshot as zero lag.
-- Starts a second bundled broker for observation instead of opening a read-only client to the shared endpoint.
 
 ## Minimum Contract Set
 
@@ -61,7 +74,7 @@
 - `IggyTransport::publish` accepts established root envelopes.
 - `IggyTransport::publish_contract` accepts sealed typed-family envelopes.
 - `open_persistent_consumer_group` and `open_persistent_contract_consumer_group` are explicit and non-interchangeable profiles.
-- `DlqEntry` accepts exact original payload and connector metadata; DLQ publication does not acknowledge the source cursor.
+- `DlqEntry` accepts exact original payload and connector metadata; an owner may additionally attach a stable broker message UUID; DLQ publication does not acknowledge the source cursor.
 - Position observation requires non-empty group/topic names and a valid reviewed TCP endpoint configuration.
 
 ### Domain Invariants
@@ -71,16 +84,19 @@
 - Connector metadata must match stream, topic, and partition before acknowledgement.
 - Exact raw payload retention applies after successful contract-envelope decoding; malformed bytes remain unacknowledged until a connector poison contract exists.
 - Owner code acknowledges only after a terminal durable result or recognized idempotent redelivery.
+- An attached DLQ broker ID is non-random and stable for the owner identity; it never replaces the durable receipt.
 - Position snapshots are partition-qualified and aggregate lag is valid only when all partitions are complete and coherent.
 
 ### Events / Outbox Side Effects
 - Root and typed-family events route to the same domain/system topology rules unless a dedicated family requires another topic.
 - Outbox relay calls the matching root or contract transport method.
 - DLQ publication and source acknowledgement remain separate result-first operations.
+- Identified DLQ publication may open one lazy SDK connection to the same endpoint; it does not create or supervise another broker process.
 - Position observation has no publish, consume, offset-store, delete, or acknowledgement side effect.
 
 ### Errors / Failure Codes
-- Connector, serialization, schema validation, metadata mismatch, and acknowledgement failures remain distinguishable.
+- Connector, serialization, schema validation, metadata mismatch, acknowledgement, deterministic-DLQ configuration/connection/publication, and position failures remain distinguishable.
+- Deterministic DLQ publication exposes bounded `iggy.dlq_publisher.*` stable codes internally for operational logs.
 - Position observer exposes bounded stable codes for invalid configuration, connection unavailable, topic unavailable, and snapshot failure.
 - Failed consume/publish/position operations never acknowledge broker offsets implicitly.
-- `Bundled` manages the module-installed native `iggy-server`; the observer only connects to that existing process.
+- `Bundled` manages the module-installed native `iggy-server`; extra publisher/observer clients only connect to that existing process.
