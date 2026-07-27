@@ -10,6 +10,8 @@ pub mod follow_read;
 pub mod graphql;
 #[cfg(feature = "index")]
 pub mod index;
+#[cfg(feature = "index-consumer")]
+pub mod index_consumer;
 pub mod maintenance;
 pub mod migrations;
 pub mod model;
