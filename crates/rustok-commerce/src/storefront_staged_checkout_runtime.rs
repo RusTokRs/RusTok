@@ -208,10 +208,10 @@ pub async fn complete_storefront_checkout_input(
         },
         pricing_resolver,
     );
-    let inventory_availability = Arc::new(rustok_inventory::InventoryService::new(
+    let inventory_availability = rustok_inventory::in_process_inventory_reservation_port(
         runtime.db_clone(),
         event_bus.clone(),
-    ));
+    );
     let reservation_port =
         rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone());
     let plan_builder = crate::CheckoutPlanBuilder::new(
