@@ -15,12 +15,13 @@ projection must not read owner tables or authorize from replicated relation stat
 The source-complete path now includes durable command receipts, bounded cleanup,
 transactional sealed relation events, bounded owner replay, an approved generic
 Index relation projection, Index-owned tenant schema registration, result-first
-persistent Iggy consumption, and a default-off server lifecycle with bounded retry
-and exact-byte DLQ-before-ack behavior.
+persistent Iggy consumption, one shared EventRuntime Iggy connector, a default-off
+server lifecycle, bounded retry, exact-byte DLQ-before-ack, graceful shutdown, and
+enabled-worker readiness through runtime guardrails.
 
 Compilation, source verifiers, PostgreSQL concurrency, real-broker restart,
-multi-replica recovery, readiness endpoint integration, and retained runtime
-evidence remain maintainer-run or pending.
+multi-replica recovery, dedicated consumer metrics, and retained runtime evidence
+remain maintainer-run or pending.
 
 ## Delivered owner relation contract
 
@@ -112,7 +113,7 @@ evidence remain maintainer-run or pending.
   projection state.
 - `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable outcomes.
 
-## Delivered persistent consumer and host lifecycle
+## Delivered persistent consumer, host lifecycle, and readiness
 
 - Persistent group `rustok-social-graph-index` consumes the shared `domain` topic.
 - Only `ContractEventPayload::SocialGraphRelation` reaches schema registration and
@@ -126,6 +127,9 @@ evidence remain maintainer-run or pending.
 - The server `mod-social_graph` feature composes `index-consumer`, but execution is
   default-off until `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED=true`.
 - Explicit enablement requires a worker host and effective `outbox_iggy` delivery.
+- `EventRuntime` publishes the exact configured `Arc<IggyTransport>` into shared
+  context; relay and consumer reuse it, and the worker never starts/stops a second
+  bundled broker process.
 - `SocialGraphIndexWorkerHandle` exposes instance/task state and the worker subscribes
   to shared `StopHandle` shutdown.
 - Projection retry is bounded exponential backoff derived from reviewed event relay
@@ -139,11 +143,14 @@ evidence remain maintainer-run or pending.
   converted into a poison delivery; redelivery is duplicate/stale safe.
 - Malformed bytes that fail before a decoded `ConsumedContractEvent` remain
   unacknowledged pending a lower-level connector poison-delivery contract.
+- Explicit enablement makes the handle critical in `runtime_guardrails`. Missing,
+  stopped, or invalid configuration reaches `/health/ready` and aggregate guardrail
+  metrics according to observe/enforce rollout; disabled execution is not degraded.
 
 ## Remaining Social Graph scope
 
-1. Wire `SocialGraphIndexWorkerHandle` into `/health/ready`, operator metrics, and
-   explicit required/disabled lifecycle reporting.
+1. Add dedicated per-consumer throughput, retry, DLQ, lag, last-success, and restart
+   metrics without exposing payloads or relation identifiers.
 2. Execute PostgreSQL concurrent schema-registration and mutation evidence.
 3. Prove real Iggy restart/redelivery, ack failure, DLQ failure, and multi-replica
    cursor ownership behavior.
@@ -176,6 +183,7 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consu
 cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets
 cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture
+cargo test -p rustok-server runtime_guardrails --lib -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets
 cargo test -p rustok-social-graph-cli -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
