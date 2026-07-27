@@ -11,6 +11,9 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const moduleSource = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
 const facadeSource = read('crates/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs');
+const layeredSource = read(
+  'crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
+);
 const orderErrors = read('crates/rustok-order/src/error.rs');
 const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
 const failures = [];
@@ -73,8 +76,16 @@ const optionValidation = facadeSource.slice(
 
 for (const [value, label] of [
   ['#[path = "safe_helpers.rs"]\nmod cart_safe_helpers;', 'private cart facade routing'],
-  ['#[path = "safe_order_helpers.rs"]\npub mod helpers;', 'public order facade routing'],
-]) requireText(moduleSource, value, label);
+  [
+    '#[path = "safe_order_helpers.rs"]\nmod safe_order_helpers_impl;',
+    'private order facade implementation routing',
+  ],
+  [
+    '#[path = "layered_order_helpers.rs"]\npub mod helpers;',
+    'public layered order facade routing',
+  ],
+  ['pub(crate) use super::safe_order_helpers_impl::*;', 'order helper parity re-export'],
+]) requireText(`${moduleSource}\n${layeredSource}`, value, label);
 
 for (const [value, label] of [
   [
@@ -284,5 +295,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL order access and shipping-profile helpers retain typed context and stable public envelopes',
+  '✔ Commerce GraphQL order access and shipping-profile helpers retain typed context, stable public envelopes, and layered routing',
 );
