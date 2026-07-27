@@ -197,6 +197,23 @@ pub fn record_worker_start(consumer: &str) {
         .worker_starts_total
         .with_label_values(&[consumer])
         .inc();
+    RUNTIME_CONSUMER_METRICS
+        .in_flight
+        .with_label_values(&[consumer])
+        .set(0);
+    RUNTIME_CONSUMER_METRICS
+        .in_flight_started_timestamp_seconds
+        .with_label_values(&[consumer])
+        .set(0);
+    let _ = RUNTIME_CONSUMER_METRICS
+        .last_success_timestamp_seconds
+        .with_label_values(&[consumer]);
+    let _ = RUNTIME_CONSUMER_METRICS
+        .source_offset
+        .with_label_values(&[consumer, "received"]);
+    let _ = RUNTIME_CONSUMER_METRICS
+        .source_offset
+        .with_label_values(&[consumer, "acknowledged"]);
 }
 
 pub fn record_worker_termination(consumer: &str, reason: &str) {
@@ -204,6 +221,14 @@ pub fn record_worker_termination(consumer: &str, reason: &str) {
         .worker_terminations_total
         .with_label_values(&[consumer, reason])
         .inc();
+    RUNTIME_CONSUMER_METRICS
+        .in_flight
+        .with_label_values(&[consumer])
+        .set(0);
+    RUNTIME_CONSUMER_METRICS
+        .in_flight_started_timestamp_seconds
+        .with_label_values(&[consumer])
+        .set(0);
 }
 
 pub fn begin_delivery(consumer: &str, source_offset: Option<u64>) {
