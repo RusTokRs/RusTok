@@ -55,6 +55,7 @@ mod topic_audience {
     include!("topic_audience.rs");
     include!("topic_audience_visibility.rs");
 }
+mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_owner {
     include!("topic_owner.rs");
@@ -100,6 +101,9 @@ pub use subscription::SubscriptionService;
 pub use topic_audience::{
     ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, ForumTopicAudienceViewer,
     ForumTopicAudienceVisibilityService, SetForumTopicAudiencePolicyInput,
+};
+pub use topic_create_audience_authorization::{
+    ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };
 pub use topic_facade::TopicService;
 pub use topic_visibility::{

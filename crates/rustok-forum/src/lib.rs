@@ -56,6 +56,7 @@ pub use services::{
     ForumReadModelService, ForumRelationReadService, ForumStorefrontReadStateService,
     ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage, ForumTopicAudiencePolicy,
     ForumTopicAudiencePolicyService, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
+    ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
     ForumTopicReadState, ForumTopicReadStateService, ForumTopicUnreadSummary,
     ForumTopicVisibilityScope, ForumTopicVisibilityService, ForumWidgetContractService,
     MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
