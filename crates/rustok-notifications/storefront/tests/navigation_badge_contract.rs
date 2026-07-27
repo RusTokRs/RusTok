@@ -54,9 +54,10 @@ fn unread_count_transport_is_dual_path_without_identity_payload() {
         "UiTransportPath::NativeServer",
         "UiTransportPath::Graphql",
         "execute_selected_transport",
-        "load_notification_unread_count",
+        "load_notification_unread_count_selected",
+        "load_notification_navigation_unread_count",
         "graphql_adapter::load_navigation_unread_count",
-        "notifications.storefront.navigation.unread_count",
+        "notifications.storefront.unread_count",
     ] {
         assert!(TRANSPORT.contains(marker), "transport is missing `{marker}`");
     }
@@ -88,8 +89,9 @@ fn owner_graphql_derives_scope_and_sanitizes_failures() {
         "ctx.data_opt::<TenantContext>()",
         "if auth.tenant_id != tenant.id",
         "require_module_enabled(ctx, MODULE_SLUG).await?",
-        "tenant_id: tenant.id",
-        "recipient_id: auth.user_id",
+        "tenant_id: scope.tenant_id",
+        "recipient_id: scope.recipient_id",
+        "actor: auth.port_actor()",
         "NotificationInboxUnreadCountService::new(db)",
         "NOTIFICATION_INBOX_UNAVAILABLE",
         "PUBLIC_UNAVAILABLE_MESSAGE",

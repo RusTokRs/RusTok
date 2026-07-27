@@ -20,6 +20,7 @@ entry_type = "NotificationsModule"
 
 [provides.graphql]
 query = "graphql::NotificationsQuery"
+runtime_data_factory = "graphql::attach_schema_data"
 
 [provides.admin_ui]
 leptos_crate = "rustok-notifications-admin"

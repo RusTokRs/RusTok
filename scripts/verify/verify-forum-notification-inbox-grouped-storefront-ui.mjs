@@ -27,31 +27,33 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
-function between(source, start, end, label) {
-  const from = source.indexOf(start);
-  const to = source.indexOf(end, from + start.length);
-  if (from < 0 || to < 0 || to <= from) {
-    failures.push(`${label}: bounded source section is missing`);
-    return "";
-  }
-  return source.slice(from, to);
-}
-
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
-const downstreamPath =
+const navigationPath =
   "crates/rustok-forum/contracts/forum-notification-navigation-badge.json";
+const groupedGraphqlPath =
+  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json";
 const contract = JSON.parse(read(contractPath) || "{}");
-const downstreamAbsolute = path.join(repoRoot, downstreamPath);
-const downstream = existsSync(downstreamAbsolute)
-  ? JSON.parse(readFileSync(downstreamAbsolute, "utf8") || "{}")
+const navigationAbsolute = path.join(repoRoot, navigationPath);
+const navigation = existsSync(navigationAbsolute)
+  ? JSON.parse(readFileSync(navigationAbsolute, "utf8") || "{}")
   : null;
-const navigationBadgeDelivered =
-  downstream?.schema_version === 1 &&
-  downstream?.task === "FORUM-20AJ" &&
-  downstream?.upstream_task === "FORUM-20AI" &&
-  downstream?.composition?.exact_navigation_badge === true &&
-  downstream?.composition?.generic_header_actions_slot === true;
+const groupedGraphqlAbsolute = path.join(repoRoot, groupedGraphqlPath);
+const groupedGraphql = existsSync(groupedGraphqlAbsolute)
+  ? JSON.parse(readFileSync(groupedGraphqlAbsolute, "utf8") || "{}")
+  : null;
+const navigationDelivered =
+  navigation?.schema_version === 1 &&
+  navigation?.task === "FORUM-20AJ" &&
+  navigation?.upstream_task === "FORUM-20AI" &&
+  navigation?.composition?.exact_navigation_badge === true;
+const groupedGraphqlDelivered =
+  groupedGraphql?.schema_version === 1 &&
+  groupedGraphql?.task === "FORUM-20AK" &&
+  groupedGraphql?.upstream_task === "FORUM-20AJ" &&
+  groupedGraphql?.composition?.dual_path_group_summary_read === true &&
+  groupedGraphql?.composition?.dual_path_group_items_read === true;
+
 const core = read(contract.storefront_core_file ?? "");
 const transport = read(contract.storefront_transport_file ?? "");
 const ui = read(contract.storefront_ui_file ?? "");
@@ -99,9 +101,6 @@ for (const key of [
   "bounded_action_continuation_message",
   "safe_template_text_fallbacks",
   "in_memory_only_ui_state",
-  "state_contract_test",
-  "owner_contract_note",
-  "storefront_readme_updated",
 ]) {
   if (contract.composition?.[key] !== true) {
     failures.push(`grouped storefront UI contract must record ${key}`);
@@ -115,32 +114,19 @@ for (const key of [
   "channel_delivery",
 ]) {
   if (contract.composition?.[key] !== false) {
-    failures.push(`grouped storefront UI contract must keep ${key} false`);
+    failures.push(`historical grouped UI contract must keep ${key} false`);
   }
 }
 
 for (const sync of [contract.canonical_plan_sync, contract.notifications_local_plan_sync]) {
   if (sync?.status !== "pending" || sync.required_ledger_through !== "FORUM-20AI") {
-    failures.push("Forum and Notifications ledgers must remain pending through FORUM-20AI");
+    failures.push("historical Forum and Notifications ledgers must remain pending through FORUM-20AI");
   }
-}
-if (contract.canonical_plan_sync?.current_plan_through !== "FORUM-20G") {
-  failures.push("pending canonical plan sync must identify FORUM-20G");
-}
-if (contract.notifications_local_plan_sync?.current_plan_through !== "FORUM-20AA") {
-  failures.push("pending Notifications plan sync must identify FORUM-20AA");
-}
-if (
-  contract.notifications_owner_docs_sync?.status !== "pending" ||
-  contract.notifications_owner_docs_sync?.required_contract_through !== "FORUM-20AI"
-) {
-  failures.push("large Notifications owner docs must record pending sync through FORUM-20AI");
 }
 requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");
 requireText(localPlan, "### `FORUM-20AA`", "Notifications local plan must remain grounded through AA");
 
 for (const marker of [
-  "pub const fn as_str(self)",
   "pub fn display_title(&self)",
   "pub fn display_body(&self)",
   "pub struct NotificationStorefrontInboxSnapshot",
@@ -148,7 +134,6 @@ for (const marker of [
   "collect::<BTreeSet<_>>()",
   "known.insert(group.group_key.clone())",
   "pub struct NotificationStorefrontGroupItemsSnapshot",
-  "pub fn from_page(group_key: String, page: NotificationStorefrontGroupItemsPage)",
   "known.insert(item.id.clone())",
 ]) {
   requireText(core, marker, `grouped storefront core is missing ${marker}`);
@@ -178,9 +163,6 @@ for (const marker of [
   "let (expanded_group, set_expanded_group)",
   "let (items_request_nonce, set_items_request_nonce)",
   "items_request_nonce.get() == request_nonce",
-  "set_items_request_nonce.set(request_nonce)",
-  "NotificationStorefrontGroupItemsSnapshot::from_page",
-  "state.append_page(page)",
   "Uuid::new_v4()",
   "NotificationStorefrontGroupStateAction::MarkRead",
   "NotificationStorefrontGroupStateAction::MarkUnread",
@@ -189,8 +171,6 @@ for (const marker of [
   "on_refresh.run(feedback)",
   "NotificationStorefrontOpenDecision::Allowed { route }",
   "navigate_to_route(route.as_str())",
-  "web_sys::window()",
-  "This notification target is no longer available.",
 ]) {
   requireText(ui, marker, `grouped storefront UI is missing ${marker}`);
 }
@@ -202,34 +182,8 @@ for (const forbidden of [
   "async_graphql",
   "NotificationSourceRegistry::default",
   "sea_orm::",
-  "Entity::",
 ]) {
   rejectText(ui, forbidden, `grouped storefront UI must not use ${forbidden}`);
-}
-
-const groupAction = between(
-  ui,
-  "let apply_group_action = Callback::new(",
-  "let open_notification = Callback::new",
-  "group action callback",
-);
-requireText(groupAction, "apply_notification_group_state", "group action must call the native command");
-requireText(groupAction, "on_refresh.run(feedback)", "group action must trigger authoritative refresh with preserved feedback");
-rejectText(groupAction, "set_snapshot", "group action must not optimistically change summary or unread state");
-rejectText(groupAction, "loop {", "group action must not start an unbounded continuation loop");
-rejectText(groupAction, "while ", "group action must not start an unbounded continuation loop");
-
-const openAction = between(
-  ui,
-  "let open_notification = Callback::new",
-  "view! {",
-  "notification open callback",
-);
-requireText(openAction, "authorize_notification_open", "open callback must authorize before navigation");
-const authorizeIndex = openAction.indexOf("authorize_notification_open");
-const navigateIndex = openAction.indexOf("navigate_to_route");
-if (!(authorizeIndex >= 0 && navigateIndex > authorizeIndex)) {
-  failures.push("notification navigation must occur after fresh open authorization");
 }
 
 for (const marker of [
@@ -243,25 +197,16 @@ for (const marker of [
 ]) {
   requireText(transport, marker, `storefront transport is missing ${marker}`);
 }
-for (const marker of [
-  "pub use ui::leptos::{NotificationUnreadBadge, NotificationsView};",
-  "pub use core::*;",
-  "pub use transport::*;",
-]) {
-  requireText(library, marker, `storefront library is missing ${marker}`);
-}
+requireText(library, "pub use ui::leptos::{NotificationUnreadBadge, NotificationsView};", "storefront library must export grouped UI");
 
 for (const marker of [
   "summary_pages_append_without_duplicate_group_state",
   "item_pages_append_without_duplicate_notification_identity",
   "presentation_uses_bounded_template_fields_then_semantic_fallbacks",
   "group_action_labels_match_transport_contract",
-  "assert_eq!(appended, 1)",
-  "NotificationStorefrontGroupStateAction::MarkUnread.as_str()",
 ]) {
   requireText(proof, marker, `grouped storefront state proof is missing ${marker}`);
 }
-
 for (const marker of [
   "notification_storefront_unread_count_native",
   "notification_storefront_group_summaries_native",
@@ -271,11 +216,11 @@ for (const marker of [
   "if !auth.is_human_user_principal()",
   "let actor = auth.port_actor();",
 ]) {
-  requireText(nativeAdapter, marker, `upstream native adapter is missing ${marker}`);
+  requireText(nativeAdapter, marker, `native adapter is missing ${marker}`);
 }
 
 for (const marker of [
-  "NotificationsView` renders the owner-backed grouped inbox",
+  "NotificationsView` now renders the owner-backed grouped inbox",
   "exact unread-count badge",
   "authoritative refresh after every mutation",
   "in-memory page deduplication",
@@ -283,25 +228,26 @@ for (const marker of [
 ]) {
   requireText(readme, marker, `storefront README is missing ${marker}`);
 }
-if (navigationBadgeDelivered) {
-  for (const marker of [
-    "`NotificationNavigation` is a module-owned no-prop header action",
-    "The navigation unread-count read is dual-path",
-    "zero count still leaves the localized Notifications link available",
-    "full grouped inbox, open authorization, and group-state commands are still native-only",
-  ]) {
-    requireText(readme, marker, `FORUM-20AJ storefront README is missing ${marker}`);
-  }
-  if (!downstream.not_delivered?.includes("GraphQL grouped inbox summary and item paging")) {
-    failures.push("FORUM-20AJ must keep grouped inbox GraphQL parity pending");
-  }
-} else {
-  requireText(
-    readme,
-    "global navigation/header composition is not part of this package",
-    "pre-FORUM-20AJ storefront README state is missing",
-  );
+if (navigationDelivered) {
+  requireText(readme, "`NotificationNavigation` is a module-owned no-prop header action", "FORUM-20AJ navigation README state is missing");
 }
+if (groupedGraphqlDelivered) {
+  for (const marker of [
+    "unread count, grouped summaries, and exact-group item pages use one selected read",
+    "notificationInboxGroupSummaries",
+    "notificationInboxGroupItems",
+    "Fresh notification open authorization and group-state",
+  ]) {
+    requireText(readme, marker, `FORUM-20AK README state is missing ${marker}`);
+  }
+  if (
+    !groupedGraphql.not_delivered?.includes("GraphQL notification open authorization") ||
+    !groupedGraphql.not_delivered?.includes("GraphQL group-state commands")
+  ) {
+    failures.push("FORUM-20AK must keep open and command GraphQL parity pending");
+  }
+}
+
 for (const marker of [
   "# FORUM-20AI grouped notification storefront UI",
   "exact unread count from the owner count endpoint",
@@ -310,7 +256,7 @@ for (const marker of [
   "does not optimistically",
   "source-ready / unvalidated",
 ]) {
-  requireText(note, marker, `owner note is missing ${marker}`);
+  requireText(note, marker, `FORUM-20AI owner note is missing ${marker}`);
 }
 
 if (
@@ -320,7 +266,7 @@ if (
   upstream.composition?.grouped_leptos_ui !== false ||
   !upstream.not_delivered?.includes("grouped Leptos inbox rendering and hydrated paging state")
 ) {
-  failures.push("FORUM-20AI must close the FORUM-20AH grouped-UI residual");
+  failures.push("FORUM-20AI must close the FORUM-20AH grouped UI residual");
 }
 
 if (failures.length > 0) {

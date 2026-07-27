@@ -3,6 +3,7 @@ pub mod entities;
 pub mod error;
 mod fanout;
 mod fanout_worker;
+#[cfg(feature = "server")]
 pub mod graphql;
 mod inbox;
 mod inbox_bulk;
@@ -45,6 +46,7 @@ pub use fanout_worker::{
     NotificationFanoutWorkerBatchResult, NotificationFanoutWorkerFailure,
     NotificationFanoutWorkerStage,
 };
+#[cfg(feature = "server")]
 pub use graphql::{GqlNotificationInboxUnreadCount, NotificationsQuery};
 pub use inbox::{
     DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_CURSOR_BYTES,
