@@ -20,6 +20,7 @@ const files = {
     "utf8",
   ),
 };
+const consumerProduction = files.consumer.split("#[cfg(test)]")[0];
 
 const failures = [];
 
@@ -55,28 +56,37 @@ for (const marker of [
   'SOCIAL_GRAPH_INDEX_TOPIC: &str = "domain"',
   "ContractEventPayload::SocialGraphRelation",
   "MutationDelivery::from_event",
+  "SocialGraphIndexProjector",
   "SchemaRegistry::new()",
   "registry.register(schema.clone())?",
   "PostgresSchemaRegistrationStore::new(db.clone())",
   ".register(envelope.tenant_id(), &self.schema)",
   "PostgresMutationStore::new(db)",
   "self.store.apply(&self.registry, &delivery).await?",
+  "self.projector.apply_envelope(&consumed.envelope).await?",
   "self.group",
   ".acknowledge(&consumed)",
   "pub async fn process_next(",
   "&mut self",
   "IgnoredUnrelated",
 ]) {
-  requireText("runtime consumer", files.consumer, marker);
+  requireText("runtime consumer", consumerProduction, marker);
+}
+for (const marker of [
+  "projector_persists_schema_before_result_first_mutation_apply",
+  "MutationApplyOutcome::Duplicate",
+  "is_deleted = TRUE AND source_version = 2",
+]) {
+  requireText("runtime consumer tests", files.consumer, marker);
 }
 
-const registrationPosition = files.consumer.indexOf(
+const registrationPosition = consumerProduction.indexOf(
   ".register(envelope.tenant_id(), &self.schema)",
 );
-const applyPosition = files.consumer.indexOf(
+const applyPosition = consumerProduction.indexOf(
   "self.store.apply(&self.registry, &delivery).await?",
 );
-const acknowledgePosition = files.consumer.indexOf(".acknowledge(&consumed)");
+const acknowledgePosition = consumerProduction.indexOf(".acknowledge(&consumed)");
 if (
   registrationPosition < 0 ||
   applyPosition < 0 ||
@@ -100,7 +110,7 @@ for (const forbidden of [
   "DELETE FROM",
   "UPDATE social_graph",
 ]) {
-  forbidText("runtime consumer", files.consumer, forbidden);
+  forbidText("runtime consumer production code", consumerProduction, forbidden);
 }
 
 for (const marker of [
@@ -136,5 +146,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index runtime consumer verification passed: optional runtime composition, sealed-family filtering, Index-owned tenant schema persistence, durable inbox apply, result-first acknowledgement, unrelated-event handling, and authoritative owner-port privacy are locked.",
+  "Social Graph Index runtime consumer verification passed: optional runtime composition, sealed-family filtering, Index-owned tenant schema persistence, durable inbox apply, result-first acknowledgement, unrelated-event handling, integration fixtures, and authoritative owner-port privacy are locked.",
 );
