@@ -81,6 +81,9 @@ bounded exact-group state commands. Channel delivery remains a later workflow.
 - `NotificationInboxMarkAllArchiveService` and bounded request/page contracts;
 - `NotificationInboxSelectedStateService` and bounded explicit-ID state contracts;
 - `NotificationInboxReconcileService` and bounded reconciliation request/page contracts;
+- `NotificationInboxStorefrontPort` and the in-process authenticated-user owner facade;
+- feature-gated Notifications GraphQL query root and host schema-data composition;
+- module-owned native/GraphQL storefront transport and grouped Leptos UI packages;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
 ## Persistence
@@ -243,7 +246,8 @@ decision.
 The service exposes only state and inbox timestamps, calls no privacy/source or
 delivery owner, and creates no delivery attempt. SQLite owner evidence is
 `tests/inbox_state_sqlite.rs`. Exact-item, bounded mark-all, selected-ID, and bounded
-exact-group state commands are delivered. External transport adapters and grouped UI remain closed.
+exact-group state commands are delivered. Authenticated native transport and grouped UI are
+also delivered; GraphQL group-state write parity remains open.
 
 ### 6. Exact unread count
 
@@ -258,8 +262,8 @@ The count reflects stored owner state. Current recipient privacy or source chang
 affect it after exact or scheduled reconciliation archives unavailable rows. The
 service invokes no recipient-policy, source, target, or delivery owner, mutates no
 notification timestamps or delivery attempts, and exposes no notification or target
-identity. SQLite evidence is `tests/inbox_count_sqlite.rs`. External transport and
-UI exposure remain closed until an authorized adapter composes this owner read.
+identity. SQLite evidence is `tests/inbox_count_sqlite.rs`. The exact count is exposed through
+the authenticated native and GraphQL storefront read planes and the manifest-mounted unread badge.
 
 ### 7. Bounded mark-all-read
 
@@ -396,6 +400,31 @@ delivery attempt.
 SQLite evidence is `tests/inbox_group_state_sqlite.rs`; the source guard is
 `scripts/verify/verify-forum-notification-inbox-group-state.mjs`.
 
+### 14. Authenticated storefront transport and grouped UI
+
+`NotificationInboxStorefrontPort` is the transport-neutral authenticated-user boundary for
+unread count, bounded group summaries/items, fresh open authorization, and bounded group
+state commands. Requests carry no tenant or recipient fields: tenant comes from
+`PortContext.tenant_id`, recipient from the human-user actor, reads require a deadline, and
+writes additionally require idempotency semantics.
+
+The native Leptos server-function adapter serves SSR/hydrate. The feature-gated GraphQL query
+root serves CSR/headless unread count, group summaries/items, and fresh open authorization.
+Both reuse the same owner port and host-composed source registry and recipient-policy runtime;
+there is no transport fallback and no direct storefront database authority. GraphQL state
+mutations remain intentionally absent.
+
+The module-owned grouped storefront view performs an owner-backed SSR bootstrap, bounded raw
+paging, one-group expansion, stale-response rejection, authoritative refresh after writes,
+and browser navigation only after `NotificationStorefrontOpenDecision::Allowed`. The generic
+storefront header resolves the Notifications action from manifest metadata, builds the route
+through `UiRouteContext`, and shows the exact unread badge only when positive while retaining
+the link at zero. Optional capability failures hide the action without failing the header.
+
+Source contracts are guarded by the `FORUM-20AG` through `FORUM-20AL` machine contracts and
+matching `verify-forum-notification-*` scripts. These source slices remain unvalidated by the
+implementation agent.
+
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
 
@@ -417,7 +446,7 @@ continue to succeed when the module is absent or disabled.
   policy changes with final candidate commits;
 - bounded moderator-directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- external inbox transport adapters and module-owned grouped UI;
+- GraphQL group-state mutations and auth-reactive automatic grouped bootstrap refresh;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - retention, quarantine replay/purge, and administrative repair.

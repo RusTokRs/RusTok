@@ -120,12 +120,23 @@ for (const key of [
 }
 
 for (const sync of [contract.canonical_plan_sync, contract.notifications_local_plan_sync]) {
-  if (sync?.status !== "pending" || sync.required_ledger_through !== "FORUM-20AL") {
-    failures.push("Forum and Notifications ledgers must remain pending through FORUM-20AL");
+  if (
+    sync?.status !== "synchronized_by_FORUM-20AM" ||
+    sync.required_ledger_through !== "FORUM-20AL" ||
+    sync.sync_contract !== "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+  ) {
+    failures.push("Forum and Notifications ledgers must be synchronized by FORUM-20AM through FORUM-20AL");
   }
 }
-requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");
-requireText(localPlan, "### `FORUM-20AA`", "Notifications local plan must remain grounded through AA");
+if (
+  contract.notifications_owner_docs_sync?.status !== "synchronized_by_FORUM-20AM" ||
+  contract.notifications_owner_docs_sync?.sync_contract !==
+    "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+) {
+  failures.push("Notifications owner documents must be synchronized by FORUM-20AM");
+}
+requireText(canonicalPlan, "### Delivered in `FORUM-20AG` through `FORUM-20AL`", "canonical plan must be synchronized through AL");
+requireText(localPlan, "### `FORUM-20AK / FORUM-20AL`", "Notifications local plan must be synchronized through AL");
 
 for (const marker of [
   "pub enum GqlNotificationInboxOpenDecision",
