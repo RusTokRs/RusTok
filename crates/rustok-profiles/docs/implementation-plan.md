@@ -48,14 +48,19 @@ retry.
 - The server lifecycle is source-complete and default-off through
   `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED`.
 - Explicit enablement requires a worker host and `outbox_iggy`.
+- Relay and consumer reuse the one `Arc<IggyTransport>` owned by `EventRuntime`; the
+  worker never starts or stops a second bundled broker process.
 - Projection failures use bounded retry. Before a durable result, permanent/exhausted
   failures may move exact original broker bytes to DLQ before source ack when the
   reviewed DLQ setting is enabled.
 - After a durable result, only acknowledgement is retried; ack failure is never DLQed.
 - Shared `StopHandle` controls shutdown and `SocialGraphIndexWorkerHandle` exposes
-  task readiness source state.
-- `/health/ready` integration, operator metrics, PostgreSQL concurrency, real-Iggy
-  restart/redelivery, DLQ failure, and multi-replica evidence remain pending.
+  task readiness state.
+- Explicitly enabled missing/stopped/invalid worker state is critical in
+  `runtime_guardrails`, reaches `/health/ready`, and changes aggregate guardrail
+  metrics under the existing observe/enforce policy. Disabled execution is healthy.
+- Dedicated consumer throughput/retry/DLQ/lag metrics, PostgreSQL concurrency,
+  real-Iggy restart/redelivery, DLQ failure, and multi-replica evidence remain pending.
 - None of this moves privacy policy or relation authority out of Social Graph.
 
 ## FFA/FBA boundary
@@ -81,8 +86,9 @@ retry.
    **Status:** source-complete for owner privacy ports, public GraphQL lookups, author
    cards, storefront, Customer Admin enrichment, receipt-aware commands,
    transactional events, cleanup CLI, bounded replay, tenant schema registration,
-   result-first Index apply/ack, and default-off server lifecycle.
-   **Remaining:** wire worker readiness/metrics, prove bounded replay/rescan repair,
+   result-first Index apply/ack, shared-connector server lifecycle, shutdown, and
+   enabled-worker readiness/aggregate guardrail metrics.
+   **Remaining:** add dedicated consumer metrics, prove bounded replay/rescan repair,
    and retain compiled/runtime evidence for privacy, receipts, cleanup CLI, event
    relay/replay, schema concurrency, Index restart/redelivery/DLQ, storefront,
    Customer Admin, Blog/Forum, and Media behavior.
@@ -114,11 +120,12 @@ retry.
    **Status:** source-complete for Profiles operations, Social Graph command
    telemetry, durable receipts, bounded maintenance, transactional events, bounded
    replay, cleanup CLI, sealed event conversion, persisted schema registration,
-   durable Index terminal recognition, default-off lifecycle, bounded retry, DLQ
-   ordering, and graceful shutdown source contracts.
-   **Remaining:** `/health/ready` and metrics composition, deployment retention
-   approval, PostgreSQL concurrency/retention/replay/rollback, real broker and
-   multi-replica evidence, and retained operator packets.
+   durable Index terminal recognition, default-off shared-connector lifecycle,
+   bounded retry, DLQ ordering, graceful shutdown, readiness, and aggregate guardrail
+   metrics.
+   **Remaining:** dedicated consumer metrics, deployment retention approval,
+   PostgreSQL concurrency/retention/replay/rollback, real broker and multi-replica
+   evidence, and retained operator packets.
 
 ## Recheck checkpoint — 2026-07-27
 
@@ -134,9 +141,11 @@ retry.
 - Added generic Index-owned schema registration and a transport-neutral projector.
 - Added staged persistent consumption with durable schema/apply/terminal recognition
   before broker acknowledgement.
-- Added default-off server lifecycle, strict `outbox_iggy` gating, shared shutdown,
-  bounded retry, exact-byte DLQ-before-ack, and acknowledgement-only recovery after
-  durable apply.
+- Added default-off lifecycle, strict `outbox_iggy` gating, one shared EventRuntime
+  connector, shared shutdown, bounded retry, exact-byte DLQ-before-ack, and
+  acknowledgement-only recovery after durable apply.
+- Added enabled-worker readiness through `runtime_guardrails`, `/health/ready`, and
+  aggregate guardrail metrics without degrading disabled execution.
 - Tests, formatters, Cargo commands, source verifiers, PostgreSQL, real-broker, and
   multi-replica scenarios remain maintainer-run or pending.
 
@@ -160,6 +169,7 @@ retry.
 - `cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
 - `cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture`
+- `cargo test -p rustok-server runtime_guardrails --lib -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets`
 - `cargo test -p rustok-social-graph-cli -- --nocapture`
 - `cargo test -p rustok-social-graph --test command_receipts_sqlite -- --nocapture`
@@ -197,4 +207,6 @@ retry.
     monotonic source versions, and bounded replay, but never authorize visibility.
 13. Durable projection workers register the tenant schema and persist/recognize the
     owner result before ack. DLQ publication, when permitted, precedes source ack.
-14. Update Profiles and affected owner docs with every boundary change.
+14. Enabled durable workers participate in readiness; disabled optional workers do not
+    degrade presentation availability.
+15. Update Profiles and affected owner docs with every boundary change.
