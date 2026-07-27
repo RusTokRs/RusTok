@@ -82,6 +82,40 @@ if (prepare.includes("writeFileSync(options.manifest")) {
   fail('manifest preparer must publish through the atomic new-file helper');
 }
 
+const assemblyCore = requireMarkers('scripts/verify/index-partition-evidence-assembly-core.mjs', [
+  "CAPTURE_CONTRACT = 'index_partition_capture_v1'",
+  'RAW_ARTIFACT_ROLES = Object.freeze',
+  "['contract', 'completed_at', 'run_provenance', 'database', 'artifacts']",
+  "requireExactKeys(capture.artifacts, RAW_ARTIFACT_ROLES, 'capture.artifacts')",
+  'realpathSync.native(bundleRoot)',
+  'must stay inside the canonical capture bundle',
+  'must be a regular non-symlink file',
+  'const identityOf = (stat) => `${stat.dev}:${stat.ino}`',
+  'capture artifact files must be unique',
+  'rawArtifacts[role] = sha256Hex(bytes)',
+  'export const readCaptureArtifacts',
+  'export const assemblePartitionPacket',
+  'const { rawArtifacts, parsed, resolvedPaths, identities } = readCaptureArtifacts',
+  'validatePartitionPacket(packet)',
+  'return { packet, resolvedPaths, identities }',
+]);
+for (const forbidden of ['readlinkSync(', 'followSymlink', 'artifactBundle =']) {
+  if (assemblyCore.includes(forbidden)) {
+    fail(`partition assembly core contains forbidden bypass behavior: ${forbidden}`);
+  }
+}
+
+requireMarkers('scripts/verify/assemble-index-partition-evidence.mjs', [
+  '--manifest, --capture, and --output must reference distinct paths',
+  '--manifest and --capture must not alias the same file',
+  '--output must not alias a raw artifact path',
+  'manifest, capture, and raw artifacts must be distinct files',
+  'refusing to overwrite existing file',
+  'writeFileSync(temporary, content',
+  'linkSync(temporary, filename)',
+  'const { packet, resolvedPaths, identities } = assemblePartitionPacket({',
+]);
+
 requireMarkers('scripts/verify/validate-index-partition-evidence.mjs', [
   '--input and --output must reference distinct paths',
   'rmSync(options.output, { force: true })',
@@ -111,13 +145,38 @@ requireMarkers('scripts/verify/index-partition-evidence.test.mjs', [
   'assert.doesNotMatch(sql, /RENAME TO/u)',
 ]);
 
+requireMarkers('scripts/verify/index-partition-evidence-assembly.test.mjs', [
+  'assembly hashes exact raw bytes and emits a structurally validated packet',
+  'capture artifact paths fail closed on traversal and duplicate file identity',
+  'assembler CLI publishes once and never aliases or overwrites retained inputs',
+  'whitespace changes exact-byte identity',
+  'must stay inside the capture bundle',
+  'artifact files must be unique',
+  'raw-shadow-hardlink.json',
+  'refusing to overwrite existing file',
+  'must not alias a raw artifact path',
+  'must not alias the same file',
+]);
+
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [
   'partition-prepare',
+  'partition-assemble',
   'partition-validate',
   "'verify-index-partition-evidence.mjs'",
   "scriptPath('index-partition-evidence.test.mjs')",
+  "scriptPath('index-partition-evidence-assembly.test.mjs')",
   "runScript('prepare-index-partition-evidence.mjs', args)",
+  "runScript('assemble-index-partition-evidence.mjs', args)",
   "runScript('validate-index-partition-evidence.mjs', args)",
+]);
+
+requireMarkers('.github/workflows/index-storage-smoke.yml', [
+  'scripts/verify/index-partition-evidence-assembly-core.mjs',
+  'scripts/verify/assemble-index-partition-evidence.mjs',
+  'scripts/verify/index-partition-evidence-assembly.test.mjs',
+  'node --check scripts/verify/index-partition-evidence-assembly-core.mjs',
+  'node --check scripts/verify/assemble-index-partition-evidence.mjs',
+  'node --test scripts/verify/index-partition-evidence-assembly.test.mjs',
 ]);
 
 requireMarkers('crates/rustok-index/tests/module.rs', [
@@ -131,12 +190,17 @@ requireMarkers('crates/rustok-index/tests/module.rs', [
 
 requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'index_partition_evidence_manifest_v1',
+  'index_partition_capture_v1',
   'index_partition_evidence_packet_v1',
   'index_partition_admission_v1',
   'normalized_partition_plan_v1',
   'run_key',
   'partition-prepare',
+  'partition-assemble',
   'partition-validate',
+  'six raw JSON artifacts',
+  'regular files, never symbolic links',
+  'hard-link aliases',
   'PostgreSQL system identifier',
   'SHA-256 digests for the retained raw baseline',
   'Tenant-predicate coverage is calculated by the validator',
@@ -147,17 +211,20 @@ requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
 
 requireMarkers('crates/rustok-index/docs/README.md', [
   'M3 partition evidence packet tooling: `complete`',
-  'The repository owner still executes',
-  'and retains the PostgreSQL packet.',
+  'M3 partition evidence capture/assembly: `complete`',
+  'The repository owner still executes and',
+  'retains the PostgreSQL packet.',
   '[M3 partition evidence runbook](./partition-evidence-runbook.md)',
 ]);
 
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition evidence packet tooling: `complete`',
+  '- M3 partition evidence capture/assembly: `complete`',
   '- [x] Add immutable partition evidence manifest, measured packet validator, and',
+  '- [x] Add exact-byte raw-artifact capture assembly with bundle confinement and',
   '- [ ] Execute retained PostgreSQL partition baseline/shadow evidence.',
-  'The sixth M3 slice adds immutable partition evidence preparation and validation.',
-  'cargo test -p rustok-index --test module',
+  'The seventh M3 slice adds fail-closed raw-artifact packet assembly.',
+  'node --test scripts/verify/index-partition-evidence-assembly.test.mjs',
   'node scripts/verify/verify-index-partition-evidence.mjs',
 ]);
 

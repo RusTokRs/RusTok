@@ -31,9 +31,12 @@ on:
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/index-partition-evidence-core.mjs"
+      - "scripts/verify/index-partition-evidence-assembly-core.mjs"
       - "scripts/verify/prepare-index-partition-evidence.mjs"
+      - "scripts/verify/assemble-index-partition-evidence.mjs"
       - "scripts/verify/validate-index-partition-evidence.mjs"
       - "scripts/verify/index-partition-evidence.test.mjs"
+      - "scripts/verify/index-partition-evidence-assembly.test.mjs"
       - "scripts/verify/verify-index-partition-evidence.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - "scripts/verify/verify-index-storage-adr-integrity.mjs"
@@ -70,9 +73,12 @@ on:
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/index-partition-evidence-core.mjs"
+      - "scripts/verify/index-partition-evidence-assembly-core.mjs"
       - "scripts/verify/prepare-index-partition-evidence.mjs"
+      - "scripts/verify/assemble-index-partition-evidence.mjs"
       - "scripts/verify/validate-index-partition-evidence.mjs"
       - "scripts/verify/index-partition-evidence.test.mjs"
+      - "scripts/verify/index-partition-evidence-assembly.test.mjs"
       - "scripts/verify/verify-index-partition-evidence.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - "scripts/verify/verify-index-storage-adr-integrity.mjs"
@@ -132,9 +138,12 @@ jobs:
             node --check scripts/verify/verify-index-storage-adr-integrity.mjs
             node --check scripts/verify/index-storage-decision-tooling.test.mjs
             node --check scripts/verify/index-partition-evidence-core.mjs
+            node --check scripts/verify/index-partition-evidence-assembly-core.mjs
             node --check scripts/verify/prepare-index-partition-evidence.mjs
+            node --check scripts/verify/assemble-index-partition-evidence.mjs
             node --check scripts/verify/validate-index-partition-evidence.mjs
             node --check scripts/verify/index-partition-evidence.test.mjs
+            node --check scripts/verify/index-partition-evidence-assembly.test.mjs
             node --check scripts/verify/verify-index-partition-evidence.mjs
             node scripts/verify/index-storage-tooling.mjs contract
             node --test scripts/verify/index-storage-tooling.test.mjs
@@ -143,6 +152,7 @@ jobs:
             node --test scripts/verify/index-storage-standalone-tools.test.mjs
             node --test scripts/verify/index-storage-decision-tooling.test.mjs
             node --test scripts/verify/index-partition-evidence.test.mjs
+            node --test scripts/verify/index-partition-evidence-assembly.test.mjs
           } 2>&1 | tee evidence/index-storage/contract/verify.log
       - name: Archive contract diagnostic
         if: always()
