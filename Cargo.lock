@@ -13531,6 +13531,7 @@ dependencies = [
 name = "rustok-marketplace-listing"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
  "chrono",
  "hex",
@@ -14015,6 +14016,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-core",
  "rustok-notifications-api",
  "sea-orm",
@@ -14052,7 +14054,12 @@ name = "rustok-notifications-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-notifications",
  "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

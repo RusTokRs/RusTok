@@ -173,7 +173,7 @@ pub struct NotificationStorefrontGroupStatePage {
     pub has_more: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationStorefrontInboxSnapshot {
     pub unread_count: u64,
     pub groups: Vec<NotificationStorefrontGroupSummary>,

@@ -12,9 +12,11 @@ use crate::core::{
     NotificationStorefrontUnreadCount,
 };
 
+use serde::{Deserialize, Serialize};
+
 const PUBLIC_CAPABILITY_UNAVAILABLE: &str = "notification inbox capability is unavailable";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NativeNotificationStorefrontError(pub String);
 
 impl Display for NativeNotificationStorefrontError {

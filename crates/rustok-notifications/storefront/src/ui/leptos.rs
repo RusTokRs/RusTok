@@ -405,7 +405,7 @@ fn NotificationGroupCard(
     let expanded_key = group_key.clone();
     let toggle_key = group_key.clone();
     let toggle_label_key = group_key.clone();
-    let items_group_key = group_key.clone();
+    let items_group_key = StoredValue::new(group_key.clone());
     let items_key = group_key.clone();
 
     view! {
@@ -419,7 +419,7 @@ fn NotificationGroupCard(
                 >
                     <div class="flex flex-wrap items-center gap-2">
                         <h2 class="text-lg font-semibold text-card-foreground">{title}</h2>
-                        <Show when=move || unread_count > 0>
+                        <Show when=move || { unread_count > 0 }>
                             <span class="rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">
                                 {format!("{unread_count} unread")}
                             </span>
@@ -479,7 +479,7 @@ fn NotificationGroupCard(
                         let Some(current) = items.get() else {
                             return view! { <p class="text-sm text-muted-foreground">"No notifications loaded."</p> }.into_any();
                         };
-                        if current.group_key != items_group_key {
+                        if items_group_key.with_value(|key| current.group_key != *key) {
                             return view! { <p class="text-sm text-muted-foreground">"Loading notifications..."</p> }.into_any();
                         }
                         if current.items.is_empty() {
