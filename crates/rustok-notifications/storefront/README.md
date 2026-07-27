@@ -89,8 +89,7 @@ best-effort action without breaking the application header.
 
 The navigation unread-count read and grouped inbox reads have native/GraphQL profile
 parity. Fresh notification open authorization and group-state commands use separate
-security paths: open authorization is now dual-path, while group-state commands remain
-native-only because they require write admission and an idempotency key. GraphQL command
+security paths: open authorization is now dual-path, while group-state commands remain native-only because they require write admission and an idempotency key. GraphQL command
 parity remains a separate gate.
 
 Public entry points include `NotificationsView`, `NotificationNavigation`,
