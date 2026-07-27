@@ -27,6 +27,7 @@
 - cross-module contract changes must be synchronized with `rustok-commerce` and neighboring split modules;
 - `CustomerService` normalizes email before uniqueness check and storage, so create/update do not allow trimmed duplicates within a tenant; duplicate `user_id` linkage remains tenant-scoped and does not turn the customer into auth/user domain.
 - `CustomerReadPort` uses the common `PortContext`/`PortError`, requires read deadline semantics and maps invalid tenant / not found to typed port errors. Its user-projection operation lets storefront consumers resolve an authenticated customer without constructing `CustomerService`; no-compile runtime smoke is captured in `contracts/evidence/customer-read-projection-runtime-smoke.json`, but `transport_verified` still requires compiled runtime execution.
+- canonical root `in_process_customer_read_port` uses `InProcessCustomerReadPort` to retain complete delegated context and safe request facts for exact stable local outcomes. The legacy module-path factory remains available under `rustok_customer::ports` for compatibility.
 
 ## FFA split for admin
 
@@ -36,6 +37,8 @@ The admin package now uses framework-agnostic defaults `admin/src/core.rs`, a fa
 
 - No-compile source/evidence gates for iterations without compilation:
   - `node scripts/verify/verify-customer-admin-boundary.mjs`
+  - `node scripts/verify/verify-customer-read-local-context.mjs`
+  - `node scripts/verify/verify-customer-read-policy-context.mjs`
   - `node scripts/verify/verify-customer-fba-no-compile.mjs`
   - `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`
   - `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`
@@ -48,4 +51,6 @@ The admin package now uses framework-agnostic defaults `admin/src/core.rs`, a fa
 ## Related documents
 
 - [README crate](../README.md)
+- [Customer read policy context](./read-port-policy-context.md)
+- [Customer read local outcome context](./read-local-context.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
