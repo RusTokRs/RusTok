@@ -74,8 +74,7 @@ Fresh GraphQL open authorization accepts only one bounded non-nil notification U
 human-user, tenant, and module admission. The owner port then rechecks notification
 ownership, current recipient policy, and current source target authorization. The GraphQL
 wire returns a typed `ALLOWED` or `UNAVAILABLE` decision. A route is present only for
-`ALLOWED`, and it is the bounded owner route returned by the source provider. Missing,
-foreign, suppressed, or no-longer-openable notifications all return the same
+`ALLOWED`, and it is the bounded owner route returned by the source provider. Missing, foreign, suppressed, or no-longer-openable notifications all return the same
 `UNAVAILABLE` decision rather than an existence oracle. The storefront rejects an
 `ALLOWED` response that omits its route and navigates only after the selected authorization
 function returns `Allowed`.
