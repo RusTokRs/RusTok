@@ -174,7 +174,7 @@ for (const marker of [
   "NotificationStorefrontGroupStateAction::MarkUnread",
   "NotificationStorefrontGroupStateAction::Archive",
   "More matching items remain; repeat the action after refresh.",
-  "on_refresh.run(())",
+  "on_refresh.run(feedback)",
   "NotificationStorefrontOpenDecision::Allowed { route }",
   "navigate_to_route(route.as_str())",
   "web_sys::window()",
@@ -202,7 +202,7 @@ const groupAction = between(
   "group action callback",
 );
 requireText(groupAction, "apply_notification_group_state", "group action must call the native command");
-requireText(groupAction, "on_refresh.run(())", "group action must trigger authoritative refresh");
+requireText(groupAction, "on_refresh.run(feedback)", "group action must trigger authoritative refresh with preserved feedback");
 rejectText(groupAction, "set_snapshot", "group action must not optimistically change summary or unread state");
 rejectText(groupAction, "loop {", "group action must not start an unbounded continuation loop");
 rejectText(groupAction, "while ", "group action must not start an unbounded continuation loop");
