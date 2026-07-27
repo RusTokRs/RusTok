@@ -33,9 +33,12 @@ fn navigation_uses_context_route_and_best_effort_exact_count() {
     for marker in [
         "module_route_base(\"notifications\")",
         "Resource::new_blocking",
+        "AuthContext::get_token",
+        "AuthContext::get_tenant",
         "load_notification_navigation_unread_count",
         "NotificationUnreadBadge",
-        "count.unread_count > 0",
+        "let unread_count = count.unread_count",
+        "unread_count > 0",
         "data-notification-navigation=\"unavailable\"",
     ] {
         assert!(NAVIGATION.contains(marker), "navigation is missing `{marker}`");
