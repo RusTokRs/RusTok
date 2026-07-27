@@ -140,14 +140,25 @@ for (const marker of [
 ]) {
   requireText(entities, marker, `Forum entities module is missing ${marker}`);
 }
-for (const marker of [
+requireText(
+  services,
   "mod category_topic_create_audience;",
+  "Forum services module is missing the private topic-create audience module registration",
+);
+for (const marker of [
+  "ForumCategoryTopicCreateAudiencePolicy",
+  "ForumCategoryTopicCreateAudiencePolicyLayer",
   "ForumCategoryTopicCreateAudiencePolicyService",
   "SetForumCategoryTopicCreateAudiencePolicyInput",
 ]) {
   requireText(services, marker, `Forum services module is missing ${marker}`);
   requireText(crateRoot, marker, `Forum crate root is missing ${marker}`);
 }
+rejectText(
+  crateRoot,
+  "mod category_topic_create_audience;",
+  "Forum crate root must expose public types rather than redeclare the private service module",
+);
 
 for (const marker of [
   "category_topic_create_audience_is_separate_inherited_and_database_bounded",
