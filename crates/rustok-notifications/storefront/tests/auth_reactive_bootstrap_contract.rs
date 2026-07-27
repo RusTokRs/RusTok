@@ -44,6 +44,7 @@ fn bootstrap_reuses_one_exact_context_snapshot_and_clears_scope_feedback() {
         "Effect::new(move |_|",
         "let _ = transport_context.get();",
         "set_refresh_feedback.set(None);",
+        "let initial_feedback = refresh_feedback.get();",
         "set_refresh_nonce.update",
         "on_refresh.run(feedback)",
     ] {
