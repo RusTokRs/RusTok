@@ -25,11 +25,13 @@ const GROUP_ACTION_PAGE_SIZE: u16 = 64;
 #[component]
 pub fn NotificationsView() -> impl IntoView {
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let (refresh_feedback, set_refresh_feedback) = signal(Option::<String>::None);
     let bootstrap = Resource::new_blocking(
         move || refresh_nonce.get(),
         move |_| async move { load_inbox_snapshot().await },
     );
-    let on_refresh = Callback::new(move |_: ()| {
+    let on_refresh = Callback::new(move |feedback: String| {
+        set_refresh_feedback.set(Some(feedback));
         set_refresh_nonce.update(|value| *value = (*value).saturating_add(1));
     });
 
@@ -43,10 +45,15 @@ pub fn NotificationsView() -> impl IntoView {
                 {move || {
                     let bootstrap = bootstrap;
                     let on_refresh = on_refresh;
+                    let initial_feedback = refresh_feedback.get();
                     Suspend::new(async move {
                         match bootstrap.await {
                             Ok(snapshot) => view! {
-                                <NotificationInboxWorkspace initial=snapshot on_refresh=on_refresh />
+                                <NotificationInboxWorkspace
+                                    initial=snapshot
+                                    initial_feedback=initial_feedback
+                                    on_refresh=on_refresh
+                                />
                             }
                             .into_any(),
                             Err(error) => view! {
@@ -82,7 +89,8 @@ pub fn NotificationUnreadBadge(unread_count: u64) -> impl IntoView {
 #[component]
 fn NotificationInboxWorkspace(
     initial: NotificationStorefrontInboxSnapshot,
-    on_refresh: Callback<()>,
+    initial_feedback: Option<String>,
+    on_refresh: Callback<String>,
 ) -> impl IntoView {
     let (snapshot, set_snapshot) = signal(initial);
     let (summary_busy, set_summary_busy) = signal(false);
@@ -96,7 +104,7 @@ fn NotificationInboxWorkspace(
     let (action_busy_group, set_action_busy_group) = signal(Option::<String>::None);
     let (open_busy_item, set_open_busy_item) = signal(Option::<String>::None);
     let (interaction_error, set_interaction_error) = signal(Option::<String>::None);
-    let (interaction_feedback, set_interaction_feedback) = signal(Option::<String>::None);
+    let (interaction_feedback, set_interaction_feedback) = signal(initial_feedback);
 
     let load_more_groups = Callback::new(move |_: ()| {
         if summary_busy.get() {
@@ -241,16 +249,17 @@ fn NotificationInboxWorkspace(
                         } else {
                             ""
                         };
-                        set_interaction_feedback.set(Some(format!(
+                        let feedback = format!(
                             "Updated {} of {} scanned notifications.{continuation}",
                             page.changed, page.scanned
-                        )));
+                        );
+                        set_interaction_feedback.set(Some(feedback.clone()));
                         set_items_request_nonce
                             .update(|value| *value = (*value).saturating_add(1));
                         set_expanded_group.set(None);
                         set_group_items.set(None);
                         set_items_busy.set(false);
-                        on_refresh.run(());
+                        on_refresh.run(feedback);
                     }
                     Err(error) => set_interaction_error.set(Some(error.to_string())),
                 }
