@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20AO",
+  "upstream_task": "FORUM-20AN",
+  "scope": "Auth-reactive automatic grouped notification inbox bootstrap refresh",
+  "storefront_transport_file": "crates/rustok-notifications/storefront/src/transport.rs",
+  "storefront_ui_file": "crates/rustok-notifications/storefront/src/ui/leptos.rs",
+  "auth_context_file": "crates/leptos-auth/src/context.rs",
+  "storefront_proof": "crates/rustok-notifications/storefront/tests/auth_reactive_bootstrap_contract.rs",
+  "owner_note": "crates/rustok-notifications/docs/forum-20ao-auth-reactive-bootstrap.md",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "notifications_local_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "notifications_owner_readme": "crates/rustok-notifications/README.md",
+  "notifications_live_contract": "crates/rustok-notifications/docs/README.md",
+  "storefront_readme": "crates/rustok-notifications/storefront/README.md",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-notification-inbox-group-state-graphql.json",
+  "source_verifier": "scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs",
+  "composition": {
+    "reactive_auth_session_source": true,
+    "token_change_refetch": true,
+    "tenant_change_refetch": true,
+    "sign_out_refetch": true,
+    "manual_refresh_nonce_preserved": true,
+    "single_transport_context_snapshot": true,
+    "selected_read_facade_reused": true,
+    "unread_and_summary_context_match": true,
+    "cross_scope_feedback_cleared": true,
+    "resource_driven_no_polling": true,
+    "navigation_reactivity_preserved": true,
+    "owner_port_unchanged": true,
+    "native_read_path_preserved": true,
+    "graphql_read_path_preserved": true,
+    "no_transport_fallback": true,
+    "access_token_rendered": false,
+    "tenant_identity_rendered": false,
+    "local_storage": false,
+    "shadow_inbox": false,
+    "background_polling": false
+  },
+  "not_delivered": [
+    "GraphQL selected-ID state commands",
+    "tenant-wide scheduled reconciliation and payload redaction",
+    "channel delivery enqueue and transports",
+    "delivery-time target authorization",
+    "PostgreSQL runtime execution and cross-consumer evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-notifications-storefront --test auth_reactive_bootstrap_contract -- --nocapture",
+      "cargo test -p rustok-notifications-storefront --test grouped_graphql_contract -- --nocapture",
+      "cargo check -p rustok-notifications-storefront --features ssr",
+      "cargo check -p rustok-notifications-storefront",
+      "node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs",
+      "node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs",
+      "node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs",
+      "node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs",
+      "node scripts/verify/verify-forum-notification-plan-sync.mjs",
+      "cargo xtask module validate notifications",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
