@@ -132,8 +132,9 @@ is enabled.
 
 - Reconciled superseded draft PR #2237 and preserved its receipts, cleanup, event,
   replay, CLI, migration, topology, lockfile, and plan work in a fresh branch.
-- Rechecked the new branch against current `main`; the two intervening Forum and
-  Index commits touch disjoint paths and remain outside this change.
+- Rechecked the new branch against current `main`; the three intervening commits
+  affecting Forum, Index, Commerce, and Inventory touch disjoint paths and remain
+  outside this change.
 - Rechecked privacy-before-presentation, bounded followers-only reads, owner-scoped
   follow writes, Media-owned descriptors, optimistic revision recovery, and no
   automatic write retry.
