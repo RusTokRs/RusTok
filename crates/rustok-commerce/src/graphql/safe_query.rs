@@ -407,12 +407,19 @@ mod source {
     }
 
     mod rustok_fulfillment_shim {
+        use std::sync::Arc;
+
+        use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
         use ::rustok_fulfillment::{
-            FulfillmentError, FulfillmentResponse, FulfillmentResult, ListFulfillmentsInput,
-            ShippingOptionResponse,
+            FulfillmentError, FulfillmentResponse, FulfillmentResult,
+            ListFulfillmentsInput, ListShippingOptionProjectionsRequest,
+            ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
+            ShippingOptionResponse, in_process_shipping_option_read_port,
         };
         use ::sea_orm::DatabaseConnection;
         use ::uuid::Uuid;
+
+        use super::super::query_error_boundary::BoundaryError;
 
         pub mod error {
             pub use ::rustok_fulfillment::error::*;
@@ -423,12 +430,14 @@ mod source {
 
         pub struct FulfillmentService {
             inner: ::rustok_fulfillment::FulfillmentService,
+            shipping_option_reads: Arc<dyn ShippingOptionReadPort>,
         }
 
         impl FulfillmentService {
             pub fn new(db: DatabaseConnection) -> Self {
                 Self {
-                    inner: ::rustok_fulfillment::FulfillmentService::new(db),
+                    inner: ::rustok_fulfillment::FulfillmentService::new(db.clone()),
+                    shipping_option_reads: in_process_shipping_option_read_port(db),
                 }
             }
 
@@ -438,21 +447,34 @@ mod source {
                 id: Uuid,
                 requested_locale: Option<&str>,
                 tenant_default_locale: Option<&str>,
-            ) -> FulfillmentResult<ShippingOptionResponse> {
-                self.inner
-                    .get_shipping_option(tenant_id, id, requested_locale, tenant_default_locale)
+            ) -> Result<ShippingOptionResponse, BoundaryError> {
+                let context = shipping_option_query_context(
+                    tenant_id,
+                    "shipping_option",
+                    Some(id),
+                    requested_locale,
+                    tenant_default_locale,
+                );
+                self.shipping_option_reads
+                    .read_shipping_option_projection(
+                        context.clone(),
+                        ReadShippingOptionProjectionRequest {
+                            shipping_option_id: id,
+                            requested_locale: requested_locale.map(str::to_owned),
+                            tenant_default_locale: tenant_default_locale.map(str::to_owned),
+                        },
+                    )
                     .await
                     .map_err(|error| {
-                        log_fulfillment_query_error(
-                            &error,
-                            tenant_id,
+                        map_shipping_option_port_error(
+                            error,
+                            &context,
                             "shipping_option",
-                            "get_shipping_option",
-                            None,
+                            "read_shipping_option_projection",
+                            Some(id),
                             requested_locale,
                             tenant_default_locale,
-                        );
-                        error
+                        )
                     })
             }
 
@@ -461,25 +483,33 @@ mod source {
                 tenant_id: Uuid,
                 requested_locale: Option<&str>,
                 tenant_default_locale: Option<&str>,
-            ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
-                self.inner
-                    .list_shipping_options(
-                        tenant_id,
-                        requested_locale,
-                        tenant_default_locale,
+            ) -> Result<Vec<ShippingOptionResponse>, BoundaryError> {
+                let context = shipping_option_query_context(
+                    tenant_id,
+                    "storefront_shipping_options",
+                    None,
+                    requested_locale,
+                    tenant_default_locale,
+                );
+                self.shipping_option_reads
+                    .list_shipping_option_projections(
+                        context.clone(),
+                        ListShippingOptionProjectionsRequest {
+                            requested_locale: requested_locale.map(str::to_owned),
+                            tenant_default_locale: tenant_default_locale.map(str::to_owned),
+                        },
                     )
                     .await
                     .map_err(|error| {
-                        log_fulfillment_query_error(
-                            &error,
-                            tenant_id,
+                        map_shipping_option_port_error(
+                            error,
+                            &context,
                             "storefront_shipping_options",
-                            "list_shipping_options",
+                            "list_shipping_option_projections",
                             None,
                             requested_locale,
                             tenant_default_locale,
-                        );
-                        error
+                        )
                     })
             }
 
@@ -570,6 +600,133 @@ mod source {
                         );
                         error
                     })
+            }
+        }
+
+        fn shipping_option_query_context(
+            tenant_id: Uuid,
+            query_field: &'static str,
+            shipping_option_id: Option<Uuid>,
+            requested_locale: Option<&str>,
+            tenant_default_locale: Option<&str>,
+        ) -> PortContext {
+            let locale = requested_locale.or(tenant_default_locale).unwrap_or("en");
+            let resource = shipping_option_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| tenant_id.to_string());
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::service("rustok-commerce.graphql-query-shipping-options"),
+                locale,
+                format!("graphql-fulfillment:{query_field}:{resource}"),
+            )
+            .with_deadline(std::time::Duration::from_secs(2))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn map_shipping_option_port_error(
+            error: PortError,
+            context: &PortContext,
+            query_field: &'static str,
+            operation: &'static str,
+            shipping_option_id: Option<Uuid>,
+            requested_locale: Option<&str>,
+            tenant_default_locale: Option<&str>,
+        ) -> BoundaryError {
+            let (message, code, retryable, error_kind) = match &error.kind {
+                PortErrorKind::Validation => (
+                    "Fulfillment query is invalid",
+                    "FULFILLMENT_REQUEST_INVALID",
+                    false,
+                    "validation",
+                ),
+                PortErrorKind::NotFound => (
+                    "Fulfillment resource was not found",
+                    "FULFILLMENT_RESOURCE_NOT_FOUND",
+                    false,
+                    "not_found",
+                ),
+                PortErrorKind::Conflict => (
+                    "Fulfillment state conflicts with this query",
+                    "FULFILLMENT_STATE_CONFLICT",
+                    false,
+                    "conflict",
+                ),
+                PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                    "Fulfillment data is temporarily unavailable",
+                    "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
+                    true,
+                    "unavailable",
+                ),
+                PortErrorKind::Forbidden => (
+                    "Fulfillment query is not permitted",
+                    "FULFILLMENT_ACCESS_DENIED",
+                    false,
+                    "forbidden",
+                ),
+                PortErrorKind::InvariantViolation => (
+                    "Fulfillment query could not be completed safely",
+                    "FULFILLMENT_OPERATION_FAILED",
+                    false,
+                    "invariant",
+                ),
+            };
+            let technical = matches!(
+                error.kind,
+                PortErrorKind::Unavailable
+                    | PortErrorKind::Timeout
+                    | PortErrorKind::InvariantViolation
+            );
+
+            if technical {
+                tracing::error!(
+                    error = ?error,
+                    owner = "rustok_fulfillment",
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    actor = ?context.actor,
+                    context_locale_length = context.locale.len(),
+                    deadline_ms = ?context.deadline_ms,
+                    query_field,
+                    operation,
+                    shipping_option_id = ?shipping_option_id,
+                    requested_locale_length = requested_locale.map(str::len),
+                    tenant_default_locale_length = tenant_default_locale.map(str::len),
+                    owner_code = %error.code,
+                    owner_kind = ?error.kind,
+                    owner_retryable = error.retryable,
+                    public_code = code,
+                    public_retryable = retryable,
+                    boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
+                    "commerce GraphQL query shipping-option owner read failed"
+                );
+            } else {
+                tracing::warn!(
+                    owner = "rustok_fulfillment",
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    actor = ?context.actor,
+                    context_locale_length = context.locale.len(),
+                    deadline_ms = ?context.deadline_ms,
+                    query_field,
+                    operation,
+                    shipping_option_id = ?shipping_option_id,
+                    requested_locale_length = requested_locale.map(str::len),
+                    tenant_default_locale_length = tenant_default_locale.map(str::len),
+                    owner_code = %error.code,
+                    owner_kind = ?error.kind,
+                    owner_retryable = error.retryable,
+                    public_code = code,
+                    public_retryable = retryable,
+                    boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
+                    "commerce GraphQL query shipping-option owner read was rejected"
+                );
+            }
+
+            BoundaryError::Public {
+                message,
+                code,
+                retryable,
             }
         }
 
