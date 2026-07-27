@@ -7,7 +7,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::{
     CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest,
-    CheckoutOrderCompensationSnapshot, CheckoutOrderIdentityPort, checkout_owner_context,
+    CheckoutOrderCompensationSnapshot, CheckoutOrderIdentityPort, checkout_owner_context_impl,
 };
 
 const ORDER_COMPENSATION_OWNER: &str = "rustok_order.checkout_compensation";
@@ -21,7 +21,7 @@ pub struct InProcessCheckoutOrderCompensationPort {
 impl InProcessCheckoutOrderCompensationPort {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            inner: checkout_owner_context::in_process_checkout_order_compensation_port(
+            inner: checkout_owner_context_impl::in_process_checkout_order_compensation_port(
                 db, event_bus,
             ),
         }
@@ -34,7 +34,7 @@ impl InProcessCheckoutOrderCompensationPort {
     ) -> Self {
         Self {
             inner: Arc::new(
-                checkout_owner_context::InProcessCheckoutOrderCompensationPort::with_identity_port(
+                checkout_owner_context_impl::InProcessCheckoutOrderCompensationPort::with_identity_port(
                     db,
                     event_bus,
                     identity_port,
