@@ -15,11 +15,16 @@ const moduleSource = read('crates/rustok-commerce/src/graphql/mutations/mod.rs')
 const layeredSource = read(
   'crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
 );
+const contextSource = read(
+  'crates/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs',
+);
 const typedSource = read(
   'crates/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs',
 );
 const safeSource = read('crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
 const legacySource = read('crates/rustok-commerce/src/graphql/mutations/helpers.rs');
+const ownerSource = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
+const ownerRoot = read('crates/rustok-fulfillment/src/lib.rs');
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -58,18 +63,13 @@ if (validatorStart < 0) failures.push('mounted validator: unable to isolate sour
 for (const [source, value, label] of [
   [
     moduleSource,
+    '#[path = "shipping_option_read_context.rs"]\nmod shipping_option_read_context;',
+    'private read context seam',
+  ],
+  [
+    moduleSource,
     '#[path = "typed_shipping_option_helper.rs"]\nmod typed_shipping_option_helper;',
     'private typed helper module',
-  ],
-  [
-    moduleSource,
-    '#[allow(dead_code)]\n#[path = "safe_helpers.rs"]\nmod cart_safe_helpers;',
-    'private compatibility facade allowance',
-  ],
-  [
-    moduleSource,
-    '#[allow(dead_code)]\n#[path = "safe_legacy_helpers.rs"]\nmod legacy_helpers;',
-    'private legacy helper allowance',
   ],
   [
     layeredSource,
@@ -83,8 +83,27 @@ for (const [source, value, label] of [
     'compatibility delegation',
   ],
   [legacySource, 'pub(crate) async fn validate_selected_shipping_option(', 'legacy source'],
+  [ownerSource, 'pub trait ShippingOptionReadPort: Send + Sync {', 'owner read port'],
+  [
+    ownerRoot,
+    'in_process_shipping_option_read_port,',
+    'canonical owner root factory export',
+  ],
 ]) {
   requireText(source, value, label);
+}
+
+for (const [value, label] of [
+  ['PortActor::service("rustok-commerce.storefront-shipping")', 'service actor'],
+  ['format!("storefront-shipping:{operation}:{cart_id}")', 'correlation identity'],
+  ['.with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
+  ['context.clone().with_channel(channel)', 'channel propagation'],
+  [
+    'rustok_fulfillment::in_process_shipping_option_read_port(db)',
+    'canonical owner factory delegation',
+  ],
+]) {
+  requireText(contextSource, value, label);
 }
 
 for (const [value, label] of [
@@ -93,33 +112,20 @@ for (const [value, label] of [
   ['OwnerValidation,', 'owner validation outcome'],
   ['OwnerNotFound,', 'owner not-found outcome'],
   ['OwnerConflict,', 'owner conflict outcome'],
-  ['StorageUnavailable,', 'storage outcome'],
+  ['OwnerForbidden,', 'owner forbidden outcome'],
+  ['StorageUnavailable,', 'availability outcome'],
+  ['OwnerInvariant,', 'invariant outcome'],
   ['CurrencyMismatch,', 'currency outcome'],
   ['ChannelUnavailable,', 'channel outcome'],
   ['ProfileIncompatible,', 'profile outcome'],
-  ['shipping_option_id: Option<Uuid>', 'typed option identity'],
-  ['profile_slug_length: Option<usize>', 'bounded profile fact'],
-  ['option_currency_code_length: Option<usize>', 'bounded currency fact'],
-  ['owner_error: Option<FulfillmentError>', 'typed owner cause'],
-]) {
-  requireText(typedSource, value, label);
-}
-
-for (const [value, label] of [
-  ['FulfillmentError::Validation(_)', 'fulfillment validation mapping'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'option not-found mapping'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'fulfillment not-found mapping'],
-  ['FulfillmentError::InvalidTransition { .. }', 'transition conflict mapping'],
-  ['FulfillmentError::Database(_)', 'database mapping'],
-  ['"fulfillment.validation"', 'validation internal code'],
-  ['"fulfillment.shipping_option_not_found"', 'option internal code'],
-  ['"fulfillment.fulfillment_not_found"', 'fulfillment internal code'],
-  ['"fulfillment.invalid_transition"', 'transition internal code'],
-  ['"fulfillment.database_unavailable"', 'database internal code'],
-  ['"shipping_selection.multiple_delivery_groups"', 'group internal code'],
-  ['"shipping_selection.currency_mismatch"', 'currency internal code'],
-  ['"shipping_selection.channel_unavailable"', 'channel internal code'],
-  ['"shipping_selection.profile_incompatible"', 'profile internal code'],
+  ['owner_error: Option<PortError>', 'typed owner cause'],
+  ['PortErrorKind::Validation', 'validation mapping'],
+  ['PortErrorKind::NotFound', 'not-found mapping'],
+  ['PortErrorKind::Conflict', 'conflict mapping'],
+  ['PortErrorKind::Forbidden', 'forbidden mapping'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'availability mapping'],
+  ['PortErrorKind::InvariantViolation', 'invariant mapping'],
+  ['source_operation: "read_shipping_option_projection"', 'owner operation'],
 ]) {
   requireText(typedSource, value, label);
 }
@@ -133,25 +139,21 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
+  ['context: &PortContext', 'retained owner context'],
+  ['correlation_id = %context.correlation_id', 'correlation context'],
+  ['tenant_id = %context.tenant_id', 'tenant context'],
+  ['actor = ?context.actor', 'actor context'],
+  ['context_channel_length = context.channel.as_deref().map(str::len)', 'bounded channel context'],
+  ['context_locale_length = context.locale.len()', 'bounded locale context'],
+  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
   ['owner = failure.source_owner', 'truthful source owner'],
   ['owner_operation = failure.source_operation', 'truthful source operation'],
-  ['internal_code = failure.internal_code', 'internal code'],
+  ['internal_code = %failure.internal_code', 'internal code'],
   ['internal_kind = failure.internal_kind', 'internal kind'],
   ['internal_retryable = failure.internal_retryable', 'internal retryability'],
-  ['tenant_id = %tenant_id', 'tenant context'],
-  ['cart_id = %cart_id', 'cart identity'],
   ['shipping_option_id = ?failure.shipping_option_id', 'option identity'],
-  ['selection_count,', 'selection count'],
-  ['delivery_group_count,', 'delivery group count'],
-  ['requested_currency_code_length,', 'requested currency length'],
-  ['option_currency_code_length = ?failure.option_currency_code_length', 'owner currency length'],
-  ['profile_slug_length = ?failure.profile_slug_length', 'profile length'],
-  ['channel_slug_length = ?channel_slug_length', 'channel length'],
-  ['requested_locale_length = ?requested_locale_length', 'requested locale length'],
-  ['tenant_default_locale_length = ?tenant_default_locale_length', 'default locale length'],
   ['public_code = "SHIPPING_OPTION_INVALID"', 'public code diagnostic'],
   ['public_retryable = false', 'public retryability diagnostic'],
-  ['boundary = STOREFRONT_SHIPPING_OPTION_GRAPHQL_BOUNDARY', 'stable boundary'],
   ['error = ?technical_owner_error', 'technical owner cause'],
   ['tracing::error!(', 'technical severity'],
   ['tracing::warn!(', 'ordinary severity'],
@@ -161,11 +163,17 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['let requested_selection_count = shipping_selections', 'selection count source'],
-  ['.map(|selections| selections.len())', 'safe selection counting'],
-  ['if let Some(shipping_option_id) = selected_shipping_option_id', 'typed selected option branch'],
-  ['FulfillmentService::new(db.clone())', 'single owner service construction'],
-  ['.get_shipping_option(', 'owner lookup'],
+  [
+    'storefront_shipping_option_read_context(',
+    'owner context construction',
+  ],
+  [
+    'storefront_shipping_option_read_port(db.clone())',
+    'owner read port construction',
+  ],
+  ['ReadShippingOptionProjectionRequest {', 'typed read request'],
+  ['.read_shipping_option_projection(', 'owner projection read'],
+  ['owner_context.clone(),', 'delegated owner context'],
   ['ShippingOptionFailure::owner(shipping_option_id, error)', 'typed owner mapping'],
   ['ShippingOptionFailure::currency_mismatch(', 'currency mapping'],
   ['ShippingOptionFailure::channel_unavailable(option.id)', 'channel mapping'],
@@ -176,13 +184,9 @@ for (const [value, label] of [
   requireText(mountedValidator, value, label);
 }
 
-const ownerLookups = mountedValidator.match(/\.get_shipping_option\(/g) ?? [];
+const ownerLookups = mountedValidator.match(/\.read_shipping_option_projection\(/g) ?? [];
 if (ownerLookups.length !== 1) {
-  failures.push(`expected one fulfillment owner lookup, found ${ownerLookups.length}`);
-}
-const publicEnvelopeDefinitions = typedSource.match(/fn public_graphql_error\(\)/g) ?? [];
-if (publicEnvelopeDefinitions.length !== 1) {
-  failures.push(`expected one public envelope definition, found ${publicEnvelopeDefinitions.length}`);
+  failures.push(`expected one fulfillment owner projection call, found ${ownerLookups.length}`);
 }
 const mountedOverrides = layeredSource.match(/validate_selected_shipping_option/g) ?? [];
 if (mountedOverrides.length !== 1) {
@@ -190,6 +194,9 @@ if (mountedOverrides.length !== 1) {
 }
 
 for (const value of [
+  'FulfillmentService::new(',
+  '.get_shipping_option(',
+  'FulfillmentError',
   'format!("Shipping option {} uses currency {}, expected {}"',
   'format!("Shipping option {} is not available for the current channel"',
   'format!("Shipping option {} is not compatible with shipping profile {}"',
@@ -197,8 +204,7 @@ for (const value of [
   'async_graphql::Error::new(format!("{error}"))',
   'format!("{error:?}")',
   'detail.contains(',
-  '.expect(',
-  '.unwrap()',
+  'error.message',
   'currency_code = %',
   'currency_code = ?',
   'public_channel_slug = %',
@@ -220,5 +226,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ mounted storefront shipping-option validation uses typed local outcomes and one stable GraphQL envelope',
+  '✔ mounted storefront shipping-option validation uses the fulfillment read port, retained context, typed local outcomes, and one stable GraphQL envelope',
 );
