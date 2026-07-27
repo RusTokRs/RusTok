@@ -1,0 +1,49 @@
+name: Agent Query Shipping Read Debug
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  focused-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Capture focused diagnostics
+        run: |
+          set +e
+          cargo check -p rustok-commerce --all-features > focused-check.log 2>&1
+          printf '%s\n' "$?" > focused-check-status.txt
+          node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs > query-verifier.log 2>&1
+          printf '%s\n' "$?" > query-verifier-status.txt
+          node scripts/verify/verify-commerce-graphql-query-error-boundary.mjs > boundary-verifier.log 2>&1
+          printf '%s\n' "$?" > boundary-verifier-status.txt
+          exit 0
+      - name: Upload focused diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: query-shipping-read-diagnostics
+          path: |
+            focused-check.log
+            focused-check-status.txt
+            query-verifier.log
+            query-verifier-status.txt
+            boundary-verifier.log
+            boundary-verifier-status.txt
+          if-no-files-found: error
+          retention-days: 1
