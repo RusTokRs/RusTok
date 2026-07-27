@@ -425,7 +425,7 @@ route through `UiRouteContext`, and shows the exact unread badge only when posit
 retaining the link at zero. Optional capability failures hide the action without failing the
 header.
 
-Source contracts are guarded by the `FORUM-20AG` through `FORUM-20AO` machine contracts and
+Source contracts are guarded by the `FORUM-20AG` through `FORUM-20AP` machine contracts and
 matching `verify-forum-notification-*` scripts. These source slices remain unvalidated by the
 implementation agent.
 
@@ -436,9 +436,11 @@ shared shutdown signal and check it between work items.
 
 Forum publishes `forum.topic.created` and `forum.mention.user_added` through the
 neutral API. Its provider accepts both legacy journal identity/revision references
-and semantic identities derived from committed envelopes. Mention processing
-still verifies the exact immutable relation and current topic/reply visibility.
-Moderator audience expansion remains deferred until a bounded owner directory
+and semantic identities derived from committed envelopes. With exact recipient context,
+active initially non-public topic-created events materialize identifier-only descriptors and
+still reauthorize every bounded subscription candidate. Mention processing verifies the exact
+immutable relation and current topic/reply visibility. Moderator audience expansion remains
+deferred until a bounded owner directory
 port exists.
 
 Notifications remains outside `settings.default_enabled`; producer commands

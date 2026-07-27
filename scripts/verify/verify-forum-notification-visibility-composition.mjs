@@ -48,6 +48,11 @@ const richerTestSource = read(contract.test_file ?? "");
 const recipientTestSource = read(contract.recipient_test_file ?? "");
 const mentionTestSource = read(contract.recipient_mention_test_file ?? "");
 const subscriptionTestSource = read(contract.recipient_topic_subscription_test_file ?? "");
+const descriptorContract = JSON.parse(
+  read("crates/rustok-forum/contracts/forum-notification-topic-descriptor-materialization.json") ||
+    "{}",
+);
+const descriptorTestSource = read(descriptorContract.runtime_test_file ?? "");
 const recipientContract = JSON.parse(read(contract.recipient_target_open_contract ?? "") || "{}");
 const mentionContract = JSON.parse(read(contract.recipient_mention_contract ?? "") || "{}");
 const subscriptionContract = JSON.parse(read(contract.recipient_topic_subscription_contract ?? "") || "{}");
@@ -175,6 +180,8 @@ for (const marker of [
   "ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())",
   ".is_topic_visible(tenant_id, topic_id, None, viewer)",
   "async fn load_public_topic(",
+  "async fn load_topic_for_description(",
+  "topic.status == TopicStatus::Open",
   "ForumTopicAudienceViewer::public()",
   "async fn load_target_for_viewer(",
   "async fn load_public_target(",
@@ -248,7 +255,7 @@ const targetOpenBlock = between(
   "forum notification authorize_target_open",
 );
 for (const [block, marker, label] of [
-  [describeBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public description"],
+  [describeBlock, "load_topic_for_description(event.tenant_id, event.aggregate_id)", "topic-created capability-gated description"],
   [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public source recheck"],
   [audienceBlock, "topic_subscription_recipient_visible(", "recipient topic subscription audience"],
   [describeBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)", "recipient mention description"],
@@ -296,6 +303,16 @@ for (const marker of [
   requireText(mentionTestSource, marker, `recipient mention SQLite scenario is missing ${marker}`);
 }
 for (const marker of [
+  "initially_non_public_topic_descriptor_requires_recipient_capability_and_reauthorizes",
+  "without recipient capability an initially non-public topic must remain absent",
+  "active initially non-public topic should materialize a descriptor",
+  "page.recipients()[0].recipient_id, allowed_recipient",
+  "closed initially non-public topic must not materialize a descriptor",
+  "closed stale descriptor should be rechecked",
+]) {
+  requireText(descriptorTestSource, marker, `topic descriptor SQLite scenario is missing ${marker}`);
+}
+for (const marker of [
   "topic_subscription_audience_filters_exact_recipients_before_cursor_progress",
   "first_page.recipients().is_empty()",
   "recorded_calls(&calls), vec![denied_first, unavailable_second]",
@@ -329,6 +346,15 @@ if (
   mentionContract.composition?.topic_created_subscription_audience_downstream !== true
 ) {
   failures.push("FORUM-20K visibility composition must remain synchronized with the FORUM-20O mention audience contract through P");
+}
+if (
+  descriptorContract.schema_version !== 1 ||
+  descriptorContract.task !== "FORUM-20AP" ||
+  descriptorContract.upstream_task !== "FORUM-20AO" ||
+  descriptorContract.composition?.topic_created_descriptor_materialization !== true ||
+  descriptorContract.composition?.exact_recipient_subscription_reauthorization !== true
+) {
+  failures.push("FORUM-20K visibility composition must recognize the downstream FORUM-20AP descriptor closure");
 }
 if (
   subscriptionContract.schema_version !== 1 ||

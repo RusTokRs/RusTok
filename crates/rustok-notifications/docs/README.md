@@ -252,9 +252,11 @@ flags remain disabled.
 
 Forum supports `forum.topic.created` and `forum.mention.user_added`. Its provider
 accepts legacy journal UUID/sequence references and semantic source identities from
-committed envelopes. Mention handling verifies immutable relation and current target
-visibility. Pending replies are retryable; closed, hidden, deleted, self-mentioned,
-or restricted sources fail closed. Moderator audience expansion remains deferred.
+committed envelopes. With exact recipient context, active initially non-public topic-created
+events materialize identifier-only descriptors and still reauthorize every bounded subscription
+candidate. Mention handling verifies immutable relation and current target visibility. Pending
+replies are retryable; closed, hidden, deleted, self-mentioned, or restricted sources fail closed.
+Moderator audience expansion remains deferred.
 
 ## Pending capabilities
 
@@ -325,13 +327,14 @@ node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs
+node scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing
 `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN/20AO`.
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN/20AO/20AP`.
 
 ## Related documents
 

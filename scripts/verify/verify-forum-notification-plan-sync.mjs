@@ -66,13 +66,14 @@ for (const key of ["runtime_behavior_changed", "migration_changed", "dependency_
 }
 
 for (const marker of [
-  "FORUM-20A-AO provide",
+  "FORUM-20A-AP provide",
   "### Delivered in `FORUM-20H` through `FORUM-20Q`",
   "### Delivered in `FORUM-20R` through `FORUM-20AF`",
   "### Delivered in `FORUM-20AG` through `FORUM-20AL`",
   "### Delivered in `FORUM-20AM`",
   "### Delivered in `FORUM-20AN`",
   "### Delivered in `FORUM-20AO`",
+  "### Delivered in `FORUM-20AP`",
   "PostgreSQL concurrency",
 ]) {
   requireText(canonical, marker, `canonical plan is missing ${marker}`);
@@ -93,6 +94,7 @@ for (const marker of [
   "### `FORUM-20AM`",
   "### `FORUM-20AN`",
   "### `FORUM-20AO`",
+  "### `FORUM-20AP`",
 ]) {
   requireText(local, marker, `Notifications local plan is missing ${marker}`);
 }
@@ -107,6 +109,7 @@ for (const marker of [
   "### 14. Authenticated storefront transport and grouped UI",
   "exposes the same bounded exact-group state commands",
   "automatically reloads its bootstrap",
+  "initially non-public topic-created events materialize identifier-only descriptors",
 ]) {
   requireText(owner, marker, `Notifications owner README is missing ${marker}`);
 }
@@ -114,6 +117,7 @@ for (const marker of [
   "### Authenticated storefront ports, transports, and UI",
   "GraphQL group-state mutations now delegate",
   "automatically reloads its bootstrap",
+  "initially non-public topic-created",
 ]) {
   requireText(live, marker, `Notifications live contract is missing ${marker}`);
 }
@@ -155,4 +159,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Historical FORUM-20AM synchronization remains valid through downstream FORUM-20AO.");
+console.log("Historical FORUM-20AM synchronization remains valid through downstream FORUM-20AP.");

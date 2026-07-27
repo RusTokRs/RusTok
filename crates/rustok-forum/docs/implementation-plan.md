@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-AO provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh. Write audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-AP provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors behind exact recipient capability. Write audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1312,6 +1312,17 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
 - clear prior mutation feedback when the auth scope changes while preserving explicit
   post-command refresh, compile-profile transport selection, and no-fallback behavior.
 
+### Delivered in `FORUM-20AP`
+
+- materialize `forum.topic.created` descriptors for active topics that are already non-public
+  when the host publishes the exact notification recipient-context capability;
+- keep public-only descriptor creation when that capability is absent, preserving the existing
+  fail-closed optional-module profile;
+- expose only topic/category identifiers in the descriptor and defer all recipient authority to
+  the bounded subscription audience recheck;
+- preserve author exclusion, raw subscription cursor progress, current category/topic audience
+  evaluation, non-oracular inactive targets, and later target-open authorization.
+
 ### Compatibility and degraded mode
 
 The nullable public/authenticated category floor and the normalized category/topic
@@ -1332,8 +1343,6 @@ supply write deadline and idempotency semantics.
 
 - provide Forum trust and Channel membership facts adapters; keep the delivered Groups
   adapter exact, bounded, and owner-backed;
-- materialize descriptors for topics that are already non-public at creation time without
-  weakening recipient-specific reauthorization;
 - add create/reply/moderate audience policies and owner write commands;
 - migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
   same exact richer audience decision;
@@ -1382,6 +1391,7 @@ node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs
+node scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate forum
 npm run verify:forum:storefront-boundary

@@ -29,7 +29,7 @@ use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
-use crate::state_machine::ReplyStatus;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::subscription::ForumSubscriptionLevel;
 
 const FORUM_SOURCE: &str = "forum";
@@ -200,6 +200,19 @@ impl ForumNotificationSourceProvider {
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
         self.load_topic_for_viewer(tenant_id, topic_id, &ForumTopicAudienceViewer::public())
             .await
+    }
+
+    async fn load_topic_for_description(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> NotificationProviderResult<Option<forum_topic::Model>> {
+        if self.recipient_context_port.is_some() {
+            let topic = self.load_active_topic(tenant_id, topic_id).await?;
+            Ok(topic.filter(|topic| topic.status == TopicStatus::Open))
+        } else {
+            self.load_public_topic(tenant_id, topic_id).await
+        }
     }
 
     async fn load_topic_for_subscription_audience(
@@ -545,7 +558,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     return Err(NotificationProviderError::InvalidEvent);
                 }
                 let Some(topic) = self
-                    .load_public_topic(event.tenant_id, event.aggregate_id)
+                    .load_topic_for_description(event.tenant_id, event.aggregate_id)
                     .await?
                 else {
                     return Ok(None);
