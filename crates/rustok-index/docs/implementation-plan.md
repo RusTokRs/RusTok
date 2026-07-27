@@ -56,19 +56,22 @@ Commits and pull requests record which checks and evidence runs were not execute
 - FBA status: `in_progress`
 - M0 code reset: `complete`
 - M1 domain/application core: `complete`
-- M2 storage benchmark and accepted JSONB decision: `complete`
+- M2 storage benchmark: `complete`
+- M2 storage decision: `JSONB accepted; rejected prototypes removed`
 - M3 storage-schema foundation: `complete`
 - M3 atomic mutation persistence: `complete`
 - M3 schema-application leases: `complete`
-- Production persistence: mutation writes and schema coordination implemented;
-  query adapter and secondary-index lifecycle not yet implemented
+- M3 secondary-index lifecycle: `complete`
+- Production persistence: mutation writes, schema coordination, and schema-derived
+  secondary-index lifecycle implemented; query adapter and partition lifecycle not
+  yet implemented
 
 The active production crate contains the generic domain/application core, the M3
-production migrations, an Index-owned transactional mutation adapter, and a
-durable schema-application lease store. Query adapters, partition/secondary-index
-lifecycle, batch ingestion, and PostgreSQL Testcontainers evidence remain open.
-Benchmark DDL and generated evidence stay under `ops/benches`, outside the
-production module.
+production migrations, an Index-owned transactional mutation adapter, a durable
+schema-application lease store, and a schema-derived secondary-index manager.
+Query adapters, partition lifecycle, batch ingestion, and PostgreSQL Testcontainers
+evidence remain open. Benchmark DDL and generated evidence stay under
+`ops/benches`, outside the production module.
 
 ## Ownership
 
@@ -108,6 +111,7 @@ crates/rustok-index/src/
     postgres/
       mutation_store.rs
       schema_lease.rs
+      secondary_index.rs
     events/
     telemetry.rs
   api/
@@ -195,13 +199,20 @@ schemas and links without Product-specific Index code.
 
 - [x] Define the benchmark contract and keep candidate DDL outside production
       migrations.
-- [x] Add deterministic smoke, 100k, and 1m datasets and identical read, mutation,
-      and maintenance workloads.
+- [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.
+- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.
 - [x] Compare JSONB, typed EAV, and specialized hot projection using equal result
       digests, cardinality, planner/session metadata, WAL, buffers, relation size,
       churn, and VACUUM evidence.
-- [x] Archive same-commit replacement 100k/1m PostgreSQL evidence.
-- [x] Accept JSONB in the storage ADR and remove rejected prototype implementations.
+- [x] Run and archive replacement 100k Product-locale row read, mutation, and
+      maintenance evidence from the accepted same-commit packet.
+- [x] Run and archive replacement 1m Product-locale row read, mutation, and
+      maintenance evidence from the same accepted commit.
+- [x] Compare warm/cold buffers, planner stability, execution latency, ingestion
+      throughput, relation size, WAL, dead tuples, vacuum behavior, and operational
+      complexity.
+- [x] Record the selected model and rejected alternatives in an ADR.
+- [x] Delete benchmark prototypes that are not selected.
 
 M2 is complete. The remaining JSONB benchmark path is a selected-layout regression
 harness; it is not production persistence and does not reopen the accepted storage
@@ -213,7 +224,8 @@ decision.
 - [x] Add tenant/schema/entity/locale keys and source-version guards.
 - [x] Add atomic entity/link upsert and delete transactions.
 - [x] Add locking/leases for schema application.
-- [ ] Add partition and secondary-index management.
+- [x] Add secondary-index planning and lifecycle management.
+- [ ] Add partition management after measured design evidence.
 - [ ] Add PostgreSQL Testcontainers fixtures.
 - [ ] Cover migration-from-zero, stale mutation, redelivery, rollback,
       concurrency, and tenant/locale isolation in PostgreSQL.
@@ -235,8 +247,19 @@ lock, verifies the persisted active schema and fingerprint, records durable
 `schema_apply` work in `index_jobs`, and returns `Busy` or `AlreadyApplied` when
 appropriate. Expired work is reclaimed with incremented attempt fencing. Heartbeat,
 success, and failure require the exact job, worker, attempt, running state, and an
-unexpired lease. SQLite remains contract-test-only; PostgreSQL concurrency and
-Testcontainers evidence remain open.
+unexpired lease.
+
+The fourth M3 slice publishes `SecondaryIndexPlan` and
+`PostgresSecondaryIndexManager`. Plans derive deterministic tenant- and
+schema-fingerprint-bound indexes from filterable/sortable fields. Scalar fields use
+partial typed B-tree expressions ordered by locale/value/entity identity;
+filterable `many` fields use field-local JSONB containment GIN. Stable names bind
+the complete definition hash. `secondary_index` jobs coordinate ensure, concurrent
+reindex, and concurrent retirement with advisory locking, expiry reclaim,
+heartbeats, attempt fencing, persisted schema validation, owner comments, and
+PostgreSQL readiness/validity inspection. Expressions follow the production tagged
+`IndexValue` payload through each field's `value` member. SQLite remains
+contract-test-only; PostgreSQL concurrency and Testcontainers evidence remain open.
 
 ### M4 - Query engine v1
 
@@ -332,6 +355,7 @@ cargo check -p rustok-index --all-targets
 cargo test -p rustok-index --lib
 node scripts/verify/verify-index-mutation-storage.mjs
 node scripts/verify/verify-index-schema-leases.mjs
+node scripts/verify/verify-index-secondary-index-lifecycle.mjs
 ```
 
 ## Progress log
@@ -343,5 +367,8 @@ node scripts/verify/verify-index-schema-leases.mjs
 - 2026-07-27: registered the canonical M3 storage schema and added atomic
   mutation/inbox/entity/link persistence.
 - 2026-07-27: added durable schema-application exclusion, expiry reclaim,
-  heartbeat, terminal completion, and attempt fencing. Tests and verifiers were
-  left for the repository owner to execute.
+  heartbeat, terminal completion, and attempt fencing.
+- 2026-07-27: added schema-derived typed/containment secondary-index planning,
+  concurrent ensure/reindex/retire execution, catalog readiness checks, durable
+  jobs, owner fingerprints, and operation fencing. Tests and verifiers were left
+  for the repository owner to execute.

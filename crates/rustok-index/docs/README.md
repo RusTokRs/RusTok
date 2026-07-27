@@ -1,9 +1,8 @@
 # Documentation `rustok-index`
 
-`rustok-index` is the platform-owned cross-module relational Index Engine. It
-addresses the same problem class as the Medusa Index Module: source modules
-publish generic schemas, records, mutations, and links; Index materializes them
-into optimized relational storage and serves structured cross-module queries
+`rustok-index` is the platform-owned cross-module relational Index Engine. Source
+modules publish generic schemas, records, mutations, and links; Index materializes
+them into optimized relational storage and serves structured cross-module queries
 without runtime fan-out.
 
 ## Purpose
@@ -25,6 +24,7 @@ without runtime fan-out.
 - versioned keyset cursors;
 - incremental ingestion and inbox deduplication;
 - PostgreSQL storage and distributed coordination;
+- schema application and secondary-index lifecycle;
 - SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
@@ -82,35 +82,20 @@ runtime storage contract.
 The read/query harness provides deterministic scale datasets, three storage
 candidates, shared read workloads, cardinality checks, result-digest parity,
 load/size measurement, and full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence.
-
 The transactional mutation harness provides identical update/delete workloads,
 affected entity/link parity, rollback isolation, and planning/execution,
-BUFFERS, full-plan, and node-level WAL evidence.
+BUFFERS, full-plan, and node-level WAL evidence. The persistent maintenance
+harness provides committed update plus delete/reinsert cycles, exact cardinality
+guards, baseline/after-churn/after-VACUUM schema-size and table-stat snapshots,
+and ordinary `VACUUM (ANALYZE)` duration.
 
-The persistent maintenance harness provides committed update plus
-delete/reinsert cycles, exact cardinality guards, baseline/after-churn/after-
-VACUUM schema-size and `pg_stat_user_tables` snapshots, and ordinary
-`VACUUM (ANALYZE)` duration. It intentionally does not rely on `VACUUM FULL`.
+Replacement same-commit evidence selected JSONB over typed EAV and hot projection.
+Rejected candidate implementations were deleted. The remaining JSONB path is a
+selected-layout regression harness, not production persistence.
 
-The archived decision benchmark preserved full module/entity/schema-version
-identity across all measured candidates. After the ADR selected JSONB, the
-rejected typed-EAV and hot-projection implementations were deleted. The remaining
-JSONB path is a selected-layout regression harness, not production persistence.
+## M3 PostgreSQL storage engine
 
-The operational review evaluates genericity, schema evolution, index and
-migration management, mutation/query complexity, diagnostics, rebuild, and
-partitioning independently from benchmark timings. It treats the hot typed projection as a best-case baseline rather than an
-eligible canonical generic model. Replacement same-commit evidence selected JSONB
-over typed EAV because JSONB preserved the generic boundary with materially lower
-size, load, mutation, keyset/count, and maintenance cost.
-
-The archived smoke and original 100k packets remain historical diagnostics.
-Actions run `30222913450` produced validated replacement `100k`/`1m` packets and
-a decision-ready comparison on one commit. The accepted storage ADR selects JSONB.
-
-## M3 storage schema foundation
-
-The module-owned migration source now creates seven generic tables without
+The module-owned migration source creates seven generic tables without
 source-domain columns or benchmark schemas:
 
 - `index_schemas` stores exact versioned schema JSON and fingerprints;
@@ -124,18 +109,36 @@ source-domain columns or benchmark schemas:
 - `index_jobs` stores bounded durable schema/index/rebuild/reconciliation work;
 - `index_consistency_findings` stores open/resolved drift findings.
 
-The first runtime persistence slice is now implemented by `PostgresMutationStore`.
-A `MutationDelivery` is validated against the in-memory `SchemaRegistry`, claimed
-through the tenant/source/delivery inbox key, serialized by a transaction-scoped
-PostgreSQL advisory lock on the complete entity key, compared with the current
-source version, and then applied as one transaction. Live upserts replace
-the JSONB field payload plus ordered links; deletes replace them with a tombstone.
-Exact redelivery is idempotent, stale delivery is terminally ignored, delivery-ID
-payload reuse fails closed, and any entity/link failure rolls back the inbox claim.
+`PostgresMutationStore` validates each `MutationDelivery`, claims the composite
+inbox identity, serializes the complete entity key with a transaction-scoped
+advisory lock, applies monotonic entity/tombstone and ordered-link replacement,
+and completes the inbox in one transaction. Exact redelivery is idempotent,
+stale delivery is terminally ignored, payload reuse fails closed, and write
+failure rolls back the inbox claim.
 
-Schema application leases, partition/secondary-index lifecycle, PostgreSQL
-Testcontainers/concurrency evidence, query execution, and batch ingestion remain
-later M3/M4/M5 slices.
+`PostgresSchemaLeaseStore` coordinates exact tenant/schema application through
+`schema_apply` jobs. It verifies persisted active schema/fingerprint state,
+returns `Busy` or terminal `AlreadyApplied`, reclaims expired work with incremented
+attempt fencing, and requires the exact current worker/attempt for heartbeat and
+completion.
+
+`SecondaryIndexPlan` derives deterministic indexes from the exact schema contract.
+Scalar filterable/sortable fields use typed partial B-tree expressions. Filterable
+`many` fields use field-local JSONB containment GIN. Expressions follow the
+production tagged `IndexValue` payload through each field's `value` member. Stable
+names bind tenant, schema identity/version/fingerprint, field type/cardinality,
+index kind, and payload contract.
+
+`PostgresSecondaryIndexManager` coordinates ensure, reindex, and retirement with
+`secondary_index` jobs, transaction advisory locking, expiry reclaim, heartbeat,
+and attempt fencing. PostgreSQL execution uses `CREATE INDEX CONCURRENTLY`,
+`REINDEX INDEX CONCURRENTLY`, and `DROP INDEX CONCURRENTLY`. Owner comments bind
+each index to its full definition hash, and completion checks `indisready` plus
+`indisvalid`. Retirement remains available after schema retirement. SQLite is
+contract-test-only.
+
+Partition lifecycle, PostgreSQL Testcontainers/concurrency evidence, query
+execution, and batch ingestion remain later M3/M4/M5 slices.
 
 ## Status
 
@@ -150,7 +153,10 @@ later M3/M4/M5 slices.
 - M2 rejected prototype cleanup: `complete`
 - M3 storage-schema foundation: `complete`
 - M3 atomic mutation persistence: `complete`
-- Production persistence: mutation writes implemented; query adapter not yet implemented
+- M3 schema-application leases: `complete`
+- M3 secondary-index lifecycle: `complete`
+- Production persistence: mutation writes and schema/index coordination implemented;
+  query adapter and partition lifecycle not yet implemented
 
 ## Verification
 
@@ -161,11 +167,10 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - `cargo xtask module validate index`
 - `cargo xtask module test index`
+- `node scripts/verify/index-storage-tooling.mjs contract`
+- `node scripts/verify/verify-index-secondary-index-lifecycle.mjs`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
-- `cargo run -p rustok-benchmarks --bin index-storage-benchmark --release`
-- `cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release`
-- `cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release`
 
 ## Related Documentation
 
@@ -175,5 +180,6 @@ The repository owner runs the checks and database evidence during this rewrite:
 - [M2 storage evidence comparison](./storage-comparison.md)
 - [M2 storage operational review](./storage-operational-review.md)
 - [Index Engine rewrite ADR](../../../DECISIONS/2026-07-23-index-engine-rewrite.md)
+- [Accepted storage ADR](../../../DECISIONS/2026-07-24-index-storage-layout.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)

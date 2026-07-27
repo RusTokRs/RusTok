@@ -8,9 +8,10 @@
 - `migrations`
 
 The domain/application contract remains database independent. M3 adds module-owned
-production migrations, an Index-owned PostgreSQL mutation adapter, and durable
-schema-application leases; source-specific Content, Product, Flex, search, legacy
-migration, runtime, and scheduler modules remain deleted.
+production migrations, an Index-owned PostgreSQL mutation adapter, durable
+schema-application leases, and schema-derived secondary-index lifecycle;
+source-specific Content, Product, Flex, search, legacy migration, runtime, and
+scheduler modules remain deleted.
 
 ## Primary Public Types
 
@@ -45,6 +46,16 @@ migration, runtime, and scheduler modules remain deleted.
 - `SchemaApplicationLease`
 - `SchemaLeaseAcquireOutcome`
 - `SchemaLeaseError`
+- `SecondaryIndexPlan`
+- `SecondaryIndexSpec`
+- `SecondaryIndexKind`
+- `SecondaryIndexOperation`
+- `SecondaryIndexRequest`
+- `SecondaryIndexLease`
+- `SecondaryIndexClaimOutcome`
+- `SecondaryIndexExecutionOutcome`
+- `SecondaryIndexError`
+- `PostgresSecondaryIndexManager`
 
 ## Contract Status
 
@@ -59,9 +70,11 @@ The accepted M2 ADR selects JSONB, and M3 now registers the canonical schema for
 atomically applies validated entity/link upserts and deletes through the durable
 inbox. `PostgresSchemaLeaseStore` serializes exact tenant/schema application,
 reclaims expired jobs with attempt fencing, and requires current ownership for
-heartbeat and terminal completion. Source registries, batch ingestion, rebuild,
-query-port, secondary-index lifecycle, and operator APIs are published by later
-milestones.
+heartbeat and terminal completion. `SecondaryIndexPlan` derives stable indexes
+from filterable/sortable schema fields, and `PostgresSecondaryIndexManager`
+coordinates concurrent ensure/reindex/retire execution through durable fenced
+jobs and PostgreSQL catalog readiness checks. Source registries, batch ingestion,
+rebuild, query-port, partition lifecycle, and operator APIs remain later work.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -85,8 +98,12 @@ to owner modules or explicit integration crates.
 - Accepting a cursor without checking tenant, schema, fingerprint, locale, and
   order arity.
 - Sorting through a `many` link without an explicit aggregate policy.
-- Completing or heartbeating schema work without exact worker and attempt
+- Completing or heartbeating schema/index work without exact worker and attempt
   fencing.
+- Building expression indexes against `payload ->> field`; stored `IndexValue`
+  payloads are tagged and scalar/list values live under each field's `value` key.
+- Creating bespoke Product or other owner-specific indexes instead of deriving
+  them from the generic schema contract.
 - Restoring deleted v1 or source-specific code as a compatibility layer.
 
 ## Minimum Contract Set
@@ -98,6 +115,10 @@ to owner modules or explicit integration crates.
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
 - `SchemaApplicationLeaseRequest` binds one tenant, exact schema reference,
   computed fingerprint, worker identity, and bounded whole-second lease duration.
+- `SecondaryIndexPlan` binds one tenant and exact schema fingerprint to all
+  filterable/sortable field indexes.
+- `SecondaryIndexRequest` binds one immutable index spec, operation, worker, and
+  bounded whole-second lease duration.
 - Construction and validation preserve tenant, schema, entity, locale, and
   source-version identity.
 - Identifiers use bounded lowercase ASCII grammar; locales use ICU4X
@@ -142,6 +163,25 @@ to owner modules or explicit integration crates.
   state, and an unexpired lease.
 - Failed terminal jobs permit a new job; succeeded jobs remain terminal.
 
+### Secondary Index Lifecycle
+
+- Plans include only fields declared filterable or sortable by the exact schema.
+- Scalar fields use deterministic typed partial B-tree expressions ordered by
+  locale, value, and entity identity.
+- Filterable `many` fields use field-local JSONB containment GIN.
+- Expressions read the tagged production `IndexValue` payload through the field's
+  `value` member; timestamp keys use an immutable canonical UTC-digit expression.
+- Names bind tenant, schema reference, schema fingerprint, field type,
+  cardinality, index kind, and payload contract through SHA-256.
+- Ensure, reindex, and retire use `CREATE INDEX CONCURRENTLY`,
+  `REINDEX INDEX CONCURRENTLY`, and `DROP INDEX CONCURRENTLY` in PostgreSQL.
+- Active jobs are serialized by a transaction advisory lock and fenced by worker,
+  attempt count, state, and lease expiry.
+- PostgreSQL owner comments bind the index name to its full definition hash;
+  conflicting ownership fails closed.
+- Completion requires catalog `indisready` and `indisvalid`; retirement remains
+  available after a schema is retired.
+
 ### Cursor Contract
 
 - Cursor format is explicitly versioned.
@@ -179,4 +219,7 @@ to owner modules or explicit integration crates.
   map owner errors rather than returning storage details directly.
 - `SchemaLeaseError` separates request validation, missing/retired/conflicting
   schema state, malformed durable jobs, lost ownership, and database failure.
+- `SecondaryIndexError` separates plan/request validation, schema conflicts,
+  malformed jobs, lease loss, ownership conflicts, missing/not-ready indexes,
+  unsupported backends, and storage failures.
 - Later milestones add source, retry, cancellation, and rebuild errors.

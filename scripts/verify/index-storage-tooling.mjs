@@ -56,6 +56,7 @@ const runContract = (args) => {
     'verify-index-storage-migrations.mjs',
     'verify-index-mutation-storage.mjs',
     'verify-index-schema-leases.mjs',
+    'verify-index-secondary-index-lifecycle.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-standalone-tools.mjs',
