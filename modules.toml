@@ -76,6 +76,7 @@ navigation = { crate = "rustok-navigation", source = "path", path = "crates/rust
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content"] }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
+translation = { crate = "rustok-translation", source = "path", path = "crates/rustok-translation" }
 seo = { crate = "rustok-seo", source = "path", path = "crates/rustok-seo", depends_on = ["content"] }
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
 alloy = { crate = "alloy", source = "path", path = "crates/alloy" }

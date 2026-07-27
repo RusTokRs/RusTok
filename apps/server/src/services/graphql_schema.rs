@@ -26,10 +26,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     // Select the public-image provider before any host snapshot is built. The enriched extension
     // registry is stored back in ServerRuntimeContext, so GraphQL and later server-function
     // composition receive the exact same deployment-selected provider wrapper.
-    let runtime_extensions = attach_profile_media_public_image_provider(
-        ctx,
-        module_runtime_extensions_from_ctx(ctx),
-    );
+    let runtime_extensions =
+        attach_profile_media_public_image_provider(ctx, module_runtime_extensions_from_ctx(ctx));
     let event_bus = event_bus_from_context(ctx);
     let transactional_event_bus = transactional_event_bus_from_context(ctx);
     let registry = ctx

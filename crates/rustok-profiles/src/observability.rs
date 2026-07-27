@@ -127,12 +127,7 @@ impl ProfileBackfillTimer {
         );
     }
 
-    pub fn finish_failure(
-        &self,
-        stage: &'static str,
-        error_code: &'static str,
-        retryable: bool,
-    ) {
+    pub fn finish_failure(&self, stage: &'static str, error_code: &'static str, retryable: bool) {
         tracing::warn!(
             target: PROFILE_OPERATION_TARGET,
             operation = PROFILE_BACKFILL_OPERATION,

@@ -36,25 +36,30 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is a cross-cutting pre-implementation plan. As of 2026-07-26:
+This is a cross-cutting pre-implementation plan. As of 2026-07-27:
 
-- no `translation` slug or crate exists;
+- the optional `translation` slug and `rustok-translation` crate now exist with
+  module metadata, RBAC resources, a module-owned migration source, and the first
+  rebuildable inventory/checkpoint service;
 - `rustok-translation-targets` now defines the neutral provider/resource/field,
-  exact-locale, revision, validation, and apply contract, but no owner provider
-  is registered yet;
+  exact-locale, revision, validation, apply, progress, change-cursor, and
+  interchange contracts;
+- Media is the first registered owner provider. Its exact-locale CAS apply,
+  stable receipt, append-only tenant cursor, and content-free owner event are
+  transactional; every other Media translation write emits the same repair
+  evidence;
 - no module-owned translation UI exists;
 - the proposed ownership decision is recorded in
   `DECISIONS/2026-07-26-translation-control-plane-boundary.md`;
 - the current multilingual storage and runtime locale foundations are
   substantial. Baseline verifier repair, runtime/storage locale typing, tenant
   locale-policy ownership, the readiness registry, and the neutral target SPI
-  are implemented on the Phase 0 branch. Owner write paths, remaining ownership
-  drift, settings, provider onboarding, and AI execution still require
-  preparation before broad implementation.
+  are implemented in `main`. Owner write paths, remaining ownership drift,
+  settings, provider onboarding, and AI execution still require preparation
+  before broad implementation.
 
-This central plan does not create a live module-plan registry row or FFA/FBA
-readiness row. Those rows become mandatory in the same change that scaffolds
-the actual path module and its local `docs/implementation-plan.md`.
+The live module plan and FFA/FBA readiness row are now maintained with the
+scaffold in `crates/rustok-translation/docs/implementation-plan.md`.
 
 ## Decisions fixed by this plan
 
@@ -179,12 +184,12 @@ until after the module exists.
 
 | P0 item | Current evidence | Exit condition |
 | --- | --- | --- |
-| Restore the i18n baseline | Completed on the Phase 0 branch: stale host, Pages/Profiles/Index markers were repaired and the existing i18n/Flex/DB contracts are aligned | Keep all existing multilingual verifiers green on the final revision |
+| Restore the i18n baseline | Completed in `main`: stale host, Pages/Profiles/Index markers were repaired and the existing i18n/Flex/DB contracts are aligned | Keep all existing multilingual verifiers green on the final revision |
 | Split locale meanings | Completed: one normalizer now backs `RuntimeLocale`/`TenantLocale` (no `und`) and `StoredLocale` (explicit `und` provenance), with canonicalization and serde tests | Migrate remaining package-local locale DTOs to the canonical types |
 | Establish tenant locale ownership | Completed: `rustok-tenant` owns revisioned policy read/replace, CAS, durable idempotency receipts, canonical/default/fallback/cycle invariants, and server middleware consumes the port | Add the admin transport over the same owner service without restoring direct SQL |
-| Remove locale DTO drift | Content, Product, Shipping, and Media currently apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
+| Remove locale DTO drift | Media now converts translation writes to canonical `TenantLocale`; Content, Product, Shipping, and other candidate owners still apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
 | Resolve owner/schema drift | Product translation entities are duplicated in `rustok-product` and `rustok-commerce-foundation`; Pages/Navigation, Content/SEO, and Blog/Taxonomy also have stale ownership evidence | Registry/docs/migrations/entities identify one physical and semantic owner per target kind; superseded internal paths are deleted atomically |
-| Make owner writes safe | Some Product and Shipping updates replace all locale rows; several per-locale upserts have no source/target CAS | Each onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, and transactional outbox evidence |
+| Make owner writes safe | Media now has an owner-registered exact-locale provider whose CAS write, idempotency receipt, append-only change cursor, and neutral owner change event commit atomically; all direct Media translation writes publish the same repair evidence. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, transactional outbox evidence, and bounded repair |
 | Correct Flex exact semantics | [`flex::attached`](../../crates/flex/src/attached.rs) can seed/read from the first available locale and the standalone host service uses tenant default locale | Exact source/target APIs never synthesize an existing translation; only schema-declared `is_localized` leaves are exposed |
 | Type localized settings | [`ModuleSettingSpec`](../../crates/rustok-modules/src/settings.rs) and host settings writes have no localized-leaf, sensitivity, or revision contract | A named owner exposes stable field IDs, `localized` and field-policy metadata, parallel localized rows, CAS, events, and secret-safe validation |
 | Finish semantic string classification | Product image alt text has base/translation drift; Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
@@ -212,7 +217,7 @@ and exclusion reason.
 | Forum | category, topic, and reply copy | Category may onboard early; topic/reply are UGC and require opt-in, moderation, revisions, and no author-content overwrite |
 | Product/catalog | product/variant/options, attributes, category/schema labels, SEO, image alt, localized Flex values | Dedicated catalog wave after per-locale CAS, owner extraction cleanup, SEO precedence, and removal of base/translation image-alt drift |
 | Taxonomy | term name/slug/description | Good early pilot; aliases remain curated search/SEO semantics rather than automatic MT by default |
-| Media | title/alt/caption | Good technical pilot after canonical locale and target CAS are added to the existing read/write ports |
+| Media | title/alt/caption | Provider registered for bounded exact discovery/read/validate/apply and tenant-scoped cursor repair with resource/source/target revisions, atomic receipt, and neutral owner event. Direct owner edits publish identical repair evidence; production enablement now waits on projection replay and multi-replica checkpoint recovery evidence |
 | SEO | title/description/keywords/Open Graph copy | Decide precedence between owner-embedded SEO and explicit SEO override before registration; media identifiers are preserved |
 | Flex | schema copy and attached/standalone localized values | Expose only schema-declared localized leaves through exact operations; never expose arbitrary payload JSON |
 | Profiles/Comments/Groups | display copy, bios, comments, group title/summary/body | Treat personal/UGC fields as opt-in and policy-sensitive; preserve names by default and never rewrite immutable revisions |
@@ -1066,7 +1071,10 @@ Deliverables:
 - [x] specify atomic per-locale owner apply, CAS, idempotency, and owner-event
   evidence;
 - [ ] design settings-localized storage and the AI execution port;
-- [ ] commit executable reference provider fixtures and negative fixtures.
+- [x] commit executable reference provider fixtures and negative fixtures in
+  `rustok-translation-targets/tests/reference_provider_conformance.rs`, covering
+  exact-locale discovery, CAS apply, replay, stale revisions, and
+  same-key/different-payload conflicts.
 
 Done when Gate A and all existing multilingual verification pass, the remaining
 blocked surfaces have named owners/reasons, and no owner or host has to guess
@@ -1095,7 +1103,10 @@ discover-to-owner-receipt flow with conflicts, replay, and recovery.
 Onboard bounded production surfaces whose semantics are already close to the
 target:
 
-1. Media title/alt/caption after canonical locale and target CAS are added.
+1. Media title/alt/caption: provider registration, atomic apply, direct-write
+   event parity, and tenant-scoped change-cursor repair are present; run
+   projection replay and multi-replica checkpoint recovery evidence before
+   production inventory enablement.
 2. Taxonomy term name/slug/description after source/target CAS is added.
 3. Blog category copy without duplicating Taxonomy-owned tags.
 4. Navigation only after an atomic menu/item aggregate locale operation exists.

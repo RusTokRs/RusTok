@@ -26,17 +26,12 @@ pub fn attach_profile_media_public_image_provider(
 
         let selected = ctx
             .shared_get::<ProfileMediaPublicImageProvider>()
-            .or_else(|| {
-                extensions
-                    .get::<ProfileMediaPublicImageProvider>()
-                    .cloned()
-            })
+            .or_else(|| extensions.get::<ProfileMediaPublicImageProvider>().cloned())
             .or_else(|| {
                 ctx.shared_get::<rustok_storage::StorageRuntime>()
                     .map(|storage| {
-                        let provider: Arc<dyn MediaPublicImageReadPort> = Arc::new(
-                            MediaPublicImageService::new(ctx.db_clone(), storage),
-                        );
+                        let provider: Arc<dyn MediaPublicImageReadPort> =
+                            Arc::new(MediaPublicImageService::new(ctx.db_clone(), storage));
                         ProfileMediaPublicImageProvider::new(provider)
                     })
             });
@@ -105,10 +100,7 @@ mod tests {
             deployment_port.clone(),
         ));
 
-        let resolved = attach_profile_media_public_image_provider(
-            &runtime,
-            Arc::new(extensions),
-        );
+        let resolved = attach_profile_media_public_image_provider(&runtime, Arc::new(extensions));
         let resolved_provider = resolved
             .get::<ProfileMediaPublicImageProvider>()
             .expect("selected provider should be published");

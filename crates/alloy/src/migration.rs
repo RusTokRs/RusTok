@@ -50,6 +50,9 @@ impl MigrationTrait for ScriptsMigration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Scripts::AuthorId).string_len(255))
+                    .col(ColumnDef::new(Scripts::ParentReleaseSlug).string_len(128))
+                    .col(ColumnDef::new(Scripts::ParentReleaseVersion).string_len(64))
+                    .col(ColumnDef::new(Scripts::ParentReleaseDigest).string_len(71))
                     .col(
                         ColumnDef::new(Scripts::ErrorCount)
                             .integer()
@@ -113,6 +116,9 @@ enum Scripts {
     RunAsSystem,
     Permissions,
     AuthorId,
+    ParentReleaseSlug,
+    ParentReleaseVersion,
+    ParentReleaseDigest,
     ErrorCount,
     LastErrorAt,
     CreatedAt,

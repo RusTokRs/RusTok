@@ -754,6 +754,13 @@ pub struct ModulePublicationEvidenceResult {
     pub recorded: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePublishedArtifactContract {
+    pub release_id: String,
+    pub artifact: crate::ModuleMarketplaceArtifactRelease,
+    pub descriptor: crate::ModuleArtifactDescriptor,
+}
+
 /// Host-authenticated promotion of a verified build-worker receipt into the
 /// publication ledger. Unlike generic evidence, this preserves the exact OCI
 /// subject and signature-manifest identity produced by the build service.
@@ -772,7 +779,9 @@ pub struct ModuleBuildServiceAttestationCommand {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModulePlatformAdmissionCommand {
     pub request_id: String,
+    pub registry_id: String,
     pub reference: OciArtifactReference,
+    pub descriptor: crate::ModuleArtifactDescriptor,
     pub evidence: ArtifactVerificationEvidence,
     pub actor_principal: serde_json::Value,
 }
@@ -1300,26 +1309,27 @@ impl ModuleBuildServiceAttestationCommand {
 
 impl ModulePlatformAdmissionCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if crate::normalize_module_registry_id(&self.registry_id).as_deref()
+            != Some(self.registry_id.as_str())
+        {
+            return Err(ModuleGovernanceError::InvalidPlatformAdmissionCommand);
+        }
         self.reference
+            .validate()
+            .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?;
+        self.descriptor
             .validate()
             .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?;
         if self.request_id.trim().is_empty()
             || self.evidence.manifest_digest != self.reference.digest
+            || self.descriptor.artifact_digest != self.evidence.payload_digest
+            || self.descriptor.payload_kind == crate::ArtifactPayloadKind::StaticPromoted
             || !prefixed_sha256_digest(&self.evidence.payload_digest)
             || self.evidence.media_type.trim().is_empty()
             || self.evidence.media_type.len() > MAX_PLATFORM_ADMISSION_MEDIA_TYPE_BYTES
             || self.evidence.signer_identity.trim().is_empty()
             || self.evidence.signer_identity.len() > MAX_PUBLICATION_EVIDENCE_IDENTITY_BYTES
-            || !self.evidence.signature_verified
-            || !self.evidence.provenance_verified
-            || !self.evidence.sbom_verified
-            || !self.evidence.license_policy_verified
-            || !self.evidence.vulnerability_policy_verified
-            || self.evidence.evidence_references.is_empty()
-            || self.evidence.evidence_references.iter().any(|reference| {
-                reference.trim().is_empty()
-                    || reference.len() > MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES
-            })
+            || !self.evidence.admitted()
         {
             return Err(ModuleGovernanceError::InvalidPlatformAdmissionCommand);
         }
@@ -1821,19 +1831,20 @@ impl SeaOrmModuleGovernanceService {
                 backend,
                 format!(
                     "INSERT INTO registry_publish_build_staging \
-                     (id, request_id, tenant_id, build_request_id, source_digest, component_digest, \
+                     (id, request_id, tenant_id, build_request_id, source_reference, source_digest, component_digest, \
                       artifact_manifest_digest, sbom_manifest_digest, provenance_manifest_digest, \
                       signature_manifest_digest, staged_by_principal, idempotency_key, staged_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
                      ON CONFLICT (request_id, idempotency_key) DO NOTHING",
                     mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8),
-                    mark(9), mark(10), mark(11), mark(12),
+                    mark(9), mark(10), mark(11), mark(12), mark(13),
                 ),
                 vec![
                     staging_id.clone().into(),
                     command.request_id.clone().into(),
                     registry_uuid_value(command.tenant_id, backend),
                     registry_uuid_value(command.build_request_id, backend),
+                    completed.request.source.reference.clone().into(),
                     completed.request.source.digest.clone().into(),
                     component_digest.to_string().into(),
                     receipt.artifact.digest.clone().into(),
@@ -1853,7 +1864,7 @@ impl SeaOrmModuleGovernanceService {
                     format!(
                         "SELECT id, CAST(tenant_id AS TEXT) AS tenant_id, \
                          CAST(build_request_id AS TEXT) AS build_request_id, \
-                         source_digest, component_digest, \
+                         source_reference, source_digest, component_digest, \
                          CAST(staged_by_principal AS TEXT) AS staged_by_principal \
                          FROM registry_publish_build_staging \
                          WHERE request_id = {} AND idempotency_key = {}",
@@ -1876,6 +1887,9 @@ impl SeaOrmModuleGovernanceService {
             let existing_build_request_id: String = existing
                 .try_get("", "build_request_id")
                 .map_err(store_error)?;
+            let existing_source_reference: String = existing
+                .try_get("", "source_reference")
+                .map_err(store_error)?;
             let existing_source_digest: String =
                 existing.try_get("", "source_digest").map_err(store_error)?;
             let existing_component_digest: String = existing
@@ -1889,6 +1903,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
             if existing_tenant_id != command.tenant_id.to_string()
                 || existing_build_request_id != command.build_request_id.to_string()
+                || existing_source_reference != completed.request.source.reference
                 || existing_source_digest != completed.request.source.digest
                 || existing_component_digest != component_digest
                 || existing_actor != command.actor_principal
@@ -1957,6 +1972,7 @@ impl SeaOrmModuleGovernanceService {
                 Value::Json(Some(Box::new(command.actor_principal))),
                 Value::Json(Some(Box::new(serde_json::json!({
                     "build_request_id": command.build_request_id,
+                    "source_reference": completed.request.source.reference,
                     "source_digest": completed.request.source.digest,
                     "component_digest": component_digest,
                     "artifact_manifest_digest": receipt.artifact.digest,
@@ -2502,7 +2518,7 @@ impl SeaOrmModuleGovernanceService {
         command: ModulePublicationEvidenceCommand,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         command.validate()?;
-        self.record_publication_evidence_inner(command).await
+        self.record_publication_evidence_inner(command, None).await
     }
 
     /// Records a build-service attestation only after the receipt's OCI
@@ -2512,7 +2528,7 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleBuildServiceAttestationCommand,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         command.validate()?;
-        self.record_publication_evidence_inner(command.publication_evidence()?)
+        self.record_publication_evidence_inner(command.publication_evidence()?, None)
             .await
     }
 
@@ -2542,13 +2558,15 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let artifact_origin = ModulePublicationArtifactOrigin::parse(&artifact_origin)
             .ok_or(ModuleGovernanceError::PublishRequestArtifactOriginUnclassified)?;
-        self.record_publication_evidence_inner(command.publication_evidence(artifact_origin)?)
+        let evidence = command.publication_evidence(artifact_origin)?;
+        self.record_publication_evidence_inner(evidence, Some(&command))
             .await
     }
 
     async fn record_publication_evidence_inner(
         &self,
         command: ModulePublicationEvidenceCommand,
+        platform_admission: Option<&ModulePlatformAdmissionCommand>,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         let tx = self.db.begin().await.map_err(store_error)?;
         let backend = tx.get_database_backend();
@@ -2563,7 +2581,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, status, artifact_origin FROM registry_publish_requests WHERE id = {}{request_lock}",
+                    "SELECT slug, version, status, artifact_origin FROM registry_publish_requests WHERE id = {}{request_lock}",
                     mark(1),
                 ),
                 vec![command.request_id.clone().into()],
@@ -2572,6 +2590,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?
             .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
+        let version: String = request.try_get("", "version").map_err(store_error)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
         let artifact_origin: String = request
             .try_get("", "artifact_origin")
@@ -2610,8 +2629,8 @@ impl SeaOrmModuleGovernanceService {
                     command.request_id.clone().into(),
                     authority.into(),
                     command.subject_digest_sha256.clone().into(),
-                    command.evidence_reference.into(),
-                    command.issuer_identity.into(),
+                    command.evidence_reference.clone().into(),
+                    command.issuer_identity.clone().into(),
                     command.policy_revision.clone().into(),
                     evidence_digest_sha256.clone().into(),
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
@@ -2619,6 +2638,21 @@ impl SeaOrmModuleGovernanceService {
             ))
             .await
             .map_err(store_error)?;
+        if let Some(platform_admission) = platform_admission {
+            if platform_admission.descriptor.slug != slug
+                || platform_admission.descriptor.version != version
+            {
+                return Err(ModuleGovernanceError::InvalidPlatformAdmissionCommand);
+            }
+            persist_platform_admission_contract(
+                &tx,
+                backend,
+                platform_admission,
+                &command.evidence_reference,
+                &evidence_digest_sha256,
+            )
+            .await?;
+        }
         if inserted.rows_affected() == 0 {
             let existing = tx
                 .query_one(Statement::from_sql_and_values(
@@ -5354,7 +5388,10 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id FROM registry_module_releases WHERE id = {} LIMIT 1",
+                        "SELECT release.id FROM registry_module_releases AS release \
+                         INNER JOIN registry_module_release_artifacts AS artifact \
+                           ON artifact.release_id = release.id \
+                         WHERE release.id = {} LIMIT 1",
                         mark(1)
                     ),
                     vec![release_id.into()],
@@ -5398,8 +5435,11 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id FROM registry_module_releases \
-                         WHERE request_id = {} AND slug = {} AND version = {} LIMIT 1",
+                        "SELECT release.id FROM registry_module_releases AS release \
+                         INNER JOIN registry_module_release_artifacts AS artifact \
+                           ON artifact.release_id = release.id \
+                         WHERE release.request_id = {} AND release.slug = {} \
+                           AND release.version = {} LIMIT 1",
                         mark(1),
                         mark(2),
                         mark(3),
@@ -5820,6 +5860,17 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
 
+        let (artifact_contract, artifact_descriptor) = canonical_marketplace_artifact_contract(
+            &tx,
+            backend,
+            &command.request_id,
+            &slug,
+            &version,
+            artifact_origin,
+            &checksum_sha256,
+        )
+        .await?;
+
         let release_id = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -5922,6 +5973,16 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
+
+        persist_published_artifact_contract(
+            &tx,
+            backend,
+            &release_id,
+            &command.request_id,
+            &artifact_contract,
+            &artifact_descriptor,
+        )
+        .await?;
 
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -6151,6 +6212,61 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         Ok(())
+    }
+
+    /// Returns only active releases that have a complete owner-persisted
+    /// installable artifact contract. Corrupt projection rows fail closed
+    /// instead of being downgraded to metadata-only marketplace entries.
+    pub async fn published_artifact_contracts(
+        &self,
+    ) -> Result<Vec<ModulePublishedArtifactContract>, ModuleGovernanceError> {
+        let backend = self.db.get_database_backend();
+        let rows = self
+            .db
+            .query_all(Statement::from_string(
+                backend,
+                "SELECT artifact.release_id, CAST(artifact.artifact AS TEXT) AS artifact, \
+                 CAST(artifact.descriptor AS TEXT) AS descriptor \
+                 FROM registry_module_release_artifacts AS artifact \
+                 INNER JOIN registry_module_releases AS release \
+                   ON release.id = artifact.release_id \
+                 WHERE release.status = 'active' \
+                 ORDER BY release.slug, release.version, artifact.release_id"
+                    .to_string(),
+            ))
+            .await
+            .map_err(store_error)?;
+        rows.into_iter()
+            .map(|row| {
+                let artifact = serde_json::from_str::<crate::ModuleMarketplaceArtifactRelease>(
+                    &row.try_get::<String>("", "artifact").map_err(store_error)?,
+                )
+                .map_err(store_error)?;
+                let descriptor = serde_json::from_str::<crate::ModuleArtifactDescriptor>(
+                    &row.try_get::<String>("", "descriptor")
+                        .map_err(store_error)?,
+                )
+                .map_err(store_error)?;
+                artifact.validate().map_err(|_| {
+                    ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract
+                })?;
+                if crate::canonical_artifact_descriptor_digest(&descriptor)
+                    != artifact.descriptor_digest
+                    || descriptor.artifact_digest != artifact.payload_digest
+                {
+                    return Err(
+                        ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract,
+                    );
+                }
+                Ok(ModulePublishedArtifactContract {
+                    release_id: row
+                        .try_get::<String>("", "release_id")
+                        .map_err(store_error)?,
+                    artifact,
+                    descriptor,
+                })
+            })
+            .collect()
     }
 }
 
@@ -7471,6 +7587,578 @@ fn receipt_subject_digest_sha256(
     receipt_digest_sha256(&receipt.artifact.digest)
 }
 
+async fn load_publication_evidence_contract(
+    transaction: &DatabaseTransaction,
+    backend: DbBackend,
+    request_id: &str,
+    authority: ModulePublicationEvidenceAuthority,
+    subject_digest_sha256: &str,
+) -> Result<(String, String), ModuleGovernanceError> {
+    let mark = |position| placeholder(backend, position);
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT evidence_reference, evidence_digest_sha256 \
+                 FROM registry_publication_evidence \
+                 WHERE request_id = {} AND authority = {} AND subject_digest_sha256 = {} \
+                 ORDER BY created_at DESC, id DESC LIMIT 1",
+                mark(1),
+                mark(2),
+                mark(3),
+            ),
+            vec![
+                request_id.to_string().into(),
+                authority.as_str().into(),
+                subject_digest_sha256.to_string().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+    let reference = row
+        .try_get::<String>("", "evidence_reference")
+        .map_err(store_error)?;
+    let digest = row
+        .try_get::<String>("", "evidence_digest_sha256")
+        .map_err(store_error)?;
+    if !is_sha256_hex(&digest) {
+        return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+    }
+    Ok((reference, format!("sha256:{digest}")))
+}
+
+async fn canonical_marketplace_artifact_contract(
+    transaction: &DatabaseTransaction,
+    backend: DbBackend,
+    request_id: &str,
+    slug: &str,
+    version: &str,
+    artifact_origin: ModulePublicationArtifactOrigin,
+    checksum_sha256: &str,
+) -> Result<
+    (
+        crate::ModuleMarketplaceArtifactRelease,
+        crate::ModuleArtifactDescriptor,
+    ),
+    ModuleGovernanceError,
+> {
+    let mark = |position| placeholder(backend, position);
+    let admitted = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT registry_id, repository, manifest_digest, payload_digest, \
+                 descriptor_digest, CAST(descriptor AS TEXT) AS descriptor, runtime_kind, \
+                 signature_reference, signature_digest, provenance_reference, provenance_digest, \
+                 sbom_reference, sbom_digest, admission_reference, admission_digest \
+                 FROM registry_publish_platform_admissions \
+                 WHERE request_id = {} AND payload_digest = {} LIMIT 1",
+                mark(1),
+                mark(2),
+            ),
+            vec![
+                request_id.to_string().into(),
+                format!("sha256:{checksum_sha256}").into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+    let descriptor = serde_json::from_str::<crate::ModuleArtifactDescriptor>(
+        &admitted
+            .try_get::<String>("", "descriptor")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    let descriptor_digest = admitted
+        .try_get::<String>("", "descriptor_digest")
+        .map_err(store_error)?;
+    if descriptor.slug != slug
+        || descriptor.version != version
+        || descriptor.artifact_digest != format!("sha256:{checksum_sha256}")
+        || crate::canonical_artifact_descriptor_digest(&descriptor) != descriptor_digest
+    {
+        return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+    }
+
+    let runtime_kind = match admitted
+        .try_get::<String>("", "runtime_kind")
+        .map_err(store_error)?
+        .as_str()
+    {
+        "rhai" => crate::ModuleMarketplaceRuntimeKind::Rhai,
+        "wasm_component" => crate::ModuleMarketplaceRuntimeKind::WasmComponent,
+        "sidecar" => crate::ModuleMarketplaceRuntimeKind::Sidecar,
+        _ => {
+            return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
+        }
+    };
+    let payload_digest = admitted
+        .try_get::<String>("", "payload_digest")
+        .map_err(store_error)?;
+    let manifest_digest = admitted
+        .try_get::<String>("", "manifest_digest")
+        .map_err(store_error)?;
+    let (source_reference, source_digest) = match artifact_origin {
+        ModulePublicationArtifactOrigin::PlatformBuilt => {
+            let source = transaction
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT source_reference, source_digest \
+                         FROM registry_publish_build_staging \
+                         WHERE request_id = {} AND component_digest = {} \
+                         ORDER BY staged_at DESC LIMIT 1",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![request_id.to_string().into(), payload_digest.clone().into()],
+                ))
+                .await
+                .map_err(store_error)?
+                .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+            (
+                source
+                    .try_get::<Option<String>>("", "source_reference")
+                    .map_err(store_error)?
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?,
+                source
+                    .try_get::<String>("", "source_digest")
+                    .map_err(store_error)?,
+            )
+        }
+        ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+            let source = transaction
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT source_reference, source_digest \
+                         FROM registry_publish_external_staging \
+                         WHERE request_id = {} AND artifact_digest = {} \
+                           AND source_evidence_kind = 'reproducible' \
+                         ORDER BY staged_at DESC LIMIT 1",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![request_id.to_string().into(), payload_digest.clone().into()],
+                ))
+                .await
+                .map_err(store_error)?
+                .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+            (
+                source
+                    .try_get::<Option<String>>("", "source_reference")
+                    .map_err(store_error)?
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?,
+                source
+                    .try_get::<Option<String>>("", "source_digest")
+                    .map_err(store_error)?
+                    .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?,
+            )
+        }
+        ModulePublicationArtifactOrigin::AlloyAuthored => {
+            let source = transaction
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
+                         CAST(alloy_script_id AS TEXT) AS alloy_script_id, \
+                         source_revision, source_digest \
+                         FROM registry_publish_alloy_staging \
+                         WHERE request_id = {} AND artifact_digest = {} \
+                         ORDER BY staged_at DESC LIMIT 1",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![request_id.to_string().into(), payload_digest.clone().into()],
+                ))
+                .await
+                .map_err(store_error)?
+                .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+            let tenant_id = source
+                .try_get::<String>("", "alloy_tenant_id")
+                .map_err(store_error)?;
+            let script_id = source
+                .try_get::<String>("", "alloy_script_id")
+                .map_err(store_error)?;
+            let revision = source
+                .try_get::<i64>("", "source_revision")
+                .map_err(store_error)?;
+            (
+                format!("alloy://{tenant_id}/{script_id}/{revision}"),
+                source
+                    .try_get::<String>("", "source_digest")
+                    .map_err(store_error)?,
+            )
+        }
+    };
+
+    let (author_reference, author_digest) = load_publication_evidence_contract(
+        transaction,
+        backend,
+        request_id,
+        ModulePublicationEvidenceAuthority::AuthorSignature,
+        checksum_sha256,
+    )
+    .await?;
+    let (approval_reference, approval_digest) = load_publication_evidence_contract(
+        transaction,
+        backend,
+        request_id,
+        ModulePublicationEvidenceAuthority::MarketplaceApproval,
+        checksum_sha256,
+    )
+    .await?;
+    let mut evidence = vec![
+        crate::ModuleMarketplaceEvidenceReference {
+            kind: crate::ModuleMarketplaceEvidenceKind::AuthorSignature,
+            reference: author_reference,
+            digest: author_digest,
+        },
+        crate::ModuleMarketplaceEvidenceReference {
+            kind: crate::ModuleMarketplaceEvidenceKind::Sbom,
+            reference: admitted
+                .try_get::<String>("", "sbom_reference")
+                .map_err(store_error)?,
+            digest: admitted
+                .try_get::<String>("", "sbom_digest")
+                .map_err(store_error)?,
+        },
+        crate::ModuleMarketplaceEvidenceReference {
+            kind: crate::ModuleMarketplaceEvidenceKind::Provenance,
+            reference: admitted
+                .try_get::<String>("", "provenance_reference")
+                .map_err(store_error)?,
+            digest: admitted
+                .try_get::<String>("", "provenance_digest")
+                .map_err(store_error)?,
+        },
+        crate::ModuleMarketplaceEvidenceReference {
+            kind: crate::ModuleMarketplaceEvidenceKind::PlatformAdmission,
+            reference: admitted
+                .try_get::<String>("", "admission_reference")
+                .map_err(store_error)?,
+            digest: format!(
+                "sha256:{}",
+                admitted
+                    .try_get::<String>("", "admission_digest")
+                    .map_err(store_error)?
+            ),
+        },
+        crate::ModuleMarketplaceEvidenceReference {
+            kind: crate::ModuleMarketplaceEvidenceKind::MarketplaceApproval,
+            reference: approval_reference,
+            digest: approval_digest,
+        },
+    ];
+    if artifact_origin == ModulePublicationArtifactOrigin::PlatformBuilt {
+        let manifest_subject = receipt_digest_sha256(&manifest_digest)
+            .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+        let (reference, digest) = load_publication_evidence_contract(
+            transaction,
+            backend,
+            request_id,
+            ModulePublicationEvidenceAuthority::BuildServiceAttestation,
+            manifest_subject,
+        )
+        .await?;
+        evidence.push(crate::ModuleMarketplaceEvidenceReference {
+            kind: crate::ModuleMarketplaceEvidenceKind::BuildServiceAttestation,
+            reference,
+            digest,
+        });
+    }
+    let origin = match artifact_origin {
+        ModulePublicationArtifactOrigin::PlatformBuilt => {
+            crate::ModuleMarketplaceArtifactOrigin::PlatformBuilt
+        }
+        ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+            crate::ModuleMarketplaceArtifactOrigin::ExternalPrebuilt
+        }
+        ModulePublicationArtifactOrigin::AlloyAuthored => {
+            crate::ModuleMarketplaceArtifactOrigin::AlloyAuthored
+        }
+    };
+    let artifact = crate::ModuleMarketplaceArtifactRelease {
+        registry_id: admitted
+            .try_get::<String>("", "registry_id")
+            .map_err(store_error)?,
+        repository: admitted
+            .try_get::<String>("", "repository")
+            .map_err(store_error)?,
+        origin,
+        runtime_kind,
+        oci_manifest_digest: manifest_digest,
+        payload_digest,
+        descriptor_digest,
+        source_reference,
+        source_digest,
+        evidence,
+    };
+    artifact
+        .validate()
+        .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+    Ok((artifact, descriptor))
+}
+
+async fn persist_published_artifact_contract(
+    transaction: &DatabaseTransaction,
+    backend: DbBackend,
+    release_id: &str,
+    request_id: &str,
+    artifact: &crate::ModuleMarketplaceArtifactRelease,
+    descriptor: &crate::ModuleArtifactDescriptor,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |position| placeholder(backend, position);
+    let now = database_now(backend);
+    let artifact_json = serde_json::to_value(artifact).map_err(store_error)?;
+    let descriptor_json = serde_json::to_value(descriptor).map_err(store_error)?;
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_module_release_artifacts \
+                 (release_id, request_id, artifact, descriptor, created_at) \
+                 VALUES ({}, {}, {}, {}, {now}) \
+                 ON CONFLICT (release_id) DO NOTHING",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+            ),
+            vec![
+                release_id.to_string().into(),
+                request_id.to_string().into(),
+                Value::Json(Some(Box::new(artifact_json))),
+                Value::Json(Some(Box::new(descriptor_json))),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    let stored = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT request_id, CAST(artifact AS TEXT) AS artifact, \
+                 CAST(descriptor AS TEXT) AS descriptor \
+                 FROM registry_module_release_artifacts WHERE release_id = {}",
+                mark(1),
+            ),
+            vec![release_id.to_string().into()],
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
+    let stored_artifact = serde_json::from_str::<crate::ModuleMarketplaceArtifactRelease>(
+        &stored
+            .try_get::<String>("", "artifact")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    let stored_descriptor = serde_json::from_str::<crate::ModuleArtifactDescriptor>(
+        &stored
+            .try_get::<String>("", "descriptor")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    if stored
+        .try_get::<String>("", "request_id")
+        .map_err(store_error)?
+        != request_id
+        || stored_artifact != *artifact
+        || stored_descriptor != *descriptor
+    {
+        return Err(ModuleGovernanceError::PublicationIdempotencyConflict);
+    }
+    Ok(())
+}
+
+async fn persist_platform_admission_contract(
+    transaction: &DatabaseTransaction,
+    backend: DbBackend,
+    command: &ModulePlatformAdmissionCommand,
+    admission_reference: &str,
+    admission_digest: &str,
+) -> Result<(), ModuleGovernanceError> {
+    let descriptor_digest = crate::canonical_artifact_descriptor_digest(&command.descriptor);
+    let runtime_kind = match command.descriptor.payload_kind {
+        crate::ArtifactPayloadKind::Rhai => "rhai",
+        crate::ArtifactPayloadKind::WasmComponent => "wasm_component",
+        crate::ArtifactPayloadKind::Sidecar => "sidecar",
+        crate::ArtifactPayloadKind::StaticPromoted => {
+            return Err(ModuleGovernanceError::InvalidPlatformAdmissionCommand);
+        }
+    };
+    let evidence = |kind| {
+        command
+            .evidence
+            .evidence
+            .iter()
+            .find(|evidence| evidence.kind == kind)
+            .ok_or(ModuleGovernanceError::InvalidPlatformAdmissionCommand)
+    };
+    let signature = evidence(crate::TrustEvidenceKind::Signature)?;
+    let provenance = evidence(crate::TrustEvidenceKind::Provenance)?;
+    let sbom = evidence(crate::TrustEvidenceKind::Sbom)?;
+    let descriptor = serde_json::to_value(&command.descriptor).map_err(store_error)?;
+    let mark = |position| placeholder(backend, position);
+    let now = database_now(backend);
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_publish_platform_admissions \
+                 (request_id, registry_id, registry, repository, manifest_digest, payload_digest, \
+                  descriptor_digest, descriptor, runtime_kind, media_type, \
+                  signature_reference, signature_digest, provenance_reference, \
+                  provenance_digest, sbom_reference, sbom_digest, \
+                  admission_reference, admission_digest, recorded_at) \
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                 ON CONFLICT (request_id) DO NOTHING",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+                mark(6),
+                mark(7),
+                mark(8),
+                mark(9),
+                mark(10),
+                mark(11),
+                mark(12),
+                mark(13),
+                mark(14),
+                mark(15),
+                mark(16),
+                mark(17),
+                mark(18),
+            ),
+            vec![
+                command.request_id.clone().into(),
+                command.registry_id.clone().into(),
+                command.reference.registry.clone().into(),
+                command.reference.repository.clone().into(),
+                command.reference.digest.clone().into(),
+                command.evidence.payload_digest.clone().into(),
+                descriptor_digest.clone().into(),
+                Value::Json(Some(Box::new(descriptor))),
+                runtime_kind.into(),
+                command.evidence.media_type.clone().into(),
+                signature.reference.clone().into(),
+                signature.digest.clone().into(),
+                provenance.reference.clone().into(),
+                provenance.digest.clone().into(),
+                sbom.reference.clone().into(),
+                sbom.digest.clone().into(),
+                admission_reference.to_string().into(),
+                admission_digest.to_string().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+
+    let stored = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT registry_id, registry, repository, manifest_digest, payload_digest, \
+                 descriptor_digest, CAST(descriptor AS TEXT) AS descriptor, runtime_kind, \
+                 media_type, signature_reference, signature_digest, provenance_reference, \
+                 provenance_digest, sbom_reference, sbom_digest, admission_reference, \
+                 admission_digest \
+                 FROM registry_publish_platform_admissions WHERE request_id = {}",
+                mark(1),
+            ),
+            vec![command.request_id.clone().into()],
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| {
+            ModuleGovernanceError::Store(
+                "platform admission insert completed without a durable contract".to_string(),
+            )
+        })?;
+    let stored_descriptor = serde_json::from_str::<crate::ModuleArtifactDescriptor>(
+        &stored
+            .try_get::<String>("", "descriptor")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    let matches = stored
+        .try_get::<String>("", "registry_id")
+        .map_err(store_error)?
+        == command.registry_id
+        && stored
+            .try_get::<String>("", "registry")
+            .map_err(store_error)?
+            == command.reference.registry
+        && stored
+            .try_get::<String>("", "repository")
+            .map_err(store_error)?
+            == command.reference.repository
+        && stored
+            .try_get::<String>("", "manifest_digest")
+            .map_err(store_error)?
+            == command.reference.digest
+        && stored
+            .try_get::<String>("", "payload_digest")
+            .map_err(store_error)?
+            == command.evidence.payload_digest
+        && stored
+            .try_get::<String>("", "descriptor_digest")
+            .map_err(store_error)?
+            == descriptor_digest
+        && stored_descriptor == command.descriptor
+        && stored
+            .try_get::<String>("", "runtime_kind")
+            .map_err(store_error)?
+            == runtime_kind
+        && stored
+            .try_get::<String>("", "media_type")
+            .map_err(store_error)?
+            == command.evidence.media_type
+        && stored
+            .try_get::<String>("", "signature_reference")
+            .map_err(store_error)?
+            == signature.reference
+        && stored
+            .try_get::<String>("", "signature_digest")
+            .map_err(store_error)?
+            == signature.digest
+        && stored
+            .try_get::<String>("", "provenance_reference")
+            .map_err(store_error)?
+            == provenance.reference
+        && stored
+            .try_get::<String>("", "provenance_digest")
+            .map_err(store_error)?
+            == provenance.digest
+        && stored
+            .try_get::<String>("", "sbom_reference")
+            .map_err(store_error)?
+            == sbom.reference
+        && stored
+            .try_get::<String>("", "sbom_digest")
+            .map_err(store_error)?
+            == sbom.digest
+        && stored
+            .try_get::<String>("", "admission_reference")
+            .map_err(store_error)?
+            == admission_reference
+        && stored
+            .try_get::<String>("", "admission_digest")
+            .map_err(store_error)?
+            == admission_digest;
+    if !matches {
+        return Err(ModuleGovernanceError::PublicationIdempotencyConflict);
+    }
+    Ok(())
+}
+
 fn platform_build_artifact_identities_valid(
     component_digest: &str,
     receipt: &ModuleBuildPublicationReceipt,
@@ -7503,8 +8191,8 @@ fn platform_admission_evidence_reference(
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"rustok.module.platform-admission.v1\0");
-    let mut evidence_references = evidence.evidence_references.clone();
-    evidence_references.sort();
+    let mut evidence_references = evidence.evidence.clone();
+    evidence_references.sort_by_key(|evidence| evidence.kind);
     for value in [
         reference.canonical(),
         evidence.payload_digest.clone(),
@@ -7517,12 +8205,19 @@ fn platform_admission_evidence_reference(
         evidence.license_policy_verified.to_string(),
         evidence.vulnerability_policy_verified.to_string(),
         evidence.verified_at.to_rfc3339(),
-    ]
-    .into_iter()
-    .chain(evidence_references)
-    {
+    ] {
         hasher.update((value.len() as u64).to_be_bytes());
         hasher.update(value.as_bytes());
+    }
+    for evidence in evidence_references {
+        for value in [
+            evidence.kind.as_str(),
+            evidence.reference.as_str(),
+            evidence.digest.as_str(),
+        ] {
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value.as_bytes());
+        }
     }
     format!(
         "platform-admission://{}/evidence/{}",
@@ -7793,6 +8488,10 @@ pub enum ModuleGovernanceError {
         "registry publish request is missing matching platform-admission evidence for its Alloy-authored artifact"
     )]
     PublishRequestMissingAlloyPlatformAdmission,
+    #[error(
+        "registry publish request is missing a complete immutable marketplace artifact contract"
+    )]
+    PublishRequestMissingCanonicalArtifactContract,
     #[error("registry publish request has no localized metadata")]
     PublishRequestMissingTranslations,
     #[error("registry publish request localized metadata violates the locale contract")]
@@ -7826,6 +8525,26 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     use super::*;
+    use crate::{TrustEvidenceKind, TrustEvidenceReference};
+
+    fn trust_evidence(digest_character: char) -> Vec<TrustEvidenceReference> {
+        [
+            TrustEvidenceKind::Signature,
+            TrustEvidenceKind::Provenance,
+            TrustEvidenceKind::Sbom,
+        ]
+        .into_iter()
+        .map(|kind| TrustEvidenceReference {
+            kind,
+            reference: format!(
+                "oci://registry.example/modules/sample@sha256:{}#{}",
+                digest_character.to_string().repeat(64),
+                kind.as_str()
+            ),
+            digest: format!("sha256:{}", digest_character.to_string().repeat(64)),
+        })
+        .collect()
+    }
 
     fn publish_request_create_command() -> ModulePublishRequestCreateCommand {
         ModulePublishRequestCreateCommand {
@@ -8874,6 +9593,10 @@ mod tests {
                 release_id TEXT NOT NULL, locale TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL,\
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (release_id, locale)\
              )",
+            "CREATE TABLE registry_module_release_artifacts (\
+                release_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,\
+                artifact JSON NOT NULL, descriptor JSON NOT NULL, created_at TEXT NOT NULL\
+             )",
             "CREATE TABLE registry_publication_operations (\
                 operation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,\
                 actor_principal TEXT NOT NULL, publisher_principal TEXT NOT NULL, allow_owner_rebind INTEGER NOT NULL,\
@@ -8897,9 +9620,20 @@ mod tests {
                 created_at TEXT NOT NULL, UNIQUE (request_id, evidence_digest_sha256)\
              )",
             "CREATE TABLE registry_publish_build_staging (\
-                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, component_digest TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, source_reference TEXT NULL,\
+                source_digest TEXT NOT NULL, component_digest TEXT NOT NULL,\
                 artifact_manifest_digest TEXT NOT NULL,\
                 staged_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_platform_admissions (\
+                request_id TEXT PRIMARY KEY, registry_id TEXT NOT NULL, registry TEXT NOT NULL,\
+                repository TEXT NOT NULL, manifest_digest TEXT NOT NULL, payload_digest TEXT NOT NULL,\
+                descriptor_digest TEXT NOT NULL, descriptor JSON NOT NULL, runtime_kind TEXT NOT NULL,\
+                media_type TEXT NOT NULL, signature_reference TEXT NOT NULL, signature_digest TEXT NOT NULL,\
+                provenance_reference TEXT NOT NULL, provenance_digest TEXT NOT NULL,\
+                sbom_reference TEXT NOT NULL, sbom_digest TEXT NOT NULL,\
+                admission_reference TEXT NOT NULL, admission_digest TEXT NOT NULL,\
+                recorded_at TEXT NOT NULL\
              )",
             "INSERT INTO registry_publish_requests (\
                 id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type,\
@@ -8942,8 +9676,11 @@ mod tests {
             .execute(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_build_staging \
-                 (id, request_id, component_digest, artifact_manifest_digest, staged_at) VALUES (\
+                 (id, request_id, source_reference, source_digest, component_digest, \
+                  artifact_manifest_digest, staged_at) VALUES (\
                  'stage-1', 'request-1', \
+                 'https://source.example/sample-module.tar.gz', \
+                 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', \
                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  datetime('now'))"
@@ -8980,7 +9717,7 @@ mod tests {
                     id.to_string().into(),
                     authority.to_string().into(),
                     subject.to_string().into(),
-                    format!("digest-{id}").into(),
+                    hex::encode(Sha256::digest(id.as_bytes())).into(),
                 ],
             )
         };
@@ -9029,8 +9766,11 @@ mod tests {
             .execute(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_build_staging \
-                 (id, request_id, component_digest, artifact_manifest_digest, staged_at) VALUES (\
+                 (id, request_id, source_reference, source_digest, component_digest, \
+                  artifact_manifest_digest, staged_at) VALUES (\
                  'stage-2', 'request-1', \
+                 'https://source.example/sample-module.tar.gz', \
+                 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', \
                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  datetime('now', '+2 seconds'))"
@@ -9100,6 +9840,56 @@ mod tests {
             .await
             .expect("matching build manifest fixture");
 
+        let descriptor = crate::ModuleArtifactDescriptor {
+            schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            payload_kind: crate::ArtifactPayloadKind::WasmComponent,
+            module_kind: crate::ArtifactModuleKind::Optional,
+            runtime_abi: "rustok:module/runtime@1".to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            entrypoint: "main".to_string(),
+            capabilities: Vec::new(),
+            bindings: Vec::new(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+            schema_documents: Vec::new(),
+            settings_schema_digest: None,
+            data_schema_digest: None,
+            ui_contributions: Vec::new(),
+            persistence_contract: None,
+        };
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_platform_admissions \
+                 (request_id, registry_id, registry, repository, manifest_digest, payload_digest, \
+                  descriptor_digest, descriptor, runtime_kind, media_type, signature_reference, \
+                  signature_digest, provenance_reference, provenance_digest, sbom_reference, \
+                  sbom_digest, admission_reference, admission_digest, recorded_at) \
+                 VALUES ('request-1', 'local', 'registry.example', 'modules/sample', ?, ?, ?, ?, \
+                         'wasm_component', 'application/wasm', 'evidence://signature', ?, \
+                         'evidence://provenance', ?, 'evidence://sbom', ?, \
+                         'evidence://platform-admission', ?, datetime('now'))"
+                    .to_string(),
+                vec![
+                    format!("sha256:{}", "a".repeat(64)).into(),
+                    format!("sha256:{}", "a".repeat(64)).into(),
+                    crate::canonical_artifact_descriptor_digest(&descriptor).into(),
+                    Value::Json(Some(Box::new(
+                        serde_json::to_value(&descriptor).expect("descriptor JSON"),
+                    ))),
+                    format!("sha256:{}", "d".repeat(64)).into(),
+                    format!("sha256:{}", "e".repeat(64)).into(),
+                    format!("sha256:{}", "f".repeat(64)).into(),
+                    "1".repeat(64).into(),
+                ],
+            ))
+            .await
+            .expect("platform admission contract fixture");
+
         service
             .publish_request(command.clone())
             .await
@@ -9134,6 +9924,20 @@ mod tests {
             release_count
                 .try_get::<i64>("", "count")
                 .expect("release count"),
+            1
+        );
+        let artifact_contract_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM registry_module_release_artifacts".to_string(),
+            ))
+            .await
+            .expect("artifact contract count query")
+            .expect("artifact contract count row");
+        assert_eq!(
+            artifact_contract_count
+                .try_get::<i64>("", "count")
+                .expect("artifact contract count"),
             1
         );
         let publication_operation_count = database
@@ -9289,7 +10093,8 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, artifact_origin TEXT NOT NULL, status TEXT NOT NULL\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                artifact_origin TEXT NOT NULL, status TEXT NOT NULL\
              )",
             "CREATE TABLE registry_publication_evidence (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, authority TEXT NOT NULL,\
@@ -9298,13 +10103,23 @@ mod tests {
                 evidence_digest_sha256 TEXT NOT NULL, recorded_by_principal TEXT NOT NULL,\
                 created_at TEXT NOT NULL, UNIQUE (request_id, evidence_digest_sha256)\
              )",
+            "CREATE TABLE registry_publish_platform_admissions (\
+                request_id TEXT PRIMARY KEY, registry_id TEXT NOT NULL, registry TEXT NOT NULL,\
+                repository TEXT NOT NULL, manifest_digest TEXT NOT NULL, payload_digest TEXT NOT NULL,\
+                descriptor_digest TEXT NOT NULL, descriptor JSON NOT NULL, runtime_kind TEXT NOT NULL,\
+                media_type TEXT NOT NULL, signature_reference TEXT NOT NULL, signature_digest TEXT NOT NULL,\
+                provenance_reference TEXT NOT NULL, provenance_digest TEXT NOT NULL,\
+                sbom_reference TEXT NOT NULL, sbom_digest TEXT NOT NULL,\
+                admission_reference TEXT NOT NULL, admission_digest TEXT NOT NULL,\
+                recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
             "CREATE TABLE registry_governance_events (\
                 id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
                 event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
-            "INSERT INTO registry_publish_requests (id, slug, artifact_origin, status) \
-             VALUES ('request-1', 'sample_module', 'platform_built', 'approved')",
+            "INSERT INTO registry_publish_requests (id, slug, version, artifact_origin, status) \
+             VALUES ('request-1', 'sample_module', '1.0.0', 'platform_built', 'approved')",
         ] {
             database
                 .execute(Statement::from_string(
@@ -9358,7 +10173,29 @@ mod tests {
             .expect("record build evidence");
         let platform_admission = ModulePlatformAdmissionCommand {
             request_id: "request-1".to_string(),
+            registry_id: "local".to_string(),
             reference: reference('a'),
+            descriptor: crate::ModuleArtifactDescriptor {
+                schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                payload_kind: crate::ArtifactPayloadKind::WasmComponent,
+                module_kind: crate::ArtifactModuleKind::Optional,
+                runtime_abi: "rustok:module/runtime@1".to_string(),
+                platform_compatibility: "^0.1".to_string(),
+                required_features: Vec::new(),
+                artifact_digest: format!("sha256:{}", "e".repeat(64)),
+                entrypoint: "main".to_string(),
+                capabilities: Vec::new(),
+                bindings: Vec::new(),
+                dependencies: Vec::new(),
+                permissions: Vec::new(),
+                schema_documents: Vec::new(),
+                settings_schema_digest: None,
+                data_schema_digest: None,
+                ui_contributions: Vec::new(),
+                persistence_contract: None,
+            },
             evidence: ArtifactVerificationEvidence {
                 manifest_digest: format!("sha256:{}", "a".repeat(64)),
                 payload_digest: format!("sha256:{}", "e".repeat(64)),
@@ -9371,10 +10208,7 @@ mod tests {
                 sbom_verified: true,
                 license_policy_verified: true,
                 vulnerability_policy_verified: true,
-                evidence_references: vec![
-                    "oci://registry.example/modules/sample@sha256:signature".to_string(),
-                    "oci://registry.example/modules/sample@sha256:provenance".to_string(),
-                ],
+                evidence: trust_evidence('a'),
                 verified_at: chrono::Utc::now(),
             },
             actor_principal: serde_json::json!({ "kind": "service", "id": "verification-worker" }),

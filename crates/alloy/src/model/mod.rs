@@ -1,3 +1,4 @@
+mod import;
 mod proxy;
 mod release;
 mod review;
@@ -6,6 +7,10 @@ mod test_run;
 mod trigger;
 mod workspace;
 
+pub use import::{
+    AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
+    AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
+};
 pub use proxy::{EntityProxy, register_entity_proxy};
 pub use release::{
     AlloyPublicationSmokeEvidence, AlloyReleaseError, AlloyReleaseStageCommand,

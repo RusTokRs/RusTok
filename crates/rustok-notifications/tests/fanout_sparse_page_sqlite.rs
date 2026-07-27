@@ -229,14 +229,8 @@ async fn candidate_count(db: &DatabaseConnection, tenant_id: Uuid, job_id: Uuid)
 }
 
 fn source_event(tenant_id: Uuid) -> NotificationSourceEventRef {
-    NotificationSourceEventRef::new(
-        tenant_id,
-        Uuid::new_v4(),
-        source_slug(),
-        event_type(),
-        1,
-    )
-    .expect("sparse source event must stay valid")
+    NotificationSourceEventRef::new(tenant_id, Uuid::new_v4(), source_slug(), event_type(), 1)
+        .expect("sparse source event must stay valid")
 }
 
 fn source_slug() -> NotificationSourceSlug {

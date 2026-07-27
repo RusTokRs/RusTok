@@ -214,10 +214,15 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
     assert!(first_page.recipients().is_empty());
     assert!(!first_page.is_complete());
     assert_eq!(
-        first_page.next_cursor().map(NotificationAudienceCursor::as_str),
+        first_page
+            .next_cursor()
+            .map(NotificationAudienceCursor::as_str),
         Some(unavailable_cursor.as_str())
     );
-    assert_eq!(recorded_calls(&calls), vec![denied_first, unavailable_second]);
+    assert_eq!(
+        recorded_calls(&calls),
+        vec![denied_first, unavailable_second]
+    );
 
     let second_page = provider
         .resolve_audience(ResolveNotificationAudienceRequest {
@@ -232,12 +237,19 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
     assert_eq!(second_page.recipients()[0].recipient_id, allowed_third);
     assert!(!second_page.is_complete());
     assert_eq!(
-        second_page.next_cursor().map(NotificationAudienceCursor::as_str),
+        second_page
+            .next_cursor()
+            .map(NotificationAudienceCursor::as_str),
         Some(denied_cursor.as_str())
     );
     assert_eq!(
         recorded_calls(&calls),
-        vec![denied_first, unavailable_second, allowed_third, denied_fourth]
+        vec![
+            denied_first,
+            unavailable_second,
+            allowed_third,
+            denied_fourth
+        ]
     );
 
     let third_page = provider

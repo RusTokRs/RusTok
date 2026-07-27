@@ -256,8 +256,8 @@ mod pricing_read_owner_boundary {
 
     use ::rustok_pricing::{
         ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
-        AdminProductPricingProjectionRequest, PriceListProjectionRequest,
-        PriceListProjectionSnapshot, PreviewVariantDiscountRequest, PricingReadPort,
+        AdminProductPricingProjectionRequest, PreviewVariantDiscountRequest,
+        PriceListProjectionRequest, PriceListProjectionSnapshot, PricingReadPort,
         ResolveProductPriceRequest, ResolvedProductPriceSnapshot,
         StorefrontProductPricingProjectionRequest,
     };
@@ -396,18 +396,18 @@ mod pricing_read_owner_boundary {
 pub(crate) use pricing_read_owner_boundary::in_process_pricing_read_port as contextual_pricing_read_port;
 
 mod rustok_cart_shim {
+    pub(crate) use super::cart_storefront_owner_boundary::in_process_cart_storefront_port;
     pub use ::rustok_cart::{
         CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
         CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
         CartStorefrontLineItemQuantityRequest, CartStorefrontReadRequest,
         CartStorefrontRemoveLineItemRequest,
     };
-    pub(crate) use super::cart_storefront_owner_boundary::in_process_cart_storefront_port;
 }
 
 mod rustok_pricing_shim {
-    pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};
     pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;
+    pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};
 }
 
 mod async_graphql_shim {

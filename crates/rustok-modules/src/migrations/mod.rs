@@ -37,6 +37,8 @@ mod m20260722_000036_artifact_security_state;
 mod m20260722_000037_policy_revision_cursors;
 mod m20260726_000038_artifact_data_object_deletions;
 mod m20260726_000039_artifact_data_record_deletions;
+mod m20260727_000040_registry_platform_admission_contracts;
+mod m20260727_000041_registry_release_artifact_contracts;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -81,5 +83,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260722_000037_policy_revision_cursors::Migration),
         Box::new(m20260726_000038_artifact_data_object_deletions::Migration),
         Box::new(m20260726_000039_artifact_data_record_deletions::Migration),
+        Box::new(m20260727_000040_registry_platform_admission_contracts::Migration),
+        Box::new(m20260727_000041_registry_release_artifact_contracts::Migration),
     ]
 }

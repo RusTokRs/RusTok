@@ -67,9 +67,7 @@ impl ProfilePresentationService {
         let visible_user_ids = user_ids
             .iter()
             .copied()
-            .filter(|user_id| {
-                decisions.get(user_id) == Some(&ProfilePrivacyDecision::Allow)
-            })
+            .filter(|user_id| decisions.get(user_id) == Some(&ProfilePrivacyDecision::Allow))
             .collect::<Vec<_>>();
         if visible_user_ids.is_empty() {
             return Ok(HashMap::new());

@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
+use rustok_modules::ArtifactReleaseRef;
 use sea_orm::entity::prelude::*;
-use sea_orm::sea_query::Expr;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, TransactionTrait,
@@ -8,9 +9,10 @@ use sea_orm::{
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    AlloyWorkspace, EventType, HttpMethod, ReviewCommand, ReviewDecision, ReviewStatus, Script,
-    ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
-    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus, validate_transition,
+    AlloyImportedDraftCommand, AlloyImportedDraftResult, AlloyWorkspace, EventType, HttpMethod,
+    ReviewCommand, ReviewDecision, ReviewStatus, Script, ScriptId, ScriptSourceRevision,
+    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
+    TestRunLease, TestRunStatus, validate_transition,
 };
 use crate::storage::{ScriptPage, ScriptQuery, ScriptRegistry};
 
@@ -30,6 +32,9 @@ pub struct Model {
     pub run_as_system: bool,
     pub permissions: Json,
     pub author_id: Option<String>,
+    pub parent_release_slug: Option<String>,
+    pub parent_release_version: Option<String>,
+    pub parent_release_digest: Option<String>,
     pub error_count: i32,
     pub last_error_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -57,6 +62,9 @@ mod draft_revision {
         pub source_digest: String,
         pub workspace: Json,
         pub author_id: Option<String>,
+        pub parent_release_slug: Option<String>,
+        pub parent_release_version: Option<String>,
+        pub parent_release_digest: Option<String>,
         pub created_at: DateTime<Utc>,
     }
 
@@ -118,6 +126,31 @@ mod draft_test_run {
         pub lease_expires_at: Option<DateTime<Utc>>,
         pub created_at: DateTime<Utc>,
         pub completed_at: Option<DateTime<Utc>>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod release_import {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_release_imports")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub idempotency_key: Uuid,
+        pub request_digest: String,
+        pub script_id: Uuid,
+        pub parent_release_slug: String,
+        pub parent_release_version: String,
+        pub parent_release_digest: String,
+        pub created_at: DateTime<Utc>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -287,6 +320,11 @@ impl SeaOrmStorage {
             run_as_system: model.run_as_system,
             permissions,
             author_id: model.author_id,
+            parent_release: release_ref_from_parts(
+                model.parent_release_slug,
+                model.parent_release_version,
+                model.parent_release_digest,
+            )?,
             created_at: model.created_at,
             updated_at: model.updated_at,
             error_count: model.error_count.max(0) as u32,
@@ -307,6 +345,46 @@ impl SeaOrmStorage {
         workspace.validate().map_err(ScriptError::from)?;
         serde_json::to_value(workspace)
             .map_err(|error| ScriptError::InvalidWorkspace(error.to_string()))
+    }
+
+    fn new_script_active_model(script: &Script) -> ScriptResult<ActiveModel> {
+        let (trigger_type, trigger_config) = Self::trigger_to_parts(&script.trigger);
+        Ok(ActiveModel {
+            id: ActiveValue::Set(script.id),
+            tenant_id: ActiveValue::Set(script.tenant_id),
+            name: ActiveValue::Set(script.name.clone()),
+            description: ActiveValue::Set(script.description.clone()),
+            workspace: ActiveValue::Set(Self::workspace_to_json(&script.workspace)?),
+            trigger_type: ActiveValue::Set(trigger_type),
+            trigger_config: ActiveValue::Set(trigger_config),
+            status: ActiveValue::Set(script.status.as_str().to_string()),
+            version: ActiveValue::Set(script.version as i32),
+            run_as_system: ActiveValue::Set(script.run_as_system),
+            permissions: ActiveValue::Set(Self::permissions_to_json(&script.permissions)),
+            author_id: ActiveValue::Set(script.author_id.clone()),
+            parent_release_slug: ActiveValue::Set(
+                script
+                    .parent_release
+                    .as_ref()
+                    .map(|release| release.slug.clone()),
+            ),
+            parent_release_version: ActiveValue::Set(
+                script
+                    .parent_release
+                    .as_ref()
+                    .map(|release| release.version.clone()),
+            ),
+            parent_release_digest: ActiveValue::Set(
+                script
+                    .parent_release
+                    .as_ref()
+                    .map(|release| release.digest.clone()),
+            ),
+            error_count: ActiveValue::Set(script.error_count as i32),
+            last_error_at: ActiveValue::Set(script.last_error_at),
+            created_at: ActiveValue::Set(script.created_at),
+            updated_at: ActiveValue::Set(script.updated_at),
+        })
     }
 
     fn source_digest(workspace: &AlloyWorkspace) -> ScriptResult<String> {
@@ -355,6 +433,11 @@ impl SeaOrmStorage {
             source_digest: model.source_digest,
             workspace,
             author_id: model.author_id,
+            parent_release: release_ref_from_parts(
+                model.parent_release_slug,
+                model.parent_release_version,
+                model.parent_release_digest,
+            )?,
             created_at: model.created_at,
         })
     }
@@ -486,6 +569,24 @@ impl SeaOrmStorage {
             source_digest: ActiveValue::Set(Self::source_digest(&script.workspace)?),
             workspace: ActiveValue::Set(Self::workspace_to_json(&script.workspace)?),
             author_id: ActiveValue::Set(script.author_id.clone()),
+            parent_release_slug: ActiveValue::Set(
+                script
+                    .parent_release
+                    .as_ref()
+                    .map(|release| release.slug.clone()),
+            ),
+            parent_release_version: ActiveValue::Set(
+                script
+                    .parent_release
+                    .as_ref()
+                    .map(|release| release.version.clone()),
+            ),
+            parent_release_digest: ActiveValue::Set(
+                script
+                    .parent_release
+                    .as_ref()
+                    .map(|release| release.digest.clone()),
+            ),
             created_at: ActiveValue::Set(script.updated_at),
         }
         .insert(transaction)
@@ -557,6 +658,39 @@ impl SeaOrmStorage {
             select
         }
     }
+}
+
+fn release_ref_from_parts(
+    slug: Option<String>,
+    version: Option<String>,
+    digest: Option<String>,
+) -> ScriptResult<Option<ArtifactReleaseRef>> {
+    match (slug, version, digest) {
+        (None, None, None) => Ok(None),
+        (Some(slug), Some(version), Some(digest)) => {
+            let release = ArtifactReleaseRef {
+                slug,
+                version,
+                digest,
+            };
+            release
+                .validate()
+                .map_err(|error| ScriptError::InvalidLineage(error.to_string()))?;
+            Ok(Some(release))
+        }
+        _ => Err(ScriptError::InvalidLineage(
+            "durable parent release identity is incomplete".to_string(),
+        )),
+    }
+}
+
+fn validate_parent_release(release: &Option<ArtifactReleaseRef>) -> ScriptResult<()> {
+    if let Some(release) = release {
+        release
+            .validate()
+            .map_err(|error| ScriptError::InvalidLineage(error.to_string()))?;
+    }
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -1133,9 +1267,134 @@ impl ScriptRegistry for SeaOrmStorage {
         Self::model_to_script(model)
     }
 
+    async fn import_published_release(
+        &self,
+        mut command: AlloyImportedDraftCommand,
+    ) -> ScriptResult<AlloyImportedDraftResult> {
+        command
+            .validate()
+            .map_err(|error| ScriptError::InvalidLineage(error.to_string()))?;
+        self.ensure_script_scope(&command.script)?;
+        let parent_release = command
+            .script
+            .parent_release
+            .clone()
+            .expect("validated imported draft must have a parent release");
+        let now = Utc::now();
+        command.script.version = 1;
+        command.script.created_at = now;
+        command.script.updated_at = now;
+
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let receipt_id = Uuid::new_v4();
+        release_import::Entity::insert(release_import::ActiveModel {
+            id: ActiveValue::Set(receipt_id),
+            tenant_id: ActiveValue::Set(command.script.tenant_id),
+            idempotency_key: ActiveValue::Set(command.idempotency_key),
+            request_digest: ActiveValue::Set(command.request_digest.clone()),
+            script_id: ActiveValue::Set(command.script.id),
+            parent_release_slug: ActiveValue::Set(parent_release.slug.clone()),
+            parent_release_version: ActiveValue::Set(parent_release.version.clone()),
+            parent_release_digest: ActiveValue::Set(parent_release.digest.clone()),
+            created_at: ActiveValue::Set(now),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                release_import::Column::TenantId,
+                release_import::Column::IdempotencyKey,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_without_returning(&transaction)
+        .await
+        .map_err(|error| ScriptError::Storage(error.to_string()))?;
+
+        let receipt = release_import::Entity::find()
+            .filter(release_import::Column::TenantId.eq(command.script.tenant_id))
+            .filter(release_import::Column::IdempotencyKey.eq(command.idempotency_key))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .ok_or_else(|| {
+                ScriptError::Storage(
+                    "Alloy release import admission completed without a receipt".to_string(),
+                )
+            })?;
+
+        if receipt.id != receipt_id {
+            if receipt.request_digest != command.request_digest
+                || receipt.parent_release_slug != parent_release.slug
+                || receipt.parent_release_version != parent_release.version
+                || receipt.parent_release_digest != parent_release.digest
+            {
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?;
+                return Err(ScriptError::ImportIdempotencyConflict);
+            }
+            let model = Entity::find_by_id(receipt.script_id)
+                .filter(Column::TenantId.eq(command.script.tenant_id))
+                .one(&transaction)
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?
+                .ok_or_else(|| {
+                    ScriptError::Storage(
+                        "Alloy release import receipt references a missing draft".to_string(),
+                    )
+                })?;
+            let script = Self::model_to_script(model)?;
+            transaction
+                .commit()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            return Ok(AlloyImportedDraftResult {
+                script,
+                created: false,
+            });
+        }
+
+        Entity::insert(Self::new_script_active_model(&command.script)?)
+            .on_conflict(
+                OnConflict::columns([Column::TenantId, Column::Name])
+                    .do_nothing()
+                    .to_owned(),
+            )
+            .exec_without_returning(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let inserted = Entity::find_by_id(command.script.id)
+            .filter(Column::TenantId.eq(command.script.tenant_id))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        if inserted.is_none() {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            return Err(ScriptError::ImportDraftNameConflict);
+        }
+        Self::insert_revision_snapshot(&transaction, &command.script, None).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        Ok(AlloyImportedDraftResult {
+            script: command.script,
+            created: true,
+        })
+    }
+
     async fn save(&self, mut script: Script) -> ScriptResult<Script> {
         self.ensure_script_scope(&script)?;
         script.workspace.validate().map_err(ScriptError::from)?;
+        validate_parent_release(&script.parent_release)?;
         let now = Utc::now();
         let (trigger_type, trigger_config) = Self::trigger_to_parts(&script.trigger);
         let permissions_json = Self::permissions_to_json(&script.permissions);
@@ -1146,6 +1405,12 @@ impl ScriptRegistry for SeaOrmStorage {
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?
         {
+            let previous = Self::model_to_script(existing.clone())?;
+            if previous.parent_release != script.parent_release {
+                return Err(ScriptError::InvalidLineage(
+                    "a draft cannot replace or remove its imported parent release".to_string(),
+                ));
+            }
             let expected_revision =
                 i32::try_from(script.version).map_err(|_| ScriptError::RevisionConflict {
                     expected: script.version,
@@ -1197,7 +1462,6 @@ impl ScriptRegistry for SeaOrmStorage {
                     expected: script.version.saturating_sub(1),
                 });
             }
-            let previous = Self::model_to_script(existing)?;
             Self::ensure_revision_snapshot(&transaction, &previous).await?;
             Self::insert_revision_snapshot(&transaction, &script, Some(expected_revision)).await?;
             transaction
@@ -1211,24 +1475,7 @@ impl ScriptRegistry for SeaOrmStorage {
         script.created_at = now;
         script.updated_at = now;
 
-        let model = ActiveModel {
-            id: ActiveValue::Set(script.id),
-            tenant_id: ActiveValue::Set(script.tenant_id),
-            name: ActiveValue::Set(script.name.clone()),
-            description: ActiveValue::Set(script.description.clone()),
-            workspace: ActiveValue::Set(Self::workspace_to_json(&script.workspace)?),
-            trigger_type: ActiveValue::Set(trigger_type),
-            trigger_config: ActiveValue::Set(trigger_config),
-            status: ActiveValue::Set(script.status.as_str().to_string()),
-            version: ActiveValue::Set(script.version as i32),
-            run_as_system: ActiveValue::Set(script.run_as_system),
-            permissions: ActiveValue::Set(permissions_json),
-            author_id: ActiveValue::Set(script.author_id.clone()),
-            error_count: ActiveValue::Set(script.error_count as i32),
-            last_error_at: ActiveValue::Set(script.last_error_at),
-            created_at: ActiveValue::Set(script.created_at),
-            updated_at: ActiveValue::Set(script.updated_at),
-        };
+        let model = Self::new_script_active_model(&script)?;
 
         let transaction = self
             .db

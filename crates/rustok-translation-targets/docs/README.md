@@ -19,3 +19,9 @@ Provider registration is keyed by `(owner_slug, resource_kind)` and duplicate
 keys fail startup. Owners declare only implemented capabilities; consumers must
 not emulate a missing capability.
 
+The executable reference provider in
+`tests/reference_provider_conformance.rs` demonstrates the minimum owner
+behavior without becoming a production fallback. It proves exact-locale
+discovery, validation before mutation, opaque source/resource/target CAS,
+idempotent replay, conflict rejection, and preservation of the previously
+accepted value when a replay key is reused with a different payload.

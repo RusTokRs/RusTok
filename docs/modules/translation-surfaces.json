@@ -13,12 +13,17 @@
     "excluded",
     "separate_track"
   ],
+  "provider_states": [
+    "not_registered",
+    "registered"
+  ],
   "non_module_owners": [
     "mcp"
   ],
   "storage_contract_mapping": {
     "pages": ["pages_metadata", "pages_visual_documents"],
     "navigation": ["navigation_menus"],
+    "media": ["media_copy"],
     "forum": ["forum_categories", "forum_ugc"],
     "groups": ["group_copy"],
     "product_catalog": ["product_catalog"],
@@ -78,14 +83,17 @@
     {
       "id": "media_copy",
       "owner_slug": "media",
-      "resource_kind": "asset_copy",
+      "resource_kind": "asset",
       "readiness": "pilot_candidate",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["plain_text"],
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-media/README.md"],
-      "blockers": ["Add canonical locale DTOs and revision-aware exact-locale writes to the existing owner ports."]
+      "evidence_paths": [
+        "crates/rustok-media/README.md",
+        "crates/rustok-media/src/translation_target.rs"
+      ],
+      "blockers": ["Run projection replay, cursor checkpoint recovery, and sustained multi-replica inventory evidence before enabling this pilot in production."]
     },
     {
       "id": "blog_categories",

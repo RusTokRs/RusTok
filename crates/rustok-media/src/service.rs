@@ -1,20 +1,22 @@
 use chrono::Utc;
 use object_store::{ObjectStoreExt, path::Path};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use rustok_core::generate_id;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
     dto::{
-        CreateRenditionInput, DEFAULT_MAX_SIZE, MediaAssetSummary, MediaItem, MediaRenditionItem,
-        MediaTranslationItem, PrepareUploadSessionInput, PreparedUploadSession, UploadInput,
-        UpsertTranslationInput,
+        ApplyExactMediaTranslationInput, CreateRenditionInput, DEFAULT_MAX_SIZE, MediaAssetSummary,
+        MediaItem, MediaRenditionItem, MediaTranslationItem, PrepareUploadSessionInput,
+        PreparedUploadSession, UploadInput, UpsertTranslationInput,
     },
     entities::{
         asset::{ActiveModel as AssetActiveModel, Column as AssetCol, Entity as AssetEntity},
@@ -33,12 +35,30 @@ use crate::{
     error::{MediaError, Result},
     image::{ImageProcessingLimits, ImageWorker, inspect_image},
     lifecycle::{AssetState, BlobState, RenditionState, UploadState},
+    translation_evidence::{TranslationChangeEvidence, record_translation_change_in_transaction},
 };
 
 pub struct MediaService {
     db: DatabaseConnection,
     storage: StorageRuntime,
     image_worker: ImageWorker,
+    translation_event_bus: TransactionalEventBus,
+}
+
+fn next_translation_revision(media_id: Uuid, locale: &str, revision: i64) -> Result<i64> {
+    revision
+        .checked_add(1)
+        .ok_or_else(|| MediaError::TranslationRevisionExhausted {
+            media_id,
+            locale: locale.to_string(),
+        })
+}
+
+pub(crate) fn media_resource_revision(asset: &crate::entities::asset::Model) -> String {
+    asset
+        .updated_at
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -372,15 +392,22 @@ fn normalize_rendition_purpose(value: &str) -> Result<String> {
 
 impl MediaService {
     pub fn new(db: DatabaseConnection, storage: StorageRuntime) -> Self {
+        let translation_event_bus =
+            TransactionalEventBus::new(std::sync::Arc::new(OutboxTransport::new(db.clone())));
         Self {
             db,
             storage,
             image_worker: ImageWorker::production(),
+            translation_event_bus,
         }
     }
 
     pub(crate) fn database(&self) -> &DatabaseConnection {
         &self.db
+    }
+
+    pub(crate) fn translation_event_bus(&self) -> &TransactionalEventBus {
+        &self.translation_event_bus
     }
 
     pub fn with_image_worker(mut self, image_worker: ImageWorker) -> Self {
@@ -1250,6 +1277,21 @@ impl MediaService {
         Ok(self.to_item(asset, blob))
     }
 
+    /// Returns the opaque base-resource revision used by translation CAS.
+    pub async fn translation_resource_revision(
+        &self,
+        tenant_id: Uuid,
+        media_id: Uuid,
+    ) -> Result<String> {
+        let asset = AssetEntity::find_by_id(media_id)
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+            .one(&self.db)
+            .await?
+            .ok_or(MediaError::NotFound(media_id))?;
+        Ok(media_resource_revision(&asset))
+    }
+
     pub async fn list(
         &self,
         tenant_id: Uuid,
@@ -1353,40 +1395,238 @@ impl MediaService {
         media_id: Uuid,
         input: UpsertTranslationInput,
     ) -> Result<MediaTranslationItem> {
-        let _ = self.get(tenant_id, media_id).await?;
+        let transaction = self.db.begin().await?;
+        let asset = AssetEntity::find_by_id(media_id)
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+            .one(&transaction)
+            .await?
+            .ok_or(MediaError::NotFound(media_id))?;
         let input = input.normalize().map_err(MediaError::InvalidLocale)?;
+        let locale = input.locale.into_inner();
 
         let existing = TransEntity::find()
             .filter(TransCol::TenantId.eq(tenant_id))
             .filter(TransCol::AssetId.eq(media_id))
-            .filter(TransCol::Locale.eq(&input.locale))
-            .one(&self.db)
+            .filter(TransCol::Locale.eq(&locale))
+            .one(&transaction)
             .await?;
 
         let model = if let Some(existing) = existing {
+            let next_revision =
+                next_translation_revision(media_id, &existing.locale, existing.revision)?;
             let mut active: TranslationActiveModel = existing.into();
+            active.revision = Set(next_revision);
             active.title = Set(input.title);
             active.alt_text = Set(input.alt_text);
             active.caption = Set(input.caption);
-            active.update(&self.db).await?
+            active.update(&transaction).await?
         } else {
             TranslationActiveModel {
                 id: Set(generate_id()),
                 tenant_id: Set(tenant_id),
                 asset_id: Set(media_id),
-                locale: Set(input.locale),
+                locale: Set(locale),
+                revision: Set(1),
                 title: Set(input.title),
                 alt_text: Set(input.alt_text),
                 caption: Set(input.caption),
             }
-            .insert(&self.db)
+            .insert(&transaction)
             .await?
+        };
+
+        let item = MediaTranslationItem {
+            id: model.id,
+            media_id: model.asset_id,
+            locale: model.locale,
+            revision: model.revision,
+            title: model.title,
+            alt_text: model.alt_text,
+            caption: model.caption,
+        };
+        let resource_revision = media_resource_revision(&asset);
+        record_translation_change_in_transaction(
+            &transaction,
+            &self.translation_event_bus,
+            TranslationChangeEvidence {
+                tenant_id,
+                media_id,
+                locale: &item.locale,
+                resource_revision: &resource_revision,
+                target_revision: item.revision,
+                actor_id: None,
+                correlation_id: generate_id().to_string(),
+            },
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(item)
+    }
+
+    pub async fn apply_exact_translation(
+        &self,
+        tenant_id: Uuid,
+        media_id: Uuid,
+        input: ApplyExactMediaTranslationInput,
+    ) -> Result<MediaTranslationItem> {
+        let resource_revision = input.expected_resource_revision.clone();
+        let target_locale = input.target.locale.as_str().to_string();
+        let transaction = self.db.begin().await?;
+        let translation = self
+            .apply_exact_translation_in_transaction(&transaction, tenant_id, media_id, input)
+            .await?;
+        record_translation_change_in_transaction(
+            &transaction,
+            &self.translation_event_bus,
+            TranslationChangeEvidence {
+                tenant_id,
+                media_id,
+                locale: &target_locale,
+                resource_revision: &resource_revision,
+                target_revision: translation.revision,
+                actor_id: None,
+                correlation_id: generate_id().to_string(),
+            },
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(translation)
+    }
+
+    pub(crate) async fn apply_exact_translation_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        media_id: Uuid,
+        input: ApplyExactMediaTranslationInput,
+    ) -> Result<MediaTranslationItem> {
+        if input.source_locale == input.target.locale {
+            return Err(MediaError::InvalidLocale(input.source_locale.into_inner()));
+        }
+        if input.expected_source_revision <= 0 {
+            return Err(MediaError::InvalidTranslationRevision(
+                input.expected_source_revision,
+            ));
+        }
+        if input
+            .expected_target_revision
+            .is_some_and(|revision| revision <= 0)
+        {
+            return Err(MediaError::InvalidTranslationRevision(
+                input.expected_target_revision.unwrap_or_default(),
+            ));
+        }
+
+        let source_locale = input.source_locale.into_inner();
+        let target_locale = input.target.locale.into_inner();
+        let backend = self.db.get_database_backend();
+
+        let asset_query = AssetEntity::find()
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::Id.eq(media_id));
+        let asset = match backend {
+            DbBackend::Postgres | DbBackend::MySql => {
+                asset_query.lock_exclusive().one(transaction).await?
+            }
+            DbBackend::Sqlite => asset_query.one(transaction).await?,
+        }
+        .filter(|asset| asset.lifecycle_state == AssetState::Active.as_str())
+        .ok_or(MediaError::NotFound(media_id))?;
+        if media_resource_revision(&asset) != input.expected_resource_revision {
+            return Err(MediaError::ResourceRevisionConflict { media_id });
+        }
+
+        let locale_query = || {
+            TransEntity::find()
+                .filter(TransCol::TenantId.eq(tenant_id))
+                .filter(TransCol::AssetId.eq(media_id))
+                .filter(TransCol::Locale.is_in([source_locale.clone(), target_locale.clone()]))
+                .order_by_asc(TransCol::Locale)
+        };
+        let locked_translations = match backend {
+            DbBackend::Postgres | DbBackend::MySql => {
+                locale_query().lock_exclusive().all(transaction).await?
+            }
+            DbBackend::Sqlite => locale_query().all(transaction).await?,
+        };
+
+        let source = locked_translations
+            .iter()
+            .find(|translation| translation.locale == source_locale)
+            .ok_or_else(|| MediaError::TranslationSourceNotFound {
+                media_id,
+                locale: source_locale.clone(),
+            })?;
+        if source.revision != input.expected_source_revision {
+            return Err(MediaError::TranslationRevisionConflict {
+                media_id,
+                locale: source_locale,
+            });
+        }
+
+        let target = locked_translations
+            .into_iter()
+            .find(|translation| translation.locale == target_locale);
+        let model = match target {
+            Some(target) => {
+                if input.expected_target_revision != Some(target.revision) {
+                    return Err(MediaError::TranslationRevisionConflict {
+                        media_id,
+                        locale: target_locale,
+                    });
+                }
+                let next_revision =
+                    next_translation_revision(media_id, &target.locale, target.revision)?;
+                let mut active: TranslationActiveModel = target.into();
+                active.revision = Set(next_revision);
+                active.title = Set(input.target.title);
+                active.alt_text = Set(input.target.alt_text);
+                active.caption = Set(input.target.caption);
+                active.update(transaction).await?
+            }
+            None => {
+                if input.expected_target_revision.is_some() {
+                    return Err(MediaError::TranslationRevisionConflict {
+                        media_id,
+                        locale: target_locale,
+                    });
+                }
+                let insert = TranslationActiveModel {
+                    id: Set(generate_id()),
+                    tenant_id: Set(tenant_id),
+                    asset_id: Set(media_id),
+                    locale: Set(target_locale.clone()),
+                    revision: Set(1),
+                    title: Set(input.target.title),
+                    alt_text: Set(input.target.alt_text),
+                    caption: Set(input.target.caption),
+                }
+                .insert(transaction)
+                .await;
+                match insert {
+                    Ok(model) => model,
+                    Err(error)
+                        if matches!(
+                            error.sql_err(),
+                            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                        ) =>
+                    {
+                        return Err(MediaError::TranslationRevisionConflict {
+                            media_id,
+                            locale: target_locale,
+                        });
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
         };
 
         Ok(MediaTranslationItem {
             id: model.id,
             media_id: model.asset_id,
             locale: model.locale,
+            revision: model.revision,
             title: model.title,
             alt_text: model.alt_text,
             caption: model.caption,
@@ -1411,6 +1651,7 @@ impl MediaService {
                 id: model.id,
                 media_id: model.asset_id,
                 locale: model.locale,
+                revision: model.revision,
                 title: model.title,
                 alt_text: model.alt_text,
                 caption: model.caption,

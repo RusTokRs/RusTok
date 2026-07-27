@@ -2,11 +2,11 @@ use rust_decimal::Decimal;
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_commerce_foundation::entities::{product, product_variant};
-use rustok_pricing_persistence::entities::{price, price_list, price_list_translation};
 use rustok_core::events::MemoryTransport;
 use rustok_pricing::{
     PriceListProjectionRequest, PricingReadPort, PricingService, ResolveProductPriceRequest,
 };
+use rustok_pricing_persistence::entities::{price, price_list, price_list_translation};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend,
     Schema,

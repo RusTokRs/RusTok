@@ -115,7 +115,9 @@ async fn bounded_page_archives_non_archived_and_preserves_state_history() {
     assert_eq!(archived_after.updated_at, archived_before.updated_at);
 
     assert_eq!(
-        load_notification(&db, other_recipient_unread_id).await.state,
+        load_notification(&db, other_recipient_unread_id)
+            .await
+            .state,
         NotificationState::Unread
     );
     assert_eq!(
@@ -164,27 +166,13 @@ async fn mark_all_archive_pages_are_bounded_and_resumable() {
     assert!(first.has_more);
     assert!(first.next_cursor.is_some());
 
-    let second = mark_page(
-        &service,
-        tenant_id,
-        recipient_id,
-        first.next_cursor,
-        2,
-    )
-    .await;
+    let second = mark_page(&service, tenant_id, recipient_id, first.next_cursor, 2).await;
     assert_eq!(second.scanned, 2);
     assert_eq!(second.marked_archived, 2);
     assert!(second.has_more);
     assert!(second.next_cursor.is_some());
 
-    let third = mark_page(
-        &service,
-        tenant_id,
-        recipient_id,
-        second.next_cursor,
-        2,
-    )
-    .await;
+    let third = mark_page(&service, tenant_id, recipient_id, second.next_cursor, 2).await;
     assert_eq!(
         third,
         NotificationInboxMarkAllArchivePage {
@@ -226,13 +214,7 @@ async fn empty_foreign_and_invalid_mark_all_archive_requests_fail_closed() {
     insert_tenant(&db, other_tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
     insert_user(&db, other_tenant_id, other_recipient_id).await;
-    seed_unread_notification(
-        &db,
-        Uuid::from_u128(34),
-        tenant_id,
-        recipient_id,
-    )
-    .await;
+    seed_unread_notification(&db, Uuid::from_u128(34), tenant_id, recipient_id).await;
 
     let service = NotificationInboxMarkAllArchiveService::new(db);
     for (scope_tenant_id, scope_recipient_id) in [
@@ -241,14 +223,7 @@ async fn empty_foreign_and_invalid_mark_all_archive_requests_fail_closed() {
         (tenant_id, other_recipient_id),
     ] {
         assert_eq!(
-            mark_page(
-                &service,
-                scope_tenant_id,
-                scope_recipient_id,
-                None,
-                20,
-            )
-            .await,
+            mark_page(&service, scope_tenant_id, scope_recipient_id, None, 20,).await,
             NotificationInboxMarkAllArchivePage {
                 scanned: 0,
                 marked_archived: 0,
@@ -354,9 +329,7 @@ fn state_request(
     }
 }
 
-fn available(
-    decision: NotificationInboxStateDecision,
-) -> (bool, NotificationInboxStateSnapshot) {
+fn available(decision: NotificationInboxStateDecision) -> (bool, NotificationInboxStateSnapshot) {
     match decision {
         NotificationInboxStateDecision::Available { changed, snapshot } => (changed, snapshot),
         NotificationInboxStateDecision::Unavailable => {

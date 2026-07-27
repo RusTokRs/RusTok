@@ -12,7 +12,12 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use rustok_modules::{MODULE_MARKETPLACE_CONTENT_FORMAT, MODULE_MARKETPLACE_CONTENT_TRUST};
+use rustok_modules::{
+    MODULE_MARKETPLACE_CONTENT_FORMAT, MODULE_MARKETPLACE_CONTENT_TRUST,
+    ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
+    ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference,
+    ModuleMarketplaceRuntimeKind,
+};
 
 use crate::modules::{
     CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModuleSettingSpec,
@@ -78,7 +83,16 @@ impl MarketplaceCatalogQuery {
 
 #[async_trait]
 pub trait MarketplaceCatalogProvider: Send + Sync {
-    fn provider_key(&self) -> &'static str;
+    fn provider_key(&self) -> &str;
+
+    fn health_snapshot(&self) -> MarketplaceProviderHealthSnapshot {
+        MarketplaceProviderHealthSnapshot {
+            provider: self.provider_key().to_string(),
+            status: MarketplaceProviderHealthStatus::Ready,
+            last_success_unix_ms: None,
+            consecutive_failures: 0,
+        }
+    }
 
     async fn list_modules(
         &self,
@@ -103,11 +117,28 @@ pub trait MarketplaceCatalogProvider: Send + Sync {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceProviderHealthStatus {
+    Disabled,
+    Unknown,
+    Ready,
+    Degraded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MarketplaceProviderHealthSnapshot {
+    pub provider: String,
+    pub status: MarketplaceProviderHealthStatus,
+    pub last_success_unix_ms: Option<u64>,
+    pub consecutive_failures: u64,
+}
+
 pub struct LocalManifestMarketplaceProvider;
 
 #[async_trait]
 impl MarketplaceCatalogProvider for LocalManifestMarketplaceProvider {
-    fn provider_key(&self) -> &'static str {
+    fn provider_key(&self) -> &str {
         "local-manifest"
     }
 
@@ -200,7 +231,8 @@ impl RegistryCatalogModule {
             self.versions
                 .into_iter()
                 .map(RegistryCatalogVersion::into_catalog_version)
-                .collect::<Vec<_>>(),
+                .collect::<anyhow::Result<Vec<_>>>()
+                .expect("registry catalog test fixture must have valid artifact releases"),
         );
 
         CatalogManifestModule {
@@ -282,6 +314,7 @@ impl RegistryCatalogModule {
                         published_at: None,
                         checksum_sha256: checksum_sha256.clone(),
                         signature: signature.clone(),
+                        artifact: None,
                     }]
                 })
                 .unwrap_or_default()
@@ -294,7 +327,11 @@ impl RegistryCatalogModule {
         let versions = normalize_registry_versions(
             versions
                 .into_iter()
-                .map(RegistryCatalogVersion::into_catalog_version)
+                .map(|version| {
+                    version
+                        .into_catalog_version()
+                        .expect("catalog projection contains a valid artifact release")
+                })
                 .collect(),
         )
         .into_iter()
@@ -356,18 +393,24 @@ pub struct RegistryCatalogVersion {
     pub checksum_sha256: Option<String>,
     #[serde(default)]
     pub signature: Option<String>,
+    #[serde(default)]
+    pub artifact: Option<RegistryCatalogArtifactRelease>,
 }
 
 impl RegistryCatalogVersion {
-    fn into_catalog_version(self) -> CatalogModuleVersion {
-        CatalogModuleVersion {
+    pub(crate) fn into_catalog_version(self) -> anyhow::Result<CatalogModuleVersion> {
+        Ok(CatalogModuleVersion {
             version: self.version,
             changelog: self.changelog,
             yanked: self.yanked,
             published_at: normalize_optional_registry_published_at(self.published_at),
             checksum_sha256: normalize_optional_registry_checksum(self.checksum_sha256),
             signature: self.signature,
-        }
+            artifact: self
+                .artifact
+                .map(RegistryCatalogArtifactRelease::into_owner)
+                .transpose()?,
+        })
     }
 
     fn from_catalog_version(version: CatalogModuleVersion) -> Self {
@@ -378,7 +421,148 @@ impl RegistryCatalogVersion {
             published_at: normalize_optional_registry_published_at(version.published_at),
             checksum_sha256: normalize_optional_registry_checksum(version.checksum_sha256),
             signature: version.signature,
+            artifact: version
+                .artifact
+                .map(RegistryCatalogArtifactRelease::from_owner),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryCatalogArtifactRelease {
+    pub registry_id: String,
+    pub repository: String,
+    pub origin: String,
+    pub runtime_kind: String,
+    pub oci_manifest_digest: String,
+    pub payload_digest: String,
+    pub descriptor_digest: String,
+    pub source_reference: String,
+    pub source_digest: String,
+    pub evidence: Vec<RegistryCatalogEvidenceReference>,
+}
+
+impl RegistryCatalogArtifactRelease {
+    pub(crate) fn into_owner(self) -> anyhow::Result<ModuleMarketplaceArtifactRelease> {
+        let release = ModuleMarketplaceArtifactRelease {
+            registry_id: self.registry_id,
+            repository: self.repository,
+            origin: parse_artifact_origin(&self.origin)?,
+            runtime_kind: parse_runtime_kind(&self.runtime_kind)?,
+            oci_manifest_digest: self.oci_manifest_digest,
+            payload_digest: self.payload_digest,
+            descriptor_digest: self.descriptor_digest,
+            source_reference: self.source_reference,
+            source_digest: self.source_digest,
+            evidence: self
+                .evidence
+                .into_iter()
+                .map(RegistryCatalogEvidenceReference::into_owner)
+                .collect::<anyhow::Result<Vec<_>>>()?,
+        };
+        release.validate().map_err(anyhow::Error::from)?;
+        Ok(release)
+    }
+
+    fn from_owner(release: ModuleMarketplaceArtifactRelease) -> Self {
+        Self {
+            registry_id: release.registry_id,
+            repository: release.repository,
+            origin: artifact_origin_slug(release.origin).to_string(),
+            runtime_kind: runtime_kind_slug(release.runtime_kind).to_string(),
+            oci_manifest_digest: release.oci_manifest_digest,
+            payload_digest: release.payload_digest,
+            descriptor_digest: release.descriptor_digest,
+            source_reference: release.source_reference,
+            source_digest: release.source_digest,
+            evidence: release
+                .evidence
+                .into_iter()
+                .map(RegistryCatalogEvidenceReference::from_owner)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryCatalogEvidenceReference {
+    pub kind: String,
+    pub reference: String,
+    pub digest: String,
+}
+
+impl RegistryCatalogEvidenceReference {
+    fn into_owner(self) -> anyhow::Result<ModuleMarketplaceEvidenceReference> {
+        Ok(ModuleMarketplaceEvidenceReference {
+            kind: parse_evidence_kind(&self.kind)?,
+            reference: self.reference,
+            digest: self.digest,
+        })
+    }
+
+    fn from_owner(evidence: ModuleMarketplaceEvidenceReference) -> Self {
+        Self {
+            kind: evidence_kind_slug(evidence.kind).to_string(),
+            reference: evidence.reference,
+            digest: evidence.digest,
+        }
+    }
+}
+
+fn parse_artifact_origin(value: &str) -> anyhow::Result<ModuleMarketplaceArtifactOrigin> {
+    match value {
+        "platform_built" => Ok(ModuleMarketplaceArtifactOrigin::PlatformBuilt),
+        "external_prebuilt" => Ok(ModuleMarketplaceArtifactOrigin::ExternalPrebuilt),
+        "alloy_authored" => Ok(ModuleMarketplaceArtifactOrigin::AlloyAuthored),
+        _ => anyhow::bail!("registry artifact origin is invalid"),
+    }
+}
+
+fn artifact_origin_slug(value: ModuleMarketplaceArtifactOrigin) -> &'static str {
+    match value {
+        ModuleMarketplaceArtifactOrigin::PlatformBuilt => "platform_built",
+        ModuleMarketplaceArtifactOrigin::ExternalPrebuilt => "external_prebuilt",
+        ModuleMarketplaceArtifactOrigin::AlloyAuthored => "alloy_authored",
+    }
+}
+
+fn parse_runtime_kind(value: &str) -> anyhow::Result<ModuleMarketplaceRuntimeKind> {
+    match value {
+        "rhai" => Ok(ModuleMarketplaceRuntimeKind::Rhai),
+        "wasm_component" => Ok(ModuleMarketplaceRuntimeKind::WasmComponent),
+        "sidecar" => Ok(ModuleMarketplaceRuntimeKind::Sidecar),
+        _ => anyhow::bail!("registry artifact runtime kind is invalid"),
+    }
+}
+
+fn runtime_kind_slug(value: ModuleMarketplaceRuntimeKind) -> &'static str {
+    match value {
+        ModuleMarketplaceRuntimeKind::Rhai => "rhai",
+        ModuleMarketplaceRuntimeKind::WasmComponent => "wasm_component",
+        ModuleMarketplaceRuntimeKind::Sidecar => "sidecar",
+    }
+}
+
+fn parse_evidence_kind(value: &str) -> anyhow::Result<ModuleMarketplaceEvidenceKind> {
+    match value {
+        "author_signature" => Ok(ModuleMarketplaceEvidenceKind::AuthorSignature),
+        "build_service_attestation" => Ok(ModuleMarketplaceEvidenceKind::BuildServiceAttestation),
+        "sbom" => Ok(ModuleMarketplaceEvidenceKind::Sbom),
+        "provenance" => Ok(ModuleMarketplaceEvidenceKind::Provenance),
+        "platform_admission" => Ok(ModuleMarketplaceEvidenceKind::PlatformAdmission),
+        "marketplace_approval" => Ok(ModuleMarketplaceEvidenceKind::MarketplaceApproval),
+        _ => anyhow::bail!("registry artifact evidence kind is invalid"),
+    }
+}
+
+fn evidence_kind_slug(value: ModuleMarketplaceEvidenceKind) -> &'static str {
+    match value {
+        ModuleMarketplaceEvidenceKind::AuthorSignature => "author_signature",
+        ModuleMarketplaceEvidenceKind::BuildServiceAttestation => "build_service_attestation",
+        ModuleMarketplaceEvidenceKind::Sbom => "sbom",
+        ModuleMarketplaceEvidenceKind::Provenance => "provenance",
+        ModuleMarketplaceEvidenceKind::PlatformAdmission => "platform_admission",
+        ModuleMarketplaceEvidenceKind::MarketplaceApproval => "marketplace_approval",
     }
 }
 
@@ -754,16 +938,40 @@ impl MarketplaceCatalogService {
         registry: &ModuleRegistry,
         query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        let mut modules_by_slug = HashMap::<String, CatalogManifestModule>::new();
+        let mut modules_by_slug = HashMap::<String, (String, CatalogManifestModule)>::new();
 
         for provider in &self.providers {
+            let provider_key = provider.provider_key().to_string();
             let modules = provider.list_modules(manifest, registry, query).await?;
             for module in modules {
-                modules_by_slug.entry(module.slug.clone()).or_insert(module);
+                match modules_by_slug.entry(module.slug.clone()) {
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert((provider_key.clone(), module));
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut entry) => {
+                        let existing_provider = &entry.get().0;
+                        if existing_provider == "local-manifest" {
+                            continue;
+                        }
+                        if provider_key == "local-manifest" {
+                            entry.insert((provider_key.clone(), module));
+                            continue;
+                        }
+                        anyhow::bail!(
+                            "marketplace slug collision for `{}` between providers `{}` and `{}`",
+                            entry.key(),
+                            existing_provider,
+                            provider_key
+                        );
+                    }
+                }
             }
         }
 
-        let mut modules = modules_by_slug.into_values().collect::<Vec<_>>();
+        let mut modules = modules_by_slug
+            .into_values()
+            .map(|(_, module)| module)
+            .collect::<Vec<_>>();
         modules.sort_by(|left, right| left.slug.cmp(&right.slug));
         Ok(modules)
     }
@@ -775,19 +983,37 @@ impl MarketplaceCatalogService {
         query: &MarketplaceCatalogQuery,
         slug: &str,
     ) -> anyhow::Result<Option<CatalogManifestModule>> {
+        let mut remote_match: Option<(String, CatalogManifestModule)> = None;
         for provider in &self.providers {
             if let Some(module) = provider.get_module(manifest, registry, query, slug).await? {
-                return Ok(Some(module));
+                if provider.provider_key() == "local-manifest" {
+                    return Ok(Some(module));
+                }
+                if let Some((existing_provider, _)) = &remote_match {
+                    anyhow::bail!(
+                        "marketplace slug collision for `{slug}` between providers `{}` and `{}`",
+                        existing_provider,
+                        provider.provider_key()
+                    );
+                }
+                remote_match = Some((provider.provider_key().to_string(), module));
             }
         }
 
-        Ok(None)
+        Ok(remote_match.map(|(_, module)| module))
     }
 
-    pub fn provider_keys(&self) -> Vec<&'static str> {
+    pub fn provider_keys(&self) -> Vec<String> {
         self.providers
             .iter()
-            .map(|provider| provider.provider_key())
+            .map(|provider| provider.provider_key().to_string())
+            .collect()
+    }
+
+    pub fn provider_health(&self) -> Vec<MarketplaceProviderHealthSnapshot> {
+        self.providers
+            .iter()
+            .map(|provider| provider.health_snapshot())
             .collect()
     }
 }
@@ -949,7 +1175,7 @@ mod tests {
 
     #[async_trait]
     impl MarketplaceCatalogProvider for TestProvider {
-        fn provider_key(&self) -> &'static str {
+        fn provider_key(&self) -> &str {
             self.key
         }
 
@@ -1035,6 +1261,32 @@ mod tests {
         );
         assert_eq!(modules[0].source, "path");
         assert_eq!(modules[0].crate_name, "rustok-blog");
+    }
+
+    #[tokio::test]
+    async fn remote_slug_collisions_fail_closed() {
+        let service = MarketplaceCatalogService::new(vec![
+            Arc::new(TestProvider {
+                key: "registry-alpha",
+                modules: vec![catalog_module("shared", "registry", "alpha-shared")],
+            }),
+            Arc::new(TestProvider {
+                key: "registry-beta",
+                modules: vec![catalog_module("shared", "registry", "beta-shared")],
+            }),
+        ]);
+
+        let error = service
+            .list_modules(
+                &ModulesManifest::default(),
+                &ModuleRegistry::new(),
+                &MarketplaceCatalogQuery::default(),
+            )
+            .await
+            .expect_err("remote slug collision must fail closed");
+
+        assert!(error.to_string().contains("registry-alpha"));
+        assert!(error.to_string().contains("registry-beta"));
     }
 
     #[tokio::test]
@@ -1196,6 +1448,7 @@ mod tests {
                     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 ),
                 signature: Some("sig-1".to_string()),
+                artifact: None,
             }],
             recommended_admin_surfaces: vec!["leptos-admin".to_string()],
             showcase_admin_surfaces: vec!["next-admin".to_string()],
@@ -1409,6 +1662,7 @@ mod tests {
                 published_at: Some("2026-03-08T00:00:00Z".to_string()),
                 checksum_sha256: Some("still-not-a-checksum".to_string()),
                 signature: Some("sig-1".to_string()),
+                artifact: None,
             }],
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
@@ -1458,6 +1712,7 @@ mod tests {
                     published_at: Some("2026-03-08T03:00:00+03:00".to_string()),
                     checksum_sha256: None,
                     signature: None,
+                    artifact: None,
                 },
                 RegistryCatalogVersion {
                     version: "2.0.0".to_string(),
@@ -1466,6 +1721,7 @@ mod tests {
                     published_at: Some("2026-03-10T00:00:00Z".to_string()),
                     checksum_sha256: None,
                     signature: None,
+                    artifact: None,
                 },
                 RegistryCatalogVersion {
                     version: "3.0.0".to_string(),
@@ -1474,6 +1730,7 @@ mod tests {
                     published_at: Some("not-a-date".to_string()),
                     checksum_sha256: None,
                     signature: None,
+                    artifact: None,
                 },
             ],
             recommended_admin_surfaces: Vec::new(),

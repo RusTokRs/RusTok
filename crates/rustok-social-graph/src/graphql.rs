@@ -48,14 +48,7 @@ impl SocialGraphMutation {
         user_id: Uuid,
         expected_revision: Option<String>,
     ) -> Result<FollowStateGql> {
-        set_follow_state(
-            ctx,
-            idempotency_key,
-            user_id,
-            expected_revision,
-            true,
-        )
-        .await
+        set_follow_state(ctx, idempotency_key, user_id, expected_revision, true).await
     }
 
     async fn unfollow_user(
@@ -65,14 +58,7 @@ impl SocialGraphMutation {
         user_id: Uuid,
         expected_revision: Option<String>,
     ) -> Result<FollowStateGql> {
-        set_follow_state(
-            ctx,
-            idempotency_key,
-            user_id,
-            expected_revision,
-            false,
-        )
-        .await
+        set_follow_state(ctx, idempotency_key, user_id, expected_revision, false).await
     }
 }
 
@@ -241,18 +227,14 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Social Graph service is temporarily unavailable",
             )
         }
         PortErrorKind::InvariantViolation => {
-            <FieldError as GraphQLError>::internal_error(
-                "Social Graph operation requires review",
-            )
+            <FieldError as GraphQLError>::internal_error("Social Graph operation requires review")
         }
     }
 }

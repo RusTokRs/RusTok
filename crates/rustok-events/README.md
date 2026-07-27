@@ -12,6 +12,9 @@
   wire schemas, so accidental contract drift fails tests.
 - Provide a stable compatibility path while `rustok-core` keeps transitional re-exports.
 - Serve as the single source of truth for event payload evolution policy.
+- Define the content-free `translation.target.changed` owner fact used to
+  invalidate and repair translation inventory without exposing translated
+  values.
 
 ## Entry points
 

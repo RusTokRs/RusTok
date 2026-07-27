@@ -196,6 +196,7 @@ pub async fn ready(
         )
         .await,
     ];
+    checks.push(marketplace_provider_check(&ctx));
 
     if profile.includes_runtime_dependencies() {
         checks.push(
@@ -332,6 +333,55 @@ pub async fn ready(
         modules: module_checks,
         degraded_reasons,
     }))
+}
+
+fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
+    use crate::services::marketplace_catalog::{
+        MarketplaceProviderHealthStatus, SharedMarketplaceCatalogService,
+    };
+
+    let started_at = Instant::now();
+    let Some(catalog) = ctx.shared_get::<SharedMarketplaceCatalogService>() else {
+        return ReadinessCheck {
+            name: "marketplace_providers".to_string(),
+            kind: "dependency",
+            criticality: DependencyCriticality::NonCritical,
+            status: ReadinessStatus::Degraded,
+            latency_ms: started_at.elapsed().as_millis(),
+            reason: Some("marketplace provider composition is unavailable".to_string()),
+        };
+    };
+    let snapshots = catalog.0.provider_health();
+    let degraded = snapshots
+        .iter()
+        .filter(|snapshot| {
+            matches!(
+                snapshot.status,
+                MarketplaceProviderHealthStatus::Unknown
+                    | MarketplaceProviderHealthStatus::Degraded
+            )
+        })
+        .map(|snapshot| {
+            format!(
+                "{}={:?}(failures={})",
+                snapshot.provider, snapshot.status, snapshot.consecutive_failures
+            )
+            .to_lowercase()
+        })
+        .collect::<Vec<_>>();
+
+    ReadinessCheck {
+        name: "marketplace_providers".to_string(),
+        kind: "dependency",
+        criticality: DependencyCriticality::NonCritical,
+        status: if degraded.is_empty() {
+            ReadinessStatus::Ok
+        } else {
+            ReadinessStatus::Degraded
+        },
+        latency_ms: started_at.elapsed().as_millis(),
+        reason: (!degraded.is_empty()).then(|| degraded.join(", ")),
+    }
 }
 
 /// GET /health/runtime - Runtime guardrail snapshot for operators

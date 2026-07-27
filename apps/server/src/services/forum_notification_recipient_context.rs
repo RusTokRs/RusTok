@@ -14,7 +14,8 @@ use crate::services::rbac_service::RbacService;
 
 const MAX_RECIPIENT_PERMISSION_CLAIMS: usize = 512;
 const RECIPIENT_UNAVAILABLE_CODE: &str = "forum.notification_recipient_context.unavailable";
-const RECIPIENT_DEPENDENCY_CODE: &str = "forum.notification_recipient_context.dependency_unavailable";
+const RECIPIENT_DEPENDENCY_CODE: &str =
+    "forum.notification_recipient_context.dependency_unavailable";
 
 /// Server-owned adapter for the exact Forum notification-recipient principal
 /// capability. Identity and RBAC state remain owned by the host; Forum receives
@@ -54,20 +55,13 @@ impl ForumNotificationRecipientContextPort for ServerForumNotificationRecipientC
             return Err(recipient_unavailable());
         }
 
-        let permissions = RbacService::get_user_permissions(
-            &self.db,
-            &request.tenant_id,
-            &request.recipient_id,
-        )
-        .await
-        .map_err(|_| dependency_unavailable())?;
-        let role = RbacService::get_user_role(
-            &self.db,
-            &request.tenant_id,
-            &request.recipient_id,
-        )
-        .await
-        .map_err(|_| dependency_unavailable())?;
+        let permissions =
+            RbacService::get_user_permissions(&self.db, &request.tenant_id, &request.recipient_id)
+                .await
+                .map_err(|_| dependency_unavailable())?;
+        let role = RbacService::get_user_role(&self.db, &request.tenant_id, &request.recipient_id)
+            .await
+            .map_err(|_| dependency_unavailable())?;
 
         build_recipient_context(&caller_context, &request, role, permissions)
     }
@@ -184,7 +178,10 @@ mod tests {
             &caller,
             &request,
             UserRole::Customer,
-            vec![Permission::new(Resource::ForumTopics, rustok_api::Action::Read)],
+            vec![Permission::new(
+                Resource::ForumTopics,
+                rustok_api::Action::Read,
+            )],
         )
         .expect("recipient context should be built");
 
@@ -203,8 +200,9 @@ mod tests {
     #[test]
     fn recipient_context_rejects_empty_authority() {
         let tenant_id = uuid::Uuid::new_v4();
-        let request = ForumNotificationRecipientContextRequest::new(tenant_id, uuid::Uuid::new_v4())
-            .expect("request should be valid");
+        let request =
+            ForumNotificationRecipientContextRequest::new(tenant_id, uuid::Uuid::new_v4())
+                .expect("request should be valid");
         let error = build_recipient_context(
             &caller_context(tenant_id),
             &request,

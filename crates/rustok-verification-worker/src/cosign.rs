@@ -2,8 +2,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::STANDARD};
-use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
+use rustok_modules::{
+    TrustEvidenceKind, TrustEvidenceReference, TrustVerificationDecision, TrustVerificationRequest,
+    TrustVerifier,
+};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio::process::Command;
 
 use crate::{VerificationPolicy, VerificationTrustRoot, policy::vulnerability_severity_rank};
@@ -45,7 +49,7 @@ impl CosignTrustVerifier {
         request: &TrustVerificationRequest,
         trust_root: &VerificationTrustRoot,
         mut flags: Vec<String>,
-    ) -> Result<(), String> {
+    ) -> Result<[Vec<u8>; 3], String> {
         let reference = request.reference.canonical();
         if requires_transparency_bundle(trust_root) {
             flags.push("--offline".to_string());
@@ -58,7 +62,7 @@ impl CosignTrustVerifier {
         ];
         signature.extend(flags.clone());
         signature.push(reference.clone());
-        self.run(signature).await?;
+        let signature = self.run(signature).await?;
 
         let mut attestations = Vec::new();
         for predicate in ["slsaprovenance", "cyclonedx"] {
@@ -75,14 +79,18 @@ impl CosignTrustVerifier {
         }
         let expected_digest = expected_sha256(request)?;
         validate_slsa(&attestations[0], expected_digest, &self.policy)?;
-        validate_cyclonedx(&attestations[1], expected_digest, &self.policy)
+        validate_cyclonedx(&attestations[1], expected_digest, &self.policy)?;
+        let [provenance, sbom] = attestations
+            .try_into()
+            .map_err(|_| "cosign verification returned an invalid evidence set".to_string())?;
+        Ok([signature, provenance, sbom])
     }
 
     async fn verify_trust_root(
         &self,
         request: &TrustVerificationRequest,
         trust_root: &VerificationTrustRoot,
-    ) -> Result<String, String> {
+    ) -> Result<(String, [Vec<u8>; 3]), String> {
         match trust_root {
             VerificationTrustRoot::KeylessSigstore {
                 allowed_signer_identities,
@@ -97,12 +105,10 @@ impl CosignTrustVerifier {
                             "--certificate-oidc-issuer".to_string(),
                             issuer.clone(),
                         ];
-                        if self
-                            .verify_with_flags(request, trust_root, flags)
-                            .await
-                            .is_ok()
+                        if let Ok(evidence) =
+                            self.verify_with_flags(request, trust_root, flags).await
                         {
-                            return Ok(identity.clone());
+                            return Ok((identity.clone(), evidence));
                         }
                     }
                 }
@@ -116,13 +122,14 @@ impl CosignTrustVerifier {
                 signer_identity,
                 ..
             } => {
-                self.verify_with_flags(
-                    request,
-                    trust_root,
-                    vec!["--key".to_string(), key_reference.clone()],
-                )
-                .await?;
-                Ok(signer_identity.clone())
+                let evidence = self
+                    .verify_with_flags(
+                        request,
+                        trust_root,
+                        vec!["--key".to_string(), key_reference.clone()],
+                    )
+                    .await?;
+                Ok((signer_identity.clone(), evidence))
             }
         }
     }
@@ -163,6 +170,20 @@ fn expected_sha256(request: &TrustVerificationRequest) -> Result<&str, String> {
         .artifact_digest
         .strip_prefix("sha256:")
         .ok_or_else(|| "artifact descriptor digest must be sha256".to_string())
+}
+
+fn verified_evidence_reference(
+    subject: &str,
+    kind: TrustEvidenceKind,
+    fragment: &str,
+    bytes: &[u8],
+) -> TrustEvidenceReference {
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(bytes)));
+    TrustEvidenceReference {
+        kind,
+        reference: format!("oci://{subject}#{fragment}?verified-evidence={digest}"),
+        digest,
+    }
 }
 
 fn subject_matches(statement: &Value, expected_digest: &str) -> bool {
@@ -306,17 +327,17 @@ impl TrustVerifier for CosignTrustVerifier {
         request: TrustVerificationRequest,
     ) -> Result<TrustVerificationDecision, String> {
         self.policy.validate()?;
-        let mut signer_identity = None;
+        let mut verified = None;
         for trust_root in self
             .policy
             .trust_roots_at(VerificationPolicy::current_unix_seconds())
         {
-            if let Ok(identity) = self.verify_trust_root(&request, trust_root).await {
-                signer_identity = Some(identity);
+            if let Ok(result) = self.verify_trust_root(&request, trust_root).await {
+                verified = Some(result);
                 break;
             }
         }
-        let signer_identity = signer_identity.ok_or_else(|| {
+        let (signer_identity, verified_evidence) = verified.ok_or_else(|| {
             "no active or unexpired retiring Cosign trust root verified the artifact".to_string()
         })?;
         Ok(TrustVerificationDecision {
@@ -328,11 +349,28 @@ impl TrustVerifier for CosignTrustVerifier {
             sbom_verified: true,
             license_policy_verified: true,
             vulnerability_policy_verified: true,
-            evidence_references: vec![
-                format!("{}#cosign-signature", request.reference.canonical()),
-                format!("{}#slsa-provenance", request.reference.canonical()),
-                format!("{}#cyclonedx-sbom", request.reference.canonical()),
-            ],
+            evidence: [
+                (
+                    TrustEvidenceKind::Signature,
+                    "cosign-signature",
+                    &verified_evidence[0],
+                ),
+                (
+                    TrustEvidenceKind::Provenance,
+                    "slsa-provenance",
+                    &verified_evidence[1],
+                ),
+                (
+                    TrustEvidenceKind::Sbom,
+                    "cyclonedx-sbom",
+                    &verified_evidence[2],
+                ),
+            ]
+            .into_iter()
+            .map(|(kind, fragment, bytes)| {
+                verified_evidence_reference(&request.reference.canonical(), kind, fragment, bytes)
+            })
+            .collect(),
         })
     }
 }
@@ -355,10 +393,43 @@ mod tests {
     use base64::{Engine, engine::general_purpose::STANDARD};
     use serde_json::json;
 
-    use super::{attestation_statements, validate_cyclonedx, validate_slsa};
+    use super::{
+        attestation_statements, validate_cyclonedx, validate_slsa, verified_evidence_reference,
+    };
     use crate::{VerificationPolicy, VerificationTrustRoot, VerificationTrustRoots};
+    use rustok_modules::TrustEvidenceKind;
 
     const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    #[test]
+    fn verified_outputs_have_distinct_typed_evidence_identities() {
+        let subject = format!("registry.example/module@sha256:{DIGEST}");
+        let signature = verified_evidence_reference(
+            &subject,
+            TrustEvidenceKind::Signature,
+            "cosign-signature",
+            b"signature",
+        );
+        let provenance = verified_evidence_reference(
+            &subject,
+            TrustEvidenceKind::Provenance,
+            "slsa-provenance",
+            b"provenance",
+        );
+        let sbom = verified_evidence_reference(
+            &subject,
+            TrustEvidenceKind::Sbom,
+            "cyclonedx-sbom",
+            b"sbom",
+        );
+
+        assert_ne!(signature.digest, provenance.digest);
+        assert_ne!(signature.digest, sbom.digest);
+        assert_ne!(provenance.digest, sbom.digest);
+        assert!(signature.validate());
+        assert!(provenance.validate());
+        assert!(sbom.validate());
+    }
 
     fn policy() -> VerificationPolicy {
         VerificationPolicy {

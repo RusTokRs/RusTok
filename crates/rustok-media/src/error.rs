@@ -21,6 +21,24 @@ pub enum MediaError {
     #[error("Invalid locale: {0}")]
     InvalidLocale(String),
 
+    #[error("Invalid media translation revision: {0}")]
+    InvalidTranslationRevision(i64),
+
+    #[error("Exact source translation `{locale}` was not found for media {media_id}")]
+    TranslationSourceNotFound { media_id: Uuid, locale: String },
+
+    #[error("Translation revision conflict for media {media_id} locale `{locale}`")]
+    TranslationRevisionConflict { media_id: Uuid, locale: String },
+
+    #[error("Resource revision conflict for media {media_id}")]
+    ResourceRevisionConflict { media_id: Uuid },
+
+    #[error("Translation revision exhausted for media {media_id} locale `{locale}`")]
+    TranslationRevisionExhausted { media_id: Uuid, locale: String },
+
+    #[error("Media translation event persistence failed: {0}")]
+    TranslationEvent(String),
+
     #[error("Invalid rendition purpose: {0}")]
     InvalidRenditionPurpose(String),
 

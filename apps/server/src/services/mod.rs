@@ -2,6 +2,7 @@ pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
 pub mod artifact_delivery_tenants;
+pub mod artifact_mcp;
 pub mod artifact_runtime;
 pub mod auth_admin_mutation_provider;
 pub mod auth_invite;
@@ -25,6 +26,10 @@ pub mod email;
 pub mod event_bus;
 pub mod event_delivery_control_adapter;
 pub mod event_delivery_settings_service;
+#[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
+pub mod forum_audience_group_facts;
+#[cfg(feature = "mod-forum")]
+pub mod forum_notification_recipient_context;
 pub mod graphql_schema;
 pub mod iggy_connector_control_adapter;
 pub mod iggy_connector_settings_service;
@@ -41,10 +46,6 @@ pub mod mcp_runtime;
 pub mod mcp_scaffold_workspace;
 pub mod module_event_dispatcher;
 pub mod module_lifecycle;
-#[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
-pub mod forum_audience_group_facts;
-#[cfg(feature = "mod-forum")]
-pub mod forum_notification_recipient_context;
 #[cfg(feature = "mod-notifications")]
 pub mod notification_candidate_worker;
 #[cfg(feature = "mod-notifications")]

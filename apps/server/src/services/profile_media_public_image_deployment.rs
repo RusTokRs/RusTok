@@ -8,8 +8,7 @@ const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PROFILE_MEDIA_GRPC_ENDPOINT";
 const PUBLIC_ORIGIN_ENV: &str = "RUSTOK_PROFILE_MEDIA_PUBLIC_ORIGIN";
 const TLS_DOMAIN_ENV: &str = "RUSTOK_PROFILE_MEDIA_GRPC_TLS_DOMAIN";
 const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PROFILE_MEDIA_GRPC_CONNECT_TIMEOUT_MS";
-const ALLOW_INSECURE_LOOPBACK_ENV: &str =
-    "RUSTOK_PROFILE_MEDIA_GRPC_ALLOW_INSECURE_LOOPBACK";
+const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PROFILE_MEDIA_GRPC_ALLOW_INSECURE_LOOPBACK";
 const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 5_000;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -100,11 +99,11 @@ fn parse_deployment(
     let public_origin = normalize_optional(public_origin);
     let tls_domain = normalize_optional(tls_domain);
     let timeout = parse_timeout(connect_timeout_ms)?;
-    let allow_insecure_loopback = parse_bool(
-        allow_insecure_loopback,
-        ALLOW_INSECURE_LOOPBACK_ENV,
-        false,
-    )?;
+    let allow_insecure_loopback_is_configured = allow_insecure_loopback
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let allow_insecure_loopback =
+        parse_bool(allow_insecure_loopback, ALLOW_INSECURE_LOOPBACK_ENV, false)?;
 
     match provider.as_str() {
         "embedded" => {
@@ -112,7 +111,7 @@ fn parse_deployment(
                 || public_origin.is_some()
                 || tls_domain.is_some()
                 || connect_timeout_ms.is_some()
-                || allow_insecure_loopback.is_some_and(|value| !value.trim().is_empty())
+                || allow_insecure_loopback_is_configured
             {
                 return Err(format!(
                     "remote Media variables require {PROVIDER_ENV}=grpc"
@@ -134,9 +133,7 @@ fn parse_deployment(
                 },
             ))
         }
-        _ => Err(format!(
-            "{PROVIDER_ENV} must be either embedded or grpc"
-        )),
+        _ => Err(format!("{PROVIDER_ENV} must be either embedded or grpc")),
     }
 }
 
@@ -144,16 +141,12 @@ fn parse_timeout(value: Option<&str>) -> std::result::Result<u64, String> {
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(DEFAULT_CONNECT_TIMEOUT_MS);
     };
-    value.parse::<u64>().map_err(|_| {
-        format!("{CONNECT_TIMEOUT_MS_ENV} must be an integer number of milliseconds")
-    })
+    value
+        .parse::<u64>()
+        .map_err(|_| format!("{CONNECT_TIMEOUT_MS_ENV} must be an integer number of milliseconds"))
 }
 
-fn parse_bool(
-    value: Option<&str>,
-    name: &str,
-    default: bool,
-) -> std::result::Result<bool, String> {
+fn parse_bool(value: Option<&str>, name: &str, default: bool) -> std::result::Result<bool, String> {
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(default);
     };
@@ -181,8 +174,7 @@ fn optional_env(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProfileMediaPublicImageDeployment, ProfileMediaPublicImageGrpcDeployment,
-        parse_deployment,
+        ProfileMediaPublicImageDeployment, ProfileMediaPublicImageGrpcDeployment, parse_deployment,
     };
 
     #[test]
@@ -212,15 +204,13 @@ mod tests {
                 Some("false"),
             )
             .unwrap(),
-            ProfileMediaPublicImageDeployment::Grpc(
-                ProfileMediaPublicImageGrpcDeployment {
-                    endpoint: "https://media.internal:7443".to_string(),
-                    public_origin: Some("https://media.example.com".to_string()),
-                    tls_domain: Some("media.internal".to_string()),
-                    connect_timeout_ms: 2500,
-                    allow_insecure_loopback: false,
-                }
-            )
+            ProfileMediaPublicImageDeployment::Grpc(ProfileMediaPublicImageGrpcDeployment {
+                endpoint: "https://media.internal:7443".to_string(),
+                public_origin: Some("https://media.example.com".to_string()),
+                tls_domain: Some("media.internal".to_string()),
+                connect_timeout_ms: 2500,
+                allow_insecure_loopback: false,
+            })
         );
     }
 
@@ -235,6 +225,13 @@ mod tests {
             None,
         )
         .expect_err("remote variables in embedded mode must be rejected");
+        assert!(error.contains("require RUSTOK_PROFILE_MEDIA_PROVIDER=grpc"));
+    }
+
+    #[test]
+    fn explicit_loopback_flag_is_not_silently_ignored_in_embedded_mode() {
+        let error = parse_deployment(Some("embedded"), None, None, None, None, Some("false"))
+            .expect_err("explicit remote loopback configuration must require grpc mode");
         assert!(error.contains("require RUSTOK_PROFILE_MEDIA_PROVIDER=grpc"));
     }
 

@@ -236,6 +236,8 @@ pub struct CatalogModuleVersion {
     pub checksum_sha256: Option<String>,
     #[serde(default)]
     pub signature: Option<String>,
+    #[serde(default)]
+    pub artifact: Option<rustok_modules::ModuleMarketplaceArtifactRelease>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

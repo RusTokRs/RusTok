@@ -153,8 +153,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let asset = asset(tenant_id, Some(user_id), "image/png");
 
-        validate_profile_media_asset(tenant_id, user_id, ProfileMediaSlot::Avatar, &asset)
-            .unwrap();
+        validate_profile_media_asset(tenant_id, user_id, ProfileMediaSlot::Avatar, &asset).unwrap();
     }
 
     #[test]
@@ -162,13 +161,9 @@ mod tests {
         let user_id = Uuid::new_v4();
         let asset = asset(Uuid::new_v4(), Some(user_id), "image/png");
 
-        let error = validate_profile_media_asset(
-            Uuid::new_v4(),
-            user_id,
-            ProfileMediaSlot::Banner,
-            &asset,
-        )
-        .unwrap_err();
+        let error =
+            validate_profile_media_asset(Uuid::new_v4(), user_id, ProfileMediaSlot::Banner, &asset)
+                .unwrap_err();
         assert!(error.to_string().contains("current tenant"));
     }
 
@@ -193,13 +188,9 @@ mod tests {
         let user_id = Uuid::new_v4();
         let asset = asset(tenant_id, Some(user_id), "video/mp4");
 
-        let error = validate_profile_media_asset(
-            tenant_id,
-            user_id,
-            ProfileMediaSlot::Banner,
-            &asset,
-        )
-        .unwrap_err();
+        let error =
+            validate_profile_media_asset(tenant_id, user_id, ProfileMediaSlot::Banner, &asset)
+                .unwrap_err();
         assert!(error.to_string().contains("must be an image"));
     }
 

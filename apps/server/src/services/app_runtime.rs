@@ -19,7 +19,8 @@ use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::build_event_runtime;
 use crate::services::graphql_schema::init_graphql_schema;
 use crate::services::marketplace_catalog::{
-    LocalManifestMarketplaceProvider, MarketplaceCatalogService, SharedMarketplaceCatalogService,
+    LocalManifestMarketplaceProvider, MarketplaceCatalogProvider, MarketplaceCatalogService,
+    SharedMarketplaceCatalogService,
 };
 use crate::services::marketplace_catalog_cache::HardenedRegistryMarketplaceProvider;
 use crate::services::module_event_dispatcher::{
@@ -282,10 +283,14 @@ async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
 }
 
 fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
-    let marketplace_catalog = Arc::new(MarketplaceCatalogService::new(vec![
-        Arc::new(LocalManifestMarketplaceProvider),
-        Arc::new(HardenedRegistryMarketplaceProvider::from_env()),
-    ]));
+    let mut providers: Vec<Arc<dyn MarketplaceCatalogProvider>> =
+        vec![Arc::new(LocalManifestMarketplaceProvider)];
+    providers.extend(
+        HardenedRegistryMarketplaceProvider::from_env()
+            .into_iter()
+            .map(|provider| Arc::new(provider) as Arc<dyn MarketplaceCatalogProvider>),
+    );
+    let marketplace_catalog = Arc::new(MarketplaceCatalogService::new(providers));
     tracing::info!(
         providers = ?marketplace_catalog.provider_keys(),
         "Initialized bounded marketplace catalog provider chain"

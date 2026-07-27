@@ -42,13 +42,7 @@ async fn bounded_page_reopens_seen_and_read_without_touching_terminal_states() {
         seed_unread_notification(&db, notification_id, tenant_id, recipient_id).await;
     }
     let other_recipient_read_id = Uuid::from_u128(14);
-    seed_unread_notification(
-        &db,
-        other_recipient_read_id,
-        tenant_id,
-        other_recipient_id,
-    )
-    .await;
+    seed_unread_notification(&db, other_recipient_read_id, tenant_id, other_recipient_id).await;
     let other_tenant_seen_id = Uuid::from_u128(15);
     seed_unread_notification(
         &db,
@@ -187,27 +181,13 @@ async fn mark_all_unread_pages_are_bounded_and_resumable() {
     assert!(first.has_more);
     assert!(first.next_cursor.is_some());
 
-    let second = mark_page(
-        &service,
-        tenant_id,
-        recipient_id,
-        first.next_cursor,
-        2,
-    )
-    .await;
+    let second = mark_page(&service, tenant_id, recipient_id, first.next_cursor, 2).await;
     assert_eq!(second.scanned, 2);
     assert_eq!(second.marked_unread, 2);
     assert!(second.has_more);
     assert!(second.next_cursor.is_some());
 
-    let third = mark_page(
-        &service,
-        tenant_id,
-        recipient_id,
-        second.next_cursor,
-        2,
-    )
-    .await;
+    let third = mark_page(&service, tenant_id, recipient_id, second.next_cursor, 2).await;
     assert_eq!(
         third,
         NotificationInboxMarkAllUnreadPage {
@@ -263,14 +243,7 @@ async fn empty_foreign_and_invalid_mark_all_unread_requests_fail_closed() {
         (tenant_id, other_recipient_id),
     ] {
         assert_eq!(
-            mark_page(
-                &service,
-                scope_tenant_id,
-                scope_recipient_id,
-                None,
-                20,
-            )
-            .await,
+            mark_page(&service, scope_tenant_id, scope_recipient_id, None, 20,).await,
             NotificationInboxMarkAllUnreadPage {
                 scanned: 0,
                 marked_unread: 0,
@@ -376,9 +349,7 @@ fn state_request(
     }
 }
 
-fn available(
-    decision: NotificationInboxStateDecision,
-) -> (bool, NotificationInboxStateSnapshot) {
+fn available(decision: NotificationInboxStateDecision) -> (bool, NotificationInboxStateSnapshot) {
     match decision {
         NotificationInboxStateDecision::Available { changed, snapshot } => (changed, snapshot),
         NotificationInboxStateDecision::Unavailable => {

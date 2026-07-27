@@ -12,6 +12,13 @@
 - Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
 - Own storage-backed media lifecycle state while calling the shared `object_store` runtime directly.
 - Own durable write-port idempotency receipts and tenant-composite persistence integrity.
+- Publish `MediaTranslationTargetProvider` for bounded exact-locale discovery,
+  exact reads, validation, CAS apply, and tenant-scoped change-cursor repair
+  through the shared translation target registry.
+- Commit every translation write with an append-only owner cursor record and
+  content-free `translation.target.changed` outbox event in one owner
+  transaction; provider apply also commits its stable idempotency receipt in
+  that transaction.
 - Generate immutable source and rendition keys through the canonical tenant/date/shard policy.
 - Own validated image edit recipes and bounded pure-Rust processing.
 - Publish the module-local `rustok-media-cli` adapter with `media reconcile`, keeping CLI/runtime assembly outside the domain crate.
@@ -26,6 +33,9 @@
 - Depends on `rustok-core` for shared runtime helpers such as `generate_id()`.
 - Depends on `object_store` directly for blob operations and on `rustok-storage` only for runtime construction, delivery configuration, and key policy.
 - Depends on `rustok-api` for shared tenant/auth and port contracts.
+- Depends on `rustok-translation-targets` for the neutral provider SPI and on
+  `rustok-outbox` for atomic owner change evidence; translation workflow state
+  remains outside Media.
 - Exposes its own GraphQL and REST adapters; `apps/server` acts only as a composition root and re-export shim for media transport entry points.
 - Exposes `mediaUsage` from the owner `MediaQuery`; `apps/server` only composes the module query.
 - Media-library REST adapters require authenticated `AuthContext`; the public-image capability GET is intentionally unauthenticated and derives tenant authority from `TenantContext`, while an invalid id/checksum/tenant/lifecycle/MIME combination is indistinguishable as not found.
@@ -37,6 +47,7 @@
 ## Entry points
 
 - `MediaService`
+- `MediaTranslationTargetProvider`
 - `MediaPublicImageService` / `MediaPublicImageReadPort`
 - `MediaHttpRuntime`
 - `load_media_usage_snapshot`
@@ -57,7 +68,16 @@
 
 ## Runtime notes
 
-- Translation upserts normalize locale and text payloads before persistence: locale values are trimmed/lowercased, blank optional text fields become `None`, and translation lists are returned in locale order.
+- Translation upserts convert external locale strings to
+  `rustok_api::TenantLocale` before owner persistence, preserving canonical
+  BCP47 casing and rejecting storage-only `und`; blank optional text fields
+  become `None`, and translation lists are returned in locale order.
+- `apply_exact_translation` locks the asset and ordered source/target locale
+  rows in one owner transaction, checks both expected revisions, and advances
+  only the exact target revision.
+- Change cursors are ordered owner-generated identifiers. Every non-empty
+  `read_changes` page returns the last consumed identifier as its checkpoint;
+  replaying a provider idempotency key does not append another change or event.
 - Reconciliation prioritizes delete tombstones, rotates ready blobs through persisted progress, and preserves owner-local lifecycle evidence. Missing rendition output is isolated from a healthy source asset.
 - Upload-session reconciliation removes completed or expired staging objects and preserves retryable failures. Repeating finalization returns the asset already bound to the session.
 - Public-image capability URLs bind the stable asset id to the active blob checksum. Changing the active blob changes the URL; deleting or failing the asset/blob makes the old URL unavailable.

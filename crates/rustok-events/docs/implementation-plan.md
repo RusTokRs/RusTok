@@ -48,6 +48,10 @@ comment schemas.
 The root user-registration fact is `user.account_registered` v1 and contains
 only `user_id`; the former email-carrying payload was atomically removed because
 the repository has no production publisher or reader for it.
+The root `translation.target.changed` v1 fact is content-free and carries only
+owner/resource identity, changed exact locale, opaque revisions, operation, and
+correlation. Owner providers publish it transactionally with their normal
+localized write and idempotency receipt.
 
 The module-build dispatcher is the first owner-specific remote consumer: it
 retains one remote Iggy cursor, persists or recognizes an idempotent owner

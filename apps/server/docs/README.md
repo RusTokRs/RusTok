@@ -169,7 +169,37 @@ base policy revision before the server accepts the final policy revision.
   invoking a binding and fail closed for a disabled or denied module; they do
   not reconstruct tenant enablement from transport-local SQL.
 - `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled` and `seo_bulk_enabled` are disabled so that cron/bulk loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
-- The generic module-work host supplies artifact queues with an active-tenant enumerator from `rustok-tenant` and a server-composed CAS-backed Rhai/WASM executor before artifact registrations run. The runtime CAS is obtained from the same operation-scoped `ModuleControlPlane` as artifact capability, installation, audit, and sandbox-policy services, so the server does not create an independent artifact staging identity source. Executor registration records placement explicitly and rejects same-kind fallback registration. The current Rhai and Wasmtime adapters are visibly `in_process`; untrusted production Rhai still requires the planned supervised `isolated_worker` adapter rather than treating this composition as isolation evidence. The neutral Rhai bridge and WIT import both reach only `SandboxHost`; `platform.data`, `platform.data.objects`, and `platform.secrets` are the composed sandbox capability routes. Object transfer is bounded and larger writes use resumable owner-owned uploads: every decoded base64 chunk is at most 44 KiB, durable private sessions verify ordering, final size, and SHA-256 before publication, and no call exposes a storage key, URL, bucket, or credential. The secret route returns only a logical reference and revision after an immediate exact installation, lifecycle, grant-revision, grant, and derived-scope recheck; secret values and resolver identities remain host-only. MCP and all other unregistered capability names remain default-deny until their owner deployment adapters are explicitly wired. Artifact HTTP is a separate host transport at `/api/artifacts/{installation_id}/{*path}` and artifact commands use `POST /api/artifacts/{installation_id}/commands/{binding_id}`. Both resolve only an active exact installation, check the binding's dynamic RBAC grant, enforce JSON and shared durable binding-idempotency limits through `rustok-modules`, and call the shared sandbox executor rather than mounting artifact routers or injecting dynamic GraphQL fields.
+- The generic module-work host supplies artifact queues with an active-tenant
+  enumerator from `rustok-tenant` and a server-composed CAS-backed Rhai/WASM
+  executor before artifact registrations run. The runtime CAS is obtained from
+  the same operation-scoped `ModuleControlPlane` as artifact capability,
+  installation, audit, and sandbox-policy services, so the server does not
+  create an independent artifact staging identity source. Executor registration
+  records placement explicitly and rejects same-kind fallback registration.
+  The current Rhai and Wasmtime adapters are visibly `in_process`; untrusted
+  production Rhai still requires the planned supervised `isolated_worker`
+  adapter rather than treating this composition as isolation evidence.
+  The neutral Rhai bridge and WIT import both reach only `SandboxHost`;
+  `platform.data`, `platform.data.objects`, `platform.secrets`, and
+  `platform.mcp` are the composed sandbox capability routes. Object transfer is
+  bounded and larger writes use resumable owner-owned uploads: every decoded
+  base64 chunk is at most 44 KiB, durable private sessions verify ordering,
+  final size, and SHA-256 before publication, and no call exposes a storage key,
+  URL, bucket, or credential. The secret route returns only a logical reference
+  and revision after an immediate exact installation, lifecycle, grant-revision,
+  grant, and derived-scope recheck; secret values and resolver identities remain
+  host-only. The MCP route maps only the stable `rustok` alias to the
+  owner-defined read-only registry tools, derives an MCP service identity from
+  the admitted artifact installation, reapplies the owner access policy, and
+  requires redacted durable audit before invocation. It accepts no endpoint,
+  token, credential, transport, or discovery input. All other unregistered
+  capability names remain default-deny. Artifact HTTP is a separate host
+  transport at `/api/artifacts/{installation_id}/{*path}` and artifact commands
+  use `POST /api/artifacts/{installation_id}/commands/{binding_id}`. Both
+  resolve only an active exact installation, check the binding's dynamic RBAC
+  grant, enforce JSON and shared durable binding-idempotency limits through
+  `rustok-modules`, and call the shared sandbox executor rather than mounting
+  artifact routers or injecting dynamic GraphQL fields.
 - `development.yaml` keeps `database.max_connections: 30` because heavy admin bootstrap routes like AI control plane resolve several GraphQL root fields in parallel. This is a local debug guardrail for both admin panels, not a new production contract.
 - For registry/governance surfaces the server remains the canonical validator of lifecycle policy, `reason` / `reason_code` contract and allowed action set; thin clients may do preflight but do not define policy locally.
 - Registry release, publication, and validation adapters obtain their shared transactional governance aggregate through `ModuleControlPlane`; host authorization and artifact storage remain adapter concerns.
@@ -188,7 +218,21 @@ base policy revision before the server accepts the final policy revision.
   composition with configured remote registry providers, applies durable
   governance projection once, and attaches the owner-derived registry
   lifecycle snapshot for detail reads. Transport adapters perform DTO mapping
-  only and do not scan the workspace or recreate governance policy.
+  only and do not scan the workspace or recreate governance policy. A
+  production remote registry set is configured as a JSON array of unique,
+  canonical stable identities and HTTPS endpoints. Endpoints may contain no
+  embedded credentials, query, or fragment, and identity is independent from
+  endpoint location. List reads may retain the local catalog during a remote
+  outage, while per-provider health becomes explicitly degraded in
+  `/health/ready`; remote detail transport/contract failures fail closed while
+  an explicit remote `404` remains not-found. Slug collisions between
+  non-local providers fail instead of selecting one by order, while the local
+  manifest remains the explicit authority for a matching compiled module.
+  Active registry-governed versions receive their immutable installable
+  artifact contract only from the module owner projection. The adapter fails
+  the catalog read when an active release lacks that contract; it never
+  reconstructs registry, descriptor, source-lineage, or trust evidence from a
+  checksum or server ORM row.
 - Effective module availability now uses the facade's `EffectivePolicyService`, which reads tenant overrides and applies Core/default policy inside `rustok-modules`. The service returns the owner decision with its deterministic revision, typed facts, and denial reasons; server guards, GraphQL, and installer adapters consume only its enabled projection.
 - Static module manifests and catalog entries are parsed by the server host, but `rustok-modules` owns module metadata, resolved static-catalog topology (defaults, dependencies, conflicts, and version compatibility), static manifest-versus-registry comparison, settings-schema, marketplace metadata, static UI classification, UI i18n semantics, static HTTP provider exclusivity, crate-local runtime binding normalization, deployment build-surface semantics, and settings normalization before lifecycle persistence with the effective-enablement and Core invariants; server filesystem, registry-fact extraction, and ORM code are adapters only.
 - For post-hook failure recovery/compensation a separate runbook `module-lifecycle-retry-compensation-runbook.md` is used; committed tenant state is not rolled back automatically. The server verifies tenant scope, then delegates retry/compensation policy, state assembly, dispatch, and journaling to `ModuleLifecycleDbWriter` as separate owner lifecycle operations. `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation` require non-nil UUID `idempotencyKey` values; the owner journals each key tenant-scoped and replays the same attempt without redispatching its hook, while a conflicting key reuse returns `IDEMPOTENCY_CONFLICT`.

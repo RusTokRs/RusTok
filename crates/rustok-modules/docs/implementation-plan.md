@@ -704,13 +704,16 @@ named explicit grant before a broker is constructed. The concrete
 result. The sandbox host already enforces data operation/prefix, logical-secret,
 object-data prefix/operation, logical-secret, and MCP server/tool grant
 constraints before a route runs. The composed server executor registers
-`platform.data`, `platform.data.objects`, and `platform.secrets`. The secret
-route returns only an owner-issued logical handle and revision; it never
-resolves a value or discloses resolver identity. MCP remains unregistered until
-the MCP owner provides a configured server-alias registry plus its
-access-policy and audit-aware invoker. There is no default or network fallback
-broker. Artifact event delivery is durable ingress into admitted bindings and
-is not modeled as an outbound guest capability.
+`platform.data`, `platform.data.objects`, `platform.secrets`, and
+`platform.mcp`. The secret route returns only an owner-issued logical handle
+and revision; it never resolves a value or discloses resolver identity. The MCP
+route recognizes only the deployment-owned stable `rustok` alias, derives a
+service identity from the exact admitted artifact subject, applies the MCP
+owner access policy, and requires redacted durable audit before invoking the
+owner-defined read-only registry tool surface. There is no endpoint,
+credential, discovery, arbitrary network, or fallback broker. Artifact event
+delivery is durable ingress into admitted bindings and is not modeled as an
+outbound guest capability.
 
 `ArtifactBindingExecutionContext` carries only bounded host-supplied actor and
 trace identities through generic artifact dispatch, sandbox capability calls,
@@ -1260,6 +1263,27 @@ and installation lifecycle preconditions before that command may delete data.
 - Accept only verified build outputs and provenance.
 - Publish OCI artifacts and attestations by digest; sign through a
   Sigstore/cosign workflow rather than custom cryptography.
+- [x] Persist platform admission as a complete immutable publication contract:
+  logical registry identity, OCI repository and manifest, payload and canonical
+  descriptor digests, descriptor, runtime/media type, and one typed
+  digest-bound signature, provenance, and SBOM evidence identity. Conflicting
+  admission replay fails closed.
+- [x] Materialize the canonical federated artifact projection in the final
+  owner publication transaction. It joins the admitted contract to exact
+  origin-specific source lineage, author signature, build-service attestation
+  when applicable, platform admission, and marketplace approval, validates the
+  shared marketplace DTO, and persists it create-once beside the immutable
+  release. Active catalog releases are exposed only through this owner query;
+  a missing or corrupt contract is not downgraded to metadata-only output.
+- [ ] Compose the production caller for the reserved build-service-attestation
+  and platform-admission owner operations. It must load the exact published OCI
+  descriptor, use the isolated mTLS verifier, and then record the complete
+  admission contract. The operations currently have focused owner coverage but
+  no production caller, so final publication remains deliberately fail-closed.
+- The 2026-07-27 projection slice was checked only with touched-file
+  `rustfmt --edition 2024`, `git diff --check`, and
+  `cargo metadata --no-deps`; no compile or test suite was run in the shared
+  worktree.
 
 ### M6 - Transports, Alloy, and Promotion
 

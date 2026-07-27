@@ -18,6 +18,8 @@ modules, but remains a capability-only layer, not a tenant business domain.
 - GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::axum_router`), including tenant-scoped execution history;
 - integration contracts `ScriptableEntity` and `HookExecutor` for host modules;
 - staging and forking Rhai module artifacts through `rustok-modules` with immutable release lineage;
+- durable imported-release drafts with exact-replay receipts and immutable
+  parent-release identity on every source revision;
 - no transformation of the script runtime into a separate tenant business domain.
 
 ## Responsibility Zone
@@ -83,6 +85,16 @@ executor. It has no network client: its `http_*` helpers create
 host/method/path-prefix constraints before the broker applies its credential and
 audit policy, so Alloy drafts and marketplace artifacts share the same boundary.
 
+Published Rhai import is split at an explicit owner boundary.
+`AlloyReleaseImporter` accepts only an exact `ArtifactReleaseRef`; its source
+provider must return the matching immutable release and canonical workspace
+whose digest equals both release lineage and descriptor payload identity.
+Alloy then creates the draft, its first source revision, and a durable
+tenant/idempotency receipt atomically. The production provider is intentionally
+not composed from manifest-only marketplace metadata: it remains unavailable
+until registry publication exposes the canonical artifact/evidence projection
+and digest-pinned CAS/OCI workspace materialization.
+
 ## Runbook for Scheduler and Hook Debugging
 
 1. Check `execution_id`, `script.id`, `script.name` and `execution.phase` in
@@ -108,7 +120,10 @@ audit policy, so Alloy drafts and marketplace artifacts share the same boundary.
    pagination, apply tenant filter before offset, return exact scoped total
    metadata from the database and are sorted newest-first.
    Responses return canonical fields: execution id, script id/name, phase,
-   outcome, duration, error, user/tenant context and creation time.
+   outcome, duration, error, user/tenant context, exact source
+   revision/digest, sandbox policy digest, executor kind, runtime ABI, and
+   creation time. Evidence fields are nullable only for rows created before
+   the execution-evidence migration.
 5. For listing scripts, use only known `status` values; an unknown
    status must return a validation error and must not expand the fetch to
    all scripts. In-memory registry paths must preserve the same ordering as

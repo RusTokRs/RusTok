@@ -26,8 +26,8 @@ use crate::{
     ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
     ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolver,
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
-    TrustVerificationRequest, TrustVerifier,
+    ModuleDependencyLockGraph, TrustEvidenceReference, TrustPolicyRevision,
+    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
 const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
@@ -460,7 +460,7 @@ pub struct ArtifactVerificationEvidence {
     pub sbom_verified: bool,
     pub license_policy_verified: bool,
     pub vulnerability_policy_verified: bool,
-    pub evidence_references: Vec<String>,
+    pub evidence: Vec<TrustEvidenceReference>,
     pub verified_at: DateTime<Utc>,
 }
 
@@ -483,17 +483,31 @@ impl ArtifactVerificationEvidence {
             sbom_verified: decision.sbom_verified,
             license_policy_verified: decision.license_policy_verified,
             vulnerability_policy_verified: decision.vulnerability_policy_verified,
-            evidence_references: decision.evidence_references,
+            evidence: decision.evidence,
             verified_at,
         }
     }
 
-    fn admitted(&self) -> bool {
+    pub(crate) fn admitted(&self) -> bool {
+        let evidence_kinds = self
+            .evidence
+            .iter()
+            .map(|evidence| evidence.kind)
+            .collect::<BTreeSet<_>>();
         self.signature_verified
             && self.provenance_verified
             && self.sbom_verified
             && self.license_policy_verified
             && self.vulnerability_policy_verified
+            && self.evidence.iter().all(TrustEvidenceReference::validate)
+            && evidence_kinds.len() == self.evidence.len()
+            && [
+                crate::TrustEvidenceKind::Signature,
+                crate::TrustEvidenceKind::Provenance,
+                crate::TrustEvidenceKind::Sbom,
+            ]
+            .into_iter()
+            .all(|kind| evidence_kinds.contains(&kind))
     }
 }
 
@@ -3672,7 +3686,25 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::{ArtifactModuleKind, ControlPlaneClock, ControlPlaneIdGenerator};
+    use crate::{
+        ArtifactModuleKind, ControlPlaneClock, ControlPlaneIdGenerator, TrustEvidenceKind,
+        TrustEvidenceReference,
+    };
+
+    fn trust_evidence(digest_character: char) -> Vec<TrustEvidenceReference> {
+        [
+            TrustEvidenceKind::Signature,
+            TrustEvidenceKind::Provenance,
+            TrustEvidenceKind::Sbom,
+        ]
+        .into_iter()
+        .map(|kind| TrustEvidenceReference {
+            kind,
+            reference: format!("test://verification/{}-{}", kind.as_str(), digest_character),
+            digest: format!("sha256:{}", digest_character.to_string().repeat(64)),
+        })
+        .collect()
+    }
 
     #[test]
     fn migration_checkpoint_rejects_oversized_owner_metadata() {
@@ -3791,7 +3823,7 @@ mod tests {
                 sbom_verified: true,
                 license_policy_verified: true,
                 vulnerability_policy_verified: true,
-                evidence_references: vec!["test://verification/evidence".to_string()],
+                evidence: trust_evidence('a'),
             })
         }
     }
@@ -4451,7 +4483,7 @@ mod tests {
             sbom_verified: true,
             license_policy_verified: true,
             vulnerability_policy_verified: true,
-            evidence_references: vec!["test://verification/reverified".to_string()],
+            evidence: trust_evidence('b'),
             verified_at: Utc::now(),
         };
         assert_eq!(

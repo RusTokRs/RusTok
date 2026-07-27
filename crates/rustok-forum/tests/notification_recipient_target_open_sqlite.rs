@@ -177,7 +177,10 @@ async fn notification_target_open_uses_exact_recipient_role_for_topics_and_repli
             })
             .await
             .expect("customer target-open authorization should complete");
-        assert!(matches!(allowed, NotificationOpenAuthorization::Allowed { .. }));
+        assert!(matches!(
+            allowed,
+            NotificationOpenAuthorization::Allowed { .. }
+        ));
     }
 
     for target in [topic_target, reply_target] {

@@ -537,8 +537,12 @@ and installed artifacts.
   `ArtifactMcpCapabilityBroker` now checks its injected tenant/module scope and
   forwards only logical target, arguments, and scoped execution identity to an
   `ArtifactMcpInvoker` port; it has no endpoint, token, credential, or tool
-  discovery input. Server composition must still bind that port to the existing
-  MCP access-policy, audit, and configured server-alias implementation.
+  discovery input. Server composition now binds that port to the stable
+  deployment-owned `rustok` alias and the MCP owner's transport-neutral
+  registry-tool invoker. The adapter derives a service identity from the exact
+  artifact installation, applies `McpAccessContext`, and requires redacted
+  durable audit before invocation. Unknown aliases, unsupported tools, invalid
+  scope, and audit failure all fail closed.
 - [x] Add per-execution payload-size, call-count, and rolling rate limits before
   broker invocation.
 - [x] Ensure denied calls emit redacted audit evidence without protected input.
@@ -1365,10 +1369,11 @@ migrations or arbitrary SQL.
   exact installation, lifecycle, policy-revision, explicit-grant, and
   owner-derived-scope validation immediately before the binding read. Event
   delivery remains durable owner-queued ingress into admitted bindings rather
-  than an outbound guest capability. `platform.mcp` stays default-deny in
-  server composition until the MCP owner provides a configured server-alias
-  registry plus its access-policy and audit-aware invoker; that separate
-  integration gap does not weaken the completed namespaced-data contract.
+  than an outbound guest capability. `platform.mcp` is now composed through
+  the MCP owner with the stable `rustok` alias, exact artifact-derived service
+  identity, existing access-policy contract, and fail-closed durable audit. It
+  exposes only the read-only registry tool surface; external aliases require
+  explicit host-owned adapters and cannot be supplied by artifacts.
 - [x] Add revision-guarded logical object deletion to the brokered data
   capability. The guest receives only logical name and deleted revision;
   physical bytes remain private and cannot be collected until the independent
@@ -1968,7 +1973,13 @@ trust policy before admission.
   verification decision for the exact OCI manifest, binds signature/SLSA/SBOM
   plus independent license/vulnerability policy outcomes, signer, policy
   revisions, and evidence-reference fingerprint, and
-  records the platform decision without exposing verifier output. The owner
+  records the platform decision without exposing verifier output. The
+  verification decision carries three typed, digest-bound evidence identities
+  instead of an unclassified string list. The owner requires one unique
+  signature, provenance, and SBOM identity, persists the complete descriptor,
+  descriptor digest, logical registry identity, OCI repository, runtime/media
+  type, and those typed evidence references in a create-once
+  platform-admission contract, and rejects conflicting replay. The owner
   now fails publication closed unless author-signature evidence is bound to the
   staged artifact SHA-256 and build-service attestation plus platform-admission
   evidence share one exact OCI manifest subject; marketplace approval is added
@@ -1983,6 +1994,13 @@ trust policy before admission.
   identity plus builder, build-type, source, license, and vulnerability-policy
   facts. Missing license or vulnerability outcome fields fail decoding rather
   than receiving compatibility defaults.
+- [ ] Compose the production publication-evidence producer. The reserved owner
+  operations for build-service attestation and platform admission are strict
+  and covered by focused owner tests, but no production host/dispatcher
+  currently invokes them. The target path must load the exact OCI descriptor,
+  call the isolated verifier through mTLS, and record both owner facts without
+  exposing registry or trust credentials to the server, Alloy, MCP, or module
+  runtime. Final publication intentionally fails closed until this path exists.
 
 ### 5.3 Publication Governance
 
@@ -1992,7 +2010,9 @@ trust policy before admission.
   against its immutable stored request. `stage_platform_build` now consumes the
   pair, validates the expected slug/version and component digest against the
   submitted artifact, and appends the source, component, and OCI receipt
-  identities in `registry_publish_build_staging`. The component/payload digest
+  identities in `registry_publish_build_staging`. The exact immutable source
+  reference is retained with its digest, so final publication does not
+  reconstruct lineage from a tenant-scoped build request. The component/payload digest
   and registry-returned OCI manifest digest are separate immutable identities:
   staging validates both but never compares them for equality, while final
   signature/admission joins use the manifest identity. Publication requires a
@@ -2088,6 +2108,60 @@ trust policy before admission.
   owner-owned diagnostics, so test output and artifact-derived failure strings
   cannot enter governance events through those paths.
 
+### 5.4 Federated Catalog Consumption
+
+- [x] Harden the configured remote catalog boundary. Production configuration
+  accepts only an absolute HTTPS base URL without embedded credentials, query,
+  or fragment and requires a stable logical registry identity independent from
+  the endpoint; the identity participates in the cache namespace. The client
+  rejects redirects and invalid certificates. Remote
+  list failure preserves the local manifest catalog but marks the non-critical
+  `marketplace_providers` readiness check degraded. Remote detail failure
+  returns unavailable rather than false not-found. Slug collisions between
+  non-local providers fail closed, while the local compiled manifest is the
+  explicit authority for its own slug.
+- [x] Define and enforce the canonical federated release consumption contract.
+  Each active third-party artifact release must carry stable registry identity,
+  immutable OCI manifest/payload/descriptor digests, exact source reference and
+  digest, runtime kind, and durable signature/SBOM/provenance/admission evidence
+  references. Remote providers fail closed when an active release omits that
+  contract or claims another registry identity; `crate_name`, `git`, `rev`,
+  `path`, and a checksum alone are not an installable external artifact
+  identity.
+- [x] Project the same canonical artifact contract from final owner publication
+  rows and serve it from the registry catalog. Platform admission preserves the
+  complete immutable descriptor, logical registry/repository identity, exact
+  manifest and payload digests, runtime/media type, and typed
+  signature/SBOM/provenance/admission evidence. Final publication joins those
+  facts with exact source lineage, author signature, optional build-service
+  attestation, and the transaction-local marketplace approval, validates the
+  shared consumer contract, and stores it create-once beside the release.
+  Publication and idempotent replay fail closed when that projection is missing
+  or conflicts. The server catalog reads it through the owner service, attaches
+  it to active release versions, and refuses an active release with no complete
+  contract. Source-unavailable external prebuilts consequently cannot enter the
+  public installable catalog. The remaining Alloy work is the digest-pinned
+  CAS/OCI source materializer and authenticated import transports, not
+  publication-fact reconstruction. This projection becomes reachable in
+  production only after the open publication-evidence producer in Phase 5.2 is
+  composed.
+- [x] Compose multiple explicitly configured registries. Registry identity is
+  independent from endpoint URL, participates in cache and release identity,
+  and has deterministic namespace/collision rules. An endpoint move must not
+  change release identity, duplicate configured identities fail startup, and
+  two registries cannot silently claim the same unqualified module slug. The
+  current `RUSTOK_MARKETPLACE_REGISTRIES` JSON contract composes no implicit
+  remote provider when absent and rejects non-canonical IDs, non-HTTPS
+  endpoints, credentials, query/fragment endpoint state, and redirects.
+- [x] Require reproducible source identity for publicly marketable third-party
+  releases. The federated catalog rejects every active third-party release
+  without an immutable artifact contract, and that contract requires an exact
+  source reference plus canonical source digest. Source-unavailable external
+  prebuilts remain private quarantine sideloads and cannot appear as normally
+  installable public catalog releases.
+- [ ] Expose freshness and last-success evidence per configured registry to
+  operator transports and declarative admin UI, not only aggregate readiness.
+
 ### Verification Gate
 
 - Tampered payload, signature, certificate identity, SBOM, provenance, or
@@ -2108,7 +2182,7 @@ evolution while sharing the production sandbox and module release contracts.
 
 ### 6.1 Draft Runtime
 
-- [ ] Represent every execution with draft ID and monotonic revision.
+- [x] Represent every execution with draft ID and monotonic revision.
   `AlloyDraftRequestBuilder` already carries draft ID and source revision into
   `SandboxSubject::AlloyDraft`; tenant-scoped Alloy storage now also prevents
   cross-tenant single-script reads and mutations. Single-script persistence now
@@ -2157,7 +2231,9 @@ evolution while sharing the production sandbox and module release contracts.
   operation. The canonical Rhai workspace
   payload media type is retained by admission and runtime resolution, so a
   multi-file release cannot be reinterpreted as a single-source artifact after
-  publication.
+  publication. Production execution history now also persists the exact source
+  revision/digest, sandbox policy digest, executor kind, and runtime ABI and
+  exposes that redacted evidence through REST and GraphQL.
 - Alloy lifecycle status mutations now require the expected revision on both
   REST activate/pause and GraphQL activate/pause/disable/archive/reset-errors
   transports, so stale status writes fail closed with a revision conflict.
@@ -2169,12 +2245,15 @@ evolution while sharing the production sandbox and module release contracts.
 - MCP Alloy create/update/run tools now use the canonical workspace contract;
   update and manual execution require expected revisions and pin the loaded
   workspace snapshot.
-- [ ] Reject execution/publish commands for stale revisions.
-- [ ] Execute validation, tests, manual runs, hooks, schedules, and preview
+- [x] Reject execution/publish commands for stale revisions. Caller-driven
+  manual, test, review, lifecycle, deletion, and release-stage commands use
+  explicit revision CAS; hook and schedule dispatch execute the exact current
+  owner-selected snapshot passed to `ScriptExecutor`.
+- [x] Execute validation, tests, manual runs, hooks, schedules, and preview
   scenarios through `SandboxRuntime`.
-- [ ] Convert Alloy entity/parameter behavior into explicit request-scoped
+- [x] Convert Alloy entity/parameter behavior into explicit request-scoped
   bindings without adding generic Alloy concepts to `rustok-sandbox`.
-- [ ] Persist execution evidence linked to revision and policy revision.
+- [x] Persist execution evidence linked to revision and policy revision.
 - [x] Replace the former single `code: String` model with a revisioned workspace
   contract for sources, imports/modules, tests, fixtures, schemas, policy, and
   generated artifacts. DB/object storage remains the source of truth; guests do
@@ -2199,10 +2278,21 @@ evolution while sharing the production sandbox and module release contracts.
 
 ### 6.3 Marketplace Fork and Continued Development
 
-- [ ] Import an eligible published Rhai source and lineage into a new Alloy
-  workspace.
-- [ ] Fork records parent release, never mutates or overwrites it.
-- [ ] Require a newer semantic version and new source/artifact digest.
+- [x] Persist an imported Rhai workspace as a new tenant-scoped draft with its
+  exact immutable parent release. Import storage now reserves a durable
+  `(tenant_id, idempotency_key)` receipt before creating the draft and first
+  source revision in the same transaction. Exact replay returns the same
+  draft; conflicting replay and duplicate tenant-scoped names fail closed.
+- [ ] Compose the production owner source provider and authenticated import
+  transports. The provider must resolve the exact canonical published release,
+  materialize only its digest-pinned Rhai workspace from CAS/OCI, and reject
+  catalog metadata without the Phase 5.4 publication projection; there is no
+  marketplace DTO or mutable-tag fallback.
+- [x] Fork contracts record the parent release and never mutate or overwrite
+  it. Imported parent identity is persisted on the draft and every immutable
+  source revision, and storage rejects replacement or removal.
+- [x] Require a newer semantic version and new source/artifact digest in the
+  immutable `ArtifactRelease::fork` contract.
 - [ ] Allow tests and preview against the same WIT/capability policy as the
   installed parent.
 - [ ] Publish the fork through the same governance pipeline as any release.

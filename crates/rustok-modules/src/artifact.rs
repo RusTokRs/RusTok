@@ -100,6 +100,20 @@ pub struct ArtifactReleaseRef {
     pub digest: String,
 }
 
+impl ArtifactReleaseRef {
+    pub fn validate(&self) -> Result<(), ModuleArtifactError> {
+        if !valid_slug(&self.slug) {
+            return Err(ModuleArtifactError::InvalidSlug(self.slug.clone()));
+        }
+        Version::parse(&self.version)
+            .map_err(|_| ModuleArtifactError::InvalidVersion(self.version.clone()))?;
+        if !valid_digest(&self.digest) {
+            return Err(ModuleArtifactError::InvalidDigest(self.digest.clone()));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactSourceLineage {
     pub origin: ArtifactOrigin,
@@ -643,6 +657,16 @@ impl ModuleArtifactDescriptor {
         }
         Ok(digests)
     }
+}
+
+/// Canonical digest of the complete immutable artifact descriptor.
+///
+/// This identity is distinct from the executable payload digest stored inside
+/// the descriptor and from the OCI manifest digest that addresses the package.
+pub fn canonical_artifact_descriptor_digest(descriptor: &ModuleArtifactDescriptor) -> String {
+    let value = serde_json::to_value(descriptor)
+        .expect("module artifact descriptor serialization must be infallible");
+    format!("sha256:{}", hash_manifest_snapshot(&value))
 }
 
 fn valid_data_index_name(value: &str) -> bool {

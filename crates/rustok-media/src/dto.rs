@@ -1,3 +1,4 @@
+use rustok_api::TenantLocale;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -78,22 +79,30 @@ pub struct UpsertTranslationInput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedTranslationInput {
-    pub locale: String,
+    pub locale: TenantLocale,
     pub title: Option<String>,
     pub alt_text: Option<String>,
     pub caption: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyExactMediaTranslationInput {
+    pub source_locale: TenantLocale,
+    pub target: NormalizedTranslationInput,
+    pub expected_resource_revision: String,
+    pub expected_source_revision: i64,
+    pub expected_target_revision: Option<i64>,
+}
+
 impl UpsertTranslationInput {
     /// Normalizes user-entered translation metadata at the module boundary.
     ///
-    /// The media runtime accepts host-selected locales, but the stored locale key
-    /// must be explicit, short, and path/header-safe because it is reused by
-    /// GraphQL, REST, and admin transport adapters. Optional text fields are
-    /// trimmed and empty strings are stored as `NULL` to keep read-side fallback
-    /// semantics deterministic.
+    /// The external transport accepts a string, while the owner boundary uses
+    /// the canonical tenant-locale type shared by the platform. Optional text
+    /// fields are trimmed and empty strings are stored as `NULL` to keep
+    /// read-side fallback semantics deterministic.
     pub fn normalize(self) -> std::result::Result<NormalizedTranslationInput, String> {
-        let locale = normalize_locale(self.locale)?;
+        let locale = TenantLocale::new(&self.locale).map_err(|_| self.locale.clone())?;
 
         Ok(NormalizedTranslationInput {
             locale,
@@ -104,22 +113,12 @@ impl UpsertTranslationInput {
     }
 }
 
-fn normalize_locale(value: String) -> std::result::Result<String, String> {
-    let locale = value.trim().to_ascii_lowercase().replace('_', "-");
-    let valid = !locale.is_empty()
-        && locale.len() <= 32
-        && locale
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-');
-
-    valid.then_some(locale).ok_or(value)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MediaTranslationItem {
     pub id: Uuid,
     pub media_id: Uuid,
     pub locale: String,
+    pub revision: i64,
     pub title: Option<String>,
     pub alt_text: Option<String>,
     pub caption: Option<String>,
@@ -425,7 +424,7 @@ mod tests {
         .normalize()
         .expect("input should normalize");
 
-        assert_eq!(normalized.locale, "en-us");
+        assert_eq!(normalized.locale.as_str(), "en-US");
         assert_eq!(normalized.title.as_deref(), Some("Hero"));
         assert_eq!(normalized.alt_text, None);
         assert_eq!(normalized.caption.as_deref(), Some("Caption"));
@@ -437,6 +436,8 @@ mod tests {
             "   ",
             "en/us",
             "ru@test",
+            "und",
+            "en--US",
             "abcdefghijklmnopqrstuvwxyzabcdefg",
         ] {
             assert!(

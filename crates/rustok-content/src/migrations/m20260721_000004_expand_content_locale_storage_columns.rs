@@ -25,8 +25,6 @@ ALTER TABLE category_translations
     ALTER COLUMN locale TYPE VARCHAR(32);
 ALTER TABLE meta_translations
     ALTER COLUMN locale TYPE VARCHAR(32);
-ALTER TABLE media_translations
-    ALTER COLUMN locale TYPE VARCHAR(32);
 ALTER TABLE content_canonical_urls
     ALTER COLUMN locale TYPE VARCHAR(32);
 ALTER TABLE content_url_aliases

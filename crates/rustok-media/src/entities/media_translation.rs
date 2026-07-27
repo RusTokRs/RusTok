@@ -9,6 +9,7 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub asset_id: Uuid,
     pub locale: String,
+    pub revision: i64,
     pub title: Option<String>,
     pub alt_text: Option<String>,
     pub caption: Option<String>,

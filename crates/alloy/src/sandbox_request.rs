@@ -121,6 +121,17 @@ pub struct AlloyDraftRuntime {
     requests: AlloyDraftRequestBuilder,
 }
 
+/// Redacted immutable identity persisted with every production draft
+/// execution. It contains no source, input, output, or capability result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AlloyExecutionEvidence {
+    pub source_revision: u32,
+    pub source_digest: String,
+    pub policy_digest: String,
+    pub executor: String,
+    pub runtime_abi: String,
+}
+
 impl AlloyDraftRuntime {
     pub fn new(sandbox: rustok_sandbox::SandboxRuntime, policy: SandboxPolicy) -> Self {
         Self {
@@ -139,6 +150,20 @@ impl AlloyDraftRuntime {
             .build(script, context, input_from_context(context))
             .map_err(|error| ScriptError::Runtime(error.to_string()))?;
         self.execute_request(request).await
+    }
+
+    pub fn execution_evidence(&self, script: &Script) -> ScriptResult<AlloyExecutionEvidence> {
+        script.workspace.validate().map_err(ScriptError::from)?;
+        let source_digest = script.workspace.digest().map_err(ScriptError::from)?;
+        let policy_bytes = serde_json::to_vec(&self.requests.policy)
+            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
+        Ok(AlloyExecutionEvidence {
+            source_revision: script.version,
+            source_digest,
+            policy_digest: format!("sha256:{}", hex::encode(Sha256::digest(policy_bytes))),
+            executor: SandboxExecutorKind::Rhai.to_string(),
+            runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
+        })
     }
 
     /// Executes one immutable `tests/*.rhai` entrypoint from the script's

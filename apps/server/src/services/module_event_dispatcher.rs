@@ -208,6 +208,19 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         extensions.insert(rustok_seo::SeoMediaAssetReadProvider::new(provider));
     }
 
+    #[cfg(feature = "mod-media")]
+    if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
+        let provider = rustok_media::MediaTranslationTargetProvider::new(Arc::new(
+            rustok_media::MediaService::new(db.clone(), storage),
+        ));
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Media translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
     #[cfg(feature = "mod-fulfillment")]
     {
         let fulfillment_registry = runtime_ctx
@@ -294,9 +307,10 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     #[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
     {
-        let audience_facts = crate::services::forum_audience_group_facts::ServerForumAudienceGroupFactsPort::shared(
-            db.clone(),
-        );
+        let audience_facts =
+            crate::services::forum_audience_group_facts::ServerForumAudienceGroupFactsPort::shared(
+                db.clone(),
+            );
         extensions.insert(audience_facts);
     }
 
@@ -392,6 +406,19 @@ mod tests {
             db,
             settings.clone(),
         );
+        #[cfg(feature = "mod-media")]
+        let _media_storage_directory = {
+            let directory = tempfile::tempdir().expect("temporary Media storage should initialize");
+            let storage =
+                rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
+                    base_dir: directory.path().display().to_string(),
+                    base_url: "/media".to_string(),
+                    fsync: false,
+                })
+                .expect("local Media storage runtime should initialize");
+            runtime_ctx.shared_insert(storage);
+            directory
+        };
 
         let extensions = build_shared_runtime_extensions_with_host_providers(
             &registry,
@@ -406,6 +433,14 @@ mod tests {
         assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
+        #[cfg(feature = "mod-media")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "media"
+                        && descriptor.resource_kind.as_str() == "asset"
+                }))
+        );
         #[cfg(feature = "mod-forum")]
         assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
         #[cfg(all(feature = "mod-forum", feature = "mod-groups"))]

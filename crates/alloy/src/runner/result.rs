@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::context::ExecutionPhase;
 use crate::error::ScriptError;
 use crate::model::ScriptId;
+use crate::sandbox_request::AlloyExecutionEvidence;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
@@ -15,6 +16,7 @@ pub struct ExecutionResult {
     pub phase: ExecutionPhase,
     pub started_at: DateTime<Utc>,
     pub finished_at: DateTime<Utc>,
+    pub evidence: Option<AlloyExecutionEvidence>,
     pub outcome: ExecutionOutcome,
 }
 

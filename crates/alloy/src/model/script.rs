@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use uuid::Uuid;
 
+use rustok_modules::ArtifactReleaseRef;
+
 use super::trigger::ScriptTrigger;
 use super::workspace::AlloyWorkspace;
 
@@ -32,6 +34,8 @@ pub struct Script {
     pub run_as_system: bool,
     pub permissions: Vec<String>,
     pub author_id: Option<String>,
+    #[serde(default)]
+    pub parent_release: Option<ArtifactReleaseRef>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub error_count: u32,
@@ -48,6 +52,8 @@ pub struct ScriptSourceRevision {
     pub source_digest: String,
     pub workspace: AlloyWorkspace,
     pub author_id: Option<String>,
+    #[serde(default)]
+    pub parent_release: Option<ArtifactReleaseRef>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -66,6 +72,7 @@ impl Script {
             run_as_system: false,
             permissions: Vec::new(),
             author_id: None,
+            parent_release: None,
             created_at: now,
             updated_at: now,
             error_count: 0,

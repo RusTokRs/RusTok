@@ -7,15 +7,23 @@ use tokio::sync::RwLock;
 use super::traits::{ScriptPage, ScriptQuery, ScriptRegistry};
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    ReviewCommand, ReviewDecision, Script, ScriptId, ScriptSourceRevision, ScriptStatus,
-    ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunLease,
-    TestRunStatus, validate_transition,
+    AlloyImportedDraftCommand, AlloyImportedDraftResult, ReviewCommand, ReviewDecision, Script,
+    ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
+    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus, validate_transition,
 };
+
+#[derive(Clone)]
+struct ReleaseImportReceipt {
+    request_digest: String,
+    script_id: ScriptId,
+    parent_release: rustok_modules::ArtifactReleaseRef,
+}
 
 #[derive(Clone)]
 pub struct InMemoryStorage {
     scripts: Arc<RwLock<HashMap<ScriptId, Script>>>,
     source_revisions: Arc<RwLock<HashMap<(ScriptId, u32), ScriptSourceRevision>>>,
+    release_imports: Arc<RwLock<HashMap<(uuid::Uuid, uuid::Uuid), ReleaseImportReceipt>>>,
     reviews: Arc<RwLock<HashMap<(ScriptId, u32), Vec<ReviewDecision>>>>,
     test_runs: Arc<RwLock<HashMap<(ScriptId, u32, uuid::Uuid), TestRun>>>,
     test_leases: Arc<RwLock<HashMap<uuid::Uuid, (uuid::Uuid, chrono::DateTime<chrono::Utc>)>>>,
@@ -26,6 +34,7 @@ impl InMemoryStorage {
         Self {
             scripts: Arc::new(RwLock::new(HashMap::new())),
             source_revisions: Arc::new(RwLock::new(HashMap::new())),
+            release_imports: Arc::new(RwLock::new(HashMap::new())),
             reviews: Arc::new(RwLock::new(HashMap::new())),
             test_runs: Arc::new(RwLock::new(HashMap::new())),
             test_leases: Arc::new(RwLock::new(HashMap::new())),
@@ -44,6 +53,7 @@ impl InMemoryStorage {
                 .expect("saved workspace must have been validated"),
             workspace: script.workspace.clone(),
             author_id: script.author_id.clone(),
+            parent_release: script.parent_release.clone(),
             created_at: script.updated_at,
         }
     }
@@ -380,10 +390,82 @@ impl ScriptRegistry for InMemoryStorage {
             })
     }
 
+    async fn import_published_release(
+        &self,
+        mut command: AlloyImportedDraftCommand,
+    ) -> ScriptResult<AlloyImportedDraftResult> {
+        command
+            .validate()
+            .map_err(|error| ScriptError::InvalidLineage(error.to_string()))?;
+        let parent_release = command
+            .script
+            .parent_release
+            .clone()
+            .expect("validated imported draft must have a parent release");
+        let key = (command.script.tenant_id, command.idempotency_key);
+        let mut receipts = self.release_imports.write().await;
+        let mut scripts = self.scripts.write().await;
+        let mut revisions = self.source_revisions.write().await;
+
+        if let Some(receipt) = receipts.get(&key) {
+            if receipt.request_digest != command.request_digest
+                || receipt.parent_release != parent_release
+            {
+                return Err(ScriptError::ImportIdempotencyConflict);
+            }
+            let script = scripts.get(&receipt.script_id).cloned().ok_or_else(|| {
+                ScriptError::Storage(
+                    "Alloy release import receipt references a missing draft".to_string(),
+                )
+            })?;
+            return Ok(AlloyImportedDraftResult {
+                script,
+                created: false,
+            });
+        }
+
+        if scripts.values().any(|script| {
+            script.tenant_id == command.script.tenant_id && script.name == command.script.name
+        }) {
+            return Err(ScriptError::ImportDraftNameConflict);
+        }
+
+        let now = chrono::Utc::now();
+        command.script.version = 1;
+        command.script.created_at = now;
+        command.script.updated_at = now;
+        let script = command.script;
+        let revision = Self::source_revision(&script);
+        scripts.insert(script.id, script.clone());
+        revisions.insert((revision.script_id, revision.revision), revision);
+        receipts.insert(
+            key,
+            ReleaseImportReceipt {
+                request_digest: command.request_digest,
+                script_id: script.id,
+                parent_release,
+            },
+        );
+        Ok(AlloyImportedDraftResult {
+            script,
+            created: true,
+        })
+    }
+
     async fn save(&self, mut script: Script) -> ScriptResult<Script> {
         script.workspace.validate().map_err(ScriptError::from)?;
+        if let Some(parent_release) = &script.parent_release {
+            parent_release
+                .validate()
+                .map_err(|error| ScriptError::InvalidLineage(error.to_string()))?;
+        }
         let mut guard = self.scripts.write().await;
         if let Some(existing) = guard.get(&script.id) {
+            if existing.parent_release != script.parent_release {
+                return Err(ScriptError::InvalidLineage(
+                    "a draft cannot replace or remove its imported parent release".to_string(),
+                ));
+            }
             if script.version != existing.version {
                 return Err(ScriptError::RevisionConflict {
                     expected: script.version,

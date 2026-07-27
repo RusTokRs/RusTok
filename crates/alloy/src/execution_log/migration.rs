@@ -41,6 +41,11 @@ impl MigrationTrait for ScriptExecutionsMigration {
                     .col(ColumnDef::new(ScriptExecutions::Error).text())
                     .col(ColumnDef::new(ScriptExecutions::UserId).string_len(255))
                     .col(ColumnDef::new(ScriptExecutions::TenantId).uuid())
+                    .col(ColumnDef::new(ScriptExecutions::SourceRevision).integer())
+                    .col(ColumnDef::new(ScriptExecutions::SourceDigest).string_len(71))
+                    .col(ColumnDef::new(ScriptExecutions::PolicyDigest).string_len(71))
+                    .col(ColumnDef::new(ScriptExecutions::Executor).string_len(32))
+                    .col(ColumnDef::new(ScriptExecutions::RuntimeAbi).string_len(128))
                     .col(
                         ColumnDef::new(ScriptExecutions::CreatedAt)
                             .timestamp_with_time_zone()
@@ -90,5 +95,10 @@ enum ScriptExecutions {
     Error,
     UserId,
     TenantId,
+    SourceRevision,
+    SourceDigest,
+    PolicyDigest,
+    Executor,
+    RuntimeAbi,
     CreatedAt,
 }

@@ -2,8 +2,9 @@ use async_trait::async_trait;
 
 use crate::error::ScriptResult;
 use crate::model::{
-    EventType, ReviewCommand, ReviewDecision, Script, ScriptId, ScriptSourceRevision, ScriptStatus,
-    TestCommand, TestRun, TestRunClaim, TestRunCompletion,
+    AlloyImportedDraftCommand, AlloyImportedDraftResult, EventType, ReviewCommand, ReviewDecision,
+    Script, ScriptId, ScriptSourceRevision, ScriptStatus, TestCommand, TestRun, TestRunClaim,
+    TestRunCompletion,
 };
 
 #[derive(Clone)]
@@ -51,6 +52,10 @@ pub trait ScriptRegistry: Send + Sync {
         completion: TestRunCompletion,
     ) -> ScriptResult<TestRun>;
     async fn get_by_name(&self, name: &str) -> ScriptResult<Script>;
+    async fn import_published_release(
+        &self,
+        command: AlloyImportedDraftCommand,
+    ) -> ScriptResult<AlloyImportedDraftResult>;
     async fn save(&self, script: Script) -> ScriptResult<Script>;
     async fn delete(&self, id: ScriptId, expected_version: u32) -> ScriptResult<()>;
     async fn set_status(&self, id: ScriptId, status: ScriptStatus) -> ScriptResult<()>;

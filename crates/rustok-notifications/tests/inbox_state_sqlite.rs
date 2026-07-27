@@ -226,13 +226,7 @@ async fn direct_read_and_archive_preserve_timestamp_invariants() {
     insert_tenant(&db, tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
     seed_unread_notification(&db, read_notification_id, tenant_id, recipient_id).await;
-    seed_unread_notification(
-        &db,
-        archived_notification_id,
-        tenant_id,
-        recipient_id,
-    )
-    .await;
+    seed_unread_notification(&db, archived_notification_id, tenant_id, recipient_id).await;
 
     let service = NotificationInboxStateService::new(db.clone());
     let (changed, read) = available(
@@ -369,9 +363,7 @@ async fn foreign_missing_and_invalid_requests_fail_closed_without_mutation() {
     assert!(stored.archived_at.is_none());
 }
 
-fn available(
-    decision: NotificationInboxStateDecision,
-) -> (bool, NotificationInboxStateSnapshot) {
+fn available(decision: NotificationInboxStateDecision) -> (bool, NotificationInboxStateSnapshot) {
     match decision {
         NotificationInboxStateDecision::Available { changed, snapshot } => (changed, snapshot),
         NotificationInboxStateDecision::Unavailable => {

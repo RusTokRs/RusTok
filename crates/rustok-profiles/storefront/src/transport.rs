@@ -63,15 +63,7 @@ pub async fn load_profiles_storefront_page(
         "profiles.storefront.page",
         context.path(),
         move || native_server_adapter::load_profile(native_handle, native_locale),
-        move || {
-            graphql_adapter::load_profile(
-                token,
-                tenant,
-                current_user_id,
-                handle,
-                locale,
-            )
-        },
+        move || graphql_adapter::load_profile(token, tenant, current_user_id, handle, locale),
     )
     .await
 }

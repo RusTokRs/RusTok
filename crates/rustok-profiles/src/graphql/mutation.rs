@@ -288,10 +288,7 @@ async fn validate_profile_media_references(
     Ok(())
 }
 
-fn map_profile_media_read_error(
-    slot: ProfileMediaSlot,
-    error: PortError,
-) -> async_graphql::Error {
+fn map_profile_media_read_error(slot: ProfileMediaSlot, error: PortError) -> async_graphql::Error {
     match &error.kind {
         PortErrorKind::NotFound => <FieldError as GraphQLError>::bad_user_input(&format!(
             "profile {} media asset was not found",

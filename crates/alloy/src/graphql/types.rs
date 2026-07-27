@@ -214,6 +214,23 @@ impl From<ScriptTrigger> for GqlScriptTrigger {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlArtifactReleaseRef {
+    pub slug: String,
+    pub version: String,
+    pub digest: String,
+}
+
+impl From<rustok_modules::ArtifactReleaseRef> for GqlArtifactReleaseRef {
+    fn from(release: rustok_modules::ArtifactReleaseRef) -> Self {
+        Self {
+            slug: release.slug,
+            version: release.version,
+            digest: release.digest,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
 pub struct GqlScript {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -226,6 +243,7 @@ pub struct GqlScript {
     pub run_as_system: bool,
     pub permissions: Vec<String>,
     pub author_id: Option<String>,
+    pub parent_release: Option<GqlArtifactReleaseRef>,
     pub error_count: u32,
     pub last_error_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -246,6 +264,7 @@ impl From<Script> for GqlScript {
             run_as_system: script.run_as_system,
             permissions: script.permissions,
             author_id: script.author_id,
+            parent_release: script.parent_release.map(Into::into),
             error_count: script.error_count,
             last_error_at: script.last_error_at,
             created_at: script.created_at,
@@ -363,6 +382,11 @@ pub struct GqlExecutionLogEntry {
     pub error: Option<String>,
     pub user_id: Option<String>,
     pub tenant_id: Option<Uuid>,
+    pub source_revision: Option<u32>,
+    pub source_digest: Option<String>,
+    pub policy_digest: Option<String>,
+    pub executor: Option<String>,
+    pub runtime_abi: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -378,6 +402,11 @@ impl From<ExecutionLogEntry> for GqlExecutionLogEntry {
             error: entry.error,
             user_id: entry.user_id,
             tenant_id: entry.tenant_id,
+            source_revision: entry.source_revision,
+            source_digest: entry.source_digest,
+            policy_digest: entry.policy_digest,
+            executor: entry.executor,
+            runtime_abi: entry.runtime_abi,
             created_at: entry.created_at,
         }
     }
@@ -521,6 +550,11 @@ mod tests {
             error: Some("sandbox timeout".to_string()),
             user_id: Some("operator-9".to_string()),
             tenant_id: Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap()),
+            source_revision: Some(9),
+            source_digest: Some(format!("sha256:{}", "c".repeat(64))),
+            policy_digest: Some(format!("sha256:{}", "d".repeat(64))),
+            executor: Some("rhai".to_string()),
+            runtime_abi: Some("rustok:module/runtime@1".to_string()),
             created_at: Utc.with_ymd_and_hms(2026, 6, 19, 13, 30, 0).unwrap(),
         }
     }
@@ -547,6 +581,17 @@ mod tests {
             gql.tenant_id,
             Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap())
         );
+        assert_eq!(gql.source_revision, Some(9));
+        assert_eq!(
+            gql.source_digest.as_deref(),
+            Some("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+        );
+        assert_eq!(
+            gql.policy_digest.as_deref(),
+            Some("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+        );
+        assert_eq!(gql.executor.as_deref(), Some("rhai"));
+        assert_eq!(gql.runtime_abi.as_deref(), Some("rustok:module/runtime@1"));
         assert_eq!(
             gql.created_at,
             Utc.with_ymd_and_hms(2026, 6, 19, 13, 30, 0).unwrap()

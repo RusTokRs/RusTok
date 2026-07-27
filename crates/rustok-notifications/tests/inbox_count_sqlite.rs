@@ -39,13 +39,7 @@ async fn count_tracks_exact_recipient_unread_owner_state() {
     for notification_id in [unread_id, seen_id, read_id, archived_id] {
         seed_unread_notification(&db, notification_id, tenant_id, recipient_id).await;
     }
-    seed_unread_notification(
-        &db,
-        Uuid::from_u128(14),
-        tenant_id,
-        other_recipient_id,
-    )
-    .await;
+    seed_unread_notification(&db, Uuid::from_u128(14), tenant_id, other_recipient_id).await;
     seed_unread_notification(
         &db,
         Uuid::from_u128(15),
@@ -141,13 +135,7 @@ async fn empty_and_foreign_scopes_return_zero_without_an_oracle() {
     insert_tenant(&db, other_tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
     insert_user(&db, other_tenant_id, other_recipient_id).await;
-    seed_unread_notification(
-        &db,
-        Uuid::from_u128(24),
-        tenant_id,
-        recipient_id,
-    )
-    .await;
+    seed_unread_notification(&db, Uuid::from_u128(24), tenant_id, recipient_id).await;
 
     let counts = NotificationInboxUnreadCountService::new(db);
     assert_eq!(

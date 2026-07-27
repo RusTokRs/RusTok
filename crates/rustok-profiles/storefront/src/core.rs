@@ -27,10 +27,7 @@ pub enum ProfilesStorefrontInputError {
 }
 
 pub fn selected_transport_profile(value: Option<&str>) -> ProfilesStorefrontTransportProfile {
-    let normalized = value
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
+    let normalized = value.unwrap_or_default().trim().to_ascii_lowercase();
 
     match normalized.as_str() {
         "" | "native" => ProfilesStorefrontTransportProfile::Native,
@@ -52,8 +49,8 @@ pub fn prepare_follow_command(
     following: bool,
     expected_revision: Option<&str>,
 ) -> Result<SetProfilesStorefrontFollowCommand, ProfilesStorefrontInputError> {
-    let user_id = Uuid::parse_str(user_id.trim())
-        .map_err(|_| ProfilesStorefrontInputError::InvalidUserId)?;
+    let user_id =
+        Uuid::parse_str(user_id.trim()).map_err(|_| ProfilesStorefrontInputError::InvalidUserId)?;
     let expected_revision = expected_revision
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -126,12 +123,9 @@ mod tests {
 
     #[test]
     fn follow_command_binds_uuid_revision_and_unique_idempotency() {
-        let command = prepare_follow_command(
-            "550e8400-e29b-41d4-a716-446655440000",
-            true,
-            Some("42"),
-        )
-        .unwrap();
+        let command =
+            prepare_follow_command("550e8400-e29b-41d4-a716-446655440000", true, Some("42"))
+                .unwrap();
         assert!(command.following);
         assert_eq!(command.expected_revision.as_deref(), Some("42"));
         assert!(
@@ -144,11 +138,7 @@ mod tests {
             Err(ProfilesStorefrontInputError::InvalidUserId)
         );
         assert_eq!(
-            prepare_follow_command(
-                "550e8400-e29b-41d4-a716-446655440000",
-                false,
-                Some("0")
-            ),
+            prepare_follow_command("550e8400-e29b-41d4-a716-446655440000", false, Some("0")),
             Err(ProfilesStorefrontInputError::InvalidRevision)
         );
     }

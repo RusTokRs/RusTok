@@ -190,6 +190,16 @@ const MEDIA_UPLOADED_FIELDS: &[FieldSchema] = &[
     field!("size", "int64"),
 ];
 const MEDIA_DELETED_FIELDS: &[FieldSchema] = &[field!("media_id", "uuid")];
+const TRANSLATION_TARGET_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("owner_slug", "string"),
+    field!("resource_kind", "string"),
+    field!("resource_id", "string"),
+    field!("changed_locale", "string"),
+    field!("resource_revision", "string"),
+    field!("target_revision", "string"),
+    field!("operation", "string"),
+    field!("correlation_id", "string"),
+];
 
 const USER_ACCOUNT_REGISTERED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
 const USER_LOGGED_IN_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
@@ -722,6 +732,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Media asset deleted.",
         fields: MEDIA_DELETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "translation.target.changed",
+        version: 1,
+        description: "An owner translation target changed without including content.",
+        fields: TRANSLATION_TARGET_CHANGED_FIELDS,
     },
     EventSchema {
         event_type: "user.account_registered",

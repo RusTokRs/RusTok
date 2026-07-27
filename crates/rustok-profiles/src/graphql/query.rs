@@ -142,10 +142,7 @@ impl ProfilesQuery {
     }
 }
 
-fn profile_access_audience(
-    ctx: &Context<'_>,
-    tenant_id: Uuid,
-) -> Result<ProfileAccessAudience> {
+fn profile_access_audience(ctx: &Context<'_>, tenant_id: Uuid) -> Result<ProfileAccessAudience> {
     let Some(auth) = ctx.data_opt::<AuthContext>() else {
         return Ok(ProfileAccessAudience::Anonymous);
     };

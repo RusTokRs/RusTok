@@ -24,12 +24,8 @@ use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
 mod entities {
-    pub use rustok_commerce_foundation::entities::{
-        product, product_translation, product_variant,
-    };
-    pub use rustok_pricing_persistence::entities::{
-        price, price_list, price_list_translation,
-    };
+    pub use rustok_commerce_foundation::entities::{product, product_translation, product_variant};
+    pub use rustok_pricing_persistence::entities::{price, price_list, price_list_translation};
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

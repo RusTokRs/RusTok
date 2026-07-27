@@ -51,6 +51,8 @@ rustok-index.workspace = true
 rustok-search.workspace = true
 rustok-taxonomy.workspace = true
 rustok-workflow.workspace = true
+rustok-media.workspace = true
+rustok-translation.workspace = true
 rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 
 [dev-dependencies]

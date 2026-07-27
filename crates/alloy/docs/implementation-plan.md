@@ -40,7 +40,7 @@ Implemented:
 
 Remaining:
 
-- production draft/manual/hook/scheduled execution now uses
+- production draft/manual/hook/scheduled execution uses
   `AlloyDraftRuntime` over `SandboxRuntime`; `ScriptEngine` remains only for
   compile-time CRUD validation and internal unit tests, never production code
   execution;
@@ -63,7 +63,12 @@ Remaining:
   execute the loaded snapshot without a second registry lookup. Idempotency,
   workspace-level command revisions, review, and publication orchestration still
   need owner contracts;
-- marketplace release import/fork needs a complete persisted workflow;
+- published-release import now has durable exact-replay receipts and immutable
+  parent lineage. Registry publication now projects the canonical
+  artifact/evidence and source-lineage contract through the module owner.
+  Production Alloy source resolution and authenticated transports remain open
+  until the importer can materialize the exact digest-pinned Rhai workspace
+  from platform CAS or the selected registry OCI artifact;
 - AI-assisted Rust/WIT authoring must use the isolated build worker;
 - operator draft-review surfaces need canonical transport and audit evidence.
 - persisted workspaces now use bounded canonical JSON with sources, tests,
@@ -81,6 +86,9 @@ Remaining:
   outcomes remain distinct transport errors;
 - untrusted marketplace/source/log/MCP content needs explicit prompt-injection
   and tool-policy isolation.
+- execution history persists and exposes the exact source revision/digest,
+  sandbox policy digest, executor kind, and runtime ABI without persisting
+  source, input, output, or capability results as evidence metadata.
 
 ## FFA/FBA Boundary
 
@@ -172,7 +180,10 @@ Remaining:
   capability grants, rejects entity mutations, and requires a boolean result.
   Durable test-command CAS/idempotency evidence is recorded separately from
   sandbox work and terminal test evidence is linked to that exact revision.
-- Link execution/test evidence to the exact revision.
+- [x] Link execution/test evidence to the exact revision. Production execution
+  rows carry source revision/digest plus sandbox policy digest, executor kind,
+  and runtime ABI; durable test rows already bind their immutable revision and
+  source digest.
 - Define review, changes-requested, approved, rejected, archived, and superseded
   transitions with typed owner errors.
 - Materialize a bounded revisioned workspace from DB/object storage and resolve
@@ -193,8 +204,21 @@ review decision references immutable evidence.
   the owner service; matching platform admission and final release promotion
   remain owner workflows. The package's workspace media type is an immutable admission
   fact and survives runtime resolution.
-- Import an eligible marketplace Rhai release into a new workspace.
-- Preserve parent release/source digest and require a newer semantic version.
+- [x] Persist an eligible published Rhai workspace as a new tenant-scoped draft
+  with its exact parent release on both the current row and immutable source
+  revision. A durable `(tenant_id, idempotency_key)` receipt is created in the
+  same transaction; exact replay returns the original draft, while conflicting
+  replay and duplicate tenant-scoped names fail closed.
+- [ ] Compose the production owner source provider and authenticated
+  GraphQL/HTTP/MCP import adapters. It must consume only the canonical
+  published release projection and digest-pinned CAS/OCI workspace; mutable
+  tags and manifest-only catalog metadata are not source authorities. The
+  owner publication projection is now complete; the remaining provider work is
+  exact workspace materialization, descriptor/lineage mapping, and authenticated
+  transport composition.
+- [x] Preserve parent release/source digest and require a newer semantic
+  version for a fork. Storage prevents imported parent replacement/removal and
+  `ArtifactRelease::fork` rejects a non-incremented version or changed slug.
 - Publish a fork as a new immutable release without changing installed parents.
 
 **Done when:** publish, install, import, edit, test, and republish scenarios

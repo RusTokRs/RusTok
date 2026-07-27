@@ -43,10 +43,9 @@ pub use graphql::{ForumMutation, ForumQuery};
 pub use mentions::*;
 pub use notification_recipient::{
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY,
-    FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE,
-    ForumNotificationRecipientContext, ForumNotificationRecipientContextPort,
-    ForumNotificationRecipientContextRequest, ForumNotificationRecipientContextResolver,
-    SharedForumNotificationRecipientContextPort,
+    FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE, ForumNotificationRecipientContext,
+    ForumNotificationRecipientContextPort, ForumNotificationRecipientContextRequest,
+    ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 pub use services::{
     CategoryService, ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
@@ -57,9 +56,9 @@ pub use services::{
     ForumTopicAudiencePolicyService, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
     ForumTopicReadState, ForumTopicReadStateService, ForumTopicUnreadSummary,
     ForumTopicVisibilityScope, ForumTopicVisibilityService, ForumWidgetContractService,
-    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput,
-    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
-    RevisionService, SetForumCategoryAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
+    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
+    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
+    SetForumCategoryAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
     SetForumTopicAudiencePolicyInput, SubscriptionService, TopicService, UserStatsService,
     VoteService,
 };

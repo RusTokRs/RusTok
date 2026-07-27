@@ -72,6 +72,9 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::ForumReplies,
         Resource::Workflows,
         Resource::WorkflowExecutions,
+        Resource::Translations,
+        Resource::TranslationMemory,
+        Resource::TranslationGlossaries,
         Resource::Navigation,
     ])
 });
@@ -103,6 +106,9 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::ForumReplies,
         Resource::Workflows,
         Resource::WorkflowExecutions,
+        Resource::Translations,
+        Resource::TranslationMemory,
+        Resource::TranslationGlossaries,
         Resource::Navigation,
     ]);
 

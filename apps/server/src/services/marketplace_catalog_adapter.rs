@@ -176,6 +176,7 @@ fn map_catalog_entry(
             published_at: None,
             checksum_sha256: entry.checksum_sha256.clone(),
             signature_present,
+            artifact: None,
         }]
     } else {
         entry
@@ -188,6 +189,7 @@ fn map_catalog_entry(
                 published_at: version.published_at.clone(),
                 checksum_sha256: version.checksum_sha256.clone(),
                 signature_present: version.signature.is_some(),
+                artifact: version.artifact.clone(),
             })
             .collect()
     };

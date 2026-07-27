@@ -9,6 +9,7 @@ use rustok_core::ModuleRegistry;
 use sha2::{Digest, Sha256};
 
 use crate::modules::{CatalogManifestModule, ModulesManifest};
+use crate::services::marketplace_catalog::MarketplaceProviderHealthSnapshot;
 use crate::services::marketplace_catalog::{MarketplaceCatalogProvider, MarketplaceCatalogQuery};
 
 mod base {
@@ -18,7 +19,7 @@ mod base {
 const DEFAULT_REGISTRY_DETAIL_CACHE_MAX_WEIGHT_BYTES: u64 = 4 * 1024 * 1024;
 const DEFAULT_REGISTRY_DETAIL_NEGATIVE_TTL_SECS: u64 = 5;
 const MAX_REGISTRY_DETAIL_CACHE_KEY_BYTES: usize = 4 * 1024;
-const REGISTRY_DETAIL_CACHE_KEY_PREFIX: &str = "registry-module:v1";
+const REGISTRY_DETAIL_CACHE_KEY_PREFIX: &str = "registry-module";
 
 #[derive(Clone)]
 struct CachedRegistryModule {
@@ -84,7 +85,7 @@ pub struct HardenedRegistryMarketplaceProvider {
 }
 
 impl HardenedRegistryMarketplaceProvider {
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Vec<Self> {
         let positive_ttl = Duration::from_secs(positive_env_u64(
             "RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS",
             60,
@@ -100,12 +101,10 @@ impl HardenedRegistryMarketplaceProvider {
             "RUSTOK_MARKETPLACE_REGISTRY_DETAIL_CACHE_MAX_BYTES",
             DEFAULT_REGISTRY_DETAIL_CACHE_MAX_WEIGHT_BYTES,
         );
-        Self::with_inner(
-            base::HardenedRegistryMarketplaceProvider::from_env(),
-            positive_ttl,
-            negative_ttl,
-            maximum_weight,
-        )
+        base::HardenedRegistryMarketplaceProvider::from_env()
+            .into_iter()
+            .map(|inner| Self::with_inner(inner, positive_ttl, negative_ttl, maximum_weight))
+            .collect()
     }
 
     fn with_inner(
@@ -133,8 +132,12 @@ impl HardenedRegistryMarketplaceProvider {
 
 #[async_trait]
 impl MarketplaceCatalogProvider for HardenedRegistryMarketplaceProvider {
-    fn provider_key(&self) -> &'static str {
+    fn provider_key(&self) -> &str {
         self.inner.provider_key()
+    }
+
+    fn health_snapshot(&self) -> MarketplaceProviderHealthSnapshot {
+        self.inner.provider_health()
     }
 
     async fn list_modules(
@@ -300,7 +303,7 @@ mod wrapper_tests {
     #[test]
     fn detail_cache_key_is_bounded_and_hashed() {
         let key = registry_module_cache_key("private-module").unwrap();
-        assert!(key.starts_with("registry-module:v1:"));
+        assert!(key.starts_with("registry-module:"));
         assert_eq!(key.len(), REGISTRY_DETAIL_CACHE_KEY_PREFIX.len() + 1 + 64);
         assert!(!key.contains("private-module"));
         assert!(registry_module_cache_key("").is_err());

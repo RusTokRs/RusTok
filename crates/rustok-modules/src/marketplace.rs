@@ -9,6 +9,8 @@ use crate::{ModuleGovernanceLifecycleSnapshot, ModuleSettingSpec};
 
 pub const MODULE_MARKETPLACE_DEFAULT_LIMIT: u32 = 100;
 pub const MODULE_MARKETPLACE_MAX_LIMIT: u32 = 100;
+pub const MODULE_REGISTRY_ID_MAX_BYTES: usize = 96;
+const MODULE_RELEASE_REFERENCE_MAX_BYTES: usize = 2_048;
 
 /// Transport-neutral marketplace query accepted by the host-composed catalog
 /// port. Filtering belongs to the catalog boundary, not to UI adapters.
@@ -66,6 +68,171 @@ pub fn normalize_module_marketplace_slug(value: &str) -> Option<String> {
     Some(normalized)
 }
 
+/// Normalizes the stable logical identity of a federated module registry.
+/// Endpoint URLs are deliberately excluded: moving a registry must not change
+/// the identity of its published releases.
+pub fn normalize_module_registry_id(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty()
+        || normalized.len() > MODULE_REGISTRY_ID_MAX_BYTES
+        || !normalized.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
+        })
+        || !normalized
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        || !normalized
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric)
+    {
+        return None;
+    }
+    Some(normalized)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleMarketplaceArtifactOrigin {
+    PlatformBuilt,
+    ExternalPrebuilt,
+    AlloyAuthored,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleMarketplaceRuntimeKind {
+    Rhai,
+    WasmComponent,
+    Sidecar,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleMarketplaceEvidenceKind {
+    AuthorSignature,
+    BuildServiceAttestation,
+    Sbom,
+    Provenance,
+    PlatformAdmission,
+    MarketplaceApproval,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleMarketplaceEvidenceReference {
+    pub kind: ModuleMarketplaceEvidenceKind,
+    pub reference: String,
+    pub digest: String,
+}
+
+/// Immutable installable identity for one artifact marketplace release.
+/// Human metadata and source-host URLs cannot substitute for these facts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleMarketplaceArtifactRelease {
+    pub registry_id: String,
+    pub repository: String,
+    pub origin: ModuleMarketplaceArtifactOrigin,
+    pub runtime_kind: ModuleMarketplaceRuntimeKind,
+    pub oci_manifest_digest: String,
+    pub payload_digest: String,
+    pub descriptor_digest: String,
+    pub source_reference: String,
+    pub source_digest: String,
+    pub evidence: Vec<ModuleMarketplaceEvidenceReference>,
+}
+
+impl ModuleMarketplaceArtifactRelease {
+    pub fn validate(&self) -> Result<(), ModuleMarketplaceArtifactReleaseError> {
+        if normalize_module_registry_id(&self.registry_id).as_deref()
+            != Some(self.registry_id.as_str())
+        {
+            return Err(ModuleMarketplaceArtifactReleaseError::InvalidRegistryId);
+        }
+        if !valid_release_reference(&self.repository)
+            || !valid_release_reference(&self.source_reference)
+        {
+            return Err(ModuleMarketplaceArtifactReleaseError::InvalidReference);
+        }
+        for digest in [
+            &self.oci_manifest_digest,
+            &self.payload_digest,
+            &self.descriptor_digest,
+            &self.source_digest,
+        ] {
+            if !canonical_sha256_digest(digest) {
+                return Err(ModuleMarketplaceArtifactReleaseError::InvalidDigest);
+            }
+        }
+
+        let mut kinds = std::collections::BTreeSet::new();
+        for evidence in &self.evidence {
+            if !kinds.insert(evidence.kind) {
+                return Err(ModuleMarketplaceArtifactReleaseError::DuplicateEvidence);
+            }
+            if !valid_release_reference(&evidence.reference)
+                || !canonical_sha256_digest(&evidence.digest)
+            {
+                return Err(ModuleMarketplaceArtifactReleaseError::InvalidEvidence);
+            }
+        }
+        for required in [
+            ModuleMarketplaceEvidenceKind::AuthorSignature,
+            ModuleMarketplaceEvidenceKind::Sbom,
+            ModuleMarketplaceEvidenceKind::Provenance,
+            ModuleMarketplaceEvidenceKind::PlatformAdmission,
+            ModuleMarketplaceEvidenceKind::MarketplaceApproval,
+        ] {
+            if !kinds.contains(&required) {
+                return Err(ModuleMarketplaceArtifactReleaseError::MissingEvidence(
+                    required,
+                ));
+            }
+        }
+        if self.origin == ModuleMarketplaceArtifactOrigin::PlatformBuilt
+            && !kinds.contains(&ModuleMarketplaceEvidenceKind::BuildServiceAttestation)
+        {
+            return Err(ModuleMarketplaceArtifactReleaseError::MissingEvidence(
+                ModuleMarketplaceEvidenceKind::BuildServiceAttestation,
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ModuleMarketplaceArtifactReleaseError {
+    #[error("module registry identity is invalid")]
+    InvalidRegistryId,
+    #[error("module artifact release reference is invalid")]
+    InvalidReference,
+    #[error("module artifact release digest is invalid")]
+    InvalidDigest,
+    #[error("module artifact release evidence is invalid")]
+    InvalidEvidence,
+    #[error("module artifact release evidence kind is duplicated")]
+    DuplicateEvidence,
+    #[error("module artifact release is missing {0:?} evidence")]
+    MissingEvidence(ModuleMarketplaceEvidenceKind),
+}
+
+fn valid_release_reference(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MODULE_RELEASE_REFERENCE_MAX_BYTES
+        && value
+            .chars()
+            .all(|character| !character.is_control() && !character.is_whitespace())
+}
+
+fn canonical_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleMarketplaceVersion {
     pub version: String,
@@ -74,6 +241,8 @@ pub struct ModuleMarketplaceVersion {
     pub published_at: Option<String>,
     pub checksum_sha256: Option<String>,
     pub signature_present: bool,
+    #[serde(default)]
+    pub artifact: Option<ModuleMarketplaceArtifactRelease>,
 }
 
 /// Complete marketplace projection consumed identically by GraphQL and native
@@ -158,6 +327,61 @@ mod tests {
         assert_eq!(
             MODULE_MARKETPLACE_DEFAULT_LIMIT,
             MODULE_MARKETPLACE_MAX_LIMIT
+        );
+    }
+
+    fn evidence(
+        kind: ModuleMarketplaceEvidenceKind,
+        marker: char,
+    ) -> ModuleMarketplaceEvidenceReference {
+        ModuleMarketplaceEvidenceReference {
+            kind,
+            reference: format!("oci://registry.example/evidence/{kind:?}"),
+            digest: format!("sha256:{}", marker.to_string().repeat(64)),
+        }
+    }
+
+    fn artifact_release() -> ModuleMarketplaceArtifactRelease {
+        ModuleMarketplaceArtifactRelease {
+            registry_id: "community.eu".to_string(),
+            repository: "modules/sample".to_string(),
+            origin: ModuleMarketplaceArtifactOrigin::ExternalPrebuilt,
+            runtime_kind: ModuleMarketplaceRuntimeKind::WasmComponent,
+            oci_manifest_digest: format!("sha256:{}", "a".repeat(64)),
+            payload_digest: format!("sha256:{}", "b".repeat(64)),
+            descriptor_digest: format!("sha256:{}", "c".repeat(64)),
+            source_reference: "https://source.example/sample?rev=exact".to_string(),
+            source_digest: format!("sha256:{}", "d".repeat(64)),
+            evidence: vec![
+                evidence(ModuleMarketplaceEvidenceKind::AuthorSignature, 'e'),
+                evidence(ModuleMarketplaceEvidenceKind::Sbom, 'f'),
+                evidence(ModuleMarketplaceEvidenceKind::Provenance, '1'),
+                evidence(ModuleMarketplaceEvidenceKind::PlatformAdmission, '2'),
+                evidence(ModuleMarketplaceEvidenceKind::MarketplaceApproval, '3'),
+            ],
+        }
+    }
+
+    #[test]
+    fn artifact_release_requires_canonical_identity_and_evidence() {
+        artifact_release().validate().expect("artifact release");
+
+        let mut invalid = artifact_release();
+        invalid.registry_id = "endpoint/derived".to_string();
+        assert_eq!(
+            invalid.validate(),
+            Err(ModuleMarketplaceArtifactReleaseError::InvalidRegistryId)
+        );
+
+        let mut missing = artifact_release();
+        missing
+            .evidence
+            .retain(|value| value.kind != ModuleMarketplaceEvidenceKind::Sbom);
+        assert_eq!(
+            missing.validate(),
+            Err(ModuleMarketplaceArtifactReleaseError::MissingEvidence(
+                ModuleMarketplaceEvidenceKind::Sbom
+            ))
         );
     }
 

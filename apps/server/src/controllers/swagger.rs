@@ -93,6 +93,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryCatalogResponse,
             crate::services::marketplace_catalog::RegistryCatalogModule,
             crate::services::marketplace_catalog::RegistryCatalogVersion,
+            crate::services::marketplace_catalog::RegistryCatalogArtifactRelease,
+            crate::services::marketplace_catalog::RegistryCatalogEvidenceReference,
             crate::services::marketplace_catalog::RegistryMutationResponse,
             crate::services::marketplace_catalog::RegistryPublishRequest,
             crate::services::marketplace_catalog::RegistryPublishDecisionRequest,

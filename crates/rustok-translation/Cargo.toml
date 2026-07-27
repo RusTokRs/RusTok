@@ -1,0 +1,21 @@
+[package]
+name = "rustok-translation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Owner-safe translation workflow and inventory control plane for RusToK"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+rustok-translation-targets.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

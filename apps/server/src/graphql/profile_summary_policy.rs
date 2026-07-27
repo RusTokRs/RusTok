@@ -152,9 +152,7 @@ mod tests {
             .extension(ProfileSummaryAudiencePolicy)
             .finish();
         let response = schema
-            .execute(
-                Request::new("{ profileAudience }").data(auth_context("password", None)),
-            )
+            .execute(Request::new("{ profileAudience }").data(auth_context("password", None)))
             .await;
 
         assert!(response.errors.is_empty());

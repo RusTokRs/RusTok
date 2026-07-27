@@ -35,9 +35,13 @@ plane.
 - `TranslationPatchRequest`
 - `TranslationApplicationReceipt`
 
+Executable positive and negative reference-provider fixtures live in
+`tests/reference_provider_conformance.rs`. They cover exact-locale discovery,
+validation, revision-safe apply, idempotent replay, stale revisions, and
+same-key/different-payload rejection.
+
 ## Docs
 
 - [Contract documentation](./docs/README.md)
 - [Translation implementation plan](../../docs/modules/translation-implementation-plan.md)
 - [Platform documentation map](../../docs/index.md)
-

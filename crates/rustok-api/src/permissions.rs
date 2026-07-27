@@ -57,6 +57,9 @@ pub enum Resource {
     AiMultimodalTasks,
     Workflows,
     WorkflowExecutions,
+    Translations,
+    TranslationMemory,
+    TranslationGlossaries,
 }
 
 impl fmt::Display for Resource {
@@ -113,6 +116,9 @@ impl fmt::Display for Resource {
             Self::AiMultimodalTasks => "ai:tasks:multimodal",
             Self::Workflows => "workflows",
             Self::WorkflowExecutions => "workflow_executions",
+            Self::Translations => "translations",
+            Self::TranslationMemory => "translation_memory",
+            Self::TranslationGlossaries => "translation_glossaries",
         };
         write!(f, "{value}")
     }
@@ -174,6 +180,9 @@ impl FromStr for Resource {
             "ai:tasks:multimodal" => Ok(Self::AiMultimodalTasks),
             "workflows" => Ok(Self::Workflows),
             "workflow_executions" => Ok(Self::WorkflowExecutions),
+            "translations" => Ok(Self::Translations),
+            "translation_memory" => Ok(Self::TranslationMemory),
+            "translation_glossaries" => Ok(Self::TranslationGlossaries),
             _ => Err(format!("Unknown resource: {value}")),
         }
     }

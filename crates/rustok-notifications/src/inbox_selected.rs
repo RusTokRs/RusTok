@@ -9,8 +9,7 @@ use crate::inbox_state::{
     NotificationInboxStateDecision, NotificationInboxStateRequest, NotificationInboxStateService,
 };
 
-pub const MAX_NOTIFICATION_INBOX_SELECTED_IDS: usize =
-    MAX_NOTIFICATION_INBOX_PAGE_SIZE as usize;
+pub const MAX_NOTIFICATION_INBOX_SELECTED_IDS: usize = MAX_NOTIFICATION_INBOX_PAGE_SIZE as usize;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

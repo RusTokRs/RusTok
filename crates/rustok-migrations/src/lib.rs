@@ -191,6 +191,14 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
         slug: "workflow",
         source: &rustok_workflow::WorkflowModule,
     },
+    ModuleMigrationSource {
+        slug: "media",
+        source: &rustok_media::MediaModule,
+    },
+    ModuleMigrationSource {
+        slug: "translation",
+        source: &rustok_translation::TranslationModule,
+    },
 ];
 
 fn module_migration_sources() -> &'static [ModuleMigrationSource] {
@@ -321,6 +329,8 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_search::migrations::migrations());
         all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());
+        all.extend(rustok_media::migrations::migrations());
+        all.extend(rustok_translation::migrations::migrations());
         all.extend(rustok_iggy_connector::migrations::migrations());
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,

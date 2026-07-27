@@ -99,10 +99,7 @@ impl SocialGraphCommandPort for SocialGraphService {
     ) -> Result<relation::Model, PortError> {
         let tenant_id = parse_tenant_id(&context)?;
         let timer = SocialGraphCommandTimer::start(
-            SocialGraphCommandOperation::from_relation_state(
-                command.relation_kind,
-                command.active,
-            ),
+            SocialGraphCommandOperation::from_relation_state(command.relation_kind, command.active),
             tenant_id,
             command.source_user_id,
             command.target_user_id,

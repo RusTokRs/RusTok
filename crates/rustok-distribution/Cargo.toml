@@ -39,6 +39,7 @@ mod-taxonomy = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy = ["dep:alloy"]
 mod-flex = []
 mod-media = ["dep:rustok-media"]
+mod-translation = ["dep:rustok-translation"]
 mod-seo = ["dep:rustok-seo", "mod-content"]
 mod-workflow = ["dep:rustok-workflow"]
 
@@ -88,6 +89,7 @@ rustok-navigation = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
+rustok-translation = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
 alloy = { workspace = true, optional = true }

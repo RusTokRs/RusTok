@@ -238,6 +238,16 @@ pub enum DomainEvent {
     MediaDeleted {
         media_id: Uuid,
     },
+    TranslationTargetChanged {
+        owner_slug: String,
+        resource_kind: String,
+        resource_id: String,
+        changed_locale: String,
+        resource_revision: String,
+        target_revision: String,
+        operation: String,
+        correlation_id: String,
+    },
 
     // ════════════════════════════════════════════════════════════════
     // USER EVENTS
@@ -933,6 +943,7 @@ impl DomainEvent {
 
             Self::MediaUploaded { .. } => "media.uploaded",
             Self::MediaDeleted { .. } => "media.deleted",
+            Self::TranslationTargetChanged { .. } => "translation.target.changed",
 
             Self::UserAccountRegistered { .. } => "user.account_registered",
             Self::UserLoggedIn { .. } => "user.logged_in",
@@ -1129,6 +1140,7 @@ impl DomainEvent {
             // Media events (v1)
             Self::MediaUploaded { .. } => 1,
             Self::MediaDeleted { .. } => 1,
+            Self::TranslationTargetChanged { .. } => 1,
 
             // User events (v1)
             Self::UserAccountRegistered { .. } => 1,
@@ -1434,6 +1446,31 @@ impl ValidateEvent for DomainEvent {
             }
             Self::MediaDeleted { media_id } => {
                 validators::validate_not_nil_uuid("media_id", media_id)?;
+                Ok(())
+            }
+            Self::TranslationTargetChanged {
+                owner_slug,
+                resource_kind,
+                resource_id,
+                changed_locale,
+                resource_revision,
+                target_revision,
+                operation,
+                correlation_id,
+            } => {
+                for (field, value, max) in [
+                    ("owner_slug", owner_slug, 191),
+                    ("resource_kind", resource_kind, 191),
+                    ("resource_id", resource_id, 191),
+                    ("changed_locale", changed_locale, 35),
+                    ("resource_revision", resource_revision, 256),
+                    ("target_revision", target_revision, 256),
+                    ("operation", operation, 64),
+                    ("correlation_id", correlation_id, 191),
+                ] {
+                    validators::validate_not_empty(field, value)?;
+                    validators::validate_max_length(field, value, max)?;
+                }
                 Ok(())
             }
 

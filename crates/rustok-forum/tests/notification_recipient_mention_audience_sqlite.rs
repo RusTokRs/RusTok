@@ -148,33 +148,12 @@ async fn mention_description_and_audience_use_the_exact_recipient_for_topics_and
         .await
         .expect("topic audience should narrow to customers");
 
-    let topic_customer_event = seed_user_mention_event(
-        &db,
-        tenant_id,
-        author_id,
-        "topic",
-        topic.id,
-        customer_id,
-    )
-    .await;
-    let reply_customer_event = seed_user_mention_event(
-        &db,
-        tenant_id,
-        author_id,
-        "reply",
-        reply.id,
-        customer_id,
-    )
-    .await;
-    let topic_manager_event = seed_user_mention_event(
-        &db,
-        tenant_id,
-        author_id,
-        "topic",
-        topic.id,
-        manager_id,
-    )
-    .await;
+    let topic_customer_event =
+        seed_user_mention_event(&db, tenant_id, author_id, "topic", topic.id, customer_id).await;
+    let reply_customer_event =
+        seed_user_mention_event(&db, tenant_id, author_id, "reply", reply.id, customer_id).await;
+    let topic_manager_event =
+        seed_user_mention_event(&db, tenant_id, author_id, "topic", topic.id, manager_id).await;
 
     let registry = ModuleRegistry::new()
         .register(NotificationsModule)

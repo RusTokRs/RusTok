@@ -8,7 +8,11 @@ use uuid::Uuid;
 
 mod support;
 
-fn profile_input(handle: &str, display_name: &str, visibility: ProfileVisibility) -> UpsertProfileInput {
+fn profile_input(
+    handle: &str,
+    display_name: &str,
+    visibility: ProfileVisibility,
+) -> UpsertProfileInput {
     UpsertProfileInput {
         handle: handle.to_string(),
         display_name: display_name.to_string(),

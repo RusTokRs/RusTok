@@ -57,7 +57,14 @@ async fn selected_actions_delegate_to_exact_state_owner_without_oracles() {
     let selected = vec![unread_id, seen_id, read_id, archived_id, foreign_id];
 
     assert_eq!(
-        apply(&service, tenant_id, recipient_id, NotificationInboxSelectedAction::MarkSeen, selected.clone()).await,
+        apply(
+            &service,
+            tenant_id,
+            recipient_id,
+            NotificationInboxSelectedAction::MarkSeen,
+            selected.clone()
+        )
+        .await,
         NotificationInboxSelectedStateResult {
             requested: 5,
             changed: 1,
@@ -65,7 +72,14 @@ async fn selected_actions_delegate_to_exact_state_owner_without_oracles() {
         }
     );
     assert_eq!(
-        apply(&service, tenant_id, recipient_id, NotificationInboxSelectedAction::MarkRead, selected.clone()).await,
+        apply(
+            &service,
+            tenant_id,
+            recipient_id,
+            NotificationInboxSelectedAction::MarkRead,
+            selected.clone()
+        )
+        .await,
         NotificationInboxSelectedStateResult {
             requested: 5,
             changed: 2,
@@ -73,7 +87,14 @@ async fn selected_actions_delegate_to_exact_state_owner_without_oracles() {
         }
     );
     assert_eq!(
-        apply(&service, tenant_id, recipient_id, NotificationInboxSelectedAction::MarkUnread, selected.clone()).await,
+        apply(
+            &service,
+            tenant_id,
+            recipient_id,
+            NotificationInboxSelectedAction::MarkUnread,
+            selected.clone()
+        )
+        .await,
         NotificationInboxSelectedStateResult {
             requested: 5,
             changed: 3,
@@ -81,7 +102,14 @@ async fn selected_actions_delegate_to_exact_state_owner_without_oracles() {
         }
     );
     assert_eq!(
-        apply(&service, tenant_id, recipient_id, NotificationInboxSelectedAction::Archive, selected).await,
+        apply(
+            &service,
+            tenant_id,
+            recipient_id,
+            NotificationInboxSelectedAction::Archive,
+            selected
+        )
+        .await,
         NotificationInboxSelectedStateResult {
             requested: 5,
             changed: 3,

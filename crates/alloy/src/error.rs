@@ -41,6 +41,15 @@ pub enum ScriptError {
     #[error("Invalid Alloy workspace: {0}")]
     InvalidWorkspace(String),
 
+    #[error("Invalid Alloy release lineage: {0}")]
+    InvalidLineage(String),
+
+    #[error("Alloy published release import idempotency key was reused")]
+    ImportIdempotencyConflict,
+
+    #[error("an Alloy draft with the requested tenant-scoped name already exists")]
+    ImportDraftNameConflict,
+
     #[error(transparent)]
     Review(#[from] crate::model::ReviewError),
 

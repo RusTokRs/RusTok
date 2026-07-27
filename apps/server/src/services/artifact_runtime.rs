@@ -10,10 +10,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver, ArtifactRuntime,
-    ArtifactRuntimeLifecycleExecutor, ModuleControlPlane, ModuleEffectivePolicy,
-    ResolvingArtifactCapabilityBroker, SeaOrmArtifactSecretHandlePolicy,
-    SharedArtifactBindingExecutor,
+    ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver,
+    ArtifactMcpCapabilityBrokerResolver, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
+    ModuleControlPlane, ModuleEffectivePolicy, ResolvingArtifactCapabilityBroker,
+    SeaOrmArtifactSecretHandlePolicy, SharedArtifactBindingExecutor,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, RhaiCapabilityBridge, SandboxRuntime};
 use rustok_storage::StorageRuntime;
@@ -62,6 +62,20 @@ pub fn compose_artifact_binding_executor(
     })?;
     let secret_capability = CapabilityName::new("platform.secrets")
         .map_err(|error| Error::Message(format!("invalid artifact secret capability: {error}")))?;
+    let mcp_capability = CapabilityName::new("platform.mcp")
+        .map_err(|error| Error::Message(format!("invalid artifact MCP capability: {error}")))?;
+    let registry = ctx
+        .shared_get::<ModuleRegistry>()
+        .ok_or_else(|| Error::Message("module registry is not initialized".to_string()))?;
+    let mcp_audit = ctx
+        .shared_get::<Arc<crate::services::mcp_runtime::DbBackedMcpRuntimeBridge>>()
+        .ok_or_else(|| {
+            Error::Message("artifact runtime requires initialized MCP audit owner".to_string())
+        })?;
+    let mcp_invoker = crate::services::artifact_mcp::ServerArtifactMcpInvoker::local_registry(
+        registry.clone(),
+        mcp_audit,
+    );
     let control_plane = ModuleControlPlane::new(ctx.db_clone());
     let secret_policy = SeaOrmArtifactSecretHandlePolicy::new(ctx.db_clone());
     let resolver = ArtifactCapabilityBrokerResolverRouter::new()
@@ -79,6 +93,15 @@ pub fn compose_artifact_binding_executor(
             router.route(
                 secret_capability,
                 Arc::new(control_plane.artifact_secret_capability(secret_policy)),
+            )
+        })
+        .and_then(|router| {
+            router.route(
+                mcp_capability,
+                Arc::new(ArtifactMcpCapabilityBrokerResolver::new(
+                    ctx.db_clone(),
+                    mcp_invoker,
+                )),
             )
         })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))?;
@@ -99,9 +122,6 @@ pub fn compose_artifact_binding_executor(
     )
     .with_observer(Arc::new(control_plane.artifact_execution_audit()));
     let runtime = ArtifactRuntime::new(control_plane.artifact_blob_store(storage), sandbox);
-    let registry = ctx
-        .shared_get::<ModuleRegistry>()
-        .ok_or_else(|| Error::Message("module registry is not initialized".to_string()))?;
     Ok(Arc::new(ArtifactRuntimeLifecycleExecutor::new(
         runtime,
         control_plane.installation(),

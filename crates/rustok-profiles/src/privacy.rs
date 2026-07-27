@@ -153,12 +153,7 @@ impl ProfilePrivacyService {
         let mut decisions = recipient_ids
             .iter()
             .copied()
-            .map(|recipient_id| {
-                (
-                    recipient_id,
-                    ProfilePrivacyDecision::RecipientUnavailable,
-                )
-            })
+            .map(|recipient_id| (recipient_id, ProfilePrivacyDecision::RecipientUnavailable))
             .collect::<HashMap<_, _>>();
         if decisions.is_empty() {
             return Ok(decisions);
@@ -365,10 +360,7 @@ mod tests {
     #[test]
     fn owner_can_read_active_private_or_followers_only_profile() {
         let recipient_id = Uuid::new_v4();
-        for visibility in [
-            ProfileVisibility::FollowersOnly,
-            ProfileVisibility::Private,
-        ] {
+        for visibility in [ProfileVisibility::FollowersOnly, ProfileVisibility::Private] {
             assert_eq!(
                 evaluate_profile_access(
                     recipient_id,
@@ -405,10 +397,7 @@ mod tests {
         let unavailable_id = Uuid::new_v4();
         let mut decisions = HashMap::from([
             (followed_id, ProfilePrivacyDecision::Restricted),
-            (
-                unavailable_id,
-                ProfilePrivacyDecision::RecipientUnavailable,
-            ),
+            (unavailable_id, ProfilePrivacyDecision::RecipientUnavailable),
         ]);
 
         apply_followed_profile_access(&mut decisions, &[followed_id, unavailable_id]);

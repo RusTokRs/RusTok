@@ -156,9 +156,7 @@ fn validate_recipient_context(
         ));
     }
     let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
-        ForumError::Validation(
-            "Forum notification recipient context actor is invalid".to_string(),
-        )
+        ForumError::Validation("Forum notification recipient context actor is invalid".to_string())
     })?;
     if actor_id != recipient_id {
         return Err(ForumError::Validation(
@@ -169,11 +167,7 @@ fn validate_recipient_context(
     Ok(())
 }
 
-fn validate_context_tenant(
-    context: &PortContext,
-    tenant_id: Uuid,
-    label: &str,
-) -> ForumResult<()> {
+fn validate_context_tenant(context: &PortContext, tenant_id: Uuid, label: &str) -> ForumResult<()> {
     let context_tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         ForumError::Validation(format!(
             "Forum notification recipient {label} context tenant is invalid"

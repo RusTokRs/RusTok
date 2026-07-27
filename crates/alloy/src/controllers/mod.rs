@@ -73,10 +73,21 @@ fn script_error(error: ScriptError) -> HttpError {
             "alloy_script_revision_conflict",
             format!("Script revision conflict: expected version {expected}"),
         ),
+        ScriptError::ImportIdempotencyConflict => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_import_idempotency_conflict",
+            "Alloy import idempotency key was reused for a different release command",
+        ),
+        ScriptError::ImportDraftNameConflict => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_import_draft_name_conflict",
+            "An Alloy draft with the requested tenant-scoped name already exists",
+        ),
         ScriptError::Compilation(message)
         | ScriptError::InvalidTrigger(message)
         | ScriptError::InvalidStatus(message)
-        | ScriptError::InvalidWorkspace(message) => {
+        | ScriptError::InvalidWorkspace(message)
+        | ScriptError::InvalidLineage(message) => {
             HttpError::bad_request("invalid_alloy_script", message)
         }
         ScriptError::Review(crate::ReviewError::IdempotencyConflict) => HttpError::new(

@@ -62,8 +62,8 @@ impl MediaPublicImageService {
         media_id: Uuid,
         checksum_sha256: &str,
     ) -> Result<MediaPublicImageBody, PortError> {
-        let checksum_sha256 = normalize_checksum(checksum_sha256)
-            .ok_or_else(public_image_not_found)?;
+        let checksum_sha256 =
+            normalize_checksum(checksum_sha256).ok_or_else(public_image_not_found)?;
         let (_, blob) = self.active_asset_blob(tenant_id, media_id).await?;
         if !blob.mime_type.starts_with("image/")
             || !blob.checksum_sha256.eq_ignore_ascii_case(&checksum_sha256)
@@ -180,19 +180,20 @@ impl MediaPublicImageReadPort for MediaPublicImageService {
         let (asset, blob) = self.active_asset_blob(tenant_id, media_id).await?;
         let checksum_sha256 = blob.checksum_sha256.clone();
         let asset = self.media_item(asset, blob);
-        let descriptor = MediaImageDescriptor::from_media_item(&asset, alt).and_then(|descriptor| {
-            match descriptor.public_url_policy() {
-                MediaImagePublicUrlPolicy::DirectPublic => Some(descriptor),
-                MediaImagePublicUrlPolicy::ProxyRequired => MediaImageDescriptor::from_parts(
-                    public_image_path(media_id, &checksum_sha256),
-                    descriptor.alt,
-                    descriptor.width,
-                    descriptor.height,
-                    descriptor.mime_type,
-                ),
-                MediaImagePublicUrlPolicy::NotAddressable => None,
-            }
-        });
+        let descriptor =
+            MediaImageDescriptor::from_media_item(&asset, alt).and_then(|descriptor| {
+                match descriptor.public_url_policy() {
+                    MediaImagePublicUrlPolicy::DirectPublic => Some(descriptor),
+                    MediaImagePublicUrlPolicy::ProxyRequired => MediaImageDescriptor::from_parts(
+                        public_image_path(media_id, &checksum_sha256),
+                        descriptor.alt,
+                        descriptor.width,
+                        descriptor.height,
+                        descriptor.mime_type,
+                    ),
+                    MediaImagePublicUrlPolicy::NotAddressable => None,
+                }
+            });
 
         Ok(MediaPublicImageAsset { asset, descriptor })
     }

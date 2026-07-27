@@ -264,8 +264,14 @@ storage runtime.
 
 Base media tables:
 
-- `media`
+- `media_assets`
 - `media_translations`
+- `media_translation_changes`
+
+`media_translations` stores exact normalized locale rows and owner-local
+optimistic concurrency revisions. `media_translation_changes` is an append-only,
+tenant-scoped cursor log used to repair translation inventory projections; the
+same owner transaction also emits a content-free target-change event.
 
 Storage backend configuration lives not in per-file SQL contract, but in
 typed runtime settings.

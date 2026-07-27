@@ -54,22 +54,18 @@ mod rustok_fulfillment_shim {
     ) {
         let (owner_code, owner_kind, owner_retryable) = match error {
             FulfillmentError::Validation(_) => ("fulfillment.validation", "validation", false),
-            FulfillmentError::ShippingOptionNotFound(_) => (
-                "fulfillment.shipping_option_not_found",
-                "not_found",
-                false,
-            ),
+            FulfillmentError::ShippingOptionNotFound(_) => {
+                ("fulfillment.shipping_option_not_found", "not_found", false)
+            }
             FulfillmentError::FulfillmentNotFound(_) => {
                 ("fulfillment.fulfillment_not_found", "not_found", false)
             }
             FulfillmentError::InvalidTransition { .. } => {
                 ("fulfillment.invalid_transition", "conflict", false)
             }
-            FulfillmentError::Database(_) => (
-                "fulfillment.database_unavailable",
-                "unavailable",
-                true,
-            ),
+            FulfillmentError::Database(_) => {
+                ("fulfillment.database_unavailable", "unavailable", true)
+            }
         };
 
         match error {
@@ -106,10 +102,10 @@ mod rustok_fulfillment_shim {
 }
 
 mod rustok_pricing_shim {
+    pub(crate) use super::super::cart::contextual_pricing_read_port as in_process_pricing_read_port;
     pub use ::rustok_pricing::{
         PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest, ResolvedPrice,
     };
-    pub(crate) use super::super::cart::contextual_pricing_read_port as in_process_pricing_read_port;
 }
 
 use self::rustok_fulfillment_shim as rustok_fulfillment;

@@ -7,7 +7,11 @@ policy, runtime binding, audit hooks, Alloy scaffold review/apply, MCP
 management contracts, GraphQL, REST DTOs, and owner-owned Next/Leptos admin
 surfaces. `apps/server` supplies persistence, authentication/RBAC extraction,
 and composition; it must not recreate MCP DTOs or workflows. The current
-protocol surface is stdio only.
+protocol surface includes stdio plus authenticated HTTP JSON/SSE transport.
+The owner crate also exposes one transport-neutral, read-only registry-tool
+invoker. The server uses it for both remote transport and the admitted-artifact
+`platform.mcp` route, so tool authorization is not reimplemented by either
+host path.
 
 ## FFA/FBA status
 
@@ -38,6 +42,13 @@ protocol surface is stdio only.
    product consumer, permission/policy model, audit semantics, and rollout
    evidence exist. Done when no capability bypasses the management boundary or
    becomes an AI-provider responsibility.
+4. **Preserve the artifact capability boundary through worker isolation.**
+   The production host maps only the stable `rustok` alias to the owner-defined
+   registry tool surface, derives a service identity from the exact admitted
+   artifact, applies `McpAccessContext`, and requires durable redacted audit
+   before invocation. An isolated sandbox worker must return capability calls
+   to this host adapter; it must never receive an MCP endpoint, token,
+   credential, database handle, or network client.
 
 ## Verification
 

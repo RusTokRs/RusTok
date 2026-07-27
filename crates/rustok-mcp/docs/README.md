@@ -15,6 +15,9 @@ spec or turning into a provider/model host.
 - MCP server adapter over `rmcp`;
 - typed tools, `McpToolResponse`, runtime binding and access policy contracts;
 - session-start access resolution, allow/deny audit and introspection surface;
+- transport-neutral invocation of the owner-defined read-only registry tools,
+  reused by authenticated remote transport and admitted artifact capability
+  composition;
 - Alloy-related MCP tools and scaffold draft review/apply boundary;
 - MCP-module-owned admin UI for reviewing Alloy drafts, reading MCP audit and read-side
   clients/policies/token previews: Next package
@@ -35,6 +38,11 @@ spec or turning into a provider/model host.
 - HTTP handlers in `apps/server` import MCP DTOs and actor parsing from `rustok-mcp`
   instead of defining package-local REST contracts;
 - Alloy connects as a capability via runtime state, not as a separate MCP transport stack.
+- admitted artifacts can call only the host-configured `rustok` server alias.
+  The server derives their service identity from exact installation scope,
+  applies the MCP owner policy, persists redacted audit evidence before the
+  call, and returns only the JSON tool envelope. Artifact input cannot select
+  transport, endpoint, token, credentials, or discovery.
 - Alloy script tools use the owner-defined canonical workspace representation.
   Update, delete, and manual-run commands carry `expected_version`;
   execution is pinned to the loaded immutable revision and deletion delegates

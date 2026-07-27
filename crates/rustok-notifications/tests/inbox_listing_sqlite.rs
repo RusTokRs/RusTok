@@ -187,7 +187,11 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
         .await
         .expect("second sparse inbox page should load");
     assert_eq!(
-        page_two.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+        page_two
+            .items
+            .iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>(),
         vec![Uuid::from_u128(2)]
     );
     assert!(page_two.has_more);
@@ -225,10 +229,7 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
         .chain(page_three.items.iter())
         .map(|item| item.id)
         .collect::<Vec<_>>();
-    assert_eq!(
-        returned,
-        vec![Uuid::from_u128(2), Uuid::from_u128(1)]
-    );
+    assert_eq!(returned, vec![Uuid::from_u128(2), Uuid::from_u128(1)]);
     assert_eq!(page_two.items[0].source, source_slug());
     assert_eq!(page_two.items[0].notification_type, notification_type());
     assert_eq!(page_two.items[0].template_key.as_str(), NOTIFICATION_TYPE);
@@ -277,7 +278,11 @@ async fn sparse_pages_advance_by_raw_rows_and_return_only_currently_authorized_i
         .all(&db)
         .await
         .expect("stored notifications should remain readable");
-    assert!(stored.iter().all(|row| row.state == NotificationState::Unread));
+    assert!(
+        stored
+            .iter()
+            .all(|row| row.state == NotificationState::Unread)
+    );
     assert!(stored.iter().all(|row| row.seen_at.is_none()));
     assert!(stored.iter().all(|row| row.read_at.is_none()));
     assert!(stored.iter().all(|row| row.archived_at.is_none()));
@@ -512,7 +517,10 @@ async fn retryable_policy_and_source_failures_abort_pages_without_mutating_rows(
         .await
         .expect("notification rows should remain readable");
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|row| row.state == NotificationState::Unread));
+    assert!(
+        rows.iter()
+            .all(|row| row.state == NotificationState::Unread)
+    );
     assert!(rows.iter().all(|row| row.seen_at.is_none()));
     assert!(rows.iter().all(|row| row.read_at.is_none()));
     assert!(rows.iter().all(|row| row.archived_at.is_none()));
@@ -559,8 +567,7 @@ async fn seed_notification(
     let seen_at = matches!(state, NotificationState::Seen | NotificationState::Read)
         .then_some(created_at.to_owned());
     let read_at = matches!(state, NotificationState::Read).then_some(created_at.to_owned());
-    let archived_at =
-        matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
+    let archived_at = matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
     notification::ActiveModel {
         id: Set(notification_id),
         tenant_id: Set(tenant_id),

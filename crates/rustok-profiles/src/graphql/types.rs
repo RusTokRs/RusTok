@@ -198,12 +198,9 @@ async fn resolve_public_profile_image(
         .await
     {
         Ok(public_asset) => {
-            if let Err(error) = validate_profile_media_asset(
-                tenant_id,
-                profile_user_id,
-                slot,
-                &public_asset.asset,
-            ) {
+            if let Err(error) =
+                validate_profile_media_asset(tenant_id, profile_user_id, slot, &public_asset.asset)
+            {
                 tracing::warn!(
                     tenant_id = %tenant_id,
                     profile_user_id = %profile_user_id,

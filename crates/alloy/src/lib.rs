@@ -44,21 +44,24 @@ pub use graphql::{AlloyMutation, AlloyQuery};
 pub use integration::{BeforeHookResult, HookExecutor, ScriptableEntity};
 pub use migration::ScriptsMigration;
 pub use model::{
-    AlloyPublicationSmokeEvidence, AlloyReleaseError, AlloyReleaseStageCommand, AlloyWorkspace,
-    EntityProxy, EventType, HttpMethod, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus,
-    Script, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
-    TestRunClaim, TestRunCompletion, TestRunError, TestRunLease, TestRunStatus, WorkspaceError,
-    WorkspaceFile, WorkspaceFileKind, register_entity_proxy,
+    AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
+    AlloyPublicationSmokeEvidence, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
+    AlloyReleaseError, AlloyReleaseStageCommand, AlloyWorkspace, EntityProxy, EventType,
+    HttpMethod, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus, Script, ScriptId,
+    ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim,
+    TestRunCompletion, TestRunError, TestRunLease, TestRunStatus, WorkspaceError, WorkspaceFile,
+    WorkspaceFileKind, register_entity_proxy,
 };
 pub use runner::{
-    AlloyReleaseGovernance, AlloyReleaseGovernanceHandle, ExecutionOutcome, ExecutionResult,
-    HookOutcome, RevisionedReleaseStager, RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,
+    AlloyPublishedRhaiSourceProvider, AlloyReleaseGovernance, AlloyReleaseGovernanceHandle,
+    AlloyReleaseImporter, ExecutionOutcome, ExecutionResult, HookOutcome, RevisionedReleaseStager,
+    RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,
 };
 pub use runtime::{AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime, build_alloy_runtime};
 pub use sandbox_request::{
     ALLOY_DRAFT_RHAI_MEDIA_TYPE, AlloyDraftBindingError, AlloyDraftEntitySnapshot, AlloyDraftInput,
     AlloyDraftOutput, AlloyDraftRequestBuilder, AlloyDraftRequestError, AlloyDraftRuntime,
-    AlloyDraftScopeExtension,
+    AlloyDraftScopeExtension, AlloyExecutionEvidence,
 };
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};

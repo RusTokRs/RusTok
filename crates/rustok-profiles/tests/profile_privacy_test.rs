@@ -121,11 +121,7 @@ async fn authenticated_visibility_requires_a_non_anonymous_audience() {
     let service = ProfilePrivacyService::new(db);
     assert_eq!(
         service
-            .evaluate_access(
-                tenant_id,
-                recipient_id,
-                ProfileAccessAudience::Anonymous,
-            )
+            .evaluate_access(tenant_id, recipient_id, ProfileAccessAudience::Anonymous,)
             .await
             .unwrap(),
         ProfilePrivacyDecision::Restricted

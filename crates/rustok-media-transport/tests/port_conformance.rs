@@ -4,16 +4,17 @@ use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_media::{
     MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort, MediaPublicImageService,
-    MediaReconciliationRequest, MediaService, MediaUploadRequest, MediaUploadTransport, UploadInput,
-    UpsertTranslationInput, migrations,
+    MediaReconciliationRequest, MediaService, MediaUploadRequest, MediaUploadTransport,
+    UploadInput, UpsertTranslationInput, migrations,
 };
 use rustok_media_transport::{
     GrpcMediaProvider, MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority,
     proto::media_service_server::MediaServiceServer,
 };
+use rustok_outbox::SysEventsMigration;
 use rustok_storage::{LocalStorageConfig, StorageRuntime};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Endpoint, Server};
@@ -37,6 +38,10 @@ async fn test_service() -> (
         .await
         .expect("user fixture table should be created");
     let manager = SchemaManager::new(&database);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply to SQLite");
     for migration in migrations::migrations() {
         migration
             .up(&manager)
@@ -156,7 +161,10 @@ async fn exercise_provider(
     let public_descriptor = public_asset
         .descriptor
         .expect("storage-relative image should receive an owner capability URL");
-    assert_eq!(public_descriptor.alt.as_deref(), Some("Public profile image"));
+    assert_eq!(
+        public_descriptor.alt.as_deref(),
+        Some("Public profile image")
+    );
     assert_eq!(
         (public_descriptor.width, public_descriptor.height),
         (item.width, item.height)
@@ -187,7 +195,8 @@ async fn exercise_provider(
         )
         .await
         .expect("upsert_translation should preserve normalization");
-    assert_eq!(translation.locale, "en-us");
+    assert_eq!(translation.locale, "en-US");
+    assert_eq!(translation.revision, 1);
     assert_eq!(translation.title.as_deref(), Some("Hero"));
     let replay_context = read_context(tenant_id)
         .with_idempotency_key(format!("translation-replay-{}", Uuid::new_v4()));
@@ -206,6 +215,7 @@ async fn exercise_provider(
         .await
         .expect("same idempotency key should replay its response");
     assert_eq!(replay, first);
+    assert_eq!(first.revision, 2);
     assert_eq!(
         read.get_translations(read_context(tenant_id), asset_id)
             .await

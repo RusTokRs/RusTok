@@ -51,6 +51,16 @@ impl From<ScriptError> for ApiError {
                 error: format!("Script revision conflict: expected version {expected}"),
                 code: "conflict".to_string(),
             },
+            ScriptError::ImportIdempotencyConflict => ApiError {
+                error: "Alloy import idempotency key was reused for a different release command"
+                    .to_string(),
+                code: "conflict".to_string(),
+            },
+            ScriptError::ImportDraftNameConflict => ApiError {
+                error: "An Alloy draft with the requested tenant-scoped name already exists"
+                    .to_string(),
+                code: "conflict".to_string(),
+            },
             ScriptError::Compilation(msg) => ApiError {
                 error: format!("Compilation error: {msg}"),
                 code: "validation".to_string(),
@@ -65,6 +75,10 @@ impl From<ScriptError> for ApiError {
             },
             ScriptError::InvalidWorkspace(msg) => ApiError {
                 error: format!("Invalid Alloy workspace: {msg}"),
+                code: "validation".to_string(),
+            },
+            ScriptError::InvalidLineage(msg) => ApiError {
+                error: format!("Invalid Alloy release lineage: {msg}"),
                 code: "validation".to_string(),
             },
             _ => ApiError {

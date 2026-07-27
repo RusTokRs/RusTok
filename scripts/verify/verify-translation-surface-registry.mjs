@@ -43,6 +43,7 @@ function main() {
   }
 
   const states = new Set(registry.readiness_states ?? []);
+  const providerStates = new Set(registry.provider_states ?? []);
   const profiles = new Set(registry.field_profiles ?? []);
   const owners = moduleSlugs();
   for (const owner of registry.non_module_owners ?? []) owners.add(owner);
@@ -84,8 +85,11 @@ function main() {
       if (!states.has(surface.readiness)) {
         fail(`${label}.readiness ${surface.readiness} is not declared`, failures);
       }
-      if (surface.provider_status !== "not_registered") {
-        fail(`${label}.provider_status must remain not_registered until an owner provider exists`, failures);
+      if (!providerStates.has(surface.provider_status)) {
+        fail(`${label}.provider_status ${surface.provider_status} is not declared`, failures);
+      }
+      if (surface.provider_status === "registered" && surface.evidence_paths?.length < 2) {
+        fail(`${label}: a registered provider requires owner documentation and source evidence`, failures);
       }
       if (!Array.isArray(surface.field_profiles) || surface.field_profiles.length === 0) {
         fail(`${label}.field_profiles must be non-empty`, failures);

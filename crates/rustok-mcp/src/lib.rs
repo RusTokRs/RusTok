@@ -79,9 +79,10 @@ pub use server::{McpServerConfig, RusToKMcpServer, serve_stdio};
 pub use tools::{
     MODULE_BLOG, MODULE_CONTENT, MODULE_FORUM, MODULE_PAGES, McpHealthResponse, McpState,
     McpToolError, McpToolResponse, ModuleDetailsResponse, ModuleInfo, ModuleListResponse,
-    ModuleLookupRequest, ModuleLookupResponse, ModuleQueryRequest, TOOL_BLOG_MODULE,
-    TOOL_CONTENT_MODULE, TOOL_FORUM_MODULE, TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI,
-    TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_PAGES_MODULE, TOOL_QUERY_MODULES,
+    ModuleLookupRequest, ModuleLookupResponse, ModuleQueryRequest, REGISTRY_TOOL_NAMES,
+    RegistryToolInvocationError, TOOL_BLOG_MODULE, TOOL_CONTENT_MODULE, TOOL_FORUM_MODULE,
+    TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS,
+    TOOL_PAGES_MODULE, TOOL_QUERY_MODULES, invoke_registry_tool,
 };
 
 #[cfg(test)]

@@ -1665,6 +1665,7 @@ mod tests {
                 published_at: Some("2026-03-10T00:00:00Z".to_string()),
                 checksum_sha256: None,
                 signature: None,
+                artifact: None,
             },
             crate::modules::CatalogModuleVersion {
                 version: "1.9.0".to_string(),
@@ -1673,6 +1674,7 @@ mod tests {
                 published_at: Some("2026-03-01T00:00:00Z".to_string()),
                 checksum_sha256: None,
                 signature: None,
+                artifact: None,
             },
         ];
 

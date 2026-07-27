@@ -54,6 +54,9 @@ fn all_public_resources_display_parse_roundtrip() {
         Resource::AiMultimodalTasks,
         Resource::Workflows,
         Resource::WorkflowExecutions,
+        Resource::Translations,
+        Resource::TranslationMemory,
+        Resource::TranslationGlossaries,
     ];
 
     for resource in resources {

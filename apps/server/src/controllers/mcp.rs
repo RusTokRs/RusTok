@@ -27,13 +27,12 @@ use rustok_mcp::{
     McpClientSummaryResponse, McpModuleScaffoldDraftResponse, McpPolicyResponse,
     McpRemoteToolCallRequest, McpRemoteToolCallResponse, McpRuntimeBinding,
     McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpSessionContext, McpTokenResponse,
-    McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse, ModuleDetailsResponse, ModuleInfo,
-    ModuleListResponse, ModuleLookupRequest, ModuleLookupResponse, ReviewModuleScaffoldRequest,
-    RotateMcpTokenRequest, RotateMcpTokenResponse, ScaffoldModuleRequest,
-    StageMcpModuleScaffoldDraftRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
+    McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse, RegistryToolInvocationError,
+    ReviewModuleScaffoldRequest, RotateMcpTokenRequest, RotateMcpTokenResponse,
+    ScaffoldModuleRequest, StageMcpModuleScaffoldDraftRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
     TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_LIST_MODULES,
     TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_QUERY_MODULES,
-    UpdateMcpPolicyRequest, default_tool_requirement,
+    UpdateMcpPolicyRequest, default_tool_requirement, invoke_registry_tool,
 };
 use tokio_stream::once;
 
@@ -193,12 +192,33 @@ async fn execute_remote_tool_call(
         )
         .await?
     } else {
-        execute_registry_tool(
+        match invoke_registry_tool(
             &registry,
             &binding.access_context,
             &input.tool_name,
             input.arguments,
-        )?
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(RegistryToolInvocationError::Denied) => serde_json::to_value(
+                McpToolResponse::<()>::error("access_denied", "MCP access policy denied this tool"),
+            )?,
+            Err(RegistryToolInvocationError::InvalidArguments) => serde_json::to_value(
+                McpToolResponse::<()>::error("invalid_arguments", "MCP tool arguments are invalid"),
+            )?,
+            Err(RegistryToolInvocationError::UnsupportedTool) => {
+                serde_json::to_value(McpToolResponse::<()>::error(
+                    "tool_not_supported",
+                    "Remote MCP tool is not supported",
+                ))?
+            }
+            Err(RegistryToolInvocationError::Serialization) => {
+                return Err(crate::error::Error::Message(
+                    "MCP tool response serialization failed".to_string(),
+                ));
+            }
+        }
     };
 
     Ok(McpRemoteToolCallResponse {
@@ -277,74 +297,6 @@ async fn execute_remote_scaffold_tool(
     }
 }
 
-fn execute_registry_tool(
-    registry: &ModuleRegistry,
-    access_context: &rustok_mcp::McpAccessContext,
-    tool_name: &str,
-    arguments: Option<serde_json::Value>,
-) -> Result<serde_json::Value> {
-    match tool_name {
-        TOOL_LIST_MODULES => envelope_value(McpToolResponse::success(ModuleListResponse {
-            modules: registry.list().into_iter().map(module_info).collect(),
-        })),
-        TOOL_QUERY_MODULES => {
-            let request: rustok_mcp::ModuleQueryRequest = parse_tool_args(arguments)?;
-            let modules = registry
-                .list()
-                .into_iter()
-                .filter(|module| {
-                    request
-                        .slug_prefix
-                        .as_ref()
-                        .is_none_or(|prefix| module.slug().starts_with(prefix))
-                })
-                .filter(|module| {
-                    request.dependency.as_ref().is_none_or(|dependency| {
-                        module
-                            .dependencies()
-                            .iter()
-                            .any(|value| value == dependency)
-                    })
-                })
-                .skip(request.offset.unwrap_or(0))
-                .take(request.limit.unwrap_or(usize::MAX))
-                .map(module_info)
-                .collect::<Vec<_>>();
-            envelope_value(McpToolResponse::success(ModuleListResponse { modules }))
-        }
-        TOOL_MODULE_EXISTS => {
-            let request: ModuleLookupRequest = parse_tool_args(arguments)?;
-            envelope_value(McpToolResponse::success(ModuleLookupResponse {
-                exists: registry.contains(&request.slug),
-                slug: request.slug,
-            }))
-        }
-        TOOL_MODULE_DETAILS => {
-            let request: ModuleLookupRequest = parse_tool_args(arguments)?;
-            let module = registry.get(&request.slug).map(module_info);
-            envelope_value(McpToolResponse::success(ModuleDetailsResponse {
-                slug: request.slug,
-                module,
-            }))
-        }
-        TOOL_MCP_WHOAMI => envelope_value(McpToolResponse::success(access_context.whoami())),
-        TOOL_MCP_HEALTH => {
-            envelope_value(McpToolResponse::success(rustok_mcp::McpHealthResponse {
-                status: "ready".to_string(),
-                protocol_version: "2024-11-05".to_string(),
-                tool_count: 9,
-                enabled_tools: access_context.whoami().allowed_tools,
-                access_mode: "policy".to_string(),
-                identity: access_context.identity.clone(),
-            }))
-        }
-        _ => envelope_value(McpToolResponse::<()>::error(
-            "tool_not_supported",
-            format!("Remote HTTP transport does not support tool: {tool_name}"),
-        )),
-    }
-}
-
 fn envelope_value<T: serde::Serialize>(envelope: McpToolResponse<T>) -> Result<serde_json::Value> {
     serde_json::to_value(envelope).map_err(Into::into)
 }
@@ -353,20 +305,6 @@ fn parse_tool_args<T: serde::de::DeserializeOwned>(
     arguments: Option<serde_json::Value>,
 ) -> Result<T> {
     serde_json::from_value(arguments.unwrap_or_else(|| serde_json::json!({}))).map_err(Into::into)
-}
-
-fn module_info(module: &dyn rustok_core::RusToKModule) -> ModuleInfo {
-    ModuleInfo {
-        slug: module.slug().to_string(),
-        name: module.name().to_string(),
-        description: module.description().to_string(),
-        version: module.version().to_string(),
-        dependencies: module
-            .dependencies()
-            .iter()
-            .map(|value| (*value).to_string())
-            .collect(),
-    }
 }
 
 async fn list_clients(

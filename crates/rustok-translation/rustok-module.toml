@@ -1,0 +1,17 @@
+[module]
+slug = "translation"
+name = "Translation"
+version = "0.1.0"
+description = "Owner-safe translation workflow, inventory, memory, glossary, and machine-translation control plane"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "future_ui"
+
+[crate]
+entry_type = "TranslationModule"
+
+[marketplace]
+category = "content"
+publisher = "rustok"
+tags = ["translation", "localization", "workflow"]
+description = "Owner-safe translation workflow and inventory control plane."

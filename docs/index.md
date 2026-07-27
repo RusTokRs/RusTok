@@ -71,7 +71,9 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Pricing Persistence Owner Contract](../crates/rustok-pricing-persistence/README.md)
 - [Flex and Manifest-composed Owner-owned GraphQL Documentation](../crates/flex/docs/README.md)
 - [Implementation Plans Registry](./modules/implementation-plans-registry.md)
-- [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)
+- [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md) -
+  canonical artifact publication, federated registry, installation, lifecycle,
+  sandbox, build-worker, Alloy, MCP, and transport completion status.
 - [Module Documentation Template](./templates/module_contract.md)
 - [Module UI Packages Index](./modules/UI_PACKAGES_INDEX.md)
 - [UI Packages Quick Start](./modules/UI_PACKAGES_QUICKSTART.md)

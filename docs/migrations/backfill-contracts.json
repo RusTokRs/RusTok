@@ -9,6 +9,27 @@
       "reason": "Adds revision metadata, row-local policy constraints, and durable idempotency receipts without changing existing locale values; legacy rows receive revision 0 and a SQLite-safe epoch updated_at sentinel until the next owner write"
     },
     {
+      "id": "media-translation-revision",
+      "migration": "m20260726_000002_add_media_translation_revision",
+      "mode": "none",
+      "owner": "rustok-media",
+      "reason": "Adds owner-local optimistic concurrency revisions; existing exact locale rows begin at revision 1 without changing localized values"
+    },
+    {
+      "id": "media-translation-change-cursor",
+      "migration": "m20260727_000003_create_media_translation_changes",
+      "mode": "none",
+      "owner": "rustok-media",
+      "reason": "Creates an append-only owner change log for projection repair; historical writes remain discoverable through a bounded full inventory scan and require no fabricated change records"
+    },
+    {
+      "id": "translation-inventory-projection",
+      "migration": "m20260727_000001_create_translation_inventory",
+      "mode": "none",
+      "owner": "rustok-translation",
+      "reason": "Creates rebuildable identity/revision projection and provider checkpoint tables without copying localized field values; providers populate them after deployment"
+    },
+    {
       "id": "pages-locale-width-32",
       "migration": "m20260721_000003_expand_pages_locale_storage_columns",
       "mode": "none",
@@ -20,7 +41,7 @@
       "migration": "m20260721_000004_expand_content_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-content",
-      "reason": "DDL-only widening of content translation, body, media, and URL locale columns; existing values require no backfill"
+      "reason": "DDL-only widening of Content-owned translation, body, and URL locale columns; existing values require no backfill"
     },
     {
       "id": "blog-locale-width-32",

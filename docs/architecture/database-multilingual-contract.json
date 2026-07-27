@@ -103,6 +103,47 @@
       ]
     },
     {
+      "id": "media",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-media/src/migrations/m20260722_000001_create_media_lifecycle.rs",
+          "required_markers": [
+            "Translations::Table",
+            "ColumnDef::new(Translations::Locale)",
+            ".string_len(32)",
+            "fk_media_translations_tenant_asset",
+            "idx_media_translations_asset_locale"
+          ]
+        },
+        {
+          "path": "crates/rustok-media/src/migrations/m20260726_000002_add_media_translation_revision.rs",
+          "required_markers": [
+            "MediaTranslations::Revision",
+            ".big_integer()",
+            "Forward-only"
+          ]
+        },
+        {
+          "path": "crates/rustok-media/src/migrations/m20260727_000003_create_media_translation_changes.rs",
+          "required_markers": [
+            "MediaTranslationChanges::Table",
+            "MediaTranslationChanges::Locale",
+            ".string_len(32)",
+            "idx_media_translation_changes_tenant_cursor",
+            "Forward-only"
+          ]
+        },
+        {
+          "path": "crates/rustok-media/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260727_000003_create_media_translation_changes;",
+            "Box::new(m20260727_000003_create_media_translation_changes::Migration)"
+          ]
+        }
+      ]
+    },
+    {
       "id": "forum",
       "status": "enforced",
       "files": [
@@ -198,7 +239,6 @@
             "ALTER TABLE bodies",
             "ALTER TABLE category_translations",
             "ALTER TABLE meta_translations",
-            "ALTER TABLE media_translations",
             "ALTER TABLE content_canonical_urls",
             "ALTER TABLE content_url_aliases",
             "ALTER COLUMN locale TYPE VARCHAR(32)"

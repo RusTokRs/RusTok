@@ -457,7 +457,7 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     })
 }
 
-fn media_error_to_port_error(error: MediaError) -> PortError {
+pub(crate) fn media_error_to_port_error(error: MediaError) -> PortError {
     match error {
         MediaError::NotFound(id) => PortError::new(
             PortErrorKind::NotFound,
@@ -485,6 +485,29 @@ fn media_error_to_port_error(error: MediaError) -> PortError {
         ),
         MediaError::InvalidLocale(locale) => {
             PortError::validation("media.invalid_locale", format!("invalid locale: {locale}"))
+        }
+        MediaError::InvalidTranslationRevision(revision) => PortError::validation(
+            "media.invalid_translation_revision",
+            format!("invalid media translation revision: {revision}"),
+        ),
+        MediaError::TranslationSourceNotFound { media_id, locale } => PortError::not_found(
+            "media.translation_source_not_found",
+            format!("exact source translation {locale} was not found for media {media_id}"),
+        ),
+        MediaError::TranslationRevisionConflict { media_id, locale } => PortError::conflict(
+            "media.translation_revision_conflict",
+            format!("translation revision conflict for media {media_id} locale {locale}"),
+        ),
+        MediaError::ResourceRevisionConflict { media_id } => PortError::conflict(
+            "media.resource_revision_conflict",
+            format!("resource revision conflict for media {media_id}"),
+        ),
+        MediaError::TranslationRevisionExhausted { .. } => PortError::invariant_violation(
+            "media.translation_revision_exhausted",
+            "media translation revision is exhausted",
+        ),
+        MediaError::TranslationEvent(source) => {
+            PortError::unavailable("media.translation_event", source)
         }
         MediaError::InvalidRenditionPurpose(purpose) => PortError::validation(
             "media.invalid_rendition_purpose",

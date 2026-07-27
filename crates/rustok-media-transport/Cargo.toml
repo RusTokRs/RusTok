@@ -27,6 +27,7 @@ protoc-bin-vendored.workspace = true
 [dev-dependencies]
 image.workspace = true
 rustok-storage.workspace = true
+rustok-outbox.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tempfile = "3.27"

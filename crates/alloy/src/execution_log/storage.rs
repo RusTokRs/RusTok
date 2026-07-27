@@ -23,6 +23,11 @@ pub struct Model {
     pub error: Option<String>,
     pub user_id: Option<String>,
     pub tenant_id: Option<Uuid>,
+    pub source_revision: Option<i32>,
+    pub source_digest: Option<String>,
+    pub policy_digest: Option<String>,
+    pub executor: Option<String>,
+    pub runtime_abi: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -42,6 +47,11 @@ pub struct ExecutionLogEntry {
     pub error: Option<String>,
     pub user_id: Option<String>,
     pub tenant_id: Option<Uuid>,
+    pub source_revision: Option<u32>,
+    pub source_digest: Option<String>,
+    pub policy_digest: Option<String>,
+    pub executor: Option<String>,
+    pub runtime_abi: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -85,6 +95,36 @@ impl SeaOrmExecutionLog {
             error: ActiveValue::Set(error),
             user_id: ActiveValue::Set(user_id),
             tenant_id: ActiveValue::Set(tenant_id),
+            source_revision: ActiveValue::Set(
+                result
+                    .evidence
+                    .as_ref()
+                    .and_then(|evidence| i32::try_from(evidence.source_revision).ok()),
+            ),
+            source_digest: ActiveValue::Set(
+                result
+                    .evidence
+                    .as_ref()
+                    .map(|evidence| evidence.source_digest.clone()),
+            ),
+            policy_digest: ActiveValue::Set(
+                result
+                    .evidence
+                    .as_ref()
+                    .map(|evidence| evidence.policy_digest.clone()),
+            ),
+            executor: ActiveValue::Set(
+                result
+                    .evidence
+                    .as_ref()
+                    .map(|evidence| evidence.executor.clone()),
+            ),
+            runtime_abi: ActiveValue::Set(
+                result
+                    .evidence
+                    .as_ref()
+                    .map(|evidence| evidence.runtime_abi.clone()),
+            ),
             created_at: ActiveValue::Set(result.started_at),
         };
 
@@ -315,6 +355,13 @@ fn model_to_entry(model: Model) -> ExecutionLogEntry {
         error: model.error,
         user_id: model.user_id,
         tenant_id: model.tenant_id,
+        source_revision: model
+            .source_revision
+            .and_then(|revision| u32::try_from(revision).ok()),
+        source_digest: model.source_digest,
+        policy_digest: model.policy_digest,
+        executor: model.executor,
+        runtime_abi: model.runtime_abi,
         created_at: model.created_at,
     }
 }
@@ -322,6 +369,7 @@ fn model_to_entry(model: Model) -> ExecutionLogEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AlloyExecutionEvidence;
     use crate::execution_log::migration::ScriptExecutionsMigration;
     use sea_orm::Database;
     use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
@@ -354,6 +402,13 @@ mod tests {
             phase,
             started_at,
             finished_at: started_at + chrono::Duration::milliseconds(42),
+            evidence: Some(AlloyExecutionEvidence {
+                source_revision: 4,
+                source_digest: format!("sha256:{}", "a".repeat(64)),
+                policy_digest: format!("sha256:{}", "b".repeat(64)),
+                executor: "rhai".to_string(),
+                runtime_abi: "rustok:module/runtime@1".to_string(),
+            }),
             outcome,
         }
     }
@@ -396,6 +451,20 @@ mod tests {
         assert_eq!(entry.error, None);
         assert_eq!(entry.user_id.as_deref(), Some("operator-42"));
         assert_eq!(entry.tenant_id, Some(tenant_id));
+        assert_eq!(entry.source_revision, Some(4));
+        assert_eq!(
+            entry.source_digest.as_deref(),
+            Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert_eq!(
+            entry.policy_digest.as_deref(),
+            Some("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        );
+        assert_eq!(entry.executor.as_deref(), Some("rhai"));
+        assert_eq!(
+            entry.runtime_abi.as_deref(),
+            Some("rustok:module/runtime@1")
+        );
         assert_eq!(entry.created_at, result.started_at);
     }
 

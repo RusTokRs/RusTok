@@ -262,6 +262,22 @@ impl RegistryGovernanceService {
         if releases.is_empty() {
             return Ok(modules);
         }
+        let artifact_contracts = self
+            .release_service()
+            .published_artifact_contracts()
+            .await
+            .map_err(anyhow::Error::new)?
+            .into_iter()
+            .map(|contract| (contract.release_id, contract.artifact))
+            .collect::<HashMap<_, _>>();
+        if releases.iter().any(|release| {
+            release.status == RegistryModuleReleaseStatus::Active
+                && !artifact_contracts.contains_key(&release.id)
+        }) {
+            return Err(anyhow!(
+                "active registry release is missing its immutable artifact contract"
+            ));
+        }
 
         let mut release_map: HashMap<String, Vec<registry_module_release::Model>> = HashMap::new();
         for release in releases {
@@ -286,6 +302,7 @@ impl RegistryGovernanceService {
                     published_at: Some(release.published_at.to_rfc3339()),
                     checksum_sha256: release.checksum_sha256.clone(),
                     signature: None,
+                    artifact: artifact_contracts.get(&release.id).cloned(),
                 })
                 .collect::<Vec<_>>();
             versions.sort_by(|left, right| {

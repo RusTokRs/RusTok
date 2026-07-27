@@ -606,11 +606,8 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     self.load_public_topic(event.tenant_id, event.aggregate_id)
                         .await?
                 } else {
-                    self.load_topic_for_subscription_audience(
-                        event.tenant_id,
-                        event.aggregate_id,
-                    )
-                    .await?
+                    self.load_topic_for_subscription_audience(event.tenant_id, event.aggregate_id)
+                        .await?
                 };
                 let Some(topic) = topic else {
                     return Ok(NotificationAudiencePage::empty());
@@ -745,13 +742,8 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             else {
                 return Ok(NotificationOpenAuthorization::Unavailable);
             };
-            self.load_target_for_viewer(
-                request.tenant_id,
-                source_kind,
-                request.target.id,
-                &viewer,
-            )
-            .await?
+            self.load_target_for_viewer(request.tenant_id, source_kind, request.target.id, &viewer)
+                .await?
         } else {
             self.load_public_target(request.tenant_id, source_kind, request.target.id)
                 .await?

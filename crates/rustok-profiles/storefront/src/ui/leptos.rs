@@ -9,9 +9,7 @@ use crate::core::{
     recovered_follow_state, selected_transport_profile,
 };
 use crate::i18n::t;
-use crate::model::{
-    ProfilesStorefrontImage, ProfilesStorefrontPage, ProfilesStorefrontProfile,
-};
+use crate::model::{ProfilesStorefrontImage, ProfilesStorefrontPage, ProfilesStorefrontProfile};
 use crate::transport::{
     ProfilesStorefrontTransportContext, load_profiles_storefront_page,
     set_profiles_storefront_follow,
@@ -33,7 +31,11 @@ pub fn ProfilesView() -> impl IntoView {
     let requested_handle = read_route_query_value(&route_context, "handle")
         .and_then(|value| normalize_profile_handle(value.as_str()).ok());
 
-    let badge = t(locale.as_deref(), "profiles.storefront.badge", "Public profile");
+    let badge = t(
+        locale.as_deref(),
+        "profiles.storefront.badge",
+        "Public profile",
+    );
     let title = t(
         locale.as_deref(),
         "profiles.storefront.title",

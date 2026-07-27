@@ -65,7 +65,8 @@ pub use artifact::{
     ModuleBindingIdempotency, ModuleDependencyConstraint, ModuleHttpBinding, ModuleHttpMethod,
     ModuleHttpStreamingPolicy, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     ModuleScheduleBinding, ModuleScheduleDeduplication, ModuleScheduleMisfirePolicy,
-    ModuleScheduleOverlapPolicy, canonical_schema_digest, schedule_binding_digest,
+    ModuleScheduleOverlapPolicy, canonical_artifact_descriptor_digest, canonical_schema_digest,
+    schedule_binding_digest,
 };
 pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
@@ -221,13 +222,13 @@ pub use governance::{
     ModulePublishRequestChangesCommand, ModulePublishRequestCreateCommand,
     ModulePublishRequestHoldCommand, ModulePublishRequestPublicationCommand,
     ModulePublishRequestRejectCommand, ModulePublishRequestResumeCommand,
-    ModulePublishValidationContract, ModuleReleaseYankCommand, ModuleRemoteValidationClaim,
-    ModuleRemoteValidationClaimCommand, ModuleRemoteValidationHeartbeatCommand,
-    ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
-    ModuleValidationJobClaimCommand, ModuleValidationJobClaimResult,
-    ModuleValidationJobEnqueueCommand, ModuleValidationJobEnqueueResult,
-    ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
-    ModuleValidationJobRetryCommand, ModuleValidationJobWorkItem,
+    ModulePublishValidationContract, ModulePublishedArtifactContract, ModuleReleaseYankCommand,
+    ModuleRemoteValidationClaim, ModuleRemoteValidationClaimCommand,
+    ModuleRemoteValidationHeartbeatCommand, ModuleRemoteValidationTerminalCommand,
+    ModuleRemoteValidationTerminalOutcome, ModuleValidationJobClaimCommand,
+    ModuleValidationJobClaimResult, ModuleValidationJobEnqueueCommand,
+    ModuleValidationJobEnqueueResult, ModuleValidationJobResultCommand,
+    ModuleValidationJobResultOutcome, ModuleValidationJobRetryCommand, ModuleValidationJobWorkItem,
     ModuleValidationStageReportCommand, REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
     REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
@@ -257,9 +258,13 @@ pub use lifecycle_writer::{
     ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError, TenantModuleOverrideSnapshot,
 };
 pub use marketplace::{
-    MODULE_MARKETPLACE_DEFAULT_LIMIT, MODULE_MARKETPLACE_MAX_LIMIT, ModuleMarketplaceCatalog,
-    ModuleMarketplaceEntry, ModuleMarketplaceError, ModuleMarketplaceQuery,
-    ModuleMarketplaceVersion, SharedModuleMarketplaceCatalog, normalize_module_marketplace_slug,
+    MODULE_MARKETPLACE_DEFAULT_LIMIT, MODULE_MARKETPLACE_MAX_LIMIT,
+    ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
+    ModuleMarketplaceArtifactReleaseError, ModuleMarketplaceCatalog, ModuleMarketplaceEntry,
+    ModuleMarketplaceError, ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference,
+    ModuleMarketplaceQuery, ModuleMarketplaceRuntimeKind, ModuleMarketplaceVersion,
+    SharedModuleMarketplaceCatalog, normalize_module_marketplace_slug,
+    normalize_module_registry_id,
 };
 pub use marketplace_content::{
     MODULE_MARKETPLACE_CONTENT_FORMAT, MODULE_MARKETPLACE_CONTENT_TRUST,
@@ -380,7 +385,8 @@ pub use static_package::{
     validate_static_module_topology_contract, validate_static_module_ui_i18n_contract,
 };
 pub use trust::{
-    TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+    TrustEvidenceKind, TrustEvidenceReference, TrustPolicyRevision, TrustVerificationDecision,
+    TrustVerificationRequest, TrustVerifier,
 };
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.

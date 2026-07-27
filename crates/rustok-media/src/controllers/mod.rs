@@ -75,6 +75,28 @@ fn media_error(error: MediaError) -> HttpError {
         MediaError::InvalidLocale(locale) => {
             HttpError::bad_request("invalid_media_locale", format!("Invalid locale: {locale}"))
         }
+        MediaError::InvalidTranslationRevision(revision) => HttpError::bad_request(
+            "invalid_media_translation_revision",
+            format!("Invalid media translation revision: {revision}"),
+        ),
+        MediaError::TranslationSourceNotFound { .. } => HttpError::not_found(
+            "media_translation_source_not_found",
+            "Exact source media translation was not found",
+        ),
+        MediaError::TranslationRevisionConflict { .. } => HttpError::new(
+            StatusCode::CONFLICT,
+            "media_translation_revision_conflict",
+            "Media translation changed; reload exact locale state and retry",
+        ),
+        MediaError::ResourceRevisionConflict { .. } => HttpError::new(
+            StatusCode::CONFLICT,
+            "media_resource_revision_conflict",
+            "Media asset changed; reload exact locale state and retry",
+        ),
+        MediaError::TranslationRevisionExhausted { .. } => {
+            HttpError::internal("Media translation revision is exhausted")
+        }
+        MediaError::TranslationEvent(error) => HttpError::internal(error),
         MediaError::InvalidRenditionPurpose(purpose) => HttpError::bad_request(
             "invalid_rendition_purpose",
             format!("Invalid rendition purpose: {purpose}"),
@@ -109,9 +131,9 @@ fn public_image_error(error: PortError) -> HttpError {
         PortErrorKind::Conflict
         | PortErrorKind::Unavailable
         | PortErrorKind::Timeout
-        | PortErrorKind::InvariantViolation => HttpError::internal(
-            "Media image is temporarily unavailable".to_string(),
-        ),
+        | PortErrorKind::InvariantViolation => {
+            HttpError::internal("Media image is temporarily unavailable".to_string())
+        }
     }
 }
 
@@ -266,9 +288,7 @@ pub async fn public_image(
             .header(ETAG, etag)
             .header(CACHE_CONTROL, PUBLIC_IMAGE_CACHE_CONTROL)
             .body(Body::empty())
-            .map_err(|_| {
-                HttpError::internal("Failed to build media image response".to_string())
-            });
+            .map_err(|_| HttpError::internal("Failed to build media image response".to_string()));
     }
 
     let content_length = image.bytes.len().to_string();

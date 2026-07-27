@@ -288,11 +288,7 @@ async fn exact_topic_visibility_conjoins_base_category_and_topic_audience_layers
 
     let no_membership_viewer = ForumTopicAudienceViewer::authenticated(
         SecurityContext::new(UserRole::Customer, Some(no_membership_user_id)),
-        read_context(
-            tenant_id,
-            no_membership_user_id,
-            "no-membership-viewer",
-        ),
+        read_context(tenant_id, no_membership_user_id, "no-membership-viewer"),
     )
     .expect("no-membership viewer should validate");
     assert!(
@@ -311,11 +307,7 @@ async fn exact_topic_visibility_conjoins_base_category_and_topic_audience_layers
 
     let foreign_context_viewer = ForumTopicAudienceViewer::authenticated(
         SecurityContext::new(UserRole::Customer, Some(allowed_user_id)),
-        read_context(
-            foreign_tenant_id,
-            allowed_user_id,
-            "foreign-context-viewer",
-        ),
+        read_context(foreign_tenant_id, allowed_user_id, "foreign-context-viewer"),
     )
     .expect("foreign context viewer should be structurally valid");
     assert!(matches!(
@@ -327,11 +319,7 @@ async fn exact_topic_visibility_conjoins_base_category_and_topic_audience_layers
 
     let foreign_request_viewer = ForumTopicAudienceViewer::authenticated(
         SecurityContext::new(UserRole::Customer, Some(allowed_user_id)),
-        read_context(
-            foreign_tenant_id,
-            allowed_user_id,
-            "foreign-request-viewer",
-        ),
+        read_context(foreign_tenant_id, allowed_user_id, "foreign-request-viewer"),
     )
     .expect("foreign request viewer should validate");
     assert!(

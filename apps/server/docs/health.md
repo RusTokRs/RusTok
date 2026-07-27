@@ -47,6 +47,11 @@ to pull ecommerce or content surfaces it doesn't need.
   `outbox_local` or `outbox_iggy`, and
   `search_documents` when `rustok.features.search_indexing = true`;
 - `cache_backend` — basic check of tenant cache path;
+- `marketplace_providers` — non-critical snapshot of configured catalog
+  providers. Local-only operation composes no synthetic remote provider; every
+  registry in `RUSTOK_MARKETPLACE_REGISTRIES` is unknown until its first
+  successful fetch and degraded after any failed fetch. The check performs no
+  network request itself.
 - `tenant_cache_invalidation` — non-critical check of the durable tenant-cache generation listener for cross-instance invalidation;
 - `event_transport` — critical check of event transport initialization;
 - `search_backend` — non-critical check of search connectivity;
@@ -90,7 +95,8 @@ runtime ready until mandatory relay/worker lifecycle is started.
 
 In `settings.rustok.runtime.host_mode = "registry_only"` readiness aligns with actually started surface:
 
-- only `database`, `cache_backend` and marker-check `host_mode` remain;
+- only `database`, `cache_backend`, `marketplace_providers`, and marker-check
+  `host_mode` remain;
 - `tenant_cache_invalidation`, `event_transport`, `search_backend`, rate-limit runtime and module runtime are not checked;
 - `modules` in readiness are not used as hard gate and return operator marker instead of attempting to validate full module runtime.
 

@@ -10,6 +10,8 @@ pub mod migrations;
 pub mod ports;
 pub mod public_image;
 pub mod service;
+mod translation_evidence;
+pub mod translation_target;
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
@@ -17,9 +19,10 @@ use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
-    ALLOWED_MIME_PREFIXES, CreateRenditionInput, DEFAULT_MAX_SIZE, MediaImageDeliveryProfile,
-    MediaImageDescriptor, MediaItem, MediaRenditionItem, MediaTranslationItem,
-    PrepareUploadSessionInput, PreparedUploadSession, UploadInput, UpsertTranslationInput,
+    ALLOWED_MIME_PREFIXES, ApplyExactMediaTranslationInput, CreateRenditionInput, DEFAULT_MAX_SIZE,
+    MediaImageDeliveryProfile, MediaImageDescriptor, MediaItem, MediaRenditionItem,
+    MediaTranslationItem, NormalizedTranslationInput, PrepareUploadSessionInput,
+    PreparedUploadSession, UploadInput, UpsertTranslationInput,
 };
 pub use entities::*;
 pub use error::{MediaError, Result};
@@ -38,6 +41,7 @@ pub use service::{
     MediaReconciliationDecision, MediaReconciliationReport, MediaService, MediaUsageSnapshot,
     load_media_usage_snapshot,
 };
+pub use translation_target::MediaTranslationTargetProvider;
 
 pub struct MediaModule;
 

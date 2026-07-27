@@ -36,11 +36,7 @@ async fn create_profile(
         .expect("profile should be created");
 }
 
-async fn set_status(
-    db: &sea_orm::DatabaseConnection,
-    user_id: Uuid,
-    status: ProfileStatus,
-) {
+async fn set_status(db: &sea_orm::DatabaseConnection, user_id: Uuid, status: ProfileStatus) {
     let model = entities::profile::Entity::find_by_id(user_id)
         .one(db)
         .await
@@ -173,13 +169,11 @@ async fn authenticated_summary_loader_allows_authenticated_and_owner_private_pro
         key(tenant_id, authenticated_id),
         key(tenant_id, other_private_id),
     ];
-    let result = ProfileSummaryLoader::for_audience(
-        db,
-        ProfileAccessAudience::Authenticated { actor_id },
-    )
-    .load(&keys)
-    .await
-    .expect("summary batch should load");
+    let result =
+        ProfileSummaryLoader::for_audience(db, ProfileAccessAudience::Authenticated { actor_id })
+            .load(&keys)
+            .await
+            .expect("summary batch should load");
 
     assert!(result.contains_key(&key(tenant_id, actor_id)));
     assert!(result.contains_key(&key(tenant_id, public_id)));

@@ -54,8 +54,8 @@ async fn profiles_storefront_profile_native(
         };
         use rustok_media::{MediaPublicImageReadPort, MediaPublicImageService};
         use rustok_profiles::{
-            ProfileAccessAudience, ProfileError, ProfileMediaPublicImageProvider,
-            ProfileMediaSlot, ProfilePresentationService,
+            ProfileAccessAudience, ProfileError, ProfileMediaPublicImageProvider, ProfileMediaSlot,
+            ProfilePresentationService,
         };
         use rustok_social_graph::{
             SocialGraphFollowReadPort, SocialGraphPairRequest, SocialGraphService,
@@ -75,7 +75,10 @@ async fn profiles_storefront_profile_native(
             .await
             .map_err(ServerFnError::new)?
             .0;
-        if auth.as_ref().is_some_and(|auth| auth.tenant_id != tenant.id) {
+        if auth
+            .as_ref()
+            .is_some_and(|auth| auth.tenant_id != tenant.id)
+        {
             return Err(ServerFnError::new("profiles tenant mismatch"));
         }
         let human_auth = auth.filter(|auth| !auth.is_service_principal());
@@ -371,9 +374,7 @@ async fn load_public_profile_image(
 }
 
 #[cfg(feature = "ssr")]
-fn map_profile_image(
-    value: rustok_profiles::ProfileImagePresentation,
-) -> ProfilesStorefrontImage {
+fn map_profile_image(value: rustok_profiles::ProfileImagePresentation) -> ProfilesStorefrontImage {
     ProfilesStorefrontImage {
         url: value.url,
         alt: value.alt,

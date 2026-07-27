@@ -85,12 +85,7 @@ impl ProfilesCommandProvider {
             )
             .await
             .map_err(|error| {
-                backfill_port_failed(
-                    &telemetry,
-                    "tenant_read",
-                    BACKFILL_TENANT_READ_ERROR,
-                    error,
-                )
+                backfill_port_failed(&telemetry, "tenant_read", BACKFILL_TENANT_READ_ERROR, error)
             })?;
         let users = AuthUserBackfillDbReader::new(db.clone())
             .list_users_for_profile_backfill(AuthUserBackfillReadRequest { tenant_id, limit })

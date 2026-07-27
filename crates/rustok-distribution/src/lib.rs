@@ -197,6 +197,10 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_media::MediaModule);
     }
+    #[cfg(feature = "mod-translation")]
+    {
+        registry = registry.register(rustok_translation::TranslationModule);
+    }
     #[cfg(feature = "mod-seo")]
     {
         registry = registry.register(rustok_seo::SeoModule);

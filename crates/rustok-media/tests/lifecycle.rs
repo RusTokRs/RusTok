@@ -3,18 +3,26 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use bytes::Bytes;
 use object_store::{ObjectStoreExt, signer::Signer};
+use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_media::{
-    AssetState, BlobState, CreateRenditionInput, ImageBackground, ImageOutputFormat, ImageRecipe,
-    MediaError, MediaService, PrepareUploadSessionInput, QuarterTurn, RenditionState, UploadInput,
-    UploadState,
-    entities::{asset, blob, rendition, upload_session},
+    ApplyExactMediaTranslationInput, AssetState, BlobState, CreateRenditionInput, ImageBackground,
+    ImageOutputFormat, ImageRecipe, MediaError, MediaService, MediaTranslationTargetProvider,
+    PrepareUploadSessionInput, QuarterTurn, RenditionState, UploadInput, UploadState,
+    UpsertTranslationInput,
+    entities::{asset, blob, media_translation, rendition, translation_change, upload_session},
     migrations,
 };
+use rustok_outbox::{SysEvents, SysEventsMigration};
 use rustok_storage::{LocalStorageConfig, StorageRuntime};
+use rustok_translation_targets::{
+    FieldKey, ListTranslationResourcesRequest, ReadTranslationResourceRequest,
+    TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
+    TranslationTargetProvider,
+};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, QueryFilter, Statement,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -52,6 +60,10 @@ async fn test_runtime() -> (
         .expect("user fixture table should be created");
 
     let manager = SchemaManager::new(&database);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply to SQLite");
     for migration in migrations::migrations() {
         migration
             .up(&manager)
@@ -403,4 +415,384 @@ async fn reconciliation_expires_upload_session_and_removes_staging_object() {
         .expect("expired session should remain");
     assert_eq!(expired.state, UploadState::Expired.as_str());
     assert!(expired.staging_deleted_at.is_some());
+}
+
+#[tokio::test]
+async fn exact_translation_apply_checks_source_and_target_revisions_atomically() {
+    let (database, storage, _directory) = test_runtime().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&database, tenant_id).await;
+    let service = MediaService::new(database, storage);
+    let media = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("media fixture should upload");
+    let source = service
+        .upsert_translation(
+            tenant_id,
+            media.id,
+            UpsertTranslationInput {
+                locale: "en".to_string(),
+                title: Some("Hero".to_string()),
+                alt_text: Some("Hero image".to_string()),
+                caption: None,
+            },
+        )
+        .await
+        .expect("exact source should be created");
+    assert_eq!(source.revision, 1);
+    let resource_revision = service
+        .translation_resource_revision(tenant_id, media.id)
+        .await
+        .expect("media resource revision should be available");
+
+    let target_values = || {
+        UpsertTranslationInput {
+            locale: "fr".to_string(),
+            title: Some("Héros".to_string()),
+            alt_text: Some("Image du héros".to_string()),
+            caption: None,
+        }
+        .normalize()
+        .expect("target values should normalize")
+    };
+    let applied = service
+        .apply_exact_translation(
+            tenant_id,
+            media.id,
+            ApplyExactMediaTranslationInput {
+                source_locale: rustok_api::TenantLocale::new("en").unwrap(),
+                target: target_values(),
+                expected_resource_revision: resource_revision.clone(),
+                expected_source_revision: 1,
+                expected_target_revision: None,
+            },
+        )
+        .await
+        .expect("first exact target should apply");
+    assert_eq!(applied.revision, 1);
+
+    let stale_target = service
+        .apply_exact_translation(
+            tenant_id,
+            media.id,
+            ApplyExactMediaTranslationInput {
+                source_locale: rustok_api::TenantLocale::new("en").unwrap(),
+                target: target_values(),
+                expected_resource_revision: resource_revision.clone(),
+                expected_source_revision: 1,
+                expected_target_revision: None,
+            },
+        )
+        .await
+        .expect_err("missing target revision must fail after target creation");
+    assert!(matches!(
+        stale_target,
+        MediaError::TranslationRevisionConflict { .. }
+    ));
+
+    let source = service
+        .upsert_translation(
+            tenant_id,
+            media.id,
+            UpsertTranslationInput {
+                locale: "en".to_string(),
+                title: Some("Updated hero".to_string()),
+                alt_text: Some("Updated hero image".to_string()),
+                caption: None,
+            },
+        )
+        .await
+        .expect("source edit should advance its revision");
+    assert_eq!(source.revision, 2);
+
+    let stale_source = service
+        .apply_exact_translation(
+            tenant_id,
+            media.id,
+            ApplyExactMediaTranslationInput {
+                source_locale: rustok_api::TenantLocale::new("en").unwrap(),
+                target: target_values(),
+                expected_resource_revision: resource_revision.clone(),
+                expected_source_revision: 1,
+                expected_target_revision: Some(1),
+            },
+        )
+        .await
+        .expect_err("stale source revision must fail");
+    assert!(matches!(
+        stale_source,
+        MediaError::TranslationRevisionConflict { .. }
+    ));
+
+    let reapplied = service
+        .apply_exact_translation(
+            tenant_id,
+            media.id,
+            ApplyExactMediaTranslationInput {
+                source_locale: rustok_api::TenantLocale::new("en").unwrap(),
+                target: target_values(),
+                expected_resource_revision: resource_revision,
+                expected_source_revision: 2,
+                expected_target_revision: Some(1),
+            },
+        )
+        .await
+        .expect("current source and target revisions should apply");
+    assert_eq!(reapplied.revision, 2);
+}
+
+#[tokio::test]
+async fn translation_write_rolls_back_when_owner_event_cannot_persist() {
+    let (database, storage, _directory) = test_runtime().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&database, tenant_id).await;
+    let service = MediaService::new(database.clone(), storage);
+    let media = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("media fixture should upload");
+    database
+        .execute_unprepared("DROP TABLE sys_events")
+        .await
+        .expect("outbox table should be removable for the failure fixture");
+
+    let error = service
+        .upsert_translation(
+            tenant_id,
+            media.id,
+            UpsertTranslationInput {
+                locale: "en-US".to_string(),
+                title: Some("Hero".to_string()),
+                alt_text: None,
+                caption: None,
+            },
+        )
+        .await
+        .expect_err("translation write must fail when owner event persistence fails");
+    assert!(matches!(error, MediaError::TranslationEvent(_)));
+    assert!(
+        media_translation::Entity::find()
+            .filter(media_translation::Column::TenantId.eq(tenant_id))
+            .all(&database)
+            .await
+            .expect("translation rows should query")
+            .is_empty()
+    );
+    assert!(
+        translation_change::Entity::find()
+            .filter(translation_change::Column::TenantId.eq(tenant_id))
+            .all(&database)
+            .await
+            .expect("translation change rows should query")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn translation_target_provider_applies_and_replays_one_exact_locale_patch() {
+    let (database, storage, _directory) = test_runtime().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&database, tenant_id).await;
+    let service = Arc::new(MediaService::new(database.clone(), storage));
+    let media = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("media fixture should upload");
+    service
+        .upsert_translation(
+            tenant_id,
+            media.id,
+            UpsertTranslationInput {
+                locale: "en-US".to_string(),
+                title: Some("Hero".to_string()),
+                alt_text: Some("Hero image".to_string()),
+                caption: None,
+            },
+        )
+        .await
+        .expect("exact source should be created");
+    let provider = MediaTranslationTargetProvider::new(service);
+    let read_context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::system(),
+        "en-US",
+        "translation-read",
+    )
+    .with_deadline(Duration::from_secs(5));
+    let source_change_page = provider
+        .read_changes(
+            read_context.clone(),
+            TranslationTargetChangesRequest {
+                after: None,
+                limit: 10,
+            },
+        )
+        .await
+        .expect("direct Media translation writes should publish change evidence");
+    assert_eq!(source_change_page.changes.len(), 1);
+    let source_change_cursor = source_change_page
+        .next_cursor
+        .expect("direct Media translation change must return a checkpoint cursor");
+
+    let page = provider
+        .list_resources(
+            read_context.clone(),
+            ListTranslationResourcesRequest {
+                source_locale: TenantLocale::new("en-US").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+                cursor: None,
+                limit: 10,
+            },
+        )
+        .await
+        .expect("Media resources should be discoverable");
+    assert_eq!(page.resources.len(), 1);
+    let identity = page.resources[0].identity.clone();
+    let snapshot = provider
+        .read_resource(
+            read_context.clone(),
+            ReadTranslationResourceRequest {
+                identity: identity.clone(),
+                source_locale: TenantLocale::new("en-US").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+            },
+        )
+        .await
+        .expect("exact Media source should be readable");
+    let title = snapshot
+        .fields
+        .iter()
+        .find(|field| field.descriptor.key.as_str() == "title")
+        .expect("title field should be exposed");
+    let patch = TranslationPatchRequest {
+        identity,
+        source_locale: snapshot.source_locale.clone(),
+        target_locale: snapshot.target_locale.clone(),
+        expected_resource_revision: snapshot.summary.resource_revision.clone(),
+        expected_source_revision: snapshot.source_revision.clone(),
+        expected_target_revision: snapshot.target_revision.clone(),
+        fields: vec![TranslationFieldPatch {
+            key: FieldKey::new("title").unwrap(),
+            value: "Héros".to_string(),
+            expected_source_hash: title.source_hash.clone(),
+        }],
+        proposal_id: "proposal-media-1".to_string(),
+        approval_receipt_id: "approval-media-1".to_string(),
+    };
+    let validation = provider
+        .validate_patch(read_context.clone(), patch.clone())
+        .await
+        .expect("Media patch validation should complete");
+    assert!(validation.accepted);
+
+    let apply_context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::system(),
+        "en-US",
+        "translation-apply",
+    )
+    .with_idempotency_key("media-translation-apply-1")
+    .with_deadline(Duration::from_secs(5));
+    let first_receipt = provider
+        .apply_patch(apply_context.clone(), patch.clone())
+        .await
+        .expect("Media patch should apply");
+    assert_eq!(first_receipt.target_revision.as_str(), "1");
+    assert_eq!(
+        first_receipt.applied_field_keys,
+        vec![FieldKey::new("title").unwrap()]
+    );
+    let replay_receipt = provider
+        .apply_patch(apply_context.clone(), patch.clone())
+        .await
+        .expect("same idempotency request should replay");
+    assert_eq!(replay_receipt, first_receipt);
+    let mut conflicting_patch = patch;
+    conflicting_patch.proposal_id = "proposal-media-2".to_string();
+    let conflict = provider
+        .apply_patch(apply_context, conflicting_patch)
+        .await
+        .expect_err("same idempotency key must reject a different request");
+    assert_eq!(conflict.kind, PortErrorKind::Conflict);
+    assert_eq!(conflict.code, "media.idempotency_conflict");
+    let events = SysEvents::find()
+        .all(&database)
+        .await
+        .expect("translation target event should query");
+    assert_eq!(events.len(), 2);
+    assert!(
+        events
+            .iter()
+            .all(|event| event.event_type == "translation.target.changed")
+    );
+    let change_page = provider
+        .read_changes(
+            read_context.clone(),
+            TranslationTargetChangesRequest {
+                after: Some(source_change_cursor),
+                limit: 10,
+            },
+        )
+        .await
+        .expect("Media translation changes should be readable");
+    assert_eq!(change_page.changes.len(), 1);
+    assert_eq!(change_page.changes[0].identity, page.resources[0].identity);
+    assert_eq!(
+        change_page.changes[0].resource_revision,
+        first_receipt.resource_revision
+    );
+    let change_cursor = change_page
+        .next_cursor
+        .expect("non-empty change page must return a checkpoint cursor");
+    let after_change = provider
+        .read_changes(
+            read_context.clone(),
+            TranslationTargetChangesRequest {
+                after: Some(change_cursor),
+                limit: 10,
+            },
+        )
+        .await
+        .expect("Media change cursor should resume after the checkpoint");
+    assert!(after_change.changes.is_empty());
+    assert!(after_change.next_cursor.is_none());
+    let foreign_tenant_page = provider
+        .read_changes(
+            PortContext::new(
+                Uuid::new_v4().to_string(),
+                PortActor::system(),
+                "en-US",
+                "translation-change-tenant-isolation",
+            )
+            .with_deadline(Duration::from_secs(5)),
+            TranslationTargetChangesRequest {
+                after: None,
+                limit: 10,
+            },
+        )
+        .await
+        .expect("tenant-isolated Media change query should complete");
+    assert!(foreign_tenant_page.changes.is_empty());
+    assert!(foreign_tenant_page.next_cursor.is_none());
+
+    let updated = provider
+        .read_resource(
+            read_context,
+            ReadTranslationResourceRequest {
+                identity: page.resources[0].identity.clone(),
+                source_locale: TenantLocale::new("en-US").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+            },
+        )
+        .await
+        .expect("applied target should be readable");
+    assert_eq!(
+        updated
+            .fields
+            .iter()
+            .find(|field| field.descriptor.key.as_str() == "title")
+            .and_then(|field| field.exact_target_value.as_deref()),
+        Some("Héros")
+    );
 }

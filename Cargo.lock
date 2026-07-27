@@ -12967,6 +12967,7 @@ dependencies = [
  "rustok-social-graph",
  "rustok-taxonomy",
  "rustok-tenant",
+ "rustok-translation",
  "rustok-workflow",
  "serde",
  "serde_json",
@@ -13695,8 +13696,11 @@ dependencies = [
  "reqwest 0.13.4",
  "rustok-api",
  "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
  "rustok-storage",
  "rustok-telemetry",
+ "rustok-translation-targets",
  "rustok-web",
  "sea-orm",
  "sea-orm-migration",
@@ -13764,6 +13768,7 @@ dependencies = [
  "protoc-bin-vendored",
  "rustok-api",
  "rustok-media",
+ "rustok-outbox",
  "rustok-storage",
  "sea-orm",
  "sea-orm-migration",
@@ -13810,6 +13815,7 @@ dependencies = [
  "rustok-marketplace-listing",
  "rustok-marketplace-payout",
  "rustok-marketplace-seller",
+ "rustok-media",
  "rustok-moderation",
  "rustok-modules",
  "rustok-order",
@@ -13824,6 +13830,7 @@ dependencies = [
  "rustok-seo",
  "rustok-taxonomy",
  "rustok-test-utils",
+ "rustok-translation",
  "rustok-workflow",
  "sea-orm",
  "sea-orm-migration",
@@ -15000,6 +15007,8 @@ dependencies = [
  "rustok-telemetry",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-translation",
+ "rustok-translation-targets",
  "rustok-web",
  "rustok-workflow",
  "sea-orm",
@@ -15253,6 +15262,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-translation"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-translation-targets",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-translation-targets"
 version = "0.1.0"
 dependencies = [
@@ -15261,6 +15287,7 @@ dependencies = [
  "rustok-core",
  "serde",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -15313,11 +15340,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "hex",
  "rustok-modules",
  "rustok-verification-transport",
  "rustok-worker-transport",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "tonic",

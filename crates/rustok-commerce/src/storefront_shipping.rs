@@ -10,8 +10,7 @@ use crate::{
 use rustok_fulfillment::{FulfillmentError, FulfillmentResult, FulfillmentService};
 
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
-const STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY: &str =
-    "commerce_storefront_shipping_enrichment";
+const STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY: &str = "commerce_storefront_shipping_enrichment";
 
 pub fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
     let normalized = value.trim().to_ascii_lowercase();
@@ -208,22 +207,16 @@ fn log_cart_delivery_group_enrichment_error(
 ) {
     let (owner_code, owner_kind, owner_retryable) = match error {
         FulfillmentError::Validation(_) => ("fulfillment.validation", "validation", false),
-        FulfillmentError::ShippingOptionNotFound(_) => (
-            "fulfillment.shipping_option_not_found",
-            "not_found",
-            false,
-        ),
+        FulfillmentError::ShippingOptionNotFound(_) => {
+            ("fulfillment.shipping_option_not_found", "not_found", false)
+        }
         FulfillmentError::FulfillmentNotFound(_) => {
             ("fulfillment.fulfillment_not_found", "not_found", false)
         }
         FulfillmentError::InvalidTransition { .. } => {
             ("fulfillment.invalid_transition", "conflict", false)
         }
-        FulfillmentError::Database(_) => (
-            "fulfillment.database_unavailable",
-            "unavailable",
-            true,
-        ),
+        FulfillmentError::Database(_) => ("fulfillment.database_unavailable", "unavailable", true),
     };
 
     match error {

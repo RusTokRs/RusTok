@@ -1,7 +1,10 @@
 use chrono::{Duration, Utc};
 use rustok_api::PortError;
 use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set,
+};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -80,11 +83,15 @@ pub(crate) async fn admit<T: Serialize>(
     }
 }
 
-pub(crate) async fn complete<T: Serialize>(
-    db: &DatabaseConnection,
+pub(crate) async fn complete<C, T>(
+    db: &C,
     lease: OperationLease,
     response: &T,
-) -> Result<(), PortError> {
+) -> Result<(), PortError>
+where
+    C: ConnectionTrait,
+    T: Serialize,
+{
     let response = serde_json::to_value(response).map_err(|error| {
         PortError::invariant_violation("media.idempotency_encode", error.to_string())
     })?;

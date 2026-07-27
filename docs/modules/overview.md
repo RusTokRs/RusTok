@@ -99,6 +99,7 @@ It is important to distinguish:
 | `page_builder` | `rustok-page-builder` | — |
 | `taxonomy` | `rustok-taxonomy` | `content` |
 | `media` | `rustok-media` | — |
+| `translation` | `rustok-translation` | — |
 | `seo` | `rustok-seo` | `content` |
 | `workflow` | `rustok-workflow` | — |
 | `alloy` | `alloy` | — |

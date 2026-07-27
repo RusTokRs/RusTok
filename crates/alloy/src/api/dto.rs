@@ -168,6 +168,7 @@ pub struct ScriptResponse {
     pub trigger: ScriptTrigger,
     pub status: ScriptStatus,
     pub version: u32,
+    pub parent_release: Option<rustok_modules::ArtifactReleaseRef>,
     pub error_count: u32,
     pub created_at: String,
     pub updated_at: String,
@@ -183,6 +184,7 @@ impl From<Script> for ScriptResponse {
             trigger: s.trigger,
             status: s.status,
             version: s.version,
+            parent_release: s.parent_release,
             error_count: s.error_count,
             created_at: s.created_at.to_rfc3339(),
             updated_at: s.updated_at.to_rfc3339(),
@@ -283,6 +285,11 @@ pub struct ExecutionLogResponse {
     pub error: Option<String>,
     pub user_id: Option<String>,
     pub tenant_id: Option<Uuid>,
+    pub source_revision: Option<u32>,
+    pub source_digest: Option<String>,
+    pub policy_digest: Option<String>,
+    pub executor: Option<String>,
+    pub runtime_abi: Option<String>,
     pub created_at: String,
 }
 
@@ -298,6 +305,11 @@ impl From<ExecutionLogEntry> for ExecutionLogResponse {
             error: entry.error,
             user_id: entry.user_id,
             tenant_id: entry.tenant_id,
+            source_revision: entry.source_revision,
+            source_digest: entry.source_digest,
+            policy_digest: entry.policy_digest,
+            executor: entry.executor,
+            runtime_abi: entry.runtime_abi,
             created_at: entry.created_at.to_rfc3339(),
         }
     }
@@ -408,6 +420,11 @@ mod tests {
             error: Some("operator-visible error".to_string()),
             user_id: Some("operator-7".to_string()),
             tenant_id: Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap()),
+            source_revision: Some(7),
+            source_digest: Some(format!("sha256:{}", "a".repeat(64))),
+            policy_digest: Some(format!("sha256:{}", "b".repeat(64))),
+            executor: Some("rhai".to_string()),
+            runtime_abi: Some("rustok:module/runtime@1".to_string()),
             created_at: Utc.with_ymd_and_hms(2026, 6, 19, 12, 0, 0).unwrap(),
         }
     }
@@ -431,6 +448,20 @@ mod tests {
         assert_eq!(
             response.tenant_id,
             Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap())
+        );
+        assert_eq!(response.source_revision, Some(7));
+        assert_eq!(
+            response.source_digest.as_deref(),
+            Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert_eq!(
+            response.policy_digest.as_deref(),
+            Some("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        );
+        assert_eq!(response.executor.as_deref(), Some("rhai"));
+        assert_eq!(
+            response.runtime_abi.as_deref(),
+            Some("rustok:module/runtime@1")
         );
         assert_eq!(response.created_at, "2026-06-19T12:00:00+00:00");
     }

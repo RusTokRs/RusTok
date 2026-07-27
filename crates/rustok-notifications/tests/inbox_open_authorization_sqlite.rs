@@ -14,9 +14,9 @@ use rustok_notifications::entities::{delivery_attempt, notification};
 use rustok_notifications::model::{NotificationPriorityValue, NotificationState};
 use rustok_notifications::{
     NotificationError, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
-    NotificationInboxOpenService, NotificationRecipientPolicy,
-    NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
-    NotificationRecipientPolicyRequest, NotificationRecipientSuppression, NotificationsModule,
+    NotificationInboxOpenService, NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
+    NotificationRecipientPolicyError, NotificationRecipientPolicyRequest,
+    NotificationRecipientSuppression, NotificationsModule,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
@@ -155,10 +155,7 @@ async fn exact_recipient_passes_privacy_then_gets_fresh_route_without_oracle() {
         .expect("exact recipient target should authorize");
     match decision {
         NotificationInboxOpenDecision::Allowed { route } => {
-            assert_eq!(
-                route.as_str(),
-                format!("/modules/test?target={target_id}")
-            );
+            assert_eq!(route.as_str(), format!("/modules/test?target={target_id}"));
         }
         NotificationInboxOpenDecision::Unavailable => {
             panic!("exact recipient target should be available")
@@ -254,15 +251,8 @@ async fn privacy_suppression_and_retryable_failure_stop_before_source_authorizat
     let recipient_id = Uuid::new_v4();
     insert_tenant(&db, tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
-    let notification_id = seed_notification(
-        &db,
-        tenant_id,
-        recipient_id,
-        None,
-        Uuid::new_v4(),
-        SOURCE,
-    )
-    .await;
+    let notification_id =
+        seed_notification(&db, tenant_id, recipient_id, None, Uuid::new_v4(), SOURCE).await;
     let request = NotificationInboxOpenRequest {
         tenant_id,
         recipient_id,
@@ -324,15 +314,8 @@ async fn stale_target_provider_failure_and_invalid_source_remain_distinct() {
     insert_tenant(&db, tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
 
-    let notification_id = seed_notification(
-        &db,
-        tenant_id,
-        recipient_id,
-        None,
-        Uuid::new_v4(),
-        SOURCE,
-    )
-    .await;
+    let notification_id =
+        seed_notification(&db, tenant_id, recipient_id, None, Uuid::new_v4(), SOURCE).await;
     let request = NotificationInboxOpenRequest {
         tenant_id,
         recipient_id,

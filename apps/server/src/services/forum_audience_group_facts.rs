@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_forum::{
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
-    SharedForumAudienceFactsPort, MAX_FORUM_AUDIENCE_GROUPS,
+    MAX_FORUM_AUDIENCE_GROUPS, SharedForumAudienceFactsPort,
 };
 use rustok_groups::{
     GroupMembershipEnforcementReadPort, GroupMembershipEnforcementService,
@@ -216,10 +216,11 @@ mod tests {
         active_groups: impl IntoIterator<Item = Uuid>,
     ) -> (ServerForumAudienceGroupFactsPort, Arc<Mutex<Vec<Uuid>>>) {
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let groups: SharedGroupMembershipEnforcementReadPort = Arc::new(StaticGroupMembershipPort {
-            active_groups: active_groups.into_iter().collect(),
-            calls: calls.clone(),
-        });
+        let groups: SharedGroupMembershipEnforcementReadPort =
+            Arc::new(StaticGroupMembershipPort {
+                active_groups: active_groups.into_iter().collect(),
+                calls: calls.clone(),
+            });
         (ServerForumAudienceGroupFactsPort::new(groups), calls)
     }
 
@@ -330,9 +331,11 @@ mod tests {
             .expect_err("foreign user facts lookup must fail closed");
 
         assert_eq!(error.kind, PortErrorKind::Forbidden);
-        assert!(calls
-            .lock()
-            .expect("group fact call recorder should stay available")
-            .is_empty());
+        assert!(
+            calls
+                .lock()
+                .expect("group fact call recorder should stay available")
+                .is_empty()
+        );
     }
 }

@@ -9,6 +9,26 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 ## Current state
 
 - `rustok-media` publishes the migration for `media_assets`, `media_blobs`, `media_renditions`, `media_upload_sessions`, `media_translations`, and `media_port_operations`.
+- Media translation writes convert transport strings to the canonical
+  `rustok_api::TenantLocale` at the owner boundary; `und` and malformed locale
+  tags cannot reach `media_translations`.
+- Exact translation apply uses durable locale revisions and one transaction
+  over the active asset plus ordered source/target rows. Stale source, stale
+  target, unexpected target creation, and revision exhaustion fail closed.
+- `MediaTranslationTargetProvider` is registered by the server composition
+  root as `media/asset`. It exposes bounded UUID cursor discovery, exact
+  locale-only snapshots, stable field identities and hashes, permission floors,
+  validation, one-resource CAS apply, and a tenant-scoped owner change cursor.
+- Provider apply commits the exact target update, stable idempotency receipt,
+  append-only change record, and content-free `translation.target.changed`
+  outbox event in the same transaction. Replay returns the original receipt
+  without another write, cursor record, or event.
+- Non-provider Media translation writes commit the same append-only change
+  record and owner event atomically with the locale row, so REST, GraphQL,
+  native, AI-originated, embedded-port, and provider paths cannot silently
+  bypass inventory repair evidence.
+- Production inventory enablement still requires projection replay, cursor
+  checkpoint recovery, and sustained multi-replica operational evidence.
 - Direct uploads write an object, then atomically persist one asset and one immutable ready blob. Ambiguous database outcomes preserve the object for reconciliation.
 - Blob rows persist SHA-256, verified MIME, size, dimensions, timestamps, lifecycle state, retry count, and last error.
 - Delete requests persist tombstones before deleting objects. Successful deletion and `NotFound` complete tombstones; transient failures remain restart-safe work.

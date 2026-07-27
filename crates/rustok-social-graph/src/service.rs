@@ -180,10 +180,7 @@ impl SocialGraphService {
         source_user_id: Uuid,
         target_user_ids: &[Uuid],
     ) -> SocialGraphResult<Vec<Uuid>> {
-        let target_user_ids = target_user_ids
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>();
+        let target_user_ids = target_user_ids.iter().copied().collect::<BTreeSet<_>>();
         for target_user_id in &target_user_ids {
             validate_pair(source_user_id, *target_user_id)?;
         }

@@ -130,17 +130,13 @@ pub enum GrpcMediaPublicImageConnectionError {
         "media gRPC endpoint must be an absolute http(s) service URL without credentials, query, fragment, or path"
     )]
     InvalidEndpoint,
-    #[error(
-        "insecure media gRPC endpoint is allowed only for an explicitly enabled loopback host"
-    )]
+    #[error("insecure media gRPC endpoint is allowed only for an explicitly enabled loopback host")]
     InsecureEndpointForbidden,
     #[error(
         "media public origin must be an absolute http(s) origin without credentials, query, fragment, or path"
     )]
     InvalidPublicOrigin,
-    #[error(
-        "insecure media public origin is allowed only for an explicitly enabled loopback host"
-    )]
+    #[error("insecure media public origin is allowed only for an explicitly enabled loopback host")]
     InsecurePublicOriginForbidden,
     #[error("media gRPC TLS domain is invalid")]
     InvalidTlsDomain,
@@ -219,17 +215,13 @@ fn validate_service_url(
 fn invalid_url_error(kind: ServiceUrlKind) -> GrpcMediaPublicImageConnectionError {
     match kind {
         ServiceUrlKind::Endpoint => GrpcMediaPublicImageConnectionError::InvalidEndpoint,
-        ServiceUrlKind::PublicOrigin => {
-            GrpcMediaPublicImageConnectionError::InvalidPublicOrigin
-        }
+        ServiceUrlKind::PublicOrigin => GrpcMediaPublicImageConnectionError::InvalidPublicOrigin,
     }
 }
 
 fn insecure_url_error(kind: ServiceUrlKind) -> GrpcMediaPublicImageConnectionError {
     match kind {
-        ServiceUrlKind::Endpoint => {
-            GrpcMediaPublicImageConnectionError::InsecureEndpointForbidden
-        }
+        ServiceUrlKind::Endpoint => GrpcMediaPublicImageConnectionError::InsecureEndpointForbidden,
         ServiceUrlKind::PublicOrigin => {
             GrpcMediaPublicImageConnectionError::InsecurePublicOriginForbidden
         }
@@ -240,11 +232,8 @@ fn validate_public_origin(
     value: &str,
     allow_insecure_loopback: bool,
 ) -> Result<String, GrpcMediaPublicImageConnectionError> {
-    let validated = validate_service_url(
-        value,
-        allow_insecure_loopback,
-        ServiceUrlKind::PublicOrigin,
-    )?;
+    let validated =
+        validate_service_url(value, allow_insecure_loopback, ServiceUrlKind::PublicOrigin)?;
     let parsed = Url::parse(validated.url.as_str())
         .map_err(|_| GrpcMediaPublicImageConnectionError::InvalidPublicOrigin)?;
     Ok(parsed.origin().ascii_serialization())
