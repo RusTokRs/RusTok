@@ -54,6 +54,8 @@ for (const marker of [
 
 for (const marker of [
   'ConsumerKind::ConsumerGroup',
+  'ConsumerOffsetClient',
+  'TopicClient',
   'IggyClient::from_connection_string',
   '.get_topic(&self.stream_id, &self.topic_id)',
   '.get_consumer_offset(',
@@ -126,12 +128,19 @@ for (const marker of [
   'IggyConsumerPositionObserver::connect(',
   'connected.snapshot().await',
   'runtime_consumer_metrics::record_position_snapshot(',
+  'fn record_position_unavailable()',
+  'record_position_snapshot(METRICS_CONSUMER, 0, 0, None, None)',
   'STAGE_POSITION_SNAPSHOT',
   'projection remains active',
   'reconnecting observer without stopping projection',
   'StopHandle',
 ]) {
   requireText("server position observer", files.observer, marker);
+}
+if (files.observer.split('record_position_unavailable();').length - 1 < 4) {
+  failures.push(
+    "server position observer must clear stale lag for config, connect, snapshot, and shutdown paths",
+  );
 }
 for (const forbidden of [
   'IggyTransport::new',
@@ -151,5 +160,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy consumer-position verification passed: one workspace SDK pin, read-only every-partition committed/high-watermark observation, fail-closed lag calculation, completeness-gated bounded metrics, shared-transport configuration, independent retry, and no projection/readiness coupling are locked.",
+  "Iggy consumer-position verification passed: one workspace SDK pin, required client traits, read-only every-partition committed/high-watermark observation, fail-closed lag calculation, completeness-gated bounded metrics, stale-lag clearing, shared-transport configuration, independent retry, and no projection/readiness coupling are locked.",
 );
