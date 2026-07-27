@@ -1,4 +1,4 @@
-﻿# `rustok-tax` Documentation
+# `rustok-tax` Documentation
 
 `rustok-tax` — foundation crate for the tax bounded context in the commerce family.
 
@@ -21,11 +21,19 @@
 
 ## Integration
 
-- `rustok-cart` calls `TaxCalculationPort` for recalculating cart tax lines;
+- `rustok-cart` calls the canonical root `TaxCalculationPort` factory for recalculating cart tax lines;
+- the root in-process factory retains safe local outcome context while the legacy `ports` module path
+  remains available for compatibility;
 - checkout transfers the provider-aware tax snapshot to `rustok-order`;
 - transport surface is still published through `rustok-commerce`.
+
+## Context contracts
+
+- [Tax calculation policy context](./calculation-port-policy-context.md)
+- [Tax calculation local outcome context](./calculation-local-context.md)
 
 ## Verification
 
 - targeted unit tests in `rustok-tax`;
+- static policy and local-outcome context guards under `scripts/verify`;
 - compile-check for `rustok-tax`, `rustok-cart`, `rustok-order`, `rustok-commerce`.
