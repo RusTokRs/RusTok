@@ -110,7 +110,7 @@
 - `SocialGraphIndexConsumerError::{stable_code,is_retryable}` exposes bounded host
   classification without schema JSON, payload, identity, or storage causes.
 
-## Durable DLQ receipt contract
+## Durable DLQ receipt and broker-identity contract
 
 - Migration `m20260727_000004_create_index_dlq_receipts` owns one immutable poison
   identity per `(tenant_id, consumer_group, event_id)` with exact source
@@ -122,8 +122,16 @@
 - `project_consumed` checks the receipt before Index projection. `published` or
   `acknowledged` returns the bounded recovered dead-letter outcome; `reserved` or
   `publishing` remains retryable DLQ work and never re-enters mutation apply.
-- `publish_consumed_to_dlq` durably reserves/claims the identity, publishes exact retained
-  bytes, and returns success only after the receipt reaches `published`.
+- Internal `index_dlq_message_id` derives a deterministic RFC 9562 UUIDv8 from a
+  versioned domain plus tenant, consumer group, event ID, source stream/topic/partition/
+  offset, and exact payload. Length framing prevents concatenation ambiguity.
+- Retry count, wall-clock time, publisher instance, lease owner, and random values are
+  excluded, so every retry of one immutable receipt produces the same broker ID.
+- `publish_consumed_to_dlq` durably reserves/claims the identity, attaches the UUIDv8 to
+  `DlqEntry`, publishes exact retained bytes, and returns success only after the receipt
+  reaches `published`.
+- `IggyTransport` maps the UUIDv8 to Iggy's `u128` message header through a lazy SDK
+  publisher connection to the same configured endpoint and existing `dlq` topic.
 - Repeated calls recognize `published`/`acknowledged` and skip broker publication.
 - `acknowledge_consumed` commits the source cursor after a terminal Index or DLQ result.
   Receipt transition to `acknowledged` is best-effort bookkeeping after broker commit and
@@ -132,10 +140,13 @@
   receipt/broker publication before source acknowledgement.
 - Ack failure after `publish_consumed_to_dlq` succeeds leaves a durable `published`
   receipt; redelivery skips both projection and DLQ publication and retries source ack.
-- Broker success followed by process/DB failure before the `published` transition remains
-  an explicit confirmation ambiguity. The same immutable receipt identity and bytes are
-  retried after lease expiry, but physical broker exactly-once is not claimed without a
-  configured broker deduplication/transaction contract.
+- Broker success followed by process/DB failure before the `published` transition still
+  has confirmation ambiguity. Republication carries the same UUIDv8; physical duplicate
+  suppression occurs only when Iggy deduplication is enabled and its per-partition
+  cache/expiry still covers the recovery interval.
+- Durable receipt state, not broker deduplication, remains the terminal owner contract;
+  physical broker exactly-once is not claimed without retained configuration/runtime
+  evidence or a stronger transaction/outbox mechanism.
 - Malformed broker bytes that fail before `ConsumedContractEvent` construction remain
   unacknowledged pending a connector-level poison-message contract.
 
@@ -145,8 +156,11 @@
   default-off until `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED=true`.
 - Explicit enablement requires a worker-capable host and effective `outbox_iggy`.
 - `EventRuntime` creates one configured `Arc<IggyTransport>` and shares that exact
-  connector between outbound relay and inbound consumer. The worker never creates or
+  transport between outbound relay and inbound consumer. The worker never creates or
   stops a second bundled broker process.
+- Identified DLQ publication may lazily open one SDK client owned by that shared
+  `IggyTransport`; it connects to the same configured broker and is dropped on failure
+  for bounded retry-time reconnect.
 - `SocialGraphIndexWorkerHandle` exposes task state and observes shared `StopHandle`.
 - Projection, durable DLQ publication, and source acknowledgement use bounded exponential
   retry from reviewed event settings.
@@ -179,15 +193,16 @@
   values from masquerading as current lag.
 - Labels are bounded to consumer, stage, outcome, result, reason, aggregation, and stable
   error code.
-- Tenant, event, relation, partition, offset, payload, ack token, credentials, and raw
-  error text are not labels.
+- Tenant, event, relation, partition, offset, payload, broker ID, ack token, credentials,
+  and raw error text are not labels.
 - Event age, processing duration, one delivered offset, and local cursor counters are
   not valid lag inputs.
 
 ## Authority boundary
 
 - Social Graph owner ports and storage remain authoritative for block/mute/follow.
-- Profiles privacy must not authorize from Index state, DLQ receipts, or consumer lag.
+- Profiles privacy must not authorize from Index state, DLQ receipts, broker IDs,
+  deduplication state, or consumer lag.
 - The adapter, projector, consumer, worker, position observer, and telemetry never read
   Social Graph relation tables for projection work.
 - Index and DLQ/lag operations are optional infrastructure and must not authorize
@@ -199,8 +214,9 @@
 - `rustok-core`: module and migration contracts.
 - `rustok-events`: sealed relation event family.
 - optional `rustok-index`: schema, conversion, registration, mutation persistence.
-- optional `rustok-iggy`: persistent typed cursor, exact payload retention, DLQ, ack,
-  and read-only broker position observation.
+- optional `rustok-iggy`: persistent typed cursor, exact payload retention, deterministic
+  DLQ header publication, DLQ, ack, and read-only broker position observation.
+- `sha2`: versioned deterministic UUIDv8 derivation from immutable receipt identity.
 - `rustok-outbox`: transactional event bus.
 - sibling CLI uses `rustok-cli-core` and `rustok-runtime`.
 
@@ -209,14 +225,18 @@
 - Writing through `SocialGraphService::new(db)` and silently losing events.
 - Publishing arbitrary string events or publishing after relation commit.
 - Emitting an event for receipt replay or persisted-state no-op.
-- Treating replay or broker DLQ publication as exactly-once without retained evidence.
+- Treating replay, a deterministic broker ID, or broker DLQ publication as exactly-once
+  without retained deduplication configuration/runtime evidence.
 - Putting idempotency keys, request context, claims, roles, locale, channel, or command
   receipt snapshots into the external event.
 - Reading relation tables from Profiles, Index, or another consumer.
 - Registering only in memory and assuming the persisted schema foreign key exists.
 - Writing `index_schemas` directly from Social Graph.
 - Acknowledging before schema/Index result or durable DLQ publication is complete.
-- Creating or shutting down a second Iggy transport in the worker or position observer.
+- Creating or shutting down a second Iggy transport or bundled process in the worker,
+  identified publisher, or position observer.
+- Generating a random broker message ID per retry or including retry count/time in it.
+- Assuming Iggy deduplication is enabled, durable, global, or unbounded.
 - DLQing after a durable Index result instead of retrying ack only.
 - Re-serializing a decoded envelope instead of using exact broker bytes.
 - Ignoring an existing DLQ receipt and re-entering Index projection on redelivery.
@@ -224,7 +244,7 @@
 - Returning DLQ success before the `published` receipt transition.
 - Republish-to-DLQ on every ack retry after a durable `published` receipt exists.
 - Deleting receipt rows without an approved retention/reconciliation contract.
-- Using tenant/event/relation/partition/offset/payload/error text as metric labels.
+- Using tenant/event/relation/partition/offset/payload/broker-ID/error text as metric labels.
 - Publishing lag from an incomplete snapshot, event age, or one global offset.
 - Making observer failure projection-critical or readiness-critical.
 - Authorizing Profiles visibility from projection state, DLQ receipts, or consumer lag.
@@ -246,4 +266,5 @@
   `social_graph.index.*` host codes without publishing private storage causes.
 - DLQ receipts add bounded `social_graph.index.dlq_receipt_*` and
   `social_graph.index.dlq_publish_in_progress` codes.
+- Identified Iggy publication logs bounded `iggy.dlq_publisher.*` codes.
 - Position observation uses bounded `iggy.consumer_position.*` stable codes.
