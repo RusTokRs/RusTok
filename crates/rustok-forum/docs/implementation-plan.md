@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-25
+last_reviewed: 2026-07-27
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-G provide inherited public/authenticated policy, category/topic/reply owner-read composition, the bounded richer-audience evaluator contract and normalized conjunctive category audience persistence. Topic narrowing, richer read composition, write audiences, provider adapters, remaining consumers and runtime evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-AL provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL reads/open authorization, grouped UI and navigation. FORUM-20AM synchronizes the canonical and owner-local ledgers. Write audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1231,34 +1231,95 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
 - this slice adds no topic narrowing, category/topic/reply read composition,
   provider adapter, write-audience transport or cross-consumer behavior.
 
+### Delivered in `FORUM-20H` through `FORUM-20Q`
+
+- `FORUM-20H` adds normalized topic-local audience narrowing and owner replacement
+  commands that compose after the inherited category layers and cannot broaden them;
+- `FORUM-20I` migrates Forum notification description, audience, and target-open checks
+  to the canonical topic visibility owner instead of notification-local predicates;
+- `FORUM-20J` composes exact richer topic visibility from the route/channel rule,
+  inherited category layers, optional topic narrowing, and bounded owner facts;
+- `FORUM-20K` applies that richer exact decision to Forum notification source reads and
+  reauthorization while retaining public fail-closed degraded behavior;
+- `FORUM-20L` and `FORUM-20M` define and publish the exact recipient-context capability,
+  backed by authoritative Users/RBAC owners and preserving deadline and trace context;
+- `FORUM-20N` authorizes each notification target for the exact current recipient;
+- `FORUM-20O` re-resolves mentioned recipients before descriptor/audience publication;
+- `FORUM-20P` filters topic-subscription audience pages by current recipient visibility
+  while preserving sparse advancing cursors;
+- `FORUM-20Q` publishes the Groups-owned exact-membership facts adapter. Trust and
+  channel-membership adapters remain open.
+
+### Delivered in `FORUM-20R` through `FORUM-20AF`
+
+- `FORUM-20R/20S` add non-oracular exact inbox open authorization with current recipient
+  privacy before source target authorization;
+- `FORUM-20T` through `FORUM-20AA` add bounded authorized listing, exact state commands,
+  reconciliation, mark-unread, exact unread count, and resumable mark-all read/unread/archive;
+- `FORUM-20AB` adds bounded explicit selected-ID state commands;
+- `FORUM-20AC` adds authorized exact-group listing over opaque group keys;
+- `FORUM-20AD` makes group keys durable through a bounded owner migration and backfill;
+- `FORUM-20AE` adds bounded group summaries with exact stored counts and an authorized
+  latest-item projection;
+- `FORUM-20AF` adds bounded exact-group mark-read, mark-unread, and archive commands.
+
+### Delivered in `FORUM-20AG` through `FORUM-20AL`
+
+- `FORUM-20AG` exposes a transport-neutral authenticated-user storefront inbox port with
+  context-derived tenant/recipient identity and read/write admission semantics;
+- `FORUM-20AH` adds native Leptos server-function adapters without owner identity fields;
+- `FORUM-20AI` replaces the storefront placeholder with bounded grouped inbox rendering,
+  paging, stale-response guards, allowed-only navigation, and authoritative refreshes;
+- `FORUM-20AJ` mounts the localized Notifications action and exact unread badge through a
+  generic manifest-driven storefront header slot;
+- `FORUM-20AK` adds GraphQL parity for unread count and grouped summary/item reads while
+  reusing the owner storefront port and host-composed policy/source runtime;
+- `FORUM-20AL` adds GraphQL parity for fresh open authorization. Missing, foreign,
+  suppressed, and no-longer-openable rows remain indistinguishable `UNAVAILABLE`, and
+  only an owner-authorized route can produce `ALLOWED`.
+
+### Delivered in `FORUM-20AM`
+
+- synchronize this canonical ledger, the Notifications owner-local plan, owner README,
+  and live contract through `FORUM-20AL` without rewriting unrelated task content;
+- record the historical `FORUM-20H` through `FORUM-20AL` execution chain as source-ready
+  and unvalidated rather than promoting the overall task to `done`;
+- add `forum-notification-plan-sync.json` and
+  `verify-forum-notification-plan-sync.mjs` so future owner/storefront work cannot silently
+  leave the four authoritative documents at different milestones;
+- update the latest `FORUM-20AL` handoff contract to point at this synchronization task.
+
 ### Compatibility and degraded mode
 
-The nullable public/authenticated category floor still requires no backfill.
-FORUM-20G adds empty normalized audience tables, so existing categories and all
-current category/topic/reply reads remain unchanged until a later owner-read
-composition slice calls the richer evaluator. Existing stored local layers do
-not require Channel, Groups or trust providers merely to persist or inspect the
-policy. A missing optional facts provider can never broaden a decision; locally
-decidable role/explicit rules do not require one, while unresolved
-trust/channel/group evaluation remains a typed failure. Host adapters may later
-compose owner ports without adding direct Forum dependencies on Channel or
-Groups implementations.
+The nullable public/authenticated category floor and the normalized category/topic
+layers require no destructive backfill. Existing content without richer layers keeps
+its previous audience. Locally decidable role and explicit-user decisions do not
+require optional facts providers; unresolved trust, channel, or group facts fail
+closed and can never broaden a decision.
+
+Forum producer commands remain independent from Notifications availability. The
+Notifications module stays default-off, derives storefront tenant and recipient identity
+from authenticated context, and exposes explicit unavailable/degraded states rather than
+shadow inbox data. Native and GraphQL storefront reads select exactly one transport path
+with no cross-path fallback. Group-state writes remain native-only until GraphQL write
+admission and idempotency parity are implemented.
 
 ### Remaining scope
 
-- add normalized topic narrowing persistence and owner commands that cannot
-  broaden any effective category layer;
-- provide host adapters for Forum-owned trust state plus Channel and Groups owner
-  membership ports, preserving exact request bounds and optional-capability
-  failure semantics;
-- compose inherited category and topic layers into category/topic/reply owner
-  reads without count, pagination or existence-oracle drift;
-- add create/reply/moderate audience policies and write commands;
-- compose the owner policy into remaining Forum reads and migrate notifications,
-  search/index, SEO and deep-link open authorization to the same decision;
-- add visibility-scoped category and all-read commands only after the complete
-  policy can page an exact category/tenant scope;
-- add PostgreSQL concurrency, inheritance and cross-consumer runtime evidence.
+- provide Forum trust and Channel membership facts adapters; keep the delivered Groups
+  adapter exact, bounded, and owner-backed;
+- materialize descriptors for topics that are already non-public at creation time without
+  weakening recipient-specific reauthorization;
+- add create/reply/moderate audience policies and owner write commands;
+- migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
+  same exact richer audience decision;
+- add visibility-scoped category/all-read commands over an exact bounded policy scope;
+- add auth-reactive automatic grouped-inbox bootstrap refresh and GraphQL group-state
+  mutations with deadline and idempotency admission;
+- add tenant-wide scheduled reconciliation, payload redaction, channel enqueue/transports,
+  and delivery-time target authorization;
+- add PostgreSQL concurrency, lease/contention, inheritance, and cross-consumer runtime
+  evidence before promoting `FORUM-20` to `done`.
 
 ### Definition of done
 
@@ -1282,6 +1343,22 @@ node scripts/verify/verify-forum-owner-read-visibility.mjs
 node scripts/verify/verify-forum-category-owner-read-visibility.mjs
 node scripts/verify/verify-forum-audience-capability-ports.mjs
 node scripts/verify/verify-forum-category-audience-policy.mjs
+node scripts/verify/verify-forum-topic-audience-policy.mjs
+node scripts/verify/verify-forum-topic-audience-visibility.mjs
+node scripts/verify/verify-forum-notification-visibility-composition.mjs
+node scripts/verify/verify-forum-notification-recipient-context.mjs
+node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs
+node scripts/verify/verify-forum-notification-recipient-target-open.mjs
+node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs
+node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs
+node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs
+node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs
+node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
+node scripts/verify/verify-forum-notification-navigation-badge.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
+node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate forum
 npm run verify:forum:storefront-boundary
 ```

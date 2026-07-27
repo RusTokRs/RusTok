@@ -4,9 +4,9 @@
 
 Notifications owns inbox/read state, exact unread counts, bounded mark-all,
 selected-ID state commands, bounded exact-group state commands, durable grouping,
-exact-group reads, bounded group summaries, preferences, bounded fanout, digests,
-retention, delivery attempts, intake receipts/quarantine, and
-replay/reconciliation. Source modules own semantic state, subscriptions, audience
+exact-group reads, bounded group summaries, authenticated native/GraphQL storefront reads
+and open authorization, the module-owned grouped storefront UI, preferences, bounded fanout,
+digests, retention, delivery attempts, intake receipts/quarantine, and replay/reconciliation. Source modules own semantic state, subscriptions, audience
 facts, visibility, target authorization, and routes. Profiles and Social Graph own
 recipient privacy. Delivery modules own channel transports.
 
@@ -223,6 +223,25 @@ return an empty page without notification identity.
 SQLite source evidence is `tests/inbox_group_state_sqlite.rs`; the static contract is
 `scripts/verify/verify-forum-notification-inbox-group-state.mjs`.
 
+### Authenticated storefront ports, transports, and UI
+
+`NotificationInboxStorefrontPort` derives owner scope from a human-user `PortContext` and
+exposes unread count, bounded group summaries/items, fresh open authorization, and bounded
+group-state commands. Read calls require a deadline; write calls require deadline and
+idempotency admission. Tenant and recipient identity never appear in storefront request DTOs.
+
+Native Leptos server functions are selected for SSR/hydrate. The feature-gated GraphQL query
+root is selected for CSR/headless unread count, grouped reads, and fresh open authorization.
+The GraphQL runtime receives the host database, materialized source registry, and current
+recipient-policy runtime, then exposes only the shared owner port. No path falls back to the
+other and GraphQL group-state mutations remain closed.
+
+The grouped Notifications view uses owner-backed SSR bootstrap, bounded pages, exact-group
+expansion, stale-response guards, authoritative post-command refresh, and allowed-only route
+navigation. A manifest-driven generic header action exposes the localized route and exact
+unread badge without a host import of the Notifications UI. Optional failures degrade by
+omitting the action rather than breaking the storefront shell.
+
 The server starts workers in intake → fanout → candidate order. Invalid or unreadable
 flags remain disabled.
 
@@ -241,7 +260,7 @@ or restricted sources fail closed. Moderator audience expansion remains deferred
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - bounded moderator directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- external inbox transport adapters and full module-owned grouped UI;
+- GraphQL group-state mutations and auth-reactive automatic grouped bootstrap refresh;
 - channel delivery enqueue and transports with delivery-time authorization;
 - retention, quarantine replay/purge, and administrative repair.
 
@@ -296,12 +315,19 @@ node scripts/verify/verify-forum-notification-group-key-population.mjs
 node scripts/verify/verify-forum-notification-inbox-group-listing.mjs
 node scripts/verify/verify-forum-notification-inbox-group-summaries.mjs
 node scripts/verify/verify-forum-notification-inbox-group-state.mjs
+node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs
+node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
+node scripts/verify/verify-forum-notification-navigation-badge.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
+node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing
 `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF`.
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM`.
 
 ## Related documents
 

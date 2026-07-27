@@ -20,21 +20,21 @@
   "notifications_owner_readme": "crates/rustok-notifications/README.md",
   "notifications_live_contract": "crates/rustok-notifications/docs/README.md",
   "canonical_plan_sync": {
-    "status": "pending",
+    "status": "synchronized_by_FORUM-20AM",
     "required_ledger_through": "FORUM-20AL",
     "current_plan_through": "FORUM-20G",
-    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+    "sync_contract": "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
   },
   "notifications_local_plan_sync": {
-    "status": "pending",
+    "status": "synchronized_by_FORUM-20AM",
     "required_ledger_through": "FORUM-20AL",
     "current_plan_through": "FORUM-20AA",
-    "follow_up": "Synchronize the owner-local implementation ledger without replacing the large file wholesale"
+    "sync_contract": "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
   },
   "notifications_owner_docs_sync": {
-    "status": "pending",
+    "status": "synchronized_by_FORUM-20AM",
     "required_contract_through": "FORUM-20AL",
-    "follow_up": "Safely revise the large Notifications owner README and live contract through GraphQL open authorization parity"
+    "sync_contract": "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
   },
   "policy": {
     "owner_scope": "Tenant and recipient are derived from authenticated request context and revalidated by NotificationInboxStorefrontPort",

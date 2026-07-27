@@ -45,21 +45,22 @@ while the final transaction is active. PostgreSQL lifecycle tenant toggles advan
 the cursor inside their tenant-state transaction, serializing candidate commit and
 tenant enable/disable by commit order.
 
-Exact inbox open, bounded listing, exact-item read-state, exact unread count,
-bounded mark-all-read, bounded mark-all-unread, bounded mark-all-archive, and
-bounded exact-recipient reconciliation services are now owner-public. Open
-requests recheck current recipient privacy and source target authorization.
-Listing scans exact-recipient rows in bounded descending keyset pages and supports
-sparse pages. State commands provide exact seen/read/mark-unread/archive
-transitions without foreign owner calls, while archived remains terminal. The
-unread count is an exact owner-table aggregate and is never derived from bounded
-list pages. Bounded mark-all-read scans only unread or seen rows; bounded
-mark-all-unread scans only seen or read rows; bounded mark-all-archive scans only
-unread, seen, or read rows. All three commands delegate every transition to the
-exact state owner. Reconciliation reuses open-time policy and archives currently
-unavailable rows through the state owner. No external transport, selected-ID bulk
-command, grouped-view, tenant-wide scheduler, payload-redaction, or UI contract is
-published yet.
+The owner inbox plane now includes exact open authorization, bounded authorized
+listing, exact and selected-ID state commands, exact unread count, resumable mark-all
+commands, exact-recipient reconciliation, durable group keys, exact-group listing,
+bounded group summaries, and bounded group-state commands. Open and authorized reads
+recheck current recipient privacy before source target authorization; state commands
+remain owner-local and archived remains terminal.
+
+The authenticated storefront plane is also delivered. `NotificationInboxStorefrontPort`
+derives tenant and recipient scope from `PortContext`, native Leptos server functions serve
+SSR/hydrate, GraphQL serves CSR/headless grouped reads and fresh open authorization, and no
+transport fallback is permitted. The module-owned grouped inbox UI pages owner results,
+uses stale-response guards, refreshes authoritatively after writes, and navigates only after
+an `Allowed` open decision. A generic manifest-driven header action exposes the localized
+Notifications route and exact unread badge. GraphQL group-state writes, automatic auth-change
+bootstrap refresh, tenant-wide scheduling/redaction, delivery transports, and PostgreSQL
+cross-consumer evidence remain open.
 
 ## Invariants
 
@@ -481,6 +482,55 @@ published yet.
   verifier `scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs`, and
   SQLite evidence `tests/inbox_mark_all_archive_sqlite.rs`.
 
+### `FORUM-20AB`
+
+- bounded explicit selected-ID `mark_seen`, `mark_read`, `mark_unread`, and `archive`;
+- one through 64 unique non-nil IDs validated before mutation;
+- input-order owner delegation with non-oracular changed/not-changed counts.
+
+### `FORUM-20AC / FORUM-20AD`
+
+- bounded authorized listing for one exact opaque group key;
+- durable `g1:{target_owner}:{target_id}` group-key population and historical backfill;
+- explicit producer-supplied keys remain authoritative.
+
+### `FORUM-20AE / FORUM-20AF`
+
+- bounded exact-recipient group summaries with stored item/unread counts and an
+  authorized latest-item projection;
+- bounded exact-group mark-read, mark-unread, and archive commands through the exact
+  state owner.
+
+### `FORUM-20AG / FORUM-20AH`
+
+- transport-neutral authenticated-user storefront port with context-derived owner scope;
+- native Leptos server-function adapter for reads, fresh open authorization, and grouped
+  state commands;
+- human-user admission, tenant match, deadline, and idempotency semantics remain explicit.
+
+### `FORUM-20AI / FORUM-20AJ`
+
+- module-owned grouped Leptos inbox with SSR bootstrap, bounded paging, stale-response
+  protection, authoritative mutation refresh, and allowed-only navigation;
+- generic manifest-driven storefront header action with localized route and exact unread
+  badge; optional failures hide the action without breaking the header.
+
+### `FORUM-20AK / FORUM-20AL`
+
+- GraphQL parity for unread count, bounded group summaries/items, and fresh open
+  authorization;
+- request DTOs cannot select tenant, recipient, or user identity;
+- SSR/hydrate select native reads while CSR/headless select GraphQL with no fallback;
+- group-state writes remain native-only.
+
+### `FORUM-20AM`
+
+- canonical Forum plan, this owner-local ledger, owner README, and live contract are
+  synchronized through `FORUM-20AL`;
+- the latest handoff contract records the synchronization and a dedicated static verifier
+  guards all four documents from future milestone drift;
+- no runtime capability or validation status is promoted.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
@@ -513,13 +563,13 @@ published yet.
 
 ## UI gate
 
-Admin and storefront remain module-owned. Until owner inbox services are exposed
-through matching module-owned transport adapters and UI packages, they expose only
-foundation/unavailable states and must not invent unread counts outside
-`NotificationInboxUnreadCountService`, expose exact mark-unread or bounded
-mark-all-read/mark-all-unread/mark-all-archive without authorized transport
-composition, expose selected-ID bulk state mutations, or create shadow inbox
-storage.
+Admin and storefront remain module-owned. The storefront now uses the authenticated
+`NotificationInboxStorefrontPort`, native SSR/hydrate adapters, GraphQL CSR/headless reads,
+and the grouped Leptos UI. It must continue to use the exact owner unread count, preserve
+bounded cursor semantics, navigate only after fresh owner authorization, and create no
+shadow inbox storage. Group-state writes remain on the native path until GraphQL write
+admission and idempotency parity are delivered. The admin package remains outside this
+storefront completion claim and retains its explicit degraded state.
 
 ## Maintainer verification set
 
@@ -570,12 +620,24 @@ node scripts/verify/verify-forum-notification-inbox-unread-count.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs
+node scripts/verify/verify-forum-notification-inbox-selected-state.mjs
+node scripts/verify/verify-forum-notification-group-key-population.mjs
+node scripts/verify/verify-forum-notification-inbox-group-listing.mjs
+node scripts/verify/verify-forum-notification-inbox-group-summaries.mjs
+node scripts/verify/verify-forum-notification-inbox-group-state.mjs
+node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs
+node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
+node scripts/verify/verify-forum-notification-navigation-badge.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
+node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
 `NOTIFY-03D/03E/03F/03G/03H/03I` and
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA` source slices. `Cargo.lock` was
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM` source and documentation slices. `Cargo.lock` was
 not regenerated because this work does not change the package dependency graph.
 
 ## Update rules

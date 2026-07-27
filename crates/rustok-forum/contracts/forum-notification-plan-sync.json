@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20AM",
+  "upstream_task": "FORUM-20AL",
+  "scope": "Conflict-safe synchronization of canonical Forum and Notifications owner documentation through the authenticated storefront GraphQL open plane",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "notifications_local_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "notifications_owner_readme": "crates/rustok-notifications/README.md",
+  "notifications_live_contract": "crates/rustok-notifications/docs/README.md",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-notification-inbox-open-graphql.json",
+  "owner_note": "crates/rustok-notifications/docs/forum-20am-plan-sync.md",
+  "source_verifier": "scripts/verify/verify-forum-notification-plan-sync.mjs",
+  "required_ledger_through": "FORUM-20AL",
+  "synchronization": {
+    "canonical_plan": true,
+    "notifications_local_plan": true,
+    "notifications_owner_readme": true,
+    "notifications_live_contract": true,
+    "upstream_handoff_updated": true,
+    "runtime_behavior_changed": false,
+    "migration_changed": false,
+    "dependency_changed": false
+  },
+  "preserved_residuals": [
+    "Forum trust and Channel membership facts adapters",
+    "initially non-public topic-created descriptor materialization",
+    "create reply and moderate audience write policies",
+    "remaining search index SEO and deep-link policy migration",
+    "auth-reactive automatic grouped inbox bootstrap refresh",
+    "GraphQL group-state mutations",
+    "tenant-wide scheduled reconciliation and payload redaction",
+    "channel delivery enqueue and transports",
+    "delivery-time target authorization",
+    "PostgreSQL concurrency lease contention and cross-consumer evidence"
+  ],
+  "verification": {
+    "commands": [
+      "node scripts/verify/verify-forum-notification-plan-sync.mjs",
+      "node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs",
+      "cargo xtask module validate notifications",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
