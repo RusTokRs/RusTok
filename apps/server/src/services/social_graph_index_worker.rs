@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use rustok_iggy::{ConsumedContractEvent, IggyTransport};
 use rustok_index::MutationApplyOutcome;
 use rustok_social_graph::index_consumer::{
-    SocialGraphIndexConsumer, SocialGraphIndexProcessOutcome,
+    SOCIAL_GRAPH_INDEX_DLQ_RECEIPT_RECOVERED_CODE, SocialGraphIndexConsumer,
+    SocialGraphIndexDlqPublishOutcome, SocialGraphIndexProcessOutcome,
 };
 use rustok_telemetry::runtime_consumer_metrics;
 use tokio::task::JoinHandle;
@@ -27,6 +28,7 @@ const STAGE_RECEIVE: &str = "receive";
 const STAGE_PROJECTION: &str = "projection";
 const STAGE_DLQ_PUBLISH: &str = "dlq_publish";
 const STAGE_ACKNOWLEDGEMENT: &str = "acknowledgement";
+const DLQ_RECEIPT_IN_PROGRESS_CODE: &str = "social_graph.index.dlq_publish_in_progress";
 static SOCIAL_GRAPH_INDEX_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
@@ -304,6 +306,12 @@ enum DeliveryCompletion {
     Stopped,
 }
 
+#[derive(Debug)]
+enum DlqPublishCompletion {
+    Published(SocialGraphIndexDlqPublishOutcome),
+    Stopped,
+}
+
 async fn process_delivery(
     consumer: &SocialGraphIndexConsumer,
     config: &SocialGraphIndexWorkerConfig,
@@ -346,43 +354,118 @@ async fn process_delivery(
                     continue;
                 }
 
-                if config.dlq_enabled {
-                    if let Err(dlq_error) = consumer
-                        .publish_consumed_to_dlq(consumed, error_code, attempt)
-                        .await
+                let continuing_durable_receipt = error_code == DLQ_RECEIPT_IN_PROGRESS_CODE;
+                if config.dlq_enabled || continuing_durable_receipt {
+                    let publish_outcome = match publish_dead_lettered_result(
+                        consumer,
+                        config,
+                        stop_rx,
+                        consumed,
+                        error_code,
+                        attempt,
+                    )
+                    .await?
                     {
-                        runtime_consumer_metrics::record_failure(
-                            METRICS_CONSUMER,
-                            STAGE_DLQ_PUBLISH,
-                            dlq_error.stable_code(),
-                        );
-                        runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "failure");
-                        return Err(format!(
-                            "DLQ publication failed [{}]",
-                            dlq_error.stable_code()
-                        ));
-                    }
-                    runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "success");
+                        DlqPublishCompletion::Published(outcome) => outcome,
+                        DlqPublishCompletion::Stopped => return Ok(DeliveryCompletion::Stopped),
+                    };
+                    let terminal_error_code = if continuing_durable_receipt
+                        || matches!(
+                            publish_outcome,
+                            SocialGraphIndexDlqPublishOutcome::PreviouslyPublished
+                        )
+                    {
+                        SOCIAL_GRAPH_INDEX_DLQ_RECEIPT_RECOVERED_CODE
+                    } else {
+                        error_code
+                    };
                     tracing::warn!(
                         worker = METRICS_CONSUMER,
                         event_id = %consumed.envelope.id(),
-                        error_code,
+                        error_code = terminal_error_code,
                         retryable,
-                        attempts = attempt,
-                        "Social Graph Index poison delivery published to DLQ; acknowledging source offset"
+                        projection_attempts = attempt,
+                        publish_outcome = ?publish_outcome,
+                        "Social Graph Index poison delivery has a durable DLQ receipt; acknowledging source offset"
                     );
                     return acknowledge_terminal_result(
                         consumer,
                         config,
                         stop_rx,
                         consumed,
-                        SocialGraphIndexProcessOutcome::DeadLettered { error_code },
+                        SocialGraphIndexProcessOutcome::DeadLettered {
+                            error_code: terminal_error_code,
+                        },
                     )
                     .await;
                 }
 
                 return Err(format!(
                     "projection failed after {attempt} attempt(s) [{error_code}]; DLQ is disabled"
+                ));
+            }
+        }
+    }
+}
+
+async fn publish_dead_lettered_result(
+    consumer: &SocialGraphIndexConsumer,
+    config: &SocialGraphIndexWorkerConfig,
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    consumed: &ConsumedContractEvent,
+    stable_error_code: &'static str,
+    projection_attempt_count: u32,
+) -> std::result::Result<DlqPublishCompletion, String> {
+    let mut attempt = 1;
+    loop {
+        match consumer
+            .publish_consumed_to_dlq(consumed, stable_error_code, projection_attempt_count)
+            .await
+        {
+            Ok(outcome) => {
+                let result = match outcome {
+                    SocialGraphIndexDlqPublishOutcome::Published => "published",
+                    SocialGraphIndexDlqPublishOutcome::PreviouslyPublished => {
+                        "already_published"
+                    }
+                };
+                runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, result);
+                return Ok(DlqPublishCompletion::Published(outcome));
+            }
+            Err(error) if error.is_retryable() && attempt < config.max_attempts => {
+                let delay = retry_delay(config, attempt);
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_DLQ_PUBLISH,
+                    error.stable_code(),
+                );
+                runtime_consumer_metrics::record_retry(
+                    METRICS_CONSUMER,
+                    STAGE_DLQ_PUBLISH,
+                );
+                tracing::warn!(
+                    worker = METRICS_CONSUMER,
+                    event_id = %consumed.envelope.id(),
+                    error_code = error.stable_code(),
+                    attempt,
+                    retry_delay_ms = duration_millis(delay),
+                    "Durable DLQ receipt publication is retryable; retaining the source delivery"
+                );
+                if wait_or_stop(delay, stop_rx).await {
+                    return Ok(DlqPublishCompletion::Stopped);
+                }
+                attempt += 1;
+            }
+            Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_DLQ_PUBLISH,
+                    error.stable_code(),
+                );
+                runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "failure");
+                return Err(format!(
+                    "durable DLQ receipt publication failed after {attempt} attempt(s) [{}]",
+                    error.stable_code()
                 ));
             }
         }
@@ -432,7 +515,7 @@ async fn acknowledge_terminal_result(
                 );
                 let recovery = match &outcome {
                     SocialGraphIndexProcessOutcome::DeadLettered { .. } => {
-                        "DLQ publication succeeded but the source offset remains uncommitted; redelivery may republish until a durable DLQ identity exists"
+                        "durable DLQ receipt remains published; redelivery skips projection and DLQ publication and retries source acknowledgement only"
                     }
                     _ => "terminal handling remains replay-safe",
                 };
