@@ -1,0 +1,45 @@
+name: Index M3 Mutation Race Fix Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: index-m3-race-fix-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Publish mutation race rollback fix
+    if: ${{ github.head_ref == 'agent/index-m3-mutation-adapter' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Verify and apply rollback fix
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          test "$(wc -c < .tmp/index-m3-race-fix.patch)" = "2865"
+          echo "827850e97a26c1bdde243a69c9d2046f4196cff727dd50538728dabb94d1df6b  .tmp/index-m3-race-fix.patch" | sha256sum --check --strict
+          git apply --check .tmp/index-m3-race-fix.patch
+          git apply .tmp/index-m3-race-fix.patch
+          rm -f .tmp/index-m3-race-fix.patch
+          rm -f .github/workflows/index-m3-race-fix.yml
+          rmdir .tmp 2>/dev/null || true
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(index): roll back lost mutation serialization"
+          git push origin "HEAD:${BRANCH}"
