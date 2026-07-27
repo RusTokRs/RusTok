@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use rustok_api::{PortError, RequestContext, TenantContext};
+use rustok_api::{PortContext, PortErrorKind};
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_order::{OrderService, error::OrderError};
@@ -23,6 +24,9 @@ use crate::dto::{
     OrderChangeResponse, OrderResponse, OrderReturnResponse, RefundResponse,
 };
 
+const STOREFRONT_ORDER_CUSTOMER_OWNER: &str = "rustok_customer";
+const STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION: &str = "read_customer_projection_by_user";
+const STOREFRONT_ORDER_CUSTOMER_BOUNDARY: &str = "commerce_storefront_order_http";
 const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";
 const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";
 
@@ -68,17 +72,66 @@ impl<'a> StorefrontOrderPaymentErrorContext<'a> {
 
 fn map_storefront_customer_port_error(
     error: PortError,
-    operation: &'static str,
-    tenant_id: Uuid,
+    context: &PortContext,
+    user_id: Uuid,
+    consumer_operation: &'static str,
 ) -> HttpError {
-    tracing::error!(
-        error = ?error,
-        operation,
-        tenant_id = %tenant_id,
-        boundary = "commerce_storefront_order_http",
-        "storefront customer read failed"
-    );
-    port_error_to_http_error(error)
+    let public = port_error_to_http_error(error.clone());
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
+                owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
+                consumer_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                user_id = %user_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                public_code = %public.code,
+                status = %public.status,
+                boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+                "storefront customer read failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
+                owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
+                consumer_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                user_id = %user_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                public_code = %public.code,
+                status = %public.status,
+                boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+                "storefront customer read was rejected"
+            );
+        }
+    }
+    public
 }
 
 fn map_storefront_order_error(
@@ -252,9 +305,10 @@ async fn current_storefront_customer_id(
     auth: &rustok_api::AuthContext,
     operation: &'static str,
 ) -> HttpResult<Option<Uuid>> {
+    let customer_context = super::storefront_customer_port_context(tenant_id, auth.user_id);
     match in_process_customer_read_port(runtime.db_clone())
         .read_customer_projection_by_user(
-            super::storefront_customer_port_context(tenant_id, auth.user_id),
+            customer_context.clone(),
             CustomerUserProjectionRequest {
                 user_id: auth.user_id,
             },
@@ -264,7 +318,10 @@ async fn current_storefront_customer_id(
         Ok(customer) => Ok(Some(customer.id)),
         Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
         Err(error) => Err(map_storefront_customer_port_error(
-            error, operation, tenant_id,
+            error,
+            &customer_context,
+            auth.user_id,
+            operation,
         )),
     }
 }
@@ -317,15 +374,18 @@ pub async fn get_me(
 ) -> HttpResult<Json<CustomerResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
+    let customer_context = super::storefront_customer_port_context(tenant.id, auth.user_id);
     let customer = in_process_customer_read_port(runtime.db_clone())
         .read_customer_projection_by_user(
-            super::storefront_customer_port_context(tenant.id, auth.user_id),
+            customer_context.clone(),
             CustomerUserProjectionRequest {
                 user_id: auth.user_id,
             },
         )
         .await
-        .map_err(|error| map_storefront_customer_port_error(error, "get_me", tenant.id))?;
+        .map_err(|error| {
+            map_storefront_customer_port_error(error, &customer_context, auth.user_id, "get_me")
+        })?;
     Ok(Json(customer))
 }
 
