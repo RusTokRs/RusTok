@@ -57,12 +57,12 @@ relation state.
   `/health/ready`, and aggregate guardrail metrics. Disabled execution is healthy.
 - Shared bounded Prometheus metrics cover received deliveries, terminal outcomes,
   retries, stage/error failures, DLQ publication, receive-to-ack duration, worker
-  starts/terminations, in-flight state/timestamp, last success, and observed
-  received/acknowledged offsets.
-- Metric labels are bounded and exclude tenants, event/relation identifiers, payloads,
-  ack tokens, and raw error messages.
-- Observed offsets do not claim true broker lag; the connector still needs a partition
-  high-watermark contract.
+  starts/terminations, in-flight state/timestamp, and last success.
+- Metric labels are bounded and exclude tenants, event/relation identifiers, partition,
+  offset, payloads, ack tokens, and raw error messages.
+- Source position and lag metrics are intentionally absent. The connector must expose
+  a partition-qualified acknowledged-position vector and partition high-watermarks
+  before a meaningful lag metric can exist.
 - Bounded Social Graph replay uses the same schema/inbox/source-version path for repair.
 - Profiles privacy remains on synchronous authoritative Social Graph ports.
 
@@ -92,8 +92,9 @@ relation state.
   recovery.
 - [x] Add enabled-worker readiness and aggregate guardrail metrics.
 - [x] Add bounded dedicated remote-consumer Prometheus telemetry.
+- [x] Explicitly defer incomplete source-position/lag metrics.
 - [x] Add source guards for ordering, connector ownership, readiness, telemetry labels,
-  and foreign-table isolation.
+  source-position deferral, and foreign-table isolation.
 
 ## Open results
 
@@ -103,8 +104,8 @@ relation state.
    New families require direct `rustok-events` imports, semantic coverage, and owner
    recovery guidance.
 3. **Add true remote-consumer lag.** Extend the connector with partition high-watermark
-   observations, then derive lag from high-watermark minus acknowledged offset. Do not
-   substitute event age or processing duration.
+   observations and a partition-qualified acknowledged-position snapshot, then derive
+   lag. Do not substitute event age, processing duration, or one global offset.
 4. **Prove remote cursor recovery.** Execute real-Iggy restart, redelivery, ack failure,
    DLQ failure, connector loss, shutdown, and multi-replica ownership scenarios.
 5. **Prove Index repair and concurrency.** Execute PostgreSQL concurrent schema
@@ -155,7 +156,8 @@ this slice.
    acknowledgement-only recovery.
 8. Enabled durable workers participate in readiness and bounded telemetry; disabled
    optional workers do not degrade the host.
-9. Do not publish false lag: high-watermark is required for broker-offset lag.
+9. Do not publish source position or lag without partition-qualified connector state
+   and high-watermarks.
 10. Keep producer storage authoritative for bounded repair.
 11. Update module docs, event flow, and recovery guidance with every contract change.
 12. Keep the central plan registry limited to status and nearest priority.
