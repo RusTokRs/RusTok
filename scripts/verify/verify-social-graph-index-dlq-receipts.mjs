@@ -139,7 +139,7 @@ for (const marker of [
 ]) {
   requireText("deterministic DLQ message identity", files.messageId, marker);
 }
-for (const forbidden of ["Uuid::new_v4", "DefaultHasher", "SystemTime", "retry_count"]){
+for (const forbidden of ["Uuid::new_v4", "DefaultHasher", "SystemTime", "retry_count"]) {
   forbidText("deterministic DLQ message identity", files.messageId, forbidden);
 }
 
@@ -166,7 +166,10 @@ for (const marker of [
 }
 
 const receiptCheck = files.consumer.indexOf("self.consumed_dlq_receipt(consumed).await?");
-const projection = files.consumer.indexOf("self.projector.apply_envelope(&consumed.envelope).await", receiptCheck);
+const projection = files.consumer.indexOf(
+  "self.projector.apply_envelope(&consumed.envelope).await",
+  receiptCheck,
+);
 if (receiptCheck < 0 || projection <= receiptCheck) {
   failures.push("consumer must inspect a durable DLQ receipt before projection");
 }
@@ -220,18 +223,27 @@ for (const marker of [
 for (const marker of [
   "pub(crate) struct IggyDlqPublisher",
   "IggyClient::from_connection_string",
+  "partition_for_message_id(message_id, self.partitions)",
+  "message_id.as_u128() % u128::from(partitions)",
   "Partitioning::partition_id(partition)",
   "IggyMessage::builder()",
   ".id(message_id.as_u128())",
   ".payload(entry.payload.clone().into())",
   ".send(vec![message])",
   "deterministic DLQ broker message ID is required",
-  "calculate_partition",
+  "deterministic_partition_is_stable_and_one_based",
+  "deterministic_partition_changes_only_with_id_or_partition_count",
   "connection_strings",
 ]) {
   requireText("identified Iggy DLQ publisher", files.dlqPublisher, marker);
 }
-for (const forbidden of ["Uuid::new_v4", ".id(0)", "message_id = 0"]){
+for (const forbidden of [
+  "Uuid::new_v4",
+  "DefaultHasher",
+  ".id(0)",
+  "message_id = 0",
+  "entry.retry_count %",
+]) {
   forbidText("identified Iggy DLQ publisher", files.dlqPublisher, forbidden);
 }
 
@@ -255,5 +267,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index DLQ receipt verification passed: immutable source identity and bytes, deterministic UUIDv8 broker IDs, explicit Iggy u128 headers, durable reserve/publish/ack states, bounded publish leases, pre-projection recovery, reconnectable publication, acknowledgement-only redelivery, and no receipt-owned transport token are locked.",
+  "Social Graph Index DLQ receipt verification passed: immutable source identity and bytes, deterministic UUIDv8 broker IDs, stable per-ID partitions, explicit Iggy u128 headers, durable reserve/publish/ack states, bounded publish leases, pre-projection recovery, reconnectable publication, acknowledgement-only redelivery, and no receipt-owned transport token are locked.",
 );
