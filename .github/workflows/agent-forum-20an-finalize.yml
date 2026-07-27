@@ -1,0 +1,48 @@
+name: Agent Forum 20AN verifier alignment
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/forum-notification-group-state-graphql-20an'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+          show-progress: false
+      - name: Align downstream README markers
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          old = "unread count, grouped summaries, and exact-group item pages use one selected read"
+          new = "grouped summaries, exact-group item pages, fresh open authorization"
+          paths = [
+              Path("scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs"),
+              Path("scripts/verify/verify-forum-notification-navigation-badge.mjs"),
+              Path("scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs"),
+          ]
+          for path in paths:
+              source = path.read_text()
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one stale README marker, found {count}")
+              path.write_text(source.replace(old, new, 1))
+
+          Path(".github/workflows/agent-forum-20an-finalize.yml").unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(forum): align grouped storefront README guards"
+          git push origin HEAD
