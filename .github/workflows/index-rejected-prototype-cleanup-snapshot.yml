@@ -1,0 +1,39 @@
+name: Index Rejected Prototype Cleanup Snapshot
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    name: Archive Index cleanup source snapshot
+    if: ${{ github.head_ref == 'agent/index-remove-rejected-prototypes' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Pack repository sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude=.git \
+            --exclude=target \
+            --exclude=node_modules \
+            --exclude=.tmp \
+            -czf /tmp/rustok-index-cleanup-source.tar.gz .
+      - name: Archive source snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-rejected-prototype-cleanup-source-${{ github.sha }}
+          path: /tmp/rustok-index-cleanup-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
