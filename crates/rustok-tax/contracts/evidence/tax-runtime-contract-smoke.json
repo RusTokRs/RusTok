@@ -7,6 +7,14 @@
   "fallback_profiles": ["embedded_native"],
   "degraded_modes": ["block_checkout_with_tax_refresh"],
   "cases": [
-    { "operation": "calculate_tax", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".calculate(request)", ".map_err(tax_error_to_port_error)"] }
+    {
+      "operation": "calculate_tax",
+      "source_order": [
+        "let owner_operation = \"calculate_tax\";",
+        "require_tax_calculation_policy(&context, owner_operation)?;",
+        ".calculate(request)",
+        ".map_err(|error| tax_error_to_port_error(&context, owner_operation, error))?"
+      ]
+    }
   ]
 }
