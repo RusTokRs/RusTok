@@ -111,8 +111,8 @@ requireMarkers(orderingGuard, 'terminal ordering guard', [
 
 requireMarkers(standaloneGuard, 'standalone evidence guard', [
   "const gitBlobSha = (bytes) => createHash('sha1')",
-  "'dabc18d59360c300352ab3afb2510f0a0ff22796'",
-  "'97ef0e8a216735e457c4c827d975462b84b009b3'",
+  "'6523312e0f760cc5f4f57a687f40c3dae1f07873'",
+  "'17baf03638426871acd9e908dc026b012b446424'",
   'runValidatorCoreWithAtomicProvenance',
   'runComparatorCoreWithAtomicComparison',
   'has lifecycle markers out of order',

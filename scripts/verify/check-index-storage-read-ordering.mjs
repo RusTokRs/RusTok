@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { comparableDatabaseFields } from './index-storage-database-settings-contract.mjs';
 
 const prefix = '[check-index-storage-read-ordering]';
-const canonicalPrototypes = ['jsonb', 'typed_eav', 'hot_projection'];
+const canonicalPrototypes = ['jsonb'];
 const canonicalReadWorkloads = [
   'status_equality',
   'price_range_sort',

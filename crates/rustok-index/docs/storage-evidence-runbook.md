@@ -1,8 +1,8 @@
 # Index M2 replacement evidence runbook
 
-This runbook is the owner-operated handoff from the completed Index benchmark
-harness to the remaining M2 evidence and storage-decision work. It does not make
-a storage choice and it does not mark any M2 evidence item complete by itself.
+This runbook records the owner-operated M2 replacement evidence procedure that
+produced the accepted storage decision. It is retained as reproducibility history;
+new JSONB-only regression runs do not reopen or replace the archived decision run.
 
 ## Trigger model
 
@@ -105,5 +105,6 @@ The canonical replacement run is `30222913450` on commit
 `eae5f74241e9431bffe2fd8c43cd046fc1c1f679`. Both validated packets, the
 decision-ready comparison, and the accepted decision are archived under
 `docs/evidence/2026-07-27-postgresql-storage/`. The accepted ADR selects JSONB.
-M2 remains open only until the rejected typed-EAV and hot-projection benchmark
-implementations and schemas are deleted.
+The rejected typed-EAV and hot-projection benchmark implementations and schemas
+are deleted. M2 is complete. The remaining JSONB-only runner may be used for
+selected-layout regression evidence while M3 implements production persistence.

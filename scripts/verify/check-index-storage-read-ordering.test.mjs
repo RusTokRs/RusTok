@@ -10,8 +10,6 @@ import { spawnSync } from 'node:child_process';
 const script = path.resolve('scripts/verify/check-index-storage-read-ordering.mjs');
 const prototypes = [
   { prototype: 'jsonb', relation: 'idx_bench_jsonb.entity' },
-  { prototype: 'typed_eav', relation: 'idx_bench_eav.entity' },
-  { prototype: 'hot_projection', relation: 'idx_bench_hot.product' },
 ];
 const workloads = [
   'status_equality',
@@ -245,11 +243,11 @@ test('rejects a terminal ordering marker hidden in a line comment', () => {
 
 test('rejects an ordering marker hidden in a dollar-quoted string', () => {
   expectFailure((value) => {
-    value.prototypes[1].workloads[0].sql = [
+    value.prototypes[0].workloads[0].sql = [
       'SELECT entity_id, $ordering$ORDER BY entity_id LIMIT 100$ordering$ AS note',
-      'FROM idx_bench_eav.entity LIMIT 100',
+      'FROM idx_bench_jsonb.entity LIMIT 100',
     ].join('\n');
-  }, /typed_eav\/status_equality\.sql must end with canonical ordering marker/u);
+  }, /jsonb\/status_equality\.sql must end with canonical ordering marker/u);
 });
 
 test('rejects an ordering marker hidden after an escaped quote in an E string', () => {
@@ -260,8 +258,8 @@ test('rejects an ordering marker hidden after an escaped quote in an E string', 
 
 test('rejects unterminated SQL comments before ordering validation', () => {
   expectFailure((value) => {
-    value.prototypes[2].workloads[0].sql = [
-      'SELECT entity_id FROM idx_bench_hot.product',
+    value.prototypes[0].workloads[0].sql = [
+      'SELECT entity_id FROM idx_bench_jsonb.entity',
       '/* ORDER BY entity_id LIMIT 100',
     ].join('\n');
   }, /contains an unterminated block comment/u);

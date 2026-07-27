@@ -11,8 +11,8 @@ This is a standalone workspace crate named `rustok-benchmarks`.
   - `event_bus.rs`
   - `content_operations.rs`
   - `order_operations.rs`
-- `src/index_storage/` — the M2 PostgreSQL physical-storage comparison for
-  `rustok-index`.
+- `src/index_storage/` — the selected JSONB PostgreSQL regression harness for
+  `rustok-index`, retained after the completed M2 comparison.
 - `src/bin/index_storage_benchmark.rs` — read/query evidence runner.
 - `src/bin/index_storage_mutation_benchmark.rs` — transactional update/delete
   WAL evidence runner.
@@ -22,15 +22,14 @@ This is a standalone workspace crate named `rustok-benchmarks`.
 ## Purpose
 
 The Criterion suites detect performance regressions in established platform
-paths. The Index storage runners compare temporary PostgreSQL storage candidates
-before any production Index migration is selected.
+paths. The Index storage runners now exercise only the JSONB layout selected by
+the accepted storage ADR. The rejected typed-EAV and hot-projection implementations
+were removed after their exact comparison evidence was archived.
 
 The Index runners create only schemas prefixed with `idx_bench_`:
 
 - `idx_bench_source`
 - `idx_bench_jsonb`
-- `idx_bench_eav`
-- `idx_bench_hot`
 
 Use a dedicated database because those schemas are dropped and recreated on
 every run.
@@ -49,8 +48,8 @@ INDEX_BENCH_SCALE=smoke \
 cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
 ```
 
-Before timings are accepted, the runner verifies source/candidate entity/link
-cardinality and identical result digests for all shared workloads.
+Before timings are accepted, the runner verifies source/JSONB entity and link
+cardinality and identical source/JSONB result digests for all shared workloads.
 
 ## Index mutation/WAL benchmark
 
@@ -60,7 +59,7 @@ INDEX_BENCH_SCALE=smoke \
 cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
 ```
 
-The mutation runner validates equal affected entity/link counts, executes every
+The mutation runner validates the selected JSONB affected entity/link counts, executes every
 measured update/delete in an isolated transaction, records full JSON
 `EXPLAIN (ANALYZE, BUFFERS, WAL)` output, and rolls the transaction back. The
 report exposes maximum per-plan-node WAL records, FPI, and bytes without
@@ -96,5 +95,6 @@ Optional environment variables:
 - `INDEX_BENCH_MUTATION_OUTPUT=target/index-storage-benchmark/mutation-report.json`
 - `INDEX_BENCH_MAINTENANCE_OUTPUT=target/index-storage-benchmark/maintenance-report.json`
 
-All three reports are evidence only. The production model is selected after the
-smoke, 100k, and 1m runs are compared and recorded in an ADR.
+All three reports remain benchmark evidence only. JSONB is already selected by
+`DECISIONS/2026-07-24-index-storage-layout.md`; production persistence begins in
+M3 and must implement that accepted envelope rather than importing benchmark DDL.

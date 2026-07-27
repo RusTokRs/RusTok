@@ -82,10 +82,10 @@ delete/reinsert cycles, exact cardinality guards, baseline/after-churn/after-
 VACUUM schema-size and `pg_stat_user_tables` snapshots, and ordinary
 `VACUUM (ANALYZE)` duration. It intentionally does not rely on `VACUUM FULL`.
 
-The benchmark now preserves full module/entity/schema-version identity for JSONB
-entity maintenance and for typed EAV entities and field rows. Typed EAV field
-rows include that identity in their primary and lookup keys and reference the
-matching entity envelope.
+The archived decision benchmark preserved full module/entity/schema-version
+identity across all measured candidates. After the ADR selected JSONB, the
+rejected typed-EAV and hot-projection implementations were deleted. The remaining
+JSONB path is a selected-layout regression harness, not production persistence.
 
 The operational review evaluates genericity, schema evolution, index and
 migration management, mutation/query complexity, diagnostics, rebuild, and
@@ -102,15 +102,14 @@ production migrations remain absent until M3 implements that model.
 ## Status
 
 - Rewrite: `in_progress`
-- Current milestone: `M2 - PostgreSQL storage benchmark`
+- Current milestone: `M3 - PostgreSQL storage engine`
 - FFA: `in_progress`
 - FBA: `in_progress`
 - M0 code reset: `complete`
 - M1 generic core: `complete`
-- M2 read/query harness: `implemented`
-- M2 transactional mutation/WAL harness: `implemented`
-- M2 persistent churn/VACUUM harness: `implemented`
-- M2 replacement 100k/1m evidence and ADR: `complete`
+- M2 PostgreSQL storage benchmark: `complete`
+- M2 accepted storage model: `JSONB`
+- M2 rejected prototype cleanup: `complete`
 - Production migrations: intentionally absent pending M3 JSONB implementation
 
 ## Verification

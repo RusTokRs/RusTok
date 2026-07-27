@@ -28,8 +28,8 @@ const comparatorCoreBytes = readBytes(comparatorCorePath);
 const sourceOracleGuard = readText('scripts/verify/verify-index-storage-source-oracle.mjs');
 
 for (const [label, actual, expected] of [
-  ['validator core', gitBlobSha(validatorCoreBytes), 'dabc18d59360c300352ab3afb2510f0a0ff22796'],
-  ['comparator core', gitBlobSha(comparatorCoreBytes), '97ef0e8a216735e457c4c827d975462b84b009b3'],
+  ['validator core', gitBlobSha(validatorCoreBytes), '6523312e0f760cc5f4f57a687f40c3dae1f07873'],
+  ['comparator core', gitBlobSha(comparatorCoreBytes), '17baf03638426871acd9e908dc026b012b446424'],
 ]) {
   if (actual !== expected) fail(`${label} is no longer the byte-preserved implementation: ${actual}`);
 }
