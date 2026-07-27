@@ -187,7 +187,18 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_write_admission(&context, PREPARE_CHECKOUT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, PREPARE_CHECKOUT_OPERATION)?;
-        validate_prepare_input(&request.input).map_err(cart_error_to_port_error)?;
+        let prepare_input_result = (|| {
+            validate_prepare_input(&request.input).map_err(cart_error_to_port_error)?;
+            Ok::<(), PortError>(())
+        })();
+        prepare_input_result.map_err(|error| {
+            map_cart_checkout_local_port_error(
+                &context,
+                PREPARE_CHECKOUT_OPERATION,
+                "validate_prepare_input",
+                error,
+            )
+        })?;
 
         let cart = self
             .service
@@ -202,9 +213,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                 )
             })?;
         let status = CartStatus::parse(cart.status.as_str()).ok_or_else(|| {
-            PortError::validation(
-                "cart.invalid_status",
-                format!("invalid cart status `{}`", cart.status),
+            map_cart_checkout_local_port_error(
+                &context,
+                PREPARE_CHECKOUT_OPERATION,
+                "parse_cart_status",
+                PortError::validation(
+                    "cart.invalid_status",
+                    format!("invalid cart status `{}`", cart.status),
+                ),
             )
         })?;
         match status {
@@ -224,9 +240,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
             }
             CartStatus::CheckingOut => {}
             status => {
-                return Err(PortError::conflict(
-                    "cart.checkout_status_conflict",
-                    format!("cart cannot enter checkout from `{}`", status.as_str()),
+                return Err(map_cart_checkout_local_port_error(
+                    &context,
+                    PREPARE_CHECKOUT_OPERATION,
+                    "require_checkout_status",
+                    PortError::conflict(
+                        "cart.checkout_status_conflict",
+                        format!("cart cannot enter checkout from `{}`", status.as_str()),
+                    ),
                 ));
             }
         }
@@ -243,7 +264,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                     error,
                 )
             })?;
-        snapshot_from_cart(cart)
+        snapshot_from_cart(cart).map_err(|error| {
+            map_cart_checkout_local_port_error(
+                &context,
+                PREPARE_CHECKOUT_OPERATION,
+                "snapshot_from_cart",
+                error,
+            )
+        })
     }
 
     async fn read_checkout_snapshot(
@@ -253,7 +281,8 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_read_admission(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;
-        self.service
+        let snapshot_result = self
+            .service
             .get_cart(tenant_id, cart_id)
             .await
             .map_err(|error| {
@@ -264,7 +293,15 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                     error,
                 )
             })
-            .and_then(snapshot_from_cart)
+            .and_then(snapshot_from_cart);
+        snapshot_result.map_err(|error| {
+            map_cart_checkout_local_port_error(
+                &context,
+                READ_CHECKOUT_SNAPSHOT_OPERATION,
+                "snapshot_from_cart",
+                error,
+            )
+        })
     }
 
     async fn complete_checkout(
@@ -288,7 +325,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
             })?;
         let mut cart = cart;
         cart.metadata = merge_checkout_order_metadata(cart.metadata, request.order_id);
-        snapshot_from_cart(cart)
+        snapshot_from_cart(cart).map_err(|error| {
+            map_cart_checkout_local_port_error(
+                &context,
+                COMPLETE_CHECKOUT_OPERATION,
+                "snapshot_from_cart",
+                error,
+            )
+        })
     }
 
     async fn release_checkout(
@@ -310,8 +354,73 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                     error,
                 )
             })?;
-        snapshot_from_cart(cart)
+        snapshot_from_cart(cart).map_err(|error| {
+            map_cart_checkout_local_port_error(
+                &context,
+                RELEASE_CHECKOUT_OPERATION,
+                "snapshot_from_cart",
+                error,
+            )
+        })
     }
+}
+
+fn map_cart_checkout_local_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    error: PortError,
+) -> PortError {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = "rustok_cart",
+                owner_operation,
+                local_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = "cart_checkout_port",
+                "cart checkout local owner operation failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = "rustok_cart",
+                owner_operation,
+                local_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = "cart_checkout_port",
+                "cart checkout local owner operation was rejected"
+            );
+        }
+    }
+
+    error
 }
 
 fn map_cart_checkout_service_error(
