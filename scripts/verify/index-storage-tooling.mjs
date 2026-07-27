@@ -18,20 +18,24 @@ const usage = () => {
   node scripts/verify/index-storage-tooling.mjs fixtures
   node scripts/verify/index-storage-tooling.mjs packet --scale <smoke|100k|1m> [--root <directory>]
   node scripts/verify/index-storage-tooling.mjs compare --input <directory> [--input <directory>] [--output <directory>]
+  node scripts/verify/index-storage-tooling.mjs partition-prepare --input <config.json> --manifest <manifest.json> --bootstrap <bootstrap.sql>
+  node scripts/verify/index-storage-tooling.mjs partition-validate --input <packet.json> --output <admission.json>
   node scripts/verify/index-storage-tooling.mjs hash <comparison.json>
   node scripts/verify/index-storage-tooling.mjs prepare --comparison <comparison.json> --selected <prototype> --owner <owner> --date <YYYY-MM-DD> --output <decision.json> [--force]
   node scripts/verify/index-storage-tooling.mjs render --comparison <comparison.json> --decision <decision.json> --output <adr.md>
   node scripts/verify/index-storage-tooling.mjs verify-adr --comparison <comparison.json> --decision <decision.json> --adr <adr.md>
 
 Commands:
-  contract  Run static Index boundary, source-oracle/evidence, standalone-tool, and ADR guards.
-  fixtures  Run standalone, comparator, read-ordering, decision preparation/finalization, and ADR renderer fixture suites.
-  packet    Validate one smoke, 100k, or 1m evidence packet through terminal-ordering preflight and the canonical validator.
-  compare   Generate a cross-scale comparison after terminal-ordering preflight for every input packet.
-  hash      Print the SHA-256 digest of the exact comparison.json bytes.
-  prepare   Create a non-overwriting manual decision draft bound to the exact comparison bytes.
-  render    Finalize the manual storage ADR with comparison and decision SHA-256 bindings.
-  verify-adr Verify a saved ADR against exact comparison and decision bytes and deterministic re-rendering.`);
+  contract           Run static Index boundary, evidence, partition, standalone-tool, and ADR guards.
+  fixtures           Run standalone, evidence, comparator, decision, partition, and ADR fixture suites.
+  packet             Validate one smoke, 100k, or 1m storage evidence packet.
+  compare            Generate a cross-scale storage comparison.
+  partition-prepare  Bind an immutable partition evidence manifest and shadow-only bootstrap SQL.
+  partition-validate Validate a measured partition packet and publish calculated admission output.
+  hash               Print the SHA-256 digest of the exact comparison.json bytes.
+  prepare            Create a non-overwriting manual decision draft bound to exact comparison bytes.
+  render             Finalize the manual storage ADR with comparison and decision SHA-256 bindings.
+  verify-adr         Verify a saved ADR against exact comparison and decision bytes.`);
 };
 
 const runNode = (args, label, environment = process.env) => {
@@ -58,6 +62,7 @@ const runContract = (args) => {
     'verify-index-schema-leases.mjs',
     'verify-index-secondary-index-lifecycle.mjs',
     'verify-index-partition-admission.mjs',
+    'verify-index-partition-evidence.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-standalone-tools.mjs',
@@ -95,6 +100,7 @@ const runFixtures = (args) => {
     scriptPath('index-storage-decision-tooling.test.mjs'),
     scriptPath('prepare-index-storage-decision-lifecycle.test.mjs'),
     scriptPath('storage-decision-schema-text.test.mjs'),
+    scriptPath('index-partition-evidence.test.mjs'),
   ], 'Index storage fixture suites');
 };
 
@@ -180,6 +186,12 @@ switch (command) {
     break;
   case 'compare':
     runCompare(args);
+    break;
+  case 'partition-prepare':
+    runScript('prepare-index-partition-evidence.mjs', args);
+    break;
+  case 'partition-validate':
+    runScript('validate-index-partition-evidence.mjs', args);
     break;
   case 'hash':
     runScript('hash-index-storage-comparison.mjs', args);

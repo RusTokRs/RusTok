@@ -65,18 +65,21 @@ Commits and pull requests record which checks and evidence runs were not execute
 - M3 schema-application leases: `complete`
 - M3 secondary-index lifecycle: `complete`
 - M3 partition admission and shadow planning: `complete`
+- M3 partition evidence packet tooling: `complete`
 - Production persistence: mutation writes, schema coordination, secondary-index
-  lifecycle, and fail-closed partition admission implemented; query adapter and
-  partition copy/cutover lifecycle not yet implemented
+  lifecycle, fail-closed partition admission, and evidence validation implemented;
+  the retained PostgreSQL partition run, query adapter, and partition copy/cutover
+  lifecycle are not yet implemented
 
 The active production crate contains the generic domain/application core, the M3
 production migrations, an Index-owned transactional mutation adapter, a durable
 schema-application lease store, a schema-derived secondary-index manager, and a
-measured partition-admission contract that emits shadow bootstrap plans only.
-Query adapters, partition copy/constraint/index attachment, replay/cutover,
-batch ingestion, and PostgreSQL Testcontainers evidence remain open. Benchmark
-DDL and generated evidence stay under `ops/benches`, outside the production
-module.
+measured partition-admission contract that emits shadow bootstrap plans only. The
+repository also contains immutable partition-manifest preparation and measured
+packet validation tooling. Query adapters, retained partition evidence,
+partition copy/constraint/index attachment, replay/cutover, batch ingestion, and
+PostgreSQL Testcontainers evidence remain open. Benchmark DDL and generated
+evidence stay under `ops/benches`, outside the production module.
 
 ## Ownership
 
@@ -236,6 +239,8 @@ unpartitioned until a separate shadow packet passes admission.
 - [x] Add secondary-index planning and lifecycle management.
 - [x] Add fail-closed partition admission and deterministic tenant-hash shadow
       planning.
+- [x] Add immutable partition evidence manifest, measured packet validator, and
+      owner-operated runbook.
 - [ ] Execute retained PostgreSQL partition baseline/shadow evidence.
 - [ ] Add partition copy, constraint/index attachment, replay/dual-write, cutover,
       rollback, and durable global operation ownership.
@@ -284,6 +289,17 @@ through 128. Admitted plans derive stable SHA-256-bound shadow parent/child name
 and emit only shadow bootstrap DDL. They never rename, drop, or alter production
 relations. Copy, constraints, indexes, replay, cutover, rollback, and global
 operation fencing remain open until retained PostgreSQL evidence exists.
+
+The sixth M3 slice adds immutable partition evidence preparation and validation.
+The preparer binds repository, commit, PostgreSQL image, strategy, modulus,
+locales, repetitions, and explicit thresholds to one SHA-256 `evidence_id`, then
+emits deterministic shadow-only bootstrap SQL without clobbering an existing
+manifest. The validator rejects incomplete packets and calculates tenant-predicate
+coverage, cardinality/digest parity, normalized plan changes, p95 regressions, WAL
+amplification, child-size skew, lock duration, rollback facts, and typed admission
+reasons before atomically publishing an outcome. The repository owner still must
+execute and retain the PostgreSQL packet. This slice also removes the stale
+integration-test assumption that `IndexModule` has no production migrations.
 
 ### M4 - Query engine v1
 
@@ -370,6 +386,7 @@ npm run verify:index:runtime-fallback-smoke
 node scripts/verify/index-storage-tooling.mjs contract
 node scripts/verify/index-storage-tooling.mjs fixtures
 node --test scripts/verify/compare-index-storage-evidence.test.mjs
+node --test scripts/verify/index-partition-evidence.test.mjs
 ```
 
 Targeted M3 maintainer checks:
@@ -377,10 +394,12 @@ Targeted M3 maintainer checks:
 ```bash
 cargo check -p rustok-index --all-targets
 cargo test -p rustok-index --lib
+cargo test -p rustok-index --test module
 node scripts/verify/verify-index-mutation-storage.mjs
 node scripts/verify/verify-index-schema-leases.mjs
 node scripts/verify/verify-index-secondary-index-lifecycle.mjs
 node scripts/verify/verify-index-partition-admission.mjs
+node scripts/verify/verify-index-partition-evidence.mjs
 ```
 
 ## Progress log
@@ -397,5 +416,8 @@ node scripts/verify/verify-index-partition-admission.mjs
   concurrent ensure/reindex/retire execution, catalog readiness checks, durable
   jobs, owner fingerprints, and operation fencing.
 - 2026-07-27: added fail-closed measured partition admission and deterministic
-  tenant-hash shadow planning without destructive production cutover SQL. Tests,
-  verifiers, and PostgreSQL evidence were left for the repository owner to execute.
+  tenant-hash shadow planning without destructive production cutover SQL.
+- 2026-07-27: added immutable partition evidence manifests, calculated packet
+  admission, non-clobbering shadow bootstrap publication, owner runbook, lightweight
+  CI guards, and corrected the stale integration migration contract. Repository
+  tests, verifiers, and PostgreSQL evidence remain for the owner to execute.

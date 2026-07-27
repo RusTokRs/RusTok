@@ -14,10 +14,34 @@ fn module_metadata() {
 }
 
 #[test]
-fn module_has_no_legacy_migrations_during_storage_rewrite() {
+fn module_registers_canonical_storage_migrations() {
     let module = IndexModule;
-    assert!(
-        module.migrations().is_empty(),
-        "IndexModule production persistence remains absent until the storage ADR is accepted"
+    let migrations = module.migrations();
+    let names = migrations
+        .iter()
+        .map(|migration| migration.name())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [
+            "m20260727_000001_create_index_records",
+            "m20260727_000002_create_index_delivery_state",
+            "m20260727_000003_create_index_operations",
+        ]
+    );
+
+    let dependencies = module.migration_dependencies();
+    assert_eq!(dependencies.len(), 3);
+    assert_eq!(
+        dependencies[0].migration,
+        "m20260727_000001_create_index_records"
+    );
+    assert_eq!(
+        dependencies[1].migration,
+        "m20260727_000002_create_index_delivery_state"
+    );
+    assert_eq!(
+        dependencies[2].migration,
+        "m20260727_000003_create_index_operations"
     );
 }
