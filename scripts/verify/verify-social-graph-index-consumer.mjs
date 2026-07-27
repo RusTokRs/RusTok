@@ -69,7 +69,7 @@ for (const forbidden of [
 requireText(
   "CRATE_API.md",
   files.api,
-  "acknowledged only after the Index-owned result is durable",
+  "only after that Index-owned result is durable",
 );
 requireText(
   "Social Graph plan",
