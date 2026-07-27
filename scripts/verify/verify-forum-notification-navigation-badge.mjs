@@ -150,7 +150,11 @@ for (const marker of [
   requireText(ownerGraphql, marker, `owner unread GraphQL is missing ${marker}`);
 }
 rejectText(ownerGraphql, "async_graphql::Error::new(error.to_string())", "owner GraphQL must not expose raw errors");
-requireText(ownerCargo, "async-graphql.workspace = true", "Notifications owner must declare async-graphql");
+requireText(
+  ownerCargo,
+  "async-graphql = { workspace = true, optional = true }",
+  "Notifications owner must declare optional async-graphql",
+);
 requireText(ownerLib, "pub mod graphql;", "Notifications library must expose GraphQL");
 
 for (const marker of [
