@@ -45,6 +45,10 @@ path = "src/bin/index_storage_maintenance_benchmark.rs"
 name = "index-partition-snapshot-capture"
 path = "src/bin/index_partition_snapshot_capture.rs"
 
+[[bin]]
+name = "index-partition-query-evidence"
+path = "src/bin/index_partition_query_evidence.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false

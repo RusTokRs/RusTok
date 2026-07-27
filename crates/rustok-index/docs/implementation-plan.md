@@ -68,23 +68,24 @@ Commits and pull requests record which checks and evidence runs were not execute
 - M3 partition evidence packet tooling: `complete`
 - M3 partition evidence capture/assembly: `complete`
 - M3 partition baseline/shadow snapshot runner: `complete`
+- M3 partition query evidence runner: `complete`
 - Production persistence: mutation writes, schema coordination, secondary-index
-  lifecycle, fail-closed partition admission, snapshot capture, evidence assembly,
-  and evidence validation implemented; the real query/mutation/maintenance/cutover
-  partition evidence, query adapter, and production partition lifecycle are not yet
-  implemented
+  lifecycle, fail-closed partition admission, snapshot/query capture, evidence
+  assembly, and evidence validation implemented; real retained execution,
+  mutation/maintenance/cutover evidence, query adapter, and production partition
+  lifecycle are not yet implemented
 
 The active production crate contains the generic domain/application core, the M3
 production migrations, an Index-owned transactional mutation adapter, a durable
 schema-application lease store, a schema-derived secondary-index manager, and a
 measured partition-admission contract that emits shadow bootstrap plans only. The
 repository also contains immutable partition-manifest preparation, owner-operated
-baseline/shadow snapshot capture, exact-byte raw artifact assembly, and measured
-packet validation tooling. Query adapters, retained query/mutation/maintenance/
-cutover partition evidence, production copy/constraint/index attachment,
-replay/cutover, batch ingestion, and PostgreSQL Testcontainers evidence remain
-open. Benchmark DDL and generated evidence stay under `ops/benches`, outside the
-production module.
+baseline/shadow snapshot and query capture, exact-byte raw artifact assembly, and
+measured packet validation tooling. Query adapters, retained real packet execution,
+mutation/maintenance/cutover partition evidence, production copy/constraint/index
+attachment, replay/cutover, batch ingestion, and PostgreSQL Testcontainers evidence
+remain open. Benchmark DDL and generated evidence stay under `ops/benches`, outside
+the production module.
 
 ## Ownership
 
@@ -138,6 +139,7 @@ ops/benches/src/index_storage/
   mutation_runner.rs
   maintenance_runner.rs
   partition_snapshot.rs
+  partition_query.rs
   sql/
 ```
 
@@ -250,7 +252,10 @@ unpartitioned until a separate shadow packet passes admission.
 - [x] Add exact-byte raw-artifact capture assembly with bundle confinement and
       no-clobber packet publication.
 - [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.
-- [ ] Execute retained PostgreSQL query, mutation, maintenance, and cutover evidence.
+- [x] Add owner-operated PostgreSQL baseline/shadow query evidence capture.
+- [ ] Execute and retain PostgreSQL baseline/shadow and query evidence with the
+      owner-operated runners.
+- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.
 - [ ] Add partition copy, constraint/index attachment, replay/dual-write, cutover,
       rollback, and durable global operation ownership.
 - [ ] Add PostgreSQL Testcontainers fixtures.
@@ -329,8 +334,19 @@ source-version unique index and validated source foreign key protect link parity
 The runner records baseline/shadow rows, physical bytes, logical SHA-256 digests,
 child sizes, orphan state, FK state, and post-copy catch-up, then publishes
 `baseline.json` and `shadow.json` together without overwriting retained evidence.
-It does not execute query, mutation, maintenance, or cutover measurements and never
-renames, drops, or alters the canonical production relations.
+It never renames, drops, or alters canonical production relations.
+
+The ninth M3 slice adds owner-operated baseline/shadow query evidence. It validates
+the immutable manifest and evidence-bound shadow catalog, requires PostgreSQL 16,
+JIT off, partition pruning on, and ordinary unpartitioned canonical tables, and
+executes exactly the manifest query run count in one read-only repeatable-read
+transaction. Deterministic tenant-scoped entity/link templates must preserve result
+digest parity. Alternating samples retain full JSON EXPLAIN evidence, calculate
+nearest-rank p95, normalize logical plan identity with
+`normalized_partition_plan_v1`, and prove exactly one child is read for each used
+shadow relation. The runner publishes `query.json` once and performs no production
+mutation, replay, rename, drop, or cutover work. Real database execution remains an
+owner step.
 
 ### M4 - Query engine v1
 
@@ -421,6 +437,8 @@ node --test scripts/verify/index-partition-evidence.test.mjs
 node --test scripts/verify/index-partition-evidence-assembly.test.mjs
 cargo check -p rustok-benchmarks --bin index-partition-snapshot-capture
 cargo test -p rustok-benchmarks partition_snapshot
+cargo check -p rustok-benchmarks --bin index-partition-query-evidence
+cargo test -p rustok-benchmarks partition_query
 ```
 
 Targeted M3 maintainer checks:
@@ -435,6 +453,7 @@ node scripts/verify/verify-index-secondary-index-lifecycle.mjs
 node scripts/verify/verify-index-partition-admission.mjs
 node scripts/verify/verify-index-partition-evidence.mjs
 node scripts/verify/verify-index-partition-snapshot-capture.mjs
+node scripts/verify/verify-index-partition-query-evidence.mjs
 ```
 
 ## Progress log
@@ -460,5 +479,9 @@ node scripts/verify/verify-index-partition-snapshot-capture.mjs
   routing.
 - 2026-07-27: added owner-operated PostgreSQL baseline/shadow snapshot capture,
   repeatable-read copy, shadow integrity validation, logical SHA-256 parity, child
-  size evidence, no-clobber pair publication, and static/CI guards. Repository
-  tests, verifiers, and real PostgreSQL evidence remain for the owner to execute.
+  size evidence, no-clobber pair publication, and static/CI guards.
+- 2026-07-27: added owner-operated baseline/shadow query evidence capture, exact
+  result parity, alternating full JSON EXPLAIN samples, p95 measurement, normalized
+  logical plan digests, exact child-pruning proof, no-clobber `query.json`
+  publication, and static/CI guards. Repository tests, verifiers, and real
+  PostgreSQL evidence remain for the owner to execute.

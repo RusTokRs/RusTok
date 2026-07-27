@@ -39,6 +39,7 @@ on:
       - "scripts/verify/index-partition-evidence-assembly.test.mjs"
       - "scripts/verify/verify-index-partition-evidence.mjs"
       - "scripts/verify/verify-index-partition-snapshot-capture.mjs"
+      - "scripts/verify/verify-index-partition-query-evidence.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - "scripts/verify/verify-index-storage-adr-integrity.mjs"
       - ".github/workflows/index-storage-smoke.yml"
@@ -82,6 +83,7 @@ on:
       - "scripts/verify/index-partition-evidence-assembly.test.mjs"
       - "scripts/verify/verify-index-partition-evidence.mjs"
       - "scripts/verify/verify-index-partition-snapshot-capture.mjs"
+      - "scripts/verify/verify-index-partition-query-evidence.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - "scripts/verify/verify-index-storage-adr-integrity.mjs"
       - ".github/workflows/index-storage-smoke.yml"
@@ -148,6 +150,7 @@ jobs:
             node --check scripts/verify/index-partition-evidence-assembly.test.mjs
             node --check scripts/verify/verify-index-partition-evidence.mjs
             node --check scripts/verify/verify-index-partition-snapshot-capture.mjs
+            node --check scripts/verify/verify-index-partition-query-evidence.mjs
             node scripts/verify/index-storage-tooling.mjs contract
             node --test scripts/verify/index-storage-tooling.test.mjs
             node --test scripts/verify/check-index-storage-read-ordering.test.mjs
@@ -202,6 +205,7 @@ jobs:
             --bin index-storage-mutation-benchmark \
             --bin index-storage-maintenance-benchmark \
             --bin index-partition-snapshot-capture \
+            --bin index-partition-query-evidence \
             2>&1 | tee evidence/index-storage/build/release-build.log
 
       - name: Archive release build diagnostic
