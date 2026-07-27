@@ -105,7 +105,7 @@ rejectText(
 for (const marker of [
   "NotificationInboxStorefrontPort",
   "### 14. Authenticated storefront transport and grouped UI",
-  "GraphQL now",
+  "exposes the same bounded exact-group state commands",
   "automatically reloads its bootstrap",
 ]) {
   requireText(owner, marker, `Notifications owner README is missing ${marker}`);
