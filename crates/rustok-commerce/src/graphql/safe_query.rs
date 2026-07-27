@@ -416,7 +416,7 @@ mod source {
             ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
             ShippingOptionResponse, in_process_shipping_option_read_port,
         };
-        use ::sea_orm::DatabaseConnection;
+        use ::sea_orm::{DatabaseConnection, DbErr};
         use ::uuid::Uuid;
 
         use super::super::query_error_boundary::BoundaryError;
@@ -447,7 +447,7 @@ mod source {
                 id: Uuid,
                 requested_locale: Option<&str>,
                 tenant_default_locale: Option<&str>,
-            ) -> Result<ShippingOptionResponse, BoundaryError> {
+            ) -> FulfillmentResult<ShippingOptionResponse> {
                 let context = shipping_option_query_context(
                     tenant_id,
                     "shipping_option",
@@ -466,12 +466,12 @@ mod source {
                     )
                     .await
                     .map_err(|error| {
-                        map_shipping_option_port_error(
+                        map_shipping_option_lookup_port_error(
                             error,
                             &context,
                             "shipping_option",
                             "read_shipping_option_projection",
-                            Some(id),
+                            id,
                             requested_locale,
                             tenant_default_locale,
                         )
@@ -624,6 +624,59 @@ mod source {
         }
 
         #[allow(clippy::too_many_arguments)]
+        fn map_shipping_option_lookup_port_error(
+            error: PortError,
+            context: &PortContext,
+            query_field: &'static str,
+            operation: &'static str,
+            shipping_option_id: Uuid,
+            requested_locale: Option<&str>,
+            tenant_default_locale: Option<&str>,
+        ) -> FulfillmentError {
+            let error_kind = port_error_kind_name(&error.kind);
+            let technical = is_technical_port_error(&error.kind);
+            log_shipping_option_port_error(
+                &error,
+                context,
+                query_field,
+                operation,
+                Some(shipping_option_id),
+                requested_locale,
+                tenant_default_locale,
+                error_kind,
+                if matches!(&error.kind, PortErrorKind::NotFound) {
+                    "OPTIONAL_NONE"
+                } else {
+                    "COMMERCE_QUERY_OPERATION_FAILED"
+                },
+                false,
+                technical,
+            );
+
+            match error.kind {
+                PortErrorKind::NotFound => {
+                    FulfillmentError::ShippingOptionNotFound(shipping_option_id)
+                }
+                PortErrorKind::Conflict => FulfillmentError::InvalidTransition {
+                    from: "current".to_string(),
+                    to: "query".to_string(),
+                },
+                PortErrorKind::Unavailable | PortErrorKind::Timeout => FulfillmentError::Database(
+                    DbErr::Custom("fulfillment storage is temporarily unavailable".to_string()),
+                ),
+                PortErrorKind::Validation => FulfillmentError::Validation(
+                    "fulfillment request is invalid".to_string(),
+                ),
+                PortErrorKind::Forbidden => FulfillmentError::Validation(
+                    "fulfillment query is not permitted".to_string(),
+                ),
+                PortErrorKind::InvariantViolation => FulfillmentError::Validation(
+                    "fulfillment query could not be completed safely".to_string(),
+                ),
+            }
+        }
+
+        #[allow(clippy::too_many_arguments)]
         fn map_shipping_option_port_error(
             error: PortError,
             context: &PortContext,
@@ -633,51 +686,95 @@ mod source {
             requested_locale: Option<&str>,
             tenant_default_locale: Option<&str>,
         ) -> BoundaryError {
-            let (message, code, retryable, error_kind) = match &error.kind {
+            let (message, code, retryable) = match &error.kind {
                 PortErrorKind::Validation => (
                     "Fulfillment query is invalid",
                     "FULFILLMENT_REQUEST_INVALID",
                     false,
-                    "validation",
                 ),
                 PortErrorKind::NotFound => (
                     "Fulfillment resource was not found",
                     "FULFILLMENT_RESOURCE_NOT_FOUND",
                     false,
-                    "not_found",
                 ),
                 PortErrorKind::Conflict => (
                     "Fulfillment state conflicts with this query",
                     "FULFILLMENT_STATE_CONFLICT",
                     false,
-                    "conflict",
                 ),
                 PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                     "Fulfillment data is temporarily unavailable",
                     "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
                     true,
-                    "unavailable",
                 ),
                 PortErrorKind::Forbidden => (
                     "Fulfillment query is not permitted",
                     "FULFILLMENT_ACCESS_DENIED",
                     false,
-                    "forbidden",
                 ),
                 PortErrorKind::InvariantViolation => (
                     "Fulfillment query could not be completed safely",
                     "FULFILLMENT_OPERATION_FAILED",
                     false,
-                    "invariant",
                 ),
             };
-            let technical = matches!(
-                &error.kind,
+            let error_kind = port_error_kind_name(&error.kind);
+            let technical = is_technical_port_error(&error.kind);
+            log_shipping_option_port_error(
+                &error,
+                context,
+                query_field,
+                operation,
+                shipping_option_id,
+                requested_locale,
+                tenant_default_locale,
+                error_kind,
+                code,
+                retryable,
+                technical,
+            );
+
+            BoundaryError::Public {
+                message,
+                code,
+                retryable,
+            }
+        }
+
+        fn port_error_kind_name(kind: &PortErrorKind) -> &'static str {
+            match kind {
+                PortErrorKind::Validation => "validation",
+                PortErrorKind::NotFound => "not_found",
+                PortErrorKind::Conflict => "conflict",
+                PortErrorKind::Forbidden => "forbidden",
+                PortErrorKind::Unavailable | PortErrorKind::Timeout => "unavailable",
+                PortErrorKind::InvariantViolation => "invariant",
+            }
+        }
+
+        fn is_technical_port_error(kind: &PortErrorKind) -> bool {
+            matches!(
+                kind,
                 PortErrorKind::Unavailable
                     | PortErrorKind::Timeout
                     | PortErrorKind::InvariantViolation
-            );
+            )
+        }
 
+        #[allow(clippy::too_many_arguments)]
+        fn log_shipping_option_port_error(
+            error: &PortError,
+            context: &PortContext,
+            query_field: &'static str,
+            operation: &'static str,
+            shipping_option_id: Option<Uuid>,
+            requested_locale: Option<&str>,
+            tenant_default_locale: Option<&str>,
+            error_kind: &'static str,
+            public_code: &'static str,
+            public_retryable: bool,
+            technical: bool,
+        ) {
             if technical {
                 tracing::error!(
                     error = ?error,
@@ -692,11 +789,12 @@ mod source {
                     shipping_option_id = ?shipping_option_id,
                     requested_locale_length = requested_locale.map(str::len),
                     tenant_default_locale_length = tenant_default_locale.map(str::len),
+                    error_kind,
                     owner_code = %error.code,
                     owner_kind = ?error.kind,
                     owner_retryable = error.retryable,
-                    public_code = code,
-                    public_retryable = retryable,
+                    public_code,
+                    public_retryable,
                     boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
                     "commerce GraphQL query shipping-option owner read failed"
                 );
@@ -713,20 +811,15 @@ mod source {
                     shipping_option_id = ?shipping_option_id,
                     requested_locale_length = requested_locale.map(str::len),
                     tenant_default_locale_length = tenant_default_locale.map(str::len),
+                    error_kind,
                     owner_code = %error.code,
                     owner_kind = ?error.kind,
                     owner_retryable = error.retryable,
-                    public_code = code,
-                    public_retryable = retryable,
+                    public_code,
+                    public_retryable,
                     boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
                     "commerce GraphQL query shipping-option owner read was rejected"
                 );
-            }
-
-            BoundaryError::Public {
-                message,
-                code,
-                retryable,
             }
         }
 
