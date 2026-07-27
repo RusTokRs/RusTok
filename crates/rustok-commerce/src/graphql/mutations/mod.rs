@@ -9,6 +9,8 @@ pub mod cart;
 mod cart_safe_helpers;
 #[path = "typed_line_item_helpers.rs"]
 mod typed_line_item_helpers;
+#[path = "typed_shipping_enrichment_helper.rs"]
+mod typed_shipping_enrichment_helper;
 #[path = "typed_shipping_option_helper.rs"]
 mod typed_shipping_option_helper;
 pub mod catalog;
