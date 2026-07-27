@@ -672,7 +672,7 @@ mod source {
                 ),
             };
             let technical = matches!(
-                error.kind,
+                &error.kind,
                 PortErrorKind::Unavailable
                     | PortErrorKind::Timeout
                     | PortErrorKind::InvariantViolation
