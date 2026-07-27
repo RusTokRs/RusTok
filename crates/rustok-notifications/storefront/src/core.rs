@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -48,6 +48,16 @@ pub enum NotificationStorefrontGroupStateAction {
     MarkRead,
     MarkUnread,
     Archive,
+}
+
+impl NotificationStorefrontGroupStateAction {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MarkRead => "mark_read",
+            Self::MarkUnread => "mark_unread",
+            Self::Archive => "archive",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -106,6 +116,26 @@ pub struct NotificationStorefrontItem {
     pub created_at: String,
 }
 
+impl NotificationStorefrontItem {
+    pub fn display_title(&self) -> String {
+        self.template_data
+            .get("title")
+            .or_else(|| self.template_data.get("topic_title"))
+            .or_else(|| self.template_data.get("subject"))
+            .cloned()
+            .unwrap_or_else(|| self.notification_type.clone())
+    }
+
+    pub fn display_body(&self) -> String {
+        self.template_data
+            .get("body")
+            .or_else(|| self.template_data.get("message"))
+            .or_else(|| self.template_data.get("summary"))
+            .cloned()
+            .unwrap_or_else(|| self.template_key.clone())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationStorefrontGroupSummary {
     pub group_key: String,
@@ -141,4 +171,81 @@ pub struct NotificationStorefrontGroupStatePage {
     pub changed: u16,
     pub next_cursor: Option<String>,
     pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NotificationStorefrontInboxSnapshot {
+    pub unread_count: u64,
+    pub groups: Vec<NotificationStorefrontGroupSummary>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+impl NotificationStorefrontInboxSnapshot {
+    pub fn new(
+        unread_count: u64,
+        page: NotificationStorefrontGroupSummaryPage,
+    ) -> Self {
+        Self {
+            unread_count,
+            groups: page.groups,
+            next_cursor: page.next_cursor,
+            has_more: page.has_more,
+        }
+    }
+
+    pub fn append_page(&mut self, page: NotificationStorefrontGroupSummaryPage) -> usize {
+        let mut known = self
+            .groups
+            .iter()
+            .map(|group| group.group_key.clone())
+            .collect::<BTreeSet<_>>();
+        let mut appended = 0;
+        for group in page.groups {
+            if known.insert(group.group_key.clone()) {
+                self.groups.push(group);
+                appended += 1;
+            }
+        }
+        self.next_cursor = page.next_cursor;
+        self.has_more = page.has_more;
+        appended
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NotificationStorefrontGroupItemsSnapshot {
+    pub group_key: String,
+    pub items: Vec<NotificationStorefrontItem>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+impl NotificationStorefrontGroupItemsSnapshot {
+    pub fn from_page(group_key: String, page: NotificationStorefrontGroupItemsPage) -> Self {
+        Self {
+            group_key,
+            items: page.items,
+            next_cursor: page.next_cursor,
+            has_more: page.has_more,
+        }
+    }
+
+    pub fn append_page(&mut self, page: NotificationStorefrontGroupItemsPage) -> usize {
+        let mut known = self
+            .items
+            .iter()
+            .map(|item| item.id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut appended = 0;
+        for item in page.items {
+            if known.insert(item.id.clone()) {
+                self.items.push(item);
+                appended += 1;
+            }
+        }
+        self.next_cursor = page.next_cursor;
+        self.has_more = page.has_more;
+        appended
+    }
 }
