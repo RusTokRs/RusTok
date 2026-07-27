@@ -14,6 +14,7 @@ pub fn Header(
     nav_language: &'static str,
     cta_primary: &'static str,
     navigation_views: Vec<AnyView>,
+    #[prop(optional)] action_views: Vec<AnyView>,
 ) -> impl IntoView {
     let links = build_header_links(locale.as_str());
     let navigation = if navigation_views.is_empty() {
@@ -43,6 +44,9 @@ pub fn Header(
                 </div>
                 {navigation}
                 <div class="flex items-center gap-3 ml-6">
+                    <div class="contents" data-storefront-header-actions="true">
+                        {action_views}
+                    </div>
                     <div class="relative">
                         <details class="group">
                             <summary class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors list-none">

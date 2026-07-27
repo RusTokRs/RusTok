@@ -3,6 +3,7 @@ pub mod entities;
 pub mod error;
 mod fanout;
 mod fanout_worker;
+pub mod graphql;
 mod inbox;
 mod inbox_bulk;
 mod inbox_count;
@@ -44,6 +45,7 @@ pub use fanout_worker::{
     NotificationFanoutWorkerBatchResult, NotificationFanoutWorkerFailure,
     NotificationFanoutWorkerStage,
 };
+pub use graphql::{GqlNotificationInboxUnreadCount, NotificationsQuery};
 pub use inbox::{
     DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_CURSOR_BYTES,
     MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationInboxItem, NotificationInboxListRequest,

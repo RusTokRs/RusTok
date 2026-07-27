@@ -86,6 +86,7 @@ struct StorefrontUiComponentEntry {
 #[derive(Debug, Clone, Copy)]
 enum StorefrontSlot {
     HeaderNavigation,
+    HeaderActions,
     HomeAfterHero,
     HomeAfterCatalog,
     HomeBeforeFooter,
@@ -333,6 +334,7 @@ fn storefront_slot_from_manifest(raw: Option<&str>) -> Result<StorefrontSlot, Bo
         .unwrap_or("home_after_hero")
     {
         "header_navigation" => Ok(StorefrontSlot::HeaderNavigation),
+        "header_actions" => Ok(StorefrontSlot::HeaderActions),
         "home_after_hero" => Ok(StorefrontSlot::HomeAfterHero),
         "home_after_catalog" => Ok(StorefrontSlot::HomeAfterCatalog),
         "home_before_footer" => Ok(StorefrontSlot::HomeBeforeFooter),
@@ -347,6 +349,7 @@ fn storefront_slot_from_manifest(raw: Option<&str>) -> Result<StorefrontSlot, Bo
 fn storefront_slot_expr(slot: StorefrontSlot) -> &'static str {
     match slot {
         StorefrontSlot::HeaderNavigation => "StorefrontSlot::HeaderNavigation",
+        StorefrontSlot::HeaderActions => "StorefrontSlot::HeaderActions",
         StorefrontSlot::HomeAfterHero => "StorefrontSlot::HomeAfterHero",
         StorefrontSlot::HomeAfterCatalog => "StorefrontSlot::HomeAfterCatalog",
         StorefrontSlot::HomeBeforeFooter => "StorefrontSlot::HomeBeforeFooter",
