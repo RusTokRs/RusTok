@@ -1,0 +1,60 @@
+diff --git a/crates/rustok-index/src/infrastructure/postgres/mutation_store.rs b/crates/rustok-index/src/infrastructure/postgres/mutation_store.rs
+index fac326e..8e71537 100644
+--- a/crates/rustok-index/src/infrastructure/postgres/mutation_store.rs
++++ b/crates/rustok-index/src/infrastructure/postgres/mutation_store.rs
+@@ -91,6 +91,8 @@ pub enum MutationStorageError {
+     Serialization(String),
+     #[error("mutation storage operation failed")]
+     Storage(String),
++    #[error("mutation lost entity-key serialization")]
++    ConcurrentMutationConflict,
+     #[error("mutation inbox completion lost ownership")]
+     InboxCompletionLost,
+ }
+@@ -217,15 +219,7 @@ impl PostgresMutationStore {
+                     )
+                     .await?;
+                 if !applied {
+-                    let current_source_version = self
+-                        .current_source_version(transaction, mutation, backend)
+-                        .await?;
+-                    self.complete_inbox(transaction, delivery, payload_hash, backend)
+-                        .await?;
+-                    return Ok(MutationApplyOutcome::StaleIgnored {
+-                        incoming_source_version: source_version,
+-                        current_source_version,
+-                    });
++                    return Err(MutationStorageError::ConcurrentMutationConflict);
+                 }
+                 self.insert_links(transaction, record, backend).await?;
+             }
+@@ -241,15 +235,7 @@ impl PostgresMutationStore {
+                     )
+                     .await?;
+                 if !applied {
+-                    let current_source_version = self
+-                        .current_source_version(transaction, mutation, backend)
+-                        .await?;
+-                    self.complete_inbox(transaction, delivery, payload_hash, backend)
+-                        .await?;
+-                    return Ok(MutationApplyOutcome::StaleIgnored {
+-                        incoming_source_version: source_version,
+-                        current_source_version,
+-                    });
++                    return Err(MutationStorageError::ConcurrentMutationConflict);
+                 }
+             }
+         }
+diff --git a/scripts/verify/verify-index-mutation-storage.mjs b/scripts/verify/verify-index-mutation-storage.mjs
+index 7c22bc3..b7a0f93 100644
+--- a/scripts/verify/verify-index-mutation-storage.mjs
++++ b/scripts/verify/verify-index-mutation-storage.mjs
+@@ -38,6 +38,8 @@ const store = requireMarkers(storePath, [
+   'DbBackend::Sqlite if cfg!(test) => Ok(())',
+   'Decimal::from(source_version)',
+   'SqliteSourceVersionOutOfRange',
++  'ConcurrentMutationConflict',
++  'return Err(MutationStorageError::ConcurrentMutationConflict)',
+ ]);
+ 
+ const lockPosition = store.indexOf('self.lock_entity_key(transaction, mutation, backend)');
