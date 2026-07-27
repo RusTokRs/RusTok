@@ -323,7 +323,6 @@ fn map_pricing_write_local_port_error(
             original_message_length,
             error_kind = ?mapped_error.kind,
             retryable = mapped_error.retryable,
-            mapped_error = ?mapped_error,
             boundary = PRICING_WRITE_BOUNDARY,
             "pricing write local technical outcome retained delegated context"
         );
@@ -358,7 +357,6 @@ fn map_pricing_write_local_port_error(
             original_message_length,
             error_kind = ?mapped_error.kind,
             retryable = mapped_error.retryable,
-            mapped_error = ?mapped_error,
             boundary = PRICING_WRITE_BOUNDARY,
             "pricing write local outcome retained delegated context"
         );
