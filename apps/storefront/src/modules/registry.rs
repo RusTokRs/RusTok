@@ -6,6 +6,7 @@ use leptos::prelude::AnyView;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StorefrontSlot {
     HeaderNavigation,
+    HeaderActions,
     HomeAfterHero,
     HomeAfterCatalog,
     HomeBeforeFooter,
