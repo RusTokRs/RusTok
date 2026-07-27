@@ -16,26 +16,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 2
+          fetch-depth: 1
+          show-progress: false
       - name: Recover and execute embedded source applier
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
           import subprocess
-          import textwrap
 
           workflow = '.github/workflows/agent-forum-group-state-graphql-20an.yml'
+          source_commit = '0c6fefc31153c313992bea228f13678059a2b58a'
+          subprocess.run(
+              ['git', 'fetch', '--no-tags', '--depth=1', 'origin', source_commit],
+              check=True,
+              stdout=subprocess.DEVNULL,
+          )
           previous = subprocess.check_output(
-              ['git', 'show', f'HEAD^:{workflow}'],
+              ['git', 'show', f'{source_commit}:{workflow}'],
               text=True,
           )
           start_marker = "          python3 <<'PY'\n"
           end_marker = "\n          PY\n\n          git config user.name"
           start = previous.index(start_marker) + len(start_marker)
           end = previous.index(end_marker, start)
-          script = textwrap.dedent(previous[start:end])
-          Path('/tmp/forum-20an-apply.py').write_text(script)
+          raw_script = previous[start:end]
+          Path('/tmp/forum-20an-apply.py').write_text('if True:\n' + raw_script)
           subprocess.run(['python3', '/tmp/forum-20an-apply.py'], check=True)
           PY
 
