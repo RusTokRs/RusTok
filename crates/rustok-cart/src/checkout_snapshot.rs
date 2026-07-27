@@ -193,7 +193,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
             .service
             .get_cart(tenant_id, request.cart_id)
             .await
-            .map_err(cart_error_to_port_error)?;
+            .map_err(|error| {
+                map_cart_checkout_service_error(
+                    &context,
+                    PREPARE_CHECKOUT_OPERATION,
+                    "get_cart",
+                    error,
+                )
+            })?;
         let status = CartStatus::parse(cart.status.as_str()).ok_or_else(|| {
             PortError::validation(
                 "cart.invalid_status",
@@ -206,7 +213,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                     .service
                     .begin_checkout(tenant_id, request.cart_id)
                     .await
-                    .map_err(cart_error_to_port_error)?;
+                    .map_err(|error| {
+                        map_cart_checkout_service_error(
+                            &context,
+                            PREPARE_CHECKOUT_OPERATION,
+                            "begin_checkout",
+                            error,
+                        )
+                    })?;
             }
             CartStatus::CheckingOut => {}
             status => {
@@ -221,7 +235,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
             .service
             .update_context(tenant_id, request.cart_id, request.input)
             .await
-            .map_err(cart_error_to_port_error)?;
+            .map_err(|error| {
+                map_cart_checkout_service_error(
+                    &context,
+                    PREPARE_CHECKOUT_OPERATION,
+                    "update_context",
+                    error,
+                )
+            })?;
         snapshot_from_cart(cart)
     }
 
@@ -235,7 +256,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         self.service
             .get_cart(tenant_id, cart_id)
             .await
-            .map_err(cart_error_to_port_error)
+            .map_err(|error| {
+                map_cart_checkout_service_error(
+                    &context,
+                    READ_CHECKOUT_SNAPSHOT_OPERATION,
+                    "get_cart",
+                    error,
+                )
+            })
             .and_then(snapshot_from_cart)
     }
 
@@ -250,7 +278,14 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
             .service
             .complete_cart(tenant_id, request.cart_id)
             .await
-            .map_err(cart_error_to_port_error)?;
+            .map_err(|error| {
+                map_cart_checkout_service_error(
+                    &context,
+                    COMPLETE_CHECKOUT_OPERATION,
+                    "complete_cart",
+                    error,
+                )
+            })?;
         let mut cart = cart;
         cart.metadata = merge_checkout_order_metadata(cart.metadata, request.order_id);
         snapshot_from_cart(cart)
@@ -267,9 +302,90 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
             .service
             .abandon_cart(tenant_id, cart_id)
             .await
-            .map_err(cart_error_to_port_error)?;
+            .map_err(|error| {
+                map_cart_checkout_service_error(
+                    &context,
+                    RELEASE_CHECKOUT_OPERATION,
+                    "abandon_cart",
+                    error,
+                )
+            })?;
         snapshot_from_cart(cart)
     }
+}
+
+fn map_cart_checkout_service_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    service_operation: &'static str,
+    error: CartError,
+) -> PortError {
+    let (public_code, public_retryable, technical) = match &error {
+        CartError::Validation(_) => ("cart.checkout_validation", false, false),
+        CartError::CartNotFound(_) => ("cart.not_found", false, false),
+        CartError::CartLineItemNotFound(_) => ("cart.line_item_not_found", false, false),
+        CartError::InvalidTransition { .. } => ("cart.checkout_status_conflict", false, false),
+        CartError::Database(_) => ("cart.database_unavailable", true, true),
+        CartError::TaxBoundary {
+            kind,
+            code,
+            retryable,
+            ..
+        } => (
+            code.as_str(),
+            *retryable,
+            matches!(
+                kind,
+                PortErrorKind::Unavailable
+                    | PortErrorKind::Timeout
+                    | PortErrorKind::InvariantViolation
+            ),
+        ),
+    };
+
+    if technical {
+        tracing::error!(
+            error = ?error,
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            service_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            public_code,
+            public_retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner service operation failed"
+        );
+    } else {
+        tracing::warn!(
+            error = ?error,
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            service_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            public_code,
+            public_retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner service operation was rejected"
+        );
+    }
+
+    cart_error_to_port_error(error)
 }
 
 fn validate_prepare_input(input: &UpdateCartContextInput) -> Result<(), CartError> {
