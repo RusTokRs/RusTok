@@ -66,20 +66,22 @@ Commits and pull requests record which checks and evidence runs were not execute
 - M3 secondary-index lifecycle: `complete`
 - M3 partition admission and shadow planning: `complete`
 - M3 partition evidence packet tooling: `complete`
+- M3 partition evidence capture/assembly: `complete`
 - Production persistence: mutation writes, schema coordination, secondary-index
-  lifecycle, fail-closed partition admission, and evidence validation implemented;
-  the retained PostgreSQL partition run, query adapter, and partition copy/cutover
-  lifecycle are not yet implemented
+  lifecycle, fail-closed partition admission, evidence assembly, and evidence
+  validation implemented; the retained PostgreSQL partition run, query adapter,
+  and partition copy/cutover lifecycle are not yet implemented
 
 The active production crate contains the generic domain/application core, the M3
 production migrations, an Index-owned transactional mutation adapter, a durable
 schema-application lease store, a schema-derived secondary-index manager, and a
 measured partition-admission contract that emits shadow bootstrap plans only. The
-repository also contains immutable partition-manifest preparation and measured
-packet validation tooling. Query adapters, retained partition evidence,
-partition copy/constraint/index attachment, replay/cutover, batch ingestion, and
-PostgreSQL Testcontainers evidence remain open. Benchmark DDL and generated
-evidence stay under `ops/benches`, outside the production module.
+repository also contains immutable partition-manifest preparation, exact-byte raw
+artifact assembly, and measured packet validation tooling. Query adapters,
+retained partition evidence, partition copy/constraint/index attachment,
+replay/cutover, batch ingestion, and PostgreSQL Testcontainers evidence remain
+open. Benchmark DDL and generated evidence stay under `ops/benches`, outside the
+production module.
 
 ## Ownership
 
@@ -241,6 +243,8 @@ unpartitioned until a separate shadow packet passes admission.
       planning.
 - [x] Add immutable partition evidence manifest, measured packet validator, and
       owner-operated runbook.
+- [x] Add exact-byte raw-artifact capture assembly with bundle confinement and
+      no-clobber packet publication.
 - [ ] Execute retained PostgreSQL partition baseline/shadow evidence.
 - [ ] Add partition copy, constraint/index attachment, replay/dual-write, cutover,
       rollback, and durable global operation ownership.
@@ -300,6 +304,15 @@ amplification, child-size skew, lock duration, rollback facts, and typed admissi
 reasons before atomically publishing an outcome. The repository owner still must
 execute and retain the PostgreSQL packet. This slice also removes the stale
 integration-test assumption that `IndexModule` has no production migrations.
+
+The seventh M3 slice adds fail-closed raw-artifact packet assembly. A strict
+`index_partition_capture_v1` descriptor points to exactly six unique relative JSON
+files inside one bundle. The assembler rejects absolute paths, traversal,
+directories, symbolic links, duplicate role paths, output aliases, and overwrite
+attempts. It reads each artifact once, hashes exact bytes, maps only the required
+baseline/shadow/query/mutation/maintenance/cutover shapes, and runs the canonical
+packet validator before no-clobber publication. It still does not execute
+PostgreSQL measurements or authorize production partitioning.
 
 ### M4 - Query engine v1
 
@@ -387,6 +400,7 @@ node scripts/verify/index-storage-tooling.mjs contract
 node scripts/verify/index-storage-tooling.mjs fixtures
 node --test scripts/verify/compare-index-storage-evidence.test.mjs
 node --test scripts/verify/index-partition-evidence.test.mjs
+node --test scripts/verify/index-partition-evidence-assembly.test.mjs
 ```
 
 Targeted M3 maintainer checks:
@@ -419,5 +433,8 @@ node scripts/verify/verify-index-partition-evidence.mjs
   tenant-hash shadow planning without destructive production cutover SQL.
 - 2026-07-27: added immutable partition evidence manifests, calculated packet
   admission, non-clobbering shadow bootstrap publication, owner runbook, lightweight
-  CI guards, and corrected the stale integration migration contract. Repository
-  tests, verifiers, and PostgreSQL evidence remain for the owner to execute.
+  CI guards, and corrected the stale integration migration contract.
+- 2026-07-27: added exact-byte raw-artifact capture assembly, bundle confinement,
+  no-symlink/no-alias/no-overwrite publication, fixture coverage, and tooling
+  routing. Repository tests, verifiers, and PostgreSQL evidence remain for the
+  owner to execute.

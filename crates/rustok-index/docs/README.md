@@ -26,7 +26,7 @@ without runtime fan-out.
 - PostgreSQL storage and distributed coordination;
 - schema application and secondary-index lifecycle;
 - measured partition admission and shadow planning;
-- retained partition evidence contracts and validation;
+- retained partition evidence preparation, capture assembly, and validation;
 - SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
@@ -156,13 +156,16 @@ relations. Copy, constraint/index attachment, replay or dual-write, durable glob
 operation ownership, cutover, rollback, and retained PostgreSQL evidence remain
 open M3 work.
 
-Partition evidence tooling now binds one immutable manifest to a SHA-256
-`evidence_id`, emits deterministic shadow-only bootstrap SQL, validates exact
-query/mutation/maintenance/cutover repetition groups, and calculates tenant
-coverage, digest parity, latency regression, WAL amplification, partition skew,
-lock duration, rollback state, and typed rejection reasons. It cannot accept
-precomputed pass flags or authorize cutover. The repository owner still executes
-and retains the PostgreSQL packet.
+Partition evidence tooling binds one immutable manifest to a SHA-256 `evidence_id`,
+emits deterministic shadow-only bootstrap SQL, and validates exact
+query/mutation/maintenance/cutover repetition groups. The capture/assembly layer
+reads six retained raw JSON artifacts once, confines unique relative paths to one
+bundle, rejects symbolic links and aliases, calculates exact-byte SHA-256 hashes,
+and publishes a structurally validated packet without accepting precomputed packet
+fields or pass flags. Final validation calculates tenant coverage, digest parity,
+latency regression, WAL amplification, partition skew, lock duration, rollback
+state, and typed rejection reasons. The repository owner still executes and
+retains the PostgreSQL packet.
 
 PostgreSQL Testcontainers/concurrency evidence, query execution, and batch
 ingestion remain later M3/M4/M5 slices.
@@ -184,9 +187,11 @@ ingestion remain later M3/M4/M5 slices.
 - M3 secondary-index lifecycle: `complete`
 - M3 partition admission and shadow planning: `complete`
 - M3 partition evidence packet tooling: `complete`
+- M3 partition evidence capture/assembly: `complete`
 - Production persistence: mutation writes, schema/index coordination, partition
-  admission, and evidence validation implemented; query adapter, retained
-  PostgreSQL partition run, and partition cutover lifecycle not yet implemented
+  admission, evidence assembly, and evidence validation implemented; query adapter,
+  retained PostgreSQL partition run, and partition cutover lifecycle not yet
+  implemented
 
 ## Verification
 
@@ -199,6 +204,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo xtask module test index`
 - `node scripts/verify/index-storage-tooling.mjs contract`
 - `node scripts/verify/index-storage-tooling.mjs fixtures`
+- `node --test scripts/verify/index-partition-evidence-assembly.test.mjs`
 - `node scripts/verify/verify-index-secondary-index-lifecycle.mjs`
 - `node scripts/verify/verify-index-partition-admission.mjs`
 - `node scripts/verify/verify-index-partition-evidence.mjs`

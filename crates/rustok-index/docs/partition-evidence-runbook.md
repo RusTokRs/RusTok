@@ -7,20 +7,22 @@ relations remain unpartitioned unless one retained packet validates to `admitted
 
 ## Tooling boundary
 
-The tooling is intentionally split into two phases:
+The tooling is intentionally split into three phases:
 
 1. `partition-prepare` binds an immutable run manifest to one SHA-256
    `evidence_id` and emits deterministic shadow-only bootstrap SQL.
-2. `partition-validate` validates a completed measured packet, calculates all
-   admission metrics, and atomically publishes `admission.json`.
+2. The owner executes PostgreSQL measurements and retains six raw JSON artifacts.
+   `partition-assemble` reads those exact files, calculates their exact-byte
+   SHA-256 identities, and publishes one structurally validated packet.
+3. `partition-validate` recalculates admission metrics and atomically publishes
+   `admission.json`.
 
-The preparer refuses to overwrite either manifest or bootstrap output. The
-validator removes stale admission output before validation and writes a new file
-only after the complete packet is accepted structurally.
+The preparer and assembler refuse to overwrite retained outputs. The validator
+removes stale admission output before validation and writes a new file only after
+the complete packet is accepted structurally.
 
-Neither command copies rows, installs production constraints or indexes, starts
-replay or dual-write, renames production relations, drops production relations,
-or performs cutover.
+None of these commands installs production constraints or indexes, starts replay
+or dual-write, renames or drops production relations, or performs cutover.
 
 ## Prepare an immutable run
 
@@ -56,8 +58,8 @@ Create a configuration file such as `evidence/index-partition/config.json`:
 }
 ```
 
-Use an immutable reviewed commit. `run_key` must identify one run attempt and must
-not be reused for a rerun. Modulus must be a power of two from 2 through 128.
+Use an immutable reviewed commit. `run_key` identifies exactly one run attempt and
+must not be reused for a rerun. Modulus must be a power of two from 2 through 128.
 PostgreSQL image is pinned to `postgres:16`. Repetition counts are exact and must
 all be positive.
 
@@ -86,23 +88,92 @@ Review `bootstrap.sql` before execution. It may contain only:
 It must not contain production `ALTER TABLE`, `DROP TABLE`, `RENAME TO`, copy,
 replay, dual-write, or cutover statements.
 
-## Required measured packet
+## Capture retained raw artifacts
 
-The owner-run harness produces one `partition-packet.json` with contract
-`index_partition_evidence_packet_v1`. The packet embeds the prepared manifest and
-records PostgreSQL 16 metadata with JIT disabled.
+The owner-operated PostgreSQL harness writes six raw JSON artifacts in one bundle
+directory. They are regular files, never symbolic links:
 
-The packet also records:
+- `baseline.json` — unpartitioned relation evidence and tenant-predicate audit;
+- `shadow.json` — shadow relation evidence, child sizes, catch-up, FK, and orphan
+  state;
+- `query.json` — an array of baseline/shadow query p95 and normalized plan digests;
+- `mutation.json` — an array of mutation p95 and WAL measurements;
+- `maintenance.json` — an array of ordinary VACUUM/dead-tuple measurements;
+- `cutover.json` — an array of lock rehearsals and rollback/invariance facts.
+
+The artifact producer must write final files once. Do not edit measurements after
+the run. A formatting-only byte change intentionally creates a different raw
+artifact digest even when parsed JSON values are equal.
+
+Create `capture.json` beside those six artifacts:
+
+```json
+{
+  "contract": "index_partition_capture_v1",
+  "completed_at": "2026-07-27T14:00:00Z",
+  "run_provenance": {
+    "repository": "RusTokRs/RusTok",
+    "commit": "<same full commit SHA as manifest>",
+    "run_key": "<same run key as manifest>",
+    "job": "index-partition-evidence",
+    "runner_os": "Linux",
+    "runner_arch": "X64"
+  },
+  "database": {
+    "version": "PostgreSQL 16.x",
+    "server_version_num": "160000",
+    "jit": "off",
+    "system_identifier": "<pg_control_system system_identifier>",
+    "database_name": "rustok_index_partition_evidence"
+  },
+  "artifacts": {
+    "baseline": "baseline.json",
+    "shadow": "shadow.json",
+    "query": "query.json",
+    "mutation": "mutation.json",
+    "maintenance": "maintenance.json",
+    "cutover": "cutover.json"
+  }
+}
+```
+
+Artifact paths are relative to `capture.json` and must remain inside the canonical
+bundle. Paths and underlying file identities must be unique: absolute paths, `..`
+traversal, duplicate roles, directories, symbolic links, and hard-link aliases fail
+closed. The manifest, capture descriptor, raw artifacts, and output packet must not
+alias each other.
+
+## Assemble the measured packet
+
+Run:
+
+```bash
+node scripts/verify/index-storage-tooling.mjs partition-assemble \
+  --manifest evidence/index-partition/manifest.json \
+  --capture evidence/index-partition/capture.json \
+  --output evidence/index-partition/partition-packet.json
+```
+
+The assembler reads every raw artifact exactly once, hashes its exact bytes, parses
+the required object or array shape, constructs contract
+`index_partition_evidence_packet_v1`, and runs the canonical structural validator.
+It refuses to overwrite an existing packet and does not accept precomputed raw
+hashes, packet fields, admission reasons, or pass/fail flags from `capture.json`.
+
+The packet records:
 
 - runner repository, commit, run key, job, operating system, and architecture;
 - PostgreSQL system identifier and database name, so all sections remain bound to
   one database instance;
 - SHA-256 digests for the retained raw baseline, shadow, query, mutation,
-  maintenance, and cutover artifacts.
+  maintenance, and cutover artifacts;
+- parsed baseline, shadow, query, mutation, maintenance, and cutover evidence.
 
 The repository, commit, and run key in runner provenance must exactly match the
 manifest. Raw-artifact roles are exact; missing or additional roles fail
 validation.
+
+## Required measured evidence
 
 ### Baseline
 
@@ -133,15 +204,15 @@ satisfy baseline generation before shadow generation before packet completion.
 
 ### Query measurements
 
-Each query run records a unique name, baseline and shadow p95 latency, and
-SHA-256 plan digests. Both digests must follow
-`normalized_partition_plan_v1` and be produced by the same reviewed logical plan
-normalization: runtime timing/buffer/WAL counters and physical relation, alias, and
-index names are excluded, while operator, join, predicate, ordering, grouping, and
-partition-pruning semantics are retained. Raw baseline and shadow
+Each query run records a unique name, baseline and shadow p95 latency, and SHA-256
+plan digests. Both digests follow `normalized_partition_plan_v1` and must be
+produced by the same reviewed logical plan normalization. Runtime timing,
+buffer/WAL counters, and physical relation, alias, and index names are excluded;
+operator, join, predicate, ordering, grouping, and partition-pruning semantics are
+retained. Raw baseline and shadow
 `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` artifacts remain mandatory retained
-inputs for reviewer verification. The validator calculates the maximum
-non-negative latency regression and counts normalized plan-digest changes.
+inputs for reviewer verification. The validator calculates maximum non-negative
+latency regression and counts normalized plan-digest changes.
 
 ### Mutation and WAL measurements
 
@@ -157,10 +228,10 @@ depend on exclusive rewrites.
 
 ### Cutover rehearsals
 
-Each rehearsal records measured lock duration plus two independent facts:
-rollback was verified and production relations remained unchanged. This evidence
-is a rehearsal boundary only; the current implementation still contains no
-production cutover operation.
+Each rehearsal records measured lock duration plus two independent facts: rollback
+was verified and production relations remained unchanged. This evidence is a
+rehearsal boundary only; the implementation still contains no production cutover
+operation.
 
 ## Validate and publish admission
 
@@ -193,18 +264,18 @@ Retain together:
 - `config.json`;
 - `manifest.json`;
 - `bootstrap.sql`;
-- raw query, mutation, maintenance, and cutover artifacts used to assemble the
-  packet;
+- `capture.json`;
+- all six raw JSON artifacts and deeper PostgreSQL logs/EXPLAIN inputs from which
+  they were derived;
 - `partition-packet.json`;
 - `admission.json`;
 - PostgreSQL logs and runner metadata.
 
-Recalculate every raw-artifact SHA-256 before assembling the packet. Do not combine
-files from different commits, PostgreSQL instances, manifests, run keys, or run
-attempts. A validated packet is necessary but not sufficient for production
-partitioning. Reviewers must still approve durable global operation ownership,
-copy/checkpoint semantics, constraint and index attachment, catch-up or replay,
-cutover, rollback, and failure recovery in later changes.
+Do not combine files from different commits, PostgreSQL instances, manifests, run
+keys, or run attempts. A validated packet is necessary but not sufficient for
+production partitioning. Reviewers must still approve durable global operation
+ownership, copy/checkpoint semantics, constraint and index attachment, catch-up or
+replay, cutover, rollback, and failure recovery in later changes.
 
 ## Suggested repository checks
 
@@ -212,6 +283,7 @@ The repository owner runs:
 
 ```bash
 node --test scripts/verify/index-partition-evidence.test.mjs
+node --test scripts/verify/index-partition-evidence-assembly.test.mjs
 node scripts/verify/verify-index-partition-evidence.mjs
 node scripts/verify/index-storage-tooling.mjs contract
 cargo test -p rustok-index --test module
