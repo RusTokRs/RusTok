@@ -26,7 +26,7 @@ without runtime fan-out.
 - PostgreSQL storage and distributed coordination;
 - schema application and secondary-index lifecycle;
 - measured partition admission and shadow planning;
-- retained partition evidence preparation, snapshot capture, assembly, and validation;
+- retained partition evidence preparation, snapshot/query capture, assembly, and validation;
 - SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
@@ -164,23 +164,32 @@ bundle, rejects symbolic links and aliases, calculates exact-byte SHA-256 hashes
 and publishes a structurally validated packet without accepting precomputed packet
 fields or pass flags.
 
-The owner-operated partition snapshot runner now captures `baseline.json` and
+The owner-operated partition snapshot runner captures `baseline.json` and
 `shadow.json` from one PostgreSQL repeatable-read snapshot. It requires an explicit
 shadow-copy opt-in, PostgreSQL 16 with JIT disabled, ordinary unpartitioned
 canonical relations, deterministic evidence-ID-bound names, and a reviewed tenant
 query audit. It creates and fills only shadow parents/children, attaches a
 shadow-only source-version uniqueness/FK contract, calculates logical SHA-256
 parity, physical child sizes, orphan state, and post-copy catch-up, and publishes
-the pair without overwriting retained evidence. The real query, mutation,
-maintenance, and cutover measurements remain open.
+the pair without overwriting retained evidence.
+
+The owner-operated query evidence runner validates the same manifest and shadow
+catalog, enables partition pruning, and executes exactly the manifest query run
+count inside one read-only repeatable-read transaction. It requires result digest
+parity, retains full baseline/shadow JSON EXPLAIN samples, alternates measurement
+order, calculates p95, normalizes logical plan identity with
+`normalized_partition_plan_v1`, and fails unless every shadow query reads exactly
+one child per used logical relation. It publishes `query.json` without overwrite
+and performs no writes. Real mutation, maintenance, and cutover evidence remain
+open.
 
 Final validation calculates tenant coverage, digest parity, latency regression,
 WAL amplification, partition skew, lock duration, rollback state, and typed
 rejection reasons. The repository owner still executes and retains the complete
 PostgreSQL packet.
 
-PostgreSQL Testcontainers/concurrency evidence, query execution, and batch
-ingestion remain later M3/M4/M5 slices.
+PostgreSQL Testcontainers/concurrency evidence, production query execution, and
+batch ingestion remain later M3/M4/M5 slices.
 
 ## Status
 
@@ -201,10 +210,12 @@ ingestion remain later M3/M4/M5 slices.
 - M3 partition evidence packet tooling: `complete`
 - M3 partition evidence capture/assembly: `complete`
 - M3 partition baseline/shadow snapshot runner: `complete`
+- M3 partition query evidence runner: `complete`
 - Production persistence: mutation writes, schema/index coordination, partition
-  admission, snapshot capture, evidence assembly, and evidence validation
-  implemented; query adapter, real query/mutation/maintenance/cutover partition
-  evidence, and production partition lifecycle not yet implemented
+  admission, snapshot/query capture, evidence assembly, and evidence validation
+  implemented; query adapter, real retained packet execution, mutation,
+  maintenance, and cutover evidence remain open, and production partition lifecycle
+  is not yet implemented
 
 ## Verification
 
@@ -217,6 +228,8 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo xtask module test index`
 - `cargo check -p rustok-benchmarks --bin index-partition-snapshot-capture`
 - `cargo test -p rustok-benchmarks partition_snapshot`
+- `cargo check -p rustok-benchmarks --bin index-partition-query-evidence`
+- `cargo test -p rustok-benchmarks partition_query`
 - `node scripts/verify/index-storage-tooling.mjs contract`
 - `node scripts/verify/index-storage-tooling.mjs fixtures`
 - `node --test scripts/verify/index-partition-evidence-assembly.test.mjs`
@@ -224,6 +237,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `node scripts/verify/verify-index-partition-admission.mjs`
 - `node scripts/verify/verify-index-partition-evidence.mjs`
 - `node scripts/verify/verify-index-partition-snapshot-capture.mjs`
+- `node scripts/verify/verify-index-partition-query-evidence.mjs`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
 

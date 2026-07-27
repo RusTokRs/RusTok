@@ -19,6 +19,8 @@ This is a standalone workspace crate named `rustok-benchmarks`.
   pre/post-VACUUM evidence runner.
 - `src/bin/index_partition_snapshot_capture.rs` — owner-operated M3 baseline/shadow
   snapshot runner for the canonical Index relations.
+- `src/bin/index_partition_query_evidence.rs` — owner-operated M3 baseline/shadow
+  query latency, result-parity, plan-normalization, and pruning evidence runner.
 
 ## Purpose
 
@@ -35,11 +37,13 @@ The M2 runners create only schemas prefixed with `idx_bench_`:
 Use a dedicated database because those schemas are dropped and recreated on every
 M2 run.
 
-The M3 partition snapshot runner is different. It reads the canonical
+The M3 partition runners are different. The snapshot runner reads the canonical
 `index_entities` and `index_links` tables, creates deterministic evidence-ID-bound
-shadow parents and children, and copies one repeatable-read snapshot into them. It
-does not rename, drop, or alter the canonical production relations. Run it only
-against an owner-approved PostgreSQL 16 evidence database.
+shadow parents and children, and copies one repeatable-read snapshot into them. The
+query runner then compares those canonical and shadow relations inside a read-only
+repeatable-read transaction. Neither runner renames, drops, or alters the canonical
+production relations. Run them only against an owner-approved PostgreSQL 16
+evidence database.
 
 ## Typical Criterion usage
 
@@ -123,6 +127,41 @@ The runner intentionally leaves its evidence-ID-bound shadow tables in place for
 later query, mutation, maintenance, and cutover-rehearsal measurements. A failed
 run may also leave partial shadow state for operator inspection; use a new manifest
 and run key rather than silently reusing or overwriting retained evidence.
+
+## Index partition query evidence
+
+Run this only after the matching snapshot runner has completed and left the
+manifest-bound shadow relations in place:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
+INDEX_PARTITION_ALLOW_QUERY_EVIDENCE=1 \
+INDEX_PARTITION_MANIFEST=evidence/index-partition/manifest.json \
+INDEX_PARTITION_EVIDENCE_ROOT=evidence/index-partition \
+INDEX_PARTITION_QUERY_SAMPLES=7 \
+cargo run -p rustok-benchmarks --bin index-partition-query-evidence --release
+```
+
+The explicit query opt-in is mandatory. The runner validates the complete prepared
+manifest, PostgreSQL 16/JIT settings, canonical-table invariants, shadow comments,
+child names, and partition bounds before measurement. It builds exactly
+`manifest.repetitions.query` unique tenant-scoped runs from deterministic canonical
+entity/link anchors and executes every comparison inside one read-only
+repeatable-read transaction.
+
+For every run it verifies baseline/shadow result digest parity, alternates execution
+order, calculates nearest-rank p95 latency, retains full JSON
+`EXPLAIN (ANALYZE, BUFFERS, WAL)` samples, and produces
+`normalized_partition_plan_v1` SHA-256 digests. The normalizer removes physical
+relation/index names and runtime counters while retaining logical operators, join
+shape/type, predicates, ordering, and tenant-hash pruning semantics. Every shadow
+sample must read exactly one child partition for each used entity or link relation;
+canonical and unrelated relations fail closed.
+
+The completed top-level array is published once as `query.json` through temporary
+file plus hard-link no-clobber semantics. The runner performs no mutation,
+maintenance, replay, rename, drop, or cutover operation. It produces evidence only;
+the packet assembler and admission validator remain authoritative.
 
 Scale values for the M2 runners:
 
