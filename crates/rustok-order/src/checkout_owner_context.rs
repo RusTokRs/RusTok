@@ -157,7 +157,11 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
             "order.checkout_payment_causation_invalid",
             request.checkout_operation_id,
         )?;
-        self.inner.settle_checkout_payment(context, request).await
+        let diagnostic_context = context.clone();
+        let result = self.inner.settle_checkout_payment(context, request).await;
+        result.map_err(|error| {
+            map_checkout_order_payment_settlement_local_port_error(&diagnostic_context, error)
+        })
     }
 }
 
@@ -168,6 +172,87 @@ pub fn in_process_checkout_order_payment_settlement_port(
     Arc::new(InProcessCheckoutOrderPaymentSettlementPort::new(
         db, event_bus,
     ))
+}
+
+fn map_checkout_order_payment_settlement_local_port_error(
+    context: &PortContext,
+    error: PortError,
+) -> PortError {
+    let local_operation = match (error.code.as_str(), error.message.as_str()) {
+        (
+            "order.checkout_payment_request_invalid",
+            "checkout payment settlement request is invalid",
+        ) => "validate_request",
+        (
+            "order.checkout_payment_identity_missing",
+            "checkout requires manual reconciliation",
+        ) => "require_durable_checkout_identity",
+        (
+            "order.checkout_payment_identity_conflict",
+            "checkout order identity conflicts with the payment settlement request",
+        ) => "validate_durable_checkout_identity",
+        (
+            "order.checkout_payment_state_conflict",
+            "checkout order lifecycle does not allow payment settlement",
+        ) => "validate_payment_settlement_lifecycle",
+        (
+            "order.checkout_payment_reference_conflict",
+            "checkout order is settled by another payment identity",
+        ) => "validate_settled_payment_identity",
+        _ => return error,
+    };
+    let integrity_failure = matches!(
+        local_operation,
+        "require_durable_checkout_identity"
+            | "validate_durable_checkout_identity"
+            | "validate_settled_payment_identity"
+    );
+    if integrity_failure {
+        tracing::error!(
+            error = ?error,
+            owner = ORDER_PAYMENT_SETTLEMENT_OWNER,
+            operation = SETTLE_PAYMENT_OPERATION,
+            local_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
+            "order checkout payment settlement local integrity outcome retained delegated context"
+        );
+    } else {
+        tracing::warn!(
+            error = ?error,
+            owner = ORDER_PAYMENT_SETTLEMENT_OWNER,
+            operation = SETTLE_PAYMENT_OPERATION,
+            local_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
+            "order checkout payment settlement local outcome retained delegated context"
+        );
+    }
+    error
 }
 
 fn require_order_checkout_write_admission(
