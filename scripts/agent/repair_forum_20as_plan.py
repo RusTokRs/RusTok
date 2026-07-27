@@ -68,7 +68,14 @@ requireText(
 """
 if verifier.count(old) != 1:
     raise RuntimeError(f"expected one verifier plan marker block, found {verifier.count(old)}")
-VERIFIER.write_text(verifier.replace(old, new, 1))
+verifier = verifier.replace(old, new, 1)
+old_marker = '    "runtime.topic_service()",\n'
+new_marker = '    ".topic_service()",\n'
+if verifier.count(old_marker) != 1:
+    raise RuntimeError(
+        f"expected one multiline REST topic-service verifier marker, found {verifier.count(old_marker)}"
+    )
+VERIFIER.write_text(verifier.replace(old_marker, new_marker, 1))
 
 (ROOT / "scripts/agent/repair_forum_20as_plan.py").unlink()
 (ROOT / ".github/workflows/agent-repair-forum-20as-plan.yml").unlink()
