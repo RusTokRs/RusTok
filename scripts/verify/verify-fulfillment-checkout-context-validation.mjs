@@ -182,8 +182,8 @@ for (const [block, values, label] of [
 for (const [pattern, expected, label] of [
   [/validation_phase = "causation_id"/g, 1, 'causation phase count'],
   [/validation_phase = "tenant_id"/g, 1, 'tenant phase count'],
-  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 4, 'owner diagnostic count'],
-  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 4, 'boundary diagnostic count'],
+  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 6, 'owner diagnostic count'],
+  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 6, 'boundary diagnostic count'],
 ]) {
   const count = source.match(pattern)?.length ?? 0;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
