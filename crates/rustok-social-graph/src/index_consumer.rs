@@ -74,6 +74,7 @@ impl SocialGraphIndexConsumerError {
 pub enum SocialGraphIndexProcessOutcome {
     Projected(MutationApplyOutcome),
     IgnoredUnrelated { event_type: String },
+    DeadLettered { error_code: &'static str },
 }
 
 /// Converts a validated sealed envelope into one durable Index inbox delivery.
