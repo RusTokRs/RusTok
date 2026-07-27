@@ -1,0 +1,33 @@
+name: Agent repair Forum topic-create audience enforcement 20AR
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/agent-repair-forum-topic-create-audience-enforcement-20ar.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/forum-topic-create-audience-enforcement-20ar
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply FORUM-20AR review repair
+        run: python scripts/agent/repair_forum_20ar.py
+      - name: Commit review repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(forum): harden topic-create audience evidence"
+          git push origin HEAD:agent/forum-topic-create-audience-enforcement-20ar
