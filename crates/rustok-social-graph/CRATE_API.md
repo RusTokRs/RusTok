@@ -100,6 +100,8 @@
   persistent group `rustok-social-graph-index` on the shared `domain` topic.
 - `receive_next`, `project_consumed`, and `acknowledge_consumed` retain one outstanding
   delivery across bounded retries.
+- The result-first contract checks any durable DLQ receipt before projection and commits
+  the source cursor only after a terminal owner result exists.
 - `process_next(&mut self)` is the direct serialized receive/register/apply/ack path.
   It acknowledges only after schema persistence and the Index inbox result are durable;
   that result is committed before broker acknowledgement.
