@@ -1,0 +1,107 @@
+name: Agent Forum 20AN exact idempotency
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/forum-notification-group-state-graphql-20an'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+          show-progress: false
+      - name: Preserve exact idempotency key
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              target = Path(path)
+              source = target.read_text()
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchor, found {count}")
+              target.write_text(source.replace(old, new, 1))
+
+          replace_once(
+              "crates/rustok-notifications/src/graphql.rs",
+              '''fn parse_idempotency_key(value: String) -> Result<String> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > MAX_IDEMPOTENCY_KEY_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(public_error(
+            "NOTIFICATION_VALIDATION_ERROR",
+            "notification idempotency key is invalid",
+            false,
+        ));
+    }
+    Ok(value.to_string())
+}''',
+              '''fn parse_idempotency_key(value: String) -> Result<String> {
+    if value.is_empty()
+        || value.len() > MAX_IDEMPOTENCY_KEY_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(public_error(
+            "NOTIFICATION_VALIDATION_ERROR",
+            "notification idempotency key is invalid",
+            false,
+        ));
+    }
+    Ok(value)
+}''',
+          )
+
+          replace_once(
+              "crates/rustok-notifications/storefront/tests/group_state_graphql_contract.rs",
+              '''    assert!(OWNER_PORT.contains("NotificationInboxGroupStateService"));
+
+    let signature = OWNER_GRAPHQL''',
+              '''    assert!(OWNER_PORT.contains("NotificationInboxGroupStateService"));
+    assert!(!OWNER_GRAPHQL.contains("let value = value.trim();"));
+
+    let signature = OWNER_GRAPHQL''',
+          )
+
+          replace_once(
+              "scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs",
+              '''requireText(
+  port,
+  "NotificationInboxGroupStateService",
+  "owner port must reuse group state service",
+);
+
+const mutation = between(''',
+              '''requireText(
+  port,
+  "NotificationInboxGroupStateService",
+  "owner port must reuse group state service",
+);
+rejectText(
+  owner,
+  "let value = value.trim();",
+  "GraphQL idempotency keys must remain exact opaque values",
+);
+
+const mutation = between(''',
+          )
+
+          Path(".github/workflows/agent-forum-20an-idempotency.yml").unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(notifications): preserve exact GraphQL idempotency keys"
+          git push origin HEAD
