@@ -31,6 +31,10 @@ const files = {
     "crates/rustok-social-graph/src/index_consumer.rs",
     "utf8",
   ),
+  receipt: readFileSync(
+    "crates/rustok-social-graph/src/index_dlq_receipt.rs",
+    "utf8",
+  ),
   contractCursor: readFileSync(
     "crates/rustok-iggy/src/contract_consumer.rs",
     "utf8",
@@ -90,11 +94,14 @@ for (const marker of [
   "receive_next()",
   "project_consumed(consumed)",
   "publish_consumed_to_dlq",
+  "publish_dead_lettered_result",
   "acknowledge_consumed(consumed)",
   "acknowledge_terminal_result",
   "retry_delay",
   "settings.events.dlq.enabled",
+  "config.dlq_enabled || continuing_durable_receipt",
   "retrying acknowledgement only",
+  "durable DLQ receipt remains published",
   "broker offset uncommitted",
   "runtime_consumer_metrics::ensure_registered()",
   "runtime_consumer_metrics::begin_delivery",
@@ -107,6 +114,7 @@ for (const forbidden of [
   "IggyTransport::new",
   "IggyConnectorSettingsService::resolved_config",
   "shutdown_transport(",
+  "redelivery may republish until a durable DLQ identity exists",
 ]) {
   forbidText("server worker", files.worker, forbidden);
 }
@@ -147,13 +155,16 @@ for (const marker of [
   "rustok_runtime_consumer_in_flight",
   "rustok_runtime_consumer_in_flight_started_timestamp_seconds",
   "rustok_runtime_consumer_last_success_timestamp_seconds",
+  "rustok_runtime_consumer_position_snapshot_timestamp_seconds",
+  "rustok_runtime_consumer_position_partition_count",
+  "rustok_runtime_consumer_position_complete",
+  "rustok_runtime_consumer_lag",
 ]) {
   requireText("runtime consumer telemetry", files.telemetry, marker);
 }
 for (const forbiddenMetric of [
   "rustok_runtime_consumer_source_offset",
   "rustok_runtime_consumer_source_partition",
-  "rustok_runtime_consumer_lag",
 ]) {
   forbidText("runtime consumer telemetry", files.telemetry, forbiddenMetric);
 }
@@ -166,14 +177,27 @@ for (const marker of [
   "pub async fn acknowledge_consumed(",
   "pub async fn publish_consumed_to_dlq(",
   "pub async fn move_to_dlq_and_acknowledge(",
+  "self.consumed_dlq_receipt(consumed).await?",
+  "SocialGraphIndexDlqReceiptState::Published",
   "consumed.raw_payload().to_vec()",
   "self.transport",
   ".move_to_dlq(entry)",
+  ".mark_published(&identity, self.dlq_publisher_id)",
   "self.publish_consumed_to_dlq(consumed, stable_error_code, retry_count)",
   "self.acknowledge_consumed(consumed).await",
   "DeadLettered",
 ]) {
   requireText("Social Graph consumer", files.consumer, marker);
+}
+
+for (const marker of [
+  "pub enum SocialGraphIndexDlqReceiptState",
+  "pub async fn reserve_and_claim(",
+  "pub async fn mark_published(",
+  "pub async fn mark_acknowledged(",
+  "SocialGraphIndexDlqPublishClaim::AlreadyPublished",
+]) {
+  requireText("Social Graph DLQ receipt", files.receipt, marker);
 }
 
 for (const marker of [
@@ -190,7 +214,7 @@ const durableApply = files.worker.indexOf(
 const durableAck = files.worker.indexOf("acknowledge_terminal_result(");
 if (durableApply < 0 || durableAck <= durableApply) {
   failures.push(
-    "worker must enter terminal acknowledgement-only handling only after projection succeeds",
+    "worker must enter terminal acknowledgement-only handling only after projection or durable receipt recognition succeeds",
   );
 }
 
@@ -201,7 +225,7 @@ const workerDlqAck = files.worker.indexOf(
 );
 if (workerDlqPublish < 0 || workerDlqAck <= workerDlqPublish) {
   failures.push(
-    "worker must publish poison delivery to DLQ before entering source acknowledgement-only handling",
+    "worker must publish or recognize a durable DLQ receipt before source acknowledgement-only handling",
   );
 }
 
@@ -214,7 +238,7 @@ const consumerDlqAck = files.consumer.indexOf(
 );
 if (consumerDlqPublish < 0 || consumerDlqAck <= consumerDlqPublish) {
   failures.push(
-    "convenience DLQ operation must publish before source acknowledgement",
+    "convenience DLQ operation must publish or recognize the durable receipt before source acknowledgement",
   );
 }
 
@@ -259,5 +283,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness, bounded Prometheus consumer metrics with source-position deferral, bounded retries, result-first acknowledgement-only recovery, staged exact-byte DLQ-before-ack, and owner-table isolation are locked.",
+  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness, bounded Prometheus telemetry with complete broker lag, bounded projection/DLQ/ack retries, durable receipt recovery, staged exact-byte DLQ-before-ack, and owner-table isolation are locked.",
 );
