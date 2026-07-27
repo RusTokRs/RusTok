@@ -29,6 +29,18 @@ The boundary event records:
 
 Unavailable, timeout, and invariant failures use error severity. Validation, not-found, conflict, and forbidden rejections use warning severity.
 
+## Payment owner local outcomes
+
+The canonical payment execution entrypoint now also retains the accepted `PortContext` and safe request
+facts across the unchanged prepare, authorize, capture, and read owner calls. Exact stable identity,
+collection, lifecycle, provider, storage, and manual-reconciliation envelopes receive owner-local
+diagnostics while returning the same `PortError`.
+
+Potentially unvalidated currency, plan-hash, provider-id, and provider-payment-id strings are represented
+only by their character lengths; request metadata is not logged. The complete owner classification and
+pass-through contract is documented in
+[`../../rustok-payment/docs/checkout-execution-local-context.md`](../../rustok-payment/docs/checkout-execution-local-context.md).
+
 ## Preserved contracts
 
 This change does not alter:
@@ -54,6 +66,10 @@ This change does not alter:
 - removal of the former context-dropping `boundary_error` helper;
 - absence of inline context construction at the four owner calls.
 
+`scripts/verify/verify-payment-checkout-execution-local-context.mjs` separately guards owner-side
+post-delegation safe-fact retention, stable local-outcome classification, raw-string exclusion, unknown
+error pass-through, and same delegated error return.
+
 ## Validation status
 
 Tests, Cargo commands, formatting commands, verifier execution, workflow checks, and CI were intentionally not run by the implementation agent, per maintainer instruction.
@@ -61,17 +77,19 @@ Tests, Cargo commands, formatting commands, verifier execution, workflow checks,
 Intended focused checks:
 
 ```bash
+node scripts/verify/verify-payment-checkout-execution-local-context.mjs
 node scripts/verify/verify-commerce-checkout-payment-stage-context.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
+cargo check -p rustok-payment --lib
 cargo check -p rustok-commerce --lib
 ```
 
 ## Remaining work
 
-This slice does not close:
+This work does not close:
 
-- payment owner-side policy/admission diagnostics;
-- checkout payment compensation boundaries;
+- payment owner-side policy, tenant, or checkout-operation causation diagnostics;
+- checkout payment compensation local outcomes and boundaries;
 - GraphQL and HTTP payment query/mutation adapters;
-- remaining order, fulfillment, inventory, customer, tax, promotion, and non-`PortError` public envelopes;
+- remaining customer, tax, promotion, ecommerce, and non-`PortError` public envelopes;
 - runtime evidence or any FBA/FFA status promotion.
