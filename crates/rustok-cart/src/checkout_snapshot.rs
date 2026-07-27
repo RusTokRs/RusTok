@@ -186,7 +186,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         request: PrepareCartCheckoutSnapshotRequest,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_write_admission(&context, PREPARE_CHECKOUT_OPERATION)?;
-        let tenant_id = parse_tenant_id(&context)?;
+        let tenant_id = parse_tenant_id(&context, PREPARE_CHECKOUT_OPERATION)?;
         validate_prepare_input(&request.input).map_err(cart_error_to_port_error)?;
 
         let cart = self
@@ -231,7 +231,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         cart_id: Uuid,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_read_admission(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;
-        let tenant_id = parse_tenant_id(&context)?;
+        let tenant_id = parse_tenant_id(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;
         self.service
             .get_cart(tenant_id, cart_id)
             .await
@@ -245,7 +245,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         request: CompleteCartCheckoutRequest,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_write_admission(&context, COMPLETE_CHECKOUT_OPERATION)?;
-        let tenant_id = parse_tenant_id(&context)?;
+        let tenant_id = parse_tenant_id(&context, COMPLETE_CHECKOUT_OPERATION)?;
         let cart = self
             .service
             .complete_cart(tenant_id, request.cart_id)
@@ -262,7 +262,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         cart_id: Uuid,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_write_admission(&context, RELEASE_CHECKOUT_OPERATION)?;
-        let tenant_id = parse_tenant_id(&context)?;
+        let tenant_id = parse_tenant_id(&context, RELEASE_CHECKOUT_OPERATION)?;
         let cart = self
             .service
             .abandon_cart(tenant_id, cart_id)
@@ -280,12 +280,38 @@ fn validate_prepare_input(input: &UpdateCartContextInput) -> Result<(), CartErro
     Ok(())
 }
 
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
-        PortError::validation(
+fn parse_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(context.tenant_id.as_str()).map_err(|cause| {
+        let error = PortError::validation(
             "cart.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for cart checkout",
-        )
+        );
+        tracing::warn!(
+            cause = ?cause,
+            error = ?error,
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            validation_phase = "tenant_id",
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner tenant context was rejected"
+        );
+        error
     })
 }
 
