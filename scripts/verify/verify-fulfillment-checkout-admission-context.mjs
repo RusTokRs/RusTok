@@ -149,8 +149,8 @@ for (const [pattern, expected, label] of [
   [/require_checkout_fulfillment_read_admission\(/g, 2, 'read helper definition/use count'],
   [/require_checkout_fulfillment_write_admission\(/g, 2, 'write helper definition/use count'],
   [/log_checkout_fulfillment_admission_rejection\(/g, 4, 'diagnostic helper definition/use count'],
-  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 4, 'owner diagnostic count'],
-  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 4, 'boundary diagnostic count'],
+  [/owner = CHECKOUT_FULFILLMENT_OWNER/g, 6, 'owner diagnostic count'],
+  [/boundary = CHECKOUT_FULFILLMENT_BOUNDARY/g, 6, 'boundary diagnostic count'],
   [/"policy"/g, 2, 'policy phase count'],
   [/"write_semantics"/g, 1, 'write semantics phase count'],
 ]) {
