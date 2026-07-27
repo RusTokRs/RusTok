@@ -157,9 +157,11 @@ impl ShippingOptionFailure {
     }
 
     fn technical_owner_error(&self) -> Option<&FulfillmentError> {
-        matches!(self.kind, ShippingOptionFailureKind::StorageUnavailable)
-            .then(|| self.owner_error.as_ref())
-            .flatten()
+        if matches!(self.kind, ShippingOptionFailureKind::StorageUnavailable) {
+            self.owner_error.as_ref()
+        } else {
+            None
+        }
     }
 }
 
@@ -269,26 +271,31 @@ pub(crate) async fn validate_selected_shipping_option(
 ) -> Result<()> {
     let requested_currency_code_length = currency_code.chars().count();
     let requested_selection_count = shipping_selections
-        .map(<[_]>::len)
-        .unwrap_or_else(|| usize::from(selected_shipping_option_id.is_some()));
+        .map(|selections| selections.len())
+        .unwrap_or_else(|| {
+            if selected_shipping_option_id.is_some() {
+                1
+            } else {
+                0
+            }
+        });
 
-    if shipping_selections.is_none()
-        && selected_shipping_option_id.is_some()
-        && cart.delivery_groups.len() > 1
-    {
-        return Err(shipping_option_graphql_error(
-            ShippingOptionFailure::multiple_delivery_groups(
-                selected_shipping_option_id.expect("checked selected shipping option"),
-            ),
-            tenant_id,
-            cart.id,
-            requested_selection_count,
-            cart.delivery_groups.len(),
-            requested_currency_code_length,
-            public_channel_slug,
-            requested_locale,
-            tenant_default_locale,
-        ));
+    if shipping_selections.is_none() {
+        if let Some(shipping_option_id) = selected_shipping_option_id {
+            if cart.delivery_groups.len() > 1 {
+                return Err(shipping_option_graphql_error(
+                    ShippingOptionFailure::multiple_delivery_groups(shipping_option_id),
+                    tenant_id,
+                    cart.id,
+                    requested_selection_count,
+                    cart.delivery_groups.len(),
+                    requested_currency_code_length,
+                    public_channel_slug,
+                    requested_locale,
+                    tenant_default_locale,
+                ));
+            }
+        }
     }
 
     let selections = if let Some(shipping_selections) = shipping_selections {
