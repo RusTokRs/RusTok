@@ -7,7 +7,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
     DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 const SOURCE: &str = "test-source";

@@ -30,8 +30,7 @@ use rustok_mcp::{
     McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse, RegistryToolInvocationError,
     ReviewModuleScaffoldRequest, RotateMcpTokenRequest, RotateMcpTokenResponse,
     ScaffoldModuleRequest, StageMcpModuleScaffoldDraftRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_LIST_MODULES,
-    TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_QUERY_MODULES,
+    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_MCP_HEALTH,
     UpdateMcpPolicyRequest, default_tool_requirement, invoke_registry_tool,
 };
 use tokio_stream::once;

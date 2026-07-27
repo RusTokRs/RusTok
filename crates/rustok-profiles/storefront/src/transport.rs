@@ -84,4 +84,5 @@ pub async fn set_profiles_storefront_follow(
     .await
 }
 
+#[allow(dead_code)]
 pub const PROFILES_STOREFRONT_TRANSPORT_FALLBACK_POLICY: &str = "never falls back";

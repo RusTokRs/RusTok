@@ -102,13 +102,13 @@ mod tests {
         }
     }
 
-    fn auth_context(grant_type: &str, client_id: Option<&str>) -> AuthContext {
+    fn auth_context(grant_type: &str, client_id: Option<Uuid>) -> AuthContext {
         AuthContext {
             user_id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
             permissions: Vec::new(),
-            client_id: client_id.map(str::to_string),
+            client_id,
             scopes: Vec::new(),
             grant_type: grant_type.to_string(),
         }
@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn service_principals_do_not_claim_profile_ownership() {
-        let auth = auth_context("client_credentials", Some("internal-worker"));
+        let auth = auth_context("client_credentials", Some(Uuid::new_v4()));
         assert_eq!(
             profile_access_audience(Some(&auth)),
             ProfileAccessAudience::TrustedService { actor_id: None }

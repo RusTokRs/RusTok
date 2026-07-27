@@ -32,8 +32,7 @@ use rustok_region::entities::{region, region_country_tax_policy, region_translat
 use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};
-use sea_orm_migration::MigrationTrait;
-use sea_orm_migration::prelude::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 
 pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {

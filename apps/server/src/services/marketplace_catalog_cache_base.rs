@@ -134,6 +134,7 @@ impl HardenedRegistryMarketplaceProvider {
             .collect()
     }
 
+    #[allow(dead_code)]
     fn new(
         registry_url: Option<String>,
         client: Client,
