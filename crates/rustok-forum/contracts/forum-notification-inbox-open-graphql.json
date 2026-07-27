@@ -22,18 +22,19 @@
   "canonical_plan_sync": {
     "status": "synchronized_by_FORUM-20AM",
     "required_ledger_through": "FORUM-20AL",
-    "current_plan_through": "FORUM-20G",
+    "current_plan_through": "FORUM-20AL",
     "sync_contract": "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
   },
   "notifications_local_plan_sync": {
     "status": "synchronized_by_FORUM-20AM",
     "required_ledger_through": "FORUM-20AL",
-    "current_plan_through": "FORUM-20AA",
+    "current_plan_through": "FORUM-20AL",
     "sync_contract": "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
   },
   "notifications_owner_docs_sync": {
     "status": "synchronized_by_FORUM-20AM",
     "required_contract_through": "FORUM-20AL",
+    "current_contract_through": "FORUM-20AL",
     "sync_contract": "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
   },
   "policy": {
