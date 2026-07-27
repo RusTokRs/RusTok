@@ -126,7 +126,7 @@ for (const value of [
   'error.code.clone()',
   'error.retryable',
   'original_message_length = error.message.chars().count()',
-  'mapped_error = ?mapped_error',
+  'public_message = %mapped_error.message',
   'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
   'tracing::error!',
   'tracing::warn!',
@@ -151,6 +151,7 @@ for (const value of [
   'discount_percent =',
   'adjustment_percent =',
   'error = ?error',
+  'mapped_error = ?mapped_error',
   'internal_message = %error.message',
   'original_message =',
 ]) {
