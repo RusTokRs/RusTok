@@ -1,0 +1,722 @@
+name: Agent Forum plan sync 20AM
+
+on:
+  push:
+    branches:
+      - agent/forum-notification-plan-sync-20am
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply conflict-safe documentation synchronization
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          root = Path.cwd()
+          workflow = root / ".github/workflows/agent-forum-plan-sync-20am.yml"
+
+          def read(path):
+              return (root / path).read_text(encoding="utf-8")
+
+          def write(path, content):
+              target = root / path
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_text(content, encoding="utf-8")
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchor, found {count}")
+              write(path, text.replace(old, new, 1))
+
+          canonical = "crates/rustok-forum/docs/implementation-plan.md"
+          local_plan = "crates/rustok-notifications/docs/implementation-plan.md"
+          owner_readme = "crates/rustok-notifications/README.md"
+          live_readme = "crates/rustok-notifications/docs/README.md"
+
+          replace_once(canonical, "last_reviewed: 2026-07-25", "last_reviewed: 2026-07-27")
+          replace_once(
+              canonical,
+              "| `FORUM-20` | `in_progress` | FORUM-20A-G provide inherited public/authenticated policy, category/topic/reply owner-read composition, the bounded richer-audience evaluator contract and normalized conjunctive category audience persistence. Topic narrowing, richer read composition, write audiences, provider adapters, remaining consumers and runtime evidence remain. |",
+              "| `FORUM-20` | `in_progress` | FORUM-20A-AL provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL reads/open authorization, grouped UI and navigation. FORUM-20AM synchronizes the canonical and owner-local ledgers. Write audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |",
+          )
+
+          delivered = r'''### Delivered in `FORUM-20H` through `FORUM-20Q`
+
+- `FORUM-20H` adds normalized topic-local audience narrowing and owner replacement
+  commands that compose after the inherited category layers and cannot broaden them;
+- `FORUM-20I` migrates Forum notification description, audience, and target-open checks
+  to the canonical topic visibility owner instead of notification-local predicates;
+- `FORUM-20J` composes exact richer topic visibility from the route/channel rule,
+  inherited category layers, optional topic narrowing, and bounded owner facts;
+- `FORUM-20K` applies that richer exact decision to Forum notification source reads and
+  reauthorization while retaining public fail-closed degraded behavior;
+- `FORUM-20L` and `FORUM-20M` define and publish the exact recipient-context capability,
+  backed by authoritative Users/RBAC owners and preserving deadline and trace context;
+- `FORUM-20N` authorizes each notification target for the exact current recipient;
+- `FORUM-20O` re-resolves mentioned recipients before descriptor/audience publication;
+- `FORUM-20P` filters topic-subscription audience pages by current recipient visibility
+  while preserving sparse advancing cursors;
+- `FORUM-20Q` publishes the Groups-owned exact-membership facts adapter. Trust and
+  channel-membership adapters remain open.
+
+### Delivered in `FORUM-20R` through `FORUM-20AF`
+
+- `FORUM-20R/20S` add non-oracular exact inbox open authorization with current recipient
+  privacy before source target authorization;
+- `FORUM-20T` through `FORUM-20AA` add bounded authorized listing, exact state commands,
+  reconciliation, mark-unread, exact unread count, and resumable mark-all read/unread/archive;
+- `FORUM-20AB` adds bounded explicit selected-ID state commands;
+- `FORUM-20AC` adds authorized exact-group listing over opaque group keys;
+- `FORUM-20AD` makes group keys durable through a bounded owner migration and backfill;
+- `FORUM-20AE` adds bounded group summaries with exact stored counts and an authorized
+  latest-item projection;
+- `FORUM-20AF` adds bounded exact-group mark-read, mark-unread, and archive commands.
+
+### Delivered in `FORUM-20AG` through `FORUM-20AL`
+
+- `FORUM-20AG` exposes a transport-neutral authenticated-user storefront inbox port with
+  context-derived tenant/recipient identity and read/write admission semantics;
+- `FORUM-20AH` adds native Leptos server-function adapters without owner identity fields;
+- `FORUM-20AI` replaces the storefront placeholder with bounded grouped inbox rendering,
+  paging, stale-response guards, allowed-only navigation, and authoritative refreshes;
+- `FORUM-20AJ` mounts the localized Notifications action and exact unread badge through a
+  generic manifest-driven storefront header slot;
+- `FORUM-20AK` adds GraphQL parity for unread count and grouped summary/item reads while
+  reusing the owner storefront port and host-composed policy/source runtime;
+- `FORUM-20AL` adds GraphQL parity for fresh open authorization. Missing, foreign,
+  suppressed, and no-longer-openable rows remain indistinguishable `UNAVAILABLE`, and
+  only an owner-authorized route can produce `ALLOWED`.
+
+### Delivered in `FORUM-20AM`
+
+- synchronize this canonical ledger, the Notifications owner-local plan, owner README,
+  and live contract through `FORUM-20AL` without rewriting unrelated task content;
+- record the historical `FORUM-20H` through `FORUM-20AL` execution chain as source-ready
+  and unvalidated rather than promoting the overall task to `done`;
+- add `forum-notification-plan-sync.json` and
+  `verify-forum-notification-plan-sync.mjs` so future owner/storefront work cannot silently
+  leave the four authoritative documents at different milestones;
+- update the latest `FORUM-20AL` handoff contract to point at this synchronization task.
+
+'''
+          replace_once(
+              canonical,
+              "- this slice adds no topic narrowing, category/topic/reply read composition,\n  provider adapter, write-audience transport or cross-consumer behavior.\n\n### Compatibility and degraded mode",
+              "- this slice adds no topic narrowing, category/topic/reply read composition,\n  provider adapter, write-audience transport or cross-consumer behavior.\n\n" + delivered + "### Compatibility and degraded mode",
+          )
+
+          old_remaining = r'''### Compatibility and degraded mode
+
+The nullable public/authenticated category floor still requires no backfill.
+FORUM-20G adds empty normalized audience tables, so existing categories and all
+current category/topic/reply reads remain unchanged until a later owner-read
+composition slice calls the richer evaluator. Existing stored local layers do
+not require Channel, Groups or trust providers merely to persist or inspect the
+policy. A missing optional facts provider can never broaden a decision; locally
+decidable role/explicit rules do not require one, while unresolved
+trust/channel/group evaluation remains a typed failure. Host adapters may later
+compose owner ports without adding direct Forum dependencies on Channel or
+Groups implementations.
+
+### Remaining scope
+
+- add normalized topic narrowing persistence and owner commands that cannot
+  broaden any effective category layer;
+- provide host adapters for Forum-owned trust state plus Channel and Groups owner
+  membership ports, preserving exact request bounds and optional-capability
+  failure semantics;
+- compose inherited category and topic layers into category/topic/reply owner
+  reads without count, pagination or existence-oracle drift;
+- add create/reply/moderate audience policies and write commands;
+- compose the owner policy into remaining Forum reads and migrate notifications,
+  search/index, SEO and deep-link open authorization to the same decision;
+- add visibility-scoped category and all-read commands only after the complete
+  policy can page an exact category/tenant scope;
+- add PostgreSQL concurrency, inheritance and cross-consumer runtime evidence.
+'''
+          new_remaining = r'''### Compatibility and degraded mode
+
+The nullable public/authenticated category floor and the normalized category/topic
+layers require no destructive backfill. Existing content without richer layers keeps
+its previous audience. Locally decidable role and explicit-user decisions do not
+require optional facts providers; unresolved trust, channel, or group facts fail
+closed and can never broaden a decision.
+
+Forum producer commands remain independent from Notifications availability. The
+Notifications module stays default-off, derives storefront tenant and recipient identity
+from authenticated context, and exposes explicit unavailable/degraded states rather than
+shadow inbox data. Native and GraphQL storefront reads select exactly one transport path
+with no cross-path fallback. Group-state writes remain native-only until GraphQL write
+admission and idempotency parity are implemented.
+
+### Remaining scope
+
+- provide Forum trust and Channel membership facts adapters; keep the delivered Groups
+  adapter exact, bounded, and owner-backed;
+- materialize descriptors for topics that are already non-public at creation time without
+  weakening recipient-specific reauthorization;
+- add create/reply/moderate audience policies and owner write commands;
+- migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
+  same exact richer audience decision;
+- add visibility-scoped category/all-read commands over an exact bounded policy scope;
+- add auth-reactive automatic grouped-inbox bootstrap refresh and GraphQL group-state
+  mutations with deadline and idempotency admission;
+- add tenant-wide scheduled reconciliation, payload redaction, channel enqueue/transports,
+  and delivery-time target authorization;
+- add PostgreSQL concurrency, lease/contention, inheritance, and cross-consumer runtime
+  evidence before promoting `FORUM-20` to `done`.
+'''
+          replace_once(canonical, old_remaining, new_remaining)
+
+          replace_once(
+              canonical,
+              "node scripts/verify/verify-forum-category-audience-policy.mjs\ncargo xtask module validate forum",
+              "node scripts/verify/verify-forum-category-audience-policy.mjs\n"
+              "node scripts/verify/verify-forum-topic-audience-policy.mjs\n"
+              "node scripts/verify/verify-forum-topic-audience-visibility.mjs\n"
+              "node scripts/verify/verify-forum-notification-visibility-composition.mjs\n"
+              "node scripts/verify/verify-forum-notification-recipient-context.mjs\n"
+              "node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs\n"
+              "node scripts/verify/verify-forum-notification-recipient-target-open.mjs\n"
+              "node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs\n"
+              "node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs\n"
+              "node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs\n"
+              "node scripts/verify/verify-forum-notification-navigation-badge.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs\n"
+              "node scripts/verify/verify-forum-notification-plan-sync.mjs\n"
+              "cargo xtask module validate forum",
+          )
+
+          old_current = r'''Exact inbox open, bounded listing, exact-item read-state, exact unread count,
+bounded mark-all-read, bounded mark-all-unread, bounded mark-all-archive, and
+bounded exact-recipient reconciliation services are now owner-public. Open
+requests recheck current recipient privacy and source target authorization.
+Listing scans exact-recipient rows in bounded descending keyset pages and supports
+sparse pages. State commands provide exact seen/read/mark-unread/archive
+transitions without foreign owner calls, while archived remains terminal. The
+unread count is an exact owner-table aggregate and is never derived from bounded
+list pages. Bounded mark-all-read scans only unread or seen rows; bounded
+mark-all-unread scans only seen or read rows; bounded mark-all-archive scans only
+unread, seen, or read rows. All three commands delegate every transition to the
+exact state owner. Reconciliation reuses open-time policy and archives currently
+unavailable rows through the state owner. No external transport, selected-ID bulk
+command, grouped-view, tenant-wide scheduler, payload-redaction, or UI contract is
+published yet.
+'''
+          new_current = r'''The owner inbox plane now includes exact open authorization, bounded authorized
+listing, exact and selected-ID state commands, exact unread count, resumable mark-all
+commands, exact-recipient reconciliation, durable group keys, exact-group listing,
+bounded group summaries, and bounded group-state commands. Open and authorized reads
+recheck current recipient privacy before source target authorization; state commands
+remain owner-local and archived remains terminal.
+
+The authenticated storefront plane is also delivered. `NotificationInboxStorefrontPort`
+derives tenant and recipient scope from `PortContext`, native Leptos server functions serve
+SSR/hydrate, GraphQL serves CSR/headless grouped reads and fresh open authorization, and no
+transport fallback is permitted. The module-owned grouped inbox UI pages owner results,
+uses stale-response guards, refreshes authoritatively after writes, and navigates only after
+an `Allowed` open decision. A generic manifest-driven header action exposes the localized
+Notifications route and exact unread badge. GraphQL group-state writes, automatic auth-change
+bootstrap refresh, tenant-wide scheduling/redaction, delivery transports, and PostgreSQL
+cross-consumer evidence remain open.
+'''
+          replace_once(local_plan, old_current, new_current)
+
+          local_milestones = r'''### `FORUM-20AB`
+
+- bounded explicit selected-ID `mark_seen`, `mark_read`, `mark_unread`, and `archive`;
+- one through 64 unique non-nil IDs validated before mutation;
+- input-order owner delegation with non-oracular changed/not-changed counts.
+
+### `FORUM-20AC / FORUM-20AD`
+
+- bounded authorized listing for one exact opaque group key;
+- durable `g1:{target_owner}:{target_id}` group-key population and historical backfill;
+- explicit producer-supplied keys remain authoritative.
+
+### `FORUM-20AE / FORUM-20AF`
+
+- bounded exact-recipient group summaries with stored item/unread counts and an
+  authorized latest-item projection;
+- bounded exact-group mark-read, mark-unread, and archive commands through the exact
+  state owner.
+
+### `FORUM-20AG / FORUM-20AH`
+
+- transport-neutral authenticated-user storefront port with context-derived owner scope;
+- native Leptos server-function adapter for reads, fresh open authorization, and grouped
+  state commands;
+- human-user admission, tenant match, deadline, and idempotency semantics remain explicit.
+
+### `FORUM-20AI / FORUM-20AJ`
+
+- module-owned grouped Leptos inbox with SSR bootstrap, bounded paging, stale-response
+  protection, authoritative mutation refresh, and allowed-only navigation;
+- generic manifest-driven storefront header action with localized route and exact unread
+  badge; optional failures hide the action without breaking the header.
+
+### `FORUM-20AK / FORUM-20AL`
+
+- GraphQL parity for unread count, bounded group summaries/items, and fresh open
+  authorization;
+- request DTOs cannot select tenant, recipient, or user identity;
+- SSR/hydrate select native reads while CSR/headless select GraphQL with no fallback;
+- group-state writes remain native-only.
+
+### `FORUM-20AM`
+
+- canonical Forum plan, this owner-local ledger, owner README, and live contract are
+  synchronized through `FORUM-20AL`;
+- the latest handoff contract records the synchronization and a dedicated static verifier
+  guards all four documents from future milestone drift;
+- no runtime capability or validation status is promoted.
+
+'''
+          replace_once(local_plan, "## Remaining `NOTIFY-01`", local_milestones + "## Remaining `NOTIFY-01`")
+
+          old_ui = r'''## UI gate
+
+Admin and storefront remain module-owned. Until owner inbox services are exposed
+through matching module-owned transport adapters and UI packages, they expose only
+foundation/unavailable states and must not invent unread counts outside
+`NotificationInboxUnreadCountService`, expose exact mark-unread or bounded
+mark-all-read/mark-all-unread/mark-all-archive without authorized transport
+composition, expose selected-ID bulk state mutations, or create shadow inbox
+storage.
+'''
+          new_ui = r'''## UI gate
+
+Admin and storefront remain module-owned. The storefront now uses the authenticated
+`NotificationInboxStorefrontPort`, native SSR/hydrate adapters, GraphQL CSR/headless reads,
+and the grouped Leptos UI. It must continue to use the exact owner unread count, preserve
+bounded cursor semantics, navigate only after fresh owner authorization, and create no
+shadow inbox storage. Group-state writes remain on the native path until GraphQL write
+admission and idempotency parity are delivered. The admin package remains outside this
+storefront completion claim and retains its explicit degraded state.
+'''
+          replace_once(local_plan, old_ui, new_ui)
+          replace_once(
+              local_plan,
+              "node scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs\ncargo xtask module validate notifications",
+              "node scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-selected-state.mjs\n"
+              "node scripts/verify/verify-forum-notification-group-key-population.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-group-listing.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-group-summaries.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-group-state.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs\n"
+              "node scripts/verify/verify-forum-notification-navigation-badge.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs\n"
+              "node scripts/verify/verify-forum-notification-plan-sync.mjs\n"
+              "cargo xtask module validate notifications",
+          )
+          replace_once(
+              local_plan,
+              "`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA` source slices.",
+              "`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM` source and documentation slices.",
+          )
+
+          replace_once(
+              owner_readme,
+              "- `NotificationInboxReconcileService` and bounded reconciliation request/page contracts;\n- `rustok_notifications::api`, `entities`, `model`, and `migrations`.",
+              "- `NotificationInboxReconcileService` and bounded reconciliation request/page contracts;\n"
+              "- `NotificationInboxStorefrontPort` and the in-process authenticated-user owner facade;\n"
+              "- feature-gated Notifications GraphQL query root and host schema-data composition;\n"
+              "- module-owned native/GraphQL storefront transport and grouped Leptos UI packages;\n"
+              "- `rustok_notifications::api`, `entities`, `model`, and `migrations`.",
+          )
+          replace_once(
+              owner_readme,
+              "SQLite owner evidence is\n`tests/inbox_state_sqlite.rs`. Exact-item, bounded mark-all, selected-ID, and bounded\nexact-group state commands are delivered. External transport adapters and grouped UI remain closed.",
+              "SQLite owner evidence is\n`tests/inbox_state_sqlite.rs`. Exact-item, bounded mark-all, selected-ID, and bounded\nexact-group state commands are delivered. Authenticated native transport and grouped UI are\nalso delivered; GraphQL group-state write parity remains open.",
+          )
+          replace_once(
+              owner_readme,
+              "SQLite evidence is `tests/inbox_count_sqlite.rs`. External transport and\nUI exposure remain closed until an authorized adapter composes this owner read.",
+              "SQLite evidence is `tests/inbox_count_sqlite.rs`. The exact count is exposed through\nthe authenticated native and GraphQL storefront read planes and the manifest-mounted unread badge.",
+          )
+
+          storefront_section = r'''### 14. Authenticated storefront transport and grouped UI
+
+`NotificationInboxStorefrontPort` is the transport-neutral authenticated-user boundary for
+unread count, bounded group summaries/items, fresh open authorization, and bounded group
+state commands. Requests carry no tenant or recipient fields: tenant comes from
+`PortContext.tenant_id`, recipient from the human-user actor, reads require a deadline, and
+writes additionally require idempotency semantics.
+
+The native Leptos server-function adapter serves SSR/hydrate. The feature-gated GraphQL query
+root serves CSR/headless unread count, group summaries/items, and fresh open authorization.
+Both reuse the same owner port and host-composed source registry and recipient-policy runtime;
+there is no transport fallback and no direct storefront database authority. GraphQL state
+mutations remain intentionally absent.
+
+The module-owned grouped storefront view performs an owner-backed SSR bootstrap, bounded raw
+paging, one-group expansion, stale-response rejection, authoritative refresh after writes,
+and browser navigation only after `NotificationStorefrontOpenDecision::Allowed`. The generic
+storefront header resolves the Notifications action from manifest metadata, builds the route
+through `UiRouteContext`, and shows the exact unread badge only when positive while retaining
+the link at zero. Optional capability failures hide the action without failing the header.
+
+Source contracts are guarded by the `FORUM-20AG` through `FORUM-20AL` machine contracts and
+matching `verify-forum-notification-*` scripts. These source slices remain unvalidated by the
+implementation agent.
+
+'''
+          replace_once(owner_readme, "The server bootstrap order is intake → fanout → candidate.", storefront_section + "The server bootstrap order is intake → fanout → candidate.")
+          replace_once(
+              owner_readme,
+              "- external inbox transport adapters and module-owned grouped UI;\n- channel delivery enqueue with delivery-time authorization;",
+              "- GraphQL group-state mutations and auth-reactive automatic grouped bootstrap refresh;\n- channel delivery enqueue with delivery-time authorization;",
+          )
+
+          replace_once(
+              live_readme,
+              "Notifications owns inbox/read state, exact unread counts, bounded mark-all,\nselected-ID state commands, bounded exact-group state commands, durable grouping,\nexact-group reads, bounded group summaries, preferences, bounded fanout, digests,\nretention, delivery attempts, intake receipts/quarantine, and\nreplay/reconciliation.",
+              "Notifications owns inbox/read state, exact unread counts, bounded mark-all,\nselected-ID state commands, bounded exact-group state commands, durable grouping,\nexact-group reads, bounded group summaries, authenticated native/GraphQL storefront reads\nand open authorization, the module-owned grouped storefront UI, preferences, bounded fanout,\ndigests, retention, delivery attempts, intake receipts/quarantine, and replay/reconciliation.",
+          )
+
+          live_storefront = r'''### Authenticated storefront ports, transports, and UI
+
+`NotificationInboxStorefrontPort` derives owner scope from a human-user `PortContext` and
+exposes unread count, bounded group summaries/items, fresh open authorization, and bounded
+group-state commands. Read calls require a deadline; write calls require deadline and
+idempotency admission. Tenant and recipient identity never appear in storefront request DTOs.
+
+Native Leptos server functions are selected for SSR/hydrate. The feature-gated GraphQL query
+root is selected for CSR/headless unread count, grouped reads, and fresh open authorization.
+The GraphQL runtime receives the host database, materialized source registry, and current
+recipient-policy runtime, then exposes only the shared owner port. No path falls back to the
+other and GraphQL group-state mutations remain closed.
+
+The grouped Notifications view uses owner-backed SSR bootstrap, bounded pages, exact-group
+expansion, stale-response guards, authoritative post-command refresh, and allowed-only route
+navigation. A manifest-driven generic header action exposes the localized route and exact
+unread badge without a host import of the Notifications UI. Optional failures degrade by
+omitting the action rather than breaking the storefront shell.
+
+'''
+          replace_once(live_readme, "The server starts workers in intake → fanout → candidate order.", live_storefront + "The server starts workers in intake → fanout → candidate order.")
+          replace_once(
+              live_readme,
+              "- external inbox transport adapters and full module-owned grouped UI;\n- channel delivery enqueue and transports with delivery-time authorization;",
+              "- GraphQL group-state mutations and auth-reactive automatic grouped bootstrap refresh;\n- channel delivery enqueue and transports with delivery-time authorization;",
+          )
+          replace_once(
+              live_readme,
+              "node scripts/verify/verify-forum-notification-inbox-group-state.mjs\ncargo xtask module validate notifications",
+              "node scripts/verify/verify-forum-notification-inbox-group-state.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs\n"
+              "node scripts/verify/verify-forum-notification-navigation-badge.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs\n"
+              "node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs\n"
+              "node scripts/verify/verify-forum-notification-plan-sync.mjs\n"
+              "cargo xtask module validate notifications",
+          )
+          replace_once(
+              live_readme,
+              "`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF`.",
+              "`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM`.",
+          )
+
+          handoff_path = "crates/rustok-forum/contracts/forum-notification-inbox-open-graphql.json"
+          handoff = json.loads(read(handoff_path))
+          for key in ("canonical_plan_sync", "notifications_local_plan_sync"):
+              handoff[key]["status"] = "synchronized_by_FORUM-20AM"
+              handoff[key]["sync_contract"] = "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+              handoff[key].pop("follow_up", None)
+          handoff["notifications_owner_docs_sync"]["status"] = "synchronized_by_FORUM-20AM"
+          handoff["notifications_owner_docs_sync"]["sync_contract"] = "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+          handoff["notifications_owner_docs_sync"].pop("follow_up", None)
+          write(handoff_path, json.dumps(handoff, indent=2, ensure_ascii=False) + "\n")
+
+          verifier_path = "scripts/verify/verify-forum-notification-inbox-open-graphql.mjs"
+          old_verifier = r'''for (const sync of [contract.canonical_plan_sync, contract.notifications_local_plan_sync]) {
+  if (sync?.status !== "pending" || sync.required_ledger_through !== "FORUM-20AL") {
+    failures.push("Forum and Notifications ledgers must remain pending through FORUM-20AL");
+  }
+}
+requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");
+requireText(localPlan, "### `FORUM-20AA`", "Notifications local plan must remain grounded through AA");
+'''
+          new_verifier = r'''for (const sync of [contract.canonical_plan_sync, contract.notifications_local_plan_sync]) {
+  if (
+    sync?.status !== "synchronized_by_FORUM-20AM" ||
+    sync.required_ledger_through !== "FORUM-20AL" ||
+    sync.sync_contract !== "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+  ) {
+    failures.push("Forum and Notifications ledgers must be synchronized by FORUM-20AM through FORUM-20AL");
+  }
+}
+if (
+  contract.notifications_owner_docs_sync?.status !== "synchronized_by_FORUM-20AM" ||
+  contract.notifications_owner_docs_sync?.sync_contract !==
+    "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+) {
+  failures.push("Notifications owner documents must be synchronized by FORUM-20AM");
+}
+requireText(canonicalPlan, "### Delivered in `FORUM-20AG` through `FORUM-20AL`", "canonical plan must be synchronized through AL");
+requireText(localPlan, "### `FORUM-20AK / FORUM-20AL`", "Notifications local plan must be synchronized through AL");
+'''
+          replace_once(verifier_path, old_verifier, new_verifier)
+
+          contract = {
+              "schema_version": 1,
+              "task": "FORUM-20AM",
+              "upstream_task": "FORUM-20AL",
+              "scope": "Conflict-safe synchronization of canonical Forum and Notifications owner documentation through the authenticated storefront GraphQL open plane",
+              "canonical_plan": canonical,
+              "notifications_local_plan": local_plan,
+              "notifications_owner_readme": owner_readme,
+              "notifications_live_contract": live_readme,
+              "upstream_contract": handoff_path,
+              "owner_note": "crates/rustok-notifications/docs/forum-20am-plan-sync.md",
+              "source_verifier": "scripts/verify/verify-forum-notification-plan-sync.mjs",
+              "required_ledger_through": "FORUM-20AL",
+              "synchronization": {
+                  "canonical_plan": True,
+                  "notifications_local_plan": True,
+                  "notifications_owner_readme": True,
+                  "notifications_live_contract": True,
+                  "upstream_handoff_updated": True,
+                  "runtime_behavior_changed": False,
+                  "migration_changed": False,
+                  "dependency_changed": False,
+              },
+              "preserved_residuals": [
+                  "Forum trust and Channel membership facts adapters",
+                  "initially non-public topic-created descriptor materialization",
+                  "create reply and moderate audience write policies",
+                  "remaining search index SEO and deep-link policy migration",
+                  "auth-reactive automatic grouped inbox bootstrap refresh",
+                  "GraphQL group-state mutations",
+                  "tenant-wide scheduled reconciliation and payload redaction",
+                  "channel delivery enqueue and transports",
+                  "delivery-time target authorization",
+                  "PostgreSQL concurrency lease contention and cross-consumer evidence",
+              ],
+              "verification": {
+                  "commands": [
+                      "node scripts/verify/verify-forum-notification-plan-sync.mjs",
+                      "node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs",
+                      "cargo xtask module validate notifications",
+                      "cargo xtask module validate forum",
+                  ],
+                  "execution_status": "not_run_by_implementation_agent",
+              },
+          }
+          write("crates/rustok-forum/contracts/forum-notification-plan-sync.json", json.dumps(contract, indent=2) + "\n")
+
+          note = r'''# FORUM-20AM Forum and Notifications plan synchronization
+
+Status: source-ready / unvalidated
+
+## Scope
+
+`FORUM-20AM` closes documentation drift accumulated while `FORUM-20H` through
+`FORUM-20AL` were delivered as conflict-safe runtime slices. It updates the canonical Forum
+plan, Notifications owner-local ledger, owner README, and live contract without changing
+runtime code, migrations, dependencies, public envelopes, or task completion status.
+
+## Recheck
+
+The merged chain was re-read from its machine contracts and execution records:
+
+- topic-local audience narrowing and richer exact visibility (`20H–20K`);
+- exact recipient context, host authority, target-open and audience filtering (`20L–20P`);
+- Groups membership facts (`20Q`);
+- owner inbox open/list/state/count/reconciliation and bounded bulk/group operations
+  (`20R–20AF`);
+- authenticated storefront port, native adapter, grouped UI, navigation badge, GraphQL
+  grouped reads, and GraphQL fresh-open authorization (`20AG–20AL`).
+
+The latest `FORUM-20AL` handoff contract now names this synchronization contract instead of
+claiming that the four documents remain pending.
+
+## Preserved boundaries
+
+The overall program remains `in_progress`. This task does not claim maintainer-run tests or
+runtime evidence and does not close trust/channel facts, write audiences, remaining
+search/index/SEO/deep-link migration, automatic auth-reactive bootstrap refresh, GraphQL
+group-state writes, scheduled reconciliation/redaction, delivery transports, delivery-time
+authorization, or PostgreSQL cross-consumer evidence.
+
+## Evidence
+
+- machine contract: `crates/rustok-forum/contracts/forum-notification-plan-sync.json`;
+- source verifier: `scripts/verify/verify-forum-notification-plan-sync.mjs`;
+- synchronized documents are named by the machine contract.
+
+Suggested maintainer validation commands are recorded in the machine contract. None were run
+by the implementation agent.
+'''
+          write("crates/rustok-notifications/docs/forum-20am-plan-sync.md", note)
+
+          sync_verifier = r'''#!/usr/bin/env node
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : path.resolve(scriptDir, "../..");
+const failures = [];
+
+function read(relativePath) {
+  const absolute = path.join(repoRoot, relativePath);
+  if (!existsSync(absolute)) {
+    failures.push(`${relativePath}: required file is missing`);
+    return "";
+  }
+  return readFileSync(absolute, "utf8");
+}
+
+function requireText(source, marker, message) {
+  if (!source.includes(marker)) failures.push(message);
+}
+
+function rejectText(source, marker, message) {
+  if (source.includes(marker)) failures.push(message);
+}
+
+const contract = JSON.parse(
+  read("crates/rustok-forum/contracts/forum-notification-plan-sync.json") || "{}",
+);
+const canonical = read(contract.canonical_plan ?? "");
+const local = read(contract.notifications_local_plan ?? "");
+const owner = read(contract.notifications_owner_readme ?? "");
+const live = read(contract.notifications_live_contract ?? "");
+const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
+const note = read(contract.owner_note ?? "");
+
+if (
+  contract.schema_version !== 1 ||
+  contract.task !== "FORUM-20AM" ||
+  contract.upstream_task !== "FORUM-20AL" ||
+  contract.required_ledger_through !== "FORUM-20AL"
+) {
+  failures.push("plan sync contract must connect FORUM-20AL/20AM through AL");
+}
+if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
+  failures.push("plan sync contract must not claim unexecuted evidence");
+}
+for (const key of [
+  "canonical_plan",
+  "notifications_local_plan",
+  "notifications_owner_readme",
+  "notifications_live_contract",
+  "upstream_handoff_updated",
+]) {
+  if (contract.synchronization?.[key] !== true) {
+    failures.push(`plan sync contract must record ${key}`);
+  }
+}
+for (const key of ["runtime_behavior_changed", "migration_changed", "dependency_changed"]) {
+  if (contract.synchronization?.[key] !== false) {
+    failures.push(`plan sync contract must keep ${key} false`);
+  }
+}
+
+for (const marker of [
+  "FORUM-20A-AL provide",
+  "### Delivered in `FORUM-20H` through `FORUM-20Q`",
+  "### Delivered in `FORUM-20R` through `FORUM-20AF`",
+  "### Delivered in `FORUM-20AG` through `FORUM-20AL`",
+  "### Delivered in `FORUM-20AM`",
+  "GraphQL group-state mutations",
+  "PostgreSQL concurrency",
+]) {
+  requireText(canonical, marker, `canonical plan is missing ${marker}`);
+}
+rejectText(canonical, "current category/topic/reply reads remain unchanged until a later owner-read", "canonical plan must not retain the pre-composition FORUM-20G residual");
+
+for (const marker of [
+  "### `FORUM-20AB`",
+  "### `FORUM-20AC / FORUM-20AD`",
+  "### `FORUM-20AE / FORUM-20AF`",
+  "### `FORUM-20AG / FORUM-20AH`",
+  "### `FORUM-20AI / FORUM-20AJ`",
+  "### `FORUM-20AK / FORUM-20AL`",
+  "### `FORUM-20AM`",
+  "GraphQL group-state writes remain on the native path",
+]) {
+  requireText(local, marker, `Notifications local plan is missing ${marker}`);
+}
+rejectText(local, "No external transport, selected-ID bulk", "Notifications local plan must not retain the pre-storefront residual");
+
+for (const marker of [
+  "NotificationInboxStorefrontPort",
+  "feature-gated Notifications GraphQL query root",
+  "### 14. Authenticated storefront transport and grouped UI",
+  "GraphQL group-state mutations",
+]) {
+  requireText(owner, marker, `Notifications owner README is missing ${marker}`);
+}
+for (const marker of [
+  "authenticated native/GraphQL storefront reads",
+  "### Authenticated storefront ports, transports, and UI",
+  "GraphQL group-state mutations",
+]) {
+  requireText(live, marker, `Notifications live contract is missing ${marker}`);
+}
+
+for (const key of ["canonical_plan_sync", "notifications_local_plan_sync", "notifications_owner_docs_sync"]) {
+  if (
+    upstream[key]?.status !== "synchronized_by_FORUM-20AM" ||
+    upstream[key]?.sync_contract !==
+      "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+  ) {
+    failures.push(`FORUM-20AL handoff must synchronize ${key} through FORUM-20AM`);
+  }
+}
+
+for (const marker of [
+  "# FORUM-20AM Forum and Notifications plan synchronization",
+  "source-ready / unvalidated",
+  "does not claim maintainer-run tests or runtime evidence",
+]) {
+  requireText(note, marker, `FORUM-20AM owner note is missing ${marker}`);
+}
+
+if (failures.length > 0) {
+  console.error("Forum notification plan synchronization verification failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log("Forum and Notifications plans are synchronized through FORUM-20AL.");
+'''
+          write("scripts/verify/verify-forum-notification-plan-sync.mjs", sync_verifier)
+
+          workflow.unlink()
+          PY
+      - name: Commit synchronized documents
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs(forum): synchronize notification plan through 20AL"
+          git push origin HEAD:agent/forum-notification-plan-sync-20am
