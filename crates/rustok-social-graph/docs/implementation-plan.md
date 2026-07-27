@@ -15,16 +15,16 @@ authorize from replicated relation state.
 The source-complete path includes durable command receipts, bounded cleanup,
 transactional sealed relation events, bounded owner replay, the approved generic
 Index relation projection, Index-owned tenant schema registration, result-first
-persistent Iggy consumption, one shared EventRuntime Iggy connector, default-off
+persistent Iggy consumption, one shared EventRuntime Iggy transport, default-off
 server lifecycle, bounded projection/DLQ/ack retry, durable exact-byte DLQ receipts,
-graceful shutdown, enabled-worker readiness, bounded per-consumer Prometheus
-telemetry, and a read-only partition-qualified consumer-position observer with
-completeness-gated total/max lag.
+deterministic UUIDv8 broker message IDs, graceful shutdown, enabled-worker readiness,
+bounded per-consumer Prometheus telemetry, and a read-only partition-qualified
+consumer-position observer with completeness-gated total/max lag.
 
 Compilation, source-verifier execution, PostgreSQL receipt/concurrency evidence,
-real-broker restart and publish-confirmation behavior, observer reconnect/TLS/auth,
-multi-replica position/receipt semantics, and retained runtime evidence remain
-maintainer-run or pending.
+real-broker deterministic-ID/deduplication and publish-confirmation behavior,
+observer reconnect/TLS/auth, multi-replica position/receipt semantics, and retained
+runtime evidence remain maintainer-run or pending.
 
 ## Delivered owner relation contract
 
@@ -85,7 +85,7 @@ maintainer-run or pending.
 - `PostgresMutationStore` atomically records inbox terminal state with projection state.
 - `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable outcomes.
 
-## Delivered durable DLQ receipt boundary
+## Delivered durable DLQ receipt and broker-identity boundary
 
 - Migration `m20260727_000004_create_index_dlq_receipts` owns immutable source identity
   and exact payload bytes for poison deliveries. The key is tenant, consumer group, and
@@ -95,9 +95,19 @@ maintainer-run or pending.
 - `project_consumed` checks receipts before Index projection. Published receipts enter
   acknowledgement-only recovery; unfinished receipts remain retryable DLQ work and do
   not cross back into mutation apply.
+- A versioned SHA-256 construction derives one RFC 9562 UUIDv8 from tenant, consumer
+  group, event ID, source stream/topic/partition/offset, and exact retained payload.
+  Every variable-length field is length-framed.
+- Retry count, time, publisher/lease identity, and random state are excluded, so retries
+  for one immutable receipt retain the same broker message ID.
 - `publish_consumed_to_dlq` returns success only after exact-byte broker publication and
   the durable `published` transition. Repeated calls recognize a terminal receipt and
   skip broker publication.
+- The UUIDv8 is attached separately from the source event ID. `IggyTransport` lazily
+  opens one SDK publisher connection to the same configured endpoint and existing
+  `dlq` topic, then maps the UUID to Iggy's `u128` message header.
+- Publisher connection/configuration failures leave the source unacknowledged, clear the
+  cached client, and are retried through the existing bounded DLQ retry path.
 - Ack failure after successful publication leaves the terminal receipt intact. On
   redelivery the consumer skips projection and DLQ publication and retries source ack.
 - A previously created unfinished receipt continues to completion even if policy for
@@ -106,9 +116,13 @@ maintainer-run or pending.
   afterward is best-effort bookkeeping and cannot convert a committed source offset
   back into failure.
 - Broker success followed by process/DB failure before the `published` transition is a
-  separate explicit confirmation ambiguity. The lease and immutable receipt preserve
-  the logical identity, but physical broker exactly-once is not claimed without a
-  configured deduplication or transaction contract.
+  separate explicit confirmation ambiguity. A retry carries the same UUIDv8, but Iggy
+  duplicate suppression applies only when the deployment enables it and the relevant
+  per-partition cache/expiry still covers the recovery interval.
+- Durable receipt state remains authoritative. Physical broker exactly-once is not
+  claimed from a deterministic ID or bounded optional deduplication; production must
+  retain evidence for its configured window or select a stronger transaction/outbox
+  mechanism.
 - Historical rows are intentionally not fabricated; the migration backfill contract is
   `none`.
 
@@ -126,6 +140,9 @@ maintainer-run or pending.
 - `EventRuntime` publishes the exact configured `Arc<IggyTransport>` into shared
   context; relay and consumer reuse it, and the worker never starts or stops a second
   bundled broker process.
+- Identified DLQ publication may open one additional lazy SDK client owned by that same
+  transport. It connects to the existing endpoint and does not create another transport
+  or bundled process.
 - `SocialGraphIndexWorkerHandle` exposes task state and observes shared `StopHandle`.
 - Projection, DLQ claim/publication, and source acknowledgement use bounded exponential
   backoff from reviewed event settings.
@@ -156,8 +173,8 @@ maintainer-run or pending.
   `rustok_runtime_consumer_lag{aggregation="total|max"}` only from complete snapshots.
   Incomplete snapshots clear lag gauges and set completeness to zero.
 - Labels remain bounded to consumer, stage, outcome, result, reason, aggregation, and
-  stable error code. Tenant, event, relation, partition, offset, payload, ack token,
-  credentials, and raw error text are not labels.
+  stable error code. Tenant, event, relation, partition, offset, payload, broker ID,
+  ack token, credentials, and raw error text are not labels.
 - Observer configuration/connection/snapshot failures are recorded by stable code,
   retried independently, and do not stop projection or enter readiness guardrails.
 - Lag is never inferred from event age, processing duration, a delivered offset, or a
@@ -169,23 +186,26 @@ maintainer-run or pending.
 
 1. Execute PostgreSQL concurrent schema-registration, mutation, and DLQ receipt
    claim/publish/ack evidence.
-2. Prove real-Iggy restart/redelivery, ack failure, DLQ failure, connector loss,
-   graceful shutdown, receipt recovery, observer snapshot/reconnect, and multi-replica
-   cursor ownership.
-3. Exercise the broker-success/receipt-mark confirmation ambiguity and decide whether
-   production requires configured Iggy deduplication, a broker transaction, or a
-   DB-owned DLQ/outbox relay before claiming physical exactly-once DLQ entries.
-4. Validate lag under concurrent publication, empty/missing checkpoints, TLS/auth
+2. Prove real-Iggy deterministic UUID header publication, same-partition retry,
+   connection loss/reconnect, ack failure, restart, graceful shutdown, observer
+   snapshot/reconnect, and multi-replica cursor/receipt ownership.
+3. Exercise broker success followed by receipt-mark loss with deduplication disabled,
+   enabled, capacity-evicted, and expired. Verify the configured window covers the
+   maximum lease/restart/recovery horizon before relying on duplicate suppression.
+4. Decide whether production requires an enforced and monitored Iggy deduplication
+   contract, a broker transaction, or a DB-owned DLQ/outbox relay before claiming any
+   stronger physical duplicate guarantee.
+5. Validate lag under concurrent publication, empty/missing checkpoints, TLS/auth
    failures, rebalancing, and multiple worker replicas before defining alerts.
-5. Define a connector-level poison contract for undecodable broker bytes.
-6. Corrupt/delete projection state and prove bounded owner replay/rescan repair while
+6. Define a connector-level poison contract for undecodable broker bytes.
+7. Corrupt/delete projection state and prove bounded owner replay/rescan repair while
    Profiles privacy remains on authoritative owner ports.
-7. Define DLQ receipt retention/reconciliation before permitting deletion; configure
+8. Define DLQ receipt retention/reconciliation before permitting deletion; configure
    command-receipt retention cadence and retain cleanup CLI dry-run/live evidence.
-8. Retain receipt/event concurrency, replay-window, rollback, telemetry, storefront,
+9. Retain receipt/event concurrency, replay-window, rollback, telemetry, storefront,
    privacy, and operational packets.
-9. Continue friendship lifecycle, broader directory/follow UX, lists, block/mute
-   management, and moderation/admin repair.
+10. Continue friendship lifecycle, broader directory/follow UX, lists, block/mute
+    management, and moderation/admin repair.
 
 ## Verification
 
@@ -203,6 +223,7 @@ node scripts/verify/verify-iggy-consumer-position.mjs
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets
 cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture
 cargo test -p rustok-social-graph --features index-consumer index_dlq_receipt::tests -- --nocapture
+cargo test -p rustok-social-graph --features index-consumer index_dlq_message_id::tests -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets
 cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture
 cargo test -p rustok-server runtime_guardrails --lib -- --nocapture
