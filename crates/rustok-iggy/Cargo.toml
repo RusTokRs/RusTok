@@ -19,9 +19,13 @@ rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-iggy-connector.workspace = true
 
+[dependencies.iggy]
+version = "0.10.0"
+optional = true
+
 [features]
 default = ["iggy"]
-iggy = ["rustok-iggy-connector/iggy"]
+iggy = ["dep:iggy", "rustok-iggy-connector/iggy"]
 
 [dev-dependencies]
 tokio.workspace = true
