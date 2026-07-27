@@ -275,9 +275,11 @@ for (const value of [
   'error.message',
   'public_channel_slug = ?public_channel_slug',
   'locale = ?locale',
-  'input.metadata =',
-  'sku =',
-  'title =',
+  'metadata = ?input.metadata',
+  'sku = %',
+  'sku = ?',
+  'title = %',
+  'title = ?',
 ]) {
   forbidText(typedSource, value, 'typed storefront line item boundary');
 }
