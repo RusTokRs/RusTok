@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice publishes a context-preserving owner adapter for the non-durable inventory reservation
+This work publishes a context-preserving owner adapter for the non-durable inventory reservation
 contract:
 
 - `InventoryReservationPort::check_availability`;
@@ -12,16 +12,17 @@ contract:
 - deprecated `InventoryReservationPort::release_inventory_reservation`.
 
 The adapter closes source-level admission and tenant-validation context loss for callers that use the
-new canonical factory. It also cuts the compact `JournaledCheckoutService` compatibility composition
-over to that factory.
+canonical factory. Repository checkout composition now uses that factory in both:
 
-The mounted staged storefront composition and the dead-code legacy storefront checkout wrapper still
-construct `InventoryService` directly. They remain explicit follow-up work and are not claimed as
-closed by this PR.
+- the compact `JournaledCheckoutService` compatibility path;
+- the mounted staged storefront runtime used by storefront transports.
+
+The dead-code legacy storefront checkout wrapper still constructs `InventoryService` directly. It
+remains explicit follow-up work and is not claimed as closed.
 
 ## Canonical API
 
-The crate root and `rustok_inventory::ports` facade now export:
+The crate root and `rustok_inventory::ports` facade export:
 
 - `InProcessInventoryReservationPort`;
 - `in_process_inventory_reservation_port`.
@@ -42,7 +43,7 @@ Existing contracts remain unchanged:
 
 ### Availability read
 
-`check_availability` now flows through the canonical adapter as:
+`check_availability` flows through the canonical adapter as:
 
 1. require read policy;
 2. parse the trimmed tenant UUID;
@@ -95,26 +96,34 @@ The adapter preserves the existing tenant validation contract:
 - return code `inventory.context_invalid`;
 - return message `inventory request context is invalid`.
 
-A parse failure now retains the UUID parse cause together with the complete delegated context,
-truthful owner, exact operation, validation phase `tenant_id`, stable public envelope, and boundary.
-The constructed validation `PortError` is returned unchanged.
+A parse failure retains the UUID parse cause together with the complete delegated context, truthful
+owner, exact operation, validation phase `tenant_id`, stable public envelope, and boundary. The
+constructed validation `PortError` is returned unchanged.
 
 No actor validation was added. The existing owner does not reject malformed actor identity, so adding
 that rule would alter request acceptance rather than retain diagnostics.
 
-## Journaled compatibility cutover
+## Checkout composition cutover
+
+### Journaled compatibility
 
 `JournaledCheckoutService` previously constructed `InventoryService` directly for checkout-plan
 availability reads. It now calls `in_process_inventory_reservation_port` and passes the returned trait
 object to `CheckoutPlanBuilder`.
 
-Its durable reserve/release pipeline continues to use
-`in_process_inventory_reservation_identity_port`. Cart, product, payment, compensation, lease, and
-recovery composition remain unchanged.
+### Mounted staged storefront
+
+`storefront_staged_checkout_runtime.rs` previously constructed `InventoryService` directly for the
+mounted checkout-plan availability owner. It now calls the same canonical factory with the existing
+runtime database connection and cloned transactional event bus.
+
+The staged runtime continues to use `in_process_inventory_reservation_identity_port` for durable
+reserve/release. Atomic cart, product, marketplace allocation, marketplace commission, marketplace
+ledger, payment, compensation, and recovery composition remain unchanged.
 
 ## Preserved owner behavior
 
-This slice does not change:
+This work does not change:
 
 - channel-aware availability policy;
 - requested quantity handling;
@@ -127,7 +136,8 @@ This slice does not change:
 - database and invariant mapping;
 - request or response DTOs;
 - public codes, messages, kinds, or retryability;
-- durable identity reservation behavior from the preceding inventory slice.
+- durable identity reservation behavior from the preceding inventory slice;
+- staged checkout constructor contracts or public transport convergence.
 
 The original context and request are delegated after adapter acceptance.
 
@@ -147,13 +157,14 @@ The original context and request are delegated after adapter acceptance.
 - trimmed tenant parsing, retained parse cause, stable envelope, and same error return;
 - unchanged legacy availability and quantity service calls and owner error mapping;
 - journaled compatibility cutover;
-- continued visibility of the mounted staged and dead-code legacy storefront gaps.
+- mounted staged storefront cutover with database/event-bus delegation;
+- preserved durable reservation factory and staged plan-builder composition;
+- continued visibility of the dead-code legacy storefront gap.
 
 ## Remaining gaps
 
 The ecommerce correlation-safe mapper task remains open for:
 
-- cutting mounted staged storefront availability composition over to the canonical adapter;
 - cutting or removing the dead-code legacy storefront checkout wrapper;
 - direct external callers that intentionally construct `InventoryService` as
   `InventoryReservationPort` rather than using the canonical factory;
