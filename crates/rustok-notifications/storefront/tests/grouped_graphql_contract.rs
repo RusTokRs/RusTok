@@ -14,7 +14,13 @@ fn manifest_composes_owner_runtime_data_without_host_registry_code() {
     ] {
         assert!(OWNER_MANIFEST.contains(marker), "manifest is missing `{marker}`");
     }
-    assert!(OWNER_CARGO.contains("server = [\"rustok-api/server\"]"));
+    assert!(OWNER_CARGO.contains("default = []"));
+    assert!(OWNER_CARGO.contains(
+        "server = [\"rustok-api/server\", \"dep:async-graphql\"]"
+    ));
+    assert!(OWNER_CARGO.contains(
+        "async-graphql = { workspace = true, optional = true }"
+    ));
     assert!(SERVER_CARGO.contains("rustok-notifications/server"));
     assert!(OWNER_GRAPHQL.contains("pub fn attach_schema_data("));
     assert!(OWNER_GRAPHQL.contains("inputs.shared_get::<Arc<NotificationSourceRegistry>>()"));
