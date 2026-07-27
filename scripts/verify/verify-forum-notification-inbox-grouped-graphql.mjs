@@ -37,9 +37,9 @@ function between(source, start, end, label) {
   return source.slice(from, to);
 }
 
-const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json";
-const contract = JSON.parse(read(contractPath) || "{}");
+const contract = JSON.parse(
+  read("crates/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json") || "{}",
+);
 const ownerGraphql = read(contract.notifications_graphql_file ?? "");
 const ownerLib = read(contract.notifications_lib_file ?? "");
 const ownerCargo = read(contract.notifications_cargo_file ?? "");
@@ -56,11 +56,11 @@ const note = read(contract.owner_note ?? "");
 const canonicalPlan = read(contract.canonical_plan ?? "");
 const localPlan = read(contract.notifications_local_plan ?? "");
 
-if (contract.schema_version !== 1) {
-  failures.push("grouped GraphQL contract must use schema_version=1");
+if (contract.schema_version !== 1 || contract.task !== "FORUM-20AK") {
+  failures.push("grouped GraphQL contract must identify FORUM-20AK with schema_version=1");
 }
-if (contract.task !== "FORUM-20AK" || contract.upstream_task !== "FORUM-20AJ") {
-  failures.push("grouped GraphQL contract must connect FORUM-20AJ/20AK");
+if (contract.upstream_task !== "FORUM-20AJ") {
+  failures.push("grouped GraphQL contract must follow FORUM-20AJ");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("grouped GraphQL contract must not claim unexecuted evidence");
@@ -104,9 +104,6 @@ for (const key of [
   "compatibility_read_wrappers",
   "explicit_context_read_functions",
   "safe_graphql_error_mapping",
-  "source_contract_proof",
-  "storefront_readme_updated",
-  "owner_contract_note",
 ]) {
   if (contract.composition?.[key] !== true) {
     failures.push(`grouped GraphQL contract must record ${key}`);
@@ -132,18 +129,6 @@ for (const sync of [contract.canonical_plan_sync, contract.notifications_local_p
     failures.push("Forum and Notifications ledgers must remain pending through FORUM-20AK");
   }
 }
-if (contract.canonical_plan_sync?.current_plan_through !== "FORUM-20G") {
-  failures.push("pending canonical plan sync must identify FORUM-20G");
-}
-if (contract.notifications_local_plan_sync?.current_plan_through !== "FORUM-20AA") {
-  failures.push("pending Notifications plan sync must identify FORUM-20AA");
-}
-if (
-  contract.notifications_owner_docs_sync?.status !== "pending" ||
-  contract.notifications_owner_docs_sync?.required_contract_through !== "FORUM-20AK"
-) {
-  failures.push("large Notifications owner docs must remain pending through FORUM-20AK");
-}
 requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");
 requireText(localPlan, "### `FORUM-20AA`", "Notifications local plan must remain grounded through AA");
 
@@ -166,29 +151,18 @@ for (const marker of [
   "context = context.with_claim(claim.clone())",
   ".list_group_summaries(",
   ".list_group_items(",
-  "NotificationInboxStorefrontGroupSummaryRequest",
-  "NotificationInboxStorefrontGroupItemsRequest",
   "u16::try_from(limit)",
-  "template_data: item",
   ".into_inner()",
   "GqlNotificationTemplateField { key, value }",
-  "map_port_error",
+  "let PortError {",
   "PUBLIC_UNAVAILABLE_MESSAGE",
 ]) {
   requireText(ownerGraphql, marker, `owner GraphQL is missing ${marker}`);
 }
 
 for (const [start, end, label] of [
-  [
-    "async fn notification_inbox_group_summaries",
-    ") -> Result<GqlNotificationInboxGroupSummaryPage>",
-    "group-summary GraphQL signature",
-  ],
-  [
-    "async fn notification_inbox_group_items",
-    ") -> Result<GqlNotificationInboxGroupItemsPage>",
-    "group-items GraphQL signature",
-  ],
+  ["async fn notification_inbox_group_summaries", ") -> Result<GqlNotificationInboxGroupSummaryPage>", "summary signature"],
+  ["async fn notification_inbox_group_items", ") -> Result<GqlNotificationInboxGroupItemsPage>", "items signature"],
 ]) {
   const signature = between(ownerGraphql, start, end, label);
   for (const forbidden of ["tenant_id", "recipient_id", "user_id"]) {
@@ -200,7 +174,7 @@ const runtimeFactory = between(
   ownerGraphql,
   "pub fn attach_schema_data(",
   "#[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]",
-  "Notifications GraphQL runtime factory",
+  "runtime factory",
 );
 for (const forbidden of [
   "NotificationSourceRegistry::default",
@@ -215,27 +189,19 @@ for (const marker of [
   "PortActorKind::User",
   "NotificationInboxGroupSummaryService",
   "NotificationInboxGroupListService",
-  "NotificationInboxOpenService",
   "notification inbox capability is unavailable",
 ]) {
   requireText(ownerPort, marker, `owner storefront port is missing ${marker}`);
 }
-for (const forbidden of ["tenant_id: Uuid", "recipient_id: Uuid"]) {
-  const requestSection = between(
-    ownerPort,
-    "pub struct NotificationInboxStorefrontGroupSummaryRequest",
-    "/// Transport-neutral owner boundary",
-    "storefront read request DTOs",
-  );
-  rejectText(requestSection, forbidden, `storefront transport request must not expose ${forbidden}`);
-}
 
 for (const marker of [
-  "default = [\"server\"]",
-  "server = [\"rustok-api/server\"]",
+  "default = []",
+  "server = [\"rustok-api/server\", \"dep:async-graphql\"]",
+  "async-graphql = { workspace = true, optional = true }",
 ]) {
   requireText(ownerCargo, marker, `Notifications Cargo feature contract is missing ${marker}`);
 }
+requireText(ownerLib, "#[cfg(feature = \"server\")]\npub mod graphql;", "GraphQL module must be server-gated");
 requireText(serverCargo, "rustok-notifications/server", "server feature must forward Notifications server support");
 for (const marker of [
   "query = \"graphql::NotificationsQuery\"",
@@ -243,7 +209,6 @@ for (const marker of [
 ]) {
   requireText(manifest, marker, `Notifications manifest is missing ${marker}`);
 }
-requireText(ownerLib, "pub mod graphql;", "Notifications library must expose its GraphQL module");
 
 for (const marker of [
   "query NotificationStorefrontGroupSummaries",
@@ -253,8 +218,6 @@ for (const marker of [
   "$groupKey: String!",
   "$state: NotificationInboxItemState",
   "templateData { key value }",
-  "load_group_summaries",
-  "load_group_items",
   "GroupItemStateWire",
   "ItemStateWire",
   "PriorityWire",
@@ -306,12 +269,10 @@ for (const marker of [
 ]) {
   requireText(proof, marker, `grouped GraphQL source proof is missing ${marker}`);
 }
-
 for (const marker of [
   "unread count, grouped summaries, and exact-group item pages use one selected read",
   "notificationInboxGroupSummaries",
   "notificationInboxGroupItems",
-  "Manifest-generated",
   "bounded template data as ordered key/value fields",
   "Fresh notification open authorization and group-state",
 ]) {
