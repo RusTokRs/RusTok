@@ -1,0 +1,180 @@
+# Inventory availability and quantity owner context
+
+Status: **source-ready / unvalidated**
+
+## Scope
+
+This slice publishes a context-preserving owner adapter for the non-durable inventory reservation
+contract:
+
+- `InventoryReservationPort::check_availability`;
+- deprecated `InventoryReservationPort::reserve_inventory`;
+- deprecated `InventoryReservationPort::release_inventory_reservation`.
+
+The adapter closes source-level admission and tenant-validation context loss for callers that use the
+new canonical factory. It also cuts the compact `JournaledCheckoutService` compatibility composition
+over to that factory.
+
+The mounted staged storefront composition and the dead-code legacy storefront checkout wrapper still
+construct `InventoryService` directly. They remain explicit follow-up work and are not claimed as
+closed by this PR.
+
+## Canonical API
+
+The crate root and `rustok_inventory::ports` facade now export:
+
+- `InProcessInventoryReservationPort`;
+- `in_process_inventory_reservation_port`.
+
+The factory accepts the same database connection and transactional event bus required by
+`InventoryService`, constructs the existing owner service internally, and returns
+`Arc<dyn InventoryReservationPort>`.
+
+Existing contracts remain unchanged:
+
+- `InventoryReservationPort`;
+- availability, reservation, and release request DTOs;
+- availability, reservation, and release snapshots;
+- the root `InventoryService` concrete service;
+- the durable identity reservation wrapper and factory added by the preceding inventory slice.
+
+## Ordering
+
+### Availability read
+
+`check_availability` now flows through the canonical adapter as:
+
+1. require read policy;
+2. parse the trimmed tenant UUID;
+3. delegate the original `PortContext` and request to the existing `InventoryService` trait
+   implementation;
+4. allow the existing implementation to repeat its deterministic policy and tenant checks before
+   invoking availability policy.
+
+The adapter does not require write semantics for the read operation.
+
+### Deprecated quantity mutations
+
+`reserve_inventory` and `release_inventory_reservation` flow as:
+
+1. require write policy;
+2. require write semantics;
+3. parse the trimmed tenant UUID;
+4. delegate the original `PortContext` and request to the existing implementation.
+
+The repeated inner checks use the same policy, write-semantics, and tenant parsing rules, so accepted
+behavior is unchanged.
+
+## Admission diagnostics
+
+Read-policy, write-policy, and write-semantics failures record:
+
+- truthful owner `rustok_inventory`;
+- exact owner operation;
+- admission phase `policy` or `write_semantics`;
+- boundary `inventory_reservation_port`;
+- correlation id and tenant id;
+- typed actor, channel, and locale;
+- causation id and traceparent when available;
+- idempotency key and deadline when available;
+- stable error code and message;
+- typed error kind and retryability;
+- the original `PortError`.
+
+Unavailable, timeout, and invariant failures use error severity. Ordinary caller rejection uses
+warning severity.
+
+The exact admission `PortError` is returned unchanged.
+
+## Tenant validation
+
+The adapter preserves the existing tenant validation contract:
+
+- trim `PortContext.tenant_id`;
+- parse it as a UUID;
+- return code `inventory.context_invalid`;
+- return message `inventory request context is invalid`.
+
+A parse failure now retains the UUID parse cause together with the complete delegated context,
+truthful owner, exact operation, validation phase `tenant_id`, stable public envelope, and boundary.
+The constructed validation `PortError` is returned unchanged.
+
+No actor validation was added. The existing owner does not reject malformed actor identity, so adding
+that rule would alter request acceptance rather than retain diagnostics.
+
+## Journaled compatibility cutover
+
+`JournaledCheckoutService` previously constructed `InventoryService` directly for checkout-plan
+availability reads. It now calls `in_process_inventory_reservation_port` and passes the returned trait
+object to `CheckoutPlanBuilder`.
+
+Its durable reserve/release pipeline continues to use
+`in_process_inventory_reservation_identity_port`. Cart, product, payment, compensation, lease, and
+recovery composition remain unchanged.
+
+## Preserved owner behavior
+
+This slice does not change:
+
+- channel-aware availability policy;
+- requested quantity handling;
+- deprecated quantity reserve semantics;
+- deprecated quantity release semantics;
+- backorder policy;
+- variant-not-found behavior;
+- insufficient inventory classification;
+- validation mapping;
+- database and invariant mapping;
+- request or response DTOs;
+- public codes, messages, kinds, or retryability;
+- durable identity reservation behavior from the preceding inventory slice.
+
+The original context and request are delegated after adapter acceptance.
+
+## Static evidence
+
+`scripts/verify/verify-inventory-availability-quantity-context.mjs` guards:
+
+- crate-root and `ports` facade exports;
+- preserved durable identity exports;
+- canonical adapter constructor and factory;
+- exact availability, reserve, and release operations;
+- read admission without write semantics;
+- write-policy and write-semantics interception;
+- admission → tenant validation → owner delegation ordering;
+- full admission context and severity classification;
+- same admission error return;
+- trimmed tenant parsing, retained parse cause, stable envelope, and same error return;
+- unchanged legacy availability and quantity service calls and owner error mapping;
+- journaled compatibility cutover;
+- continued visibility of the mounted staged and dead-code legacy storefront gaps.
+
+## Remaining gaps
+
+The ecommerce correlation-safe mapper task remains open for:
+
+- cutting mounted staged storefront availability composition over to the canonical adapter;
+- cutting or removing the dead-code legacy storefront checkout wrapper;
+- direct external callers that intentionally construct `InventoryService` as
+  `InventoryReservationPort` rather than using the canonical factory;
+- local availability/quantity request and owner outcomes beyond admission and tenant validation;
+- durable reservation local request, identity, not-found, stock, and ledger outcomes;
+- remaining payment execution and compensation consumers;
+- GraphQL customer reads and shared storefront customer lookup;
+- remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
+- compile, runtime, replay, restart, remote-port, and cross-transport evidence.
+
+No FBA or FFA status is promoted from source inspection alone.
+
+## Suggested maintainer checks
+
+These commands were intentionally not run by the implementation agent:
+
+```bash
+node scripts/verify/verify-inventory-availability-quantity-context.mjs
+node scripts/verify/verify-inventory-reservation-owner-context.mjs
+node scripts/verify/verify-commerce-checkout-plan-inventory-context.mjs
+node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
+cargo check -p rustok-inventory --lib
+cargo check -p rustok-commerce --lib
+```
