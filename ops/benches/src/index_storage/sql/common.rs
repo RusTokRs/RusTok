@@ -129,10 +129,7 @@ pub fn assert_full_link_identity_sql(sql: String) -> String {
             "variant_channel.source_entity_id"
         ),
         "variant_channel.target_entity = 'sales_channel' JOIN",
-        concat!(
-            "link.source_entity = 'product' AND ",
-            "link.source_locale"
-        ),
+        concat!("link.source_entity = 'product' AND ", "link.source_locale"),
     ] {
         assert!(
             !sql.contains(legacy),

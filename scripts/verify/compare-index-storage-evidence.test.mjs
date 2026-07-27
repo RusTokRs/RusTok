@@ -13,12 +13,6 @@ const resultDigestContract = 'ordered_length_prefixed_json_v1';
 const locales = ['en-US', 'ru-RU'];
 const prototypes = [
   { prototype: 'jsonb', schema: 'idx_bench_jsonb', relations: ['entity', 'link'] },
-  { prototype: 'typed_eav', schema: 'idx_bench_eav', relations: ['entity', 'field_value', 'link'] },
-  {
-    prototype: 'hot_projection',
-    schema: 'idx_bench_hot',
-    relations: ['link', 'product', 'sales_channel', 'variant'],
-  },
 ];
 const readWorkloads = [
   'status_equality',
@@ -380,14 +374,14 @@ test('rejects missing mutation WAL metric', () => {
 
 test('rejects candidate result drift from source oracle', () => {
   withFixture((root) => expectFailure(root, {
-    candidateDigest: { typed_eav: { status_equality: 'ffffffffffffffffffffffffffffffff' } },
-  }, /typed_eav\/status_equality differs from source oracle/));
+    candidateDigest: { jsonb: { status_equality: 'ffffffffffffffffffffffffffffffff' } },
+  }, /jsonb\/status_equality differs from source oracle/));
 });
 
-test('rejects maintenance EAV field cardinality drift', () => {
+test('rejects unexpected JSONB field cardinality', () => {
   withFixture((root) => expectFailure(root, {
-    fieldRows: { typed_eav: scaleValues['100k'].fields - 1 },
-  }, /typed_eav\/baseline maintenance cardinality mismatch/));
+    fieldRows: { jsonb: 1 },
+  }, /jsonb\/baseline maintenance cardinality mismatch/));
 });
 
 test('rejects report repetition drift', () => {

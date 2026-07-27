@@ -31,25 +31,25 @@ a rewrite goal.
 - Index must not read source-module tables directly.
 - `rustok-search` owns ranking, typo tolerance, autocomplete, synonyms, search
   UX, and external search-engine connectors.
-- M2 candidate schemas and benchmark DDL live under `ops/benches`; they are not
-  production migrations or runtime storage contracts.
+- The selected JSONB regression DDL lives under `ops/benches`; it is not a
+  production migration or runtime storage contract. Historical three-candidate
+  evidence is archived under `docs/evidence/`.
 
 ## Rewrite status
 
-- Current milestone: `M2 - PostgreSQL storage benchmark`
+- Current milestone: `M3 - PostgreSQL storage engine`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: complete
 - M1 generic domain/application core: complete
-- M2 read/query benchmark harness: implemented
-- M2 transactional mutation/WAL harness: implemented
-- M2 persistent churn/VACUUM harness: implemented
-- M2 replacement evidence and storage ADR: pending
+- M2 PostgreSQL storage benchmark: complete
+- M2 accepted storage model: JSONB
+- M2 rejected prototype cleanup: complete
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted.
-Production persistence is intentionally absent until M2 selects a physical
-storage model from PostgreSQL benchmark evidence.
+Production persistence is intentionally absent until M3 implements the accepted
+JSONB storage envelope.
 
 ## Current entry points
 
@@ -78,26 +78,16 @@ storage model from PostgreSQL benchmark evidence.
 
 ## M2 benchmark
 
-The operational harness in `ops/benches` generates deterministic Product,
-Variant, SalesChannel, locale, tag, price, timestamp, and link data. It compares
-JSONB, normalized typed EAV, and specialized hot-projection candidates using the
-same equality, range, multi-value, two-hop link, keyset, and exact-count
-workloads. Reports contain load time, schema size, PostgreSQL settings, executed
-SQL, result digests, and repeated full JSON `EXPLAIN ANALYZE` evidence.
+M2 compared JSONB, normalized typed EAV, and specialized hot projection with one
+deterministic Product/Variant/SalesChannel dataset and identical read, mutation,
+and maintenance workloads. The exact successful packets and comparison are
+archived under `docs/evidence/2026-07-27-postgresql-storage/`.
 
-A separate transactional mutation runner applies the same deterministic Product
-batch update/delete workload to every candidate, validates equal affected entity
-and link counts, records BUFFERS/WAL plans, and rolls each measured transaction
-back. It measures write-path amplification without corrupting later repetitions.
-
-A maintenance runner commits repeated update plus delete/reinsert cycles, checks
-that logical cardinality is preserved, captures baseline/after-churn table stats
-and schema size, executes ordinary `VACUUM (ANALYZE)`, and captures the same data
-again with VACUUM duration. It deliberately does not use `VACUUM FULL`.
-
-No candidate is selected until replacement `100k` and `1m` read, mutation, and
-maintenance reports from one commit are archived, compared, and recorded in the
-storage ADR.
+The accepted ADR selects JSONB. The typed-EAV and hot-projection implementations
+are removed; `ops/benches` retains only a JSONB selected-layout regression harness.
+It verifies source/JSONB result parity, transactional mutation evidence, committed
+churn, relation size, WAL, buffers, and ordinary `VACUUM (ANALYZE)` behavior. Its
+DDL remains benchmark-only and must not be copied into production migrations.
 
 ## Docs
 

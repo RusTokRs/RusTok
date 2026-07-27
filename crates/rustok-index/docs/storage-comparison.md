@@ -136,5 +136,5 @@ still evaluate:
 - production index, partition, migration, rebuild, and diagnostics rules;
 - the explicit rejection reason for each alternative.
 
-The canonical proposed decision record is
+The canonical accepted decision record is
 [`DECISIONS/2026-07-24-index-storage-layout.md`](../../../DECISIONS/2026-07-24-index-storage-layout.md).

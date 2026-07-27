@@ -300,8 +300,6 @@ async fn prototype_cardinality(
 ) -> Result<Cardinality> {
     let sql = match prototype {
         Prototype::Jsonb => "SELECT (SELECT count(*) FROM idx_bench_jsonb.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_jsonb.link)::bigint AS link_rows".to_owned(),
-        Prototype::TypedEav => "SELECT (SELECT count(*) FROM idx_bench_eav.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_eav.link)::bigint AS link_rows".to_owned(),
-        Prototype::HotProjection => "SELECT ((SELECT count(*) FROM idx_bench_hot.product) + (SELECT count(*) FROM idx_bench_hot.variant) + (SELECT count(*) FROM idx_bench_hot.sales_channel))::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_hot.link)::bigint AS link_rows".to_owned(),
     };
     cardinality_query(db, &sql).await
 }

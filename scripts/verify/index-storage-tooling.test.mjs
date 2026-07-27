@@ -18,8 +18,6 @@ const readWorkloads = [
 ];
 const prototypes = [
   { prototype: 'jsonb', relation: 'idx_bench_jsonb.entity' },
-  { prototype: 'typed_eav', relation: 'idx_bench_eav.entity' },
-  { prototype: 'hot_projection', relation: 'idx_bench_hot.product' },
 ];
 const databaseMetadata = () => ({
   version: 'PostgreSQL 16 fixture',
