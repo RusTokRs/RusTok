@@ -12,6 +12,7 @@ chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-iggy = { workspace = true, optional = true }
 rustok-index = { workspace = true, optional = true }
 rustok-outbox.workspace = true
 sea-orm.workspace = true
@@ -26,6 +27,7 @@ uuid.workspace = true
 default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
 index = ["dep:rustok-index"]
+index-consumer = ["index", "dep:rustok-iggy"]
 
 [dev-dependencies]
 tokio.workspace = true
