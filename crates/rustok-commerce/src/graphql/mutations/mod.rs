@@ -4,6 +4,7 @@ use super::marketplace_financial::MarketplaceFinancialMutation;
 
 #[path = "safe_cart.rs"]
 pub mod cart;
+#[allow(dead_code)]
 #[path = "safe_helpers.rs"]
 mod cart_safe_helpers;
 #[path = "typed_line_item_helpers.rs"]
@@ -16,6 +17,7 @@ pub mod fulfillment;
 mod safe_order_helpers_impl;
 #[path = "layered_order_helpers.rs"]
 pub mod helpers;
+#[allow(dead_code)]
 #[path = "safe_legacy_helpers.rs"]
 mod legacy_helpers;
 pub mod pricing;
