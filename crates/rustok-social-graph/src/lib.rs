@@ -13,6 +13,8 @@ pub mod index;
 #[cfg(feature = "index-consumer")]
 pub mod index_consumer;
 #[cfg(feature = "index-consumer")]
+mod index_dlq_message_id;
+#[cfg(feature = "index-consumer")]
 pub mod index_dlq_receipt;
 pub mod maintenance;
 pub mod migrations;
