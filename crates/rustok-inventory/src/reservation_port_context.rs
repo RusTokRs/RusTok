@@ -120,12 +120,17 @@ fn map_inventory_reservation_local_port_error(
     error: PortError,
 ) -> PortError {
     let local_operation = match (error.code.as_str(), error.message.as_str()) {
-        ("inventory.validation", "inventory request is invalid") => match operation {
-            AVAILABILITY_OPERATION => "validate_availability_request",
-            RESERVE_OPERATION => "validate_reservation_request",
-            RELEASE_OPERATION => "validate_reservation_release_request",
-            _ => return error,
-        },
+        ("inventory.validation", "inventory request is invalid") => {
+            if operation == AVAILABILITY_OPERATION {
+                "validate_availability_request"
+            } else if operation == RESERVE_OPERATION {
+                "validate_reservation_request"
+            } else if operation == RELEASE_OPERATION {
+                "validate_reservation_release_request"
+            } else {
+                return error;
+            }
+        }
         ("inventory.variant_not_found", "inventory variant was not found") => "load_variant",
         (
             "inventory.insufficient_inventory",
