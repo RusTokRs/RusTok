@@ -13,7 +13,8 @@ pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
 }
 
 pub fn with_count(template: String, count: u64) -> String {
-    template.replace("{count}", count.to_string().as_str())
+    let count = count.to_string();
+    template.replace("{count}", count.as_str())
 }
 
 #[cfg(test)]
