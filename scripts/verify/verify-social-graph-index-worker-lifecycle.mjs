@@ -147,9 +147,15 @@ for (const marker of [
   "rustok_runtime_consumer_in_flight",
   "rustok_runtime_consumer_in_flight_started_timestamp_seconds",
   "rustok_runtime_consumer_last_success_timestamp_seconds",
-  "rustok_runtime_consumer_source_offset",
 ]) {
   requireText("runtime consumer telemetry", files.telemetry, marker);
+}
+for (const forbiddenMetric of [
+  "rustok_runtime_consumer_source_offset",
+  "rustok_runtime_consumer_source_partition",
+  "rustok_runtime_consumer_lag",
+]) {
+  forbidText("runtime consumer telemetry", files.telemetry, forbiddenMetric);
 }
 
 for (const marker of [
@@ -253,5 +259,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness, shared Prometheus consumer metrics, bounded retries, result-first acknowledgement-only recovery, staged exact-byte DLQ-before-ack, and owner-table isolation are locked.",
+  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness, bounded Prometheus consumer metrics with source-position deferral, bounded retries, result-first acknowledgement-only recovery, staged exact-byte DLQ-before-ack, and owner-table isolation are locked.",
 );
