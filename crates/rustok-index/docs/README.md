@@ -89,15 +89,15 @@ matching entity envelope.
 
 The operational review evaluates genericity, schema evolution, index and
 migration management, mutation/query complexity, diagnostics, rebuild, and
-partitioning independently from benchmark timings. It treats the hot typed
-projection as a best-case baseline rather than an eligible canonical generic
-model and leaves the JSONB versus typed-EAV decision open for corrected scale
-evidence.
+partitioning independently from benchmark timings. It treats the hot typed projection as a best-case baseline rather than an
+eligible canonical generic model. Replacement same-commit evidence selected JSONB
+over typed EAV because JSONB preserved the generic boundary with materially lower
+size, load, mutation, keyset/count, and maintenance cost.
 
-The archived smoke and original 100k packets remain historical diagnostics. The
-storage ADR requires replacement same-commit `100k`/`1m` evidence generated after
-the identity corrections, the generated comparison, and explicit rejection
-reasons. No production migration may be added before the ADR is accepted.
+The archived smoke and original 100k packets remain historical diagnostics.
+Actions run `30222913450` produced validated replacement `100k`/`1m` packets and
+a decision-ready comparison on one commit. The accepted storage ADR selects JSONB;
+production migrations remain absent until M3 implements that model.
 
 ## Status
 
@@ -110,8 +110,8 @@ reasons. No production migration may be added before the ADR is accepted.
 - M2 read/query harness: `implemented`
 - M2 transactional mutation/WAL harness: `implemented`
 - M2 persistent churn/VACUUM harness: `implemented`
-- M2 replacement 100k/1m evidence and ADR: `pending`
-- Production migrations: intentionally absent pending M2 benchmark evidence
+- M2 replacement 100k/1m evidence and ADR: `complete`
+- Production migrations: intentionally absent pending M3 JSONB implementation
 
 ## Verification
 

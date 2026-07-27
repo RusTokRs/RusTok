@@ -45,13 +45,14 @@ Commits record which checks and evidence runs were not executed.
 - FBA status: `in_progress`
 - M0 code reset: `complete`
 - M1 domain/application core: `complete`
-- M2 read/query harness: `historical smoke/100k archived; replacement 100k/1m pending`
-- M2 transactional mutation/WAL harness: `historical smoke/100k archived; replacement 100k/1m pending`
-- M2 persistent churn/VACUUM harness: `historical smoke/100k archived; replacement 100k/1m pending`
+- M2 read/query harness: `replacement 100k/1m archived from run 30222913450`
+- M2 transactional mutation/WAL harness: `replacement 100k/1m archived from run 30222913450`
+- M2 persistent churn/VACUUM harness: `replacement 100k/1m archived from run 30222913450`
 - M2 deterministic PostgreSQL session contract: `complete`
 - M2 observed cross-report database metadata contract: `complete`
 - M2 comparison provenance contract: `complete`
-- Production persistence: intentionally absent until the M2 ADR selects a model
+- M2 storage decision: `JSONB accepted; rejected prototype deletion pending`
+- Production persistence: intentionally absent until M3 implements the accepted JSONB model
 
 The active production crate contains only the generic domain/application core,
 `IndexModule` metadata, and an intentionally empty migration source. Benchmark
@@ -270,19 +271,20 @@ migrations.
 - [x] Require matching repository, commit, PostgreSQL settings, repetitions,
       churn cycles, candidate order, and workload shape before `decision_ready`.
 - [x] Add fixture coverage that rejects mixed or incomplete cross-scale provenance.
-- [ ] Run and archive replacement 100k Product-locale row read, mutation, and
+- [x] Run and archive replacement 100k Product-locale row read, mutation, and
       maintenance evidence after the full-identity corrections.
-- [ ] Run and archive replacement 1m Product-locale row read, mutation, and
+- [x] Run and archive replacement 1m Product-locale row read, mutation, and
       maintenance evidence from the same commit as replacement 100k.
-- [ ] Compare warm/cold buffers, planner stability, execution latency, ingestion
+- [x] Compare warm/cold buffers, planner stability, execution latency, ingestion
       throughput, relation size, WAL, dead tuples, vacuum behavior, and operational
       complexity.
-- [ ] Record the selected model and rejected alternatives in an ADR.
+- [x] Record the selected model and rejected alternatives in an ADR.
 - [ ] Delete benchmark prototypes that are not selected.
 
-M2 remains open until replacement same-commit PostgreSQL evidence is archived and
-the storage ADR is accepted. Implementing or correcting the harness does not
-select a model.
+Replacement same-commit PostgreSQL evidence is archived and the accepted ADR
+selects JSONB as canonical generic storage. M2 remains open only for deletion of
+the rejected typed-EAV and hot-projection benchmark prototypes; implementing or
+correcting the harness alone did not select the model.
 
 ### M3 - PostgreSQL storage engine
 

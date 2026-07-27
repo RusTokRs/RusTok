@@ -8,12 +8,12 @@
 - Persistent churn/VACUUM harness: implemented with committed cycles
 - PostgreSQL session metadata contract: implemented across all three reports
 - Smoke evidence automation: implemented in `.github/workflows/index-storage-smoke.yml`
-- Production migrations: intentionally absent
+- Production migrations: intentionally absent pending M3 implementation
 - Smoke evidence: historical harness-sanity packet from Actions run `30041091121`
 - 100k evidence: historical diagnostic packet from Actions run `30051321255`
-- Replacement evidence: same-commit 100k and 1m packets pending after full-identity corrections
-- 1m evidence: enabled on `INDEX_BENCH_LARGE_RUNNER` when configured, otherwise `ubuntu-latest`, with a fail-closed 35 GB free-disk check
-- Storage decision ADR: Proposed; acceptance waits on replacement 100k/1m evidence and the generated comparison
+- Replacement evidence: validated same-commit 100k and 1m packets from Actions run `30222913450` on `eae5f74241e9431bffe2fd8c43cd046fc1c1f679`
+- 1m evidence: validated on `ubuntu-latest` after the fail-closed 35 GB free-disk check
+- Storage decision ADR: Accepted; JSONB is the canonical generic entity storage model
 
 ## Goal
 

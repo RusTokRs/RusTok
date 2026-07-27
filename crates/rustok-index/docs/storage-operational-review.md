@@ -188,6 +188,17 @@ This result narrows the ADR decision boundary but does not choose a winner:
 4. the accepted ADR must cite replacement same-commit `100k` and `1m` packets
    generated after the full-identity corrections.
 
+## Accepted decision
+
+The replacement same-commit run `30222913450` completed the validated `100k`,
+`1m`, and decision-ready comparison on commit
+`eae5f74241e9431bffe2fd8c43cd046fc1c1f679`. The accepted ADR selects JSONB
+entity rows as canonical generic storage. Typed EAV did not produce a decisive
+measured advantage over its additional row, join, mutation, and maintenance
+surface. Hot projection remains ineligible as canonical storage because it
+hard-codes source-specific schemas; it may only return as a separately measured
+derived projection.
+
 ## ADR completion checklist
 
 Before accepting the storage ADR:

@@ -101,6 +101,9 @@ success alone is not permission to select a model. Reviewers must compare buffer
 planner stability, latency, ingestion, relation size, WAL, dead tuples, VACUUM,
 and operational complexity across both scales.
 
-M2 remains open until the replacement packets are archived, the comparison is reviewed, and the ADR is accepted.
-Only after that decision may the rejected prototype implementations and schemas
-be deleted.
+The canonical replacement run is `30222913450` on commit
+`eae5f74241e9431bffe2fd8c43cd046fc1c1f679`. Both validated packets, the
+decision-ready comparison, and the accepted decision are archived under
+`docs/evidence/2026-07-27-postgresql-storage/`. The accepted ADR selects JSONB.
+M2 remains open only until the rejected typed-EAV and hot-projection benchmark
+implementations and schemas are deleted.
