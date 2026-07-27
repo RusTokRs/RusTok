@@ -19,7 +19,7 @@ in `HostRuntimeContext`. Reads carry a five-second deadline. Group-state writes
 additionally carry the caller-supplied idempotency key. Transport request DTOs contain
 no tenant, recipient, or user identity field.
 
-`NotificationsView` renders the owner-backed grouped inbox with:
+`NotificationsView` now renders the owner-backed grouped inbox with:
 
 - an exact unread-count badge;
 - SSR bootstrap loading plus explicit empty and unavailable states;
