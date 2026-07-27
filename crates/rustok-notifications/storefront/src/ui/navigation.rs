@@ -14,18 +14,17 @@ pub fn NotificationNavigation() -> impl IntoView {
     let locale = route_context.locale.clone();
     let href = route_context.module_route_base("notifications");
     let auth = use_context::<AuthContext>();
-    let access_token = auth.as_ref().and_then(AuthContext::get_token);
-    let tenant_slug = auth
-        .as_ref()
-        .and_then(AuthContext::get_tenant)
-        .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
-    let context = NotificationNavigationTransportContext::new(access_token, tenant_slug);
+    let environment_tenant = option_env!("RUSTOK_TENANT_SLUG").map(str::to_string);
     let unread = Resource::new_blocking(
-        || (),
-        move |_| {
-            let context = context.clone();
-            async move { load_notification_navigation_unread_count(context).await }
+        move || {
+            let access_token = auth.as_ref().and_then(AuthContext::get_token);
+            let tenant_slug = auth
+                .as_ref()
+                .and_then(AuthContext::get_tenant)
+                .or_else(|| environment_tenant.clone());
+            NotificationNavigationTransportContext::new(access_token, tenant_slug)
         },
+        move |context| async move { load_notification_navigation_unread_count(context).await },
     );
     let link_label = t(
         locale.as_deref(),
@@ -51,15 +50,16 @@ pub fn NotificationNavigation() -> impl IntoView {
                                 ),
                                 count.unread_count,
                             );
+                            let aria_label = if count.unread_count > 0 {
+                                format!("{link_label}. {unread_label}")
+                            } else {
+                                link_label.clone()
+                            };
                             view! {
                                 <a
                                     class="inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                                     href=href
-                                    aria-label=if count.unread_count > 0 {
-                                        format!("{link_label}. {unread_label}")
-                                    } else {
-                                        link_label.clone()
-                                    }
+                                    aria-label=aria_label
                                     data-notification-navigation="true"
                                 >
                                     <span>{link_label}</span>
