@@ -52,13 +52,18 @@ bounded, dry-run capable, and page-atomic.
 The first approved consumer is the generic `rustok-index` relation projection. A
 feature-gated Social Graph owner adapter maps the sealed event to an `IndexMutation`:
 active revisions upsert a non-localized relation record, inactive revisions create
-a tombstone, and the relation revision is the Index `source_version`. The optional
-`index-consumer` runtime now opens a persistent typed-event group, registers the
-owner schema, applies through the Index inbox, and acknowledges only after an
-`Applied`, `Duplicate`, or `StaleIgnored` durable result. Bounded Social Graph replay
-uses the same result-first path for repair. Host startup/shutdown, retry/DLQ policy,
-and retained runtime evidence remain pending. None of this moves privacy policy or
-relation authority out of Social Graph.
+a tombstone, and the relation revision is the Index `source_version`.
+
+The optional `index-consumer` runtime opens a persistent typed-event group and uses
+transport-neutral `SocialGraphIndexProjector`. For every relevant tenant envelope,
+the projector first persists or exactly recognizes the owner schema through
+Index-owned `PostgresSchemaRegistrationStore`, then applies through the Index inbox.
+The broker message is acknowledged only after schema registration and an `Applied`,
+`Duplicate`, or `StaleIgnored` mutation result are durable. Bounded Social Graph
+replay uses the same result-first path for repair. Unrelated sealed families do not
+register the schema or create a mutation. Host startup/shutdown, retry/DLQ policy,
+PostgreSQL concurrency, and retained multi-replica evidence remain pending. None of
+this moves privacy policy or relation authority out of Social Graph.
 
 The owner-local `rustok-social-graph-cli` provider exposes
 `social_graph receipt-cleanup`. Operators must supply tenant and positive retention
@@ -90,13 +95,13 @@ is enabled.
    author cards, storefront, and Customer Admin enrichment. Social Graph provides
    directional follow reads, revision-bearing state, receipt-aware commands,
    transactional events, bounded receipt cleanup, historical event replay, the
-   owner-local cleanup CLI, the owner-published Index mutation adapter, and a
-   result-first persistent Index apply/ack consumer.
+   owner-local cleanup CLI, the owner-published Index mutation adapter, Index-owned
+   tenant schema persistence, and a result-first persistent Index apply/ack consumer.
    **Remaining:** compose consumer host lifecycle and default-off enablement, add
    bounded retry/backoff and reviewed DLQ handling, prove bounded replay/rescan drift
    repair, and collect compiled/runtime evidence for privacy, receipts, cleanup CLI,
-   event relay/replay, Index restart/redelivery, storefront, Customer Admin,
-   Blog/Forum, and Media behavior.
+   event relay/replay, schema registration concurrency, Index restart/redelivery,
+   storefront, Customer Admin, Blog/Forum, and Media behavior.
    **Done when:** all presentation consumers expose one policy with retained
    evidence and no direct foreign-domain reads or projection-based authorization.
 
@@ -108,7 +113,8 @@ is enabled.
    must be built on Profiles-owned public profile records plus generic Index query
    contracts. Social Graph relation projection may support discovery/ranking
    inputs; it must not replace audience-bound profile authorization. Runtime UI and
-   query work waits for the Index query port and source schema registration.
+   query work waits for the Index query port and a Profiles-owned public-profile
+   source schema/adapter; the delivered relation schema is not that profile source.
    **Remaining:** execute SSR/hydrate/GraphQL route, auth, i18n, Media
    direct/proxy/fallback, mutation conflict, durable receipt, relation-event, and
    accessibility evidence.
@@ -124,8 +130,8 @@ is enabled.
    **Status:** source-complete for stable Profiles operations, Social Graph command
    telemetry, durable receipts, bounded receipt maintenance, transactional events,
    bounded event replay, owner-local receipt-cleanup CLI composition, sealed
-   event-to-Index conversion, schema registration, durable Index apply/terminal
-   recognition, and result-first acknowledgement.
+   event-to-Index conversion, persisted tenant schema registration, durable Index
+   apply/terminal recognition, and result-first acknowledgement.
    **Remaining:** host lifecycle/readiness/shutdown and retry/DLQ composition,
    deployment retention-window/cadence approval, PostgreSQL concurrency/retention/
    replay and rollback evidence, and retained runtime evidence.
@@ -136,9 +142,9 @@ is enabled.
 
 - Reconciled superseded draft PR #2237 and preserved its receipts, cleanup, event,
   replay, CLI, migration, topology, lockfile, and plan work in a fresh branch.
-- Rechecked the branch against current `main`; four intervening commits affecting
-  Forum, Index evidence, Commerce, and Inventory touch disjoint paths and remain
-  outside this change.
+- Rechecked the branch against current `main`; intervening Forum, Index evidence,
+  Commerce, Inventory, and benchmark changes touch disjoint paths or were carried
+  forward from the current `main` copy before editing shared Index documentation.
 - Rechecked privacy-before-presentation, bounded followers-only reads, owner-scoped
   follow writes, Media-owned descriptors, optimistic revision recovery, and no
   automatic write retry.
@@ -151,11 +157,15 @@ is enabled.
 - Added feature-gated Social Graph schema/mutation conversion using relation id as
   entity identity and positive relation revision as Index source version. Active
   state upserts; inactive state writes a tombstone.
-- Added optional persistent typed-event consumption with owner schema registration,
-  Index inbox apply/duplicate/stale recognition, serialized receive/apply/ack, and
-  unrelated sealed-family handling on the shared domain topic.
-- Broker acknowledgement now follows the durable Index result. Apply or ack failure
-  remains replayable; bounded owner replay uses the same monotonic repair path.
+- Added generic Index-owned tenant schema registration with exact idempotency,
+  PostgreSQL identity locking, monotonic version/conflict/retired guards, SQLite
+  contract evidence, and a no-direct-source-write boundary.
+- Added transport-neutral Social Graph projector and optional persistent typed-event
+  consumption with schema persistence, Index inbox apply/duplicate/stale recognition,
+  serialized receive/apply/ack, and unrelated sealed-family handling.
+- Broker acknowledgement follows both durable schema and mutation results. Register,
+  apply, or ack failure remains replayable; bounded owner replay uses the same
+  monotonic repair path.
 - Host lifecycle, retry/backoff, DLQ, compilation, tests, formatters, source
   verifiers, PostgreSQL/multi-replica runs, and runtime evidence remain maintainer-run
   or pending.
@@ -169,6 +179,9 @@ is enabled.
 - `cargo test -p rustok-profiles-storefront`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-events --all-targets`
 - `cargo test -p rustok-events --test social_graph_contracts -- --nocapture`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
+- `cargo test -p rustok-index schema_registration --lib -- --nocapture`
+- `node scripts/verify/verify-index-schema-registration.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets`
 - `cargo test -p rustok-social-graph --features index index::tests -- --nocapture`
@@ -214,6 +227,7 @@ is enabled.
 12. Index/search projections are optional consumers. They may use sealed owner events,
     generic Index contracts, monotonic source versions, and bounded owner replay;
     they must never authorize profile visibility or read Social Graph tables.
-13. Durable projection workers must persist or terminally recognize an owner-specific
-    result before broker acknowledgement; projection-based authorization is forbidden.
+13. Durable projection workers persist or exactly recognize the tenant schema and
+    owner-specific mutation result before broker acknowledgement. Direct source writes
+    to Index tables and projection-based authorization are forbidden.
 14. Update Profiles and affected owner docs with every boundary change.
