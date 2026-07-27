@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
@@ -9,6 +8,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 const MAX_IDENTITY_BYTES: usize = 191;
+const MAX_LEASE_SECONDS: u64 = 86_400;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SocialGraphIndexDlqReceiptState {
@@ -86,12 +86,7 @@ impl SocialGraphIndexDlqIdentity {
                 reason: "must not be empty",
             });
         }
-        i64::try_from(source_offset).map_err(|_| {
-            SocialGraphIndexDlqReceiptError::InvalidIdentity {
-                field: "source_offset",
-                reason: "exceeds the durable receipt range",
-            }
-        })?;
+        source_offset_i64(source_offset)?;
 
         Ok(Self {
             tenant_id,
@@ -204,19 +199,7 @@ impl SocialGraphIndexDlqReceiptStore {
                 reason: "must not be nil",
             });
         }
-        let lease_duration = chrono::Duration::from_std(lease_duration).map_err(|_| {
-            SocialGraphIndexDlqReceiptError::InvalidIdentity {
-                field: "lease_duration",
-                reason: "is out of range",
-            }
-        })?;
-        if lease_duration <= chrono::Duration::zero() {
-            return Err(SocialGraphIndexDlqReceiptError::InvalidIdentity {
-                field: "lease_duration",
-                reason: "must be positive",
-            });
-        }
-        let lease_expires_at = Utc::now() + lease_duration;
+        let lease_seconds = validate_lease_duration(lease_duration)?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
         let result = self
@@ -226,7 +209,7 @@ impl SocialGraphIndexDlqReceiptStore {
                 stable_error_code,
                 projection_attempt_count,
                 publisher_id,
-                lease_expires_at,
+                lease_seconds,
             )
             .await;
         match result {
@@ -248,7 +231,7 @@ impl SocialGraphIndexDlqReceiptStore {
         stable_error_code: &str,
         projection_attempt_count: u32,
         publisher_id: Uuid,
-        lease_expires_at: DateTime<Utc>,
+        lease_seconds: u64,
     ) -> Result<SocialGraphIndexDlqPublishClaim, SocialGraphIndexDlqReceiptError> {
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
@@ -301,7 +284,12 @@ impl SocialGraphIndexDlqReceiptStore {
 
         let mut claim_values = vec![
             uuid_value(publisher_id, backend),
-            lease_expires_at.into(),
+            i64::try_from(lease_seconds)
+                .map_err(|_| SocialGraphIndexDlqReceiptError::InvalidIdentity {
+                    field: "lease_duration",
+                    reason: "is out of range",
+                })?
+                .into(),
         ];
         claim_values.extend(receipt_key_values(identity, backend));
         let claimed = transaction
@@ -493,6 +481,25 @@ fn validate_identity_part(
     Ok(())
 }
 
+fn validate_lease_duration(
+    lease_duration: Duration,
+) -> Result<u64, SocialGraphIndexDlqReceiptError> {
+    if lease_duration.subsec_nanos() != 0 {
+        return Err(SocialGraphIndexDlqReceiptError::InvalidIdentity {
+            field: "lease_duration",
+            reason: "must be a whole number of seconds",
+        });
+    }
+    let seconds = lease_duration.as_secs();
+    if seconds == 0 || seconds > MAX_LEASE_SECONDS {
+        return Err(SocialGraphIndexDlqReceiptError::InvalidIdentity {
+            field: "lease_duration",
+            reason: "must be between 1 and 86400 seconds",
+        });
+    }
+    Ok(seconds)
+}
+
 fn ensure_supported_backend(
     backend: DbBackend,
 ) -> Result<(), SocialGraphIndexDlqReceiptError> {
@@ -580,8 +587,9 @@ fn select_receipt_sql(backend: DbBackend, lock: bool) -> String {
 
 fn claim_receipt_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
+    let lease_expires = lease_expires_expression(backend, 2);
     format!(
-        "UPDATE social_graph_index_dlq_receipts SET state = 'publishing', publisher_id = {prefix}1, lease_expires_at = {prefix}2, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}3 AND consumer_group = {prefix}4 AND event_id = {prefix}5 AND (state = 'reserved' OR (state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP))"
+        "UPDATE social_graph_index_dlq_receipts SET state = 'publishing', publisher_id = {prefix}1, lease_expires_at = {lease_expires}, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}3 AND consumer_group = {prefix}4 AND event_id = {prefix}5 AND (state = 'reserved' OR (state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP))"
     )
 }
 
@@ -606,9 +614,67 @@ fn mark_acknowledged_sql(backend: DbBackend) -> String {
     )
 }
 
+fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
+    let prefix = placeholder_prefix(backend);
+    match backend {
+        DbBackend::Postgres => {
+            format!("CURRENT_TIMESTAMP + ({prefix}{parameter} * INTERVAL '1 second')")
+        }
+        DbBackend::Sqlite => {
+            format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
+        }
+        _ => unreachable!("unsupported database backend was validated"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use sea_orm::Database;
+
     use super::*;
+
+    fn identity(tenant_id: Uuid, event_id: Uuid, payload: Vec<u8>) -> SocialGraphIndexDlqIdentity {
+        SocialGraphIndexDlqIdentity::new(
+            tenant_id,
+            event_id,
+            "rustok-social-graph-index",
+            "rustok",
+            "domain",
+            1,
+            42,
+            payload,
+        )
+        .unwrap()
+    }
+
+    async fn sqlite_store() -> SocialGraphIndexDlqReceiptStore {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE social_graph_index_dlq_receipts (\
+                tenant_id TEXT NOT NULL,\
+                consumer_group TEXT NOT NULL,\
+                event_id TEXT NOT NULL,\
+                source_stream TEXT NOT NULL,\
+                source_topic TEXT NOT NULL,\
+                source_partition INTEGER NOT NULL,\
+                source_offset INTEGER NOT NULL,\
+                payload BLOB NOT NULL,\
+                stable_error_code TEXT NOT NULL,\
+                projection_attempt_count INTEGER NOT NULL,\
+                state TEXT NOT NULL,\
+                publisher_id TEXT,\
+                lease_expires_at TEXT,\
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                published_at TEXT,\
+                acknowledged_at TEXT,\
+                PRIMARY KEY (tenant_id, consumer_group, event_id)\
+            );",
+        )
+        .await
+        .unwrap();
+        SocialGraphIndexDlqReceiptStore::new(db)
+    }
 
     #[test]
     fn identity_rejects_missing_partition_and_payload() {
@@ -649,5 +715,93 @@ mod tests {
             SocialGraphIndexDlqReceiptState::Published
         );
         assert!(SocialGraphIndexDlqReceiptState::parse("unknown").is_err());
+    }
+
+    #[tokio::test]
+    async fn receipt_claim_publish_and_acknowledge_are_idempotent() {
+        let store = sqlite_store().await;
+        let identity = identity(Uuid::new_v4(), Uuid::new_v4(), vec![1, 2, 3]);
+        let first_publisher = Uuid::new_v4();
+        let second_publisher = Uuid::new_v4();
+        assert_eq!(
+            store
+                .reserve_and_claim(
+                    &identity,
+                    "social_graph.index.envelope_invalid",
+                    3,
+                    first_publisher,
+                    Duration::from_secs(30),
+                )
+                .await
+                .unwrap(),
+            SocialGraphIndexDlqPublishClaim::Claimed
+        );
+        assert_eq!(
+            store
+                .reserve_and_claim(
+                    &identity,
+                    "social_graph.index.envelope_invalid",
+                    3,
+                    second_publisher,
+                    Duration::from_secs(30),
+                )
+                .await
+                .unwrap(),
+            SocialGraphIndexDlqPublishClaim::Busy
+        );
+        store
+            .mark_published(&identity, first_publisher)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .reserve_and_claim(
+                    &identity,
+                    "social_graph.index.envelope_invalid",
+                    3,
+                    second_publisher,
+                    Duration::from_secs(30),
+                )
+                .await
+                .unwrap(),
+            SocialGraphIndexDlqPublishClaim::AlreadyPublished
+        );
+        store.mark_acknowledged(&identity).await.unwrap();
+        assert_eq!(
+            store
+                .reserve_and_claim(
+                    &identity,
+                    "social_graph.index.envelope_invalid",
+                    3,
+                    second_publisher,
+                    Duration::from_secs(30),
+                )
+                .await
+                .unwrap(),
+            SocialGraphIndexDlqPublishClaim::AlreadyAcknowledged
+        );
+    }
+
+    #[tokio::test]
+    async fn receipt_rejects_same_key_with_different_source_bytes() {
+        let store = sqlite_store().await;
+        let tenant_id = Uuid::new_v4();
+        let event_id = Uuid::new_v4();
+        let original = identity(tenant_id, event_id, vec![1, 2, 3]);
+        store
+            .reserve_and_claim(
+                &original,
+                "social_graph.index.envelope_invalid",
+                1,
+                Uuid::new_v4(),
+                Duration::from_secs(30),
+            )
+            .await
+            .unwrap();
+        let conflicting = identity(tenant_id, event_id, vec![9, 9, 9]);
+        assert!(matches!(
+            store.find(&conflicting).await,
+            Err(SocialGraphIndexDlqReceiptError::IdentityConflict)
+        ));
     }
 }
