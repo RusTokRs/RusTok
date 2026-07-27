@@ -2,6 +2,41 @@
   "schema_version": 1,
   "contracts": [
     {
+      "id": "social-graph-relations-bootstrap",
+      "migration": "m20260723_000001_create_social_graph_relations",
+      "mode": "none",
+      "owner": "rustok-social-graph",
+      "reason": "Creates the authoritative Social Graph relation table and indexes as new owner storage; no legacy Social Graph relation table exists in the platform migration plan from which rows could be truthfully backfilled"
+    },
+    {
+      "id": "social-graph-follow-relation-kind",
+      "migration": "m20260725_000002_add_follow_relation_kind",
+      "mode": "none",
+      "owner": "rustok-social-graph",
+      "reason": "Expands the relation-kind constraint to admit follow while preserving existing block and mute rows unchanged; the SQLite table rebuild copies every existing relation field without semantic conversion"
+    },
+    {
+      "id": "social-graph-command-receipts-bootstrap",
+      "migration": "m20260726_000003_create_command_receipts",
+      "mode": "none",
+      "owner": "rustok-social-graph",
+      "reason": "Creates empty durable idempotency receipt storage for future relation commands; historical request identities and committed response snapshots do not exist and must not be fabricated"
+    },
+    {
+      "id": "profiles-tables-bootstrap",
+      "migration": "m20260326_000001_create_profiles_tables",
+      "mode": "none",
+      "owner": "rustok-profiles",
+      "reason": "Creates new Profiles owner tables for public profile, translation, and visibility state; no legacy Profiles table exists in the exported platform plan from which rows could be truthfully backfilled"
+    },
+    {
+      "id": "profiles-tags-bootstrap",
+      "migration": "m20260330_000002_create_profile_tags",
+      "mode": "none",
+      "owner": "rustok-profiles",
+      "reason": "Creates new owner-local profile tag tables and indexes; no prior platform tag storage exists and therefore no historical rows require conversion"
+    },
+    {
       "id": "tenant-locale-policy-invariants",
       "migration": "m20260726_000001_enforce_tenant_locale_policy",
       "mode": "none",

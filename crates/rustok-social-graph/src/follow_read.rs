@@ -1,9 +1,10 @@
 use async_trait::async_trait;
-use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{SocialGraphError, SocialGraphPairRequest, SocialGraphService, SocialRelationKind};
+use crate::ports::map_owner_error;
+use crate::{SocialGraphPairRequest, SocialGraphService, SocialRelationKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SocialGraphFollowState {
@@ -74,31 +75,4 @@ fn validate_source_actor(context: &PortContext, source_user_id: Uuid) -> Result<
         ));
     }
     Ok(())
-}
-
-fn map_owner_error(error: SocialGraphError) -> PortError {
-    match error {
-        SocialGraphError::InvalidTenantId => PortError::validation(
-            "social_graph.tenant_id_invalid",
-            "social graph tenant identifier is invalid",
-        ),
-        SocialGraphError::SelfRelation => PortError::validation(
-            "social_graph.self_relation",
-            "social graph relation cannot target the source user",
-        ),
-        SocialGraphError::RevisionConflict => PortError::conflict(
-            "social_graph.revision_conflict",
-            "social graph relation revision changed before the command was applied",
-        ),
-        SocialGraphError::SourceActorMismatch => PortError::forbidden(
-            "social_graph.source_actor_mismatch",
-            "social graph command actor does not own the relation source",
-        ),
-        SocialGraphError::Database(_) => PortError::new(
-            PortErrorKind::Unavailable,
-            "social_graph.storage_unavailable",
-            "social graph storage is temporarily unavailable",
-            true,
-        ),
-    }
 }

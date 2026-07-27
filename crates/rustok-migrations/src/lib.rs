@@ -57,6 +57,20 @@ mod rbac_system_role_repair_tests;
 
 pub struct Migrator;
 
+// The compatibility gate freezes every merged migration plan as an immutable prefix.
+// New owner migrations extend this explicit release-order tail instead of relying on
+// lexical insertion, which could rewrite an already published plan.
+const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
+    "m20260726_000001_enforce_tenant_locale_policy",
+    "m20260326_000001_create_profiles_tables",
+    "m20260330_000002_create_profile_tags",
+    "m20260721_000009_expand_profile_locale_storage_columns",
+    "m20260721_000010_move_profile_display_name_to_translations",
+    "m20260723_000001_create_social_graph_relations",
+    "m20260725_000002_add_follow_relation_kind",
+    "m20260726_000003_create_command_receipts",
+];
+
 struct ModuleMigrationSource {
     slug: &'static str,
     source: &'static dyn rustok_core::MigrationSource,
@@ -66,6 +80,10 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
     ModuleMigrationSource {
         slug: "modules",
         source: &rustok_modules::ModulesModule,
+    },
+    ModuleMigrationSource {
+        slug: "tenant",
+        source: &rustok_tenant::TenantModule,
     },
     ModuleMigrationSource {
         slug: "alloy",
@@ -196,6 +214,14 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
         source: &rustok_media::MediaModule,
     },
     ModuleMigrationSource {
+        slug: "profiles",
+        source: &rustok_profiles::ProfilesModule,
+    },
+    ModuleMigrationSource {
+        slug: "social_graph",
+        source: &rustok_social_graph::SocialGraphModule,
+    },
+    ModuleMigrationSource {
         slug: "translation",
         source: &rustok_translation::TranslationModule,
     },
@@ -223,6 +249,52 @@ fn module_dependency_descriptors(
     descriptors: Vec<rustok_core::MigrationDependencyDescriptor>,
 ) -> impl Iterator<Item = MigrationDescriptor> {
     descriptors.into_iter().map(MigrationDescriptor::from)
+}
+
+fn move_migrations_to_append_only_tail(
+    migrations: &mut Vec<Box<dyn MigrationTrait>>,
+    names: &[&str],
+) -> Result<(), String> {
+    let mut tail = Vec::with_capacity(names.len());
+    for name in names {
+        let index = migrations
+            .iter()
+            .position(|migration| migration.name() == *name)
+            .ok_or_else(|| format!("append-only migration {name} is missing"))?;
+        tail.push(migrations.remove(index));
+    }
+    migrations.extend(tail);
+    Ok(())
+}
+
+fn validate_migration_dependency_order(
+    migrations: &[Box<dyn MigrationTrait>],
+    descriptors: &[MigrationDescriptor],
+) -> Result<(), String> {
+    let positions = migrations
+        .iter()
+        .enumerate()
+        .map(|(index, migration)| (migration.name().to_string(), index))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    for descriptor in descriptors {
+        let migration_index = *positions
+            .get(&descriptor.migration)
+            .ok_or_else(|| format!("migration {} is missing", descriptor.migration))?;
+        for dependency in &descriptor.after {
+            let dependency_index = *positions
+                .get(dependency)
+                .ok_or_else(|| format!("migration dependency {dependency} is missing"))?;
+            if dependency_index >= migration_index {
+                return Err(format!(
+                    "migration {} must run after dependency {}",
+                    descriptor.migration, dependency
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -281,6 +353,9 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_core::MigrationSource::migrations(
             &rustok_modules::ModulesModule,
         ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_tenant::TenantModule,
+        ));
         all.extend(rustok_auth::migrations::migrations());
         all.extend(rustok_core::MigrationSource::migrations(
             &rustok_rbac::RbacModule,
@@ -330,6 +405,12 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());
         all.extend(rustok_media::migrations::migrations());
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_profiles::ProfilesModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_social_graph::SocialGraphModule,
+        ));
         all.extend(rustok_translation::migrations::migrations());
         all.extend(rustok_iggy_connector::migrations::migrations());
         all.push(Box::new(
@@ -349,6 +430,10 @@ impl MigratorTrait for Migrator {
         all.sort_by(|a, b| a.name().cmp(b.name()));
         sort_migrations_by_dependencies(&mut all, &dependencies)
             .expect("migration dependency descriptors must be valid");
+        move_migrations_to_append_only_tail(&mut all, APPEND_ONLY_MIGRATION_TAIL)
+            .expect("append-only tail migrations must exist for platform plan placement");
+        validate_migration_dependency_order(&all, &dependencies)
+            .expect("append-only migration placement must preserve dependencies");
         all
     }
 }
@@ -462,7 +547,9 @@ fn sort_migrations_by_dependencies(
 
 #[cfg(test)]
 mod tests {
-    use super::{sort_migrations_by_dependencies, MigrationDescriptor, Migrator};
+    use super::{
+        sort_migrations_by_dependencies, MigrationDescriptor, Migrator, APPEND_ONLY_MIGRATION_TAIL,
+    };
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
 
@@ -477,6 +564,7 @@ mod tests {
             slugs,
             vec![
                 "modules",
+                "tenant",
                 "alloy",
                 "auth",
                 "rbac",
@@ -508,8 +596,32 @@ mod tests {
                 "search",
                 "taxonomy",
                 "workflow",
+                "media",
+                "profiles",
+                "social_graph",
+                "translation",
             ],
             "descriptor aggregation must cover every module crate whose migrations are included in the server migrator"
+        );
+    }
+
+    #[test]
+    fn migrator_preserves_append_only_migration_tail() {
+        let names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        let tail = names
+            .iter()
+            .rev()
+            .take(APPEND_ONLY_MIGRATION_TAIL.len())
+            .rev()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            tail, APPEND_ONLY_MIGRATION_TAIL,
+            "new owner migrations must remain an append-only dependency-ordered platform tail"
         );
     }
 

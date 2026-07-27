@@ -12,6 +12,8 @@ use crate::observability::{SocialGraphCommandOperation, SocialGraphCommandTimer}
 use crate::service::SocialGraphService;
 
 pub const MAX_SOCIAL_GRAPH_FOLLOW_TARGETS: usize = 100;
+pub const MAX_SOCIAL_GRAPH_RECEIPT_CLEANUP_BATCH: u32 = 1_000;
+pub const MAX_SOCIAL_GRAPH_RELATION_EVENT_REPLAY_BATCH: u32 = 1_000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SocialGraphPairRequest {
@@ -39,6 +41,34 @@ pub struct SetSocialRelationCommand {
     pub expected_revision: Option<i64>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SocialGraphReceiptCleanupCommand {
+    pub completed_before_unix_seconds: i64,
+    pub limit: u32,
+    pub dry_run: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SocialGraphReceiptCleanupResult {
+    pub matched_receipts: u64,
+    pub deleted_receipts: u64,
+    pub oldest_retained_completed_at_unix_seconds: Option<i64>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SocialGraphRelationEventReplayCommand {
+    pub after_relation_id: Option<Uuid>,
+    pub limit: u32,
+    pub dry_run: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SocialGraphRelationEventReplayResult {
+    pub selected_relations: u64,
+    pub published_events: u64,
+    pub next_after_relation_id: Option<Uuid>,
+}
+
 #[async_trait]
 pub trait SocialGraphCommandPort: Send + Sync {
     async fn set_relation(
@@ -46,6 +76,24 @@ pub trait SocialGraphCommandPort: Send + Sync {
         context: PortContext,
         command: SetSocialRelationCommand,
     ) -> Result<relation::Model, PortError>;
+}
+
+#[async_trait]
+pub trait SocialGraphReceiptMaintenancePort: Send + Sync {
+    async fn cleanup_completed_receipts(
+        &self,
+        context: PortContext,
+        command: SocialGraphReceiptCleanupCommand,
+    ) -> Result<SocialGraphReceiptCleanupResult, PortError>;
+}
+
+#[async_trait]
+pub trait SocialGraphRelationEventMaintenancePort: Send + Sync {
+    async fn replay_relation_state_events(
+        &self,
+        context: PortContext,
+        command: SocialGraphRelationEventReplayCommand,
+    ) -> Result<SocialGraphRelationEventReplayResult, PortError>;
 }
 
 #[async_trait]
@@ -113,15 +161,19 @@ impl SocialGraphCommandPort for SocialGraphService {
             timer.finish_failure(&error.code, error.retryable);
             return Err(error);
         }
+        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let actor_id = Uuid::parse_str(&context.actor.id).ok();
 
         let result = self
-            .set_relation_state(
+            .set_relation_state_with_receipt(
                 tenant_id,
+                actor_id,
                 command.source_user_id,
                 command.target_user_id,
                 command.relation_kind,
                 command.active,
                 command.expected_revision,
+                idempotency_key,
             )
             .await
             .map_err(map_owner_error);
@@ -210,7 +262,7 @@ impl SocialGraphPrivacyReadPort for SocialGraphService {
     }
 }
 
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+pub(crate) fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "social_graph.tenant_id_invalid",
@@ -231,7 +283,7 @@ fn validate_source_actor(context: &PortContext, source_user_id: Uuid) -> Result<
     Ok(())
 }
 
-fn map_owner_error(error: SocialGraphError) -> PortError {
+pub(crate) fn map_owner_error(error: SocialGraphError) -> PortError {
     match error {
         SocialGraphError::InvalidTenantId => PortError::validation(
             "social_graph.tenant_id_invalid",
@@ -248,6 +300,22 @@ fn map_owner_error(error: SocialGraphError) -> PortError {
         SocialGraphError::SourceActorMismatch => PortError::forbidden(
             "social_graph.source_actor_mismatch",
             "social graph command actor does not own the relation source",
+        ),
+        SocialGraphError::IdempotencyKeyInvalid => PortError::validation(
+            "social_graph.idempotency_key_invalid",
+            "social graph idempotency key must contain 1 to 191 bytes",
+        ),
+        SocialGraphError::IdempotencyConflict => PortError::conflict(
+            "social_graph.idempotency_conflict",
+            "social graph idempotency key is already bound to another command",
+        ),
+        SocialGraphError::CommandReceiptCorrupt => PortError::invariant_violation(
+            "social_graph.command_receipt_corrupt",
+            "social graph command receipt requires operator review",
+        ),
+        SocialGraphError::EventPublicationUnavailable => PortError::unavailable(
+            "social_graph.event_publication_unavailable",
+            "social graph relation event could not be persisted transactionally",
         ),
         SocialGraphError::Database(_) => PortError::new(
             PortErrorKind::Unavailable,

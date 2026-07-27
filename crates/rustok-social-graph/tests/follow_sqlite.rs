@@ -1,3 +1,5 @@
+mod support;
+
 use std::time::Duration;
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
@@ -5,7 +7,7 @@ use rustok_core::MigrationSource;
 use rustok_social_graph::{
     MAX_SOCIAL_GRAPH_FOLLOW_TARGETS, SetSocialRelationCommand, SocialGraphCommandPort,
     SocialGraphFollowBatchRequest, SocialGraphModule, SocialGraphPairRequest,
-    SocialGraphPrivacyReadPort, SocialGraphService, SocialRelationKind,
+    SocialGraphPrivacyReadPort, SocialRelationKind,
 };
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;
@@ -22,7 +24,7 @@ async fn follow_reads_are_directional_batched_and_actor_bound() {
     insert_identity(&db, tenant_id, followed_id).await;
     insert_identity(&db, tenant_id, other_id).await;
 
-    let service = SocialGraphService::new(db);
+    let service = support::write_service(db);
     SocialGraphCommandPort::set_relation(
         &service,
         user_context(tenant_id, actor_id, "follow-create"),
@@ -110,6 +112,7 @@ async fn setup() -> DatabaseConnection {
     )
     .await
     .expect("identity fixture should migrate");
+    support::migrate_outbox(&db).await;
     let manager = SchemaManager::new(&db);
     for migration in SocialGraphModule.migrations() {
         migration

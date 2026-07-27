@@ -18,5 +18,7 @@ pub fn generated_providers(runtime: &RuntimeComposition) -> Vec<Box<dyn CommandP
         rustok_rbac_cli::command_provider(runtime),
         // seed / seed
         rustok_installer_cli::command_provider(runtime),
+        // social_graph / social_graph
+        rustok_social_graph_cli::command_provider(runtime),
     ]
 }

@@ -5,6 +5,7 @@ mod forum_mention;
 mod marketplace_listing;
 mod marketplace_seller;
 mod schema;
+mod social_graph;
 mod types;
 pub mod validation;
 
@@ -25,6 +26,10 @@ pub use schema::{
     contract_event_envelope_json_schema, contract_event_payload_json_schema,
     domain_event_json_schema, event_contract_digests, event_envelope_json_schema,
 };
+pub use social_graph::{
+    SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS, SocialGraphRelationEvent,
+    social_graph_relation_event_schema,
+};
 pub use types::{DomainEvent, EventEnvelope, EventEnvelopeError};
 pub use validation::{EventValidationError, ValidateEvent};
 
@@ -36,6 +41,7 @@ pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
         .or_else(|| forum_mention_event_schema(event_type))
         .or_else(|| marketplace_listing_event_schema(event_type))
         .or_else(|| marketplace_seller_event_schema(event_type))
+        .or_else(|| social_graph_relation_event_schema(event_type))
 }
 
 pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
@@ -44,6 +50,7 @@ pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
         .chain(FORUM_MENTION_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_LISTING_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_SELLER_EVENT_SCHEMAS.iter())
+        .chain(SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS.iter())
 }
 
 #[cfg(test)]

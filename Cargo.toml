@@ -241,6 +241,7 @@ rustok-cart-storefront = { path = "crates/rustok-cart/storefront" }
 rustok-customer = { path = "crates/rustok-customer" }
 rustok-product = { path = "crates/rustok-product" }
 rustok-profiles = { path = "crates/rustok-profiles" }
+rustok-social-graph = { path = "crates/rustok-social-graph" }
 rustok-comments = { path = "crates/rustok-comments", default-features = false }
 rustok-region = { path = "crates/rustok-region" }
 rustok-pricing = { path = "crates/rustok-pricing" }
@@ -326,6 +327,7 @@ rustok-media = { path = "crates/rustok-media" }
 rustok-media-transport = { path = "crates/rustok-media-transport" }
 rustok-media-cli = { path = "crates/rustok-media/cli" }
 rustok-profiles-cli = { path = "crates/rustok-profiles/cli" }
+rustok-social-graph-cli = { path = "crates/rustok-social-graph-cli" }
 rustok-auth-cli = { path = "crates/rustok-auth/cli" }
 rustok-rbac-cli = { path = "crates/rustok-rbac/cli" }
 flex = { path = "crates/flex" }

@@ -10,6 +10,8 @@
 - `pub use crate::{EventContract, ContractEventPayload, ContractEventEnvelope, EventContractEnvelopeError}`
 - `pub use crate::{ForumMentionEvent, FORUM_MENTION_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS}`
+- `pub use crate::{MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS}`
+- `pub use crate::{SocialGraphRelationEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS}`
 - `ContractEventEnvelope::{payload, into_payload}` return only semantically validated typed payloads
 - `pub fn event_schema(event_type: &str) -> Option<&'static EventSchema>`
 - `pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema>`
@@ -18,6 +20,8 @@
 - `pub fn contract_event_payload_json_schema() -> serde_json::Value`
 - `pub fn contract_event_envelope_json_schema() -> serde_json::Value`
 - `pub fn event_contract_digests() -> EventContractDigests`
+- `cargo run -p rustok-events --example event_contract_digests [-- --write]`
+  prints or deliberately updates the committed release artifact.
 
 ## Events
 - Publishes: N/A (event contracts only).
@@ -25,6 +29,12 @@
 - Established root events use `DomainEvent`/`EventEnvelope`.
 - Bounded event families use sealed `EventContract` implementations and `ContractEventEnvelope`.
 - `ForumMentionEvent` defines v1 `forum.mention.user_added` and `forum.mention.audience_added` with source revision and target identity only.
+- `SocialGraphRelationEvent` defines v1 `social_graph.relation.state_changed`
+  as an authoritative fact for one persisted relation revision, with relation id,
+  source/target user ids, canonical kind, active state, and revision only. Tenant
+  and actor remain envelope metadata.
+- Social Graph may replay the same persisted revision through its bounded owner
+  maintenance port. This is at-least-once delivery, not a second mutation fact.
 - `DomainEvent::UserAccountRegistered` defines v1
   `user.account_registered` with only `user_id`; contact data remains private
   to the auth/user owner.
@@ -33,11 +43,17 @@
 - `rustok-telemetry`
 
 ## Common AI Mistakes
-- Changes payload/event-type without updating schema registry, contract tests, relay, and transport evidence.
+- Changes payload/event-type without updating schema registry, committed digest artifact, contract tests, relay, and transport evidence.
 - Continues to import event contracts from `rustok-core` instead of `rustok-events`.
 - Implements arbitrary external `EventContract` types; the trait is intentionally sealed.
 - Stores bounded-family payloads as untyped `serde_json::Value` instead of adding one typed `ContractEventPayload` family variant.
 - Adds contact data, source body or profile handle snapshots to Forum mention events instead of stable identities.
+- Adds idempotency keys, expected revisions, request context, claims, roles, locale,
+  channel, or receipt snapshots to Social Graph relation events.
+- Treats a replayed Social Graph relation fact as exactly-once or applies a lower
+  revision over a newer durable consumer result.
+- Lets a Social Graph consumer projection replace the owner relation table as the
+  drift-repair authority.
 - Reads a manually deserialized envelope payload without revalidating it.
 - Adds new compatibility aliases without architectural justification.
 
@@ -57,6 +73,11 @@
 - Root envelope trace identifiers must be non-empty and at most 512 bytes.
 - `payload` and `into_payload` fail closed when semantic or schema validation fails.
 - Forum mention events expose source revision and resolved user/audience identity only; contact and rendered content remain owner-private.
+- Social Graph relation events accept only non-nil distinct source/target ids,
+  canonical `block|mute|follow` kind, and a positive monotonic revision.
+- A Social Graph consumer applies by relation id plus monotonic revision, ignores
+  duplicate or lower revisions, persists its owner-specific result, and acknowledges
+  only after that result is durable. Social Graph remains authoritative for drift repair.
 - User-account registration events expose identity only; email addresses and
   every other contact attribute must not enter the shared event stream.
 - Marketplace listing events expose only stable identity/scope/version fields; moderation prose and arbitrary metadata remain owner-private.
