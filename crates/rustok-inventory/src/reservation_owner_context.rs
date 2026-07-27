@@ -44,9 +44,28 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
     ) -> Result<InventoryIdentityReservationSnapshot, PortError> {
         require_inventory_reservation_write_admission(&context, RESERVE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RESERVE_OPERATION)?;
-        self.inner
+        let diagnostic_context = context.clone();
+        let reservation_id = request.reservation_id;
+        let variant_id = Some(request.variant_id);
+        let quantity = Some(request.quantity);
+        let line_item_id = request.line_item_id;
+        let external_id_length = request.external_id.chars().count();
+        let result = self
+            .inner
             .reserve_inventory_by_identity(context, request)
-            .await
+            .await;
+        result.map_err(|error| {
+            map_inventory_reservation_identity_local_port_error(
+                &diagnostic_context,
+                RESERVE_OPERATION,
+                reservation_id,
+                variant_id,
+                quantity,
+                line_item_id,
+                external_id_length,
+                error,
+            )
+        })
     }
 
     async fn release_inventory_by_identity(
@@ -56,10 +75,150 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
     ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError> {
         require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RELEASE_OPERATION)?;
-        self.inner
+        let diagnostic_context = context.clone();
+        let reservation_id = request.reservation_id;
+        let external_id_length = request.external_id.chars().count();
+        let result = self
+            .inner
             .release_inventory_by_identity(context, request)
-            .await
+            .await;
+        result.map_err(|error| {
+            map_inventory_reservation_identity_local_port_error(
+                &diagnostic_context,
+                RELEASE_OPERATION,
+                reservation_id,
+                None,
+                None,
+                None,
+                external_id_length,
+                error,
+            )
+        })
     }
+}
+
+fn map_inventory_reservation_identity_local_port_error(
+    context: &PortContext,
+    operation: &'static str,
+    reservation_id: Uuid,
+    variant_id: Option<Uuid>,
+    quantity: Option<i32>,
+    line_item_id: Option<Uuid>,
+    external_id_length: usize,
+    error: PortError,
+) -> PortError {
+    let local_operation = match (error.code.as_str(), error.message.as_str()) {
+        (
+            "inventory.reservation_external_id_invalid",
+            "reservation external_id must contain 1 to 191 characters",
+        ) => "normalize_external_id",
+        (
+            "inventory.reservation_quantity_invalid",
+            "reservation quantity must be positive",
+        ) if operation == RESERVE_OPERATION => "validate_reservation_quantity",
+        ("inventory.variant_not_found", "inventory variant was not found") => "load_variant",
+        (
+            "inventory.state_not_found",
+            "variant has no configured inventory state",
+        ) if operation == RESERVE_OPERATION => "load_inventory_state",
+        (
+            "inventory.reservation_identity_conflict",
+            "reservation identity is already bound to different reservation data",
+        ) if operation == RESERVE_OPERATION => "validate_existing_reservation_identity",
+        (
+            "inventory.insufficient_inventory",
+            "insufficient inventory for reservation",
+        ) if operation == RESERVE_OPERATION => "reserve_available_stock",
+        (
+            "inventory.reservation_not_found",
+            "inventory reservation was not found",
+        ) if operation == RELEASE_OPERATION => "load_reservation",
+        (
+            "inventory.reservation_identity_conflict",
+            "reservation id is bound to another external identity",
+        ) if operation == RELEASE_OPERATION => "validate_release_external_identity",
+        (
+            "inventory.reservation_item_missing",
+            "reservation inventory item is missing",
+        ) if operation == RELEASE_OPERATION => "load_reservation_inventory_item",
+        (
+            "inventory.reservation_identity_conflict",
+            "reservation identity changed while acquiring the owner lock",
+        ) if operation == RELEASE_OPERATION => "revalidate_release_identity",
+        (
+            "inventory.reservation_ledger_inconsistent",
+            "inventory reservation ledger is inconsistent",
+        ) if operation == RELEASE_OPERATION => "release_reserved_quantity",
+        (
+            "inventory.available_quantity_overflow",
+            "inventory available quantity is outside the supported range",
+        ) => "calculate_available_quantity",
+        (
+            "inventory.database_unavailable",
+            "inventory storage is temporarily unavailable",
+        ) => "owner_storage",
+        _ => return error,
+    };
+    let technical_failure = matches!(
+        &error.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
+    );
+    if technical_failure {
+        tracing::error!(
+            error = ?error,
+            owner = INVENTORY_OWNER,
+            operation,
+            local_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            reservation_id = %reservation_id,
+            variant_id = ?variant_id,
+            request_quantity = ?quantity,
+            line_item_id = ?line_item_id,
+            external_id_length,
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = INVENTORY_RESERVATION_BOUNDARY,
+            "durable inventory reservation local technical outcome retained delegated context"
+        );
+    } else {
+        tracing::warn!(
+            error = ?error,
+            owner = INVENTORY_OWNER,
+            operation,
+            local_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            reservation_id = %reservation_id,
+            variant_id = ?variant_id,
+            request_quantity = ?quantity,
+            line_item_id = ?line_item_id,
+            external_id_length,
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = INVENTORY_RESERVATION_BOUNDARY,
+            "durable inventory reservation local outcome retained delegated context"
+        );
+    }
+    error
 }
 
 fn require_inventory_reservation_write_admission(
