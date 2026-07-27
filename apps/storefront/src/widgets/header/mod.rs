@@ -14,7 +14,7 @@ pub fn Header(
     nav_language: &'static str,
     cta_primary: &'static str,
     navigation_views: Vec<AnyView>,
-    action_views: Vec<AnyView>,
+    #[prop(optional)] action_views: Vec<AnyView>,
 ) -> impl IntoView {
     let links = build_header_links(locale.as_str());
     let navigation = if navigation_views.is_empty() {
