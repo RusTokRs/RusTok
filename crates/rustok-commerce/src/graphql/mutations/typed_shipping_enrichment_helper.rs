@@ -1,12 +1,12 @@
 use async_graphql::{ErrorExtensions, Result};
-use rustok_api::RequestContext;
-use rustok_fulfillment::FulfillmentError;
+use rustok_api::{PortContext, PortError, PortErrorKind, RequestContext};
+use rustok_fulfillment::ListShippingOptionProjectionsRequest;
 use uuid::Uuid;
 
 use crate::{
     dto::CartResponse,
     storefront_channel::normalize_public_channel_slug,
-    storefront_shipping::enrich_cart_delivery_groups_typed,
+    storefront_shipping::enrich_cart_delivery_groups_from_options,
 };
 
 const STOREFRONT_SHIPPING_ENRICHMENT_GRAPHQL_BOUNDARY: &str =
@@ -15,67 +15,66 @@ const STOREFRONT_SHIPPING_ENRICHMENT_GRAPHQL_BOUNDARY: &str =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ShippingEnrichmentFailureKind {
     Validation,
-    ShippingOptionNotFound,
-    FulfillmentNotFound,
-    LifecycleConflict,
+    NotFound,
+    Conflict,
+    Forbidden,
     StorageUnavailable,
+    Invariant,
 }
 
 #[derive(Debug)]
 struct ShippingEnrichmentFailure {
     kind: ShippingEnrichmentFailureKind,
-    internal_code: &'static str,
+    internal_code: String,
     internal_kind: &'static str,
     internal_retryable: bool,
-    owner_error: FulfillmentError,
+    owner_error: PortError,
 }
 
 impl ShippingEnrichmentFailure {
-    fn from_owner(error: FulfillmentError) -> Self {
-        let (kind, internal_code, internal_kind, internal_retryable) = match &error {
-            FulfillmentError::Validation(_) => (
+    fn from_owner(error: PortError) -> Self {
+        let (kind, internal_kind) = match &error.kind {
+            PortErrorKind::Validation => (
                 ShippingEnrichmentFailureKind::Validation,
-                "fulfillment.validation",
                 "validation",
-                false,
             ),
-            FulfillmentError::ShippingOptionNotFound(_) => (
-                ShippingEnrichmentFailureKind::ShippingOptionNotFound,
-                "fulfillment.shipping_option_not_found",
+            PortErrorKind::NotFound => (
+                ShippingEnrichmentFailureKind::NotFound,
                 "not_found",
-                false,
             ),
-            FulfillmentError::FulfillmentNotFound(_) => (
-                ShippingEnrichmentFailureKind::FulfillmentNotFound,
-                "fulfillment.fulfillment_not_found",
-                "not_found",
-                false,
-            ),
-            FulfillmentError::InvalidTransition { .. } => (
-                ShippingEnrichmentFailureKind::LifecycleConflict,
-                "fulfillment.invalid_transition",
+            PortErrorKind::Conflict => (
+                ShippingEnrichmentFailureKind::Conflict,
                 "conflict",
-                false,
             ),
-            FulfillmentError::Database(_) => (
+            PortErrorKind::Forbidden => (
+                ShippingEnrichmentFailureKind::Forbidden,
+                "forbidden",
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                 ShippingEnrichmentFailureKind::StorageUnavailable,
-                "fulfillment.database_unavailable",
                 "unavailable",
-                true,
+            ),
+            PortErrorKind::InvariantViolation => (
+                ShippingEnrichmentFailureKind::Invariant,
+                "invariant",
             ),
         };
 
         Self {
             kind,
-            internal_code,
+            internal_code: error.code.clone(),
             internal_kind,
-            internal_retryable,
+            internal_retryable: error.retryable,
             owner_error: error,
         }
     }
 
-    fn technical_owner_error(&self) -> Option<&FulfillmentError> {
-        if matches!(self.kind, ShippingEnrichmentFailureKind::StorageUnavailable) {
+    fn technical_owner_error(&self) -> Option<&PortError> {
+        if matches!(
+            self.kind,
+            ShippingEnrichmentFailureKind::StorageUnavailable
+                | ShippingEnrichmentFailureKind::Invariant
+        ) {
             Some(&self.owner_error)
         } else {
             None
@@ -95,7 +94,7 @@ fn public_graphql_error() -> async_graphql::Error {
 #[allow(clippy::too_many_arguments)]
 fn shipping_enrichment_graphql_error(
     failure: ShippingEnrichmentFailure,
-    tenant_id: Uuid,
+    context: &PortContext,
     cart_id: Uuid,
     line_item_count: usize,
     delivery_group_count: usize,
@@ -109,15 +108,24 @@ fn shipping_enrichment_graphql_error(
     let tenant_default_locale_length = tenant_default_locale.map(str::chars).map(Iterator::count);
     let technical_owner_error = failure.technical_owner_error();
 
-    if matches!(failure.kind, ShippingEnrichmentFailureKind::StorageUnavailable) {
+    if matches!(
+        failure.kind,
+        ShippingEnrichmentFailureKind::StorageUnavailable
+            | ShippingEnrichmentFailureKind::Invariant
+    ) {
         tracing::error!(
             error = ?technical_owner_error,
             owner = "rustok_fulfillment",
-            owner_operation = "list_shipping_options",
-            internal_code = failure.internal_code,
+            owner_operation = "list_shipping_option_projections",
+            internal_code = %failure.internal_code,
             internal_kind = failure.internal_kind,
             internal_retryable = failure.internal_retryable,
-            tenant_id = %tenant_id,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            context_channel_length = context.channel.as_deref().map(str::len),
+            context_locale_length = context.locale.len(),
+            deadline_ms = ?context.deadline_ms,
             cart_id = %cart_id,
             line_item_count,
             delivery_group_count,
@@ -133,11 +141,16 @@ fn shipping_enrichment_graphql_error(
     } else {
         tracing::warn!(
             owner = "rustok_fulfillment",
-            owner_operation = "list_shipping_options",
-            internal_code = failure.internal_code,
+            owner_operation = "list_shipping_option_projections",
+            internal_code = %failure.internal_code,
             internal_kind = failure.internal_kind,
             internal_retryable = failure.internal_retryable,
-            tenant_id = %tenant_id,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            context_channel_length = context.channel.as_deref().map(str::len),
+            context_locale_length = context.locale.len(),
+            deadline_ms = ?context.deadline_ms,
             cart_id = %cart_id,
             line_item_count,
             delivery_group_count,
@@ -168,27 +181,42 @@ pub(crate) async fn enrich_storefront_cart(
     let currency_code_length = cart.currency_code.chars().count();
     let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
         .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
-
-    enrich_cart_delivery_groups_typed(
-        db,
+    let owner_context = super::shipping_option_read_context::storefront_shipping_option_read_context(
         tenant_id,
-        cart,
+        cart.id,
+        request_context.locale.as_str(),
         public_channel_slug.as_deref(),
-        Some(request_context.locale.as_str()),
-        Some(tenant_default_locale),
-    )
-    .await
-    .map_err(|error| {
-        shipping_enrichment_graphql_error(
-            ShippingEnrichmentFailure::from_owner(error),
-            tenant_id,
-            cart_id,
-            line_item_count,
-            delivery_group_count,
-            currency_code_length,
-            public_channel_slug.as_deref(),
-            Some(request_context.locale.as_str()),
-            Some(tenant_default_locale),
+        "list-options",
+    );
+    let shipping_option_read_port =
+        super::shipping_option_read_context::storefront_shipping_option_read_port(db.clone());
+
+    let options = shipping_option_read_port
+        .list_shipping_option_projections(
+            owner_context.clone(),
+            ListShippingOptionProjectionsRequest {
+                requested_locale: Some(request_context.locale.clone()),
+                tenant_default_locale: Some(tenant_default_locale.to_string()),
+            },
         )
-    })
+        .await
+        .map_err(|error| {
+            shipping_enrichment_graphql_error(
+                ShippingEnrichmentFailure::from_owner(error),
+                &owner_context,
+                cart_id,
+                line_item_count,
+                delivery_group_count,
+                currency_code_length,
+                public_channel_slug.as_deref(),
+                Some(request_context.locale.as_str()),
+                Some(tenant_default_locale),
+            )
+        })?;
+
+    Ok(enrich_cart_delivery_groups_from_options(
+        cart,
+        options,
+        public_channel_slug.as_deref(),
+    ))
 }
