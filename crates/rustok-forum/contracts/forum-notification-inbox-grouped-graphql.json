@@ -119,7 +119,7 @@
   ],
   "verification": {
     "commands": [
-      "cargo test -p rustok-notifications --lib graphql -- --nocapture",
+      "cargo test -p rustok-notifications --features server --lib graphql -- --nocapture",
       "cargo test -p rustok-notifications-storefront --test grouped_graphql_contract -- --nocapture",
       "cargo check -p rustok-notifications --features server",
       "cargo check -p rustok-notifications-storefront --features ssr",
