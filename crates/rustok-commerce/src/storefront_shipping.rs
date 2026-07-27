@@ -113,17 +113,11 @@ pub fn map_shipping_option_summary(option: &ShippingOptionResponse) -> CartShipp
     }
 }
 
-pub async fn enrich_cart_delivery_groups_typed(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
+pub fn enrich_cart_delivery_groups_from_options(
     mut cart: CartResponse,
+    mut options: Vec<ShippingOptionResponse>,
     public_channel_slug: Option<&str>,
-    requested_locale: Option<&str>,
-    tenant_default_locale: Option<&str>,
-) -> FulfillmentResult<CartResponse> {
-    let mut options = FulfillmentService::new(db.clone())
-        .list_shipping_options(tenant_id, requested_locale, tenant_default_locale)
-        .await?;
+) -> CartResponse {
     options.retain(|option| {
         option
             .currency_code
@@ -163,7 +157,25 @@ pub async fn enrich_cart_delivery_groups_typed(
         None
     };
 
-    Ok(cart)
+    cart
+}
+
+pub async fn enrich_cart_delivery_groups_typed(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    cart: CartResponse,
+    public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> FulfillmentResult<CartResponse> {
+    let options = FulfillmentService::new(db.clone())
+        .list_shipping_options(tenant_id, requested_locale, tenant_default_locale)
+        .await?;
+    Ok(enrich_cart_delivery_groups_from_options(
+        cart,
+        options,
+        public_channel_slug,
+    ))
 }
 
 pub async fn enrich_cart_delivery_groups(
