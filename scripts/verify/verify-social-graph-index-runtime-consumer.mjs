@@ -56,7 +56,9 @@ for (const marker of [
   "ContractEventPayload::SocialGraphRelation",
   "MutationDelivery::from_event",
   "SchemaRegistry::new()",
-  "registry.register(social_graph_relation_index_schema()?)",
+  "registry.register(schema.clone())?",
+  "PostgresSchemaRegistrationStore::new(db.clone())",
+  ".register(envelope.tenant_id(), &self.schema)",
   "PostgresMutationStore::new(db)",
   "self.store.apply(&self.registry, &delivery).await?",
   "self.group",
@@ -68,26 +70,33 @@ for (const marker of [
   requireText("runtime consumer", files.consumer, marker);
 }
 
+const registrationPosition = files.consumer.indexOf(
+  ".register(envelope.tenant_id(), &self.schema)",
+);
 const applyPosition = files.consumer.indexOf(
   "self.store.apply(&self.registry, &delivery).await?",
 );
 const acknowledgePosition = files.consumer.indexOf(".acknowledge(&consumed)");
 if (
+  registrationPosition < 0 ||
   applyPosition < 0 ||
   acknowledgePosition < 0 ||
+  applyPosition <= registrationPosition ||
   acknowledgePosition <= applyPosition
 ) {
   failures.push(
-    "runtime consumer must durably apply or terminally recognize the Index delivery before broker acknowledgement",
+    "runtime consumer must persist the tenant schema, durably apply or terminally recognize the Index delivery, and only then acknowledge the broker message",
   );
 }
 
 for (const forbidden of [
   "social_graph_relations",
   "command_receipt",
+  "index_schemas",
   "ProfilePresentationService",
   "SocialGraphPrivacyReadPort",
   "SELECT ",
+  "INSERT INTO",
   "DELETE FROM",
   "UPDATE social_graph",
 ]) {
@@ -127,5 +136,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index runtime consumer verification passed: optional runtime composition, sealed-family filtering, schema registration, durable Index inbox apply, result-first acknowledgement, unrelated-event handling, and authoritative owner-port privacy are locked.",
+  "Social Graph Index runtime consumer verification passed: optional runtime composition, sealed-family filtering, Index-owned tenant schema persistence, durable inbox apply, result-first acknowledgement, unrelated-event handling, and authoritative owner-port privacy are locked.",
 );
