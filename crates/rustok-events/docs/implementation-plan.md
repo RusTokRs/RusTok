@@ -74,14 +74,17 @@ while concurrent new relations use the live atomic path.
 `rustok-index` is the first named approved consumer. The optional Social Graph
 conversion maps the sealed event into a generic `IndexMutation`, uses the relation
 revision as monotonic `source_version`, upserts active relations, and writes inactive
-tombstones. Feature `index-consumer` now owns one persistent typed-event group,
-registers the owner schema, applies through `PostgresMutationStore`, and commits the
-broker offset only after `Applied`, `Duplicate`, or `StaleIgnored`. Other sealed
-families on the shared domain topic are ignored by this dedicated group. Bounded
-Social Graph replay follows the same Index inbox path for repair. Host lifecycle,
-retry/backoff, DLQ, readiness/shutdown, and multi-replica evidence remain open.
-Profiles privacy continues to use synchronous authoritative Social Graph ports and
-must never use the Index projection for authorization.
+tombstones. `SocialGraphIndexProjector` first persists or exactly recognizes the
+tenant schema through Index-owned `PostgresSchemaRegistrationStore`, then applies
+or terminally recognizes the mutation through `PostgresMutationStore`. Feature
+`index-consumer` owns one persistent typed-event group and commits the broker offset
+only after schema registration and an `Applied`, `Duplicate`, or `StaleIgnored`
+mutation result are durable. Other sealed families on the shared domain topic are
+ignored by this dedicated group without registration or mutation. Bounded Social
+Graph replay follows the same schema/inbox path for repair. Host lifecycle,
+retry/backoff, DLQ, readiness/shutdown, PostgreSQL concurrency, and multi-replica
+evidence remain open. Profiles privacy continues to use synchronous authoritative
+Social Graph ports and must never use the Index projection for authorization.
 
 The module-build dispatcher is the first owner-specific remote consumer shape: it
 retains one remote Iggy cursor, persists or recognizes an idempotent owner result,
@@ -130,9 +133,11 @@ than assuming remote event replay.
   page-atomic rollback, and source guardrails.
 - [x] Name `rustok-index` as the first approved relation-event consumer and add the
   feature-gated owner conversion to monotonic generic Index mutations.
-- [x] Add the optional persistent Social Graph -> Index consumer with owner schema
-  registration, Index inbox apply/duplicate/stale recognition, serialized
-  receive/apply/ack, unrelated-family handling, and result-first acknowledgement.
+- [x] Add generic Index-owned tenant schema persistence with exact idempotency,
+  monotonic version/conflict/retired guards, source-neutral APIs, and SQLite tests.
+- [x] Add the transport-neutral Social Graph Index projector and optional persistent
+  consumer with schema registration, Index inbox apply/duplicate/stale recognition,
+  serialized receive/apply/ack, unrelated-family handling, and result-first acknowledgement.
 
 ## Open results
 
@@ -163,12 +168,14 @@ than assuming remote event replay.
    multi-replica recovery evidence remains outstanding.
 
 4. **Operationalize the approved Social Graph -> Index consumer.** The persistent
-   group, schema registration, Index apply/terminal recognition, and result-first
-   acknowledgement are source-complete. Compose default-off host lifecycle,
-   readiness/shutdown, bounded retry/backoff and reviewed DLQ policy, then prove
-   restart/redelivery and replay/rescan drift repair.
+   group, Index-owned tenant schema registration, mutation apply/terminal recognition,
+   and result-first acknowledgement are source-complete. Compose default-off host
+   lifecycle, readiness/shutdown, bounded retry/backoff and reviewed DLQ policy,
+   then prove PostgreSQL concurrent registration, restart/redelivery and replay/rescan
+   drift repair.
    **Depends on:** Index ingestion runtime composition and platform consumer lifecycle ownership.
-   **Done when:** duplicate/lower revisions are ignored, newer revisions win,
+   **Done when:** exact schema registration is idempotent across replicas, conflicting
+   schemas fail closed, duplicate/lower revisions are ignored, newer revisions win,
    inactive tombstones remove active projection state, restart/redelivery is safe,
    bounded replay repairs deliberate drift, poison delivery has a reviewed recovery
    route, and Profiles privacy remains on owner ports.
@@ -185,6 +192,9 @@ than assuming remote event replay.
 - `cargo xtask module test events`
 - `cargo test -p rustok-events --test social_graph_contracts -- --nocapture`
 - `cargo run -p rustok-events --example event_contract_digests`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
+- `cargo test -p rustok-index schema_registration --lib -- --nocapture`
+- `node scripts/verify/verify-index-schema-registration.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets`
 - `cargo test -p rustok-social-graph --features index index::tests -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
@@ -206,8 +216,10 @@ than assuming remote event replay.
    payload definitions into transport crates.
 3. Update the committed digest artifact only through intentional contract review;
    never weaken or bypass canonical digest comparison.
-4. Consumer adapters must import sealed contracts directly, persist/recognize their
-   owner result before acknowledgement, and keep producer storage authoritative for repair.
-5. Update local docs, `rustok-module.toml`, event-flow documentation, and
+4. Consumer adapters must import sealed contracts directly, persist or exactly
+   recognize their tenant schema and owner result through owner APIs before
+   acknowledgement, and keep producer storage authoritative for repair.
+5. Source consumers must not write another owner's schema/projection tables directly.
+6. Update local docs, `rustok-module.toml`, event-flow documentation, and
    outbox/replay guidance with a contract change.
-6. Update `docs/modules/implementation-plans-registry.md` only for status and nearest priority.
+7. Update `docs/modules/implementation-plans-registry.md` only for status and nearest priority.
