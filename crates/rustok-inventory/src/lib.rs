@@ -11,8 +11,25 @@ pub mod entities {
 }
 
 pub mod migrations;
-pub mod ports;
+#[path = "ports.rs"]
+mod ports_impl;
+mod reservation_owner_context;
 pub mod services;
+
+pub mod ports {
+    pub use crate::ports_impl::{
+        InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
+        InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationReleaseSnapshot,
+        InventoryIdentityReservationRequest, InventoryIdentityReservationSnapshot,
+        InventoryReservationIdentityPort, InventoryReservationPort, InventoryReservationReleaseRequest,
+        InventoryReservationReleaseSnapshot, InventoryReservationRequest,
+        InventoryReservationSnapshot,
+    };
+    pub use crate::reservation_owner_context::{
+        PersistentInventoryReservationIdentityPort,
+        in_process_inventory_reservation_identity_port,
+    };
+}
 
 pub use ports::*;
 pub use rustok_commerce_foundation::entities::product::ProductStatus;
