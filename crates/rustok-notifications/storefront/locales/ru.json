@@ -1,0 +1,12 @@
+{
+  "notifications": {
+    "navigation": {
+      "label": "Уведомления",
+      "unread": "Непрочитанных уведомлений: {count}"
+    },
+    "inbox": {
+      "noneUnread": "Нет непрочитанных уведомлений",
+      "unread": "Непрочитанных: {count}"
+    }
+  }
+}
