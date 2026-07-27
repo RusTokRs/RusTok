@@ -20,6 +20,7 @@ struct RuntimeConsumerMetrics {
     in_flight_started_timestamp_seconds: IntGaugeVec,
     last_success_timestamp_seconds: IntGaugeVec,
     source_offset: IntGaugeVec,
+    source_partition: IntGaugeVec,
 }
 
 impl RuntimeConsumerMetrics {
@@ -125,6 +126,14 @@ impl RuntimeConsumerMetrics {
                 &["consumer", "state"],
             )
             .expect("Failed to create runtime consumer source-offset gauge"),
+            source_partition: IntGaugeVec::new(
+                Opts::new(
+                    "rustok_runtime_consumer_source_partition",
+                    "Partition paired with the last observed broker source offset",
+                ),
+                &["consumer", "state"],
+            )
+            .expect("Failed to create runtime consumer source-partition gauge"),
         }
     }
 }
@@ -144,6 +153,7 @@ impl Collector for RuntimeConsumerMetrics {
         descriptions.extend(self.in_flight_started_timestamp_seconds.desc());
         descriptions.extend(self.last_success_timestamp_seconds.desc());
         descriptions.extend(self.source_offset.desc());
+        descriptions.extend(self.source_partition.desc());
         descriptions
     }
 
@@ -161,6 +171,7 @@ impl Collector for RuntimeConsumerMetrics {
         families.extend(self.in_flight_started_timestamp_seconds.collect());
         families.extend(self.last_success_timestamp_seconds.collect());
         families.extend(self.source_offset.collect());
+        families.extend(self.source_partition.collect());
         families
     }
 }
@@ -208,12 +219,14 @@ pub fn record_worker_start(consumer: &str) {
     let _ = RUNTIME_CONSUMER_METRICS
         .last_success_timestamp_seconds
         .with_label_values(&[consumer]);
-    let _ = RUNTIME_CONSUMER_METRICS
-        .source_offset
-        .with_label_values(&[consumer, "received"]);
-    let _ = RUNTIME_CONSUMER_METRICS
-        .source_offset
-        .with_label_values(&[consumer, "acknowledged"]);
+    for state in ["received", "acknowledged"] {
+        let _ = RUNTIME_CONSUMER_METRICS
+            .source_offset
+            .with_label_values(&[consumer, state]);
+        let _ = RUNTIME_CONSUMER_METRICS
+            .source_partition
+            .with_label_values(&[consumer, state]);
+    }
 }
 
 pub fn record_worker_termination(consumer: &str, reason: &str) {
@@ -231,7 +244,7 @@ pub fn record_worker_termination(consumer: &str, reason: &str) {
         .set(0);
 }
 
-pub fn begin_delivery(consumer: &str, source_offset: Option<u64>) {
+pub fn begin_delivery(consumer: &str, source_position: Option<(u32, u64)>) {
     RUNTIME_CONSUMER_METRICS
         .received_total
         .with_label_values(&[consumer])
@@ -244,11 +257,8 @@ pub fn begin_delivery(consumer: &str, source_offset: Option<u64>) {
         .in_flight_started_timestamp_seconds
         .with_label_values(&[consumer])
         .set(unix_timestamp_seconds());
-    if let Some(source_offset) = source_offset {
-        RUNTIME_CONSUMER_METRICS
-            .source_offset
-            .with_label_values(&[consumer, "received"])
-            .set(offset_metric_value(source_offset));
+    if let Some((partition, offset)) = source_position {
+        record_source_position(consumer, "received", partition, offset);
     }
 }
 
@@ -277,7 +287,7 @@ pub fn complete_delivery(
     consumer: &str,
     outcome: &str,
     processing_duration: Duration,
-    acknowledged_offset: Option<u64>,
+    acknowledged_position: Option<(u32, u64)>,
 ) {
     RUNTIME_CONSUMER_METRICS
         .deliveries_total
@@ -299,12 +309,20 @@ pub fn complete_delivery(
         .in_flight_started_timestamp_seconds
         .with_label_values(&[consumer])
         .set(0);
-    if let Some(acknowledged_offset) = acknowledged_offset {
-        RUNTIME_CONSUMER_METRICS
-            .source_offset
-            .with_label_values(&[consumer, "acknowledged"])
-            .set(offset_metric_value(acknowledged_offset));
+    if let Some((partition, offset)) = acknowledged_position {
+        record_source_position(consumer, "acknowledged", partition, offset);
     }
+}
+
+fn record_source_position(consumer: &str, state: &str, partition: u32, offset: u64) {
+    RUNTIME_CONSUMER_METRICS
+        .source_partition
+        .with_label_values(&[consumer, state])
+        .set(i64::from(partition));
+    RUNTIME_CONSUMER_METRICS
+        .source_offset
+        .with_label_values(&[consumer, state])
+        .set(offset_metric_value(offset));
 }
 
 fn unix_timestamp_seconds() -> i64 {
