@@ -354,10 +354,10 @@ pub async fn complete_storefront_checkout(
         runtime.event_bus(),
         std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
         in_process_cart_checkout_port(runtime.db_clone()),
-        std::sync::Arc::new(rustok_inventory::InventoryService::new(
+        rustok_inventory::in_process_inventory_reservation_port(
             runtime.db_clone(),
             runtime.event_bus(),
-        )),
+        ),
         std::sync::Arc::new(rustok_product::CatalogService::new(
             runtime.db_clone(),
             runtime.event_bus(),

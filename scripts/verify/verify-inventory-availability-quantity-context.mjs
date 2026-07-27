@@ -88,6 +88,18 @@ const stagedComposition = between(
   'let marketplace_allocation_service = Arc::new(',
   'mounted staged storefront inventory composition',
 );
+const legacyStorefrontCheckout = between(
+  legacyStorefront,
+  '#[allow(dead_code)]\npub async fn complete_storefront_checkout(',
+  'async fn resolve_storefront_customer_id(',
+  'legacy storefront checkout compatibility function',
+);
+const legacyStorefrontComposition = between(
+  legacyStorefrontCheckout,
+  'crate::CheckoutService::new(',
+  '.complete_checkout(',
+  'legacy storefront checkout composition',
+);
 
 for (const [value, label] of [
   ['mod reservation_port_context;', 'private context adapter module'],
@@ -232,10 +244,26 @@ forbidText(
   'mounted staged direct inventory service composition',
 );
 
-requireText(
-  legacyStorefront,
+for (const [value, label] of [
+  ['#[allow(dead_code)]', 'legacy storefront compatibility marker'],
+  ['pub async fn complete_storefront_checkout(', 'legacy storefront public function'],
+  ['let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());', 'legacy storefront cart read preserved'],
+  ['reprice_storefront_cart_line_items(', 'legacy storefront repricing preserved'],
+  ['let actor_id = auth_context', 'legacy storefront actor resolution preserved'],
+]) requireText(legacyStorefrontCheckout, value, label);
+for (const [value, label] of [
+  ['crate::CheckoutService::new(', 'legacy checkout service constructor preserved'],
+  ['rustok_inventory::in_process_inventory_reservation_port(', 'legacy canonical inventory factory'],
+  ['runtime.db_clone(),', 'legacy inventory database delegation'],
+  ['runtime.event_bus(),', 'legacy inventory event bus delegation'],
+  ['std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone()))', 'legacy region composition preserved'],
+  ['in_process_cart_checkout_port(runtime.db_clone())', 'legacy cart composition preserved'],
+  ['std::sync::Arc::new(rustok_product::CatalogService::new(', 'legacy product composition preserved'],
+]) requireText(legacyStorefrontComposition, value, label);
+forbidText(
+  legacyStorefrontComposition,
   'rustok_inventory::InventoryService::new(',
-  'dead-code legacy storefront gap',
+  'legacy storefront direct inventory service composition',
 );
 
 for (const [pattern, expected, label] of [
@@ -255,5 +283,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Canonical inventory availability and quantity adapter retains full admission and tenant context across journaled and mounted staged storefront composition, with only the dead-code legacy storefront gap explicit',
+  '✔ Canonical inventory availability and quantity adapter retains full admission and tenant context across every repository checkout composition',
 );
