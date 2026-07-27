@@ -66,11 +66,8 @@ for (const forbidden of [
   forbidText("index adapter", files.adapter, forbidden);
 }
 
-requireText(
-  "CRATE_API.md",
-  files.api,
-  "acknowledges only after that result is committed",
-);
+requireText("CRATE_API.md", files.api, "acknowledges only after");
+requireText("CRATE_API.md", files.api, "that result is committed");
 requireText(
   "Social Graph plan",
   files.socialPlan,
