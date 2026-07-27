@@ -144,8 +144,8 @@ for (const forbidden of ["serde_json::Value", "HashMap<String", "unsafe {"]) {
 
 for (const marker of [
   "Resource::new_blocking",
-  "load_inbox_snapshot().await",
-  "load_notification_unread_count().await?",
+  "load_inbox_snapshot(context).await",
+  "load_notification_unread_count_selected",
   "load_notification_group_summaries",
   "load_notification_group_items",
   "authorize_notification_open",

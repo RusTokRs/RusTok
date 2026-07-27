@@ -230,25 +230,29 @@ for (const marker of [
   requireText(note, marker, `owner note is missing ${marker}`);
 }
 for (const marker of [
-  "FORUM-20A-AN provide",
+  "FORUM-20A-AO provide",
   "### Delivered in `FORUM-20AN`",
-  "auth-reactive automatic grouped-inbox bootstrap refresh",
+  "### Delivered in `FORUM-20AO`",
 ]) {
   requireText(canonical, marker, `canonical plan is missing ${marker}`);
 }
-for (const marker of ["### `FORUM-20AN`", "GraphQL CSR/headless path without fallback"]) {
+for (const marker of [
+  "### `FORUM-20AN`",
+  "### `FORUM-20AO`",
+  "GraphQL CSR/headless path without fallback",
+]) {
   requireText(local, marker, `local plan is missing ${marker}`);
 }
 for (const marker of [
   "notificationInboxApplyGroupState",
   "typed actions and explicit",
-  "auth-reactive automatic grouped bootstrap refresh",
+  "automatically reloads its bootstrap",
 ]) {
   requireText(ownerReadme, marker, `owner README is missing ${marker}`);
 }
 for (const marker of [
   "GraphQL group-state mutations now delegate",
-  "auth-reactive automatic grouped bootstrap refresh",
+  "automatically reloads its bootstrap",
 ]) {
   requireText(live, marker, `live contract is missing ${marker}`);
 }

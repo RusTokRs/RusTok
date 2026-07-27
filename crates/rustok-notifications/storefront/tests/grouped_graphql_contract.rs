@@ -102,7 +102,7 @@ fn existing_grouped_ui_calls_selected_read_wrappers_only() {
         assert!(STOREFRONT_TRANSPORT.contains(marker), "transport is missing `{marker}`");
     }
     for marker in [
-        "load_notification_unread_count().await?",
+        "load_notification_unread_count_selected",
         "load_notification_group_summaries(",
         "load_notification_group_items(",
         "authorize_notification_open",

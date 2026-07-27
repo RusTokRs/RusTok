@@ -248,7 +248,7 @@ for (const marker of [
 rejectText(transport, "fallback_failed", "selected storefront reads must not add fallback");
 
 for (const marker of [
-  "load_notification_unread_count().await?",
+  "load_notification_unread_count_selected",
   "load_notification_group_summaries(",
   "load_notification_group_items(",
   "authorize_notification_open",
