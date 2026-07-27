@@ -14,9 +14,10 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod analytics;
-pub mod checkout_compensation;
+mod checkout_compensation;
 pub mod checkout_order_recovery;
-pub mod checkout_payment_settlement;
+pub mod checkout_owner_context;
+mod checkout_payment_settlement;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -26,9 +27,19 @@ pub mod services;
 pub mod status;
 
 pub use analytics::{OrderStatsSnapshot, load_order_stats_snapshot};
-pub use checkout_compensation::*;
+pub use checkout_compensation::{
+    CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest,
+    CheckoutOrderCompensationSnapshot,
+};
 pub use checkout_order_recovery::*;
-pub use checkout_payment_settlement::*;
+pub use checkout_owner_context::{
+    InProcessCheckoutOrderCompensationPort, InProcessCheckoutOrderPaymentSettlementPort,
+    in_process_checkout_order_compensation_port,
+    in_process_checkout_order_payment_settlement_port,
+};
+pub use checkout_payment_settlement::{
+    CheckoutOrderPaymentSettlementPort, SettleCheckoutOrderPaymentRequest,
+};
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
