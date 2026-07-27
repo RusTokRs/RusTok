@@ -84,6 +84,10 @@
   default-off until `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED=true`.
 - Explicit enablement requires a worker-capable host and effective event delivery
   profile `outbox_iggy`; startup fails rather than silently consuming another profile.
+- `EventRuntime` creates one configured `Arc<IggyTransport>` for `outbox_iggy`, stores
+  that exact connector in `ServerRuntimeContext`, and shares it between outbound relay
+  and inbound Social Graph consumption. The worker never starts or stops a second
+  connector, which preserves single bundled-Iggy process ownership.
 - `SocialGraphIndexWorkerHandle` exposes task completion/readiness source state and the
   worker subscribes to the shared `StopHandle` for graceful shutdown.
 - Projection failures use bounded exponential retry from the reviewed event relay
@@ -97,8 +101,12 @@
   duplicate/stale recognition.
 - Malformed bytes that fail before `ConsumedContractEvent` construction remain
   unacknowledged; a lower-level connector poison-delivery contract is still pending.
-- The worker handle is available for readiness composition, but wiring it into the
-  server `/health/ready` response and retained operator metrics remains pending.
+- When explicit enablement is true, `runtime_guardrails` requires the worker handle to
+  remain ready. Missing, stopped, or invalidly configured state reaches `/health/ready`
+  and the aggregate runtime-guardrail Prometheus status under the existing rollout
+  observe/enforce policy. A disabled worker contributes no readiness failure.
+- Dedicated per-consumer throughput, retry, DLQ, lag, and last-success metrics remain
+  pending retained observability work.
 
 ## Owner-local CLI adapter
 - `rustok-social-graph-cli::command_provider(RuntimeComposition)` exposes selected
@@ -161,6 +169,10 @@
   inbox/result are durable.
 - Enables the host worker without `outbox_iggy`, or enables it implicitly by compiling
   the module feature.
+- Creates another `IggyTransport` in the worker instead of reusing the connector owned
+  by `EventRuntime`, especially in bundled mode where this starts a second process.
+- Lets the consumer worker shut down the shared relay connector instead of observing
+  the host-owned `StopHandle` lifecycle.
 - DLQs a delivery after the Index result committed instead of retrying ack only.
 - Re-serializes a decoded envelope for DLQ rather than using exact broker bytes.
 - Runs concurrent receive/apply/ack operations on one persistent cursor instead of
@@ -188,7 +200,8 @@
   Iggy transport, an Index database connection, tenant rows, Index migrations, and
   successful Index-owned persisted schema registration.
 - Server execution additionally requires explicit enablement, a worker host,
-  `outbox_iggy`, positive bounded attempts/backoff, and reviewed DLQ configuration.
+  `outbox_iggy`, the shared configured EventRuntime Iggy connector, positive bounded
+  attempts/backoff, and reviewed DLQ configuration.
 
 ### Domain Invariants
 - Relation identity is unique by tenant/source/target/kind.
@@ -214,6 +227,8 @@
 - Before a durable result, exhausted/permanent failures may be acknowledged only after
   successful exact-byte DLQ publication under enabled policy. After a durable result,
   only source acknowledgement may be retried.
+- Explicitly enabled worker readiness is critical; disabled execution is an intentional
+  non-required runtime state rather than degradation.
 
 ### Events / Outbox Side Effects
 - Root and local manifests declare the Outbox dependency before write composition.
