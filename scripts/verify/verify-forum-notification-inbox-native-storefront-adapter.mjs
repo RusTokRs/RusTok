@@ -29,7 +29,18 @@ function rejectText(source, marker, message) {
 
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-inbox-native-storefront-adapter.json";
+const downstreamPath =
+  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
 const contract = JSON.parse(read(contractPath) || "{}");
+const downstreamAbsolute = path.join(repoRoot, downstreamPath);
+const downstream = existsSync(downstreamAbsolute)
+  ? JSON.parse(readFileSync(downstreamAbsolute, "utf8") || "{}")
+  : null;
+const groupedUiDelivered =
+  downstream?.schema_version === 1 &&
+  downstream?.task === "FORUM-20AI" &&
+  downstream?.upstream_task === "FORUM-20AH" &&
+  downstream?.composition?.grouped_leptos_ui === true;
 const core = read(contract.storefront_core_file ?? "");
 const transport = read(contract.storefront_transport_file ?? "");
 const adapter = read(contract.storefront_native_adapter_file ?? "");
@@ -257,9 +268,9 @@ for (const marker of [
   "native_storefront_requests_do_not_expose_owner_identity_fields",
   "group_state_command_retains_write_admission_input",
   "grouped_ui_remains_explicitly_unavailable_until_composed",
-  "assert!(!object.contains_key(\"tenant_id\"))",
-  "assert!(!object.contains_key(\"recipient_id\"))",
-  "assert_eq!(encoded[\"action\"], \"mark_unread\")",
+  'assert!(!object.contains_key("tenant_id"))',
+  'assert!(!object.contains_key("recipient_id"))',
+  'assert_eq!(encoded["action"], "mark_unread")',
   "NotificationInboxAvailability::Unavailable",
 ]) {
   requireText(proof, marker, `storefront transport proof is missing ${marker}`);
@@ -288,9 +299,28 @@ for (const marker of [
   "HostRuntimeContext",
   "five-second deadline",
   "idempotency key",
-  "grouped Leptos inbox view has not been delivered",
 ]) {
   requireText(storefrontReadme, marker, `storefront README is missing ${marker}`);
+}
+if (groupedUiDelivered) {
+  requireText(
+    storefrontReadme,
+    "NotificationsView` now renders the owner-backed grouped inbox",
+    "downstream grouped UI README state is missing",
+  );
+  requireText(ui, "Resource::new_blocking", "downstream grouped UI must use owner-backed bootstrap");
+  requireText(ui, "load_notification_group_summaries", "downstream grouped UI must load summaries");
+  if (!downstream.not_delivered?.includes("global storefront navigation or header unread-badge slot")) {
+    failures.push("FORUM-20AI must keep global navigation badge composition pending");
+  }
+} else {
+  requireText(
+    storefrontReadme,
+    "grouped Leptos inbox view has not been delivered",
+    "pre-FORUM-20AI storefront README state is missing",
+  );
+  requireText(ui, "NotificationInboxAvailability::Unavailable", "grouped UI must remain unavailable before FORUM-20AI");
+  rejectText(ui, "load_notification_group_summaries", "grouped UI must not be claimed before FORUM-20AI");
 }
 for (const marker of [
   "# FORUM-20AH native notification storefront adapter",
@@ -302,9 +332,6 @@ for (const marker of [
 ]) {
   requireText(note, marker, `owner note is missing ${marker}`);
 }
-
-requireText(ui, "NotificationInboxAvailability::Unavailable", "grouped UI must remain unavailable");
-rejectText(ui, "load_notification_group_summaries", "grouped UI must not be claimed in FORUM-20AH");
 
 if (
   upstream.schema_version !== 1 ||
