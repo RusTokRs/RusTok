@@ -29,7 +29,7 @@ use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
-use crate::state_machine::ReplyStatus;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::subscription::ForumSubscriptionLevel;
 
 const FORUM_SOURCE: &str = "forum";
@@ -208,7 +208,8 @@ impl ForumNotificationSourceProvider {
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
         if self.recipient_context_port.is_some() {
-            self.load_active_topic(tenant_id, topic_id).await
+            let topic = self.load_active_topic(tenant_id, topic_id).await?;
+            Ok(topic.filter(|topic| topic.status == TopicStatus::Open))
         } else {
             self.load_public_topic(tenant_id, topic_id).await
         }

@@ -181,6 +181,7 @@ for (const marker of [
   ".is_topic_visible(tenant_id, topic_id, None, viewer)",
   "async fn load_public_topic(",
   "async fn load_topic_for_description(",
+  "topic.status == TopicStatus::Open",
   "ForumTopicAudienceViewer::public()",
   "async fn load_target_for_viewer(",
   "async fn load_public_target(",
@@ -306,6 +307,8 @@ for (const marker of [
   "without recipient capability an initially non-public topic must remain absent",
   "active initially non-public topic should materialize a descriptor",
   "page.recipients()[0].recipient_id, allowed_recipient",
+  "closed initially non-public topic must not materialize a descriptor",
+  "closed stale descriptor should be rechecked",
 ]) {
   requireText(descriptorTestSource, marker, `topic descriptor SQLite scenario is missing ${marker}`);
 }

@@ -82,7 +82,8 @@ for (const key of ["migration_changed", "dependency_changed"]) {
 for (const marker of [
   "async fn load_topic_for_description(",
   "if self.recipient_context_port.is_some()",
-  "self.load_active_topic(tenant_id, topic_id).await",
+  "self.load_active_topic(tenant_id, topic_id).await?",
+  "topic.status == TopicStatus::Open",
   "self.load_public_topic(tenant_id, topic_id).await",
   "load_topic_for_description(event.tenant_id, event.aggregate_id)",
   "load_topic_for_subscription_audience(event.tenant_id, event.aggregate_id)",
@@ -130,6 +131,9 @@ for (const marker of [
   "descriptor.template_data.len(), 2",
   'for forbidden in ["title", "body", "route", "recipient_id", "audience"]',
   "page.recipients()[0].recipient_id, allowed_recipient",
+  "closed initially non-public topic must not materialize a descriptor",
+  "closed stale descriptor should be rechecked",
+  "closed_page.recipients().is_empty()",
 ]) {
   requireText(test, marker, `SQLite descriptor scenario is missing ${marker}`);
 }

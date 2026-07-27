@@ -8,7 +8,8 @@ use rustok_forum::entities::forum_domain_event;
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumCategoryAudiencePolicyService, ForumModule, ForumNotificationRecipientContextPort,
-    ForumNotificationRecipientContextRequest, SetForumCategoryAudiencePolicyInput,
+    ForumNotificationRecipientContextRequest, ModerationService,
+    SetForumCategoryAudiencePolicyInput,
     SharedForumNotificationRecipientContextPort, SubscriptionService, TopicService,
 };
 use rustok_notifications::NotificationsModule;
@@ -119,10 +120,10 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
             .expect("category subscription should persist");
     }
 
-    let topic = TopicService::new(db.clone(), event_bus)
+    let topic = TopicService::new(db.clone(), event_bus.clone())
         .create(
             tenant_id,
-            admin,
+            admin.clone(),
             CreateTopicInput {
                 locale: "en".into(),
                 category_id: category.id,
@@ -215,8 +216,8 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
 
     let page = recipient_provider
         .resolve_audience(ResolveNotificationAudienceRequest {
-            event: event_ref,
-            descriptor,
+            event: event_ref.clone(),
+            descriptor: descriptor.clone(),
             cursor: None,
             limit: 10,
         })
@@ -225,6 +226,32 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
     assert!(page.is_complete());
     assert_eq!(page.recipients().len(), 1);
     assert_eq!(page.recipients()[0].recipient_id, allowed_recipient);
+
+    ModerationService::new(db.clone(), event_bus)
+        .close_topic(tenant_id, topic.id, admin)
+        .await
+        .expect("topic should close");
+    assert!(
+        recipient_provider
+            .describe_event(DescribeNotificationRequest {
+                event: event_ref.clone(),
+            })
+            .await
+            .expect("closed descriptor recheck should complete")
+            .is_none(),
+        "closed initially non-public topic must not materialize a descriptor"
+    );
+    let closed_page = recipient_provider
+        .resolve_audience(ResolveNotificationAudienceRequest {
+            event: event_ref,
+            descriptor,
+            cursor: None,
+            limit: 10,
+        })
+        .await
+        .expect("closed stale descriptor should be rechecked");
+    assert!(closed_page.recipients().is_empty());
+    assert!(closed_page.is_complete());
 }
 
 async fn topic_created_event(
