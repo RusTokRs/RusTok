@@ -1,8 +1,6 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use iggy::prelude::{Client, IggyClient, IggyError, IggyMessage, Partitioning};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::config::{ExternalConfig, IggyConfig};
 use crate::dlq::DlqEntry;
@@ -102,7 +100,7 @@ impl IggyDlqPublisher {
             ));
         }
 
-        let partition = calculate_partition(&entry.event_id.to_string(), self.partitions);
+        let partition = partition_for_message_id(message_id, self.partitions);
         let producer = self
             .client
             .producer(&self.stream, "dlq")
@@ -148,10 +146,9 @@ fn publish_error(error: IggyError) -> DlqPublisherError {
     DlqPublisherError::Publish(error.to_string())
 }
 
-fn calculate_partition(key: &str, partitions: u32) -> u32 {
-    let mut hasher = DefaultHasher::new();
-    key.hash(&mut hasher);
-    (hasher.finish() % u64::from(partitions)) as u32 + 1
+fn partition_for_message_id(message_id: Uuid, partitions: u32) -> u32 {
+    debug_assert!(partitions > 0);
+    (message_id.as_u128() % u128::from(partitions)) as u32 + 1
 }
 
 fn connection_strings(config: &ExternalConfig) -> Result<Vec<String>, DlqPublisherError> {
@@ -242,11 +239,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deterministic_partition_matches_connector_one_based_contract() {
-        let first = calculate_partition("event-a", 8);
-        let second = calculate_partition("event-a", 8);
+    fn deterministic_partition_is_stable_and_one_based() {
+        let message_id = Uuid::from_u128(42);
+        let first = partition_for_message_id(message_id, 8);
+        let second = partition_for_message_id(message_id, 8);
         assert_eq!(first, second);
         assert!((1..=8).contains(&first));
+    }
+
+    #[test]
+    fn deterministic_partition_changes_only_with_id_or_partition_count() {
+        let first = partition_for_message_id(Uuid::from_u128(42), 8);
+        let different_id = partition_for_message_id(Uuid::from_u128(43), 8);
+        let different_count = partition_for_message_id(Uuid::from_u128(42), 7);
+        assert_ne!(first, different_id);
+        assert_ne!(first, different_count);
     }
 
     #[test]
