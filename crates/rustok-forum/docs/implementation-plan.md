@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-AP provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors behind exact recipient capability. Write audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-AQ provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors; FORUM-20AQ adds normalized inherited category topic-create audience persistence. Topic-create enforcement, reply/moderate audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1323,6 +1323,17 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
 - preserve author exclusion, raw subscription cursor progress, current category/topic audience
   evaluation, non-oracular inactive targets, and later target-open authorization.
 
+### Delivered in `FORUM-20AQ`
+
+- add five normalized Forum-owned tables for a category-local topic-create audience layer plus
+  typed role, channel, group, and explicit allow/deny relations;
+- keep topic-create policy separate from category/topic visibility while inheriting every
+  non-empty root-to-category layer as a conjunction;
+- expose managed inspection and atomic replacement under `forum_categories:manage`, with an
+  empty constraint set clearing only the local layer and restoring inheritance;
+- enforce tenant/category composite ownership, raw relation bounds, immutable stored rows, and
+  PostgreSQL/SQLite parity without changing `TopicService::create` or any transport.
+
 ### Compatibility and degraded mode
 
 The nullable public/authenticated category floor and the normalized category/topic
@@ -1343,7 +1354,8 @@ supply write deadline and idempotency semantics.
 
 - provide Forum trust and Channel membership facts adapters; keep the delivered Groups
   adapter exact, bounded, and owner-backed;
-- add create/reply/moderate audience policies and owner write commands;
+- compose topic-create command-time audience enforcement and transports, then add reply and
+  moderation audience policies plus owner write commands;
 - migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
   same exact richer audience decision;
 - add visibility-scoped category/all-read commands over an exact bounded policy scope;
@@ -1392,6 +1404,7 @@ node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs
 node scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs
+node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate forum
 npm run verify:forum:storefront-boundary

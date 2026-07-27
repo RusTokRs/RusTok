@@ -31,6 +31,7 @@ mod m20260724_000001_add_forum_topic_read_states;
 mod m20260724_000002_add_forum_category_visibility_policy;
 mod m20260725_000001_add_forum_category_audience_policy;
 mod m20260725_000002_add_forum_topic_audience_policy;
+mod m20260727_000001_add_forum_category_topic_create_audience;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -70,6 +71,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260724_000002_add_forum_category_visibility_policy::Migration),
         Box::new(m20260725_000001_add_forum_category_audience_policy::Migration),
         Box::new(m20260725_000002_add_forum_topic_audience_policy::Migration),
+        Box::new(m20260727_000001_add_forum_category_topic_create_audience::Migration),
     ]
 }
 
