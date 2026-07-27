@@ -192,7 +192,7 @@ fn map_owner_error(
         ),
     };
 
-    if matches!(error, FulfillmentError::Database(_)) {
+    if matches!(&error, FulfillmentError::Database(_)) {
         tracing::error!(
             error = ?error,
             owner = "rustok_fulfillment",
