@@ -24,78 +24,33 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              target = Path(path)
-              source = target.read_text()
-              count = source.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one anchor, found {count}")
-              target.write_text(source.replace(old, new, 1))
+          graphql_path = Path("crates/rustok-notifications/src/graphql.rs")
+          graphql = graphql_path.read_text()
+          start = graphql.index("fn parse_idempotency_key(value: String) -> Result<String> {")
+          end = graphql.index("\n}\n", start) + 3
+          block = graphql[start:end]
+          if block.count("    let value = value.trim();\n") != 1:
+              raise SystemExit("GraphQL idempotency trim anchor is missing")
+          block = block.replace("    let value = value.trim();\n", "", 1)
+          if block.count("    Ok(value.to_string())\n") != 1:
+              raise SystemExit("GraphQL idempotency return anchor is missing")
+          block = block.replace("    Ok(value.to_string())\n", "    Ok(value)\n", 1)
+          graphql_path.write_text(graphql[:start] + block + graphql[end:])
 
-          replace_once(
-              "crates/rustok-notifications/src/graphql.rs",
-              '''fn parse_idempotency_key(value: String) -> Result<String> {
-    let value = value.trim();
-    if value.is_empty()
-        || value.len() > MAX_IDEMPOTENCY_KEY_BYTES
-        || value.chars().any(char::is_control)
-    {
-        return Err(public_error(
-            "NOTIFICATION_VALIDATION_ERROR",
-            "notification idempotency key is invalid",
-            false,
-        ));
-    }
-    Ok(value.to_string())
-}''',
-              '''fn parse_idempotency_key(value: String) -> Result<String> {
-    if value.is_empty()
-        || value.len() > MAX_IDEMPOTENCY_KEY_BYTES
-        || value.chars().any(char::is_control)
-    {
-        return Err(public_error(
-            "NOTIFICATION_VALIDATION_ERROR",
-            "notification idempotency key is invalid",
-            false,
-        ));
-    }
-    Ok(value)
-}''',
-          )
+          proof_path = Path("crates/rustok-notifications/storefront/tests/group_state_graphql_contract.rs")
+          proof = proof_path.read_text()
+          proof_anchor = "    assert!(OWNER_PORT.contains(\"NotificationInboxGroupStateService\"));\n"
+          if proof.count(proof_anchor) != 1:
+              raise SystemExit("source proof owner-service anchor is missing")
+          proof_path.write_text(proof.replace(proof_anchor, proof_anchor + "    assert!(!OWNER_GRAPHQL.contains(\"let value = value.trim();\"));\n", 1))
 
-          replace_once(
-              "crates/rustok-notifications/storefront/tests/group_state_graphql_contract.rs",
-              '''    assert!(OWNER_PORT.contains("NotificationInboxGroupStateService"));
-
-    let signature = OWNER_GRAPHQL''',
-              '''    assert!(OWNER_PORT.contains("NotificationInboxGroupStateService"));
-    assert!(!OWNER_GRAPHQL.contains("let value = value.trim();"));
-
-    let signature = OWNER_GRAPHQL''',
-          )
-
-          replace_once(
-              "scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs",
-              '''requireText(
-  port,
-  "NotificationInboxGroupStateService",
-  "owner port must reuse group state service",
-);
-
-const mutation = between(''',
-              '''requireText(
-  port,
-  "NotificationInboxGroupStateService",
-  "owner port must reuse group state service",
-);
-rejectText(
-  owner,
-  "let value = value.trim();",
-  "GraphQL idempotency keys must remain exact opaque values",
-);
-
-const mutation = between(''',
-          )
+          verifier_path = Path("scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs")
+          verifier = verifier_path.read_text()
+          verifier_anchor = "requireText(\n  port,\n  \"NotificationInboxGroupStateService\",\n  \"owner port must reuse group state service\",\n);\n"
+          verifier_guard = "rejectText(\n  owner,\n  \"let value = value.trim();\",\n  \"GraphQL idempotency keys must remain exact opaque values\",\n);\n"
+          if verifier.count(verifier_anchor) != 1:
+              raise SystemExit("verifier owner-service anchor is missing")
+          verifier_path.write_text(verifier.replace(verifier_anchor, verifier_anchor + verifier_guard, 1))
 
           Path(".github/workflows/agent-forum-20an-idempotency.yml").unlink()
           PY
