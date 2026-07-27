@@ -26,7 +26,8 @@ without runtime fan-out.
 - PostgreSQL storage and distributed coordination;
 - schema application and secondary-index lifecycle;
 - measured partition admission and shadow planning;
-- retained partition evidence preparation, snapshot/query capture, assembly, and validation;
+- retained partition evidence preparation, snapshot/query/mutation capture, assembly,
+  and validation;
 - SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
@@ -82,15 +83,13 @@ Benchmark code lives outside the production crate in
 `ops/benches/src/index_storage`. Candidate DDL is not a production migration or
 runtime storage contract.
 
-The read/query harness provides deterministic scale datasets, three storage
-candidates, shared read workloads, cardinality checks, result-digest parity,
-load/size measurement, and full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence.
-The transactional mutation harness provides identical update/delete workloads,
-affected entity/link parity, rollback isolation, and planning/execution,
-BUFFERS, full-plan, and node-level WAL evidence. The persistent maintenance
-harness provides committed update plus delete/reinsert cycles, exact cardinality
-guards, baseline/after-churn/after-VACUUM schema-size and table-stat snapshots,
-and ordinary `VACUUM (ANALYZE)` duration.
+The read/query harness provides deterministic scale datasets, selected-layout read
+workloads, cardinality checks, result-digest parity, load/size measurement, and full
+JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence. The transactional mutation harness
+provides update/delete workloads, affected entity/link parity, rollback isolation,
+and node-level WAL evidence. The persistent maintenance harness provides committed
+churn, exact cardinality guards, schema-size/table-stat snapshots, and ordinary
+`VACUUM (ANALYZE)` duration.
 
 Replacement same-commit evidence selected JSONB over typed EAV and hot projection.
 Rejected candidate implementations were deleted. The remaining JSONB path is a
@@ -179,9 +178,22 @@ count inside one read-only repeatable-read transaction. It requires result diges
 parity, retains full baseline/shadow JSON EXPLAIN samples, alternates measurement
 order, calculates p95, normalizes logical plan identity with
 `normalized_partition_plan_v1`, and fails unless every shadow query reads exactly
-one child per used logical relation. It publishes `query.json` without overwrite
-and performs no writes. Real mutation, maintenance, and cutover evidence remain
-open.
+one child per used logical relation. It publishes `query.json` without overwrite.
+
+The owner-operated mutation/WAL evidence runner revalidates the manifest and
+shadow catalog, requires canonical/shadow count parity and byte-for-byte matching
+generic anchors, and builds exactly the manifest mutation run count. Every
+validation and EXPLAIN write runs under a savepoint in one rollback-only
+repeatable-read transaction; the savepoint and outer transaction are both rolled
+back. It requires one affected row on both sides, alternates measurement order,
+calculates p95, retains full JSON EXPLAIN samples, records conservative maximum
+per-sample plan-node WAL bytes, proves single-child shadow pruning, and publishes
+`mutation.json` without overwrite. Maintenance and cutover evidence remain open.
+
+The repository owner still executes and
+retains the PostgreSQL packet. The real query, mutation,
+maintenance, and cutover measurements remain open. Real mutation, maintenance, and cutover evidence remain
+owner-operated until the matching raw artifacts are retained and validated.
 
 Final validation calculates tenant coverage, digest parity, latency regression,
 WAL amplification, partition skew, lock duration, rollback state, and typed
@@ -211,10 +223,11 @@ batch ingestion remain later M3/M4/M5 slices.
 - M3 partition evidence capture/assembly: `complete`
 - M3 partition baseline/shadow snapshot runner: `complete`
 - M3 partition query evidence runner: `complete`
+- M3 partition mutation/WAL evidence runner: `complete`
 - Production persistence: mutation writes, schema/index coordination, partition
-  admission, snapshot/query capture, evidence assembly, and evidence validation
-  implemented; query adapter, real retained packet execution, mutation,
-  maintenance, and cutover evidence remain open, and production partition lifecycle
+  admission, snapshot/query/mutation capture, evidence assembly, and evidence
+  validation implemented; query adapter, real retained packet execution,
+  maintenance and cutover evidence remain open, and production partition lifecycle
   is not yet implemented
 
 ## Verification
@@ -230,6 +243,8 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo test -p rustok-benchmarks partition_snapshot`
 - `cargo check -p rustok-benchmarks --bin index-partition-query-evidence`
 - `cargo test -p rustok-benchmarks partition_query`
+- `cargo check -p rustok-benchmarks --bin index-partition-mutation-evidence`
+- `cargo test -p rustok-benchmarks partition_mutation`
 - `node scripts/verify/index-storage-tooling.mjs contract`
 - `node scripts/verify/index-storage-tooling.mjs fixtures`
 - `node --test scripts/verify/index-partition-evidence-assembly.test.mjs`
@@ -238,6 +253,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `node scripts/verify/verify-index-partition-evidence.mjs`
 - `node scripts/verify/verify-index-partition-snapshot-capture.mjs`
 - `node scripts/verify/verify-index-partition-query-evidence.mjs`
+- `node scripts/verify/verify-index-partition-mutation-evidence.mjs`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
 

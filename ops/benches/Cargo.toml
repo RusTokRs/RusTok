@@ -49,6 +49,10 @@ path = "src/bin/index_partition_snapshot_capture.rs"
 name = "index-partition-query-evidence"
 path = "src/bin/index_partition_query_evidence.rs"
 
+[[bin]]
+name = "index-partition-mutation-evidence"
+path = "src/bin/index_partition_mutation_evidence.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false

@@ -21,6 +21,8 @@ This is a standalone workspace crate named `rustok-benchmarks`.
   snapshot runner for the canonical Index relations.
 - `src/bin/index_partition_query_evidence.rs` — owner-operated M3 baseline/shadow
   query latency, result-parity, plan-normalization, and pruning evidence runner.
+- `src/bin/index_partition_mutation_evidence.rs` — owner-operated M3 baseline/shadow
+  rollback-only mutation latency and WAL evidence runner.
 
 ## Purpose
 
@@ -40,10 +42,11 @@ M2 run.
 The M3 partition runners are different. The snapshot runner reads the canonical
 `index_entities` and `index_links` tables, creates deterministic evidence-ID-bound
 shadow parents and children, and copies one repeatable-read snapshot into them. The
-query runner then compares those canonical and shadow relations inside a read-only
-repeatable-read transaction. Neither runner renames, drops, or alters the canonical
-production relations. Run them only against an owner-approved PostgreSQL 16
-evidence database.
+query runner compares those canonical and shadow relations read-only. The mutation
+runner executes matched updates/deletes through savepoints inside one rollback-only
+repeatable-read transaction. None of these runners renames, drops, or cuts over the
+canonical relations. The snapshot runner does not rename, drop, or alter the canonical production relations.
+Run them only against an owner-approved PostgreSQL 16 evidence database.
 
 ## Typical Criterion usage
 
@@ -152,16 +155,41 @@ repeatable-read transaction.
 For every run it verifies baseline/shadow result digest parity, alternates execution
 order, calculates nearest-rank p95 latency, retains full JSON
 `EXPLAIN (ANALYZE, BUFFERS, WAL)` samples, and produces
-`normalized_partition_plan_v1` SHA-256 digests. The normalizer removes physical
-relation/index names and runtime counters while retaining logical operators, join
-shape/type, predicates, ordering, and tenant-hash pruning semantics. Every shadow
-sample must read exactly one child partition for each used entity or link relation;
-canonical and unrelated relations fail closed.
+`normalized_partition_plan_v1` SHA-256 digests. Every shadow sample must read exactly
+one child partition for each used relation. The completed top-level array is
+published once as `query.json` with no-clobber semantics.
 
-The completed top-level array is published once as `query.json` through temporary
-file plus hard-link no-clobber semantics. The runner performs no mutation,
-maintenance, replay, rename, drop, or cutover operation. It produces evidence only;
-the packet assembler and admission validator remain authoritative.
+## Index partition mutation/WAL evidence
+
+Run this only after snapshot capture and while the same manifest-bound shadow
+relations remain in place:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
+INDEX_PARTITION_ALLOW_MUTATION_EVIDENCE=1 \
+INDEX_PARTITION_MANIFEST=evidence/index-partition/manifest.json \
+INDEX_PARTITION_EVIDENCE_ROOT=evidence/index-partition \
+INDEX_PARTITION_MUTATION_SAMPLES=7 \
+cargo run -p rustok-benchmarks --bin index-partition-mutation-evidence --release
+```
+
+The explicit mutation opt-in is mandatory. The runner revalidates the prepared
+manifest, PostgreSQL 16/JIT/pruning settings, canonical relations, shadow comments,
+child names, and partition bounds. It requires canonical/shadow row-count parity and
+selects only byte-for-byte matching generic entity/link anchors.
+
+It builds exactly `manifest.repetitions.mutation` unique entity-touch and link-delete
+runs. The complete comparison uses one rollback-only repeatable-read transaction.
+Every direct validation and every `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)`
+mutation is isolated by a savepoint, rolled back, and then the outer transaction is
+also rolled back. No measured write is committed.
+
+For every run the runner requires exactly one affected row on both sides, alternates
+baseline/shadow order, calculates nearest-rank p95 latency, retains every full JSON
+EXPLAIN sample, and records maximum per-sample plan-node WAL bytes conservatively in
+`baseline_wal_bytes` and `shadow_wal_bytes`. Each shadow mutation must prune its
+target to exactly one child partition. The completed array is published once as
+`mutation.json` with temporary-file plus hard-link no-clobber semantics.
 
 Scale values for the M2 runners:
 
