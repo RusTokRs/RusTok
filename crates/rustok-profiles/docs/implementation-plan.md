@@ -14,8 +14,8 @@ unavailable rows as absent.
 
 `followers_only` visibility resolves through authoritative Social Graph owner ports.
 Profiles never reads relation tables and never authorizes from an event or Index
-projection. The Social Graph → Index worker is optional discovery/query
-infrastructure only.
+projection. The Social Graph → Index worker, its broker position observer, and lag
+metrics are optional discovery/query operations only.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and MIME
 constraints and exposes only Media-selected descriptors. Profiles does not know
@@ -55,15 +55,22 @@ retry.
 - Shared `StopHandle` controls shutdown and `SocialGraphIndexWorkerHandle` participates
   in `runtime_guardrails`, `/health/ready`, and aggregate guardrail metrics only when
   explicitly enabled.
-- Shared Prometheus consumer telemetry covers received deliveries, terminal outcomes,
-  retries, bounded failures, DLQ results, processing duration, starts, terminations,
-  in-flight state, and last success.
+- Shared Prometheus delivery telemetry covers received/terminal outcomes, retries,
+  bounded failures, DLQ results, processing duration, starts/terminations, in-flight
+  state, and last success.
+- A separate read-only observer connects to the already-running configured Iggy endpoint
+  and reads every `domain` partition plus the persistent group checkpoint. It never
+  starts/stops a broker and never mutates offsets.
+- Position metrics expose snapshot timestamp, partition count, completeness, and exact
+  `total`/`max` offset lag only when every partition is coherent. Empty partitions
+  contribute zero; missing/inconsistent checkpoints make the snapshot incomplete and
+  clear lag gauges.
 - Metrics use bounded labels and expose no tenant, event, relation, partition, offset,
-  payload, ack-token, or raw error-message values.
-- Source position and lag metrics are intentionally deferred until the connector can
-  expose a partition-qualified acknowledged-position vector and broker high-watermarks.
-- PostgreSQL concurrency, real-Iggy recovery, the DLQ acknowledgement window, and
-  multi-replica evidence remain pending.
+  payload, ack-token, credential, or raw error-message values.
+- Observer failures are operationally visible but do not stop projection, change worker
+  readiness, or affect profile presentation.
+- PostgreSQL concurrency, real-Iggy recovery/position evidence, the DLQ acknowledgement
+  window, and multi-replica behavior remain pending.
 - None of this moves privacy policy or relation authority out of Social Graph.
 
 ## FFA/FBA boundary
@@ -89,11 +96,12 @@ retry.
    **Status:** source-complete for owner privacy ports, public GraphQL lookups, author
    cards, storefront, Customer Admin enrichment, receipt-aware commands,
    transactional events, cleanup CLI, bounded replay, schema registration,
-   result-first Index apply/ack, shared-connector lifecycle, readiness, and dedicated
-   consumer telemetry.
+   result-first Index apply/ack, shared-connector lifecycle, readiness, delivery
+   telemetry, and broker-backed complete lag observation.
    **Remaining:** prove bounded replay/rescan repair and retain compiled/runtime
    evidence for privacy, receipts, cleanup, event relay/replay, schema concurrency,
-   broker restart/redelivery/DLQ, storefront, Customer Admin, Blog/Forum, and Media.
+   broker restart/redelivery/DLQ/position observation, storefront, Customer Admin,
+   Blog/Forum, and Media.
    **Done when:** every presentation consumer exposes one policy with retained
    evidence and no direct foreign-domain reads or projection-based authorization.
 
@@ -119,12 +127,11 @@ retry.
    **Status:** source-complete for Profiles operations, Social Graph command telemetry,
    durable receipts, maintenance, events, replay, cleanup CLI, sealed conversion,
    persisted schema registration, durable terminal recognition, default-off shared
-   connector lifecycle, retries, staged DLQ ordering, shutdown, readiness, and bounded
-   consumer metrics.
-   **Remaining:** connector high-watermark and partition-qualified position telemetry,
-   deployment retention approval, PostgreSQL concurrency/retention/replay/rollback,
-   real broker and multi-replica evidence, durable DLQ identity decision, and retained
-   operator packets.
+   connector lifecycle, retries, staged DLQ ordering, shutdown, readiness, bounded
+   consumer metrics, and partition-qualified complete lag observation.
+   **Remaining:** deployment retention approval, PostgreSQL concurrency/retention/
+   replay/rollback, real broker observer/reconnect/TLS/rebalance and multi-replica
+   evidence, durable DLQ identity decision, and retained operator packets.
 
 ## Recheck checkpoint — 2026-07-27
 
@@ -138,8 +145,10 @@ retry.
   lifecycle, strict `outbox_iggy` gating, one shared Iggy connector, shutdown, bounded
   retry, exact-byte DLQ-before-ack, and acknowledgement-only recovery.
 - Added enabled-worker readiness and shared bounded Prometheus consumer telemetry.
-- Deliberately deferred source-position/lag metrics rather than publish an incomplete
-  cross-partition offset.
+- Added a read-only every-partition broker snapshot and completeness-gated total/max
+  lag while retaining partition/offset values outside metric labels.
+- Kept position observation independent from Profiles privacy, projection execution,
+  and readiness.
 - Tests, formatters, Cargo commands, source verifiers, PostgreSQL, real-broker, and
   multi-replica scenarios remain maintainer-run or pending.
 
@@ -152,6 +161,7 @@ retry.
 - `cargo test -p rustok-profiles-storefront`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `cargo test -p rustok-telemetry`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
 - `cargo test -p rustok-index schema_registration --lib -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
@@ -160,6 +170,7 @@ retry.
 - `cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture`
 - `cargo test -p rustok-server runtime_guardrails --lib -- --nocapture`
 - `node scripts/verify/verify-index-schema-registration.mjs`
+- `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
@@ -191,5 +202,7 @@ retry.
     publication precedes source ack.
 12. Optional enabled workers participate in readiness and bounded telemetry; disabled
     workers do not degrade presentation availability.
-13. Publish source position/lag only from a partition-qualified connector contract.
-14. Update Profiles and affected owner docs with every boundary change.
+13. Publish lag only from a complete partition-qualified broker snapshot; never use
+    partition or offset as metric labels.
+14. Position observation remains operational only and cannot authorize Profiles reads.
+15. Update Profiles and affected owner docs with every boundary change.
