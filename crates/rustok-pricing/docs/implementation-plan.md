@@ -15,13 +15,21 @@ policy, typed error mapping, and declared fallback profiles, but the FBA
 provider has not yet been executed against live persistence or a remote
 consumer path.
 
-Canonical root read construction now uses `InProcessPricingReadPort`. The wrapper
+Canonical root read construction uses `InProcessPricingReadPort`. The wrapper
 retains the delegated `PortContext`, typed identity and bounded request-shape facts,
 and exact local outcome context around the unchanged `PricingService` port
 implementation. Known identifying validation, not-found, and conflict envelopes are
 returned with stable non-identifying messages while preserving kind, code, and
 retryability. The legacy module-path read factory remains an explicit compatibility
-path, and the write factory remains unchanged.
+path.
+
+Canonical root write construction now uses `InProcessPricingWritePort`. The wrapper
+retains the delegated write/idempotency context and safe typed identity or bounded
+shape facts for all four `PricingWritePort` operations. Known identifier-, handle-,
+SKU-, quantity-, and owner-value-bearing messages are normalized while preserving
+kind, code, and retryability. `PricingService`, the write trait and DTOs, GraphQL
+mutations, saved projections, event publication, and the module-path compatibility
+factory remain unchanged.
 
 The port accepts variant-first resolution when a cart snapshot has no product
 id and returns the full resolved-price projection required to persist pricing
@@ -41,7 +49,7 @@ an authenticated actor, locale, channel, correlation, and deadline context.
 The storefront product-pricing-by-handle GraphQL root uses the matching public
 projection operation and retains its channel-visibility input.
 The GraphQL discount preview uses the typed read port with an authenticated actor.
-`PricingWritePort` now owns the GraphQL admin mutations for variant-price upsert,
+`PricingWritePort` owns the GraphQL admin mutations for variant-price upsert,
 percentage-discount application, active price-list percentage rules, and price-list
 channel scope. The provider enforces deadline and idempotency semantics before it
 invokes the pricing owner service, returns the saved owner projection, and preserves
@@ -55,13 +63,16 @@ evidence only; no live provider-consumer transport execution has been recorded.
 - FBA status: `boundary_ready` — provider metadata and static contract evidence
   are ready, while runtime contract and fallback execution remain pending.
 - Structural shape: `core_transport_ui`
-- Canonical root read provider: `InProcessPricingReadPort`; owner execution remains
-  `PricingService` in `ports.rs`, and `rustok_pricing::ports` is a compatibility path.
+- Canonical root providers: `InProcessPricingReadPort` and
+  `InProcessPricingWritePort`; owner execution remains `PricingService` in
+  `ports.rs`, and `rustok_pricing::ports` is a compatibility path.
 - Evidence: `crates/rustok-pricing/contracts/pricing-fba-registry.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-runtime-contract-smoke.json`,
   `crates/rustok-pricing/docs/read-local-context.md`,
+  `crates/rustok-pricing/docs/write-local-context.md`,
   `scripts/verify/verify-pricing-read-local-context.mjs`,
+  `scripts/verify/verify-pricing-write-local-context.mjs`,
   `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs`,
   `scripts/verify/verify-pricing-admin-boundary.mjs`, and
   `scripts/verify/verify-pricing-storefront-boundary.mjs`.
@@ -92,18 +103,21 @@ evidence only; no live provider-consumer transport execution has been recorded.
    Dependency: the stable owner transport and product variant data. Verification:
    targeted pricing resolution and money-semantics tests.
 4. Prove canonical pricing diagnostics and retire compatibility bypasses.
-   **Status:** source-complete / unvalidated for root read construction. Execute
-   invalid-context, product/variant mismatch, missing price/list, duplicate identity,
-   inventory conflict, storage, and invariant scenarios and retain traces proving that
-   raw handles, SKUs, UUID-bearing messages, quantities, currencies, and prices do not
-   cross the canonical boundary. Audit direct `rustok_pricing::ports` callers and
-   either migrate or explicitly accept them.
+   **Status:** source-complete / unvalidated for root read and write construction.
+   Execute invalid-context, invalid-actor, product/variant mismatch, missing
+   price/list, duplicate identity, inventory conflict, storage, and invariant
+   scenarios and retain traces proving that raw handles, SKUs, UUID-bearing
+   messages, quantities, currencies, prices, and percentages do not cross the
+   canonical boundary. Audit direct `rustok_pricing::ports` callers and either
+   migrate or explicitly accept them. Shared `port.*` admission diagnostics,
+   runtime evidence, and remote-profile parity remain open.
 
 ## Verification
 
 - `npm run verify:pricing:admin-boundary`
 - `npm run verify:pricing:storefront-boundary`
 - `node scripts/verify/verify-pricing-read-local-context.mjs`
+- `node scripts/verify/verify-pricing-write-local-context.mjs`
 - `npm run verify:ecommerce:fba`
 - `cargo test -p rustok-pricing --test pricing_read_port_runtime`
 
