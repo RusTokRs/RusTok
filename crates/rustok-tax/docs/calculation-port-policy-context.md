@@ -25,6 +25,12 @@ The port now:
   severity for ordinary policy or validation rejection;
 - returns the original `PortError` unchanged after diagnostics.
 
+The canonical root factory now additionally wraps post-delegation stable validation
+and result-invariant outcomes. That separate contract is documented in
+[`calculation-local-context.md`](./calculation-local-context.md). Policy admission
+continues to run only in the owner implementation and is not duplicated by the root
+wrapper.
+
 ## Preserved behavior
 
 The change does not alter:
@@ -50,6 +56,10 @@ contract:
 - existing tax service mapping and public validation/result envelopes remain intact;
 - direct admission before owner-operation assignment is forbidden.
 
+`scripts/verify/verify-tax-calculation-local-context.mjs` separately guards the
+canonical root wrapper, safe request-shape facts, exact stable post-delegation
+classification, same-error return, and the legacy module-path compatibility boundary.
+
 ## Validation status
 
 Tests, Cargo commands, formatting commands, verifier execution, workflow checks, and
@@ -58,15 +68,17 @@ CI were not run by the implementation agent, per maintainer instruction.
 Suggested focused checks:
 
 ```bash
+node scripts/verify/verify-tax-calculation-local-context.mjs
 node scripts/verify/verify-tax-calculation-policy-context.mjs
 node scripts/verify/verify-tax-calculation-error-context.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-tax --lib
+cargo check -p rustok-cart --lib
 ```
 
 ## Remaining work
 
-This does not close consumer-side tax transport context retention, promotion cleanup,
-mounted checkout compensation, or the remaining order, payment, fulfillment,
-inventory, customer, and ecommerce adapter mapper work. Architecture status must not
-be promoted from source inspection alone.
+This does not close direct legacy-module callers, consumer-side tax transport context
+retention, promotion cleanup, mounted checkout compensation, external-provider runtime
+evidence, or the remaining customer, promotion, and ecommerce adapter mapper work.
+Architecture status must not be promoted from source inspection alone.
