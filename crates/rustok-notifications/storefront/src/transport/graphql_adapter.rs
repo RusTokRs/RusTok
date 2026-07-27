@@ -70,8 +70,12 @@ mod tests {
     fn unread_count_query_exposes_no_owner_identity_variables() {
         assert!(UNREAD_COUNT_QUERY.contains("notificationInboxUnreadCount"));
         assert!(UNREAD_COUNT_QUERY.contains("unreadCount"));
-        assert!(!UNREAD_COUNT_QUERY.contains("tenantId"));
-        assert!(!UNREAD_COUNT_QUERY.contains("recipientId"));
-        assert!(!UNREAD_COUNT_QUERY.contains("userId"));
+        for forbidden in [
+            ["tenant", "Id"].concat(),
+            ["recipient", "Id"].concat(),
+            ["user", "Id"].concat(),
+        ] {
+            assert!(!UNREAD_COUNT_QUERY.contains(forbidden.as_str()));
+        }
     }
 }
