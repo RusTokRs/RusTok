@@ -11,6 +11,12 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const moduleSource = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
 const facadeSource = read('crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
+const typedSource = read(
+  'crates/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs',
+);
+const layeredSource = read(
+  'crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
+);
 const failures = [];
 
 const requireText = (source, value, label) => {
@@ -41,14 +47,41 @@ const customerLookup = between(
   'fn legacy_graphql_error(',
   'optional storefront customer lookup',
 );
+const typedPolicy = between(
+  typedSource,
+  'fn storefront_line_item_public_policy(',
+  '#[allow(clippy::too_many_arguments)]\nfn storefront_line_item_graphql_error(',
+  'typed line item public policy',
+);
+const typedMapper = between(
+  typedSource,
+  'fn storefront_line_item_graphql_error(',
+  'fn parse_line_item_metadata(',
+  'typed line item GraphQL mapper',
+);
 
 for (const [value, label] of [
-  ['#[path = "helpers.rs"]\nmod legacy_helpers;', 'private legacy helper routing'],
-  ['#[path = "safe_helpers.rs"]\nmod cart_safe_helpers;', 'private cart safe helper routing'],
-  ['#[path = "safe_order_helpers.rs"]\npub mod helpers;', 'public layered safe helper routing'],
-  ['pub(crate) use super::legacy_helpers::*;', 'crate-private legacy helper facade'],
+  ['#[path = "safe_helpers.rs"]\nmod cart_safe_helpers;', 'private cart safe facade routing'],
+  [
+    '#[path = "typed_line_item_helpers.rs"]\nmod typed_line_item_helpers;',
+    'private typed line item routing',
+  ],
+  [
+    '#[path = "safe_order_helpers.rs"]\nmod safe_order_helpers_impl;',
+    'private order helper implementation routing',
+  ],
+  [
+    '#[path = "layered_order_helpers.rs"]\npub mod helpers;',
+    'public layered helper routing',
+  ],
+  ['#[path = "safe_legacy_helpers.rs"]\nmod legacy_helpers;', 'private legacy helper routing'],
+  ['pub(crate) use super::safe_order_helpers_impl::*;', 'preserved helper symbol parity'],
+  [
+    'resolve_storefront_line_item_input, validate_storefront_line_item_quantity,',
+    'explicit typed line item overrides',
+  ],
 ]) {
-  requireText(`${moduleSource}\n${facadeSource}`, value, label);
+  requireText(`${moduleSource}\n${layeredSource}`, value, label);
 }
 
 for (const value of [
@@ -57,7 +90,7 @@ for (const value of [
   'async_graphql::Error::new(format!("{error}"))',
   'pub use super::legacy_helpers::*;',
 ]) {
-  forbidText(facadeSource, value, 'storefront cart safe helper facade');
+  forbidText(facadeSource, value, 'storefront cart compatibility safe helper facade');
 }
 
 for (const [value, label] of [
@@ -85,11 +118,7 @@ for (const [value, label] of [
   ['resource_id = ?resource_id', 'resource logging'],
   ['"Cart shipping details are temporarily unavailable"', 'cart enrichment message'],
   ['"Selected shipping option is invalid"', 'shipping selection message'],
-  ['"Product is not available"', 'product availability message'],
-  ['"Requested quantity is not available"', 'inventory insufficiency message'],
-  ['"Cart line item could not be resolved"', 'line item fallback message'],
   ['"Cart pricing could not be refreshed"', 'reprice fallback message'],
-  ['"Inventory availability could not be verified"', 'inventory dependency message'],
   ['extensions.set("retryable", retryable)', 'retryability extension'],
 ]) {
   requireText(facadeSource, value, label);
@@ -173,51 +202,110 @@ for (const [value, label] of [
   requireText(customerLookup, value, label);
 }
 
+for (const [value, label] of [
+  ['enum StorefrontLineItemFailureKind {', 'typed failure kind'],
+  ['ProductUnavailable,', 'typed product outcome'],
+  ['InventoryInsufficient,', 'typed inventory outcome'],
+  ['InputInvalid,', 'typed input outcome'],
+  ['DependencyUnavailable,', 'typed dependency outcome'],
+  ['enum StorefrontLineItemFailureSource {', 'typed source cause'],
+  ['Database(sea_orm::DbErr)', 'typed database cause'],
+  ['Pricing(PortError)', 'typed pricing cause'],
+  ['Inventory(CommerceError)', 'typed inventory cause'],
+  ['Metadata(serde_json::Error)', 'typed metadata cause'],
+  ['fn storefront_line_item_public_policy(', 'typed public policy'],
+  ['fn storefront_line_item_graphql_error(', 'typed GraphQL mapper'],
+  ['async fn resolve_typed_storefront_line_item_input(', 'typed resolver'],
+  ['async fn validate_typed_storefront_line_item_quantity(', 'typed quantity validator'],
+  ['async fn validate_typed_storefront_variant_inventory(', 'typed inventory validator'],
+  ['StorefrontLineItemFailure::database("load_variant", error)', 'variant database mapping'],
+  ['StorefrontLineItemFailure::pricing(product_model.id, error)', 'pricing mapping'],
+  ['StorefrontLineItemFailure::inventory(variant.product_id, error)', 'inventory mapping'],
+  ['StorefrontLineItemFailure::invalid_metadata(product_id, error)', 'metadata mapping'],
+  ['StorefrontLineItemFailure::inventory_insufficient(', 'inventory insufficiency mapping'],
+  ['resolve_typed_storefront_line_item_input(', 'mounted typed resolver delegation'],
+  ['validate_typed_storefront_line_item_quantity(', 'mounted typed quantity delegation'],
+]) {
+  requireText(typedSource, value, label);
+}
+
+for (const [value, label] of [
+  ['"Product is not available"', 'product public message'],
+  ['"CART_PRODUCT_UNAVAILABLE"', 'product public code'],
+  ['"Requested quantity is not available"', 'inventory public message'],
+  ['"CART_INVENTORY_INSUFFICIENT"', 'inventory public code'],
+  ['"Cart line item input is invalid"', 'input public message'],
+  ['"CART_LINE_ITEM_INVALID"', 'input public code'],
+  ['"Cart line item could not be resolved"', 'resolver fallback message'],
+  ['"CART_LINE_ITEM_RESOLUTION_FAILED"', 'resolver fallback code'],
+  ['"Inventory availability could not be verified"', 'quantity fallback message'],
+  ['"CART_INVENTORY_UNAVAILABLE"', 'quantity fallback code'],
+]) {
+  requireText(typedPolicy, value, label);
+}
+
+for (const [value, label] of [
+  ['source = ?source', 'typed source diagnostics'],
+  ['source_kind,', 'typed source-kind diagnostics'],
+  ['owner = failure.source_owner', 'truthful source owner'],
+  ['owner_operation = failure.source_operation', 'truthful source operation'],
+  ['consumer_operation = consumer_operation.name()', 'consumer operation'],
+  ['correlation_id = ?correlation_id', 'optional retained correlation'],
+  ['tenant_id = %tenant_id', 'tenant context'],
+  ['variant_id = %variant_id', 'variant context'],
+  ['product_id = ?failure.product_id', 'product context'],
+  ['requested_quantity,', 'quantity context'],
+  ['channel_slug_length = ?channel_slug_length', 'bounded channel fact'],
+  ['locale_length = ?locale_length', 'bounded locale fact'],
+  ['public_code = code', 'public code diagnostics'],
+  ['public_retryable = retryable', 'public retryability diagnostics'],
+  ['boundary = STOREFRONT_LINE_ITEM_GRAPHQL_BOUNDARY', 'typed line item boundary'],
+  ['tracing::error!(', 'dependency error severity'],
+  ['tracing::warn!(', 'ordinary rejection severity'],
+  ['public_graphql_error(message, code, retryable)', 'stable public envelope'],
+]) {
+  requireText(typedMapper, value, label);
+}
+
 for (const value of [
-  'let port_context = storefront_customer_port_context(',
-  'let error_context = port_context.clone();',
-  'read_customer_projection_by_user(\n            port_context,',
-  '&error_context,',
-  'owner = "rustok_customer"',
+  'format!("{error:?}")',
+  'detail.contains(',
+  'async_graphql::Error::new(error.to_string())',
+  'async_graphql::Error::new(format!("{error}"))',
+  'error.message',
+  'public_channel_slug = ?public_channel_slug',
+  'locale = ?locale',
+  'input.metadata =',
+  'sku =',
+  'title =',
 ]) {
-  forbidText(facadeSource, value, 'context-dropping or legacy customer mapping');
-}
-
-for (const [pattern, expected, label] of [
-  [/public_code = code/g, 4, 'public code log count'],
-  [/public_retryable = retryable/g, 4, 'public retryability log count'],
-  [/boundary = STOREFRONT_CART_HELPER_BOUNDARY/g, 4, 'boundary log count'],
-  [/owner = "rustok_commerce\.graphql_cart_helper"/g, 2, 'commerce boundary owner count'],
-  [/source_owner = cart_port_source_owner\(&error\)/g, 1, 'source owner log count'],
-  [/owner = STOREFRONT_CUSTOMER_OWNER/g, 2, 'customer owner log count'],
-  [/owner_operation = STOREFRONT_CUSTOMER_OWNER_OPERATION/g, 2, 'customer operation log count'],
-  [/customer_context\.clone\(\),/g, 1, 'customer context clone count'],
-]) {
-  const count = facadeSource.match(pattern)?.length ?? 0;
-  if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
-}
-
-const customerMapperUses = facadeSource.match(/customer_port_graphql_error\(/g) ?? [];
-if (customerMapperUses.length !== 2) {
-  failures.push(
-    `expected customer mapper definition plus one use, found ${customerMapperUses.length}`,
-  );
+  forbidText(typedSource, value, 'typed storefront line item boundary');
 }
 
 for (const operation of [
   'resolve_optional_storefront_customer_id',
   'enrich_storefront_cart',
   'validate_selected_shipping_option',
-  'resolve_storefront_line_item_input',
   'reprice_storefront_cart_line_items',
+]) {
+  requireText(facadeSource, `"${operation}"`, `${operation} compatibility operation mapping`);
+}
+for (const operation of [
+  'resolve_storefront_line_item_input',
   'validate_storefront_line_item_quantity',
 ]) {
-  requireText(facadeSource, `"${operation}"`, `${operation} operation mapping`);
+  requireText(typedSource, `"${operation}"`, `${operation} typed operation mapping`);
 }
 
 const legacyCalls = facadeSource.match(/super::legacy_helpers::[a-z_]+\(/g) ?? [];
 if (legacyCalls.length !== 5) {
-  failures.push(`expected 5 intercepted legacy helper calls, found ${legacyCalls.length}`);
+  failures.push(`expected 5 compatibility legacy helper calls, found ${legacyCalls.length}`);
+}
+const typedExports = layeredSource.match(
+  /resolve_storefront_line_item_input|validate_storefront_line_item_quantity/g,
+) ?? [];
+if (typedExports.length !== 2) {
+  failures.push(`expected 2 explicit typed helper exports, found ${typedExports.length}`);
 }
 
 if (failures.length > 0) {
@@ -227,5 +315,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL storefront cart helpers retain full customer PortContext, truthful cart/pricing ownership, stable public envelopes, and private layered routing',
+  '✔ Commerce GraphQL storefront cart helpers use typed line-item outcomes, stable public envelopes, retained owner context, and private layered routing',
 );
