@@ -37,7 +37,7 @@ export function verifyCommerceCheckoutCompletionCutover({ root = defaultRoot } =
 
   for (const marker of [
     "CheckoutCompletionPort",
-    "complete_checkout(write_context, request)",
+    "complete_checkout(write_context.clone(), request)",
     "CheckoutOrderRecoveryAdapter",
     "recover_existing_checkout(",
     "read_checkout_order(",
@@ -57,6 +57,7 @@ export function verifyCommerceCheckoutCompletionCutover({ root = defaultRoot } =
     "CheckoutOrderConfirmationExecutor",
     "OrderService::new",
     "order_service",
+    "complete_checkout(write_context, request)",
   ]) {
     forbidMarker(failures, sources.stage, marker, files.stage);
   }

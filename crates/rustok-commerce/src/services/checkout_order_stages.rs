@@ -1,4 +1,6 @@
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
+};
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_order::{
@@ -29,6 +31,11 @@ use super::{
 };
 
 const ORDER_COMPLETION_PORT_DEADLINE_SECONDS: u64 = 3;
+const CHECKOUT_ORDER_STAGE_BOUNDARY: &str = "commerce_checkout_order_stage";
+const ORDER_STAGE_OWNER: &str = "rustok_order";
+const RECOVER_EXISTING_OPERATION: &str = "recover_existing_checkout";
+const COMPLETE_CHECKOUT_OPERATION: &str = "complete_checkout";
+const READ_ORDER_OPERATION: &str = "read_checkout_order";
 
 #[derive(Clone, Debug)]
 pub struct CheckoutPaymentReadyState {
@@ -203,15 +210,29 @@ impl CheckoutOrderStageExecutor {
                             },
                         )
                         .await
-                        .map_err(|error| boundary_error("recover_existing", error))?
+                        .map_err(|error| {
+                            order_boundary_error(
+                                &write_context,
+                                RECOVER_EXISTING_OPERATION,
+                                "recover_existing",
+                                error,
+                            )
+                        })?
                     {
                         Some(order) => order,
                         None => {
                             let completion = self
                                 .completion_port
-                                .complete_checkout(write_context, request)
+                                .complete_checkout(write_context.clone(), request)
                                 .await
-                                .map_err(|error| boundary_error("complete", error))?;
+                                .map_err(|error| {
+                                    order_boundary_error(
+                                        &write_context,
+                                        COMPLETE_CHECKOUT_OPERATION,
+                                        "complete",
+                                        error,
+                                    )
+                                })?;
                             let order = self
                                 .read_order_projection(tenant_id, operation_id, &plan)
                                 .await?;
@@ -313,17 +334,18 @@ impl CheckoutOrderStageExecutor {
         operation_id: Uuid,
         plan: &CheckoutOrderPlanRecord,
     ) -> CheckoutOrderStageResult<OrderResponse> {
+        let read_context = completion_context(
+            tenant_id,
+            PortActor::service("rustok-commerce.checkout-order-stage"),
+            operation_id,
+            plan.payload.context.locale.as_str(),
+            self.port_deadline,
+            "read-order",
+            false,
+        );
         self.recovery_adapter
             .read_checkout_order(
-                completion_context(
-                    tenant_id,
-                    PortActor::service("rustok-commerce.checkout-order-stage"),
-                    operation_id,
-                    plan.payload.context.locale.as_str(),
-                    self.port_deadline,
-                    "read-order",
-                    false,
-                ),
+                read_context.clone(),
                 ReadCheckoutOrderProjectionRequest {
                     checkout_operation_id: operation_id,
                     locale: Some(plan.payload.context.locale.clone()),
@@ -331,7 +353,9 @@ impl CheckoutOrderStageExecutor {
                 },
             )
             .await
-            .map_err(|error| boundary_error("read_order", error))
+            .map_err(|error| {
+                order_boundary_error(&read_context, READ_ORDER_OPERATION, "read_order", error)
+            })
     }
 
     pub fn plan_journal(&self) -> &CheckoutOrderPlanJournal {
@@ -492,6 +516,72 @@ fn completion_context(
         context.with_idempotency_key(format!("checkout:{operation_id}:order:complete"))
     } else {
         context
+    }
+}
+
+fn order_boundary_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    stage: &'static str,
+    error: PortError,
+) -> CheckoutOrderStageError {
+    log_checkout_order_boundary_failure(context, owner_operation, stage, &error);
+    boundary_error(stage, error)
+}
+
+fn log_checkout_order_boundary_failure(
+    context: &PortContext,
+    owner_operation: &'static str,
+    stage: &'static str,
+    boundary_error: &PortError,
+) {
+    match &boundary_error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?boundary_error,
+                owner = ORDER_STAGE_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage,
+                code = %boundary_error.code,
+                internal_message = %boundary_error.message,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_ORDER_STAGE_BOUNDARY,
+                "checkout order owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?boundary_error,
+                owner = ORDER_STAGE_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage,
+                code = %boundary_error.code,
+                internal_message = %boundary_error.message,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_ORDER_STAGE_BOUNDARY,
+                "checkout order owner boundary was rejected"
+            );
+        }
     }
 }
 

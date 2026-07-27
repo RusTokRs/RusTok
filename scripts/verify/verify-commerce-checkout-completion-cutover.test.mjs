@@ -12,7 +12,7 @@ import {
 const files = {
   "crates/rustok-commerce/src/services/checkout_order_stages.rs": `
 CheckoutCompletionPort
-complete_checkout(write_context, request)
+complete_checkout(write_context.clone(), request)
 CheckoutOrderRecoveryAdapter
 recover_existing_checkout(
 read_checkout_order(
