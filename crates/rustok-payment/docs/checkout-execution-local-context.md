@@ -171,12 +171,17 @@ unchanged. Only the read body moved into a private helper with the same operatio
 - unknown and pre-delegation error pass-through;
 - unchanged stable envelope construction in the existing payment execution source modules.
 
+Payment compensation uses the same correlation-safe pattern behind its canonical root factory. Its
+separate contract and guard are documented in
+[`checkout-compensation-local-context.md`](./checkout-compensation-local-context.md).
+
 ## Remaining gaps
 
 The ecommerce correlation-safe mapper task remains open for:
 
-- payment execution policy, tenant, and causation diagnostics at the owner entrypoint;
-- payment checkout compensation local outcomes;
+- payment execution and compensation policy, tenant, and causation diagnostics beyond existing owner
+  events;
+- direct callers that bypass canonical payment root factories;
 - direct payment query/mutation transport envelopes;
 - GraphQL customer reads and shared storefront customer lookup;
 - remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
@@ -190,6 +195,7 @@ These commands were intentionally not run by the implementation agent:
 
 ```bash
 node scripts/verify/verify-payment-checkout-execution-local-context.mjs
+node scripts/verify/verify-payment-checkout-compensation-local-context.mjs
 node scripts/verify/verify-commerce-checkout-payment-stage-context.mjs
 node scripts/verify/verify-payment-storefront-boundary.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
