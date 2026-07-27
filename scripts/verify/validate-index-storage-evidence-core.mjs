@@ -10,12 +10,6 @@ const resultDigestContract = 'ordered_length_prefixed_json_v1';
 const canonicalLocales = ['en-US', 'ru-RU'];
 const canonicalPrototypes = [
   { prototype: 'jsonb', schema: 'idx_bench_jsonb', relations: ['entity', 'link'] },
-  { prototype: 'typed_eav', schema: 'idx_bench_eav', relations: ['entity', 'field_value', 'link'] },
-  {
-    prototype: 'hot_projection',
-    schema: 'idx_bench_hot',
-    relations: ['link', 'product', 'sales_channel', 'variant'],
-  },
 ];
 const canonicalReadWorkloads = [
   'status_equality',

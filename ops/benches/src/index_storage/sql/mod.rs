@@ -1,6 +1,4 @@
 mod common;
-mod eav;
-mod hot;
 mod jsonb;
 mod maintenance;
 mod source;
@@ -16,26 +14,20 @@ pub const RESULT_DIGEST_CONTRACT: &str = "ordered_length_prefixed_json_v1";
 #[serde(rename_all = "snake_case")]
 pub enum Prototype {
     Jsonb,
-    TypedEav,
-    HotProjection,
 }
 
 impl Prototype {
-    pub const ALL: [Self; 3] = [Self::Jsonb, Self::TypedEav, Self::HotProjection];
+    pub const ALL: [Self; 1] = [Self::Jsonb];
 
     pub const fn schema(self) -> &'static str {
         match self {
             Self::Jsonb => "idx_bench_jsonb",
-            Self::TypedEav => "idx_bench_eav",
-            Self::HotProjection => "idx_bench_hot",
         }
     }
 
     pub const fn relations(self) -> &'static [&'static str] {
         match self {
             Self::Jsonb => &["entity", "link"],
-            Self::TypedEav => &["entity", "field_value", "link"],
-            Self::HotProjection => &["product", "variant", "sales_channel", "link"],
         }
     }
 }
@@ -91,8 +83,6 @@ pub fn source_workloads(config: &DatasetConfig) -> Vec<Workload> {
 pub fn prototype_sql(prototype: Prototype) -> String {
     match prototype {
         Prototype::Jsonb => jsonb::prototype_sql(),
-        Prototype::TypedEav => eav::prototype_sql(),
-        Prototype::HotProjection => hot::prototype_sql(),
     }
 }
 
@@ -107,8 +97,6 @@ pub fn workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<Workload> 
     let context = WorkloadContext::new(config);
     let workloads = match prototype {
         Prototype::Jsonb => jsonb::workloads(&context),
-        Prototype::TypedEav => eav::workloads(&context),
-        Prototype::HotProjection => hot::workloads(&context),
     };
     workloads
         .into_iter()
@@ -135,8 +123,6 @@ pub fn mutation_workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<M
     let context = WorkloadContext::new(config);
     let workloads = match prototype {
         Prototype::Jsonb => jsonb::mutation_workloads(&context),
-        Prototype::TypedEav => eav::mutation_workloads(&context),
-        Prototype::HotProjection => hot::mutation_workloads(&context),
     };
     workloads
         .into_iter()
@@ -256,7 +242,7 @@ mod tests {
                 expected_reads
             );
         }
-        for prototype in [Prototype::TypedEav, Prototype::HotProjection] {
+        for prototype in Prototype::ALL {
             assert_eq!(
                 mutation_workloads(prototype, &config)
                     .into_iter()

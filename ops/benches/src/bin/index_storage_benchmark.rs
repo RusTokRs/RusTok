@@ -1,6 +1,4 @@
-use rustok_benchmarks::index_storage::{
-    BenchmarkConfig, run, write_provenance_bound_report,
-};
+use rustok_benchmarks::index_storage::{BenchmarkConfig, run, write_provenance_bound_report};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

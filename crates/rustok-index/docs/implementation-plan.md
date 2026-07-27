@@ -40,7 +40,7 @@ Commits record which checks and evidence runs were not executed.
 ## Current status
 
 - Rewrite status: `in_progress`
-- Current milestone: `M2 - PostgreSQL storage benchmark`
+- Current milestone: `M3 - PostgreSQL storage engine`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
@@ -51,7 +51,8 @@ Commits record which checks and evidence runs were not executed.
 - M2 deterministic PostgreSQL session contract: `complete`
 - M2 observed cross-report database metadata contract: `complete`
 - M2 comparison provenance contract: `complete`
-- M2 storage decision: `JSONB accepted; rejected prototype deletion pending`
+- M2 storage benchmark: `complete`
+- M2 storage decision: `JSONB accepted; rejected prototypes removed`
 - Production persistence: intentionally absent until M3 implements the accepted JSONB model
 
 The active production crate contains only the generic domain/application core,
@@ -279,12 +280,13 @@ migrations.
       throughput, relation size, WAL, dead tuples, vacuum behavior, and operational
       complexity.
 - [x] Record the selected model and rejected alternatives in an ADR.
-- [ ] Delete benchmark prototypes that are not selected.
+- [x] Delete benchmark prototypes that are not selected.
 
-Replacement same-commit PostgreSQL evidence is archived and the accepted ADR
-selects JSONB as canonical generic storage. M2 remains open only for deletion of
-the rejected typed-EAV and hot-projection benchmark prototypes; implementing or
-correcting the harness alone did not select the model.
+Replacement same-commit PostgreSQL evidence is archived, the accepted ADR
+selects JSONB as canonical generic storage, and the rejected typed-EAV and
+hot-projection benchmark implementations are removed. M2 is complete. The
+remaining JSONB benchmark path is a selected-layout regression harness; it is not
+production persistence and does not reopen the accepted storage decision.
 
 ### M3 - PostgreSQL storage engine
 

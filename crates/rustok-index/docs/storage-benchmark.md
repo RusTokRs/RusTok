@@ -2,10 +2,10 @@
 
 ## Status
 
-- Milestone: `M2 - PostgreSQL storage benchmark`
-- Read harness: implemented in `ops/benches/src/index_storage`
-- Mutation/WAL harness: implemented with transaction rollback isolation
-- Persistent churn/VACUUM harness: implemented with committed cycles
+- Milestone: `M2 - PostgreSQL storage benchmark` (`complete`)
+- Selected-layout read harness: JSONB-only in `ops/benches/src/index_storage`
+- Selected-layout mutation/WAL harness: JSONB-only with transaction rollback isolation
+- Selected-layout persistent churn/VACUUM harness: JSONB-only with committed cycles
 - PostgreSQL session metadata contract: implemented across all three reports
 - Smoke evidence automation: implemented in `.github/workflows/index-storage-smoke.yml`
 - Production migrations: intentionally absent pending M3 implementation
@@ -17,11 +17,16 @@
 
 ## Goal
 
-Select the physical PostgreSQL representation for the generic Index Engine from
-repeatable evidence rather than preference. The benchmark compares three models
-while keeping the generated source dataset, entity identity, links, filters,
-ordering, pagination, mutation batch, churn cycle count, and PostgreSQL session
-constant.
+The completed M2 benchmark selected the physical PostgreSQL representation for
+the generic Index Engine from repeatable evidence rather than preference. The
+archived decision run compared three models while keeping the generated source
+dataset, entity identity, links, filters, ordering, pagination, mutation batch,
+churn cycle count, and PostgreSQL session constant.
+
+After acceptance, the typed-EAV and hot-projection implementations were removed.
+The remaining JSONB runner is a selected-layout regression harness. The archived
+three-candidate packets and comparison remain the authoritative selection
+evidence; new JSONB-only runs cannot replace or silently revise that decision.
 
 ## PostgreSQL session and metadata contract
 

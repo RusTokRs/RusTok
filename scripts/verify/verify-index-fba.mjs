@@ -32,21 +32,15 @@ const sqlModule = read('ops/benches/src/index_storage/sql/mod.rs');
 const commonSql = read('ops/benches/src/index_storage/sql/common.rs');
 const maintenanceSql = read('ops/benches/src/index_storage/sql/maintenance.rs');
 const jsonbSql = read('ops/benches/src/index_storage/sql/jsonb.rs');
-const eavSql = read('ops/benches/src/index_storage/sql/eav.rs');
-const hotSql = read('ops/benches/src/index_storage/sql/hot.rs');
 const normalizedCommonSql = commonSql.replace(/\s+/gu, ' ');
 const normalizedMaintenanceSql = maintenanceSql.replace(/\s+/gu, ' ');
 const normalizedJsonbSql = jsonbSql.replace(/\s+/gu, ' ');
-const normalizedEavSql = eavSql.replace(/\s+/gu, ' ');
-const normalizedHotSql = hotSql.replace(/\s+/gu, ' ');
 const benchmarkSql = [
   sqlModule,
   'ops/benches/src/index_storage/sql/source.rs',
   commonSql,
   maintenanceSql,
   jsonbSql,
-  eavSql,
-  hotSql,
 ].map((entry) => entry.includes('\n') ? entry : read(entry)).join('\n');
 const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
 const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
@@ -66,6 +60,8 @@ for (const obsolete of [
   'crates/rustok-index/contracts/index-fba-registry.json',
   'crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json',
   'crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json',
+  'ops/benches/src/index_storage/sql/eav.rs',
+  'ops/benches/src/index_storage/sql/hot.rs',
 ]) {
   if (exists(obsolete)) fail(`obsolete rewrite artifact still exists: ${obsolete}`);
 }
@@ -117,26 +113,19 @@ if (!normalizedPlan.includes('Backward compatibility with the rejected implement
 }
 
 for (const marker of [
+  '- Current milestone: `M3 - PostgreSQL storage engine`',
+  '- M2 storage benchmark: `complete`',
+  '- M2 storage decision: `JSONB accepted; rejected prototypes removed`',
   '- [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.',
   '- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.',
-  '- [x] Prototype normalized typed field-value rows.',
-  '- [x] Preserve complete module/entity/schema-version identity in typed EAV field',
-  '- [x] Scope JSONB and typed EAV maintenance entity mutations by the complete schema',
-  '- [x] Add static guards for full-identity EAV and maintenance SQL.',
-  '- [x] Prototype a specialized hot typed projection as the comparison baseline.',
-  '- [x] Verify source/candidate entity and link cardinality before timing.',
-  '- [x] Verify identical workload result digests across all candidates.',
-  '- [x] Add deterministic Product batch update and delete workloads for all models.',
-  '- [x] Isolate every measured mutation in its own rolled-back transaction.',
-  '- [x] Add committed update plus delete/reinsert churn cycles for every candidate.',
-  '- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.',
-  '- [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a',
-  '- [x] Record the candidate operational review and ADR completion checklist.',
-  '- [ ] Run and archive replacement 100k Product-locale row read, mutation, and',
-  '- [ ] Run and archive replacement 1m Product-locale row read, mutation, and',
-  '- [ ] Record the selected model and rejected alternatives in an ADR.',
+  '- [x] Run and archive replacement 100k Product-locale row read, mutation, and',
+  '- [x] Run and archive replacement 1m Product-locale row read, mutation, and',
+  '- [x] Compare warm/cold buffers, planner stability, execution latency, ingestion',
+  '- [x] Record the selected model and rejected alternatives in an ADR.',
+  '- [x] Delete benchmark prototypes that are not selected.',
+  'M2 is complete.',
 ]) {
-  if (!plan.includes(marker)) fail(`M2 plan marker missing: ${marker}`);
+  if (!plan.includes(marker)) fail(`M2 completion marker missing: ${marker}`);
 }
 for (const marker of ['DatasetScale', 'Rows100k', 'Rows1m', 'LocaleKey::new', 'total_link_rows']) {
   if (!benchmarkConfig.includes(marker)) fail(`benchmark config missing ${marker}`);
@@ -173,11 +162,7 @@ if (scaleWorkflow.includes('evidence-1m-runner-required')) {
 }
 for (const marker of [
   'Prototype::Jsonb',
-  'Prototype::TypedEav',
-  'Prototype::HotProjection',
   'idx_bench_jsonb',
-  'idx_bench_eav',
-  'idx_bench_hot',
   'two_hop_channel_filter',
   "product_variant.target_entity = 'variant'",
   "variant_channel.target_entity = 'sales_channel'",
@@ -189,7 +174,20 @@ for (const marker of [
   'VACUUM (ANALYZE)',
   'CREATE TABLE {schema}.link',
 ]) {
-  if (!benchmarkSql.includes(marker)) fail(`benchmark SQL missing ${marker}`);
+  if (!benchmarkSql.includes(marker)) fail(`selected JSONB benchmark SQL missing ${marker}`);
+}
+for (const rejected of [
+  'Prototype::TypedEav',
+  'Prototype::HotProjection',
+  'idx_bench_eav',
+  'idx_bench_hot',
+  'mod eav;',
+  'mod hot;',
+]) {
+  if (benchmarkSql.includes(rejected) || benchmarkRunner.includes(rejected)
+      || mutationRunner.includes(rejected) || maintenanceRunner.includes(rejected)) {
+    fail(`rejected benchmark prototype returned: ${rejected}`);
+  }
 }
 for (const marker of [
   'source_module text NOT NULL',
@@ -208,11 +206,7 @@ for (const marker of [
 ]) {
   if (!sqlModule.includes(marker)) fail(`benchmark SQL identity guard missing ${marker}`);
 }
-for (const [label, source] of [
-  ['JSONB', normalizedJsonbSql],
-  ['typed EAV', normalizedEavSql],
-  ['hot projection', normalizedHotSql],
-]) {
+for (const [label, source] of [['JSONB', normalizedJsonbSql]]) {
   for (const marker of [
     'product_variant.source_module',
     'product_variant.source_schema_version',
@@ -244,28 +238,15 @@ for (const legacy of [
   "variant_channel.source_entity = 'variant' AND variant_channel.source_entity_id",
   "link.source_entity = 'product' AND link.source_locale",
 ]) {
-  if ([normalizedCommonSql, normalizedJsonbSql, normalizedEavSql, normalizedHotSql, normalizedMaintenanceSql]
+  if ([normalizedCommonSql, normalizedJsonbSql, normalizedMaintenanceSql]
     .some((source) => source.includes(legacy))) {
     fail(`incomplete benchmark link identity returned: ${legacy}`);
   }
 }
 for (const marker of [
-  'CREATE TABLE idx_bench_eav.field_value ( tenant_id uuid NOT NULL, module_name text NOT NULL, entity_name text NOT NULL, schema_version integer NOT NULL',
-  'PRIMARY KEY ( tenant_id, module_name, entity_name, schema_version, entity_id, locale, field_name, ordinal )',
-  'FOREIGN KEY ( tenant_id, module_name, entity_name, schema_version, entity_id, locale ) REFERENCES idx_bench_eav.entity',
-  'status.module_name = entity.module_name',
-  'status.schema_version = entity.schema_version',
-  'channel_code.module_name = variant_channel.target_module',
-  'channel_code.schema_version = variant_channel.target_schema_version',
-  "field.module_name = 'product'",
-  'field.schema_version = 1',
-]) {
-  if (!normalizedEavSql.includes(marker)) fail(`typed EAV full-identity guard missing: ${marker}`);
-}
-for (const marker of [
-  "entity.module_name = 'product' AND entity.entity_name = 'product' AND entity.schema_version = 1",
-  "field.module_name = 'product' AND field.entity_name = 'product' AND field.schema_version = 1",
-  'tenant_id, module_name, entity_name, schema_version, entity_id, locale, field_name',
+  "entity.module_name = 'product'",
+  "entity.entity_name = 'product'",
+  'entity.schema_version = 1',
 ]) {
   if (!normalizedMaintenanceSql.includes(marker)) {
     fail(`maintenance full-identity guard missing: ${marker}`);
@@ -333,11 +314,11 @@ if (!normalizedBenchmarkDoc.includes('Smoke evidence: historical harness-sanity 
 if (!normalizedBenchmarkDoc.includes('100k evidence: historical diagnostic packet from Actions run `30051321255`')) {
   fail('benchmark documentation must record the historical 100k evidence run');
 }
-if (!normalizedBenchmarkDoc.includes('Replacement evidence: same-commit 100k and 1m packets pending after full-identity corrections')) {
-  fail('benchmark documentation must keep replacement scale evidence pending');
+if (!normalizedBenchmarkDoc.includes('Replacement evidence: validated same-commit 100k and 1m packets from Actions run `30222913450`')) {
+  fail('benchmark documentation must record the accepted replacement evidence run');
 }
-if (!normalizedBenchmarkDoc.includes('1m evidence: enabled on `INDEX_BENCH_LARGE_RUNNER` when configured, otherwise `ubuntu-latest`, with a fail-closed 35 GB free-disk check')) {
-  fail('benchmark documentation must keep the guarded 1m runner policy visible');
+if (!normalizedBenchmarkDoc.includes('1m evidence: validated on `ubuntu-latest` after the fail-closed 35 GB free-disk check')) {
+  fail('benchmark documentation must record the validated 1m runner policy');
 }
 
 console.log('[verify-index-fba] Index core boundary and M2 benchmark/evidence state are consistent');

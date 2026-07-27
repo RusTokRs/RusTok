@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 
 const validator = path.resolve('scripts/verify/validate-index-storage-evidence.mjs');
 const comparator = path.resolve('scripts/verify/compare-index-storage-evidence.mjs');
-const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
+const prototypes = ['jsonb'];
 const workloads = [
   'status_equality',
   'price_range_sort',

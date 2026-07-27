@@ -219,12 +219,6 @@ async fn prototype_cardinality(
         Prototype::Jsonb => {
             "SELECT (SELECT count(*) FROM idx_bench_jsonb.entity)::bigint AS entity_rows, NULL::bigint AS field_rows, (SELECT count(*) FROM idx_bench_jsonb.link)::bigint AS link_rows"
         }
-        Prototype::TypedEav => {
-            "SELECT (SELECT count(*) FROM idx_bench_eav.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_eav.field_value)::bigint AS field_rows, (SELECT count(*) FROM idx_bench_eav.link)::bigint AS link_rows"
-        }
-        Prototype::HotProjection => {
-            "SELECT ((SELECT count(*) FROM idx_bench_hot.product) + (SELECT count(*) FROM idx_bench_hot.variant) + (SELECT count(*) FROM idx_bench_hot.sales_channel))::bigint AS entity_rows, NULL::bigint AS field_rows, (SELECT count(*) FROM idx_bench_hot.link)::bigint AS link_rows"
-        }
     };
     let row = db
         .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
@@ -244,8 +238,7 @@ fn validate_cardinality(
 ) -> Result<()> {
     let expected_entities = i64::try_from(dataset.total_entity_rows())?;
     let expected_fields = match prototype {
-        Prototype::TypedEav => Some(i64::try_from(dataset.total_eav_field_rows())?),
-        Prototype::Jsonb | Prototype::HotProjection => None,
+        Prototype::Jsonb => None,
     };
     let expected_links = i64::try_from(dataset.total_link_rows())?;
     ensure!(
