@@ -11,11 +11,12 @@ The crate now supports bounded runtime collector registration after telemetry
 initialization. The first concrete consumer is the Social Graph → Index durable
 worker, which registers one shared collector for throughput, terminal outcomes,
 retries, bounded failures, DLQ publication, processing duration, lifecycle,
-in-flight state/timestamps, last success, and observed source offsets.
+in-flight state/timestamps, and last success.
 
-No runtime-consumer metric uses tenant, event, relation, payload, partition,
-ack-token, or raw error-message values as labels. Observed offsets are not presented
-as true broker lag; that requires a connector high-watermark contract.
+No runtime-consumer metric uses tenant, event, relation, partition, offset, payload,
+ack-token, or raw error-message values as labels. Source position and lag series are
+intentionally absent until a connector can supply partition-qualified acknowledged
+positions and broker high-watermarks.
 
 ## Boundary
 
@@ -29,8 +30,8 @@ as true broker lag; that requires a connector high-watermark contract.
   operational response.
 - Runtime collectors must register into the existing registry through
   `register_runtime_collector`; creating a second global registry is forbidden.
-- Dynamic identities, payloads, claims, credentials, raw storage causes, and other
-  high-cardinality or sensitive values are forbidden as metric labels.
+- Dynamic identities, transport positions, payloads, claims, credentials, raw storage
+  causes, and other high-cardinality or sensitive values are forbidden as labels.
 
 ## Delivered result: bounded runtime consumer metrics
 
@@ -39,12 +40,14 @@ as true broker lag; that requires a connector high-watermark contract.
 - Metrics expose received and terminally acknowledged deliveries, outcome classes,
   retries by stage, failures by bounded stage/stable code, DLQ publish results,
   receive-to-terminal-ack duration, starts/terminations, current in-flight state and
-  start time, last success time, and received/acknowledged offsets.
+  start time, and last success time.
 - Labels are limited to `consumer`, `outcome`, `stage`, stable `error_code`, `result`,
-  termination `reason`, and offset `state`.
-- Offset values saturate at Prometheus signed gauge range instead of wrapping.
+  and termination `reason`.
+- Worker termination clears in-flight gauges while preserving the last successful
+  acknowledgement timestamp.
 - The collector is rendered automatically by the existing `/metrics` registry.
-- Static verification guards metric names, label sets, staged DLQ order, and
+- Static verification guards metric names, bounded label sets, absence of incomplete
+  source-position/lag metrics, staged DLQ order, clean in-flight lifecycle, and
   acknowledgement-only recovery.
 
 ## Next results
@@ -55,9 +58,10 @@ as true broker lag; that requires a connector high-watermark contract.
 2. **Harden the shared metrics contract.** Add focused regression coverage for
    duplicate/concurrent runtime registration, disabled telemetry, collector render,
    bounded labels, and worker termination while a delivery is unacknowledged.
-3. **Add a reviewed high-watermark convention.** Once transport connectors expose
-   partition high-watermarks, define a neutral offset-lag metric that does not infer
-   lag from event timestamps or processing duration.
+3. **Add a reviewed high-watermark convention.** Once transport connectors expose a
+   partition-qualified acknowledged-position snapshot and partition high-watermarks,
+   define neutral source-position and lag metrics. Do not infer them from event age,
+   processing duration, or one global offset.
 4. **Align module instrumentation with operations.** Validate representative modules
    and `/metrics` against a small correlation/service-health convention without
    moving domain semantics or runbooks into this crate.
