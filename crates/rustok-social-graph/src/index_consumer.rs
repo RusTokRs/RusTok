@@ -16,6 +16,7 @@ use crate::index::{
     SocialGraphIndexError, social_graph_relation_index_mutation,
     social_graph_relation_index_schema,
 };
+use crate::index_dlq_message_id::social_graph_index_dlq_broker_message_id;
 use crate::index_dlq_receipt::{
     SocialGraphIndexDlqIdentity, SocialGraphIndexDlqPublishClaim, SocialGraphIndexDlqReceipt,
     SocialGraphIndexDlqReceiptError, SocialGraphIndexDlqReceiptState,
@@ -279,8 +280,9 @@ impl SocialGraphIndexConsumer {
     ///
     /// `Ok` is returned only after the receipt reached `published`, so a later source-ack
     /// failure or process restart recognizes the terminal DLQ result and skips publication.
-    /// A crash after broker success but before `published` may retry after the lease expires;
-    /// the exact payload and logical source identity remain stable.
+    /// A crash after broker success but before `published` may retry the same deterministic
+    /// broker message ID after the lease expires. Physical duplicate suppression additionally
+    /// requires an enabled Iggy deduplication window that still contains that ID.
     pub async fn publish_consumed_to_dlq(
         &self,
         consumed: &ConsumedContractEvent,
@@ -317,6 +319,7 @@ impl SocialGraphIndexConsumer {
             SocialGraphIndexDlqPublishClaim::Claimed => {}
         }
 
+        let broker_message_id = social_graph_index_dlq_broker_message_id(&identity);
         let entry = DlqEntry::new(
             consumed.envelope.id(),
             consumed.topic.clone(),
@@ -324,7 +327,8 @@ impl SocialGraphIndexConsumer {
             effective_error_code,
             effective_retry_count,
         )
-        .with_connector_metadata(consumed.connector_metadata.clone());
+        .with_connector_metadata(consumed.connector_metadata.clone())
+        .with_broker_message_id(broker_message_id);
         if let Err(error) = self.transport.move_to_dlq(entry).await {
             let _ = self
                 .dlq_receipts
