@@ -1,12 +1,14 @@
 use std::env;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rustok_iggy::{ConsumedContractEvent, IggyTransport};
+use rustok_index::MutationApplyOutcome;
 use rustok_social_graph::index_consumer::{
     SocialGraphIndexConsumer, SocialGraphIndexProcessOutcome,
 };
+use rustok_telemetry::runtime_consumer_metrics;
 use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
@@ -19,6 +21,12 @@ const ENABLE_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_IDLE_POLL_MS";
 const DEFAULT_IDLE_POLL_MS: u64 = 500;
 const MAX_IDLE_POLL_MS: u64 = 60_000;
+const METRICS_CONSUMER: &str = "social_graph_index";
+const STAGE_STARTUP: &str = "startup";
+const STAGE_RECEIVE: &str = "receive";
+const STAGE_PROJECTION: &str = "projection";
+const STAGE_DLQ_PUBLISH: &str = "dlq_publish";
+const STAGE_ACKNOWLEDGEMENT: &str = "acknowledgement";
 static SOCIAL_GRAPH_INDEX_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
@@ -122,6 +130,14 @@ pub async fn start_social_graph_index_worker_if_enabled(
         return Ok(());
     }
 
+    if let Err(error) = runtime_consumer_metrics::ensure_registered() {
+        tracing::debug!(
+            error = %error,
+            worker = METRICS_CONSUMER,
+            "Runtime consumer metrics are unavailable; continuing without registration"
+        );
+    }
+
     let event_runtime = ctx
         .shared_get::<Arc<EventRuntime>>()
         .ok_or_else(|| Error::Message("EventRuntime is unavailable".to_string()))?;
@@ -146,18 +162,25 @@ pub async fn start_social_graph_index_worker_if_enabled(
         .subscribe();
 
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;
-    let consumer = SocialGraphIndexConsumer::open(transport, ctx.db_clone())
-        .await
-        .map_err(|error| {
-            Error::Message(format!(
+    let consumer = match SocialGraphIndexConsumer::open(transport, ctx.db_clone()).await {
+        Ok(consumer) => consumer,
+        Err(error) => {
+            runtime_consumer_metrics::record_failure(
+                METRICS_CONSUMER,
+                STAGE_STARTUP,
+                error.stable_code(),
+            );
+            return Err(Error::Message(format!(
                 "Social Graph Index consumer startup failed [{}]",
                 error.stable_code()
-            ))
-        })?;
+            )));
+        }
+    };
 
     let instance_id = SOCIAL_GRAPH_INDEX_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    runtime_consumer_metrics::record_worker_start(METRICS_CONSUMER);
     tracing::info!(
-        worker = "social_graph_index",
+        worker = METRICS_CONSUMER,
         instance_id,
         consumer_group = rustok_social_graph::index_consumer::SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
         dlq_enabled = config.dlq_enabled,
@@ -178,8 +201,9 @@ async fn social_graph_index_worker_loop(
 ) {
     loop {
         if *stop_rx.borrow() {
+            record_worker_termination("shutdown");
             tracing::info!(
-                worker = "social_graph_index",
+                worker = METRICS_CONSUMER,
                 "Worker received shutdown signal"
             );
             return;
@@ -196,8 +220,9 @@ async fn social_graph_index_worker_loop(
             }
         };
         let Some(received) = received else {
+            record_worker_termination("shutdown");
             tracing::info!(
-                worker = "social_graph_index",
+                worker = METRICS_CONSUMER,
                 "Worker stopped before next receive"
             );
             return;
@@ -205,24 +230,37 @@ async fn social_graph_index_worker_loop(
 
         match received {
             Ok(Some(consumed)) => {
+                let delivery_started = Instant::now();
+                runtime_consumer_metrics::begin_delivery(METRICS_CONSUMER, consumed.offset());
                 match process_delivery(&consumer, &config, &mut stop_rx, &consumed).await {
-                    Ok(DeliveryCompletion::Completed(outcome)) => tracing::debug!(
-                        worker = "social_graph_index",
-                        event_id = %consumed.envelope.id(),
-                        outcome = ?outcome,
-                        "Social Graph Index delivery completed"
-                    ),
+                    Ok(DeliveryCompletion::Completed(outcome)) => {
+                        let outcome_label = process_outcome_label(&outcome);
+                        runtime_consumer_metrics::complete_delivery(
+                            METRICS_CONSUMER,
+                            outcome_label,
+                            delivery_started.elapsed(),
+                            consumed.offset(),
+                        );
+                        tracing::debug!(
+                            worker = METRICS_CONSUMER,
+                            event_id = %consumed.envelope.id(),
+                            outcome = ?outcome,
+                            "Social Graph Index delivery completed"
+                        );
+                    }
                     Ok(DeliveryCompletion::Stopped) => {
+                        record_worker_termination("shutdown_in_flight");
                         tracing::info!(
-                            worker = "social_graph_index",
+                            worker = METRICS_CONSUMER,
                             event_id = %consumed.envelope.id(),
                             "Worker stopped with broker offset uncommitted"
                         );
                         return;
                     }
                     Err(error) => {
+                        record_worker_termination("delivery_failure");
                         tracing::error!(
-                            worker = "social_graph_index",
+                            worker = METRICS_CONSUMER,
                             event_id = %consumed.envelope.id(),
                             error = %error,
                             "Social Graph Index worker terminated with broker offset uncommitted"
@@ -233,12 +271,19 @@ async fn social_graph_index_worker_loop(
             }
             Ok(None) => {
                 if wait_or_stop(config.idle_poll, &mut stop_rx).await {
+                    record_worker_termination("shutdown");
                     return;
                 }
             }
             Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_RECEIVE,
+                    error.stable_code(),
+                );
+                record_worker_termination("receive_failure");
                 tracing::error!(
-                    worker = "social_graph_index",
+                    worker = METRICS_CONSUMER,
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
                     "Social Graph Index broker receive failed; persistent cursor remains uncommitted"
@@ -247,6 +292,10 @@ async fn social_graph_index_worker_loop(
             }
         }
     }
+}
+
+fn record_worker_termination(reason: &'static str) {
+    runtime_consumer_metrics::record_worker_termination(METRICS_CONSUMER, reason);
 }
 
 #[derive(Debug)]
@@ -265,16 +314,25 @@ async fn process_delivery(
     loop {
         match consumer.project_consumed(consumed).await {
             Ok(outcome) => {
-                return acknowledge_durable_result(consumer, config, stop_rx, consumed, outcome)
+                return acknowledge_terminal_result(consumer, config, stop_rx, consumed, outcome)
                     .await;
             }
             Err(error) => {
                 let error_code = error.stable_code();
                 let retryable = error.is_retryable();
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_PROJECTION,
+                    error_code,
+                );
                 if retryable && attempt < config.max_attempts {
                     let delay = retry_delay(config, attempt);
+                    runtime_consumer_metrics::record_retry(
+                        METRICS_CONSUMER,
+                        STAGE_PROJECTION,
+                    );
                     tracing::warn!(
-                        worker = "social_graph_index",
+                        worker = METRICS_CONSUMER,
                         event_id = %consumed.envelope.id(),
                         error_code,
                         attempt,
@@ -289,26 +347,38 @@ async fn process_delivery(
                 }
 
                 if config.dlq_enabled {
-                    consumer
-                        .move_to_dlq_and_acknowledge(consumed, error_code, attempt)
+                    if let Err(dlq_error) = consumer
+                        .publish_consumed_to_dlq(consumed, error_code, attempt)
                         .await
-                        .map_err(|dlq_error| {
-                            format!(
-                                "DLQ publication or source acknowledgement failed [{}]",
-                                dlq_error.stable_code()
-                            )
-                        })?;
+                    {
+                        runtime_consumer_metrics::record_failure(
+                            METRICS_CONSUMER,
+                            STAGE_DLQ_PUBLISH,
+                            dlq_error.stable_code(),
+                        );
+                        runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "failure");
+                        return Err(format!(
+                            "DLQ publication failed [{}]",
+                            dlq_error.stable_code()
+                        ));
+                    }
+                    runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "success");
                     tracing::warn!(
-                        worker = "social_graph_index",
+                        worker = METRICS_CONSUMER,
                         event_id = %consumed.envelope.id(),
                         error_code,
                         retryable,
                         attempts = attempt,
-                        "Social Graph Index poison delivery moved to DLQ and acknowledged"
+                        "Social Graph Index poison delivery published to DLQ; acknowledging source offset"
                     );
-                    return Ok(DeliveryCompletion::Completed(
+                    return acknowledge_terminal_result(
+                        consumer,
+                        config,
+                        stop_rx,
+                        consumed,
                         SocialGraphIndexProcessOutcome::DeadLettered { error_code },
-                    ));
+                    )
+                    .await;
                 }
 
                 return Err(format!(
@@ -319,7 +389,7 @@ async fn process_delivery(
     }
 }
 
-async fn acknowledge_durable_result(
+async fn acknowledge_terminal_result(
     consumer: &SocialGraphIndexConsumer,
     config: &SocialGraphIndexWorkerConfig,
     stop_rx: &mut tokio::sync::watch::Receiver<bool>,
@@ -332,13 +402,22 @@ async fn acknowledge_durable_result(
             Ok(()) => return Ok(DeliveryCompletion::Completed(outcome)),
             Err(error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_ACKNOWLEDGEMENT,
+                    error.stable_code(),
+                );
+                runtime_consumer_metrics::record_retry(
+                    METRICS_CONSUMER,
+                    STAGE_ACKNOWLEDGEMENT,
+                );
                 tracing::warn!(
-                    worker = "social_graph_index",
+                    worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
                     error_code = error.stable_code(),
                     attempt,
                     retry_delay_ms = duration_millis(delay),
-                    "Durable Index result exists but broker acknowledgement failed; retrying acknowledgement only"
+                    "Terminal durable result exists but broker acknowledgement failed; retrying acknowledgement only"
                 );
                 if wait_or_stop(delay, stop_rx).await {
                     return Ok(DeliveryCompletion::Stopped);
@@ -346,12 +425,39 @@ async fn acknowledge_durable_result(
                 attempt += 1;
             }
             Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_ACKNOWLEDGEMENT,
+                    error.stable_code(),
+                );
+                let recovery = match &outcome {
+                    SocialGraphIndexProcessOutcome::DeadLettered { .. } => {
+                        "DLQ publication succeeded but the source offset remains uncommitted; redelivery may republish until a durable DLQ identity exists"
+                    }
+                    _ => "terminal handling remains replay-safe",
+                };
                 return Err(format!(
-                    "broker acknowledgement failed after {attempt} attempt(s) [{}]; durable Index result remains replay-safe",
+                    "broker acknowledgement failed after {attempt} attempt(s) [{}]; {recovery}",
                     error.stable_code()
                 ));
             }
         }
+    }
+}
+
+fn process_outcome_label(outcome: &SocialGraphIndexProcessOutcome) -> &'static str {
+    match outcome {
+        SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Applied { .. }) => {
+            "applied"
+        }
+        SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Duplicate { .. }) => {
+            "duplicate"
+        }
+        SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::StaleIgnored { .. }) => {
+            "stale_ignored"
+        }
+        SocialGraphIndexProcessOutcome::IgnoredUnrelated { .. } => "ignored_unrelated",
+        SocialGraphIndexProcessOutcome::DeadLettered { .. } => "dead_lettered",
     }
 }
 
@@ -421,5 +527,42 @@ mod tests {
         assert_eq!(retry_delay(&config, 2), Duration::from_millis(200));
         assert_eq!(retry_delay(&config, 3), Duration::from_millis(400));
         assert_eq!(retry_delay(&config, 4), Duration::from_millis(450));
+    }
+
+    #[test]
+    fn process_outcome_labels_are_bounded() {
+        assert_eq!(
+            process_outcome_label(&SocialGraphIndexProcessOutcome::Projected(
+                MutationApplyOutcome::Applied { source_version: 1 }
+            )),
+            "applied"
+        );
+        assert_eq!(
+            process_outcome_label(&SocialGraphIndexProcessOutcome::Projected(
+                MutationApplyOutcome::Duplicate { source_version: 1 }
+            )),
+            "duplicate"
+        );
+        assert_eq!(
+            process_outcome_label(&SocialGraphIndexProcessOutcome::Projected(
+                MutationApplyOutcome::StaleIgnored {
+                    incoming_source_version: 1,
+                    current_source_version: 2,
+                }
+            )),
+            "stale_ignored"
+        );
+        assert_eq!(
+            process_outcome_label(&SocialGraphIndexProcessOutcome::IgnoredUnrelated {
+                event_type: "other.event.v1".to_string(),
+            }),
+            "ignored_unrelated"
+        );
+        assert_eq!(
+            process_outcome_label(&SocialGraphIndexProcessOutcome::DeadLettered {
+                error_code: "social_graph.index.envelope_invalid",
+            }),
+            "dead_lettered"
+        );
     }
 }
