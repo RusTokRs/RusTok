@@ -52,11 +52,13 @@ bounded, dry-run capable, and page-atomic.
 The first approved consumer is the generic `rustok-index` relation projection. A
 feature-gated Social Graph owner adapter maps the sealed event to an `IndexMutation`:
 active revisions upsert a non-localized relation record, inactive revisions create
-a tombstone, and the relation revision is the Index `source_version`. This gives
-Index-owned inbox dedupe and stale-revision suppression without moving privacy
-policy or relation authority out of Social Graph. Durable broker composition,
-schema registration, result-first acknowledgement, and replay-driven drift repair
-remain pending runtime work.
+a tombstone, and the relation revision is the Index `source_version`. The optional
+`index-consumer` runtime now opens a persistent typed-event group, registers the
+owner schema, applies through the Index inbox, and acknowledges only after an
+`Applied`, `Duplicate`, or `StaleIgnored` durable result. Bounded Social Graph replay
+uses the same result-first path for repair. Host startup/shutdown, retry/DLQ policy,
+and retained runtime evidence remain pending. None of this moves privacy policy or
+relation authority out of Social Graph.
 
 The owner-local `rustok-social-graph-cli` provider exposes
 `social_graph receipt-cleanup`. Operators must supply tenant and positive retention
@@ -88,11 +90,12 @@ is enabled.
    author cards, storefront, and Customer Admin enrichment. Social Graph provides
    directional follow reads, revision-bearing state, receipt-aware commands,
    transactional events, bounded receipt cleanup, historical event replay, the
-   owner-local cleanup CLI, and the first owner-published Index mutation adapter.
-   **Remaining:** compose the durable Index consumer group and schema registration,
-   persist/recognize the Index result before broker acknowledgement, prove bounded
-   replay/rescan drift repair, and collect compiled/runtime evidence for privacy,
-   receipts, cleanup CLI, event relay/replay, storefront, Customer Admin,
+   owner-local cleanup CLI, the owner-published Index mutation adapter, and a
+   result-first persistent Index apply/ack consumer.
+   **Remaining:** compose consumer host lifecycle and default-off enablement, add
+   bounded retry/backoff and reviewed DLQ handling, prove bounded replay/rescan drift
+   repair, and collect compiled/runtime evidence for privacy, receipts, cleanup CLI,
+   event relay/replay, Index restart/redelivery, storefront, Customer Admin,
    Blog/Forum, and Media behavior.
    **Done when:** all presentation consumers expose one policy with retained
    evidence and no direct foreign-domain reads or projection-based authorization.
@@ -120,11 +123,12 @@ is enabled.
 5. **Add audit and operational capabilities from owner contracts.**
    **Status:** source-complete for stable Profiles operations, Social Graph command
    telemetry, durable receipts, bounded receipt maintenance, transactional events,
-   bounded event replay, owner-local receipt-cleanup CLI composition, and the pure
-   sealed-event-to-Index mutation adapter.
-   **Remaining:** durable Index consumer registration/apply/ack, deployment
-   retention-window/cadence approval, PostgreSQL concurrency/retention/replay and
-   rollback evidence, and retained runtime evidence.
+   bounded event replay, owner-local receipt-cleanup CLI composition, sealed
+   event-to-Index conversion, schema registration, durable Index apply/terminal
+   recognition, and result-first acknowledgement.
+   **Remaining:** host lifecycle/readiness/shutdown and retry/DLQ composition,
+   deployment retention-window/cadence approval, PostgreSQL concurrency/retention/
+   replay and rollback evidence, and retained runtime evidence.
    **Done when:** operations have typed owner ports, safe recovery guidance,
    retained evidence, and no auth/customer/receipt leakage.
 
@@ -132,8 +136,8 @@ is enabled.
 
 - Reconciled superseded draft PR #2237 and preserved its receipts, cleanup, event,
   replay, CLI, migration, topology, lockfile, and plan work in a fresh branch.
-- Rechecked the new branch against current `main`; the three intervening commits
-  affecting Forum, Index, Commerce, and Inventory touch disjoint paths and remain
+- Rechecked the branch against current `main`; four intervening commits affecting
+  Forum, Index evidence, Commerce, and Inventory touch disjoint paths and remain
   outside this change.
 - Rechecked privacy-before-presentation, bounded followers-only reads, owner-scoped
   follow writes, Media-owned descriptors, optimistic revision recovery, and no
@@ -147,9 +151,14 @@ is enabled.
 - Added feature-gated Social Graph schema/mutation conversion using relation id as
   entity identity and positive relation revision as Index source version. Active
   state upserts; inactive state writes a tombstone.
-- Durable consumer-group composition, schema registration, broker acknowledgement,
-  replay-driven repair, compilation, tests, formatters, source verifiers, and
-  runtime evidence remain maintainer-run or pending.
+- Added optional persistent typed-event consumption with owner schema registration,
+  Index inbox apply/duplicate/stale recognition, serialized receive/apply/ack, and
+  unrelated sealed-family handling on the shared domain topic.
+- Broker acknowledgement now follows the durable Index result. Apply or ack failure
+  remains replayable; bounded owner replay uses the same monotonic repair path.
+- Host lifecycle, retry/backoff, DLQ, compilation, tests, formatters, source
+  verifiers, PostgreSQL/multi-replica runs, and runtime evidence remain maintainer-run
+  or pending.
 
 ## Verification
 
@@ -163,6 +172,8 @@ is enabled.
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets`
 - `cargo test -p rustok-social-graph --features index index::tests -- --nocapture`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
+- `cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets`
 - `cargo test -p rustok-social-graph-cli -- --nocapture`
 - `cargo test -p rustok-social-graph --test command_receipts_sqlite -- --nocapture`
@@ -176,6 +187,7 @@ is enabled.
 - `node scripts/verify/verify-social-graph-relation-outbox.mjs`
 - `node scripts/verify/verify-social-graph-relation-event-replay.mjs`
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
+- `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `node scripts/verify/verify-profiles-storefront-boundary.mjs`
 - `rustok-cli profiles backfill --tenant-id <uuid> --dry-run`
 - `rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run`
@@ -202,4 +214,6 @@ is enabled.
 12. Index/search projections are optional consumers. They may use sealed owner events,
     generic Index contracts, monotonic source versions, and bounded owner replay;
     they must never authorize profile visibility or read Social Graph tables.
-13. Update Profiles and affected owner docs with every boundary change.
+13. Durable projection workers must persist or terminally recognize an owner-specific
+    result before broker acknowledgement; projection-based authorization is forbidden.
+14. Update Profiles and affected owner docs with every boundary change.
