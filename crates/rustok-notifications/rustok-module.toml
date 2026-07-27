@@ -20,6 +20,7 @@ entry_type = "NotificationsModule"
 
 [provides.graphql]
 query = "graphql::NotificationsQuery"
+mutation = "graphql::NotificationsMutation"
 runtime_data_factory = "graphql::attach_schema_data"
 
 [provides.admin_ui]

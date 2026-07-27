@@ -54,13 +54,13 @@ remain owner-local and archived remains terminal.
 
 The authenticated storefront plane is also delivered. `NotificationInboxStorefrontPort`
 derives tenant and recipient scope from `PortContext`, native Leptos server functions serve
-SSR/hydrate, GraphQL serves CSR/headless grouped reads and fresh open authorization, and no
-transport fallback is permitted. The module-owned grouped inbox UI pages owner results,
+SSR/hydrate, while GraphQL serves CSR/headless grouped reads, fresh open authorization,
+and bounded group-state writes; no transport fallback is permitted. The module-owned grouped inbox UI pages owner results,
 uses stale-response guards, refreshes authoritatively after writes, and navigates only after
 an `Allowed` open decision. A generic manifest-driven header action exposes the localized
-Notifications route and exact unread badge. GraphQL group-state writes, automatic auth-change
-bootstrap refresh, tenant-wide scheduling/redaction, delivery transports, and PostgreSQL
-cross-consumer evidence remain open.
+Notifications route and exact unread badge. Automatic auth-change bootstrap refresh,
+tenant-wide scheduling/redaction, delivery transports, and PostgreSQL cross-consumer evidence
+remain open.
 
 ## Invariants
 
@@ -531,6 +531,14 @@ cross-consumer evidence remain open.
   guards all four documents from future milestone drift;
 - no runtime capability or validation status is promoted.
 
+### `FORUM-20AN`
+
+- GraphQL mutation parity for bounded exact-group mark-read, mark-unread, and archive;
+- typed action plus bounded group/cursor/limit inputs and a required bounded idempotency key;
+- authenticated context-derived tenant/recipient scope with five-second write deadline;
+- selected native SSR/hydrate and GraphQL CSR/headless command paths without fallback;
+- unchanged owner state service, timestamp invariants, terminal archive, and UI refresh flow.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
@@ -567,8 +575,9 @@ Admin and storefront remain module-owned. The storefront now uses the authentica
 `NotificationInboxStorefrontPort`, native SSR/hydrate adapters, GraphQL CSR/headless reads,
 and the grouped Leptos UI. It must continue to use the exact owner unread count, preserve
 bounded cursor semantics, navigate only after fresh owner authorization, and create no
-shadow inbox storage. Group-state writes remain on the native path until GraphQL write
-admission and idempotency parity are delivered. The admin package remains outside this
+shadow inbox storage. Group-state writes select the native SSR/hydrate path or the
+GraphQL CSR/headless path without fallback, and both preserve owner write admission plus
+caller idempotency semantics. The admin package remains outside this
 storefront completion claim and retains its explicit degraded state.
 
 ## Maintainer verification set
@@ -631,13 +640,14 @@ node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
 node scripts/verify/verify-forum-notification-navigation-badge.mjs
 node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not executed while publishing the
 `NOTIFY-03D/03E/03F/03G/03H/03I` and
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM` source and documentation slices. `Cargo.lock` was
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN` source and documentation slices. `Cargo.lock` was
 not regenerated because this work does not change the package dependency graph.
 
 ## Update rules

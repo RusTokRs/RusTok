@@ -234,7 +234,8 @@ Native Leptos server functions are selected for SSR/hydrate. The feature-gated G
 root is selected for CSR/headless unread count, grouped reads, and fresh open authorization.
 The GraphQL runtime receives the host database, materialized source registry, and current
 recipient-policy runtime, then exposes only the shared owner port. No path falls back to the
-other and GraphQL group-state mutations remain closed.
+other. GraphQL group-state mutations now delegate to the same owner port and require
+explicit idempotency plus deadline admission.
 
 The grouped Notifications view uses owner-backed SSR bootstrap, bounded pages, exact-group
 expansion, stale-response guards, authoritative post-command refresh, and allowed-only route
@@ -260,7 +261,7 @@ or restricted sources fail closed. Moderator audience expansion remains deferred
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - bounded moderator directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- GraphQL group-state mutations and auth-reactive automatic grouped bootstrap refresh;
+- auth-reactive automatic grouped bootstrap refresh;
 - channel delivery enqueue and transports with delivery-time authorization;
 - retention, quarantine replay/purge, and administrative repair.
 
@@ -321,13 +322,14 @@ node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
 node scripts/verify/verify-forum-notification-navigation-badge.mjs
 node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing
 `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM`.
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN`.
 
 ## Related documents
 

@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::{
     NotificationStorefrontGroupItemsPage, NotificationStorefrontGroupItemsRequest,
-    NotificationStorefrontGroupSummary, NotificationStorefrontGroupSummaryPage,
-    NotificationStorefrontGroupSummaryRequest, NotificationStorefrontItem,
-    NotificationStorefrontItemState, NotificationStorefrontOpenDecision,
+    NotificationStorefrontGroupStateAction, NotificationStorefrontGroupStateCommand,
+    NotificationStorefrontGroupStatePage, NotificationStorefrontGroupSummary,
+    NotificationStorefrontGroupSummaryPage, NotificationStorefrontGroupSummaryRequest,
+    NotificationStorefrontItem, NotificationStorefrontItemState, NotificationStorefrontOpenDecision,
     NotificationStorefrontOpenRequest, NotificationStorefrontPriority,
     NotificationStorefrontUnreadCount,
 };
@@ -82,6 +83,28 @@ query NotificationStorefrontAuthorizeOpen($notificationId: String!) {
   }
 }
 "#;
+const GROUP_STATE_MUTATION: &str = r#"
+mutation NotificationStorefrontApplyGroupState(
+  $groupKey: String!
+  $action: NotificationInboxGroupStateAction!
+  $cursor: String
+  $limit: Int
+  $idempotencyKey: String!
+) {
+  notificationInboxApplyGroupState(
+    groupKey: $groupKey
+    action: $action
+    cursor: $cursor
+    limit: $limit
+    idempotencyKey: $idempotencyKey
+  ) {
+    scanned
+    changed
+    nextCursor
+    hasMore
+  }
+}
+"#;
 
 #[derive(Debug, Default, Serialize)]
 struct EmptyVariables {}
@@ -105,6 +128,25 @@ struct GroupItemsVariables {
 struct OpenAuthorizationVariables {
     #[serde(rename = "notificationId")]
     notification_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct GroupStateVariables {
+    #[serde(rename = "groupKey")]
+    group_key: String,
+    action: GroupStateActionWire,
+    cursor: Option<String>,
+    limit: i32,
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum GroupStateActionWire {
+    MarkRead,
+    MarkUnread,
+    Archive,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -144,6 +186,22 @@ struct GroupItemsResponse {
 struct OpenAuthorizationResponse {
     #[serde(rename = "notificationInboxAuthorizeOpen")]
     authorization: OpenAuthorizationWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct GroupStateResponse {
+    #[serde(rename = "notificationInboxApplyGroupState")]
+    page: GroupStatePageWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct GroupStatePageWire {
+    scanned: u16,
+    changed: u16,
+    #[serde(rename = "nextCursor")]
+    next_cursor: Option<String>,
+    #[serde(rename = "hasMore")]
+    has_more: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -354,6 +412,38 @@ pub async fn authorize_open(
     }
 }
 
+pub async fn apply_group_state(
+    access_token: Option<String>,
+    tenant_slug: Option<String>,
+    command: NotificationStorefrontGroupStateCommand,
+) -> Result<NotificationStorefrontGroupStatePage, GraphqlNotificationStorefrontError> {
+    let response: GroupStateResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            GROUP_STATE_MUTATION,
+            Some(GroupStateVariables {
+                group_key: command.group_key,
+                action: map_group_action_to_wire(command.action),
+                cursor: command.cursor,
+                limit: i32::from(command.limit),
+                idempotency_key: command.idempotency_key,
+            }),
+        ),
+        access_token,
+        tenant_slug,
+        None,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    Ok(NotificationStorefrontGroupStatePage {
+        scanned: response.page.scanned,
+        changed: response.page.changed,
+        next_cursor: response.page.next_cursor,
+        has_more: response.page.has_more,
+    })
+}
+
 fn map_item(item: ItemWire) -> NotificationStorefrontItem {
     NotificationStorefrontItem {
         id: item.id,
@@ -382,6 +472,16 @@ fn map_item(item: ItemWire) -> NotificationStorefrontItem {
         read_at: item.read_at,
         archived_at: item.archived_at,
         created_at: item.created_at,
+    }
+}
+
+fn map_group_action_to_wire(
+    action: NotificationStorefrontGroupStateAction,
+) -> GroupStateActionWire {
+    match action {
+        NotificationStorefrontGroupStateAction::MarkRead => GroupStateActionWire::MarkRead,
+        NotificationStorefrontGroupStateAction::MarkUnread => GroupStateActionWire::MarkUnread,
+        NotificationStorefrontGroupStateAction::Archive => GroupStateActionWire::Archive,
     }
 }
 
@@ -416,7 +516,8 @@ fn graphql_url() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        GROUP_ITEMS_QUERY, GROUP_SUMMARIES_QUERY, OPEN_AUTHORIZATION_QUERY, UNREAD_COUNT_QUERY,
+        GROUP_ITEMS_QUERY, GROUP_STATE_MUTATION, GROUP_SUMMARIES_QUERY,
+        OPEN_AUTHORIZATION_QUERY, UNREAD_COUNT_QUERY,
     };
 
     #[test]
@@ -426,6 +527,7 @@ mod tests {
             GROUP_SUMMARIES_QUERY,
             GROUP_ITEMS_QUERY,
             OPEN_AUTHORIZATION_QUERY,
+            GROUP_STATE_MUTATION,
         ] {
             for forbidden in [
                 ["tenant", "Id"].concat(),
@@ -452,5 +554,16 @@ mod tests {
         assert!(OPEN_AUTHORIZATION_QUERY.contains("notificationInboxAuthorizeOpen"));
         assert!(OPEN_AUTHORIZATION_QUERY.contains("decision"));
         assert!(OPEN_AUTHORIZATION_QUERY.contains("route"));
+    }
+
+    #[test]
+    fn group_state_mutation_requires_typed_action_and_idempotency() {
+        assert!(GROUP_STATE_MUTATION.contains("mutation NotificationStorefrontApplyGroupState"));
+        assert!(GROUP_STATE_MUTATION.contains("$groupKey: String!"));
+        assert!(GROUP_STATE_MUTATION.contains("$action: NotificationInboxGroupStateAction!"));
+        assert!(GROUP_STATE_MUTATION.contains("$idempotencyKey: String!"));
+        assert!(GROUP_STATE_MUTATION.contains("notificationInboxApplyGroupState"));
+        assert!(GROUP_STATE_MUTATION.contains("scanned"));
+        assert!(GROUP_STATE_MUTATION.contains("changed"));
     }
 }

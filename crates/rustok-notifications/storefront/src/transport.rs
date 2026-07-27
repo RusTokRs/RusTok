@@ -2,7 +2,8 @@ mod graphql_adapter;
 mod native_server_adapter;
 
 pub use native_server_adapter::{
-    NativeNotificationStorefrontError, apply_notification_group_state,
+    NativeNotificationStorefrontError,
+    apply_notification_group_state as apply_notification_group_state_native,
     authorize_notification_open as authorize_notification_open_native,
     load_notification_group_items as load_notification_group_items_native,
     load_notification_group_summaries as load_notification_group_summaries_native,
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::{
     NotificationStorefrontGroupItemsPage, NotificationStorefrontGroupItemsRequest,
+    NotificationStorefrontGroupStateCommand, NotificationStorefrontGroupStatePage,
     NotificationStorefrontGroupSummaryPage, NotificationStorefrontGroupSummaryRequest,
     NotificationStorefrontOpenDecision, NotificationStorefrontOpenRequest,
     NotificationStorefrontState, NotificationStorefrontUnreadCount,
@@ -39,6 +41,17 @@ impl NotificationStorefrontTransportContext {
 pub type NotificationNavigationTransportContext = NotificationStorefrontTransportContext;
 
 fn selected_storefront_read_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
+    }
+}
+
+fn selected_storefront_write_transport_path() -> UiTransportPath {
     #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
         UiTransportPath::NativeServer
@@ -121,6 +134,22 @@ pub async fn authorize_notification_open_selected(
     .await
 }
 
+pub async fn apply_notification_group_state_selected(
+    context: NotificationStorefrontTransportContext,
+    command: NotificationStorefrontGroupStateCommand,
+) -> UiTransportResult<NotificationStorefrontGroupStatePage> {
+    let native_command = command.clone();
+    let access_token = context.access_token;
+    let tenant_slug = context.tenant_slug;
+    execute_selected_transport(
+        "notifications.storefront.group_state",
+        selected_storefront_write_transport_path(),
+        move || apply_notification_group_state_native(native_command),
+        move || graphql_adapter::apply_group_state(access_token, tenant_slug, command),
+    )
+    .await
+}
+
 pub async fn load_notification_unread_count(
 ) -> Result<NotificationStorefrontUnreadCount, NativeNotificationStorefrontError> {
     load_notification_unread_count_selected(current_storefront_transport_context())
@@ -152,6 +181,14 @@ pub async fn authorize_notification_open(
         .map_err(|error| NativeNotificationStorefrontError(error.to_string()))
 }
 
+pub async fn apply_notification_group_state(
+    command: NotificationStorefrontGroupStateCommand,
+) -> Result<NotificationStorefrontGroupStatePage, NativeNotificationStorefrontError> {
+    apply_notification_group_state_selected(current_storefront_transport_context(), command)
+        .await
+        .map_err(|error| NativeNotificationStorefrontError(error.to_string()))
+}
+
 pub async fn load_notification_navigation_unread_count(
     context: NotificationNavigationTransportContext,
 ) -> UiTransportResult<NotificationStorefrontUnreadCount> {
@@ -172,6 +209,7 @@ pub fn load_notification_storefront_state() -> NotificationStorefrontState {
 mod tests {
     use super::{
         NotificationStorefrontTransportContext, selected_storefront_read_transport_path,
+        selected_storefront_write_transport_path,
     };
     use rustok_ui_transport::UiTransportPath;
 
@@ -189,6 +227,24 @@ mod tests {
     fn integrated_package_profile_selects_native_storefront_reads() {
         assert_eq!(
             selected_storefront_read_transport_path(),
+            UiTransportPath::NativeServer
+        );
+    }
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    #[test]
+    fn default_package_profile_selects_graphql_for_storefront_writes() {
+        assert_eq!(
+            selected_storefront_write_transport_path(),
+            UiTransportPath::Graphql
+        );
+    }
+
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    #[test]
+    fn integrated_package_profile_selects_native_storefront_writes() {
+        assert_eq!(
+            selected_storefront_write_transport_path(),
             UiTransportPath::NativeServer
         );
     }

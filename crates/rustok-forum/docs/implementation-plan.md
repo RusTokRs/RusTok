@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-AL provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL reads/open authorization, grouped UI and navigation. FORUM-20AM synchronizes the canonical and owner-local ledgers. Write audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-AN provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands. Write audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1289,6 +1289,18 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
   leave the four authoritative documents at different milestones;
 - update the latest `FORUM-20AL` handoff contract to point at this synchronization task.
 
+### Delivered in `FORUM-20AN`
+
+- add the module-owned GraphQL mutation `notificationInboxApplyGroupState` for bounded
+  exact-group `MARK_READ`, `MARK_UNREAD`, and `ARCHIVE` commands;
+- derive tenant and recipient identity from the authenticated human-user context, require
+  module admission before command validation, and carry a five-second deadline plus one
+  bounded caller idempotency key through `NotificationInboxStorefrontPort`;
+- return only `scanned`, `changed`, `next_cursor`, and `has_more`, preserving owner state,
+  timestamp, terminal-archive, pagination, and non-oracular invariants;
+- select native writes for SSR/hydrate and GraphQL writes for CSR/headless without fallback,
+  while keeping the existing UI call site and authoritative post-command refresh behavior.
+
 ### Compatibility and degraded mode
 
 The nullable public/authenticated category floor and the normalized category/topic
@@ -1300,9 +1312,10 @@ closed and can never broaden a decision.
 Forum producer commands remain independent from Notifications availability. The
 Notifications module stays default-off, derives storefront tenant and recipient identity
 from authenticated context, and exposes explicit unavailable/degraded states rather than
-shadow inbox data. Native and GraphQL storefront reads select exactly one transport path
-with no cross-path fallback. Group-state writes remain native-only until GraphQL write
-admission and idempotency parity are implemented.
+shadow inbox data. Native and GraphQL storefront reads and writes select exactly one
+compile-profile transport path with no cross-path fallback. Both group-state paths delegate
+to the same owner port; the GraphQL path cannot select another tenant or recipient and must
+supply write deadline and idempotency semantics.
 
 ### Remaining scope
 
@@ -1314,8 +1327,8 @@ admission and idempotency parity are implemented.
 - migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
   same exact richer audience decision;
 - add visibility-scoped category/all-read commands over an exact bounded policy scope;
-- add auth-reactive automatic grouped-inbox bootstrap refresh and GraphQL group-state
-  mutations with deadline and idempotency admission;
+- add auth-reactive automatic grouped-inbox bootstrap refresh without requiring an
+  explicit resource refresh;
 - add tenant-wide scheduled reconciliation, payload redaction, channel enqueue/transports,
   and delivery-time target authorization;
 - add PostgreSQL concurrency, lease/contention, inheritance, and cross-consumer runtime
@@ -1358,6 +1371,7 @@ node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
 node scripts/verify/verify-forum-notification-navigation-badge.mjs
 node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate forum
 npm run verify:forum:storefront-boundary

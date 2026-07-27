@@ -240,8 +240,8 @@ for (const marker of [
   requireText(transport, marker, `selected open transport is missing ${marker}`);
 }
 rejectText(transport, "fallback_failed", "selected open authorization must not add fallback");
-requireText(transport, "apply_notification_group_state,", "native group-state command must remain exported");
-rejectText(transport, "apply_notification_group_state_selected", "group-state GraphQL parity must remain pending");
+requireText(transport, "apply_notification_group_state_native", "native group-state command must remain exported");
+requireText(transport, "apply_notification_group_state_selected", "downstream group-state transport parity must remain selected without fallback");
 
 for (const marker of [
   "notification_storefront_open_native",
@@ -279,7 +279,7 @@ for (const marker of [
   "Fresh GraphQL open authorization accepts only one bounded non-nil notification UUID",
   "Missing, foreign, suppressed, or no-longer-openable notifications",
   "open authorization is now dual-path",
-  "group-state commands remain native-only",
+  "notificationInboxApplyGroupState",
 ]) {
   requireText(readme, marker, `storefront README is missing ${marker}`);
 }
