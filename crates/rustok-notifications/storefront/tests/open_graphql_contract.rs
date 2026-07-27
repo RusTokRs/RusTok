@@ -23,7 +23,10 @@ fn owner_open_query_authenticates_before_bounded_identifier_validation() {
         "MAX_NOTIFICATION_ID_BYTES",
         ".filter(|notification_id| !notification_id.is_nil())",
     ] {
-        assert!(OWNER_GRAPHQL.contains(marker), "owner GraphQL is missing `{marker}`");
+        assert!(
+            OWNER_GRAPHQL.contains(marker),
+            "owner GraphQL is missing `{marker}`"
+        );
     }
 
     let open_resolver = OWNER_GRAPHQL
@@ -71,7 +74,10 @@ fn open_decision_is_non_oracular_and_route_is_allowed_only() {
         "NotificationInboxStorefrontOpenDecision::Unavailable",
         "route: None",
     ] {
-        assert!(OWNER_GRAPHQL.contains(marker), "owner GraphQL decision is missing `{marker}`");
+        assert!(
+            OWNER_GRAPHQL.contains(marker),
+            "owner GraphQL decision is missing `{marker}`"
+        );
     }
     for marker in [
         "find_by_id(request.notification_id)",
@@ -80,7 +86,10 @@ fn open_decision_is_non_oracular_and_route_is_allowed_only() {
         "NotificationRecipientPolicyDecision::Suppress",
         "NotificationOpenAuthorization::Unavailable",
     ] {
-        assert!(OWNER_OPEN.contains(marker), "owner open service is missing `{marker}`");
+        assert!(
+            OWNER_OPEN.contains(marker),
+            "owner open service is missing `{marker}`"
+        );
     }
     assert!(OWNER_PORT.contains("PortCallPolicy::read()"));
     assert!(OWNER_PORT.contains("NotificationInboxOpenService"));
@@ -97,14 +106,20 @@ fn storefront_open_graphql_request_exposes_only_notification_identity() {
         "OpenDecisionWire",
         "pub async fn authorize_open",
     ] {
-        assert!(STOREFRONT_GRAPHQL.contains(marker), "GraphQL adapter is missing `{marker}`");
+        assert!(
+            STOREFRONT_GRAPHQL.contains(marker),
+            "GraphQL adapter is missing `{marker}`"
+        );
     }
     let production = STOREFRONT_GRAPHQL
         .split("#[cfg(test)]")
         .next()
         .expect("production GraphQL adapter should exist");
     for forbidden in ["tenantId", "recipientId", "userId", "serde_json::Value"] {
-        assert!(!production.contains(forbidden), "open adapter exposes `{forbidden}`");
+        assert!(
+            !production.contains(forbidden),
+            "open adapter exposes `{forbidden}`"
+        );
     }
     assert!(production.contains("OpenDecisionWire::Allowed"));
     assert!(production.contains("OpenDecisionWire::Unavailable"));
@@ -123,11 +138,14 @@ fn open_transport_is_selected_without_fallback_and_ui_navigates_only_after_allow
         "pub async fn authorize_notification_open(",
         "current_storefront_transport_context()",
     ] {
-        assert!(STOREFRONT_TRANSPORT.contains(marker), "selected open transport is missing `{marker}`");
+        assert!(
+            STOREFRONT_TRANSPORT.contains(marker),
+            "selected open transport is missing `{marker}`"
+        );
     }
     assert!(!STOREFRONT_TRANSPORT.contains("fallback_failed"));
-    assert!(STOREFRONT_TRANSPORT.contains("apply_notification_group_state,"));
-    assert!(!STOREFRONT_TRANSPORT.contains("apply_notification_group_state_selected"));
+    assert!(STOREFRONT_TRANSPORT.contains("apply_notification_group_state_native"));
+    assert!(STOREFRONT_TRANSPORT.contains("apply_notification_group_state_selected"));
 
     for marker in [
         "authorize_notification_open(NotificationStorefrontOpenRequest",
@@ -135,6 +153,9 @@ fn open_transport_is_selected_without_fallback_and_ui_navigates_only_after_allow
         "navigate_to_route(route.as_str())",
         "Ok(NotificationStorefrontOpenDecision::Unavailable)",
     ] {
-        assert!(STOREFRONT_UI.contains(marker), "grouped UI is missing `{marker}`");
+        assert!(
+            STOREFRONT_UI.contains(marker),
+            "grouped UI is missing `{marker}`"
+        );
     }
 }

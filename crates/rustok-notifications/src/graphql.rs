@@ -9,8 +9,9 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, NotificationError, NotificationInboxGroupSummaryPage,
-    NotificationInboxItem, NotificationInboxStorefrontGroupItemsRequest,
+    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, NotificationError, NotificationInboxGroupStateAction,
+    NotificationInboxGroupStatePage, NotificationInboxGroupSummaryPage, NotificationInboxItem,
+    NotificationInboxStorefrontGroupItemsRequest, NotificationInboxStorefrontGroupStateRequest,
     NotificationInboxStorefrontGroupSummaryRequest, NotificationInboxStorefrontOpenDecision,
     NotificationInboxStorefrontOpenRequest, NotificationInboxStorefrontPort,
     NotificationInboxUnreadCountRequest, NotificationInboxUnreadCountService,
@@ -20,10 +21,15 @@ use crate::{
 const MODULE_SLUG: &str = "notifications";
 const PUBLIC_UNAVAILABLE_MESSAGE: &str = "notification inbox capability is unavailable";
 const GRAPHQL_READ_DEADLINE: Duration = Duration::from_secs(5);
+const GRAPHQL_WRITE_DEADLINE: Duration = Duration::from_secs(5);
 const MAX_NOTIFICATION_ID_BYTES: usize = 64;
+const MAX_IDEMPOTENCY_KEY_BYTES: usize = 128;
 
 #[derive(Default)]
 pub struct NotificationsQuery;
+
+#[derive(Default)]
+pub struct NotificationsMutation;
 
 #[derive(Clone, Default)]
 pub struct NotificationsGraphqlRuntimeData {
@@ -80,6 +86,14 @@ pub enum GqlNotificationInboxOpenDecision {
     Unavailable,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Enum)]
+#[graphql(name = "NotificationInboxGroupStateAction")]
+pub enum GqlNotificationInboxGroupStateAction {
+    MarkRead,
+    MarkUnread,
+    Archive,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
 pub struct GqlNotificationTemplateField {
     pub key: String,
@@ -128,6 +142,14 @@ pub struct GqlNotificationInboxGroupItemsPage {
 pub struct GqlNotificationInboxOpenAuthorization {
     pub decision: GqlNotificationInboxOpenDecision,
     pub route: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
+pub struct GqlNotificationInboxGroupStatePage {
+    pub scanned: u64,
+    pub changed: u64,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
 }
 
 #[Object]
@@ -224,6 +246,37 @@ impl NotificationsQuery {
     }
 }
 
+#[Object]
+impl NotificationsMutation {
+    async fn notification_inbox_apply_group_state(
+        &self,
+        ctx: &Context<'_>,
+        group_key: String,
+        action: GqlNotificationInboxGroupStateAction,
+        cursor: Option<String>,
+        limit: Option<i32>,
+        idempotency_key: String,
+    ) -> Result<GqlNotificationInboxGroupStatePage> {
+        let scope = authenticated_scope(ctx)?;
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let idempotency_key = parse_idempotency_key(idempotency_key)?;
+        let limit = parse_limit(limit)?;
+        let page = grouped_storefront_port(ctx)?
+            .apply_group_state(
+                scope.write_port_context("group-state", idempotency_key),
+                NotificationInboxStorefrontGroupStateRequest {
+                    group_key,
+                    action: map_group_action_to_owner(action),
+                    cursor,
+                    limit,
+                },
+            )
+            .await
+            .map_err(map_port_error)?;
+        Ok(map_group_state_page(page))
+    }
+}
+
 #[derive(Clone)]
 struct AuthenticatedInboxScope {
     tenant_id: Uuid,
@@ -235,13 +288,22 @@ struct AuthenticatedInboxScope {
 
 impl AuthenticatedInboxScope {
     fn port_context(&self, operation: &'static str) -> PortContext {
+        self.base_port_context(operation, GRAPHQL_READ_DEADLINE)
+    }
+
+    fn write_port_context(&self, operation: &'static str, idempotency_key: String) -> PortContext {
+        self.base_port_context(operation, GRAPHQL_WRITE_DEADLINE)
+            .with_idempotency_key(idempotency_key)
+    }
+
+    fn base_port_context(&self, operation: &'static str, deadline: Duration) -> PortContext {
         let mut context = PortContext::new(
             self.tenant_id.to_string(),
             self.actor.clone(),
             self.locale.clone(),
             format!("notifications-graphql-{operation}-{}", Uuid::new_v4()),
         )
-        .with_deadline(GRAPHQL_READ_DEADLINE)
+        .with_deadline(deadline)
         .with_channel("storefront");
         for claim in &self.claims {
             context = context.with_claim(claim.clone());
@@ -331,6 +393,20 @@ fn invalid_notification_id() -> async_graphql::Error {
     )
 }
 
+fn parse_idempotency_key(value: String) -> Result<String> {
+    if value.is_empty()
+        || value.len() > MAX_IDEMPOTENCY_KEY_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(public_error(
+            "NOTIFICATION_VALIDATION_ERROR",
+            "notification idempotency key is invalid",
+            false,
+        ));
+    }
+    Ok(value)
+}
+
 fn map_group_summary_page(
     page: NotificationInboxGroupSummaryPage,
 ) -> GqlNotificationInboxGroupSummaryPage {
@@ -347,6 +423,33 @@ fn map_group_summary_page(
             .collect(),
         next_cursor: page.next_cursor,
         has_more: page.has_more,
+    }
+}
+
+fn map_group_state_page(
+    page: NotificationInboxGroupStatePage,
+) -> GqlNotificationInboxGroupStatePage {
+    GqlNotificationInboxGroupStatePage {
+        scanned: u64::from(page.scanned),
+        changed: u64::from(page.changed),
+        next_cursor: page.next_cursor,
+        has_more: page.has_more,
+    }
+}
+
+fn map_group_action_to_owner(
+    action: GqlNotificationInboxGroupStateAction,
+) -> NotificationInboxGroupStateAction {
+    match action {
+        GqlNotificationInboxGroupStateAction::MarkRead => {
+            NotificationInboxGroupStateAction::MarkRead
+        }
+        GqlNotificationInboxGroupStateAction::MarkUnread => {
+            NotificationInboxGroupStateAction::MarkUnread
+        }
+        GqlNotificationInboxGroupStateAction::Archive => {
+            NotificationInboxGroupStateAction::Archive
+        }
     }
 }
 

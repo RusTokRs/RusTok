@@ -35,9 +35,8 @@ inbox authority. One group action intentionally applies at most 64 eligible owne
 When more rows remain, the UI reports that the caller should repeat the action after the
 authoritative refresh.
 
-The unread count, grouped summaries, and exact-group item pages use one selected read
-transport facade. Fresh open authorization now joins the same compile-profile selection
-policy:
+The unread count, grouped summaries, exact-group item pages, fresh open authorization,
+and grouped state commands use compile-profile-selected transport facades:
 
 - SSR and hydrate builds select the native server functions;
 - CSR and headless builds select the module-owned GraphQL queries through
@@ -45,13 +44,16 @@ policy:
 - the existing no-context UI functions remain compatibility wrappers that resolve current
   token and tenant transport credentials before calling the selected facade;
 - explicit-context selected functions remain available to headless consumers;
-- raw native functions remain available with explicit `_native` names;
+- raw native read, open, and group-state functions remain available with explicit
+  `_native` names;
+- grouped writes carry one caller-supplied bounded idempotency key through either path;
 - neither transport request accepts tenant, recipient, or user identity;
 - transport selection is compile-profile based and does not attempt cross-path fallback.
 
 The owner GraphQL schema exposes `notificationInboxUnreadCount`,
-`notificationInboxGroupSummaries`, `notificationInboxGroupItems`, and
-`notificationInboxAuthorizeOpen`. Manifest-generated schema composition invokes
+`notificationInboxGroupSummaries`, `notificationInboxGroupItems`,
+`notificationInboxAuthorizeOpen`, and the mutation
+`notificationInboxApplyGroupState`. Manifest-generated schema composition invokes
 `graphql::attach_schema_data`, which reuses the host database, materialized
 `NotificationSourceRegistry`, existing `NotificationRecipientPolicyRuntime`, and
 `NotificationInboxStorefrontPort`. It does not create a parallel inbox service, registry,
@@ -88,11 +90,12 @@ authentication, tenant mismatch, disabled module state, and transport failures h
 best-effort action without breaking the application header.
 
 The navigation unread-count read and grouped inbox reads have native/GraphQL profile
-parity. Fresh notification open authorization and group-state commands use separate
-security paths: open authorization is now dual-path, while group-state commands remain native-only because they require write admission and an idempotency key. GraphQL command
-parity remains a separate gate.
+parity. Fresh notification open authorization and group-state commands now share the same
+compile-profile selection rule without fallback. The GraphQL mutation requires a typed action,
+one bounded group key, bounded cursor/limit inputs, and a caller-supplied idempotency key;
+the owner port still enforces write deadline and idempotency admission before database access.
 
 Public entry points include `NotificationsView`, `NotificationNavigation`,
 `NotificationUnreadBadge`, compatibility read/open functions, explicit-context selected
-read/open functions, raw native functions, native group-state commands, and the
-serializable storefront request/page models exported from the crate root.
+read/open/group-state functions, raw native functions, and the serializable storefront
+request/page models exported from the crate root.

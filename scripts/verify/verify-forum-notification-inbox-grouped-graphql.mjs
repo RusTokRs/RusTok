@@ -270,7 +270,7 @@ for (const marker of [
   requireText(proof, marker, `grouped GraphQL source proof is missing ${marker}`);
 }
 for (const marker of [
-  "unread count, grouped summaries, and exact-group item pages use one selected read",
+  "grouped summaries, exact-group item pages, fresh open authorization",
   "notificationInboxGroupSummaries",
   "notificationInboxGroupItems",
   "bounded template data as ordered key/value fields",

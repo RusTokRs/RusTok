@@ -47,7 +47,10 @@ pub use fanout_worker::{
     NotificationFanoutWorkerStage,
 };
 #[cfg(feature = "server")]
-pub use graphql::{GqlNotificationInboxUnreadCount, NotificationsQuery};
+pub use graphql::{
+    GqlNotificationInboxGroupStateAction, GqlNotificationInboxGroupStatePage,
+    GqlNotificationInboxUnreadCount, NotificationsMutation, NotificationsQuery,
+};
 pub use inbox::{
     DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_CURSOR_BYTES,
     MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationInboxItem, NotificationInboxListRequest,

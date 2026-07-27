@@ -411,8 +411,9 @@ writes additionally require idempotency semantics.
 The native Leptos server-function adapter serves SSR/hydrate. The feature-gated GraphQL query
 root serves CSR/headless unread count, group summaries/items, and fresh open authorization.
 Both reuse the same owner port and host-composed source registry and recipient-policy runtime;
-there is no transport fallback and no direct storefront database authority. GraphQL state
-mutations remain intentionally absent.
+there is no transport fallback and no direct storefront database authority. GraphQL now
+exposes the same bounded exact-group state commands with typed actions and explicit
+idempotency admission.
 
 The module-owned grouped storefront view performs an owner-backed SSR bootstrap, bounded raw
 paging, one-group expansion, stale-response rejection, authoritative refresh after writes,
@@ -446,7 +447,7 @@ continue to succeed when the module is absent or disabled.
   policy changes with final candidate commits;
 - bounded moderator-directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- GraphQL group-state mutations and auth-reactive automatic grouped bootstrap refresh;
+- auth-reactive automatic grouped bootstrap refresh;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - retention, quarantine replay/purge, and administrative repair.
