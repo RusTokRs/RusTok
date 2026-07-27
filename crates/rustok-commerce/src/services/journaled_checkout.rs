@@ -86,10 +86,10 @@ impl JournaledCheckoutService {
         }
 
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(self.db.clone())));
-        let inventory_availability = Arc::new(rustok_inventory::InventoryService::new(
+        let inventory_availability = rustok_inventory::in_process_inventory_reservation_port(
             self.db.clone(),
             event_bus.clone(),
-        ));
+        );
         let reservation_port =
             rustok_inventory::in_process_inventory_reservation_identity_port(self.db.clone());
         let cart_port = in_process_cart_checkout_port(self.db.clone());
