@@ -91,6 +91,8 @@ pub enum MutationStorageError {
     Serialization(String),
     #[error("mutation storage operation failed")]
     Storage(String),
+    #[error("mutation lost entity-key serialization")]
+    ConcurrentMutationConflict,
     #[error("mutation inbox completion lost ownership")]
     InboxCompletionLost,
 }
@@ -217,15 +219,7 @@ impl PostgresMutationStore {
                     )
                     .await?;
                 if !applied {
-                    let current_source_version = self
-                        .current_source_version(transaction, mutation, backend)
-                        .await?;
-                    self.complete_inbox(transaction, delivery, payload_hash, backend)
-                        .await?;
-                    return Ok(MutationApplyOutcome::StaleIgnored {
-                        incoming_source_version: source_version,
-                        current_source_version,
-                    });
+                    return Err(MutationStorageError::ConcurrentMutationConflict);
                 }
                 self.insert_links(transaction, record, backend).await?;
             }
@@ -241,15 +235,7 @@ impl PostgresMutationStore {
                     )
                     .await?;
                 if !applied {
-                    let current_source_version = self
-                        .current_source_version(transaction, mutation, backend)
-                        .await?;
-                    self.complete_inbox(transaction, delivery, payload_hash, backend)
-                        .await?;
-                    return Ok(MutationApplyOutcome::StaleIgnored {
-                        incoming_source_version: source_version,
-                        current_source_version,
-                    });
+                    return Err(MutationStorageError::ConcurrentMutationConflict);
                 }
             }
         }

@@ -38,6 +38,8 @@ const store = requireMarkers(storePath, [
   'DbBackend::Sqlite if cfg!(test) => Ok(())',
   'Decimal::from(source_version)',
   'SqliteSourceVersionOutOfRange',
+  'ConcurrentMutationConflict',
+  'return Err(MutationStorageError::ConcurrentMutationConflict)',
 ]);
 
 const lockPosition = store.indexOf('self.lock_entity_key(transaction, mutation, backend)');
