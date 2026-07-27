@@ -90,6 +90,10 @@ for (const forbiddenLabel of [
 }
 
 for (const marker of [
+  "pub fn record_worker_start(consumer: &str)",
+  "pub fn record_worker_termination(consumer: &str, reason: &str)",
+  '.with_label_values(&[consumer, "received"])',
+  '.with_label_values(&[consumer, "acknowledged"])',
   "runtime_consumer_metrics::ensure_registered()",
   "runtime_consumer_metrics::record_worker_start",
   "runtime_consumer_metrics::record_worker_termination",
@@ -110,7 +114,25 @@ for (const marker of [
   '"ignored_unrelated"',
   '"dead_lettered"',
 ]) {
-  requireText("Social Graph Index worker metrics", files.worker, marker);
+  const source = marker.startsWith("runtime_consumer_metrics::") || marker.startsWith("const ") || marker.startsWith('"')
+    ? files.worker
+    : files.telemetry;
+  requireText("runtime consumer metrics contract", source, marker);
+}
+
+const inFlightClearMarker = `.in_flight
+        .with_label_values(&[consumer])
+        .set(0);`;
+const inFlightTimestampClearMarker = `.in_flight_started_timestamp_seconds
+        .with_label_values(&[consumer])
+        .set(0);`;
+if (files.telemetry.split(inFlightClearMarker).length - 1 < 2) {
+  failures.push("in-flight gauge must be initialized and cleared on worker termination");
+}
+if (files.telemetry.split(inFlightTimestampClearMarker).length - 1 < 2) {
+  failures.push(
+    "in-flight start timestamp must be initialized and cleared on worker termination",
+  );
 }
 
 for (const marker of [
@@ -156,5 +178,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Runtime consumer metrics verification passed: shared registry export, bounded labels, throughput/outcome/retry/failure/DLQ/duration/lifecycle/timestamp/offset metrics, staged DLQ publication, and acknowledgement-only recovery are locked.",
+  "Runtime consumer metrics verification passed: shared registry export, bounded labels, throughput/outcome/retry/failure/DLQ/duration/lifecycle/timestamp/offset metrics, clean in-flight lifecycle, staged DLQ publication, and acknowledgement-only recovery are locked.",
 );
