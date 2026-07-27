@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-fulfillment`
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-27
 
 ## Current state
 
@@ -31,6 +31,14 @@ of being adopted as a successful checkout fulfillment set. The underlying
 execution adapter remains the persistence/idempotency delegate, so transport
 contracts and request DTOs are unchanged.
 
+Complete shipping-option list and lookup now have a separate read-only owner
+boundary, `ShippingOptionReadPort`. The root in-process factory owns
+`FulfillmentService` construction, requires read policy, preserves requested
+and default locale values, and maps owner failures to stable `PortError`
+envelopes. Mounted commerce GraphQL shipping-option validation and shipping
+enrichment use this port instead of constructing `FulfillmentService` directly.
+The seller/cart `ShippingSelectionPort` contract is unchanged.
+
 Stable fulfillment keys and metadata identity remain owner-local compatibility
 mechanisms. Duplicate keys fail closed. A typed durable checkout fulfillment
 identity and database uniqueness migration remain open.
@@ -47,6 +55,8 @@ identity and database uniqueness migration remain open.
 - Published checkout execution port: `CheckoutFulfillmentExecutionPort`.
 - Mounted in-process provider: `TypedCheckoutFulfillmentExecutionPort` over the
   existing owner execution adapter.
+- Source-ready internal read boundary: `ShippingOptionReadPort`; this is not a
+  new FBA provider contract and does not change registry status.
 - Contract and provider evidence:
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-contract-test-static-matrix.json`,
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`,
@@ -57,6 +67,8 @@ identity and database uniqueness migration remain open.
   `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`, and
   `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` lock the
   owner-admin/storefront, checkout execution, and typed lifecycle split.
+- `scripts/verify/verify-fulfillment-shipping-option-read-port.mjs` guards the
+  internal shipping-option read boundary and mounted commerce cutover.
 - No status promotion is claimed from source. Compile, upgraded database,
   contention, restart, mounted transport, and remote evidence remain missing.
 
@@ -76,6 +88,21 @@ identity and database uniqueness migration remain open.
   concurrency-safe uniqueness constraint.
 - [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
   process-exit, restart, contention, and remote-profile evidence.
+
+## Shipping-option read source checklist
+
+- [x] Publish complete list and lookup operations through
+  `ShippingOptionReadPort`.
+- [x] Preserve requested and tenant-default locale arguments.
+- [x] Require read policy and parse tenant identity from `PortContext`.
+- [x] Map all current `FulfillmentError` variants to stable `PortError` values.
+- [x] Export a canonical root in-process factory.
+- [x] Remove direct `FulfillmentService` construction from mounted commerce
+  GraphQL shipping-option validation and enrichment.
+- [ ] Inject the read port from the application host rather than constructing the
+  root in-process provider inside the commerce seam.
+- [ ] Execute compile, mounted GraphQL, REST/native parity, deadline, failure,
+  and remote-profile evidence.
 
 ## Open results
 
@@ -109,7 +136,16 @@ identity and database uniqueness migration remain open.
    **Done when:** production-like execution proves degraded fallback and typed
    adapter errors while `FulfillmentService` remains the sole lifecycle owner.
 
-5. **Execute remote contracts.** Turn shipping-selection and checkout-execution
+5. **Prove and host-compose shipping-option reads.** Execute complete list and
+   lookup through the mounted GraphQL consumers, compare REST/native behavior,
+   and move provider construction to the application host.
+   **Depends on:** compiled fulfillment/commerce crates and mounted transport
+   fixtures.
+   **Done when:** all transports retain locale/channel/deadline context, expose
+   identical owner projections, and no commerce transport constructs a concrete
+   fulfillment service or in-process provider.
+
+6. **Execute remote contracts.** Turn shipping-selection and checkout-execution
    matrices into provider execution before promoting beyond `boundary_ready`.
    **Depends on:** a remote adapter environment and a commerce consumer.
    **Done when:** deadline, idempotency, typed-error, identity, and fallback
@@ -121,20 +157,26 @@ identity and database uniqueness migration remain open.
 - `npm run verify:fulfillment:storefront-boundary`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
+- `node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`
+- `node scripts/verify/verify-commerce-graphql-shipping-option-typed-error.mjs`
+- `node scripts/verify/verify-commerce-graphql-shipping-enrichment-typed-error.mjs`
 - `npm run verify:ecommerce:fba`
 - `npm run verify:ecommerce:provider-spi-evidence`
 - `cargo xtask module validate fulfillment`
 - `cargo xtask module test fulfillment`
 - `cargo check -p rustok-fulfillment --all-features`
+- `cargo check -p rustok-commerce --all-features`
 - Targeted checkout fulfillment create/adopt/read, cancelled/unknown lifecycle,
   duplicate identity, process-exit, restart, and multi-fulfillment tests.
+- Targeted shipping-option list/read locale, context, owner-error, GraphQL,
+  REST/native parity, and remote-profile tests.
 
 No verification command was executed in this source wave.
 
 ## Change rules
 
-1. Keep shipping selection, fulfillment lifecycle, checkout fulfillment identity,
-   and carrier policy here.
+1. Keep shipping selection, shipping-option projections, fulfillment lifecycle,
+   checkout fulfillment identity, and carrier policy here.
 2. Update local documentation, contracts, `rustok-module.toml`, and the umbrella
    commerce plan with a delivery or provider contract change.
 3. Update this status block and `docs/modules/registry.md` only with proven
