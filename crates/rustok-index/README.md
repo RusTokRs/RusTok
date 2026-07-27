@@ -67,9 +67,10 @@ The module-owned migration source creates:
 The `PostgresMutationStore` applies one `MutationDelivery` transactionally. It
 validates the mutation through `SchemaRegistry`, reserves the tenant-scoped inbox
 identity, rejects delivery-ID payload reuse, takes a transaction-scoped advisory
-lock on the complete entity key, reads the current source version, and ignores
-stale updates/deletes, replaces live JSONB fields and ordered links or
-writes a tombstone, and completes the inbox row in the same commit. Exact
+lock on the complete entity key, reads the current source version, and either
+terminally ignores a stale delivery or replaces the live JSONB fields and ordered
+links with the incoming state. Deletes write a tombstone. The inbox row is
+completed in the same commit. Exact
 redelivery returns `MutationApplyOutcome::Duplicate`; a failed entity/link write
 rolls back the inbox claim. SQLite support exists only for contract fixtures and
 rejects source versions above its signed integer range; PostgreSQL preserves the
