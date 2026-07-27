@@ -1,4 +1,7 @@
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, normalize_locale_tag};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
+    normalize_locale_tag,
+};
 use rustok_cart::{
     CartMarketplaceLineSnapshot, CartResponse, ListMarketplaceCartLineSnapshotsRequest,
     MarketplaceCartSnapshotReadPort, PreparedCartCheckoutSnapshot,
@@ -35,6 +38,10 @@ use super::{
     CheckoutError, CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem,
     CheckoutMarketplaceLineSnapshot, CheckoutOrderPlanPayload, CheckoutResult, StoreContextService,
 };
+
+const CHECKOUT_PLAN_INVENTORY_BOUNDARY: &str = "commerce_checkout_plan_inventory";
+const INVENTORY_OWNER: &str = "rustok_inventory";
+const INVENTORY_AVAILABILITY_OPERATION: &str = "check_availability";
 
 pub struct CheckoutPlanBuilder {
     db: DatabaseConnection,
@@ -292,10 +299,12 @@ impl CheckoutPlanBuilder {
                     line_item.id, line_item.shipping_profile_slug, current_shipping_profile_slug
                 )));
             }
+            let inventory_context =
+                inventory_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
             let availability = self
                 .inventory_availability_port
                 .check_availability(
-                    inventory_context(tenant_id, actor_id, cart, public_channel_slug.as_deref()),
+                    inventory_context.clone(),
                     InventoryAvailabilityRequest {
                         variant_id,
                         requested_quantity: line_item.quantity,
@@ -303,7 +312,7 @@ impl CheckoutPlanBuilder {
                     },
                 )
                 .await
-                .map_err(|error| boundary_error("check_inventory_availability", error))?;
+                .map_err(|error| checkout_plan_inventory_boundary_error(&inventory_context, error))?;
             if !availability.available {
                 return Err(CheckoutError::Validation(format!(
                     "Variant {variant_id} does not have enough available inventory for the cart channel"
@@ -597,7 +606,66 @@ fn port_context(
     }
 }
 
-fn boundary_error(stage: &'static str, error: rustok_api::PortError) -> CheckoutError {
+fn checkout_plan_inventory_boundary_error(
+    context: &PortContext,
+    error: PortError,
+) -> CheckoutError {
+    log_checkout_plan_inventory_boundary_failure(context, &error);
+    boundary_error("check_inventory_availability", error)
+}
+
+fn log_checkout_plan_inventory_boundary_failure(context: &PortContext, error: &PortError) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = INVENTORY_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = INVENTORY_AVAILABILITY_OPERATION,
+                stage = "check_inventory_availability",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_PLAN_INVENTORY_BOUNDARY,
+                "checkout plan inventory owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = INVENTORY_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = INVENTORY_AVAILABILITY_OPERATION,
+                stage = "check_inventory_availability",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_PLAN_INVENTORY_BOUNDARY,
+                "checkout plan inventory owner boundary was rejected"
+            );
+        }
+    }
+}
+
+fn boundary_error(stage: &'static str, error: PortError) -> CheckoutError {
     CheckoutError::BoundaryFailure {
         stage,
         kind: error.kind,
