@@ -49,21 +49,28 @@
 - Active revisions become `IndexMutation::Upsert`; inactive revisions become
   revisioned `IndexMutation::Delete` tombstones.
 - Feature `index-consumer` adds optional Iggy runtime composition on top of `index`.
+- `SocialGraphIndexProjector::new(DatabaseConnection)` is transport-neutral. For a
+  relevant sealed envelope it persists or exactly recognizes the tenant schema through
+  Index-owned `PostgresSchemaRegistrationStore`, then applies or terminally recognizes
+  the mutation through `PostgresMutationStore`.
+- Schema registration is tenant-scoped, exact-version idempotent, monotonic, and
+  fail-closed for contract drift or retired state. Social Graph imports no Index
+  entities and writes no `index_schemas` rows directly.
 - `SocialGraphIndexConsumer::open(Arc<IggyTransport>, DatabaseConnection)` opens the
   dedicated `rustok-social-graph-index` persistent contract consumer group on the
-  shared `domain` topic, registers the Social Graph relation schema, and binds an
-  Index-owned `PostgresMutationStore`.
-- `process_next(&mut self)` serializes receive/apply/ack for one cursor. It validates
-  the sealed family, creates a stable `MutationDelivery`, durably applies or terminally
-  recognizes duplicate/stale delivery in the Index inbox, and acknowledges only after
-  that result is committed. An apply or acknowledgement failure remains replayable.
+  shared `domain` topic and owns one projector.
+- `process_next(&mut self)` serializes receive/project/ack for one cursor. It validates
+  the sealed family, creates a stable `MutationDelivery`, persists the tenant schema,
+  durably applies or terminally recognizes duplicate/stale delivery in the Index inbox,
+  and acknowledges only after that result is committed. A registration, apply, or
+  acknowledgement failure remains replayable.
 - Other sealed event families on the shared domain topic are acknowledged as unrelated
-  by this dedicated consumer group without creating an Index mutation.
+  by this dedicated consumer group without schema registration or Index mutation.
 - Bounded Social Graph replay republishes the same sealed relation facts and therefore
-  uses the same result-first Index inbox path for repair. Host lifecycle composition,
+  uses the same result-first schema/inbox path for repair. Host lifecycle composition,
   retry scheduling, DLQ policy, and retained multi-replica evidence remain separate.
-- Neither adapter nor consumer reads Social Graph tables or makes the Index projection
-  authoritative. Profiles privacy must not authorize from projection state.
+- Neither adapter, projector, nor consumer reads Social Graph tables or makes the Index
+  projection authoritative. Profiles privacy must not authorize from projection state.
 
 ## Owner-local CLI adapter
 - `rustok-social-graph-cli::command_provider(RuntimeComposition)` exposes selected
@@ -97,8 +104,8 @@
 - `rustok-api` for neutral port context, actor, deadline, idempotency, event-replay policy, and typed errors.
 - `rustok-core` for module and migration contracts.
 - `rustok-events` for the sealed relation event family.
-- `rustok-index` is optional and used by the feature-gated owner conversion and
-  durable projection consumer.
+- `rustok-index` is optional and used by the feature-gated owner conversion,
+  Index-owned tenant schema registration, and durable projection consumer.
 - `rustok-iggy` is optional and used only by feature `index-consumer` for a persistent
   typed-event cursor and result-first broker acknowledgement.
 - `rustok-outbox` for the transactional event bus.
@@ -119,7 +126,11 @@
   locale, channel, or receipt snapshots to the external event.
 - Lets an Index or other consumer projection become authoritative for block/mute/follow state.
 - Builds the Index mutation from owner tables or an unsealed transport-local payload.
-- Acknowledges the broker message before the Index inbox/result is durable.
+- Registers only in the in-memory `SchemaRegistry` and then assumes the tenant schema
+  foreign key exists in Index storage.
+- Writes `index_schemas` directly from Social Graph instead of using the Index owner API.
+- Acknowledges the broker message before tenant schema registration and the Index
+  inbox/result are durable.
 - Runs concurrent receive/apply/ack operations on one persistent cursor instead of
   preserving the consumer's serialized `&mut self` boundary.
 - Treats an unrelated sealed event on the shared domain topic as a Social Graph relation.
@@ -142,7 +153,8 @@
   optional exclusive UUID cursor, explicit dry-run mode, and limit from 1 to 1000.
 - Index conversion requires non-nil tenant/event ids and one validated sealed relation event.
 - Index runtime consumption requires the `index-consumer` feature, an initialized
-  Iggy transport, an Index database connection, and the registered owner schema.
+  Iggy transport, an Index database connection, tenant rows, Index migrations, and
+  successful Index-owned persisted schema registration.
 
 ### Domain Invariants
 - Relation identity is unique by tenant/source/target/kind.
@@ -161,8 +173,10 @@
   relation rows are covered by the live path rather than relying on UUID insertion order.
 - Index relation records are non-localized, keyed by relation id, and use relation
   revision as source version. Inactive state is a tombstone, not a second truth source.
+- Tenant schema persistence precedes mutation apply. Exact active registration is
+  idempotent; conflict, retired, lower-version, or storage failure prevents acknowledgement.
 - Index inbox outcomes `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable
-  results and may be acknowledged; storage/validation/transport failures are not.
+  results and may be acknowledged; schema/storage/validation/transport failures are not.
 
 ### Events / Outbox Side Effects
 - Root and local manifests declare the Outbox dependency before write composition.
@@ -172,7 +186,8 @@
 - Replay uses the same sealed event mapper and transactional bus as live relation changes.
 - The `rustok-events` digest artifact must be regenerated and reviewed whenever
   the sealed relation event changes the registry or typed wire schemas.
-- The Index adapter and consumer change no event schema or digest; they consume the existing v1 family.
+- The Index adapter/projector/consumer change no event schema or digest; they consume
+  the existing v1 family.
 
 ### Errors / Failure Codes
 - `social_graph.idempotency_key_invalid`
@@ -186,3 +201,6 @@
 - `social_graph.relation_event_replay_forbidden`
 - `social_graph.relation_event_replay_limit_invalid`
 - `social_graph.storage_unavailable`
+- Index projection additionally preserves typed `SchemaRegistrationError`,
+  `SchemaRegistryError`, and `MutationStorageError` internally; transports must map
+  them without publishing schema JSON or storage causes.
