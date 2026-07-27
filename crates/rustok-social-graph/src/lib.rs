@@ -8,6 +8,8 @@ mod external_events;
 pub mod follow_read;
 #[cfg(feature = "graphql")]
 pub mod graphql;
+#[cfg(feature = "index")]
+pub mod index;
 pub mod maintenance;
 pub mod migrations;
 pub mod model;
