@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use async_graphql::{ErrorExtensions, Result};
 use rustok_api::{PortContext, PortError};
 use rustok_inventory::{
@@ -20,8 +22,6 @@ use crate::{
 use super::super::types::AddStorefrontCartLineItemInput;
 use super::legacy_helpers::ResolvedStorefrontLineItemInput;
 
-pub(crate) use super::legacy_cart_safe_helpers::*;
-
 const STOREFRONT_LINE_ITEM_GRAPHQL_BOUNDARY: &str =
     "commerce_graphql_storefront_line_item";
 
@@ -33,7 +33,6 @@ enum StorefrontLineItemFailureKind {
     DependencyUnavailable,
 }
 
-#[derive(Debug)]
 enum StorefrontLineItemFailureSource {
     Database(sea_orm::DbErr),
     Pricing(PortError),
@@ -42,7 +41,28 @@ enum StorefrontLineItemFailureSource {
     Local(&'static str),
 }
 
-#[derive(Debug)]
+impl StorefrontLineItemFailureSource {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Database(_) => "database",
+            Self::Pricing(_) => "pricing_port",
+            Self::Inventory(_) => "inventory_owner",
+            Self::Metadata(_) => "metadata_json",
+            Self::Local(_) => "local_policy",
+        }
+    }
+
+    fn detail(&self) -> &dyn Debug {
+        match self {
+            Self::Database(error) => error,
+            Self::Pricing(error) => error,
+            Self::Inventory(error) => error,
+            Self::Metadata(error) => error,
+            Self::Local(reason) => reason,
+        }
+    }
+}
+
 struct StorefrontLineItemFailure {
     kind: StorefrontLineItemFailureKind,
     source_owner: &'static str,
@@ -203,12 +223,15 @@ fn storefront_line_item_graphql_error(
         StorefrontLineItemFailureKind::InputInvalid => "input_invalid",
         StorefrontLineItemFailureKind::DependencyUnavailable => "dependency_unavailable",
     };
-    let channel_slug_length = public_channel_slug.map(str::chars).map(Iterator::count);
-    let locale_length = locale.map(str::chars).map(Iterator::count);
+    let source_kind = failure.source.kind();
+    let source = failure.source.detail();
+    let channel_slug_length = public_channel_slug.map(|value| value.chars().count());
+    let locale_length = locale.map(|value| value.chars().count());
 
     match failure.kind {
         StorefrontLineItemFailureKind::DependencyUnavailable => tracing::error!(
-            source = ?failure.source,
+            source = ?source,
+            source_kind,
             owner = failure.source_owner,
             owner_operation = failure.source_operation,
             consumer_operation = consumer_operation.name(),
@@ -226,7 +249,8 @@ fn storefront_line_item_graphql_error(
             "commerce GraphQL storefront line item dependency failed"
         ),
         _ => tracing::warn!(
-            source = ?failure.source,
+            source = ?source,
+            source_kind,
             owner = failure.source_owner,
             owner_operation = failure.source_operation,
             consumer_operation = consumer_operation.name(),
