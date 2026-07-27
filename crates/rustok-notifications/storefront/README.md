@@ -30,9 +30,10 @@ no tenant, recipient, or user identity field.
 - authoritative refresh after every mutation instead of optimistic count changes;
 - in-memory page deduplication without local storage or a shadow inbox.
 
-One group action intentionally applies at most 64 eligible owner rows. When more rows
-remain, the UI reports that the caller should repeat the action after the authoritative
-refresh.
+`NotificationsView` renders the owner-backed grouped inbox without a second client-side
+inbox authority. One group action intentionally applies at most 64 eligible owner rows.
+When more rows remain, the UI reports that the caller should repeat the action after the
+authoritative refresh.
 
 `NotificationNavigation` is a module-owned no-prop header action registered through the
 storefront manifest. It builds the localized inbox route through
