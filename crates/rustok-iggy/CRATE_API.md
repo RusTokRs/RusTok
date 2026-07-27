@@ -12,6 +12,8 @@
 - `EventSerializer::{serialize_contract, deserialize_contract}` for sealed typed-family envelopes
 - `pub struct TopologyManager`, `ConsumedEvent`, `PersistentConsumerGroup`
 - `pub struct ConsumedContractEvent`, `PersistentContractConsumerGroup`
+- `ConsumedContractEvent::raw_payload()` exposes the exact received JSON or MessagePack
+  bytes for lossless owner-directed DLQ publication.
 - `pub fn health_check(...) -> HealthCheckResult`
 
 ## Events
@@ -21,6 +23,9 @@
   decoding to the same envelope field.
 - Root consumers use `PersistentConsumerGroup`.
 - Bounded-family consumers use the explicit `PersistentContractConsumerGroup`.
+- A successfully decoded `ConsumedContractEvent` retains the exact original broker
+  payload alongside the canonical envelope and connector metadata. This avoids
+  serializer drift when an owner later moves the delivery to DLQ.
 - Supports DLQ movement and entry-based retry without silently interpreting
   family events as `DomainEvent`. There is no replay API until it can execute
   bounded broker reads and republishes with durable progress evidence.
@@ -35,7 +40,9 @@
 - Uses a different serializer profile between producer and consumer.
 - Publishes a contract envelope through the root-only producer path.
 - Consumes a bounded-family event through `PersistentConsumerGroup` instead of the explicit contract cursor.
+- Re-serializes a decoded contract envelope for DLQ instead of preserving the exact received bytes.
 - Acknowledges an event with metadata from a different stream/topic/partition cursor.
+- Lets the transport choose a poison-message policy before the owner defines its durable-result boundary.
 
 ## Minimum Contract Set
 
@@ -43,12 +50,17 @@
 - `IggyTransport::publish` accepts established root envelopes.
 - `IggyTransport::publish_contract` accepts sealed typed-family envelopes.
 - `open_persistent_consumer_group` and `open_persistent_contract_consumer_group` are explicit and non-interchangeable profiles.
+- `DlqEntry` accepts the exact original payload and connector metadata supplied by
+  the owner consumer; publishing a DLQ entry does not acknowledge the source cursor.
 
 ### Domain Invariants
 - Event ID, tenant partition key, event type, topic, and configured serialization format are preserved.
 - Contract envelopes validate against the canonical schema registry before publish and after consume.
 - Receive and acknowledge operate on the same persistent connector cursor.
 - Connector metadata must match stream, topic, and partition before acknowledgement.
+- Exact raw payload retention applies after successful contract-envelope decoding;
+  malformed undecodable broker bytes remain unacknowledged until a lower-level
+  connector poison-delivery contract is approved.
 - Owner code acknowledges only after it persisted a terminal business result or
   recognized a durable idempotent redelivery. The transport has no legacy
   per-partition receive/re-subscribe acknowledgement API.
@@ -57,6 +69,8 @@
 - Root and typed-family events route to the same domain/system topology rules unless a dedicated event type requires another topic.
 - Outbox relay calls the matching root or contract transport method.
 - Event payload and event-type format remain backward-compatible for cross-module consumers.
+- DLQ publication and source acknowledgement are separate operations; result-first
+  consumers must publish the DLQ record successfully before committing the source offset.
 
 ### Errors / Failure Codes
 - Connector, serialization, schema validation, metadata mismatch, and acknowledgement failures remain distinguishable.
