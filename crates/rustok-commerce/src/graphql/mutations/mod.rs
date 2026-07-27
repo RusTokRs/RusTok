@@ -7,6 +7,8 @@ pub mod cart;
 #[allow(dead_code)]
 #[path = "safe_helpers.rs"]
 mod cart_safe_helpers;
+#[path = "shipping_option_read_context.rs"]
+mod shipping_option_read_context;
 #[path = "typed_line_item_helpers.rs"]
 mod typed_line_item_helpers;
 #[path = "typed_reprice_helper.rs"]
