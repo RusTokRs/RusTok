@@ -7,10 +7,10 @@ description = "Notification inbox, preference, fan-out, and delivery orchestrati
 
 [features]
 default = []
-server = ["rustok-api/server"]
+server = ["rustok-api/server", "dep:async-graphql"]
 
 [dependencies]
-async-graphql.workspace = true
+async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
