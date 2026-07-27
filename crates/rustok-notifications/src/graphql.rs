@@ -539,7 +539,8 @@ mod tests {
 
     #[test]
     fn open_graphql_rejects_invalid_and_nil_notification_ids() {
-        for value in ["not-a-uuid", Uuid::nil().to_string().as_str()] {
+        let nil_notification_id = Uuid::nil().to_string();
+        for value in ["not-a-uuid", nil_notification_id.as_str()] {
             let error = parse_notification_id(value)
                 .expect_err("invalid notification identifiers must be rejected");
             assert_eq!(error.message, "notification id is invalid");
