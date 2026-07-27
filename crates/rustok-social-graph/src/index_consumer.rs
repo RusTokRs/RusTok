@@ -28,6 +28,9 @@ pub const SOCIAL_GRAPH_INDEX_TOPIC: &str = "domain";
 pub const SOCIAL_GRAPH_INDEX_CONSUMER_GROUP: &str = "rustok-social-graph-index";
 /// Stable Index inbox source identity for relation-event deliveries.
 pub const SOCIAL_GRAPH_INDEX_SOURCE: &str = "social_graph.relation.state_changed.v1";
+/// Stable bounded outcome code used when a durable DLQ receipt is recovered on redelivery.
+pub const SOCIAL_GRAPH_INDEX_DLQ_RECEIPT_RECOVERED_CODE: &str =
+    "social_graph.index.dlq_receipt_recovered";
 /// A crashed publisher may be reclaimed after this bounded durable lease.
 pub const SOCIAL_GRAPH_INDEX_DLQ_PUBLISH_LEASE: Duration = Duration::from_secs(30);
 
@@ -90,7 +93,7 @@ impl SocialGraphIndexConsumerError {
 pub enum SocialGraphIndexProcessOutcome {
     Projected(MutationApplyOutcome),
     IgnoredUnrelated { event_type: String },
-    DeadLettered { error_code: String },
+    DeadLettered { error_code: &'static str },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,10 +103,6 @@ pub enum SocialGraphIndexDlqPublishOutcome {
 }
 
 /// Converts a validated sealed envelope into one durable Index inbox delivery.
-///
-/// Events from other sealed families are intentionally ignored by this dedicated
-/// consumer group. Relevant relation facts retain the envelope event ID as the
-/// Index delivery identity and the relation revision as the mutation source version.
 pub fn social_graph_index_delivery_from_envelope(
     envelope: &ContractEventEnvelope,
 ) -> Result<Option<MutationDelivery>, SocialGraphIndexConsumerError> {
@@ -123,10 +122,6 @@ pub fn social_graph_index_delivery_from_envelope(
 }
 
 /// Transport-neutral durable projector used by live and replay-oriented consumers.
-///
-/// It persists or exactly recognizes the tenant schema through the Index owner,
-/// then applies or terminally recognizes one mutation through the Index inbox.
-/// It never acknowledges transport messages and never reads Social Graph storage.
 pub struct SocialGraphIndexProjector {
     schema: IndexSchema,
     schema_store: PostgresSchemaRegistrationStore,
@@ -207,7 +202,6 @@ impl SocialGraphIndexConsumer {
         &self.projector
     }
 
-    /// Receives one validated broker delivery without committing its offset.
     pub async fn receive_next(
         &mut self,
     ) -> Result<Option<ConsumedContractEvent>, SocialGraphIndexConsumerError> {
@@ -217,15 +211,36 @@ impl SocialGraphIndexConsumer {
             .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
     }
 
-    /// Persists or terminally recognizes the owner result without acknowledging.
+    /// Persists or recognizes the terminal owner result without acknowledging.
+    ///
+    /// Any existing DLQ receipt wins before projection. `published` and `acknowledged`
+    /// are terminal; `reserved` and `publishing` remain retryable DLQ work and must not
+    /// re-enter Index mutation processing.
     pub async fn project_consumed(
         &self,
         consumed: &ConsumedContractEvent,
     ) -> Result<SocialGraphIndexProcessOutcome, SocialGraphIndexConsumerError> {
+        if let Some(receipt) = self.consumed_dlq_receipt(consumed).await? {
+            return match receipt.state {
+                SocialGraphIndexDlqReceiptState::Published
+                | SocialGraphIndexDlqReceiptState::Acknowledged => {
+                    Ok(SocialGraphIndexProcessOutcome::DeadLettered {
+                        error_code: SOCIAL_GRAPH_INDEX_DLQ_RECEIPT_RECOVERED_CODE,
+                    })
+                }
+                SocialGraphIndexDlqReceiptState::Reserved
+                | SocialGraphIndexDlqReceiptState::Publishing => {
+                    Err(SocialGraphIndexConsumerError::DlqPublishInProgress)
+                }
+            };
+        }
         self.projector.apply_envelope(&consumed.envelope).await
     }
 
     /// Commits the exact broker offset after a durable result exists.
+    ///
+    /// Receipt acknowledgement is best-effort bookkeeping after the broker commit.
+    /// Failure to update it cannot turn a committed source offset back into a failure.
     pub async fn acknowledge_consumed(
         &self,
         consumed: &ConsumedContractEvent,
@@ -233,10 +248,25 @@ impl SocialGraphIndexConsumer {
         self.group
             .acknowledge(consumed)
             .await
-            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
+        if let Ok(identity) = self.dlq_identity(consumed)
+            && let Ok(Some(receipt)) = self.dlq_receipts.find(&identity).await
+            && matches!(
+                receipt.state,
+                SocialGraphIndexDlqReceiptState::Published
+                    | SocialGraphIndexDlqReceiptState::Acknowledged
+            )
+            && let Err(error) = self.dlq_receipts.mark_acknowledged(&identity).await
+        {
+            tracing::warn!(
+                event_id = %consumed.envelope.id(),
+                error_code = error.stable_code(),
+                "Source offset committed but DLQ receipt acknowledgement bookkeeping failed"
+            );
+        }
+        Ok(())
     }
 
-    /// Returns an existing durable DLQ decision for this exact source delivery.
     pub async fn consumed_dlq_receipt(
         &self,
         consumed: &ConsumedContractEvent,
@@ -250,7 +280,7 @@ impl SocialGraphIndexConsumer {
     /// `Ok` is returned only after the receipt reached `published`, so a later source-ack
     /// failure or process restart recognizes the terminal DLQ result and skips publication.
     /// A crash after broker success but before `published` may retry after the lease expires;
-    /// the logical identity remains the original event/source receipt identity.
+    /// the exact payload and logical source identity remain stable.
     pub async fn publish_consumed_to_dlq(
         &self,
         consumed: &ConsumedContractEvent,
@@ -258,12 +288,20 @@ impl SocialGraphIndexConsumer {
         retry_count: u32,
     ) -> Result<SocialGraphIndexDlqPublishOutcome, SocialGraphIndexConsumerError> {
         let identity = self.dlq_identity(consumed)?;
+        let existing = self.dlq_receipts.find(&identity).await?;
+        let effective_error_code = existing
+            .as_ref()
+            .map_or(stable_error_code, |receipt| receipt.stable_error_code.as_str());
+        let effective_retry_count = existing
+            .as_ref()
+            .map_or(retry_count, |receipt| receipt.projection_attempt_count);
+
         match self
             .dlq_receipts
             .reserve_and_claim(
                 &identity,
-                stable_error_code,
-                retry_count,
+                effective_error_code,
+                effective_retry_count,
                 self.dlq_publisher_id,
                 SOCIAL_GRAPH_INDEX_DLQ_PUBLISH_LEASE,
             )
@@ -283,8 +321,8 @@ impl SocialGraphIndexConsumer {
             consumed.envelope.id(),
             consumed.topic.clone(),
             consumed.raw_payload().to_vec(),
-            stable_error_code,
-            retry_count,
+            effective_error_code,
+            effective_retry_count,
         )
         .with_connector_metadata(consumed.connector_metadata.clone());
         if let Err(error) = self.transport.move_to_dlq(entry).await {
@@ -300,10 +338,6 @@ impl SocialGraphIndexConsumer {
         Ok(SocialGraphIndexDlqPublishOutcome::Published)
     }
 
-    /// Records that the source cursor was committed after a durable DLQ result.
-    ///
-    /// This bookkeeping occurs after broker acknowledgement and must never be interpreted as
-    /// the durability boundary; `published` is already sufficient to suppress republishing.
     pub async fn mark_consumed_dlq_acknowledged(
         &self,
         consumed: &ConsumedContractEvent,
@@ -315,7 +349,6 @@ impl SocialGraphIndexConsumer {
             .map_err(Into::into)
     }
 
-    /// Publishes or recognizes the durable DLQ receipt, then commits the source offset.
     pub async fn move_to_dlq_and_acknowledge(
         &self,
         consumed: &ConsumedContractEvent,
@@ -324,33 +357,15 @@ impl SocialGraphIndexConsumer {
     ) -> Result<(), SocialGraphIndexConsumerError> {
         self.publish_consumed_to_dlq(consumed, stable_error_code, retry_count)
             .await?;
-        self.acknowledge_consumed(consumed).await?;
-        self.mark_consumed_dlq_acknowledged(consumed).await
+        self.acknowledge_consumed(consumed).await
     }
 
-    /// Receives, durably registers/applies/recognizes, and then acknowledges one message.
     pub async fn process_next(
         &mut self,
     ) -> Result<Option<SocialGraphIndexProcessOutcome>, SocialGraphIndexConsumerError> {
         let Some(consumed) = self.receive_next().await? else {
             return Ok(None);
         };
-        if let Some(receipt) = self.consumed_dlq_receipt(&consumed).await? {
-            match receipt.state {
-                SocialGraphIndexDlqReceiptState::Published
-                | SocialGraphIndexDlqReceiptState::Acknowledged => {
-                    self.acknowledge_consumed(&consumed).await?;
-                    let _ = self.mark_consumed_dlq_acknowledged(&consumed).await;
-                    return Ok(Some(SocialGraphIndexProcessOutcome::DeadLettered {
-                        error_code: receipt.stable_error_code,
-                    }));
-                }
-                SocialGraphIndexDlqReceiptState::Reserved
-                | SocialGraphIndexDlqReceiptState::Publishing => {
-                    return Err(SocialGraphIndexConsumerError::DlqPublishInProgress);
-                }
-            }
-        }
         let outcome = self.project_consumed(&consumed).await?;
         self.acknowledge_consumed(&consumed).await?;
         Ok(Some(outcome))
@@ -360,9 +375,9 @@ impl SocialGraphIndexConsumer {
         &self,
         consumed: &ConsumedContractEvent,
     ) -> Result<SocialGraphIndexDlqIdentity, SocialGraphIndexConsumerError> {
-        consumed.validate_connector_metadata().map_err(|error| {
-            SocialGraphIndexConsumerError::Transport(error.to_string())
-        })?;
+        consumed
+            .validate_connector_metadata()
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
         let source_offset = consumed.offset().ok_or(
             SocialGraphIndexDlqReceiptError::InvalidIdentity {
                 field: "source_offset",
