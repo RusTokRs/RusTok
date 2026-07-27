@@ -91,7 +91,15 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             request.order_id,
             request.order_plan_hash.as_str(),
             &request.plans,
-        )?;
+        )
+        .map_err(|error| {
+            map_checkout_fulfillment_local_port_error(
+                context,
+                ENSURE_OPERATION,
+                "validate_request",
+                error,
+            )
+        })?;
         let mut result = Vec::with_capacity(request.plans.len());
         for plan in &request.plans {
             let key = fulfillment_key(request.checkout_operation_id, plan.index);
@@ -99,6 +107,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             let existing = self
                 .find_by_key(
                     context,
+                    ENSURE_OPERATION,
                     "find_checkout_fulfillment_before_create",
                     tenant_id,
                     request.order_id,
@@ -113,6 +122,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                         let adopted = self
                             .find_by_key(
                                 context,
+                                ENSURE_OPERATION,
                                 "adopt_checkout_fulfillment_after_create_error",
                                 tenant_id,
                                 request.order_id,
@@ -141,7 +151,15 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 request.order_plan_hash.as_str(),
                 plan,
                 key.as_str(),
-            )?;
+            )
+            .map_err(|error| {
+                map_checkout_fulfillment_local_port_error(
+                    context,
+                    ENSURE_OPERATION,
+                    "validate_fulfillment",
+                    error,
+                )
+            })?;
             result.push(fulfillment);
         }
         result.sort_by_key(fulfillment_index);
@@ -159,7 +177,15 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             request.order_id,
             request.order_plan_hash.as_str(),
             &request.expected_plans,
-        )?;
+        )
+        .map_err(|error| {
+            map_checkout_fulfillment_local_port_error(
+                context,
+                READ_OPERATION,
+                "validate_request",
+                error,
+            )
+        })?;
         let rows = self
             .service
             .list_by_order(tenant_id, request.order_id)
@@ -182,25 +208,40 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         }) {
             let index = fulfillment_index(&row);
             if by_index.insert(index, row).is_some() {
-                return Err(PortError::conflict(
-                    "fulfillment.checkout_identity_duplicate",
-                    "multiple fulfillments share one checkout fulfillment identity",
+                return Err(map_checkout_fulfillment_local_port_error(
+                    context,
+                    READ_OPERATION,
+                    "collect_checkout_fulfillment_set",
+                    PortError::conflict(
+                        "fulfillment.checkout_identity_duplicate",
+                        "multiple fulfillments share one checkout fulfillment identity",
+                    ),
                 ));
             }
         }
         if by_index.len() != request.expected_plans.len() {
-            return Err(PortError::conflict(
-                "fulfillment.checkout_set_incomplete",
-                "checkout fulfillment set is incomplete",
+            return Err(map_checkout_fulfillment_local_port_error(
+                context,
+                READ_OPERATION,
+                "require_complete_checkout_fulfillment_set",
+                PortError::conflict(
+                    "fulfillment.checkout_set_incomplete",
+                    "checkout fulfillment set is incomplete",
+                ),
             ));
         }
         let mut result = Vec::with_capacity(request.expected_plans.len());
         for plan in &request.expected_plans {
             let key = fulfillment_key(request.checkout_operation_id, plan.index);
             let fulfillment = by_index.remove(&plan.index).ok_or_else(|| {
-                PortError::conflict(
-                    "fulfillment.checkout_set_incomplete",
-                    "checkout fulfillment set is incomplete",
+                map_checkout_fulfillment_local_port_error(
+                    context,
+                    READ_OPERATION,
+                    "require_complete_checkout_fulfillment_set",
+                    PortError::conflict(
+                        "fulfillment.checkout_set_incomplete",
+                        "checkout fulfillment set is incomplete",
+                    ),
                 )
             })?;
             validate_fulfillment(
@@ -212,7 +253,15 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 request.order_plan_hash.as_str(),
                 plan,
                 key.as_str(),
-            )?;
+            )
+            .map_err(|error| {
+                map_checkout_fulfillment_local_port_error(
+                    context,
+                    READ_OPERATION,
+                    "validate_fulfillment",
+                    error,
+                )
+            })?;
             result.push(fulfillment);
         }
         Ok(result)
@@ -222,6 +271,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         &self,
         context: &PortContext,
         owner_operation: &'static str,
+        service_operation: &'static str,
         tenant_id: Uuid,
         order_id: Uuid,
         key: &str,
@@ -230,7 +280,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             .service
             .list_by_order(tenant_id, order_id)
             .await
-            .map_err(|error| fulfillment_error_to_port_error(context, owner_operation, error))?;
+            .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))?;
         let mut matches = rows.into_iter().filter(|fulfillment| {
             fulfillment
                 .metadata
@@ -241,13 +291,76 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         });
         let first = matches.next();
         if matches.next().is_some() {
-            return Err(PortError::conflict(
-                "fulfillment.checkout_identity_duplicate",
-                "multiple fulfillments share one checkout fulfillment identity",
+            return Err(map_checkout_fulfillment_local_port_error(
+                context,
+                owner_operation,
+                "find_checkout_fulfillment_by_key",
+                PortError::conflict(
+                    "fulfillment.checkout_identity_duplicate",
+                    "multiple fulfillments share one checkout fulfillment identity",
+                ),
             ));
         }
         Ok(first)
     }
+}
+
+fn map_checkout_fulfillment_local_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    local_operation: &'static str,
+    error: PortError,
+) -> PortError {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
+                owner_operation,
+                local_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                "checkout fulfillment local owner operation failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
+                owner_operation,
+                local_operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                "checkout fulfillment local owner operation was rejected"
+            );
+        }
+    }
+
+    error
 }
 
 pub fn in_process_checkout_fulfillment_execution_port(
