@@ -14,6 +14,15 @@ and retain GraphQL as the parallel selected path.
 policy, typed error mapping, and declared fallback profiles, but the FBA
 provider has not yet been executed against live persistence or a remote
 consumer path.
+
+Canonical root read construction now uses `InProcessPricingReadPort`. The wrapper
+retains the delegated `PortContext`, typed identity and bounded request-shape facts,
+and exact local outcome context around the unchanged `PricingService` port
+implementation. Known identifying validation, not-found, and conflict envelopes are
+returned with stable non-identifying messages while preserving kind, code, and
+retryability. The legacy module-path read factory remains an explicit compatibility
+path, and the write factory remains unchanged.
+
 The port accepts variant-first resolution when a cart snapshot has no product
 id and returns the full resolved-price projection required to persist pricing
 adjustments; cart storefront repricing therefore no longer calls
@@ -46,9 +55,13 @@ evidence only; no live provider-consumer transport execution has been recorded.
 - FBA status: `boundary_ready` — provider metadata and static contract evidence
   are ready, while runtime contract and fallback execution remain pending.
 - Structural shape: `core_transport_ui`
+- Canonical root read provider: `InProcessPricingReadPort`; owner execution remains
+  `PricingService` in `ports.rs`, and `rustok_pricing::ports` is a compatibility path.
 - Evidence: `crates/rustok-pricing/contracts/pricing-fba-registry.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-runtime-contract-smoke.json`,
+  `crates/rustok-pricing/docs/read-local-context.md`,
+  `scripts/verify/verify-pricing-read-local-context.mjs`,
   `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs`,
   `scripts/verify/verify-pricing-admin-boundary.mjs`, and
   `scripts/verify/verify-pricing-storefront-boundary.mjs`.
@@ -78,11 +91,19 @@ evidence only; no live provider-consumer transport execution has been recorded.
    promotions orchestration remains owned by `rustok-commerce`.
    Dependency: the stable owner transport and product variant data. Verification:
    targeted pricing resolution and money-semantics tests.
+4. Prove canonical pricing diagnostics and retire compatibility bypasses.
+   **Status:** source-complete / unvalidated for root read construction. Execute
+   invalid-context, product/variant mismatch, missing price/list, duplicate identity,
+   inventory conflict, storage, and invariant scenarios and retain traces proving that
+   raw handles, SKUs, UUID-bearing messages, quantities, currencies, and prices do not
+   cross the canonical boundary. Audit direct `rustok_pricing::ports` callers and
+   either migrate or explicitly accept them.
 
 ## Verification
 
 - `npm run verify:pricing:admin-boundary`
 - `npm run verify:pricing:storefront-boundary`
+- `node scripts/verify/verify-pricing-read-local-context.mjs`
 - `npm run verify:ecommerce:fba`
 - `cargo test -p rustok-pricing --test pricing_read_port_runtime`
 
@@ -93,3 +114,5 @@ evidence only; no live provider-consumer transport execution has been recorded.
   multi-layer promotions workflow.
 - Hosts only compose owner UI packages and pass effective locale, channel, and
   runtime context without creating package-local fallback chains.
+- Keep raw handles, SKUs, currency values, prices, percentages, and returned pricing
+  rows out of owner diagnostics; retain only typed identity and bounded shape facts.
