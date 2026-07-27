@@ -27,7 +27,7 @@
     {
       "case": "invalid_tenant_id",
       "expected_kind": "validation",
-      "expected_code": "customer.tenant_id_invalid",
+      "expected_code": "customer.context_invalid",
       "retryable": false
     },
     {

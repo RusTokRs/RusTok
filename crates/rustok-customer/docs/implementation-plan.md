@@ -10,6 +10,8 @@ The admin surface is an accepted single-adapter owner fragment: it is an authent
 
 Customer detail/create/update enrichment now constructs `ProfilePresentationService` with the authenticated request audience before calling the existing customer/profile bridge. Human operators use their real profile actor id; service principals use trusted-service audience without claiming profile ownership. The bridge therefore applies Profiles `public` / `authenticated` / `followers_only` / `private` policy before returning a localized summary and no longer passes raw `ProfileService` from the custom host.
 
+Canonical root `CustomerReadPort` construction now uses `InProcessCustomerReadPort`, which retains the complete delegated `PortContext` plus safe operation-specific request facts for exact stable local outcomes and returns the same public-safe `PortError`. The persistent implementation in `ports.rs` remains unchanged and available as an explicit compatibility path. Raw search, email, customer rows, profile names, preferred locales, and profile payloads are not logged.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -17,8 +19,9 @@ Customer detail/create/update enrichment now constructs `ProfilePresentationServ
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CustomerReadPort` / `customer.read_projection.v1` in `crates/rustok-customer/contracts/customer-fba-registry.json`.
 - `read_customer_projection_by_user` is the owner boundary for storefront authenticated-customer lookup; commerce must not construct `CustomerService`.
+- Canonical root construction is `InProcessCustomerReadPort` / `in_process_customer_read_port`; `rustok_customer::ports` remains a compatibility path rather than the covered root entrypoint.
 - Static and source-locked runtime evidence: `crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json`, `crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json`, and `crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json`.
-- `scripts/verify/verify-customer-admin-boundary.mjs` locks the admin boundary; `node scripts/verify/verify-customer-fba-no-compile.mjs` locks no-compile provider metadata and promotion blockers.
+- `scripts/verify/verify-customer-admin-boundary.mjs` locks the admin boundary; `node scripts/verify/verify-customer-fba-no-compile.mjs` locks no-compile provider metadata and promotion blockers; `node scripts/verify/verify-customer-read-local-context.mjs` locks canonical local context retention.
 
 ## Open results
 
@@ -39,18 +42,21 @@ Customer detail/create/update enrichment now constructs `ProfilePresentationServ
    **Depends on:** a product requirement and the public auth/profile contracts.
    **Done when:** new flows have a module-owned API, tenant-isolation tests, and no duplicate policy in auth, Profiles, or Commerce.
 
-4. **Add diagnostics only for demonstrated operational need.** Tie metrics, tracing, or runbook additions to an observed customer lookup, ownership, or integration failure mode.
-   **Depends on:** production or staging evidence.
-   **Done when:** the diagnostic identifies the owning boundary and has an actionable recovery procedure.
+4. **Retain actionable customer read diagnostics without payload leakage.**
+   **Status:** source-complete / unvalidated for canonical root reads. The reopened ecommerce correlation-safe mapper audit demonstrated that owner-local customer outcomes retained only partial context. The root wrapper now records complete context, exact owner/local operations, stable envelopes, typed identity or shape-only request facts, and technical-versus-ordinary severity.
+   **Remaining evidence:** execute the focused guard, compile the owner and mounted consumers, and retain runtime traces for not-found, invalid-context, storage, profile-unavailable, and list-validation outcomes. Audit direct compatibility-path callers separately.
+   **Done when:** runtime evidence proves canonical root consumers emit actionable diagnostics without raw customer/profile payloads and compatibility bypasses are either removed or explicitly accepted.
 
 ## Verification
 
 - `npm run verify:customer:admin-boundary`
+- `node scripts/verify/verify-customer-read-local-context.mjs`
+- `node scripts/verify/verify-customer-read-policy-context.mjs`
 - `node scripts/verify/verify-customer-fba-no-compile.mjs`
 - `npm run verify:ecommerce:fba`
 - `cargo xtask module validate customer`
 - `cargo xtask module test customer`
-- targeted customer CRUD, identity, ownership, profile-bridge, and audience-matrix tests
+- targeted customer CRUD, identity, ownership, profile-bridge, audience-matrix, and local-outcome tests
 
 ## Change rules
 
@@ -58,3 +64,4 @@ Customer detail/create/update enrichment now constructs `ProfilePresentationServ
 2. Customer/profile presentation must use the Profiles owner audience-bound service; customer permissions must not bypass profile visibility or claim profile ownership.
 3. Update local documentation, `rustok-module.toml`, and related auth/profile docs when the customer contract changes.
 4. Update this status block and `docs/modules/registry.md` with an FFA/FBA boundary change.
+5. Keep raw customer/profile payloads out of owner diagnostics; retain only typed identity or bounded shape facts needed for recovery.
