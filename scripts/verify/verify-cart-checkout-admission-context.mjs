@@ -194,8 +194,8 @@ for (const [pattern, expected, label] of [
   [/require_cart_checkout_read_admission\(/g, 2, 'read helper definition/use count'],
   [/require_cart_checkout_write_admission\(/g, 4, 'write helper definition/use count'],
   [/log_cart_checkout_admission_rejection\(/g, 4, 'diagnostic helper definition/use count'],
-  [/owner = CART_CHECKOUT_OWNER/g, 3, 'owner diagnostic count'],
-  [/boundary = CART_CHECKOUT_BOUNDARY/g, 3, 'boundary diagnostic count'],
+  [/owner = CART_CHECKOUT_OWNER/g, 5, 'owner diagnostic count'],
+  [/boundary = CART_CHECKOUT_BOUNDARY/g, 5, 'boundary diagnostic count'],
   [/"policy"/g, 2, 'policy phase count'],
   [/"write_semantics"/g, 1, 'write semantics phase count'],
 ]) {
