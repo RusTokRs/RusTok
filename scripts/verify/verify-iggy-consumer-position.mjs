@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 
 const files = {
+  rootCargo: readFileSync("Cargo.toml", "utf8"),
   cargo: readFileSync("crates/rustok-iggy/Cargo.toml", "utf8"),
   lib: readFileSync("crates/rustok-iggy/src/lib.rs", "utf8"),
   position: readFileSync("crates/rustok-iggy/src/position.rs", "utf8"),
@@ -35,9 +36,9 @@ function forbidText(name, source, text) {
   }
 }
 
+requireText("workspace SDK pin", files.rootCargo, 'iggy = "0.10.0"');
 for (const marker of [
-  '[dependencies.iggy]',
-  'version = "0.10.0"',
+  'iggy = { workspace = true, optional = true }',
   'iggy = ["dep:iggy", "rustok-iggy-connector/iggy"]',
 ]) {
   requireText("rustok-iggy Cargo contract", files.cargo, marker);
@@ -150,5 +151,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy consumer-position verification passed: read-only SDK observation, every-partition committed/high-watermark pairing, fail-closed lag calculation, completeness-gated bounded metrics, shared-transport configuration, independent retry, and no projection/readiness coupling are locked.",
+  "Iggy consumer-position verification passed: one workspace SDK pin, read-only every-partition committed/high-watermark observation, fail-closed lag calculation, completeness-gated bounded metrics, shared-transport configuration, independent retry, and no projection/readiness coupling are locked.",
 );
