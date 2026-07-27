@@ -64,8 +64,8 @@ mod tests {
         let second = social_graph_index_dlq_broker_message_id(&identity(vec![1, 2, 3]));
 
         assert_eq!(first, second);
-        assert_eq!(first.get_version_num(), 8);
-        assert_eq!(first.get_variant(), uuid::Variant::RFC4122);
+        assert_eq!(first.as_bytes()[6] >> 4, 8);
+        assert_eq!(first.as_bytes()[8] & 0xc0, 0x80);
     }
 
     #[test]
