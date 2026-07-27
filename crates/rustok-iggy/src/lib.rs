@@ -61,6 +61,8 @@ pub mod config;
 pub mod consumer;
 pub mod contract_consumer;
 pub mod dlq;
+#[cfg(feature = "iggy")]
+mod dlq_publisher;
 pub mod health;
 pub mod partitioning;
 #[cfg(feature = "iggy")]
