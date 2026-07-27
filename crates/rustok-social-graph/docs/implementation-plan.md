@@ -172,6 +172,26 @@ block or mute.
 - SQLite evidence covers dry-run, tenant isolation, cursor paging, guards, and
   all-or-nothing second-insert failure.
 
+## Delivered first approved Index consumer contract
+
+- `rustok-index` is the first named approved consumer for generic relation
+  projection supporting future profile discovery/search and other bounded queries;
+- optional feature `index` keeps the consumer adapter out of Social Graph runtime
+  composition unless explicitly selected;
+- `social_graph_relation_index_schema()` declares a non-localized relation schema
+  with source user, target user, and canonical relation kind fields;
+- `social_graph_relation_index_mutation(...)` accepts the sealed validated event,
+  non-nil tenant/event identity, and uses relation id as Index entity identity;
+- active state maps to an upsert and inactive state maps to a tombstone;
+- positive relation revision maps exactly to Index `source_version`, enabling the
+  Index inbox/mutation store to terminally deduplicate exact delivery and ignore
+  lower revisions;
+- the adapter reads no Social Graph tables, contains no broker logic, and cannot be
+  used for privacy authorization;
+- the durable consumer must register the schema, apply/recognize the Index result,
+  acknowledge only after commit, and repair drift through bounded Social Graph
+  replay or authoritative rescan.
+
 ## Receipt retention and rollout contract
 
 - Receipts are externally observable idempotency state, not an expendable cache.
@@ -198,17 +218,18 @@ block or mute.
 
 ## Remaining Social Graph scope
 
-- name concrete approved consumers for `social_graph.relation.state_changed`, then
-  prove durable monotonic apply/ack and projection-drift repair against bounded
-  owner replay;
+- compose the approved Index consumer group, schema registration, durable
+  apply/terminal-recognition, result-first broker acknowledgement, and DLQ policy;
+- prove projection drift repair against bounded owner replay/rescan and show that
+  Profiles privacy continues to use authoritative owner ports;
 - configure deployment retention window/cadence and collect CLI live evidence;
 - collect PostgreSQL receipt/event concurrency, cleanup, replay-window, retention,
-  bounded replay, relay, and rollback evidence;
+  bounded replay, relay, Index apply/ack, and rollback evidence;
 - friendship request/accept/remove lifecycle;
 - broader profile directory/follow UX, custom lists, block/mute management
   transports, and moderation/admin repair commands;
 - retained runtime evidence for event relay/replay, receipt replay/conflict/cleanup,
-  CLI dry-run/live batches, and telemetry failure classes.
+  CLI dry-run/live batches, Index projection repair, and telemetry failure classes.
 
 ## Verification
 
@@ -218,6 +239,8 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-events --all-targets
 cargo test -p rustok-events --test social_graph_contracts -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets
+cargo test -p rustok-social-graph --features index index::tests -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets
 cargo test -p rustok-social-graph-cli -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
@@ -234,10 +257,11 @@ node scripts/verify/verify-social-graph-receipt-cleanup.mjs
 node scripts/verify/verify-social-graph-receipt-cleanup-cli.mjs
 node scripts/verify/verify-social-graph-relation-outbox.mjs
 node scripts/verify/verify-social-graph-relation-event-replay.mjs
+node scripts/verify/verify-social-graph-index-consumer.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run
 ```
 
 These commands remain maintainer-run and were not executed manually while
-publishing this slice. `Cargo.lock` was refreshed through constrained automatic
-`cargo metadata` jobs.
+publishing this slice. `Cargo.lock` must be refreshed by the maintainer because the
+new optional workspace edge may change resolved package dependency metadata.
