@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+#[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use uuid::Uuid;
 
@@ -29,7 +30,7 @@ pub fn NotificationsView() -> impl IntoView {
         move |_| async move { load_inbox_snapshot().await },
     );
     let on_refresh = Callback::new(move |_: ()| {
-        set_refresh_nonce.update(|value| *value = value.saturating_add(1));
+        set_refresh_nonce.update(|value| *value = (*value).saturating_add(1));
     });
 
     view! {
@@ -71,7 +72,7 @@ pub fn NotificationUnreadBadge(unread_count: u64) -> impl IntoView {
     view! {
         <span
             class="inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-card-foreground"
-            data-notification-unread-count=unread_count
+            data-notification-unread-count=unread_count.to_string()
         >
             {label}
         </span>
@@ -91,6 +92,7 @@ fn NotificationInboxWorkspace(
         signal(Option::<NotificationStorefrontGroupItemsSnapshot>::None);
     let (items_busy, set_items_busy) = signal(false);
     let (items_error, set_items_error) = signal(Option::<String>::None);
+    let (items_request_nonce, set_items_request_nonce) = signal(0_u64);
     let (action_busy_group, set_action_busy_group) = signal(Option::<String>::None);
     let (open_busy_item, set_open_busy_item) = signal(Option::<String>::None);
     let (interaction_error, set_interaction_error) = signal(Option::<String>::None);
@@ -129,10 +131,13 @@ fn NotificationInboxWorkspace(
     });
 
     let toggle_group = Callback::new(move |group_key: String| {
+        let request_nonce = items_request_nonce.get().saturating_add(1);
+        set_items_request_nonce.set(request_nonce);
         if expanded_group.get().as_deref() == Some(group_key.as_str()) {
             set_expanded_group.set(None);
             set_group_items.set(None);
             set_items_error.set(None);
+            set_items_busy.set(false);
             return;
         }
 
@@ -149,7 +154,9 @@ fn NotificationInboxWorkspace(
                 limit: ITEM_PAGE_SIZE,
             })
             .await;
-            if expanded_group.get().as_deref() == Some(requested_group.as_str()) {
+            if items_request_nonce.get() == request_nonce
+                && expanded_group.get().as_deref() == Some(requested_group.as_str())
+            {
                 match result {
                     Ok(page) => set_group_items.set(Some(
                         NotificationStorefrontGroupItemsSnapshot::from_page(
@@ -178,6 +185,8 @@ fn NotificationInboxWorkspace(
             return;
         };
         let group_key = current.group_key.clone();
+        let request_nonce = items_request_nonce.get().saturating_add(1);
+        set_items_request_nonce.set(request_nonce);
 
         set_items_busy.set(true);
         set_items_error.set(None);
@@ -189,7 +198,9 @@ fn NotificationInboxWorkspace(
                 limit: ITEM_PAGE_SIZE,
             })
             .await;
-            if expanded_group.get().as_deref() == Some(group_key.as_str()) {
+            if items_request_nonce.get() == request_nonce
+                && expanded_group.get().as_deref() == Some(group_key.as_str())
+            {
                 match result {
                     Ok(page) => set_group_items.update(|state| {
                         if let Some(state) = state.as_mut() {
@@ -234,8 +245,11 @@ fn NotificationInboxWorkspace(
                             "Updated {} of {} scanned notifications.{continuation}",
                             page.changed, page.scanned
                         )));
+                        set_items_request_nonce
+                            .update(|value| *value = (*value).saturating_add(1));
                         set_expanded_group.set(None);
                         set_group_items.set(None);
+                        set_items_busy.set(false);
                         on_refresh.run(());
                     }
                     Err(error) => set_interaction_error.set(Some(error.to_string())),
@@ -285,7 +299,9 @@ fn NotificationInboxWorkspace(
                         "Grouped activity from sources you can still access. Counts and routes are revalidated by the notification owner."
                     </p>
                 </div>
-                <NotificationUnreadBadge unread_count=move || snapshot.get().unread_count />
+                {move || view! {
+                    <NotificationUnreadBadge unread_count=snapshot.get().unread_count />
+                }}
             </header>
 
             {move || interaction_error.get().map(|message| view! {
@@ -380,7 +396,7 @@ fn NotificationGroupCard(
     let expanded_key = group_key.clone();
     let toggle_key = group_key.clone();
     let toggle_label_key = group_key.clone();
-    let action_busy_key = group_key.clone();
+    let items_group_key = group_key.clone();
     let items_key = group_key.clone();
 
     view! {
@@ -454,7 +470,7 @@ fn NotificationGroupCard(
                         let Some(current) = items.get() else {
                             return view! { <p class="text-sm text-muted-foreground">"No notifications loaded."</p> }.into_any();
                         };
-                        if current.group_key != action_busy_key {
+                        if current.group_key != items_group_key {
                             return view! { <p class="text-sm text-muted-foreground">"Loading notifications..."</p> }.into_any();
                         }
                         if current.items.is_empty() {
@@ -629,7 +645,8 @@ fn priority_label(priority: NotificationStorefrontPriority) -> &'static str {
 fn navigate_to_route(route: &str) -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     {
-        let window = web_sys::window().ok_or_else(|| "Browser navigation is unavailable.".to_string())?;
+        let window = web_sys::window()
+            .ok_or_else(|| "Browser navigation is unavailable.".to_string())?;
         window
             .location()
             .set_href(route)
