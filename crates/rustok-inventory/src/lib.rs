@@ -14,6 +14,7 @@ pub mod migrations;
 #[path = "ports.rs"]
 mod ports_impl;
 mod reservation_owner_context;
+mod reservation_port_context;
 pub mod services;
 
 pub mod ports {
@@ -28,6 +29,9 @@ pub mod ports {
     pub use crate::reservation_owner_context::{
         PersistentInventoryReservationIdentityPort,
         in_process_inventory_reservation_identity_port,
+    };
+    pub use crate::reservation_port_context::{
+        InProcessInventoryReservationPort, in_process_inventory_reservation_port,
     };
 }
 
