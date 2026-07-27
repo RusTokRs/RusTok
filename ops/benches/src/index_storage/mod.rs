@@ -4,6 +4,8 @@ mod database_metadata;
 mod explain;
 mod maintenance_runner;
 mod mutation_runner;
+mod partition_query;
+mod partition_snapshot;
 mod report_provenance;
 mod runner;
 mod sql;
@@ -16,6 +18,13 @@ pub use maintenance_runner::{
     MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
 };
 pub use mutation_runner::{MutationBenchmarkReport, run_mutations, write_mutation_report};
+pub use partition_query::{
+    PartitionQueryCapture, PartitionQueryConfig, capture_partition_query_evidence,
+};
+pub use partition_snapshot::{
+    BaselineSnapshot, PartitionSnapshotCapture, PartitionSnapshotConfig, RelationEvidence,
+    ShadowRelationEvidence, ShadowSnapshot, TenantPredicateAudit, capture_partition_snapshot,
+};
 pub use report_provenance::write_provenance_bound_report;
 pub use runner::{BenchmarkReport, run, write_report};
 pub(crate) use sql::read_workload_contract;

@@ -26,6 +26,7 @@ chrono = { workspace = true }
 rust_decimal = "1.42"
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 futures = "0.3"
 
 [[bin]]
@@ -39,6 +40,14 @@ path = "src/bin/index_storage_mutation_benchmark.rs"
 [[bin]]
 name = "index-storage-maintenance-benchmark"
 path = "src/bin/index_storage_maintenance_benchmark.rs"
+
+[[bin]]
+name = "index-partition-snapshot-capture"
+path = "src/bin/index_partition_snapshot_capture.rs"
+
+[[bin]]
+name = "index-partition-query-evidence"
+path = "src/bin/index_partition_query_evidence.rs"
 
 [[bench]]
 name = "tenant_cache"
