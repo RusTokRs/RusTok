@@ -1,6 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
+};
 use rustok_cart::{
     CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest, CartResponse,
     CartStatus,
@@ -33,6 +35,16 @@ use super::{
 };
 
 const COMPENSATION_PORT_DEADLINE_SECONDS: u64 = 3;
+const CHECKOUT_COMPENSATION_OWNER_BOUNDARY: &str = "checkout_compensation_owner_port";
+const PAYMENT_COMPENSATION_OWNER: &str = "rustok_payment";
+const ORDER_COMPENSATION_OWNER: &str = "rustok_order";
+const INVENTORY_COMPENSATION_OWNER: &str = "rustok_inventory";
+const CART_COMPENSATION_OWNER: &str = "rustok_cart";
+const PAYMENT_COMPENSATION_OPERATION: &str = "compensate_checkout_payment";
+const ORDER_COMPENSATION_OPERATION: &str = "compensate_checkout_order";
+const INVENTORY_COMPENSATION_OPERATION: &str = "release_inventory_by_identity";
+const CART_SNAPSHOT_OPERATION: &str = "read_cart_checkout_snapshot";
+const CART_RELEASE_OPERATION: &str = "release_cart_checkout";
 const ORDER_MANUAL_RECONCILIATION_CODE: &str = "order.checkout_compensation_manual_reconciliation";
 const PAYMENT_MANUAL_RECONCILIATION_CODE: &str =
     "payment.checkout_compensation_manual_reconciliation";
@@ -247,10 +259,12 @@ impl CheckoutCompensationService {
         actor_id: Uuid,
         operation: &checkout_operation::Model,
     ) -> CheckoutCompensationResult<()> {
+        let payment_context =
+            payment_context(tenant_id, actor_id, operation, self.port_deadline);
         let snapshot = self
             .payment_compensation_port
             .compensate_checkout_payment(
-                payment_context(tenant_id, actor_id, operation, self.port_deadline),
+                payment_context.clone(),
                 CheckoutPaymentCompensationRequest {
                     checkout_operation_id: operation.id,
                     collection_id: operation.payment_collection_id,
@@ -264,7 +278,15 @@ impl CheckoutCompensationService {
                 },
             )
             .await
-            .map_err(|error| owner_boundary_error("compensate_payment", error))?;
+            .map_err(|error| {
+                owner_boundary_error(
+                    &payment_context,
+                    PAYMENT_COMPENSATION_OWNER,
+                    PAYMENT_COMPENSATION_OPERATION,
+                    "compensate_payment",
+                    error,
+                )
+            })?;
         if let Some(snapshot) = snapshot {
             if operation.payment_collection_id != Some(snapshot.collection_id)
                 || snapshot.status_kind() != PaymentCollectionStatusKind::Cancelled
@@ -289,10 +311,11 @@ impl CheckoutCompensationService {
         actor_id: Uuid,
         operation: &checkout_operation::Model,
     ) -> CheckoutCompensationResult<()> {
+        let order_context = order_context(tenant_id, actor_id, operation, self.port_deadline);
         let snapshot = self
             .order_compensation_port
             .compensate_checkout_order(
-                order_context(tenant_id, actor_id, operation, self.port_deadline),
+                order_context.clone(),
                 CheckoutOrderCompensationRequest {
                     checkout_operation_id: operation.id,
                     cart_id: operation.cart_id,
@@ -301,7 +324,15 @@ impl CheckoutCompensationService {
                 },
             )
             .await
-            .map_err(|error| owner_boundary_error("compensate_order", error))?;
+            .map_err(|error| {
+                owner_boundary_error(
+                    &order_context,
+                    ORDER_COMPENSATION_OWNER,
+                    ORDER_COMPENSATION_OPERATION,
+                    "compensate_order",
+                    error,
+                )
+            })?;
         if let Some(snapshot) = snapshot {
             if operation.order_id.is_some() && operation.order_id != Some(snapshot.order_id) {
                 return Err(CheckoutCompensationError::Conflict(format!(
@@ -338,22 +369,31 @@ impl CheckoutCompensationService {
                 status if status == CheckoutInventoryReservationStatus::Planned.as_str() => {}
                 status if status == CheckoutInventoryReservationStatus::Released.as_str() => {}
                 status if status == CheckoutInventoryReservationStatus::Reserved.as_str() => {
+                    let inventory_context = inventory_context(
+                        tenant_id,
+                        operation,
+                        &reservation,
+                        self.port_deadline,
+                    );
                     let released = self
                         .reservation_port
                         .release_inventory_by_identity(
-                            inventory_context(
-                                tenant_id,
-                                operation,
-                                &reservation,
-                                self.port_deadline,
-                            ),
+                            inventory_context.clone(),
                             InventoryIdentityReservationReleaseRequest {
                                 reservation_id: reservation.reservation_id,
                                 external_id: reservation.external_id.clone(),
                             },
                         )
                         .await
-                        .map_err(|error| boundary_error("release_inventory", error))?;
+                        .map_err(|error| {
+                            owner_boundary_error(
+                                &inventory_context,
+                                INVENTORY_COMPENSATION_OWNER,
+                                INVENTORY_COMPENSATION_OPERATION,
+                                "release_inventory",
+                                error,
+                            )
+                        })?;
                     if released.reservation_id != reservation.reservation_id
                         || released.external_id != reservation.external_id
                         || released.variant_id != reservation.variant_id
@@ -389,29 +429,49 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         operation: &checkout_operation::Model,
     ) -> CheckoutCompensationResult<()> {
+        let cart_read_context =
+            cart_context(tenant_id, operation, self.port_deadline, "read", false);
         let current = self
             .cart_port
             .read_cart_checkout_snapshot(
-                cart_context(tenant_id, operation, self.port_deadline, "read", false),
+                cart_read_context.clone(),
                 CartCheckoutSnapshotRequest {
                     cart_id: operation.cart_id,
                     locale: None,
                 },
             )
             .await
-            .map_err(|error| boundary_error("read_cart", error))?;
+            .map_err(|error| {
+                owner_boundary_error(
+                    &cart_read_context,
+                    CART_COMPENSATION_OWNER,
+                    CART_SNAPSHOT_OPERATION,
+                    "read_cart",
+                    error,
+                )
+            })?;
         match cart_status(&current)? {
             CartStatus::CheckingOut => {
+                let cart_release_context =
+                    cart_context(tenant_id, operation, self.port_deadline, "release", true);
                 let released = self
                     .cart_port
                     .release_cart_checkout(
-                        cart_context(tenant_id, operation, self.port_deadline, "release", true),
+                        cart_release_context.clone(),
                         CartCheckoutLifecycleRequest {
                             cart_id: operation.cart_id,
                         },
                     )
                     .await
-                    .map_err(|error| boundary_error("release_cart", error))?;
+                    .map_err(|error| {
+                        owner_boundary_error(
+                            &cart_release_context,
+                            CART_COMPENSATION_OWNER,
+                            CART_RELEASE_OPERATION,
+                            "release_cart",
+                            error,
+                        )
+                    })?;
                 if cart_status(&released)? != CartStatus::Active {
                     return Err(CheckoutCompensationError::Conflict(format!(
                         "cart {} is not active after checkout release",
@@ -525,7 +585,14 @@ fn payment_context(
     .with_deadline(deadline)
 }
 
-fn owner_boundary_error(stage: &'static str, error: PortError) -> CheckoutCompensationError {
+fn owner_boundary_error(
+    context: &PortContext,
+    owner: &'static str,
+    operation: &'static str,
+    stage: &'static str,
+    error: PortError,
+) -> CheckoutCompensationError {
+    log_owner_boundary_error(context, owner, operation, stage, &error);
     if matches!(
         error.code.as_str(),
         ORDER_MANUAL_RECONCILIATION_CODE | PAYMENT_MANUAL_RECONCILIATION_CODE
@@ -533,6 +600,63 @@ fn owner_boundary_error(stage: &'static str, error: PortError) -> CheckoutCompen
         CheckoutCompensationError::ManualReconciliation(error.message)
     } else {
         boundary_error(stage, error)
+    }
+}
+
+fn log_owner_boundary_error(
+    context: &PortContext,
+    owner: &'static str,
+    operation: &'static str,
+    stage: &'static str,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = owner,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = operation,
+                stage = stage,
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_COMPENSATION_OWNER_BOUNDARY,
+                "checkout compensation owner call failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = owner,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = operation,
+                stage = stage,
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_COMPENSATION_OWNER_BOUNDARY,
+                "checkout compensation owner call was rejected"
+            );
+        }
     }
 }
 

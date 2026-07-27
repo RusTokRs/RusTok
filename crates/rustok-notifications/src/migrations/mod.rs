@@ -3,6 +3,8 @@ mod m20260722_000011_create_notification_source_inbox;
 mod m20260722_000012_add_candidate_processing;
 mod m20260723_000013_add_outbox_intake_receipts;
 mod m20260723_000014_add_outbox_intake_rejections;
+mod m20260726_000015_populate_notification_group_keys;
+mod m20260726_000016_add_notification_group_summary_index;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -14,6 +16,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260722_000012_add_candidate_processing::Migration),
         Box::new(m20260723_000013_add_outbox_intake_receipts::Migration),
         Box::new(m20260723_000014_add_outbox_intake_rejections::Migration),
+        Box::new(m20260726_000015_populate_notification_group_keys::Migration),
+        Box::new(m20260726_000016_add_notification_group_summary_index::Migration),
     ]
 }
 
@@ -38,6 +42,14 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260723_000014_add_outbox_intake_rejections",
             vec!["m20260723_000013_add_outbox_intake_receipts"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260726_000015_populate_notification_group_keys",
+            vec!["m20260723_000014_add_outbox_intake_rejections"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260726_000016_add_notification_group_summary_index",
+            vec!["m20260726_000015_populate_notification_group_keys"],
         ),
     ]
 }

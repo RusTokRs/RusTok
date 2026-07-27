@@ -282,8 +282,8 @@ for (const marker of [
   'executableSql.trimEnd().endsWith(marker)',
   "test('packet runs terminal ordering preflight before the canonical validator'",
   "test('compare runs terminal ordering preflight before the canonical comparator'",
-  'standalone validator must preflight ordering before importing its core',
-  'standalone comparator must preflight every input before importing its core',
+  'standalone validator must revoke stale provenance, preflight ordering/resources, then run its isolated core',
+  'standalone comparator must revoke stale JSON, preflight every input, then run its atomic lifecycle',
   'packet terminal ordering preflight must run before the canonical validator',
   'comparison terminal ordering preflight must run before the canonical comparator',
   'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
@@ -291,20 +291,49 @@ for (const marker of [
   if (!orderingGuard.includes(marker)) fail(`terminal ordering guard missing ${marker}`);
 }
 
-for (const [wrapper, label, markers] of [
+const requireLifecycleOrder = (content, label, markers) => {
+  let previous = -1;
+  for (const marker of markers) {
+    const index = content.indexOf(marker);
+    if (index < 0) fail(`${label} missing lifecycle marker ${marker}`);
+    if (index <= previous) fail(`${label} lifecycle marker is out of order: ${marker}`);
+    previous = index;
+  }
+};
+
+for (const [wrapper, label, markers, orderedMarkers, forbiddenMarkers] of [
   [validatorWrapper, 'validator wrapper', [
     "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
+    "import { runValidatorCoreWithAtomicProvenance } from './run-index-storage-validator-core.mjs'",
+    "import { validateRunnerResourceSnapshots } from './validate-index-storage-runner-resources.mjs'",
+    "const corePath = fileURLToPath(new URL('./validate-index-storage-evidence-core.mjs', import.meta.url))",
+    'runValidatorCoreWithAtomicProvenance({ evidenceRoot, corePath })',
+  ], [
+    'invalidatePacketProvenance(evidenceRoot);',
     'validatePacketReadOrdering(evidenceRoot);',
+    'validateRunnerResourceSnapshots(evidenceRoot);',
+    'runValidatorCoreWithAtomicProvenance({ evidenceRoot, corePath })',
+  ], [
     "await import('./validate-index-storage-evidence-core.mjs')",
   ]],
   [comparatorWrapper, 'comparator wrapper', [
     "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
-    'for (const input of inputs) validatePacketReadOrdering(input);',
+    "const corePath = fileURLToPath(new URL('./compare-index-storage-evidence-core.mjs', import.meta.url))",
+    'runComparatorCoreWithAtomicComparison(parsed)',
+  ], [
+    "rmSync(path.join(parsed.output, 'comparison.json'), { force: true });",
+    'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
+    'runComparatorCoreWithAtomicComparison(parsed)',
+  ], [
     "await import('./compare-index-storage-evidence-core.mjs')",
   ]],
 ]) {
   for (const marker of markers) {
     if (!wrapper.includes(marker)) fail(`${label} missing strict entrypoint marker ${marker}`);
+  }
+  requireLifecycleOrder(wrapper, label, orderedMarkers);
+  for (const marker of forbiddenMarkers) {
+    if (wrapper.includes(marker)) fail(`${label} restored obsolete direct core import ${marker}`);
   }
   if (wrapper.includes('migrated to inspect the preserved core directly')) {
     fail(`${label} still contains the temporary compatibility marker shim`);
@@ -314,8 +343,9 @@ for (const marker of [
   "const gitBlobSha = (bytes) => createHash('sha1')",
   "'dabc18d59360c300352ab3afb2510f0a0ff22796'",
   "'97ef0e8a216735e457c4c827d975462b84b009b3'",
-  'validator wrapper must run terminal-ordering preflight before importing its core',
-  'comparator wrapper must preflight every input before importing its core',
+  'runValidatorCoreWithAtomicProvenance',
+  'runComparatorCoreWithAtomicComparison',
+  'has lifecycle markers out of order',
 ]) {
   if (!standaloneGuard.includes(marker)) fail(`standalone evidence guard missing ${marker}`);
 }
@@ -341,12 +371,10 @@ for (const marker of [
   if (!toolingRouter.includes(marker)) fail(`storage tooling router missing independent integrity wiring ${marker}`);
 }
 for (const marker of [
-  "const prefix = '[verify-index-storage-adr-integrity]'",
+  'console.error(`[verify-index-storage-adr-integrity] ${message}`)',
   "const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs')",
   "const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs')",
-  'executableSql.trimEnd().endsWith(marker)',
-  "test('packet runs terminal ordering preflight before the canonical validator'",
-  "test('compare runs terminal ordering preflight before the canonical comparator'",
+  'has lifecycle markers out of order',
   "runScript('finalize-index-storage-adr.mjs', args)",
   "runScript('verify-index-storage-adr.mjs', args)",
   'ADR bytes differ from deterministic finalization',
@@ -354,28 +382,30 @@ for (const marker of [
 ]) {
   if (!adrIntegrityGuard.includes(marker)) fail(`ADR integrity guard missing cross-protection marker ${marker}`);
 }
-for (const [label, workflow] of [
-  ['smoke', smokeWorkflow],
-  ['scale', scaleWorkflow],
+for (const marker of [
+  'scripts/verify/check-index-storage-read-ordering.mjs',
+  'scripts/verify/check-index-storage-read-ordering.test.mjs',
+  'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+  'scripts/verify/validate-index-storage-evidence-core.mjs',
+  'scripts/verify/compare-index-storage-evidence-core.mjs',
+  'scripts/verify/index-storage-standalone-tools.test.mjs',
+  'scripts/verify/verify-index-storage-standalone-tools.mjs',
+  'node --check scripts/verify/check-index-storage-read-ordering.mjs',
+  'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
 ]) {
-  for (const marker of [
-    'scripts/verify/check-index-storage-read-ordering.mjs',
-    'scripts/verify/check-index-storage-read-ordering.test.mjs',
-    'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
-    'scripts/verify/validate-index-storage-evidence-core.mjs',
-    'scripts/verify/compare-index-storage-evidence-core.mjs',
-    'scripts/verify/index-storage-standalone-tools.test.mjs',
-    'scripts/verify/verify-index-storage-standalone-tools.mjs',
-    'node --check scripts/verify/check-index-storage-read-ordering.mjs',
-    'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
-    'node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs',
-    'node --check scripts/verify/index-storage-standalone-tools.test.mjs',
-    'node --check scripts/verify/verify-index-storage-standalone-tools.mjs',
-    'scripts/verify/verify-index-storage-adr-integrity.mjs',
-    'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
-  ]) {
-    if (!workflow.includes(marker)) fail(`${label} workflow missing integrity wiring ${marker}`);
-  }
+  if (!smokeWorkflow.includes(marker)) fail(`smoke workflow missing integrity wiring ${marker}`);
+}
+for (const marker of [
+  'scripts/verify/*index-storage*.mjs',
+  'scripts/verify/storage-decision*.mjs',
+  'scripts/verify/*methodology-envelope*.mjs',
+  'find scripts/verify -maxdepth 1 -type f',
+  'node scripts/verify/index-storage-tooling.mjs contract',
+  'node --test scripts/verify/index-storage-validator-arguments.test.mjs',
+  'node scripts/verify/index-storage-tooling.mjs fixtures',
+  "if: ${{ github.event_name == 'workflow_dispatch' }}",
+]) {
+  if (!scaleWorkflow.includes(marker)) fail(`scale workflow missing integrity wiring ${marker}`);
 }
 
 console.log('[verify-index-storage-source-oracle] source oracle, deterministic PostgreSQL string semantics, byte-preserved evidence cores, self-described ordered digests, complete metrics, executable SQL entrypoints, and ADR integrity wiring are independently guarded');

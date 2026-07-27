@@ -39,7 +39,63 @@ env:
   INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE: "1"
 
 jobs:
+  validate-inputs:
+    name: Validate scale evidence inputs
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Require canonical reusable workflow inputs
+        shell: bash
+        env:
+          REQUESTED_SCALE: ${{ inputs.scale }}
+          REQUESTED_TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+          REQUESTED_RUNNER_LABEL: ${{ inputs.runner_label }}
+          REQUESTED_MINIMUM_FREE_BYTES: ${{ inputs.minimum_free_bytes }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          MAXIMUM_FREE_BYTES=9007199254740991
+
+          case "$REQUESTED_SCALE" in
+            100k|1m) ;;
+            *)
+              echo "::error::scale must be 100k or 1m; got ${REQUESTED_SCALE}"
+              exit 1
+              ;;
+          esac
+          if ! [[ "$REQUESTED_TIMEOUT_MINUTES" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::timeout_minutes must be a positive integer; got ${REQUESTED_TIMEOUT_MINUTES}"
+            exit 1
+          fi
+          if (( REQUESTED_TIMEOUT_MINUTES > 360 )); then
+            echo "::error::timeout_minutes must not exceed 360; got ${REQUESTED_TIMEOUT_MINUTES}"
+            exit 1
+          fi
+          if [[ -z "${REQUESTED_RUNNER_LABEL//[[:space:]]/}" ]]; then
+            echo "::error::runner_label must be non-empty"
+            exit 1
+          fi
+          if [[ "$REQUESTED_RUNNER_LABEL" =~ [[:cntrl:]] ]]; then
+            echo "::error::runner_label must not contain control characters"
+            exit 1
+          fi
+          if (( ${#REQUESTED_RUNNER_LABEL} > 128 )); then
+            echo "::error::runner_label must not exceed 128 bytes"
+            exit 1
+          fi
+          if ! [[ "$REQUESTED_MINIMUM_FREE_BYTES" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::minimum_free_bytes must be a positive integer; got ${REQUESTED_MINIMUM_FREE_BYTES}"
+            exit 1
+          fi
+          if (( ${#REQUESTED_MINIMUM_FREE_BYTES} > ${#MAXIMUM_FREE_BYTES} )) ||
+            { (( ${#REQUESTED_MINIMUM_FREE_BYTES} == ${#MAXIMUM_FREE_BYTES} )) &&
+              [[ "$REQUESTED_MINIMUM_FREE_BYTES" > "$MAXIMUM_FREE_BYTES" ]]; }; then
+            echo "::error::minimum_free_bytes must not exceed ${MAXIMUM_FREE_BYTES}; got ${REQUESTED_MINIMUM_FREE_BYTES}"
+            exit 1
+          fi
+
   evidence:
+    needs: validate-inputs
     name: PostgreSQL ${{ inputs.scale }} evidence
     runs-on: ${{ inputs.runner_label }}
     timeout-minutes: ${{ inputs.timeout_minutes }}

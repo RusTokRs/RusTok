@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 use anyhow::{Context, Result, ensure};
 use rustok_benchmarks::index_storage::{
-    BenchmarkConfig, run_maintenance, write_maintenance_report,
+    BenchmarkConfig, run_maintenance, write_provenance_bound_report,
 };
 
 #[tokio::main]
@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
         });
 
     let report = run_maintenance(&config, cycles).await?;
-    write_maintenance_report(&output, &report)?;
+    write_provenance_bound_report(&output, &report, &config.run_provenance)?;
 
     println!(
         "index maintenance benchmark complete: scale={:?}, cycles={}, output={}",

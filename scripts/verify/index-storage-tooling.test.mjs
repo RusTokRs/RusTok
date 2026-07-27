@@ -121,6 +121,26 @@ test('forwards ADR verification help without rewriting its arguments', () => {
   assert.match(result.stdout, /--adr <adr\.md>/u);
 });
 
+test('rejects unknown ADR verification options before reading inputs', () => {
+  const result = run(
+    'verify-adr',
+    '--comparison', 'comparison.json',
+    '--decision', 'decision.json',
+    '--adr', 'adr.md',
+    '--format', 'markdown',
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unknown or incomplete argument: --format/u);
+  assert.equal(result.stdout, '');
+});
+
+test('rejects ADR verification help combined with other arguments', () => {
+  const result = run('verify-adr', '--help', '--adr', 'adr.md');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /help must be the only argument/u);
+  assert.equal(result.stdout, '');
+});
+
 test('rejects unsupported packet scales before invoking the validator', () => {
   const result = run('packet', '--scale', '10m');
   assert.notEqual(result.status, 0);

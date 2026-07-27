@@ -15,6 +15,7 @@ const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
 const databaseMetadata = read('ops/benches/src/index_storage/database_metadata.rs');
 const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
 const maintenanceRunner = read('ops/benches/src/index_storage/maintenance_runner.rs');
+const reportProvenance = read('ops/benches/src/index_storage/report_provenance.rs');
 const connection = read('ops/benches/src/index_storage/connection.rs');
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
@@ -113,24 +114,34 @@ for (const [label, content, benchmark] of [
 requireMarkers(benchmarkModule, 'benchmark report writer', [
   'pub use database_metadata::DatabaseMetadata;',
   'ensure_database_metadata_stable, read_database_metadata',
-  'pub use runner::{BenchmarkReport, run, write_report};',
-  'write_report(&config.output_path, &report)?',
+  'pub use report_provenance::write_provenance_bound_report;',
+  'write_provenance_bound_report(&config.output_path, &report, &config.run_provenance)?',
 ]);
 requireMarkers(benchmarkBinary, 'read evidence executable', [
-  'BenchmarkConfig, run, write_report',
-  'write_report(&config.output_path, &report)?',
+  'BenchmarkConfig, run, write_provenance_bound_report',
+  'write_provenance_bound_report(&config.output_path, &report, &config.run_provenance)?',
+]);
+requireMarkers(reportProvenance, 'provenance-bound report publication', [
+  '#[serde(flatten)]',
+  "provenance: &'a BenchmarkRunProvenance",
+  'pub fn write_provenance_bound_report<T: Serialize>',
+  'let staged = path.with_file_name',
+  'fs::write(&staged, serde_json::to_vec_pretty(&envelope)?)',
+  'fs::rename(&staged, path)',
+  'if staged.exists()',
 ]);
 for (const [label, content] of [
   ['benchmark module', benchmarkModule],
   ['read evidence executable', benchmarkBinary],
 ]) {
   for (const forbidden of [
+    'write_report(&config.output_path, &report)?',
     'write_report_with_session_metadata',
     'serde_json::to_value(report)',
     'database.insert(field.to_owned()',
   ]) {
     if (content.includes(forbidden)) {
-      fail(`${label} restored post-hoc deterministic session metadata injection: ${forbidden}`);
+      fail(`${label} restored unbound or post-hoc report publication: ${forbidden}`);
     }
   }
 }
@@ -150,7 +161,7 @@ requireMarkers(preflight, 'read ordering preflight', [
   "['extra_float_digits', '3']",
   'const requireSessionMetadata = (read, directory) =>',
   'requireSessionMetadata(read, directory);',
-  'deterministic session metadata and executable terminal ordering verified',
+  'benchmark run provenance, deterministic session metadata, and executable terminal ordering verified',
   'const maskSqlText = (text) =>',
   'const identifierContinuation = /[A-Za-z0-9_$]/u',
   'const isEscapeStringQuote = (sql, quoteIndex) =>',
@@ -212,7 +223,7 @@ requireMarkers(databaseSettingsContract, 'shared database settings contract', [
   'read-report.json database metadata observed from the active PostgreSQL benchmark session',
   'export const requireComparisonDatabaseSettingsMethodology = (comparison, fail) =>',
   'comparable_database_fields must exactly match the canonical PostgreSQL database-settings contract',
-  'database_settings_source must identify metadata observed from the active PostgreSQL benchmark session',
+  'comparison methodology database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata',
 ]);
 requireMarkers(prepareDecision, 'decision preparation database settings gate', [
   "from './index-storage-database-settings-contract.mjs'",
@@ -246,46 +257,50 @@ if (finalizeDatabaseGate < 0 || finalizeRenderer < 0 || finalizeDatabaseGate > f
 
 requireMarkers(validatorWrapper, 'standalone validator wrapper', [
   "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
-  'validatePacketReadOrdering(evidenceRoot);',
-  "await import('./validate-index-storage-evidence-core.mjs')",
+  "import { runValidatorCoreWithAtomicProvenance } from './run-index-storage-validator-core.mjs'",
+  "import { validateRunnerResourceSnapshots } from './validate-index-storage-runner-resources.mjs'",
+  "const corePath = fileURLToPath(new URL('./validate-index-storage-evidence-core.mjs', import.meta.url))",
+  'runValidatorCoreWithAtomicProvenance({ evidenceRoot, corePath })',
 ]);
+const validatorInvalidation = validatorWrapper.indexOf('invalidatePacketProvenance(evidenceRoot);');
 const validatorOrdering = validatorWrapper.indexOf('validatePacketReadOrdering(evidenceRoot);');
-const validatorCore = validatorWrapper.indexOf("await import('./validate-index-storage-evidence-core.mjs')");
-if (validatorOrdering < 0 || validatorCore < 0 || validatorOrdering > validatorCore) {
-  fail('standalone validator must preflight ordering before importing its core');
+const validatorResources = validatorWrapper.indexOf('validateRunnerResourceSnapshots(evidenceRoot);');
+const validatorCore = validatorWrapper.indexOf('runValidatorCoreWithAtomicProvenance({ evidenceRoot, corePath })');
+if ([validatorInvalidation, validatorOrdering, validatorResources, validatorCore].some((index) => index < 0)
+    || !(validatorInvalidation < validatorOrdering
+      && validatorOrdering < validatorResources
+      && validatorResources < validatorCore)) {
+  fail('standalone validator must revoke stale provenance, preflight ordering/resources, then run its isolated core');
 }
 
 requireMarkers(comparatorWrapper, 'standalone comparator wrapper', [
-  "import { readFileSync, writeFileSync } from 'node:fs'",
-  "import path from 'node:path'",
   "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
   "from './index-storage-database-settings-contract.mjs'",
   'comparableDatabaseFields,',
   'databaseSettingsSource,',
   'const finalizeDatabaseSettingsContract = ({ inputs, output }) =>',
+  "const corePath = fileURLToPath(new URL('./compare-index-storage-evidence-core.mjs', import.meta.url))",
   'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
   'cross-scale database setting ${field} mismatch',
   'methodology.comparable_database_fields = comparableDatabaseFields;',
   'methodology.database_settings_source = databaseSettingsSource;',
   'Compared PostgreSQL fields:',
-  "await import('./compare-index-storage-evidence-core.mjs')",
-  'if (parsed !== null) finalizeDatabaseSettingsContract(parsed);',
+  'runComparatorCoreWithAtomicComparison(parsed)',
 ]);
+const standaloneComparisonRevocation = comparatorWrapper.indexOf(
+  "rmSync(path.join(parsed.output, 'comparison.json'), { force: true });",
+);
 const standaloneCompareOrdering = comparatorWrapper.indexOf(
   'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
 );
 const standaloneComparatorCore = comparatorWrapper.indexOf(
-  "await import('./compare-index-storage-evidence-core.mjs')",
+  'runComparatorCoreWithAtomicComparison(parsed)',
 );
-const standaloneComparatorFinalization = comparatorWrapper.indexOf(
-  'if (parsed !== null) finalizeDatabaseSettingsContract(parsed);',
-);
-if (standaloneCompareOrdering < 0 || standaloneComparatorCore < 0
-    || standaloneCompareOrdering > standaloneComparatorCore) {
-  fail('standalone comparator must preflight every input before importing its core');
-}
-if (standaloneComparatorFinalization < 0 || standaloneComparatorCore > standaloneComparatorFinalization) {
-  fail('standalone comparator must finalize the full database-settings contract after its core');
+if ([standaloneComparisonRevocation, standaloneCompareOrdering, standaloneComparatorCore]
+  .some((index) => index < 0)
+    || !(standaloneComparisonRevocation < standaloneCompareOrdering
+      && standaloneCompareOrdering < standaloneComparatorCore)) {
+  fail('standalone comparator must revoke stale JSON, preflight every input, then run its atomic lifecycle');
 }
 
 requireMarkers(standaloneFixture, 'standalone evidence fixture', [
@@ -300,8 +315,9 @@ requireMarkers(standaloneGuard, 'standalone evidence guard', [
   "const gitBlobSha = (bytes) => createHash('sha1')",
   "'dabc18d59360c300352ab3afb2510f0a0ff22796'",
   "'97ef0e8a216735e457c4c827d975462b84b009b3'",
-  'validator wrapper must run terminal-ordering preflight before importing its core',
-  'comparator wrapper must preflight every input before importing its core',
+  'runValidatorCoreWithAtomicProvenance',
+  'runComparatorCoreWithAtomicComparison',
+  'has lifecycle markers out of order',
 ]);
 
 requireMarkers(router, 'storage tooling router', [
@@ -332,24 +348,27 @@ requireMarkers(routerFixture, 'storage tooling router fixture', [
   'assert.doesNotMatch(result.stderr, /missing evidence file: .*mutation-report\\.json/u)',
 ]);
 
-for (const [label, workflow] of [
-  ['smoke workflow', smokeWorkflow],
-  ['scale workflow', scaleWorkflow],
-]) {
-  requireMarkers(workflow, label, [
-    'scripts/verify/check-index-storage-read-ordering.mjs',
-    'scripts/verify/check-index-storage-read-ordering.test.mjs',
-    'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
-    'scripts/verify/validate-index-storage-evidence-core.mjs',
-    'scripts/verify/compare-index-storage-evidence-core.mjs',
-    'scripts/verify/index-storage-standalone-tools.test.mjs',
-    'scripts/verify/verify-index-storage-standalone-tools.mjs',
-    'node --check scripts/verify/check-index-storage-read-ordering.mjs',
-    'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
-    'node --check scripts/verify/index-storage-standalone-tools.test.mjs',
-    'node --check scripts/verify/verify-index-storage-standalone-tools.mjs',
-  ]);
-}
+requireMarkers(smokeWorkflow, 'smoke workflow', [
+  'scripts/verify/check-index-storage-read-ordering.mjs',
+  'scripts/verify/check-index-storage-read-ordering.test.mjs',
+  'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+  'scripts/verify/validate-index-storage-evidence-core.mjs',
+  'scripts/verify/compare-index-storage-evidence-core.mjs',
+  'scripts/verify/index-storage-standalone-tools.test.mjs',
+  'scripts/verify/verify-index-storage-standalone-tools.mjs',
+  'node --check scripts/verify/check-index-storage-read-ordering.mjs',
+  'node --check scripts/verify/verify-index-storage-standalone-tools.mjs',
+]);
+requireMarkers(scaleWorkflow, 'scale workflow', [
+  'scripts/verify/*index-storage*.mjs',
+  'scripts/verify/storage-decision*.mjs',
+  'scripts/verify/*methodology-envelope*.mjs',
+  'find scripts/verify -maxdepth 1 -type f',
+  'node scripts/verify/index-storage-tooling.mjs contract',
+  'node --test scripts/verify/index-storage-validator-arguments.test.mjs',
+  'node scripts/verify/index-storage-tooling.mjs fixtures',
+  "if: ${{ github.event_name == 'workflow_dispatch' }}",
+]);
 requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);

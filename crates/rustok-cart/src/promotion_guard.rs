@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -11,6 +11,8 @@ use crate::ports::{
 use crate::{CartError, CartPromotionPreview, CartResponse, CartService};
 
 const CART_PROMOTION_OWNER: &str = "rustok_cart.promotion";
+const CART_PROMOTION_CONTEXT_BOUNDARY: &str = "cart_promotion_context";
+const CART_PROMOTION_OWNER_BOUNDARY: &str = "cart_promotion_owner_service";
 const READ_CART_PROMOTION_PREVIEW_OPERATION: &str = "read_cart_promotion_preview";
 const APPLY_CART_PROMOTION_OPERATION: &str = "apply_cart_promotion";
 
@@ -213,25 +215,13 @@ fn cart_promotion_context_error(
     owner_operation: &'static str,
     error: PortError,
 ) -> PortError {
-    tracing::warn!(
-        internal_code = %error.code,
-        internal_message = %error.message,
-        kind = ?error.kind,
-        retryable = error.retryable,
-        owner = CART_PROMOTION_OWNER,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        channel = ?context.channel,
-        operation = owner_operation,
-        code = "cart.promotion_context_invalid",
-        "cart promotion call context was rejected"
-    );
+    log_cart_promotion_context_rejection(context, owner_operation, &error);
 
     match error.kind {
-        rustok_api::PortErrorKind::Timeout => {
+        PortErrorKind::Timeout => {
             PortError::timeout(error.code, "cart promotion request context is invalid")
         }
-        rustok_api::PortErrorKind::Validation => {
+        PortErrorKind::Validation => {
             PortError::validation(error.code, "cart promotion request context is invalid")
         }
         kind => PortError::new(
@@ -243,24 +233,68 @@ fn cart_promotion_context_error(
     }
 }
 
+fn log_cart_promotion_context_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                owner = CART_PROMOTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CART_PROMOTION_CONTEXT_BOUNDARY,
+                code = "cart.promotion_context_invalid",
+                "cart promotion call context failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                owner = CART_PROMOTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CART_PROMOTION_CONTEXT_BOUNDARY,
+                code = "cart.promotion_context_invalid",
+                "cart promotion call context was rejected"
+            );
+        }
+    }
+}
+
 fn cart_promotion_error(
     context: &PortContext,
     owner_operation: &'static str,
     error: CartError,
 ) -> PortError {
-    let code = cart_promotion_error_code(&error);
-    tracing::error!(
-        error = ?error,
-        owner = CART_PROMOTION_OWNER,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        channel = ?context.channel,
-        operation = owner_operation,
-        code,
-        "cart promotion owner operation failed"
-    );
-
-    match error {
+    let owner_code = cart_promotion_error_code(&error);
+    let public_error = match &error {
         CartError::Validation(_) => PortError::validation(
             "cart.promotion_validation",
             "cart promotion request is invalid",
@@ -285,12 +319,61 @@ fn cart_promotion_error(
             retryable,
             ..
         } => PortError::new(
-            kind,
-            code,
+            kind.clone(),
+            code.clone(),
             "cart promotion tax recalculation failed",
-            retryable,
+            *retryable,
         ),
+    };
+
+    match &public_error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = CART_PROMOTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                owner_code,
+                public_code = %public_error.code,
+                error_kind = ?public_error.kind,
+                retryable = public_error.retryable,
+                boundary = CART_PROMOTION_OWNER_BOUNDARY,
+                "cart promotion owner operation failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = CART_PROMOTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                owner_code,
+                public_code = %public_error.code,
+                error_kind = ?public_error.kind,
+                retryable = public_error.retryable,
+                boundary = CART_PROMOTION_OWNER_BOUNDARY,
+                "cart promotion owner operation was rejected"
+            );
+        }
     }
+
+    public_error
 }
 
 fn cart_promotion_error_code(error: &CartError) -> &str {

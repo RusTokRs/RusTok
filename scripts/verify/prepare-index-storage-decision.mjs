@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -31,10 +32,16 @@ const requiredDecisionFlags = [
   'same_mutation_effect_contract',
 ];
 const placeholderPrefix = 'TODO(index-storage-decision):';
+const allowedArguments = new Set([
+  '--comparison',
+  '--selected',
+  '--owner',
+  '--date',
+  '--output',
+]);
 
 const fail = (message) => {
-  console.error(`${prefix} ${message}`);
-  process.exit(1);
+  throw new Error(message);
 };
 
 const usage = () => {
@@ -52,21 +59,24 @@ const parseArgs = () => {
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--help' || argument === '-h') {
+      if (args.length !== 1) fail('help must be the only argument');
       usage();
-      process.exit(0);
+      return null;
     }
     if (argument === '--force') {
       if (force) fail('--force was provided more than once');
       force = true;
       continue;
     }
-    if (!argument.startsWith('--') || !args[index + 1] || args[index + 1].startsWith('--')) {
+    if (!allowedArguments.has(argument)
+        || !args[index + 1]
+        || args[index + 1].startsWith('--')) {
       fail(`unknown or incomplete argument: ${argument}`);
     }
     if (values.has(argument)) fail(`${argument} was provided more than once`);
     values.set(argument, args[++index]);
   }
-  for (const argument of ['--comparison', '--selected', '--owner', '--date', '--output']) {
+  for (const argument of allowedArguments) {
     if (!values.has(argument)) fail(`${argument} is required`);
   }
   return {
@@ -133,46 +143,63 @@ const comparisonCommit = (comparison) => {
   return lowerCommit;
 };
 
-const args = parseArgs();
-if (!prototypes.includes(args.selected)) {
-  fail(`--selected must be one of ${prototypes.join(', ')}`);
-}
-if (args.owner.trim().length === 0) fail('--owner must be non-empty');
-requireDate(args.date);
-if (path.resolve(args.output) === path.resolve(args.comparison)) {
-  fail('--output must not overwrite the comparison input');
-}
-if (existsSync(args.output) && !args.force) {
-  fail(`refusing to overwrite existing decision without --force: ${args.output}`);
-}
+const main = () => {
+  const args = parseArgs();
+  if (args === null) return 0;
 
-const { comparison, sha256 } = readComparison(args.comparison);
-const commit = comparisonCommit(comparison);
-const rejected = prototypes.filter((prototype) => prototype !== args.selected);
-const decision = {
-  status: 'proposed',
-  decision_date: args.date,
-  owner: args.owner.trim(),
-  comparison_commit: commit,
-  comparison_sha256: sha256,
-  selected_prototype: args.selected,
-  selection_rationale: `${placeholderPrefix} explain why ${args.selected} is preferred using measured and operational evidence.`,
-  rejection_rationales: Object.fromEntries(rejected.map((prototype) => [
-    prototype,
-    `${placeholderPrefix} explain why ${prototype} was not selected.`,
-  ])),
-  operational_tradeoffs: `${placeholderPrefix} document indexing, schema evolution, relation growth, WAL, VACUUM, and observability implications.`,
-  migration_strategy: `${placeholderPrefix} document table creation, backfill, parity verification, and persistence-port cutover.`,
-  rollback_strategy: `${placeholderPrefix} document how the previous persistence path remains recoverable until cutover verification completes.`,
+  if (!prototypes.includes(args.selected)) {
+    fail(`--selected must be one of ${prototypes.join(', ')}`);
+  }
+  if (args.owner.trim().length === 0) fail('--owner must be non-empty');
+  requireDate(args.date);
+
+  const resolvedOutput = path.resolve(args.output);
+  if (resolvedOutput === path.resolve(args.comparison)) {
+    fail('--output must not overwrite the comparison input');
+  }
+  if (existsSync(args.output) && !args.force) {
+    fail(`refusing to overwrite existing decision without --force: ${args.output}`);
+  }
+
+  const parent = path.dirname(args.output);
+  if (parent && parent !== '.') mkdirSync(parent, { recursive: true });
+  const stagingRoot = mkdtempSync(path.join(parent || '.', `.${path.basename(args.output)}.tmp-`));
+  const stagedOutput = path.join(stagingRoot, path.basename(args.output));
+  try {
+    if (args.force) rmSync(args.output, { force: true });
+
+    const { comparison, sha256 } = readComparison(args.comparison);
+    const commit = comparisonCommit(comparison);
+    const rejected = prototypes.filter((prototype) => prototype !== args.selected);
+    const decision = {
+      status: 'proposed',
+      decision_date: args.date,
+      owner: args.owner.trim(),
+      comparison_commit: commit,
+      comparison_sha256: sha256,
+      selected_prototype: args.selected,
+      selection_rationale: `${placeholderPrefix} explain why ${args.selected} is preferred using measured and operational evidence.`,
+      rejection_rationales: Object.fromEntries(rejected.map((prototype) => [
+        prototype,
+        `${placeholderPrefix} explain why ${prototype} was not selected.`,
+      ])),
+      operational_tradeoffs: `${placeholderPrefix} document indexing, schema evolution, relation growth, WAL, VACUUM, and observability implications.`,
+      migration_strategy: `${placeholderPrefix} document table creation, backfill, parity verification, and persistence-port cutover.`,
+      rollback_strategy: `${placeholderPrefix} document how the previous persistence path remains recoverable until cutover verification completes.`,
+    };
+
+    writeFileSync(stagedOutput, `${JSON.stringify(decision, null, 2)}\n`, 'utf8');
+    renameSync(stagedOutput, args.output);
+    console.log(`${prefix} wrote ${args.output}`);
+    return 0;
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
 };
 
-const parent = path.dirname(args.output);
-if (parent && parent !== '.') mkdirSync(parent, { recursive: true });
-const stagedOutput = `${args.output}.tmp-${process.pid}`;
 try {
-  writeFileSync(stagedOutput, `${JSON.stringify(decision, null, 2)}\n`, 'utf8');
-  renameSync(stagedOutput, args.output);
-} finally {
-  if (existsSync(stagedOutput)) rmSync(stagedOutput, { force: true });
+  process.exitCode = main();
+} catch (error) {
+  console.error(`${prefix} ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
 }
-console.log(`${prefix} wrote ${args.output}`);

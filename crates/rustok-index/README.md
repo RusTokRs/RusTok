@@ -44,7 +44,7 @@ a rewrite goal.
 - M2 read/query benchmark harness: implemented
 - M2 transactional mutation/WAL harness: implemented
 - M2 persistent churn/VACUUM harness: implemented
-- M2 PostgreSQL evidence and storage ADR: pending
+- M2 replacement evidence and storage ADR: pending
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted.
@@ -95,13 +95,15 @@ that logical cardinality is preserved, captures baseline/after-churn table stats
 and schema size, executes ordinary `VACUUM (ANALYZE)`, and captures the same data
 again with VACUUM duration. It deliberately does not use `VACUUM FULL`.
 
-No candidate is selected until smoke/100k/1m read, mutation, and maintenance
-reports are archived, compared, and recorded in the storage ADR.
+No candidate is selected until replacement `100k` and `1m` read, mutation, and
+maintenance reports from one commit are archived, compared, and recorded in the
+storage ADR.
 
 ## Docs
 
 - [Module documentation](./docs/README.md)
 - [Live implementation plan](./docs/implementation-plan.md)
 - [M2 storage benchmark contract](./docs/storage-benchmark.md)
+- [M2 replacement evidence runbook](./docs/storage-evidence-runbook.md)
 - [Index Engine rewrite ADR](../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Platform docs index](../../docs/index.md)

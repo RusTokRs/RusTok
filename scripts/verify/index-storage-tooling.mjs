@@ -58,6 +58,16 @@ const runContract = (args) => {
     'verify-index-storage-standalone-tools.mjs',
     'verify-index-storage-adr-tooling.mjs',
     'verify-index-storage-adr-integrity.mjs',
+    'verify-index-storage-renderer-lifecycle.mjs',
+    'verify-index-storage-adr-verifier-cli.mjs',
+    'verify-index-storage-decision-preparation-lifecycle.mjs',
+    'verify-index-storage-decision-text-schema.mjs',
+    'verify-index-storage-router-arguments.mjs',
+    'verify-index-storage-comparator-lifecycle.mjs',
+    'verify-index-storage-methodology-envelope.mjs',
+    'verify-index-storage-finalizer-lifecycle.mjs',
+    'verify-index-storage-placeholder-contract.mjs',
+    'verify-index-storage-hash-cli-contract.mjs',
   ]) {
     runScript(script);
   }
@@ -67,11 +77,19 @@ const runFixtures = (args) => {
   if (args.length !== 0) fail('fixtures does not accept arguments');
   runNode([
     '--test',
+    scriptPath('index-storage-tooling-arguments.test.mjs'),
     scriptPath('check-index-storage-read-ordering.test.mjs'),
     scriptPath('index-storage-standalone-tools.test.mjs'),
     scriptPath('compare-index-storage-evidence.test.mjs'),
+    scriptPath('compare-index-storage-evidence-lifecycle.test.mjs'),
+    scriptPath('comparison-methodology-envelope.test.mjs'),
+    scriptPath('hash-index-storage-comparison-cli.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
+    scriptPath('finalize-index-storage-adr-decision-contract.test.mjs'),
+    scriptPath('finalize-index-storage-adr-placeholder.test.mjs'),
     scriptPath('index-storage-decision-tooling.test.mjs'),
+    scriptPath('prepare-index-storage-decision-lifecycle.test.mjs'),
+    scriptPath('storage-decision-schema-text.test.mjs'),
   ], 'Index storage fixture suites');
 };
 
@@ -81,8 +99,10 @@ const parsePacketArgs = (args) => {
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--scale' && args[index + 1] && !args[index + 1].startsWith('--')) {
+      if (scale !== null) fail('--scale was provided more than once');
       scale = args[++index];
     } else if (argument === '--root' && args[index + 1] && !args[index + 1].startsWith('--')) {
+      if (root !== null) fail('--root was provided more than once');
       root = args[++index];
     } else {
       fail(`unknown or incomplete packet argument: ${argument}`);
@@ -133,7 +153,12 @@ const runCompare = (args) => {
 };
 
 const [command, ...args] = process.argv.slice(2);
-if (!command || command === '--help' || command === '-h') {
+if (!command) {
+  usage();
+  process.exit(0);
+}
+if (command === '--help' || command === '-h') {
+  if (args.length !== 0) fail('help must be the only argument');
   usage();
   process.exit(0);
 }

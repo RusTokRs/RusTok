@@ -286,11 +286,18 @@ pub(crate) struct InboxCursor {
 }
 
 pub(crate) fn encode_inbox_cursor(stored: &notification::Model) -> String {
+    encode_inbox_position_cursor(&stored.created_at, stored.id)
+}
+
+pub(crate) fn encode_inbox_position_cursor(
+    created_at: &DateTime<FixedOffset>,
+    id: Uuid,
+) -> String {
     format!(
         "{INBOX_CURSOR_VERSION}:{}:{}:{}",
-        stored.created_at.timestamp(),
-        stored.created_at.timestamp_subsec_nanos(),
-        stored.id
+        created_at.timestamp(),
+        created_at.timestamp_subsec_nanos(),
+        id
     )
 }
 

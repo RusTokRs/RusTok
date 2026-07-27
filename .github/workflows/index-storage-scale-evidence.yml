@@ -6,133 +6,51 @@ on:
     paths:
       - "crates/rustok-index/**"
       - "ops/benches/**"
+      - "scripts/verify/*index-storage*.mjs"
+      - "scripts/verify/storage-decision*.mjs"
+      - "scripts/verify/*methodology-envelope*.mjs"
       - "scripts/verify/verify-index-fba.mjs"
-      - "scripts/verify/verify-index-storage-source-oracle.mjs"
-      - "scripts/verify/check-index-storage-read-ordering.mjs"
-      - "scripts/verify/check-index-storage-read-ordering.test.mjs"
-      - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
-      - "scripts/verify/validate-index-storage-evidence.mjs"
-      - "scripts/verify/validate-index-storage-evidence-core.mjs"
-      - "scripts/verify/compare-index-storage-evidence.mjs"
-      - "scripts/verify/compare-index-storage-evidence-core.mjs"
-      - "scripts/verify/compare-index-storage-evidence.test.mjs"
-      - "scripts/verify/index-storage-database-settings-contract.mjs"
-      - "scripts/verify/index-storage-standalone-tools.test.mjs"
-      - "scripts/verify/verify-index-storage-standalone-tools.mjs"
-      - "scripts/verify/hash-index-storage-comparison.mjs"
-      - "scripts/verify/render-index-storage-adr.mjs"
-      - "scripts/verify/render-index-storage-adr.test.mjs"
-      - "scripts/verify/prepare-index-storage-decision.mjs"
-      - "scripts/verify/finalize-index-storage-adr.mjs"
-      - "scripts/verify/verify-index-storage-adr.mjs"
-      - "scripts/verify/index-storage-decision-tooling.test.mjs"
-      - "scripts/verify/index-storage-tooling.mjs"
-      - "scripts/verify/index-storage-tooling.test.mjs"
-      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
-      - "scripts/verify/verify-index-storage-adr-integrity.mjs"
-      - ".github/workflows/index-storage-smoke.yml"
-      - ".github/workflows/index-storage-scale-evidence.yml"
-      - ".github/workflows/index-storage-scale-run.yml"
-  push:
-    branches:
-      - "agent/index-m2-scale-evidence"
-      - "agent/index-m2-1m-standard-runner"
-    paths:
-      - "crates/rustok-index/**"
-      - "ops/benches/**"
-      - "scripts/verify/verify-index-fba.mjs"
-      - "scripts/verify/verify-index-storage-source-oracle.mjs"
-      - "scripts/verify/check-index-storage-read-ordering.mjs"
-      - "scripts/verify/check-index-storage-read-ordering.test.mjs"
-      - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
-      - "scripts/verify/validate-index-storage-evidence.mjs"
-      - "scripts/verify/validate-index-storage-evidence-core.mjs"
-      - "scripts/verify/compare-index-storage-evidence.mjs"
-      - "scripts/verify/compare-index-storage-evidence-core.mjs"
-      - "scripts/verify/compare-index-storage-evidence.test.mjs"
-      - "scripts/verify/index-storage-database-settings-contract.mjs"
-      - "scripts/verify/index-storage-standalone-tools.test.mjs"
-      - "scripts/verify/verify-index-storage-standalone-tools.mjs"
-      - "scripts/verify/hash-index-storage-comparison.mjs"
-      - "scripts/verify/render-index-storage-adr.mjs"
-      - "scripts/verify/render-index-storage-adr.test.mjs"
-      - "scripts/verify/prepare-index-storage-decision.mjs"
-      - "scripts/verify/finalize-index-storage-adr.mjs"
-      - "scripts/verify/verify-index-storage-adr.mjs"
-      - "scripts/verify/index-storage-decision-tooling.test.mjs"
-      - "scripts/verify/index-storage-tooling.mjs"
-      - "scripts/verify/index-storage-tooling.test.mjs"
-      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
-      - "scripts/verify/verify-index-storage-adr-integrity.mjs"
-      - ".github/workflows/index-storage-smoke.yml"
-      - ".github/workflows/index-storage-scale-evidence.yml"
-      - ".github/workflows/index-storage-scale-run.yml"
+      - ".github/workflows/index-storage-*.yml"
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   contract:
     name: Index scale evidence contract
-    # Pull-request runs exist only to cancel an older PR-ref execution through
-    # concurrency. Heavy scale evidence is emitted once from push/dispatch.
-    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-slim
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Publish push-run identity
-        if: ${{ github.event_name == 'push' && github.ref_name == 'agent/index-m2-1m-standard-runner' }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 2009,
-              body: `Index scale push run: **${context.runId}** on commit \`${context.sha}\`. The 100k and guarded 1m jobs start independently after the contract gate.`,
-            });
       - uses: actions/checkout@v7
-      - name: Verify Index storage command and repository contracts
+      - name: Verify Index storage JavaScript syntax
+        shell: bash
         run: |
-          node --check scripts/verify/index-storage-tooling.mjs
-          node --check scripts/verify/index-storage-tooling.test.mjs
-          node --check scripts/verify/check-index-storage-read-ordering.mjs
-          node --check scripts/verify/check-index-storage-read-ordering.test.mjs
-          node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs
-          node --check scripts/verify/index-storage-standalone-tools.test.mjs
-          node --check scripts/verify/verify-index-storage-standalone-tools.mjs
-          node scripts/verify/index-storage-tooling.mjs contract
-      - name: Verify scale evidence validator syntax
-        run: |
-          node --check scripts/verify/validate-index-storage-evidence.mjs
-          node --check scripts/verify/validate-index-storage-evidence-core.mjs
-      - name: Verify cross-scale comparator syntax
-        run: |
-          node --check scripts/verify/index-storage-database-settings-contract.mjs
-          node --check scripts/verify/compare-index-storage-evidence.mjs
-          node --check scripts/verify/compare-index-storage-evidence-core.mjs
-      - name: Verify storage decision and ADR tooling syntax
-        run: |
-          node --check scripts/verify/hash-index-storage-comparison.mjs
-          node --check scripts/verify/render-index-storage-adr.mjs
-          node --check scripts/verify/render-index-storage-adr.test.mjs
-          node --check scripts/verify/prepare-index-storage-decision.mjs
-          node --check scripts/verify/finalize-index-storage-adr.mjs
-          node --check scripts/verify/verify-index-storage-adr.mjs
-          node --check scripts/verify/verify-index-storage-adr-integrity.mjs
-          node --check scripts/verify/index-storage-decision-tooling.test.mjs
-      - name: Test storage tooling command routing
-        run: node --test scripts/verify/index-storage-tooling.test.mjs
-      - name: Test storage standalone, comparison, ordering, decision, and ADR fixtures
+          set -euo pipefail
+          find scripts/verify -maxdepth 1 -type f \
+            \( -name '*index-storage*.mjs' -o \
+               -name 'storage-decision*.mjs' -o \
+               -name '*methodology-envelope*.mjs' -o \
+               -name 'verify-index-fba.mjs' \) \
+            -print0 \
+            | sort -z \
+            | xargs -0 -n1 node --check
+      - name: Verify reusable and orchestration workflow contracts
+        run: node scripts/verify/verify-index-storage-scale-run-contract.mjs
+      - name: Verify Index storage repository contracts
+        run: node scripts/verify/index-storage-tooling.mjs contract
+      - name: Test direct evidence validator arguments
+        run: node --test scripts/verify/index-storage-validator-arguments.test.mjs
+      - name: Test Index storage fixture suites
         run: node scripts/verify/index-storage-tooling.mjs fixtures
 
   evidence-100k:
+    # Pull requests stop after the lightweight contract. Heavy evidence is an
+    # explicit owner action on one selected ref through workflow_dispatch.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: contract
     uses: ./.github/workflows/index-storage-scale-run.yml
     with:
@@ -142,21 +60,19 @@ jobs:
       minimum_free_bytes: 6000000000
 
   evidence-1m:
-    # Generate replacement 100k and 1m packets from this exact commit after the
-    # shared contract gate. The comparator rejects mixed provenance, PostgreSQL
-    # settings, repetitions/churn parameters, or candidate/workload shapes.
+    # One dispatch runs both scales from the exact same checkout SHA. The
+    # comparator additionally rejects mixed report provenance or methodology.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: contract
     uses: ./.github/workflows/index-storage-scale-run.yml
     with:
       scale: 1m
       timeout_minutes: 300
-      # Prefer an explicitly configured larger runner. Otherwise the hosted image
-      # may proceed only after the reusable job verifies at least 35 GB free;
-      # the inspected historical 100k runner reported about 93 GB free before evidence.
       runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER || 'ubuntu-latest' }}
       minimum_free_bytes: 35000000000
 
   comparison:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     name: Cross-scale storage comparison
     needs:
       - evidence-100k

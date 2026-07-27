@@ -6,9 +6,13 @@ mod fanout_worker;
 mod inbox;
 mod inbox_bulk;
 mod inbox_count;
+mod inbox_group;
+mod inbox_group_state;
+mod inbox_group_summary;
 mod inbox_reconcile;
 mod inbox_selected;
 mod inbox_state;
+mod inbox_storefront_port;
 pub mod migrations;
 pub mod model;
 mod outbox_intake;
@@ -57,6 +61,18 @@ pub use inbox_count::{
     NotificationInboxUnreadCount, NotificationInboxUnreadCountRequest,
     NotificationInboxUnreadCountService,
 };
+pub use inbox_group::{
+    MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES, NotificationInboxGroupListRequest,
+    NotificationInboxGroupListService,
+};
+pub use inbox_group_state::{
+    NotificationInboxGroupStateAction, NotificationInboxGroupStatePage,
+    NotificationInboxGroupStateRequest, NotificationInboxGroupStateService,
+};
+pub use inbox_group_summary::{
+    NotificationInboxGroupSummary, NotificationInboxGroupSummaryPage,
+    NotificationInboxGroupSummaryRequest, NotificationInboxGroupSummaryService,
+};
 pub use inbox_reconcile::{
     NotificationInboxReconcilePage, NotificationInboxReconcileRequest,
     NotificationInboxReconcileService,
@@ -69,6 +85,12 @@ pub use inbox_selected::{
 pub use inbox_state::{
     NotificationInboxStateDecision, NotificationInboxStateRequest, NotificationInboxStateService,
     NotificationInboxStateSnapshot,
+};
+pub use inbox_storefront_port::{
+    NotificationInboxStorefrontGroupItemsRequest, NotificationInboxStorefrontGroupStateRequest,
+    NotificationInboxStorefrontGroupSummaryRequest, NotificationInboxStorefrontOpenDecision,
+    NotificationInboxStorefrontOpenRequest, NotificationInboxStorefrontPort,
+    NotificationInboxStorefrontService, in_process_notification_inbox_storefront_port,
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
@@ -145,8 +167,8 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 5);
-        assert_eq!(module.migration_dependencies().len(), 5);
+        assert_eq!(module.migrations().len(), 7);
+        assert_eq!(module.migration_dependencies().len(), 7);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module

@@ -44,32 +44,44 @@ const forbidMarkers = (content, label, markers) => {
     if (content.includes(marker)) fail(`${label} contains forbidden marker: ${marker}`);
   }
 };
+const requireOrder = (content, label, markers) => {
+  let previous = -1;
+  for (const marker of markers) {
+    const index = content.indexOf(marker);
+    if (index < 0) fail(`${label} is missing ordered marker: ${marker}`);
+    if (index <= previous) fail(`${label} has lifecycle markers out of order: ${marker}`);
+    previous = index;
+  }
+};
 
 requireMarkers(validator, 'validator wrapper', [
   "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
+  "import { runValidatorCoreWithAtomicProvenance } from './run-index-storage-validator-core.mjs'",
+  "import { validateRunnerResourceSnapshots } from './validate-index-storage-runner-resources.mjs'",
   "const supportedScales = new Set(['smoke', '100k', '1m'])",
-  'validatePacketReadOrdering(evidenceRoot);',
-  "await import('./validate-index-storage-evidence-core.mjs')",
+  "const corePath = fileURLToPath(new URL('./validate-index-storage-evidence-core.mjs', import.meta.url))",
+  'runValidatorCoreWithAtomicProvenance({ evidenceRoot, corePath })',
 ]);
-const validatorPreflight = validator.indexOf('validatePacketReadOrdering(evidenceRoot);');
-const validatorCore = validator.indexOf("await import('./validate-index-storage-evidence-core.mjs')");
-if (validatorPreflight < 0 || validatorCore < 0 || validatorPreflight > validatorCore) {
-  fail('validator wrapper must run terminal-ordering preflight before importing its core');
-}
+requireOrder(validator, 'validator wrapper', [
+  'invalidatePacketProvenance(evidenceRoot);',
+  'validatePacketReadOrdering(evidenceRoot);',
+  'validateRunnerResourceSnapshots(evidenceRoot);',
+  'runValidatorCoreWithAtomicProvenance({ evidenceRoot, corePath })',
+]);
 
 requireMarkers(comparator, 'comparator wrapper', [
   "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
-  "if (argument === '--help' || argument === '-h') return null",
+  "const corePath = fileURLToPath(new URL('./compare-index-storage-evidence-core.mjs', import.meta.url))",
+  "if (argument === '--help' || argument === '-h')",
   "argument === '--input'",
   "argument === '--output'",
-  'for (const input of inputs) validatePacketReadOrdering(input);',
-  "await import('./compare-index-storage-evidence-core.mjs')",
+  'runComparatorCoreWithAtomicComparison(parsed)',
 ]);
-const comparatorPreflight = comparator.indexOf('for (const input of inputs) validatePacketReadOrdering(input);');
-const comparatorCore = comparator.indexOf("await import('./compare-index-storage-evidence-core.mjs')");
-if (comparatorPreflight < 0 || comparatorCore < 0 || comparatorPreflight > comparatorCore) {
-  fail('comparator wrapper must preflight every input before importing its core');
-}
+requireOrder(comparator, 'comparator wrapper', [
+  "rmSync(path.join(parsed.output, 'comparison.json'), { force: true });",
+  'for (const input of parsed.inputs) validatePacketReadOrdering(input);',
+  'runComparatorCoreWithAtomicComparison(parsed)',
+]);
 
 requireMarkers(sourceOracleGuard, 'source-oracle guard', [
   "read('scripts/verify/validate-index-storage-evidence-core.mjs')",
@@ -84,14 +96,14 @@ forbidMarkers(validator, 'validator wrapper', [
   'const resultDigestContract =',
   'shell: true',
   'execSync(',
-  'spawnSync(',
+  "await import('./validate-index-storage-evidence-core.mjs')",
 ]);
 forbidMarkers(comparator, 'comparator wrapper', [
   'migrated to inspect the preserved core directly',
   'const resultDigestContract =',
   'shell: true',
   'execSync(',
-  'spawnSync(',
+  "await import('./compare-index-storage-evidence-core.mjs')",
 ]);
 
-console.log('[verify-index-storage-standalone-tools] direct validator and comparator enforce executable SQL ordering before byte-preserved core execution');
+console.log('[verify-index-storage-standalone-tools] direct validator and comparator preserve ordering, lifecycle, and byte-preserved core execution');

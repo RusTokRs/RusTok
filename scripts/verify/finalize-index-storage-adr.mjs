@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -20,6 +21,7 @@ import { requireComparisonDatabaseSettingsMethodology } from './index-storage-da
 const prefix = '[finalize-index-storage-adr]';
 const placeholderPrefix = 'TODO(index-storage-decision):';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const allowedArguments = new Set(['--comparison', '--decision', '--output']);
 const requiredDecisionKeys = [
   'status',
   'decision_date',
@@ -49,19 +51,23 @@ const usage = () => {
 const parseArgs = () => {
   const values = new Map();
   const args = process.argv.slice(2);
+  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) {
+    usage();
+    return null;
+  }
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--help' || argument === '-h') {
-      usage();
-      return null;
+      fail('--help/-h must be the only argument');
     }
-    if (!argument.startsWith('--') || !args[index + 1] || args[index + 1].startsWith('--')) {
-      fail(`unknown or incomplete argument: ${argument}`);
+    if (!allowedArguments.has(argument)) fail(`unknown argument: ${argument}`);
+    if (!args[index + 1] || args[index + 1].startsWith('--')) {
+      fail(`incomplete argument: ${argument}`);
     }
     if (values.has(argument)) fail(`${argument} was provided more than once`);
     values.set(argument, args[++index]);
   }
-  for (const argument of ['--comparison', '--decision', '--output']) {
+  for (const argument of allowedArguments) {
     if (!values.has(argument)) fail(`${argument} is required`);
   }
   return {
@@ -101,9 +107,30 @@ const requireDecisionEnvelope = (decision) => {
   }
 };
 
+const requireAcceptedDecision = (decision) => {
+  if (decision.status !== 'accepted') {
+    fail('decision.status must be accepted before ADR finalization');
+  }
+};
+
+const requireIsoCalendarDate = (value, label) => {
+  const match = typeof value === 'string'
+    ? /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value)
+    : null;
+  if (!match) fail(`${label} must be a real ISO calendar date`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthLengths = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (year === 0 || month < 1 || month > 12 || day < 1 || day > monthLengths[month - 1]) {
+    fail(`${label} must be a real ISO calendar date`);
+  }
+};
+
 const requireDecisionText = (value, label) => {
   if (typeof value !== 'string' || value.trim().length === 0) return;
-  if (value.trim().startsWith(placeholderPrefix)) {
+  if (value.includes(placeholderPrefix)) {
     fail(`${label} still contains a preparation placeholder`);
   }
 };
@@ -139,53 +166,82 @@ const insertDecisionDigest = (markdown, decisionSha256) => {
   return markdown.replace(line, `${line}\n- Decision SHA-256: \`${decisionSha256}\``);
 };
 
+const outputStagingPrefix = (output) => `${path.basename(output)}.tmp-`;
+
+const isOutputStagingPath = (filename, output) => {
+  const resolvedInput = path.resolve(filename);
+  const resolvedParent = path.resolve(path.dirname(output) || '.');
+  return path.dirname(resolvedInput) === resolvedParent
+    && path.basename(resolvedInput).startsWith(outputStagingPrefix(output));
+};
+
+const revokePublishedState = (output) => {
+  const parent = path.dirname(output) || '.';
+  if (existsSync(parent)) {
+    for (const entry of readdirSync(parent)) {
+      if (entry.startsWith(outputStagingPrefix(output))) {
+        rmSync(path.join(parent, entry), { recursive: true, force: true });
+      }
+    }
+  }
+  rmSync(output, { force: true });
+};
+
 const main = () => {
   const args = parseArgs();
   if (args === null) return;
   const resolvedOutput = path.resolve(args.output);
   for (const [label, filename] of [['comparison', args.comparison], ['decision', args.decision]]) {
-    if (resolvedOutput === path.resolve(filename)) fail(`--output must not overwrite the ${label} input`);
+    const resolvedInput = path.resolve(filename);
+    if (resolvedOutput === resolvedInput) fail(`--output must not overwrite the ${label} input`);
+    if (isOutputStagingPath(filename, args.output)) {
+      fail(`ADR staging path must not overwrite the ${label} input`);
+    }
   }
 
-  const comparison = readJsonBytes(args.comparison, 'comparison');
-  const decision = readJsonBytes(args.decision, 'decision');
-  requireComparisonDatabaseSettingsMethodology(comparison.value, fail);
-  requireDecisionEnvelope(decision.value);
-  rejectPlaceholders(decision.value);
-
-  const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-'));
+  const parent = path.dirname(args.output) || '.';
+  if (parent !== '.') mkdirSync(parent, { recursive: true });
+  revokePublishedState(args.output);
+  const stagingRoot = mkdtempSync(path.join(parent, outputStagingPrefix(args.output)));
+  const stagedOutput = path.join(stagingRoot, path.basename(args.output));
   try {
-    const comparisonPath = path.join(temporaryRoot, 'comparison.json');
-    const decisionPath = path.join(temporaryRoot, 'decision.json');
-    const renderedPath = path.join(temporaryRoot, 'adr.md');
-    writeFileSync(comparisonPath, comparison.bytes);
-    writeFileSync(decisionPath, decision.bytes);
+    const comparison = readJsonBytes(args.comparison, 'comparison');
+    const decision = readJsonBytes(args.decision, 'decision');
+    requireComparisonDatabaseSettingsMethodology(comparison.value, fail);
+    requireDecisionEnvelope(decision.value);
+    requireAcceptedDecision(decision.value);
+    requireIsoCalendarDate(decision.value.decision_date, 'decision.decision_date');
+    rejectPlaceholders(decision.value);
 
-    const result = spawnSync(process.execPath, [
-      path.join(scriptDirectory, 'render-index-storage-adr.mjs'),
-      '--comparison', comparisonPath,
-      '--decision', decisionPath,
-      '--output', renderedPath,
-    ], { encoding: 'utf8' });
-    if (result.error) fail(`failed to start strict ADR renderer: ${result.error.message}`);
-    if (result.signal) fail(`strict ADR renderer terminated by signal ${result.signal}`);
-    if (result.status !== 0) {
-      const detail = result.stderr?.trim() || result.stdout?.trim() || `exit status ${result.status}`;
-      fail(`strict ADR renderer failed: ${detail}`);
-    }
-
-    const markdown = insertDecisionDigest(readFileSync(renderedPath, 'utf8'), decision.sha256);
-    const parent = path.dirname(args.output);
-    if (parent && parent !== '.') mkdirSync(parent, { recursive: true });
-    const stagedOutput = `${args.output}.tmp-${process.pid}`;
+    const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-'));
     try {
+      const comparisonPath = path.join(temporaryRoot, 'comparison.json');
+      const decisionPath = path.join(temporaryRoot, 'decision.json');
+      const renderedPath = path.join(temporaryRoot, 'adr.md');
+      writeFileSync(comparisonPath, comparison.bytes);
+      writeFileSync(decisionPath, decision.bytes);
+
+      const result = spawnSync(process.execPath, [
+        path.join(scriptDirectory, 'render-index-storage-adr.mjs'),
+        '--comparison', comparisonPath,
+        '--decision', decisionPath,
+        '--output', renderedPath,
+      ], { encoding: 'utf8' });
+      if (result.error) fail(`failed to start strict ADR renderer: ${result.error.message}`);
+      if (result.signal) fail(`strict ADR renderer terminated by signal ${result.signal}`);
+      if (result.status !== 0) {
+        const detail = result.stderr?.trim() || result.stdout?.trim() || `exit status ${result.status}`;
+        fail(`strict ADR renderer failed: ${detail}`);
+      }
+
+      const markdown = insertDecisionDigest(readFileSync(renderedPath, 'utf8'), decision.sha256);
       writeFileSync(stagedOutput, markdown, 'utf8');
       renameSync(stagedOutput, args.output);
     } finally {
-      if (existsSync(stagedOutput)) rmSync(stagedOutput, { force: true });
+      rmSync(temporaryRoot, { recursive: true, force: true });
     }
   } finally {
-    rmSync(temporaryRoot, { recursive: true, force: true });
+    rmSync(stagingRoot, { recursive: true, force: true });
   }
 
   console.log(`${prefix} wrote ${args.output}`);

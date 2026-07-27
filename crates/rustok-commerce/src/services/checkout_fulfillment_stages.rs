@@ -1,6 +1,8 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
+};
 use rustok_fulfillment::{
     CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
     EnsureCheckoutFulfillmentsRequest, FulfillmentResponse, ReadCheckoutFulfillmentsRequest,
@@ -24,6 +26,7 @@ use super::{
 
 const FULFILLMENT_EXECUTION_PORT_DEADLINE_SECONDS: u64 = 5;
 const MANUAL_PROVIDER_ID: &str = "manual";
+const CHECKOUT_FULFILLMENT_STAGE_BOUNDARY: &str = "commerce_checkout_fulfillment_stage";
 
 #[derive(Clone, Debug)]
 pub struct CheckoutFulfillmentCreatedState {
@@ -198,14 +201,15 @@ impl CheckoutFulfillmentStageExecutor {
                 "immutable order plan contains disabled fulfillment work".to_string(),
             ));
         }
+        let fulfillment_context = fulfillment_write_context(
+            tenant_id,
+            state.operation_id,
+            state.plan.payload.context.locale.as_str(),
+            self.port_deadline,
+        );
         self.fulfillment_port
             .ensure_checkout_fulfillments(
-                fulfillment_write_context(
-                    tenant_id,
-                    state.operation_id,
-                    state.plan.payload.context.locale.as_str(),
-                    self.port_deadline,
-                ),
+                fulfillment_context.clone(),
                 EnsureCheckoutFulfillmentsRequest {
                     checkout_operation_id: state.operation_id,
                     order_id: state.order.id,
@@ -215,7 +219,15 @@ impl CheckoutFulfillmentStageExecutor {
                 },
             )
             .await
-            .map_err(|error| boundary_error("ensure_fulfillments", error))
+            .map_err(|error| {
+                fulfillment_stage_boundary_error(
+                    &fulfillment_context,
+                    "rustok_fulfillment",
+                    "ensure_checkout_fulfillments",
+                    "ensure_fulfillments",
+                    error,
+                )
+            })
     }
 
     async fn read_fulfillments(
@@ -224,14 +236,15 @@ impl CheckoutFulfillmentStageExecutor {
         state: &CheckoutPaymentCapturedState,
     ) -> CheckoutFulfillmentStageResult<Vec<FulfillmentResponse>> {
         let plans = fulfillment_commands(&state.order, &state.plan)?;
+        let fulfillment_context = fulfillment_read_context(
+            tenant_id,
+            state.operation_id,
+            state.plan.payload.context.locale.as_str(),
+            self.port_deadline,
+        );
         self.fulfillment_port
             .read_checkout_fulfillments(
-                fulfillment_read_context(
-                    tenant_id,
-                    state.operation_id,
-                    state.plan.payload.context.locale.as_str(),
-                    self.port_deadline,
-                ),
+                fulfillment_context.clone(),
                 ReadCheckoutFulfillmentsRequest {
                     checkout_operation_id: state.operation_id,
                     order_id: state.order.id,
@@ -241,7 +254,15 @@ impl CheckoutFulfillmentStageExecutor {
                 },
             )
             .await
-            .map_err(|error| boundary_error("read_fulfillments", error))
+            .map_err(|error| {
+                fulfillment_stage_boundary_error(
+                    &fulfillment_context,
+                    "rustok_fulfillment",
+                    "read_checkout_fulfillments",
+                    "read_fulfillments",
+                    error,
+                )
+            })
     }
 
     async fn settle_paid_order(
@@ -256,15 +277,16 @@ impl CheckoutFulfillmentStageExecutor {
             .provider_id
             .clone()
             .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+        let order_context = order_payment_context(
+            tenant_id,
+            actor_id,
+            state.operation_id,
+            state.plan.payload.context.locale.as_str(),
+            self.port_deadline,
+        );
         self.order_payment_port
             .settle_checkout_payment(
-                order_payment_context(
-                    tenant_id,
-                    actor_id,
-                    state.operation_id,
-                    state.plan.payload.context.locale.as_str(),
-                    self.port_deadline,
-                ),
+                order_context.clone(),
                 SettleCheckoutOrderPaymentRequest {
                     checkout_operation_id: state.operation_id,
                     cart_id: state.payment_collection.cart_id.ok_or_else(|| {
@@ -281,7 +303,15 @@ impl CheckoutFulfillmentStageExecutor {
                 },
             )
             .await
-            .map_err(|error| boundary_error("settle_order_payment", error))
+            .map_err(|error| {
+                fulfillment_stage_boundary_error(
+                    &order_context,
+                    "rustok_order",
+                    "settle_checkout_payment",
+                    "settle_order_payment",
+                    error,
+                )
+            })
     }
 }
 
@@ -473,11 +503,79 @@ fn normalize_locale(locale: &str) -> String {
     }
 }
 
-fn boundary_error(stage: &'static str, error: PortError) -> CheckoutFulfillmentStageError {
+fn fulfillment_stage_boundary_error(
+    context: &PortContext,
+    owner: &'static str,
+    owner_operation: &'static str,
+    stage: &'static str,
+    error: PortError,
+) -> CheckoutFulfillmentStageError {
+    log_checkout_fulfillment_stage_boundary_failure(
+        context,
+        owner,
+        owner_operation,
+        stage,
+        &error,
+    );
     CheckoutFulfillmentStageError::Boundary {
         stage,
         code: error.code,
         message: error.message,
         retryable: error.retryable,
+    }
+}
+
+fn log_checkout_fulfillment_stage_boundary_failure(
+    context: &PortContext,
+    owner: &'static str,
+    owner_operation: &'static str,
+    stage: &'static str,
+    boundary_error: &PortError,
+) {
+    match &boundary_error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?boundary_error,
+                owner = owner,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage = stage,
+                code = %boundary_error.code,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_FULFILLMENT_STAGE_BOUNDARY,
+                "checkout fulfillment stage owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?boundary_error,
+                owner = owner,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage = stage,
+                code = %boundary_error.code,
+                error_kind = ?boundary_error.kind,
+                retryable = boundary_error.retryable,
+                boundary = CHECKOUT_FULFILLMENT_STAGE_BOUNDARY,
+                "checkout fulfillment stage owner boundary was rejected"
+            );
+        }
     }
 }

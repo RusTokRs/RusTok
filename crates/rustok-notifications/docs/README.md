@@ -2,9 +2,10 @@
 
 ## Responsibility zone
 
-Notifications owns inbox/read state, exact unread counts, bounded mark-all-read,
-bounded mark-all-unread, bounded mark-all-archive, preferences, bounded fanout,
-grouping, digests, retention, delivery attempts, intake receipts/quarantine, and
+Notifications owns inbox/read state, exact unread counts, bounded mark-all,
+selected-ID state commands, bounded exact-group state commands, durable grouping,
+exact-group reads, bounded group summaries, preferences, bounded fanout, digests,
+retention, delivery attempts, intake receipts/quarantine, and
 replay/reconciliation. Source modules own semantic state, subscriptions, audience
 facts, visibility, target authorization, and routes. Profiles and Social Graph own
 recipient privacy. Delivery modules own channel transports.
@@ -13,13 +14,13 @@ recipient privacy. Delivery modules own channel transports.
 
 `rustok-notifications-api` is the neutral source contract. Producers register
 `NotificationSourceProviderFactory` values through `ModuleRuntimeExtensions`; the
-server materializes them with `HostRuntimeContext`. Duplicate slugs, source
-identity mismatches, and build failures are startup errors.
+server materializes them with `HostRuntimeContext`. Duplicate slugs, source identity
+mismatches, and build failures are startup errors.
 
-The owner does not decode platform envelopes and does not read producer-private
-or Modules-private tables. The executable server injects envelope decoding and
-cross-owner policy ports. Producer transactions remain independent from
-notification availability.
+The owner does not decode platform envelopes and does not read producer-private or
+Modules-private tables. The executable server injects envelope decoding and
+cross-owner policy ports. Producer transactions remain independent from notification
+availability.
 
 Notifications remains absent from `settings.default_enabled`; tenants must have an
 effective `notifications` capability before provider materialization, audience
@@ -27,17 +28,32 @@ resolution, or candidate processing.
 
 ## Persistence
 
-Five module-local PostgreSQL/SQLite migrations create notification/read lifecycle,
-delivery attempts, fanout jobs/items and leases, durable source inbox state,
-outbox intake receipts/quarantine, preferences, digests, and encrypted push
-subscriptions.
+Seven ordered module-local PostgreSQL/SQLite migrations own notification/read
+lifecycle, delivery attempts, fanout jobs/items and leases, durable source inbox
+state, outbox intake receipts/quarantine, preferences, digests, encrypted push
+subscriptions, group-key population, and the group-summary access path:
+
+1. `m20260721_000010_create_notification_persistence`;
+2. `m20260722_000011_create_notification_source_inbox`;
+3. `m20260722_000012_add_candidate_processing`;
+4. `m20260723_000013_add_outbox_intake_receipts`;
+5. `m20260723_000014_add_outbox_intake_rejections`;
+6. `m20260726_000015_populate_notification_group_keys`;
+7. `m20260726_000016_add_notification_group_summary_index`.
 
 Accepted and rejected intake outcomes are keyed by outbox event ID and mutually
 exclusive. Source inbox and accepted receipt commit in one transaction. Permanent
 invalid envelopes are quarantined; retryable failures retain no terminal intake
-record. Accepted replay re-decodes the current envelope and must match the
-persisted source identity. The intake consumer neither depends on nor mutates
-relay status.
+record. Accepted replay re-decodes the current envelope and must match persisted
+source identity. The intake consumer neither depends on nor mutates relay status.
+
+Missing notification group keys are assigned as
+`g1:{target_owner}:{target_id}`. Existing null values are backfilled and explicit
+non-null keys remain authoritative. PostgreSQL assigns missing keys before insert;
+SQLite assigns them inside the inserting transaction. The partial
+`idx_notifications_group_summary` index orders non-archived grouped rows by exact
+recipient latest activity. Existing `idx_notifications_group` supports exact group
+scans, bounded group-state selection, and stored counts.
 
 The schema stores no source-private payload, rendered HTML, contact address, phone
 number, or plaintext push endpoint. Global server migration composition remains a
@@ -60,15 +76,15 @@ leases; the default/hard batch is 32/64 and one audience page is capped at 256.
 Before each source or job call, the server resolves effective `notifications`
 capability.
 
-Disabled tenant work is moved to `retryable_error` for 300 seconds; temporary
-policy lookup failure is deferred for 30 seconds. Owner CAS transitions increment
-attempt count, set `next_attempt_at`, clear lease fields, and persist stable error
-metadata before any producer call. The loop is default-off behind
+Disabled tenant work is moved to `retryable_error` for 300 seconds; temporary policy
+lookup failure is deferred for 30 seconds. Owner CAS transitions increment attempt
+count, set `next_attempt_at`, clear lease fields, and persist stable error metadata
+before any producer call. The loop is default-off behind
 `RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED` and creates only pending candidates.
 
 A bounded producer scan may return zero recipients with a next cursor. The cursor
-must differ from the claimed cursor; the owner persists it under the same lease
-CAS, creates no candidates, and keeps the job pending. Oversized pages and stalled
+must differ from the claimed cursor; the owner persists it under the same lease CAS,
+creates no candidates, and keeps the job pending. Oversized pages and stalled
 cursors fail closed.
 
 ### Candidate policy and lifecycle-serialized inbox creation
@@ -76,14 +92,13 @@ cursors fail closed.
 `NotificationCandidateWorker` selects bounded tenant-scoped work without acquiring
 a lease. Before canonical claim, the server calls
 `EffectiveModulePolicyService::resolve_snapshot`, requires `notifications`, and
-captures both the deterministic policy revision and the manifest default-enabled
-module set used to compute it. Disabled or unresolved work receives the
-300/30-second owner CAS backoff without invoking recipient privacy or source
-providers.
+captures the deterministic policy revision plus the manifest default-enabled module
+set. Disabled or unresolved work receives the 300/30-second owner CAS backoff
+without invoking recipient privacy or source providers.
 
 Enabled work is processed in this order:
 
-1. claim/recover the candidate lease;
+1. claim or recover the candidate lease;
 2. resolve exact preferences before wildcards;
 3. evaluate Profiles/Social Graph recipient policy;
 4. reauthorize the target for the recipient;
@@ -96,22 +111,14 @@ Enabled work is processed in this order:
 
 The commit guard delegates to `SeaOrmModulePolicyRevisionConsumer`. The Modules
 owner locks the `module.lifecycle` cursor and resolves `tenant_modules` on the
-candidate transaction using the already-observed manifest defaults. The manifest
-is not reloaded through another pool connection while the final transaction is
-active. Current `notifications` enablement and the observed policy revision must
-both match.
+candidate transaction using already-observed manifest defaults. Current
+`notifications` enablement and the observed revision must both match.
 
-On PostgreSQL, the cursor uses `FOR UPDATE`. Production lifecycle tenant toggles
-advance the same cursor inside their tenant-state transaction, so final candidate
-commit and tenant enable/disable are serialized by commit order. A disable that
-commits first rejects notification creation; a candidate that owns the cursor first
-commits before the later disable. Disabled, changed-revision, or retryable guard
-outcomes roll back the notification transaction and enter durable candidate retry.
-
-SQLite evidence covers transaction-bound resolution and rollback behavior only;
-it does not claim PostgreSQL lock-contention evidence. Active-manifest,
-artifact-security, maintenance, and node-readiness changes are not yet serialized
-by this lifecycle cursor.
+On PostgreSQL, the cursor uses `FOR UPDATE`, serializing final candidate commit with
+tenant enable/disable commits. SQLite evidence covers transaction-bound resolution
+and rollback only; it does not claim PostgreSQL contention evidence. Active-manifest,
+artifact-security, maintenance, and node-readiness changes are not yet serialized by
+this cursor.
 
 The loop remains default-off behind
 `RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`, requires ready recipient-policy
@@ -119,200 +126,122 @@ ports and `ModuleRegistry`, and never creates channel delivery attempts.
 
 ### Inbox open-time authorization
 
-`NotificationInboxOpenService` loads one stored notification by exact notification,
-tenant, and recipient identity. Missing, cross-tenant, and cross-recipient rows all
-return `Unavailable` before recipient policy or source authorization, preventing a
-notification existence oracle.
-
-For an owned row, the service reconstructs bounded source and target identities,
-then evaluates the same injected Profiles/Social Graph recipient policy used during
-candidate processing. Suppression returns `Unavailable` without invoking the source
-provider, while temporary policy failures preserve retryability.
-
-Only an allowed recipient reaches the registered source provider's
-`authorize_target_open` method. The service returns only the fresh owner-provided
-route or `Unavailable`. It does not expose the stored row, mutate
-`seen/read/archive` state, or enqueue delivery attempts.
+`NotificationInboxOpenService` loads one exact notification/tenant/recipient row.
+Missing, cross-tenant, and cross-recipient rows return `Unavailable` before policy or
+source calls. For an owned row, recipient privacy runs before source target
+authorization. The service returns only a fresh route or `Unavailable`; it does not
+expose the stored row, mutate inbox state, or enqueue delivery attempts.
 
 ### Bounded authorized inbox listing
 
 `NotificationInboxListService` scans one exact tenant/recipient page in
-`created_at DESC, id DESC` order. A request defaults to 20 rows, is capped at 64,
-and may apply one exact notification-state filter. Its versioned cursor preserves
-full timestamp nanoseconds plus the UUID tie-breaker.
+`created_at DESC, id DESC` order. Requests default to 20 rows, are capped at 64, and
+may apply one exact state filter. The versioned `i1` cursor preserves nanoseconds and
+the UUID tie-breaker.
 
-Each scanned row is passed through `NotificationInboxOpenService`. Current recipient
-privacy and source target authorization therefore decide whether the row is returned.
-The list read model exposes typed source, notification type, template key,
-source-owned template data, actor, priority, state, and inbox timestamps. It adds no
-dedicated route or structural target owner, kind, or ID fields.
+Every raw row passes through `NotificationInboxOpenService`. The read model exposes
+typed source/template data, actor, priority, state, and inbox timestamps, but no
+dedicated route or structural target fields. Continuation derives from the last raw
+row, so suppression may produce an empty advancing page. Retryable owner failures
+abort without a partial result. Listing mutates no state or delivery attempt.
 
-The next cursor is derived from the last scanned raw row rather than the last returned
-item. Privacy or source suppression may produce an empty page with a next cursor,
-while still preserving bounded work and forward progress. Retryable policy or source
-failures abort the page without returning a partial result. Listing does not mutate
-`seen/read/archive` state or enqueue delivery attempts.
+### Exact and bounded inbox state commands
 
-### Exact inbox state mutations
+`NotificationInboxStateService` owns exact `mark_seen`, `mark_read`, `mark_unread`,
+and `archive` transitions. The forward order is
+`unread → seen → read → archived`; mark-unread reopens only seen/read, while archived
+remains terminal. Idempotent or protected commands return `changed=false` without
+rewriting timestamps.
 
-Exact seen/read/mark-unread/archive state APIs are owner-public through
-`NotificationInboxStateService`. Every request requires non-nil notification,
-tenant, and recipient identities and updates only the exact owned row. Missing,
-cross-tenant, and cross-recipient rows return the same `Unavailable` decision.
+`NotificationInboxMarkAllReadService`,
+`NotificationInboxMarkAllUnreadService`, and
+`NotificationInboxMarkAllArchiveService` select bounded exact-recipient pages and
+delegate every row to the exact state owner. `NotificationInboxSelectedStateService`
+applies one of the four commands to at most 64 explicit IDs in input order. Missing,
+foreign, already-satisfied, and protected selected rows are all reported only as
+`not_changed`, reducing existence-oracle detail.
 
-The forward order is `unread → seen → read → archived`. `mark_seen` changes only
-unread rows. `mark_read` changes unread or seen rows; direct unread-to-read assigns
-`seen_at` and `read_at` from the same instant, while seen-to-read preserves the
-existing `seen_at`. `mark_unread` is the explicit reopen command for seen and read
-rows: it returns them to unread and clears `seen_at` plus `read_at`. `archive`
-changes every non-archived row and preserves existing seen/read timestamps.
+`NotificationInboxGroupStateService` applies one bounded `mark_read`, `mark_unread`,
+or `archive` action to one exact tenant/recipient/group. It validates the same opaque
+191-byte group-key boundary as exact-group listing, selects only action-eligible rows
+in `created_at DESC, id DESC` order, reuses the shared 20/64 bounds and `i1` cursor,
+and delegates every selected identity to `NotificationInboxStateService`. Its page
+returns only `scanned`, `changed`, `next_cursor`, and `has_more`.
 
-No command downgrades an archived row. No command reopens an archived row. Requests
-already at the requested state or at a protected state are idempotent:
-`changed=false`, state timestamps remain unchanged, and `updated_at` is not
-rewritten. The response contains only notification state and inbox timestamps. The
-service calls no recipient-policy, source-provider, target, or delivery owner and
-does not create delivery attempts.
-
-SQLite evidence is `tests/inbox_state_sqlite.rs`. Exact-item mark-unread and bounded
-mark-all-read, mark-all-unread, and mark-all-archive are delivered; arbitrary
-selected-ID bulk mutations, grouped inbox views, external transport adapters, and
-module-owned UI remain closed.
-
-The historical mark-unread, bulk/mark-all residual is now narrowed to selected-ID
-bulk mutations and grouped views.
+These state owners call no privacy/source/target/delivery owner and create no
+delivery attempt. Earlier per-row transitions remain durable and idempotent if a
+later operation fails.
 
 ### Exact unread count
 
-`NotificationInboxUnreadCountService` returns `unread_count` for one exact non-nil
-tenant and recipient by counting only rows in stored owner state `unread`. Tenant,
-recipient, and state filters are applied before aggregation, and the query reuses
-`idx_notifications_inbox`. Empty, missing, cross-tenant, and cross-recipient scopes
-all return zero without exposing notification identity. Totals must not be derived
-from bounded authorized list pages.
-
-The result reflects stored owner state. Current privacy or source-policy changes
-become visible after exact or scheduled reconciliation archives unavailable rows.
-The count owner calls no recipient-policy, source-provider, target, or delivery
-owner, mutates no inbox or delivery state, and returns no source, target, route,
-notification, or cursor identity. SQLite evidence is `tests/inbox_count_sqlite.rs`;
-the source guard is
-`scripts/verify/verify-forum-notification-inbox-unread-count.mjs`. Transport and UI
-exposure remain closed until an authorized adapter composes the owner read.
-
-### Bounded mark-all-read
-
-`NotificationInboxMarkAllReadService` selects one exact tenant/recipient page of
-stored `unread` or `seen` rows in `created_at DESC, id DESC` order. Requests default
-to 20 rows, are capped at 64, and reuse the versioned `i1` cursor with timestamp
-nanoseconds plus the UUID tie-breaker. Read and archived rows remain outside
-selection.
-
-One bounded raw page is loaded before mutation. Every selected row delegates to
-`NotificationInboxStateService::mark_read`, preserving direct unread-to-read
-`seen_at/read_at` equality and seen-to-read `seen_at` history. The response returns
-only `scanned`, `marked_read`, `next_cursor`, and `has_more`; it exposes no source,
-target, route, or notification identity. Empty, missing, cross-tenant, and
-cross-recipient scopes return an empty page.
-
-The command calls no recipient-policy, source-provider, target, or delivery owner
-and creates or mutates no delivery attempt. Earlier exact transitions are durable
-and idempotent if a later database operation fails, so a caller can retry the same
-request cursor. SQLite evidence is `tests/inbox_mark_all_read_sqlite.rs`; the source
-guard is `scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`.
-`FORUM-20Y` originally left mark-all-unread and mark-all-archive open. Both
-follow-up commands are now delivered.
-
-### Bounded mark-all-unread
-
-`NotificationInboxMarkAllUnreadService` selects one exact tenant/recipient page of
-stored `seen` or `read` rows in `created_at DESC, id DESC` order. Requests default
-to 20 rows, are capped at 64, and reuse the versioned `i1` cursor with timestamp
-nanoseconds plus the UUID tie-breaker. Already-unread and archived rows remain
-outside selection.
-
-One bounded raw page is loaded before mutation. Every selected row delegates to
-`NotificationInboxStateService::mark_unread`, clearing `seen_at` and `read_at`
-while archived remains terminal. The response returns only `scanned`,
-`marked_unread`, `next_cursor`, and `has_more`; it exposes no source, target, route,
-or notification identity. Empty, missing, cross-tenant, and cross-recipient scopes
-return an empty page.
-
-The command calls no recipient-policy, source-provider, target, or delivery owner
-and creates or mutates no delivery attempt. Earlier exact transitions are durable
-and idempotent if a later database operation fails, so a caller can retry the same
-request cursor. SQLite evidence is `tests/inbox_mark_all_unread_sqlite.rs`; the
-source guard is
-`scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs`.
-`FORUM-20Z` left mark-all-archive and arbitrary selected-ID bulk commands open at
-that milestone; mark-all-archive is now delivered.
-
-### Bounded mark-all-archive
-
-`NotificationInboxMarkAllArchiveService` selects one exact tenant/recipient page of
-stored `unread`, `seen`, or `read` rows in `created_at DESC, id DESC` order.
-Requests default to 20 rows, are capped at 64, and reuse the versioned `i1` cursor
-with timestamp nanoseconds plus the UUID tie-breaker. Already-archived rows remain
-outside selection.
-
-One bounded raw page is loaded before mutation. Every selected row delegates to
-`NotificationInboxStateService::archive`, preserving existing `seen_at` and
-`read_at`, assigning `archived_at`, and keeping archive terminal. The response
-returns only `scanned`, `marked_archived`, `next_cursor`, and `has_more`; it exposes
-no source, target, route, or notification identity. Empty, missing, cross-tenant,
-and cross-recipient scopes return an empty page.
-
-The command calls no recipient-policy, source-provider, target, or delivery owner
-and creates or mutates no delivery attempt. Earlier exact transitions are durable
-and idempotent if a later database operation fails, so a caller can retry the same
-request cursor. SQLite evidence is `tests/inbox_mark_all_archive_sqlite.rs`; the
-source guard is
-`scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs`. Arbitrary
-selected-ID bulk commands, grouped views, transport adapters, and UI remain closed.
+`NotificationInboxUnreadCountService` counts stored `unread` rows for one exact
+non-nil tenant and recipient. Tenant, recipient, and state filters precede
+aggregation, and the query reuses `idx_notifications_inbox`. Missing or foreign
+scopes return zero. The count reflects stored state and converges after
+reconciliation archives unavailable rows.
 
 ### Bounded inbox reconciliation
 
-`NotificationInboxReconcileService` scans one bounded non-archived page for an
-exact tenant/recipient in `created_at DESC, id DESC` order. It defaults to 20 rows,
-is capped at 64, and reuses the crate-private `i1` inbox cursor with timestamp
-nanoseconds and the UUID tie-breaker.
+`NotificationInboxReconcileService` scans one bounded non-archived exact-recipient
+page using the shared 20/64 bounds and `i1` cursor. Every row reuses open-time
+privacy/source authorization. Allowed rows stay unchanged; `Unavailable` rows are
+archived through the exact state owner. Foreign calls run after raw selection and
+outside a notification transaction. Retryable failures stop the page, while earlier
+archives remain durable and retry-safe.
 
-Every scanned row reuses `NotificationInboxOpenService`, so current recipient
-privacy runs before source target authorization. Allowed rows remain unchanged.
-Rows that current privacy or source policy marks `Unavailable` are archived through
-`NotificationInboxStateService`, preserving existing seen/read timestamps. Raw
-selection completes before any foreign owner call, and no foreign provider runs
-inside a notification database transaction.
+### Durable group keys and exact-group listing
 
-Retryable owner failures stop the page. Earlier per-row archives are durable and
-idempotent, allowing a restart from the same cursor to skip already archived rows.
-The response contains only scanned/archived counts and continuation metadata; it
-exposes no route, notification identity, or structural source target fields.
+`m20260726_000015_populate_notification_group_keys` makes group identity durable at
+the persistence boundary. `NotificationInboxGroupListService` reads one exact
+tenant/recipient/group with an optional state filter, shared page bounds, the `i1`
+cursor, and current open-time authorization. Suppressed rows produce sparse
+advancing pages. The read changes no state or delivery attempt.
 
-SQLite evidence is `tests/inbox_reconcile_sqlite.rs`. Tenant-wide scheduling and
-payload redaction, transport adapters, and UI remain closed.
+### Bounded group summaries
 
-The server starts workers in intake → fanout → candidate order. Invalid or
-unreadable flags remain disabled.
+`NotificationInboxGroupSummaryService` returns groups with at least one non-archived
+row, ordered by their latest non-archived `created_at DESC, id DESC` row. Requests
+default to 20 raw groups and are capped at 64. Each result contains the opaque group
+key, exact stored non-archived `item_count`, exact stored `unread_count`, and the
+typed latest inbox item without a route.
+
+The latest row passes current recipient privacy before source authorization.
+Suppressed groups are omitted while continuation advances from the last raw group.
+Retryable failures abort without a partial result. Counts intentionally reflect
+stored owner state and converge after reconciliation. The read mutates no inbox
+state or delivery attempt.
+
+### Bounded group state commands
+
+`NotificationInboxGroupStateService` completes the owner-side grouped command set.
+`mark_read` selects unread/seen rows, `mark_unread` selects seen/read rows, and
+`archive` selects all non-archived rows for one exact group. Direct unread-to-read,
+seen-history preservation, mark-unread timestamp clearing, and terminal archive are
+inherited from the exact state owner. Missing, foreign, and already-satisfied groups
+return an empty page without notification identity.
+
+SQLite source evidence is `tests/inbox_group_state_sqlite.rs`; the static contract is
+`scripts/verify/verify-forum-notification-inbox-group-state.mjs`.
+
+The server starts workers in intake → fanout → candidate order. Invalid or unreadable
+flags remain disabled.
 
 ## Forum sources
 
 Forum supports `forum.topic.created` and `forum.mention.user_added`. Its provider
 accepts legacy journal UUID/sequence references and semantic source identities from
-committed envelopes. Mention handling verifies immutable relation and current
-target visibility. Pending replies are retryable; closed, hidden, deleted,
-self-mentioned, or restricted sources fail closed. Moderator audience expansion
-remains deferred.
+committed envelopes. Mention handling verifies immutable relation and current target
+visibility. Pending replies are retryable; closed, hidden, deleted, self-mentioned,
+or restricted sources fail closed. Moderator audience expansion remains deferred.
 
 ## Pending capabilities
 
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
-- grouping and bounded moderator-directory expansion;
-- arbitrary selected-ID bulk mutations plus grouped views;
+- bounded moderator directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- external inbox transport adapters and full module-owned UI;
+- external inbox transport adapters and full module-owned grouped UI;
 - channel delivery enqueue and transports with delivery-time authorization;
 - retention, quarantine replay/purge, and administrative repair.
 
@@ -336,7 +265,12 @@ cargo test -p rustok-notifications --test inbox_count_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_mark_all_read_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_mark_all_unread_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_mark_all_archive_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_selected_state_sqlite -- --nocapture
 cargo test -p rustok-notifications --test inbox_reconcile_sqlite -- --nocapture
+cargo test -p rustok-notifications --test group_key_population_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_group_listing_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_group_summary_sqlite -- --nocapture
+cargo test -p rustok-notifications --test inbox_group_state_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
@@ -357,11 +291,17 @@ node scripts/verify/verify-forum-notification-inbox-unread-count.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs
 node scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs
+node scripts/verify/verify-forum-notification-inbox-selected-state.mjs
+node scripts/verify/verify-forum-notification-group-key-population.mjs
+node scripts/verify/verify-forum-notification-inbox-group-listing.mjs
+node scripts/verify/verify-forum-notification-inbox-group-summaries.mjs
+node scripts/verify/verify-forum-notification-inbox-group-state.mjs
 cargo xtask module validate notifications
 ```
 
-These commands were not run while publishing `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA`.
+These commands were not run while publishing
+`NOTIFY-03D/03E/03F/03G/03H/03I` or
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF`.
 
 ## Related documents
 
