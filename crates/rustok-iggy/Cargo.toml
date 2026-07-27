@@ -14,14 +14,11 @@ tokio.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+iggy = { workspace = true, optional = true }
 
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-iggy-connector.workspace = true
-
-[dependencies.iggy]
-version = "0.10.0"
-optional = true
 
 [features]
 default = ["iggy"]
