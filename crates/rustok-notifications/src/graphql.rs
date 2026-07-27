@@ -339,9 +339,15 @@ fn map_state_to_owner(
 }
 
 fn map_port_error(error: PortError) -> async_graphql::Error {
-    match error.kind {
+    let PortError {
+        kind,
+        code,
+        message,
+        retryable,
+    } = error;
+    match kind {
         PortErrorKind::Validation | PortErrorKind::Forbidden => {
-            public_error(error.code, error.message, error.retryable)
+            public_error(code, message, retryable)
         }
         PortErrorKind::NotFound
         | PortErrorKind::Conflict
@@ -350,7 +356,7 @@ fn map_port_error(error: PortError) -> async_graphql::Error {
         | PortErrorKind::InvariantViolation => public_error(
             "NOTIFICATION_INBOX_UNAVAILABLE",
             PUBLIC_UNAVAILABLE_MESSAGE,
-            error.retryable,
+            retryable,
         ),
     }
 }
@@ -384,8 +390,8 @@ fn public_error(
     retryable: bool,
 ) -> async_graphql::Error {
     let code = code.into();
-    async_graphql::Error::new(message.into()).extend_with(move |_, extensions| {
-        extensions.set("code", code);
+    async_graphql::Error::new(message.into()).extend_with(|_, extensions| {
+        extensions.set("code", code.clone());
         extensions.set("retryable", retryable);
     })
 }
