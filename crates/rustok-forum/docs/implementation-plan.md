@@ -620,17 +620,6 @@ quoted target and quoted revision so edits do not rewrite history.
 - `forum.mention.audience_added` remains deferred until a bounded moderator
   directory owner port exists.
 
-### Delivered in `FORUM-20AS`
-
-- compose both legacy and inline-quote GraphQL topic-create mutations through one manifest-backed
-  runtime wrapper and the existing context-aware owner methods;
-- compose both REST topic-create handlers through `HostRuntimeContext`, using only authenticated
-  tenant/user identity plus the middleware-resolved locale and route channel;
-- attach read deadline, permission claims, and a bounded correlation id before any optional owner
-  facts call, rejecting mismatched request tenant or actor before provider access;
-- consume the existing feature-guarded Groups facts publication for both transports while keeping
-  provider absence fail closed and adding no topic-create DTO, migration, or Forum-to-Groups dependency.
-
 ### Compatibility and degraded mode
 
 Existing source locales retain their `legacy` seed identity until an active
@@ -1355,6 +1344,17 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
   Channel, or Groups selectors remain unresolved, and fail closed when either is absent;
 - gate every public `TopicService` create path before topic, relation, counter, user-stat, or
   event writes and publish context-aware owner seams without changing GraphQL or REST DTOs.
+
+### Delivered in `FORUM-20AS`
+
+- compose both legacy and inline-quote GraphQL topic-create mutations through one manifest-backed
+  runtime wrapper and the existing context-aware owner methods;
+- compose both REST topic-create handlers through `HostRuntimeContext`, using only authenticated
+  tenant/user identity plus the middleware-resolved locale and route channel;
+- attach read deadline, permission claims, and a bounded correlation id before any optional owner
+  facts call, rejecting mismatched request tenant or actor before provider access;
+- consume the existing feature-guarded Groups facts publication for both transports while keeping
+  provider absence fail closed and adding no topic-create DTO, migration, or Forum-to-Groups dependency.
 
 ### Compatibility and degraded mode
 

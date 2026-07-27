@@ -186,7 +186,7 @@ for (const [source, label, commandMarker] of [
 ]) {
   for (const marker of [
     "request_context: RequestContext",
-    "runtime.topic_service()",
+    ".topic_service()",
     "topic_create_audience_port_context(",
     "ForumTopicCreateTransport::Rest",
     commandMarker,
@@ -283,6 +283,17 @@ for (const marker of [
 ]) {
   requireText(plan, marker, `canonical Forum plan is missing ${marker}`);
 }
+const forum20DeliveryTail = between(
+  plan,
+  "### Delivered in `FORUM-20AR`",
+  "### Compatibility and degraded mode",
+  "FORUM-20AR/AS delivery tail",
+);
+requireText(
+  forum20DeliveryTail,
+  "### Delivered in `FORUM-20AS`",
+  "FORUM-20AS delivered section must follow FORUM-20AR before compatibility",
+);
 
 if (failures.length > 0) {
   console.error("Forum topic-create audience transport composition verification failed:");
