@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use rustok_iggy::{ConsumedContractEvent, IggyTransport};
 use rustok_social_graph::index_consumer::{
-    SocialGraphIndexConsumer, SocialGraphIndexConsumerError, SocialGraphIndexProcessOutcome,
+    SocialGraphIndexConsumer, SocialGraphIndexProcessOutcome,
 };
 use tokio::task::JoinHandle;
 
@@ -297,7 +297,7 @@ async fn process_delivery(
                         event_id = %consumed.envelope.id(),
                         error_code,
                         attempt,
-                        retry_delay_ms = delay.as_millis() as u64,
+                        retry_delay_ms = duration_millis(delay),
                         "Social Graph Index projection failed; retrying without acknowledgement"
                     );
                     if wait_or_stop(delay, stop_rx).await {
@@ -356,7 +356,7 @@ async fn acknowledge_durable_result(
                     event_id = %consumed.envelope.id(),
                     error_code = error.stable_code(),
                     attempt,
-                    retry_delay_ms = delay.as_millis() as u64,
+                    retry_delay_ms = duration_millis(delay),
                     "Durable Index result exists but broker acknowledgement failed; retrying acknowledgement only"
                 );
                 if wait_or_stop(delay, stop_rx).await {
