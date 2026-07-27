@@ -11,6 +11,12 @@ This module has no module-owned UI. `calculate_tax` is a read-like port with a
 required deadline and typed `PortError` mapping; it must not require write
 idempotency.
 
+The canonical root in-process factory now retains the complete delegated
+`PortContext` and safe request-shape facts for exact stable validation and
+result-invariant outcomes. Policy admission remains owned by the original port
+implementation, public errors are unchanged, and direct construction through the
+legacy `ports` module remains an explicit compatibility bypass.
+
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
@@ -21,26 +27,37 @@ idempotency.
 - Static and executable no-compile evidence:
   `crates/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json`
   and `crates/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json`.
-- `scripts/verify/verify-tax-fba.mjs` locks provider metadata, port semantics,
-  plan/registry evidence, and fallback metadata.
+- `scripts/verify/verify-tax-fba.mjs` locks provider metadata, root construction,
+  port semantics, plan/registry evidence, and fallback metadata.
+- `scripts/verify/verify-tax-calculation-policy-context.mjs` and
+  `scripts/verify/verify-tax-calculation-local-context.mjs` lock owner policy and
+  post-delegation local context retention without promoting runtime evidence.
 
 ## Open results
 
 1. **Execute runtime contract and fallback evidence.** Run tax calculation
-   through the in-process and remote-adapter profiles before considering FBA
-   promotion.
+   through the canonical in-process and remote-adapter profiles before considering
+   FBA promotion.
    **Depends on:** cart consumers and a provider runtime environment.
-   **Done when:** deadline, typed validation errors, fallback profiles, and
-   provider-id snapshot propagation have executable evidence.
+   **Done when:** deadline, typed validation errors, context retention, fallback
+   profiles, and provider-id snapshot propagation have executable evidence.
 
-2. **Extend tax rules without bypassing the provider boundary.** Add
+2. **Close compatibility and consumer context gaps.** Audit direct callers of
+   `rustok_tax::ports`, migrate production construction to the canonical root
+   wrapper, and retain consumer-side transport context across cart/commerce
+   boundaries.
+   **Depends on:** mounted consumer inventory and transport ownership.
+   **Done when:** production callers cannot bypass canonical construction and
+   transport diagnostics retain the same request context without raw tax payloads.
+
+3. **Extend tax rules without bypassing the provider boundary.** Add
    jurisdiction metadata and rules beyond flat regional rates through the
    module-owned calculation contract.
    **Depends on:** region policy and a defined jurisdiction data model.
    **Done when:** rule selection is deterministic, serialized snapshots retain
    the selected provider, and cart/order totals agree.
 
-3. **Add external engines through a registry, not cart logic.** Introduce
+4. **Add external engines through a registry, not cart logic.** Introduce
    provider registration and external adapters only after their failure,
    fallback, and operational ownership are explicit.
    **Depends on:** approved provider integration and operational credentials.
@@ -49,6 +66,8 @@ idempotency.
 
 ## Verification
 
+- `node scripts/verify/verify-tax-calculation-local-context.mjs`
+- `node scripts/verify/verify-tax-calculation-policy-context.mjs`
 - `npm run verify:tax:fba`
 - `cargo xtask module validate tax`
 - `cargo xtask module test tax`
