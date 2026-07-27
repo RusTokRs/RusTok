@@ -256,8 +256,8 @@ for (const marker of [
   "notification_storefront_group_items_native",
   "notification_storefront_open_native",
   "notification_storefront_group_state_native",
-  "auth.is_service_principal()",
-  "auth.port_actor()",
+  "if !auth.is_human_user_principal()",
+  "let actor = auth.port_actor();",
 ]) {
   requireText(nativeAdapter, marker, `upstream native adapter is missing ${marker}`);
 }
