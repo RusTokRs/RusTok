@@ -42,15 +42,16 @@ pub fn NotificationNavigation() -> impl IntoView {
                 Suspend::new(async move {
                     match unread.await {
                         Ok(count) => {
+                            let unread_count = count.unread_count;
                             let unread_label = with_count(
                                 t(
                                     locale.as_deref(),
                                     "notifications.navigation.unread",
                                     "{count} unread notifications",
                                 ),
-                                count.unread_count,
+                                unread_count,
                             );
-                            let aria_label = if count.unread_count > 0 {
+                            let aria_label = if unread_count > 0 {
                                 format!("{link_label}. {unread_label}")
                             } else {
                                 link_label.clone()
@@ -63,8 +64,8 @@ pub fn NotificationNavigation() -> impl IntoView {
                                     data-notification-navigation="true"
                                 >
                                     <span>{link_label}</span>
-                                    <Show when=move || count.unread_count > 0>
-                                        <NotificationUnreadBadge unread_count=count.unread_count />
+                                    <Show when=move || unread_count > 0>
+                                        <NotificationUnreadBadge unread_count=unread_count />
                                     </Show>
                                 </a>
                             }
