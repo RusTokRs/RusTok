@@ -189,10 +189,11 @@ for (const marker of [
   requireText(crateApi, marker, `Forum CRATE_API is missing ${marker}`);
 }
 for (const marker of [
-  "FORUM-20A-AR provide",
+  "FORUM-20A-AS provide",
   "### Delivered in `FORUM-20AQ`",
   "### Delivered in `FORUM-20AR`",
-  "GraphQL/REST/runtime topic-create audience composition",
+  "### Delivered in `FORUM-20AS`",
+  "Forum trust and Channel membership facts adapters",
 ]) {
   requireText(plan, marker, `canonical Forum plan is missing ${marker}`);
 }

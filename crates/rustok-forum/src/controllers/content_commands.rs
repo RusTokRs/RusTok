@@ -3,13 +3,18 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
+use rustok_api::{
+    AuthContext, Permission, RequestContext, TenantContext, has_any_effective_permission,
+};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
     CreateReplyCommandInput, CreateTopicCommandInput, ReplyResponse, ReplyService, TopicResponse,
     TopicService, UpdateReplyCommandInput, UpdateTopicCommandInput,
+};
+use crate::topic_create_transport::{
+    ForumTopicCreateTransport, topic_create_audience_port_context,
 };
 
 #[utoipa::path(
@@ -28,6 +33,7 @@ pub async fn create_topic(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Json(input): Json<CreateTopicCommandInput>,
 ) -> HttpResult<(StatusCode, Json<TopicResponse>)> {
     ensure_permission(
@@ -35,8 +41,22 @@ pub async fn create_topic(
         Permission::FORUM_TOPICS_CREATE,
         "Permission denied: forum_topics:create required",
     )?;
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
-        .create_command(tenant.id, forum_security(&auth), input)
+    let audience_context = topic_create_audience_port_context(
+        ForumTopicCreateTransport::Rest,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        tenant.default_locale.as_str(),
+    )
+    .map_err(command_error)?;
+    let topic = runtime
+        .topic_service()
+        .create_command_with_audience_context(
+            tenant.id,
+            forum_security(&auth),
+            audience_context,
+            input,
+        )
         .await
         .map_err(command_error)?;
     Ok((StatusCode::CREATED, Json(topic)))

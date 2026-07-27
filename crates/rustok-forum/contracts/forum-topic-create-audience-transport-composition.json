@@ -7,6 +7,7 @@
   "graphql_runtime_file": "crates/rustok-forum/src/graphql/runtime_data.rs",
   "graphql_module_file": "crates/rustok-forum/src/graphql/mod.rs",
   "graphql_legacy_mutation_file": "crates/rustok-forum/src/graphql/mutation.rs",
+  "graphql_types_file": "crates/rustok-forum/src/graphql/types.rs",
   "graphql_command_mutation_file": "crates/rustok-forum/src/graphql/content_commands.rs",
   "http_runtime_file": "crates/rustok-forum/src/controllers/mod.rs",
   "http_legacy_create_file": "crates/rustok-forum/src/controllers/topics.rs",

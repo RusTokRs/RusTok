@@ -24,6 +24,7 @@ pub mod widgets;
 pub struct ForumHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    audience_facts: Option<crate::SharedForumAudienceFactsPort>,
 }
 
 impl ForumHttpRuntime {
@@ -33,6 +34,17 @@ impl ForumHttpRuntime {
 
     fn event_bus(&self) -> TransactionalEventBus {
         self.event_bus.clone()
+    }
+
+    fn topic_service(&self) -> crate::TopicService {
+        match self.audience_facts.clone() {
+            Some(facts) => crate::TopicService::with_audience_facts(
+                self.db_clone(),
+                self.event_bus(),
+                facts,
+            ),
+            None => crate::TopicService::new(self.db_clone(), self.event_bus()),
+        }
     }
 }
 
@@ -44,6 +56,7 @@ impl ForumHttpRuntime {
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
+            audience_facts: runtime.shared_get::<crate::SharedForumAudienceFactsPort>(),
         })
     }
 }

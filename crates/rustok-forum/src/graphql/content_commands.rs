@@ -16,8 +16,14 @@ use crate::{
     ForumQuoteTargetKindInput, ReplyResponse, ReplyService, TopicResponse, TopicService,
     UpdateReplyCommandInput, UpdateTopicCommandInput,
 };
+use crate::topic_create_transport::{
+    ForumTopicCreateTransport, topic_create_audience_port_context,
+};
 
-use super::{GqlForumQuoteReferenceInput, GqlForumQuoteTargetKind, GqlForumReply, GqlForumTopic};
+use super::{
+    ForumGraphqlRuntimeData, GqlForumQuoteReferenceInput, GqlForumQuoteTargetKind, GqlForumReply,
+    GqlForumTopic,
+};
 
 const MODULE_SLUG: &str = "forum";
 
@@ -91,10 +97,23 @@ impl ForumContentCommandMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let topic = TopicService::new(db.clone(), event_bus.clone())
-            .create_command(
+        let audience_context = topic_create_audience_port_context(
+            ForumTopicCreateTransport::Graphql,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+        let topic = runtime
+            .topic_service(db.clone(), event_bus.clone())
+            .create_command_with_audience_context(
                 tenant_id,
                 security(&auth),
+                audience_context,
                 CreateTopicCommandInput {
                     locale: input.locale,
                     category_id: input.category_id,

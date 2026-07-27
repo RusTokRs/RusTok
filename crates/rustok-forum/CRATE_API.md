@@ -16,6 +16,7 @@
 - `TopicService::create_command_with_audience_context(tenant_id, security, PortContext, CreateTopicCommandInput) -> TopicResponse`
 - `TopicService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> TopicService`
 - `pub struct ForumTopicCreateAudienceAuthorizationService`, `ForumTopicCreateAudienceAuthorization`
+- `pub struct graphql::ForumGraphqlRuntimeData`; `graphql::attach_schema_data(GraphqlRuntimeInputs)`
 - `TopicService::update_command(tenant_id, topic_id, security, UpdateTopicCommandInput) -> TopicResponse`
 - `ReplyService::create_command(tenant_id, security, topic_id, CreateReplyCommandInput) -> ReplyResponse`
 - `ReplyService::update_command(tenant_id, reply_id, security, UpdateReplyCommandInput) -> ReplyResponse`
@@ -95,8 +96,10 @@
 - Categories without a topic-create layer retain historical behavior; local role and explicit-user decisions require no owner facts.
 - Unresolved trust, Channel, or Groups selectors require an exact caller `PortContext` and an injected `SharedForumAudienceFactsPort`; missing composition fails closed.
 - Authorization runs before topic, translation, relation, counter, user-stat, and domain-event writes and returns one generic public denial.
-- GraphQL, REST, and server runtime context/facts composition remain a follow-up after `FORUM-20AR`.
-- Run `node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs` and `node scripts/verify/verify-forum-topic-create-audience-enforcement.mjs` after changing this boundary.
+- `FORUM-20AS` composes GraphQL and REST topic-create calls through exact authenticated `PortContext` values and consumes the host-published optional facts port without adding identity to DTOs.
+- Both legacy and inline-quote topic-create transports preserve the owner gate before writes; categories with local decisions remain compatible when the provider is absent.
+- The Forum manifest publishes `graphql::attach_schema_data`, while the HTTP router consumes the same `SharedForumAudienceFactsPort` from `HostRuntimeContext`.
+- Run `node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs`, `node scripts/verify/verify-forum-topic-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-topic-create-audience-transport-composition.mjs` after changing this boundary.
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.

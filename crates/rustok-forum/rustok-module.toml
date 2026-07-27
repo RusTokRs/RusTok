@@ -22,6 +22,7 @@ entry_type = "ForumModule"
 [provides.graphql]
 query = "graphql::ForumQuery"
 mutation = "graphql::ForumMutation"
+runtime_data_factory = "graphql::attach_schema_data"
 
 [provides.http]
 axum_router = "controllers::axum_router"

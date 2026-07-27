@@ -16,6 +16,9 @@ use crate::{
     CreateTopicInput, ListTopicsFilter, ModerationService, SubscriptionService, TopicListItem,
     TopicResponse, TopicService, UpdateTopicInput, VoteService,
 };
+use crate::topic_create_transport::{
+    ForumTopicCreateTransport, topic_create_audience_port_context,
+};
 
 #[derive(Debug, Clone, Copy, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
@@ -195,6 +198,7 @@ pub async fn create_topic(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Json(input): Json<CreateTopicInput>,
 ) -> HttpResult<(StatusCode, Json<TopicResponse>)> {
     ensure_forum_permission(
@@ -203,8 +207,17 @@ pub async fn create_topic(
         "Permission denied: forum_topics:create required",
     )?;
 
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
-        .create(tenant.id, forum_security(&auth), input)
+    let audience_context = topic_create_audience_port_context(
+        ForumTopicCreateTransport::Rest,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        tenant.default_locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = runtime
+        .topic_service()
+        .create_with_audience_context(tenant.id, forum_security(&auth), audience_context, input)
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok((StatusCode::CREATED, Json(topic)))

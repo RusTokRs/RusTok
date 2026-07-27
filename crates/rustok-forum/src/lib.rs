@@ -25,6 +25,7 @@ mod seo_targets;
 pub mod services;
 pub mod state_machine;
 pub mod subscription;
+mod topic_create_transport;
 pub mod visibility;
 
 pub use audience::{

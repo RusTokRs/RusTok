@@ -44,6 +44,7 @@ const transport = read(contract.transport_context_file ?? "");
 const graphqlRuntime = read(contract.graphql_runtime_file ?? "");
 const graphqlModule = read(contract.graphql_module_file ?? "");
 const graphqlLegacy = read(contract.graphql_legacy_mutation_file ?? "");
+const graphqlTypes = read(contract.graphql_types_file ?? "");
 const graphqlCommand = read(contract.graphql_command_mutation_file ?? "");
 const httpRuntime = read(contract.http_runtime_file ?? "");
 const httpLegacy = read(contract.http_legacy_create_file ?? "");
@@ -238,7 +239,7 @@ if (
 }
 
 const legacyInput = between(
-  graphqlLegacy,
+  graphqlTypes,
   "pub struct CreateForumTopicInput",
   "pub struct UpdateForumTopicInput",
   "legacy GraphQL topic-create input",
