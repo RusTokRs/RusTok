@@ -86,7 +86,7 @@ the public GraphQL envelope.
 ## Static evidence
 
 The existing
-` scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs` guard was
+`scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs` guard was
 strengthened rather than adding a duplicate verifier. It now guards:
 
 - stable GraphQL boundary plus truthful customer owner and exact owner operation;
