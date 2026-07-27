@@ -63,12 +63,22 @@ pub fn load_notification_storefront_state() -> NotificationStorefrontState {
 
 #[cfg(test)]
 mod tests {
-    use super::{selected_navigation_transport_path, NotificationNavigationTransportContext};
+    use super::{NotificationNavigationTransportContext, selected_navigation_transport_path};
     use rustok_ui_transport::UiTransportPath;
 
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     #[test]
     fn default_package_profile_selects_graphql_for_headless_navigation() {
         assert_eq!(selected_navigation_transport_path(), UiTransportPath::Graphql);
+    }
+
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    #[test]
+    fn integrated_package_profile_selects_native_navigation() {
+        assert_eq!(
+            selected_navigation_transport_path(),
+            UiTransportPath::NativeServer
+        );
     }
 
     #[test]
