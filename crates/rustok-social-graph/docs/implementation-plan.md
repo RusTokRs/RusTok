@@ -193,24 +193,32 @@ block or mute.
 
 - optional feature `index-consumer` adds `rustok-iggy` only when the durable
   projection runtime is explicitly selected and implies feature `index`;
+- `SocialGraphIndexProjector` is transport-neutral and owns the in-memory schema,
+  Index-owned `PostgresSchemaRegistrationStore`, and `PostgresMutationStore`;
+- for each relevant tenant envelope, the projector persists or exactly recognizes
+  `social_graph_relation_index_schema()` before the mutation can rely on its foreign key;
+- persisted registration is exact-version idempotent and fail-closed for nil tenant,
+  contract drift, lower unregistered version, retired schema, unsupported backend,
+  malformed state, or database failure;
+- Social Graph never imports Index entities or writes `index_schemas` directly;
 - `SocialGraphIndexConsumer::open(...)` opens persistent group
   `rustok-social-graph-index` on the existing sealed-event `domain` topic;
-- the consumer registers `social_graph_relation_index_schema()` before applying
-  any delivery and owns one `PostgresMutationStore` over the supplied Index database;
-- only `ContractEventPayload::SocialGraphRelation` creates a mutation; unrelated
-  sealed event families are acknowledged without projection by this dedicated group;
+- only `ContractEventPayload::SocialGraphRelation` reaches schema registration and
+  mutation apply; unrelated sealed families are acknowledged without projection;
 - the envelope event id becomes the stable Index inbox delivery id and the relation
   revision remains the source version;
-- `process_next(&mut self)` serializes receive, apply, and acknowledgement for one
-  cursor so another message cannot overtake an outstanding delivery;
+- `process_next(&mut self)` serializes receive, tenant schema registration, mutation
+  apply/terminal recognition, and acknowledgement for one cursor;
 - `Applied`, `Duplicate`, and `StaleIgnored` are durable terminal Index outcomes;
-  broker acknowledgement happens only after one of those outcomes is committed;
-- failed validation, storage, or broker acknowledgement remains replayable and does
-  not advance the cursor;
+  broker acknowledgement happens only after schema and mutation outcomes commit;
+- failed validation, schema registration, mutation storage, or broker acknowledgement
+  remains replayable and does not advance the cursor;
+- SQLite projector evidence covers schema insertion, active apply, exact duplicate,
+  newer inactive tombstone, and one persisted tenant schema;
 - bounded Social Graph replay republishes the same sealed facts and therefore uses
-  the same inbox dedupe/source-version path for projection drift repair;
+  the same schema/inbox/source-version path for projection drift repair;
 - host lifecycle composition, retry/backoff, DLQ policy, shutdown/readiness, and
-  retained multi-replica evidence remain pending.
+  retained PostgreSQL/multi-replica evidence remain pending.
 
 ## Receipt retention and rollout contract
 
@@ -240,11 +248,11 @@ block or mute.
 
 - compose the delivered Index consumer into host lifecycle with explicit default-off
   enablement, readiness, shutdown, bounded retry/backoff, and reviewed DLQ policy;
-- prove projection drift repair against bounded owner replay/rescan and show that
-  Profiles privacy continues to use authoritative owner ports;
+- prove PostgreSQL concurrent schema registration and projection drift repair against
+  bounded owner replay/rescan while Profiles privacy stays on authoritative owner ports;
 - configure deployment retention window/cadence and collect CLI live evidence;
 - collect PostgreSQL receipt/event concurrency, cleanup, replay-window, retention,
-  bounded replay, relay, Index apply/ack, restart/redelivery, and rollback evidence;
+  bounded replay, relay, Index register/apply/ack, restart/redelivery, and rollback evidence;
 - friendship request/accept/remove lifecycle;
 - broader profile directory/follow UX, custom lists, block/mute management
   transports, and moderation/admin repair commands;
@@ -257,6 +265,9 @@ block or mute.
 cargo fmt --all -- --check
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-events --all-targets
 cargo test -p rustok-events --test social_graph_contracts -- --nocapture
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets
+cargo test -p rustok-index schema_registration --lib -- --nocapture
+node scripts/verify/verify-index-schema-registration.mjs
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets
