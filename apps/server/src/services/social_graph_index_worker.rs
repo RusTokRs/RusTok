@@ -49,12 +49,10 @@ impl SocialGraphIndexWorkerConfig {
             ));
         }
 
-        let base_backoff = Duration::from_millis(
-            settings.events.relay_retry_policy.base_backoff_ms,
-        );
-        let max_backoff = Duration::from_millis(
-            settings.events.relay_retry_policy.max_backoff_ms,
-        );
+        let base_backoff =
+            Duration::from_millis(settings.events.relay_retry_policy.base_backoff_ms);
+        let max_backoff =
+            Duration::from_millis(settings.events.relay_retry_policy.max_backoff_ms);
         if base_backoff.is_zero() || max_backoff < base_backoff {
             return Err(Error::Message(
                 "Social Graph Index consumer retry backoff must be positive and bounded"
@@ -193,7 +191,10 @@ async fn social_graph_index_worker_loop(
 ) {
     loop {
         if *stop_rx.borrow() {
-            tracing::info!(worker = "social_graph_index", "Worker received shutdown signal");
+            tracing::info!(
+                worker = "social_graph_index",
+                "Worker received shutdown signal"
+            );
             shutdown_transport(&transport).await;
             return;
         }
@@ -209,7 +210,10 @@ async fn social_graph_index_worker_loop(
             }
         };
         let Some(received) = received else {
-            tracing::info!(worker = "social_graph_index", "Worker stopped before next receive");
+            tracing::info!(
+                worker = "social_graph_index",
+                "Worker stopped before next receive"
+            );
             shutdown_transport(&transport).await;
             return;
         };
@@ -322,9 +326,7 @@ async fn process_delivery(
                         "Social Graph Index poison delivery moved to DLQ and acknowledged"
                     );
                     return Ok(DeliveryCompletion::Completed(
-                        SocialGraphIndexProcessOutcome::IgnoredUnrelated {
-                            event_type: format!("dlq:{error_code}"),
-                        },
+                        SocialGraphIndexProcessOutcome::DeadLettered { error_code },
                     ));
                 }
 
@@ -418,7 +420,9 @@ fn optional_u64_env(name: &str, default: u64) -> Result<u64> {
             .parse::<u64>()
             .map_err(|error| Error::Message(format!("{name} is invalid: {error}"))),
         Err(env::VarError::NotPresent) => Ok(default),
-        Err(error) => Err(Error::Message(format!("failed to read {name}: {error}"))),
+        Err(error) => Err(Error::Message(format!(
+            "failed to read {name}: {error}"
+        ))),
     }
 }
 
