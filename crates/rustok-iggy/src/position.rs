@@ -1,6 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use iggy::prelude::{Client, Consumer, ConsumerKind, Identifier, IggyClient};
+use iggy::prelude::{
+    Client, Consumer, ConsumerKind, ConsumerOffsetClient, Identifier, IggyClient, TopicClient,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
