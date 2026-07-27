@@ -47,17 +47,32 @@ relation state.
 - Relay and consumer reuse the exact `Arc<IggyTransport>` created by `EventRuntime`.
 - Shared `StopHandle` controls graceful shutdown and the worker handle participates in
   readiness only while explicitly enabled.
-- Projection failures use bounded retry. Permanent/exhausted failures may publish exact
-  original bytes to DLQ only before a durable Index result.
-- DLQ publication and source acknowledgement are staged. Once Index or DLQ has a
-  terminal result, the worker retries acknowledgement only.
+- Projection, DLQ publication, and source acknowledgement use bounded retry.
+- Migration `m20260727_000004_create_index_dlq_receipts` binds a poison decision to
+  tenant/consumer-group/event identity, exact source coordinates, exact broker bytes,
+  stable error code, and projection attempts.
+- Receipt states durably reserve and lease publication, then record `published` before
+  source ack. The consumer checks them before projection.
+- A `published`/`acknowledged` redelivery skips Index projection and DLQ publication and
+  enters acknowledgement-only recovery. An unfinished receipt remains retryable DLQ
+  work and cannot cross back into mutation apply.
+- `publish_consumed_to_dlq` returns success only after broker publication and the
+  durable `published` transition. The worker records fresh and previously published
+  outcomes separately.
+- Ack failure after successful publication is therefore replay-safe without DLQ
+  republish. Receipt acknowledgement is best-effort bookkeeping after the source
+  broker commit.
+- Broker success followed by process/DB failure before the `published` transition is
+  still an explicit confirmation ambiguity; physical broker exactly-once is not a
+  contract without configured deduplication or broker/DB transaction evidence.
 - Successfully decoded deliveries retain exact raw bytes. Undecodable bytes remain
   unacknowledged pending a connector-level poison-message contract.
 - Missing/stopped/invalid enabled worker state reaches `runtime_guardrails`,
   `/health/ready`, and aggregate guardrail metrics. Disabled execution is healthy.
-- Shared bounded Prometheus delivery metrics cover received/terminal outcomes, retries,
-  stage/error failures, DLQ publication, receive-to-ack duration, worker lifecycle,
-  in-flight state/timestamp, and last success.
+- Shared bounded Prometheus delivery metrics cover received/terminal outcomes,
+  projection/DLQ/ack retries, stage/error failures, DLQ publish classifications,
+  receive-to-ack duration, worker lifecycle, in-flight state/timestamp, and last
+  success.
 - A read-only Iggy observer connects to the already-running configured endpoint and
   reads every `domain` partition plus the persistent group checkpoint. It does not
   consume events, store offsets, publish, acknowledge, or manage a broker process.
@@ -70,7 +85,8 @@ relation state.
 - Observer failures are retried independently and do not stop projection or enter the
   projection worker readiness contract.
 - Bounded Social Graph replay uses the same schema/inbox/source-version path for repair.
-- Profiles privacy remains on synchronous authoritative Social Graph ports.
+- Profiles privacy remains on synchronous authoritative Social Graph ports and must not
+  authorize from Index, DLQ receipts, or lag.
 
 ## FFA/FBA boundary
 
@@ -94,14 +110,15 @@ relation state.
 - [x] Add generic Index conversion and Index-owned tenant schema registration.
 - [x] Add persistent result-first Index consumption with duplicate/stale recognition.
 - [x] Add default-off host startup, strict delivery gating, one shared Iggy connector,
-  shutdown, bounded retry, staged exact-byte DLQ-before-ack, and acknowledgement-only
-  recovery.
+  shutdown, bounded projection/DLQ/ack retry, durable exact-byte DLQ receipts, and
+  acknowledgement-only recovery.
 - [x] Add enabled-worker readiness and aggregate guardrail metrics.
 - [x] Add bounded dedicated remote-consumer delivery telemetry.
 - [x] Add read-only every-partition committed/high-watermark observation and
   completeness-gated total/max lag.
 - [x] Add source guards for ordering, connector ownership, readiness, telemetry labels,
-  broker-backed lag origin, incomplete-snapshot clearing, and foreign-table isolation.
+  broker-backed lag origin, incomplete-snapshot clearing, durable DLQ identity/state,
+  and foreign-table isolation.
 
 ## Open results
 
@@ -110,17 +127,21 @@ relation state.
 2. **Keep event types, registry, release artifacts, and consumer imports synchronized.**
    New families require direct `rustok-events` imports, semantic coverage, and owner
    recovery guidance.
-3. **Prove remote cursor and position recovery.** Execute real-Iggy restart, redelivery,
-   ack failure, DLQ failure, connector loss, observer reconnect, shutdown, TLS/auth,
-   rebalance, concurrent snapshot movement, and multi-replica ownership scenarios.
-4. **Prove Index repair and concurrency.** Execute PostgreSQL concurrent schema
-   registration/mutation, create drift, and repair through bounded owner replay/rescan
-   while privacy remains on owner ports.
-5. **Close the DLQ acknowledgement window.** Decide whether publish-success/source-ack
-   failure needs a durable owner receipt or another idempotent DLQ identity. Define a
-   connector poison shape for undecodable deliveries.
-6. **Synchronize recovery guidance.** Outbox, replay, reindex, lag, and DLQ runbooks must
-   name exact schemas and avoid transport-owned payload copies.
+3. **Prove remote cursor, receipt, and position recovery.** Execute real-Iggy restart,
+   redelivery, ack failure, DLQ failure, connector loss, observer reconnect, shutdown,
+   TLS/auth, rebalance, concurrent snapshot movement, and multi-replica ownership.
+4. **Exercise the remaining DLQ confirmation ambiguity.** Fail after broker publication
+   but before the durable `published` mark and decide whether production requires Iggy
+   deduplication, a broker transaction, or a DB-owned DLQ/outbox relay before claiming
+   physical exactly-once.
+5. **Prove Index repair and concurrency.** Execute PostgreSQL concurrent schema
+   registration/mutation/DLQ receipt claims, create drift, and repair through bounded
+   owner replay/rescan while privacy remains on owner ports.
+6. **Define undecodable poison handling.** Add a connector shape that preserves exact
+   raw bytes and source coordinates before envelope construction without moving owner
+   policy into the transport.
+7. **Synchronize recovery guidance.** Outbox, replay, reindex, lag, receipt retention,
+   and DLQ runbooks must name exact schemas and avoid transport-owned payload copies.
 
 ## Verification
 
@@ -135,6 +156,7 @@ relation state.
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
 - `cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture`
+- `cargo test -p rustok-social-graph --features index-consumer index_dlq_receipt::tests -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
 - `cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture`
 - `cargo test -p rustok-server runtime_guardrails --lib -- --nocapture`
@@ -144,8 +166,9 @@ relation state.
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
+- `node scripts/verify/verify-social-graph-index-dlq-receipts.mjs`
 - `node scripts/verify/verify-runtime-consumer-metrics.mjs`
-- Real-broker multi-replica restart/recovery/position and PostgreSQL evidence.
+- Real-broker multi-replica restart/recovery/position/receipt and PostgreSQL evidence.
 
 These commands and scenarios remain maintainer-run and were not executed manually in
 this slice.
@@ -158,13 +181,15 @@ this slice.
 4. Consumers persist or recognize tenant schema and owner result before ack.
 5. Source consumers never write another owner's schema/projection tables directly.
 6. Reuse the host-owned connector; do not create another bundled transport in a worker.
-7. Permitted DLQ publication precedes source ack; terminal-result ack failure is
-   acknowledgement-only recovery.
-8. Enabled durable workers participate in readiness and bounded telemetry; disabled
+7. Permitted DLQ publication and durable terminal receipt precede source ack;
+   terminal-result ack failure is acknowledgement-only recovery.
+8. A durable receipt is checked before projection and binds exact source coordinates and
+   bytes; do not claim physical broker exactly-once from the receipt alone.
+9. Enabled durable workers participate in readiness and bounded telemetry; disabled
    optional workers do not degrade the host.
-9. Publish lag only from every-partition broker checkpoints/high-watermarks with an
-   explicit completeness signal; never infer it from event age or one offset.
-10. Position observation is read-only and cannot become event execution or owner policy.
-11. Keep producer storage authoritative for bounded repair.
-12. Update module docs, event flow, and recovery guidance with every contract change.
-13. Keep the central plan registry limited to status and nearest priority.
+10. Publish lag only from every-partition broker checkpoints/high-watermarks with an
+    explicit completeness signal; never infer it from event age or one offset.
+11. Position observation is read-only and cannot become event execution or owner policy.
+12. Keep producer storage authoritative for bounded repair.
+13. Update module docs, event flow, and recovery guidance with every contract change.
+14. Keep the central plan registry limited to status and nearest priority.
