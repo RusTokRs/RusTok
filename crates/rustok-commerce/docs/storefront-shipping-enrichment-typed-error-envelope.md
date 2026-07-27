@@ -4,13 +4,13 @@ Status: source-ready / unvalidated.
 
 ## Scope
 
-This slice continues the open ecommerce correlation-safe mapper and non-`PortError`
-public-envelope work. It covers the mounted storefront GraphQL helper that enriches a
-cart's delivery groups with currently available shipping options.
+This slice continues the open ecommerce correlation-safe mapper, topology, and
+non-`PortError` public-envelope work. It covers the mounted storefront GraphQL helper
+that enriches a cart's delivery groups with currently available shipping options.
 
-The broad ecommerce mapper result remains open. This source change does not claim that
-all GraphQL, REST, native, owner-port, compatibility, or remote-adapter boundaries are
-complete.
+The broad ecommerce mapper and topology results remain open. This source change does not
+claim that all GraphQL, REST, native, owner-port, compatibility, host-composition, or
+remote-adapter boundaries are complete.
 
 ## Mounted cutover
 
@@ -20,28 +20,31 @@ helper module. The cart mutation resolver continues to call `enrich_storefront_c
 with the same arguments and receives the same `async_graphql::Result<CartResponse>`
 contract.
 
-The mounted helper now calls `enrich_cart_delivery_groups_typed` directly. It no longer
-passes the typed fulfillment result through the compatibility conversion
-`CommerceError::Validation(error.to_string())` or through an intermediate GraphQL error
-containing owner text.
+The mounted helper now constructs a cart-scoped read `PortContext` and calls
+`ShippingOptionReadPort::list_shipping_option_projections`. It no longer constructs
+`FulfillmentService` or calls the compatibility conversion
+`CommerceError::Validation(error.to_string())`.
 
-Shipping-option listing, currency filtering, public-channel visibility, shipping-profile
-compatibility, selected-option adoption, delivery-group mutation, and success response
-shape remain in the existing owner-provided typed implementation.
+The owner returns complete `ShippingOptionResponse` projections. Commerce applies the
+existing currency, public-channel, shipping-profile, selected-option, and delivery-group
+policies through the pure `enrich_cart_delivery_groups_from_options` function. The
+existing fulfillment-service compatibility adapter delegates to the same pure function,
+so its success behavior remains aligned.
 
 ## Typed owner outcomes
 
-Every current `FulfillmentError` variant is classified explicitly:
+Every `PortErrorKind` is classified explicitly:
 
 - validation;
-- shipping option not found;
-- fulfillment not found;
-- lifecycle conflict;
-- storage unavailable.
+- not found;
+- conflict;
+- forbidden;
+- unavailable or timeout;
+- invariant violation.
 
-The fulfillment database variant is retained as a typed technical cause for
-error-severity diagnostics. Ordinary validation, not-found, and lifecycle outcomes are
-classified without adding their raw owner messages to warning fields.
+Technical unavailable, timeout, and invariant causes are retained for error-severity
+diagnostics. Ordinary validation, not-found, conflict, and forbidden outcomes are
+classified without adding owner messages to warning fields.
 
 ## Stable public policy
 
@@ -61,17 +64,22 @@ shipping option details, and cart projections are not copied into the public mes
 The typed boundary records:
 
 - truthful owner `rustok_fulfillment`;
-- owner operation `list_shipping_options`;
+- owner operation `list_shipping_option_projections`;
 - stable internal code, kind, and retryability;
-- tenant and cart UUIDs;
+- correlation id, tenant, actor, channel length, locale length, and deadline;
+- cart UUID;
 - line-item and delivery-group counts;
 - character lengths for currency code, effective channel slug, requested locale, and
   tenant default locale;
 - stable public code and retryability;
 - boundary `commerce_graphql_storefront_shipping_enrichment`.
 
-Only the typed fulfillment database cause is attached to the technical error event.
-Ordinary owner rejections use warning severity without a raw owner-error payload field.
+Only typed technical owner causes are attached to error-severity events. Ordinary owner
+rejections use warning severity without a raw owner-error payload field.
+
+The fulfillment owner port independently retains owner operation, correlation, tenant,
+actor, bounded locale/channel facts, deadline, stable owner code/kind/retryability, and
+the database cause only for storage failures.
 
 ## Compatibility
 
@@ -81,27 +89,33 @@ symbol is overridden by the typed implementation. Scoped `dead_code` allowances 
 that intentionally retained compatibility source from breaking `-Dwarnings` until a
 separate retirement task has compile and upgraded-path evidence.
 
+The service-based `enrich_cart_delivery_groups_typed` adapter remains available to
+REST/native and compatibility callers. It delegates successful projection to the same
+pure function but is no longer called by the mounted GraphQL helper.
+
 ## Open boundaries
 
 This slice does not:
 
-- replace direct `FulfillmentService` construction inside the typed owner adapter with
-  host-composed ports;
+- inject `ShippingOptionReadPort` from the application host rather than using the root
+  in-process factory;
 - change REST storefront shipping enrichment;
 - add native transport parity;
 - remove the compatibility `CommerceError::Validation(error.to_string())` source;
+- retire the fulfillment-owned service adapter;
 - provide runtime, remote-profile, restart, or multi-database evidence;
-- promote ecommerce FBA or FFA status;
-- close the broad mapper and public-envelope work item.
+- promote ecommerce or fulfillment FBA/FFA status;
+- close the broad mapper, topology, and public-envelope work items.
 
 ## Verification
 
 Suggested focused checks:
 
 ```bash
+node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs
 node scripts/verify/verify-commerce-graphql-shipping-enrichment-typed-error.mjs
 node scripts/verify/verify-commerce-storefront-shipping-enrichment-context.mjs
-node scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs
+cargo check -p rustok-fulfillment --lib
 cargo check -p rustok-commerce --lib
 ```
 

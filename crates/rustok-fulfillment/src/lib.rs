@@ -12,6 +12,7 @@ pub mod migrations;
 pub mod ports;
 pub mod providers;
 pub mod services;
+mod shipping_option_read;
 pub mod status;
 
 pub use checkout_execution::{
@@ -26,6 +27,11 @@ pub use dto::*;
 pub use entities::*;
 pub use ports::*;
 pub use providers::*;
+pub use shipping_option_read::{
+    InProcessShippingOptionReadPort, ListShippingOptionProjectionsRequest,
+    ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
+    in_process_shipping_option_read_port,
+};
 pub use status::*;
 
 pub use error::{FulfillmentError, FulfillmentResult};
