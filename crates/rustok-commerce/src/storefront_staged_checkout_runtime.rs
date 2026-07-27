@@ -18,6 +18,8 @@ use crate::storefront_checkout_runtime::{
 };
 
 const STOREFRONT_STAGED_CHECKOUT_OWNER: &str = "rustok_commerce.recovering_staged_checkout";
+const STOREFRONT_STAGED_CHECKOUT_CART_OWNER: &str = "rustok_cart";
+const STOREFRONT_STAGED_CHECKOUT_CUSTOMER_OWNER: &str = "rustok_customer";
 const STOREFRONT_STAGED_CHECKOUT_BOUNDARY: &str = "commerce_storefront_staged_checkout_runtime";
 
 #[derive(Debug, Error)]
@@ -148,6 +150,7 @@ pub async fn complete_storefront_checkout_input(
         .map_err(|error| {
             map_owner_port_error(
                 &cart_port_context,
+                STOREFRONT_STAGED_CHECKOUT_CART_OWNER,
                 "read_storefront_cart",
                 error,
                 StorefrontStagedCheckoutRuntimeError::CartAccess,
@@ -292,6 +295,7 @@ async fn resolve_customer_id(
         Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
         Err(error) => Err(map_owner_port_error(
             &context,
+            STOREFRONT_STAGED_CHECKOUT_CUSTOMER_OWNER,
             "read_customer_projection_by_user",
             error,
             StorefrontStagedCheckoutRuntimeError::CartAccess,
@@ -325,25 +329,68 @@ fn cart_context(
 
 fn map_owner_port_error(
     context: &PortContext,
+    owner: &'static str,
     operation: &'static str,
     error: PortError,
     fallback: StorefrontStagedCheckoutRuntimeError,
 ) -> StorefrontStagedCheckoutRuntimeError {
-    tracing::error!(
-        error = ?error,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        operation,
-        owner_code = %error.code,
-        owner_kind = ?error.kind,
-        "storefront checkout owner port failed"
-    );
-    match error.kind {
+    let public = match &error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable
         }
         _ => fallback,
+    };
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner,
+                operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                owner_retryable = error.retryable,
+                public_code = public.public_code(),
+                public_retryable = public.retryable(),
+                boundary = STOREFRONT_STAGED_CHECKOUT_BOUNDARY,
+                "storefront checkout owner port failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner,
+                operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                owner_retryable = error.retryable,
+                public_code = public.public_code(),
+                public_retryable = public.retryable(),
+                boundary = STOREFRONT_STAGED_CHECKOUT_BOUNDARY,
+                "storefront checkout owner port was rejected"
+            );
+        }
     }
+    public
 }
 
 fn map_checkout_error(
