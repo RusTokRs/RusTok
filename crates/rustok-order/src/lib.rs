@@ -15,8 +15,10 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod analytics;
 mod checkout_compensation;
+mod checkout_compensation_local_context;
 pub mod checkout_order_recovery;
-pub mod checkout_owner_context;
+#[path = "checkout_owner_context.rs"]
+mod checkout_owner_context_impl;
 mod checkout_payment_settlement;
 pub mod dto;
 pub mod entities;
@@ -26,15 +28,27 @@ pub mod ports;
 pub mod services;
 pub mod status;
 
+pub mod checkout_owner_context {
+    pub use crate::checkout_compensation_local_context::{
+        InProcessCheckoutOrderCompensationPort, in_process_checkout_order_compensation_port,
+    };
+    pub use crate::checkout_owner_context_impl::{
+        InProcessCheckoutOrderPaymentSettlementPort,
+        in_process_checkout_order_payment_settlement_port,
+    };
+}
+
 pub use analytics::{OrderStatsSnapshot, load_order_stats_snapshot};
 pub use checkout_compensation::{
     CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest,
     CheckoutOrderCompensationSnapshot,
 };
+pub use checkout_compensation_local_context::{
+    InProcessCheckoutOrderCompensationPort, in_process_checkout_order_compensation_port,
+};
 pub use checkout_order_recovery::*;
-pub use checkout_owner_context::{
-    InProcessCheckoutOrderCompensationPort, InProcessCheckoutOrderPaymentSettlementPort,
-    in_process_checkout_order_compensation_port,
+pub use checkout_owner_context_impl::{
+    InProcessCheckoutOrderPaymentSettlementPort,
     in_process_checkout_order_payment_settlement_port,
 };
 pub use checkout_payment_settlement::{
