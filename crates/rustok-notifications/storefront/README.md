@@ -36,23 +36,26 @@ When more rows remain, the UI reports that the caller should repeat the action a
 authoritative refresh.
 
 The unread count, grouped summaries, and exact-group item pages use one selected read
-transport facade:
+transport facade. Fresh open authorization now joins the same compile-profile selection
+policy:
 
 - SSR and hydrate builds select the native server functions;
 - CSR and headless builds select the module-owned GraphQL queries through
   `rustok-graphql`;
-- the existing no-context UI read functions remain compatibility wrappers that resolve
-  current token and tenant transport credentials before calling the selected facade;
+- the existing no-context UI functions remain compatibility wrappers that resolve current
+  token and tenant transport credentials before calling the selected facade;
 - explicit-context selected functions remain available to headless consumers;
+- raw native functions remain available with explicit `_native` names;
 - neither transport request accepts tenant, recipient, or user identity;
 - transport selection is compile-profile based and does not attempt cross-path fallback.
 
 The owner GraphQL schema exposes `notificationInboxUnreadCount`,
-`notificationInboxGroupSummaries`, and `notificationInboxGroupItems`. Manifest-generated
-schema composition invokes `graphql::attach_schema_data`, which reuses the host database,
-materialized `NotificationSourceRegistry`, existing `NotificationRecipientPolicyRuntime`,
-and `NotificationInboxStorefrontPort`. It does not create a parallel inbox service,
-registry, policy, or direct storefront database query.
+`notificationInboxGroupSummaries`, `notificationInboxGroupItems`, and
+`notificationInboxAuthorizeOpen`. Manifest-generated schema composition invokes
+`graphql::attach_schema_data`, which reuses the host database, materialized
+`NotificationSourceRegistry`, existing `NotificationRecipientPolicyRuntime`, and
+`NotificationInboxStorefrontPort`. It does not create a parallel inbox service, registry,
+policy, or direct storefront database query.
 
 Grouped GraphQL reads preserve the same owner semantics as native reads:
 
@@ -67,6 +70,15 @@ Grouped GraphQL reads preserve the same owner semantics as native reads:
   and bounded template data as ordered key/value fields rather than arbitrary JSON;
 - unavailable and invariant failures use stable sanitized public envelopes.
 
+Fresh GraphQL open authorization accepts only one bounded non-nil notification UUID after
+human-user, tenant, and module admission. The owner port then rechecks notification
+ownership, current recipient policy, and current source target authorization. The GraphQL
+wire returns a typed `ALLOWED` or `UNAVAILABLE` decision. A route is present only for
+`ALLOWED`, and it is the bounded owner route returned by the source provider. Missing, foreign, suppressed, or no-longer-openable notifications all return the same
+`UNAVAILABLE` decision rather than an existence oracle. The storefront rejects an
+`ALLOWED` response that omits its route and navigates only after the selected authorization
+function returns `Allowed`.
+
 `NotificationNavigation` is a module-owned no-prop header action registered through the
 storefront manifest. It builds the localized inbox route through
 `UiRouteContext::module_route_base("notifications")`, reads the exact owner unread count,
@@ -75,12 +87,12 @@ zero count still leaves the localized Notifications link available. Missing huma
 authentication, tenant mismatch, disabled module state, and transport failures hide this
 best-effort action without breaking the application header.
 
-The navigation unread-count read is dual-path, and grouped inbox reads now have the same
-native/GraphQL profile parity. Fresh notification open authorization and group-state
-commands are still native-only. Their GraphQL write/security parity remains a separate
-gate and is not implied by grouped read parity.
+The navigation unread-count read and grouped inbox reads have native/GraphQL profile
+parity. Fresh notification open authorization and group-state commands use separate
+security paths: open authorization is now dual-path, while group-state commands remain native-only because they require write admission and an idempotency key. GraphQL command
+parity remains a separate gate.
 
 Public entry points include `NotificationsView`, `NotificationNavigation`,
-`NotificationUnreadBadge`, compatibility read functions, explicit-context selected read
-functions, native open/command functions, and the serializable storefront request/page
-models exported from the crate root.
+`NotificationUnreadBadge`, compatibility read/open functions, explicit-context selected
+read/open functions, raw native functions, native group-state commands, and the
+serializable storefront request/page models exported from the crate root.

@@ -111,6 +111,7 @@ fn existing_grouped_ui_calls_selected_read_wrappers_only() {
         assert!(STOREFRONT_UI.contains(marker), "grouped UI is missing `{marker}`");
     }
     assert!(!STOREFRONT_TRANSPORT.contains("fallback_failed"));
-    assert!(STOREFRONT_TRANSPORT.contains("authorize_notification_open,"));
+    assert!(STOREFRONT_TRANSPORT.contains("authorize_notification_open_selected"));
+    assert!(STOREFRONT_TRANSPORT.contains("authorize_notification_open_native"));
     assert!(STOREFRONT_TRANSPORT.contains("apply_notification_group_state,"));
 }
