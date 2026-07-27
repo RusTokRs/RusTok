@@ -48,10 +48,12 @@ Existing contracts remain unchanged:
 
 1. require read policy;
 2. parse the trimmed tenant UUID;
-3. delegate the original `PortContext` and request to the existing `InventoryService` trait
+3. retain the accepted diagnostic context, variant id, and requested quantity;
+4. delegate the original `PortContext` and request to the existing `InventoryService` trait
    implementation;
-4. allow the existing implementation to repeat its deterministic policy and tenant checks before
-   invoking availability policy.
+5. allow the existing implementation to repeat its deterministic policy and tenant checks before
+   invoking availability policy;
+6. classify only covered stable local errors and return the same `PortError` unchanged.
 
 The adapter does not require write semantics for the read operation.
 
@@ -62,7 +64,9 @@ The adapter does not require write semantics for the read operation.
 1. require write policy;
 2. require write semantics;
 3. parse the trimmed tenant UUID;
-4. delegate the original `PortContext` and request to the existing implementation.
+4. retain the accepted diagnostic context, variant id, and quantity;
+5. delegate the original `PortContext` and request to the existing implementation;
+6. classify only covered stable local errors and return the same `PortError` unchanged.
 
 The repeated inner checks use the same policy, write-semantics, and tenant parsing rules, so accepted
 behavior is unchanged.
@@ -103,6 +107,16 @@ constructed validation `PortError` is returned unchanged.
 
 No actor validation was added. The existing owner does not reject malformed actor identity, so adding
 that rule would alter request acceptance rather than retain diagnostics.
+
+## Local owner outcomes
+
+After successful admission and tenant validation, the adapter retains the accepted context across the
+unchanged owner delegation. Exact stable validation, variant-not-found, insufficient-stock, storage,
+and invariant envelopes now receive operation-specific local diagnostics while returning the same
+`PortError`.
+
+The complete classification and pass-through contract is documented in
+[`availability-quantity-local-context.md`](./availability-quantity-local-context.md).
 
 ## Checkout composition cutover
 
@@ -177,14 +191,17 @@ The original context and request are delegated after adapter acceptance.
   composition, and canonical inventory factory;
 - absence of direct `InventoryService` construction in every repository checkout composition.
 
+`scripts/verify/verify-inventory-availability-quantity-local-context.mjs` separately guards accepted
+context retention, post-delegation stable local-outcome classification, complete diagnostic fields,
+unknown-error pass-through, and same delegated error return.
+
 ## Remaining gaps
 
 The ecommerce correlation-safe mapper task remains open for:
 
 - direct external callers that intentionally construct `InventoryService` as
   `InventoryReservationPort` rather than using the canonical factory;
-- local availability/quantity request and owner outcomes beyond admission and tenant validation;
-- durable reservation local request, identity, not-found, stock, and ledger outcomes;
+- durable reservation local request, identity, not-found, stock, storage, and ledger outcomes;
 - remaining payment execution and compensation consumers;
 - GraphQL customer reads and shared storefront customer lookup;
 - remaining customer, tax, promotion, ecommerce, and non-`PortError` envelopes;
@@ -197,6 +214,7 @@ No FBA or FFA status is promoted from source inspection alone.
 These commands were intentionally not run by the implementation agent:
 
 ```bash
+node scripts/verify/verify-inventory-availability-quantity-local-context.mjs
 node scripts/verify/verify-inventory-availability-quantity-context.mjs
 node scripts/verify/verify-inventory-reservation-owner-context.mjs
 node scripts/verify/verify-commerce-checkout-plan-inventory-context.mjs
