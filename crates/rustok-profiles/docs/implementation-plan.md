@@ -2,74 +2,61 @@
 
 ## Current state
 
-`rustok-profiles` owns public profile storage/translations, tags, handle and
-visibility policy, `ProfileService`, raw owner reads, audience-bound
-`ProfilePresentationService`, summary batching, GraphQL self-service surfaces,
-`profile.updated`, owner-local backfill, Media-backed image presentation, and the
-first module-owned storefront profile surface.
+`rustok-profiles` owns public profile storage/translations, tags, handles,
+visibility policy, owner reads, audience-bound presentation, summary batching,
+GraphQL self-service, `profile.updated`, owner-local backfill, Media-backed image
+presentation, and the first module-owned storefront profile surface.
 
-It is not an auth, customer, seller, staff, Social Graph, Index, or search
-aggregate. Presentation consumers must use the audience-bound service; raw reads
-remain owner-internal. Public GraphQL, Customer Admin enrichment, Blog/Forum author
-cards, and storefront reads share privacy-before-presentation ordering and hide
-restricted/unavailable rows as absent.
+Profiles is not an auth, customer, seller, staff, Social Graph, Index, or search
+aggregate. Public GraphQL, Customer Admin enrichment, Blog/Forum author cards, and
+storefront reads share privacy-before-presentation ordering and hide restricted or
+unavailable rows as absent.
 
-Profiles composes `followers_only` through authoritative Social Graph owner ports.
-Follow state, relation persistence, durable command receipts, receipt maintenance,
-relation events, event replay, and operational cleanup remain owned by
-`rustok-social-graph`; Profiles never reads those tables or treats an event
-projection as an authorization source.
+`followers_only` visibility resolves through authoritative Social Graph owner ports.
+Profiles never reads relation tables and never authorizes from an event or Index
+projection. The delivered Social Graph → Index worker is optional discovery/query
+infrastructure only.
 
-Media descriptors remain Media-owned. Profiles revalidates tenant/uploader/MIME
-and exposes only Media-selected descriptors. Host-selected embedded/grpc providers
-are shared by GraphQL and native storefront; Profiles does not know storage keys,
-provider endpoints, or ingress construction.
+Media descriptors remain Media-owned. Profiles revalidates tenant, uploader, and
+MIME constraints and exposes only Media-selected descriptors. Profiles does not know
+storage keys, provider endpoints, or ingress construction.
 
-The module-owned storefront mounts `/modules/profiles?handle=<handle>`, provides
-SSR-first native and explicit GraphQL compatibility transports, renders approved
-avatar/banner descriptors, and exposes authenticated follow/unfollow with unique
-idempotency keys, optimistic revisions, and one read-only conflict refresh without
-automatic mutation retry.
+The module-owned storefront mounts `/modules/profiles?handle=<handle>`, supports
+SSR-first native and explicit GraphQL transports, renders approved avatar/banner
+descriptors, and exposes authenticated follow/unfollow with unique idempotency keys,
+optimistic revisions, and one read-only conflict refresh without automatic mutation
+retry.
 
-Profiles and Social Graph operations use separate owner telemetry. Profiles writes
-and backfill exclude display copy, source email, generated handle, locale values,
-Media ids/URLs, and provider details. Social Graph command, receipt-cleanup, and
-relation-event replay telemetry is aggregate or identity-bounded as documented by
-the Social Graph owner and excludes receipt payloads, idempotency keys, raw replay
-cursors, claims, roles, channel, and request correlation.
+## Social Graph and Index status
 
-Social Graph durable receipts bind one tenant-scoped normalized idempotency key to
-the complete relation command. Exact replay returns the committed response without
-rewinding live state; mismatched reuse fails with a typed conflict. Receipt
-reservation, relation mutation, event append when state changes, response snapshot,
-and completion share one transaction.
-
-`social_graph.relation.state_changed` is a sealed typed persisted-revision fact.
-Live no-op and receipt replay emit nothing. Event failure rolls relation and receipt
-back together. Historical owner replay is service/system-only, tenant/cursor
-bounded, dry-run capable, and page-atomic.
-
-The first approved consumer is the generic `rustok-index` relation projection. A
-feature-gated Social Graph owner adapter maps the sealed event to an `IndexMutation`:
-active revisions upsert a non-localized relation record, inactive revisions create
-a tombstone, and the relation revision is the Index `source_version`.
-
-The optional `index-consumer` runtime opens a persistent typed-event group and uses
-transport-neutral `SocialGraphIndexProjector`. For every relevant tenant envelope,
-the projector first persists or exactly recognizes the owner schema through
-Index-owned `PostgresSchemaRegistrationStore`, then applies through the Index inbox.
-The broker message is acknowledged only after schema registration and an `Applied`,
-`Duplicate`, or `StaleIgnored` mutation result are durable. Bounded Social Graph
-replay uses the same result-first path for repair. Unrelated sealed families do not
-register the schema or create a mutation. Host startup/shutdown, retry/DLQ policy,
-PostgreSQL concurrency, and retained multi-replica evidence remain pending. None of
-this moves privacy policy or relation authority out of Social Graph.
-
-The owner-local `rustok-social-graph-cli` provider exposes
-`social_graph receipt-cleanup`. Operators must supply tenant and positive retention
-days; the adapter derives the cutoff and calls the Social Graph maintenance port.
-Only batch size has a bounded default. No scheduler or automatic retention policy
-is enabled.
+- Durable Social Graph receipts bind a tenant-scoped normalized idempotency key to
+  one complete command identity.
+- Receipt reservation, relation mutation, optional event append, response snapshot,
+  completion, and commit share one transaction.
+- `social_graph.relation.state_changed` is a sealed persisted-revision fact; no-op and
+  receipt replay emit nothing, and event failure rolls owner state back.
+- Historical replay is service/system-only, tenant/cursor bounded, dry-run capable,
+  page-atomic, and remains the authoritative drift-repair source.
+- The approved generic Index adapter maps active revisions to non-localized upserts,
+  inactive revisions to tombstones, relation id to entity id, and relation revision
+  to monotonic `source_version`.
+- `SocialGraphIndexProjector` registers the tenant schema through Index-owned
+  `PostgresSchemaRegistrationStore` before applying through the Index inbox.
+- `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable results.
+- The persistent consumer retains one outstanding broker delivery and acknowledges
+  only after schema and mutation results are durable.
+- The server lifecycle is source-complete and default-off through
+  `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED`.
+- Explicit enablement requires a worker host and `outbox_iggy`.
+- Projection failures use bounded retry. Before a durable result, permanent/exhausted
+  failures may move exact original broker bytes to DLQ before source ack when the
+  reviewed DLQ setting is enabled.
+- After a durable result, only acknowledgement is retried; ack failure is never DLQed.
+- Shared `StopHandle` controls shutdown and `SocialGraphIndexWorkerHandle` exposes
+  task readiness source state.
+- `/health/ready` integration, operator metrics, PostgreSQL concurrency, real-Iggy
+  restart/redelivery, DLQ failure, and multi-replica evidence remain pending.
+- None of this moves privacy policy or relation authority out of Social Graph.
 
 ## FFA/FBA boundary
 
@@ -79,96 +66,79 @@ is enabled.
 - The module has a module-owned Leptos storefront package with native/GraphQL
   transports, package i18n, explicit fail-closed transport selection, optimistic
   recovery, and Media/Social Graph owner composition.
-- FBA remains `not_started` until compiled/live transport, Media isolation,
-  provider identity, public ingress, storage delivery, and runtime evidence exist.
+- FBA remains `not_started` until compiled/live transport, Media isolation, provider
+  identity, public ingress, storage delivery, and retained runtime evidence exist.
 
 ## Results and next work
 
 1. **Keep owner reads separate from audience-bound presentation.**
    **Status:** source-complete for current consumers. Privacy is evaluated before
-   localized summary/tag loading, and foreign modules do not read profile tables.
-   **Revisit when:** production telemetry proves a need for another bounded owner
-   projection.
+   localized summary/tag loading and foreign modules do not read profile tables.
+   **Revisit when:** retained production telemetry proves another bounded owner
+   projection is necessary.
 
 2. **Finish followers-only and downstream presentation policy.**
-   **Status:** source-complete for owner privacy ports, public GraphQL lookups,
-   author cards, storefront, and Customer Admin enrichment. Social Graph provides
-   directional follow reads, revision-bearing state, receipt-aware commands,
-   transactional events, bounded receipt cleanup, historical event replay, the
-   owner-local cleanup CLI, the owner-published Index mutation adapter, Index-owned
-   tenant schema persistence, and a result-first persistent Index apply/ack consumer.
-   **Remaining:** compose consumer host lifecycle and default-off enablement, add
-   bounded retry/backoff and reviewed DLQ handling, prove bounded replay/rescan drift
-   repair, and collect compiled/runtime evidence for privacy, receipts, cleanup CLI,
-   event relay/replay, schema registration concurrency, Index restart/redelivery,
-   storefront, Customer Admin, Blog/Forum, and Media behavior.
-   **Done when:** all presentation consumers expose one policy with retained
+   **Status:** source-complete for owner privacy ports, public GraphQL lookups, author
+   cards, storefront, Customer Admin enrichment, receipt-aware commands,
+   transactional events, cleanup CLI, bounded replay, tenant schema registration,
+   result-first Index apply/ack, and default-off server lifecycle.
+   **Remaining:** wire worker readiness/metrics, prove bounded replay/rescan repair,
+   and retain compiled/runtime evidence for privacy, receipts, cleanup CLI, event
+   relay/replay, schema concurrency, Index restart/redelivery/DLQ, storefront,
+   Customer Admin, Blog/Forum, and Media behavior.
+   **Done when:** every presentation consumer exposes one policy with retained
    evidence and no direct foreign-domain reads or projection-based authorization.
 
 3. **Publish module-owned profile storefront UI.**
    **Status:** source-complete for the first Leptos slice, native/GraphQL transport
-   selection, Media capability presentation, authenticated follow control, and
-   read-only conflict recovery.
-   **Directory/search decision:** a directory/search capability is required, but it
-   must be built on Profiles-owned public profile records plus generic Index query
-   contracts. Social Graph relation projection may support discovery/ranking
-   inputs; it must not replace audience-bound profile authorization. Runtime UI and
-   query work waits for the Index query port and a Profiles-owned public-profile
-   source schema/adapter; the delivered relation schema is not that profile source.
+   selection, Media presentation, authenticated follow control, and read-only
+   conflict recovery.
+   **Directory/search decision:** directory/search must use Profiles-owned public
+   profile records plus generic Index query contracts. Social Graph relation
+   projection may support discovery/ranking inputs but cannot replace audience-bound
+   authorization. Runtime UI/query work waits for the Index query port and a
+   Profiles-owned public-profile source schema; the relation schema is not that
+   profile source.
    **Remaining:** execute SSR/hydrate/GraphQL route, auth, i18n, Media
    direct/proxy/fallback, mutation conflict, durable receipt, relation-event, and
    accessibility evidence.
 
 4. **Keep profile backfill owner-local.**
-   **Status:** source-complete; compiled/runtime verification pending. The Profiles
-   CLI provider uses owner auth/tenant/customer reads and optional Outbox event
-   publishing, preserving dry-run semantics and aggregate telemetry.
-   **Next verification:** exercise success, dry-run, owner-read failure,
-   profile-plan/create failure, and event-publication failure.
+   **Status:** source-complete; compiled/runtime verification pending. The CLI uses
+   owner auth/tenant/customer reads and optional Outbox publication while preserving
+   dry-run semantics and aggregate telemetry.
+   **Next verification:** success, dry-run, owner-read failure, plan/create failure,
+   and event-publication failure.
 
-5. **Add audit and operational capabilities from owner contracts.**
-   **Status:** source-complete for stable Profiles operations, Social Graph command
-   telemetry, durable receipts, bounded receipt maintenance, transactional events,
-   bounded event replay, owner-local receipt-cleanup CLI composition, sealed
-   event-to-Index conversion, persisted tenant schema registration, durable Index
-   apply/terminal recognition, and result-first acknowledgement.
-   **Remaining:** host lifecycle/readiness/shutdown and retry/DLQ composition,
-   deployment retention-window/cadence approval, PostgreSQL concurrency/retention/
-   replay and rollback evidence, and retained runtime evidence.
-   **Done when:** operations have typed owner ports, safe recovery guidance,
-   retained evidence, and no auth/customer/receipt leakage.
+5. **Complete audit and operational evidence.**
+   **Status:** source-complete for Profiles operations, Social Graph command
+   telemetry, durable receipts, bounded maintenance, transactional events, bounded
+   replay, cleanup CLI, sealed event conversion, persisted schema registration,
+   durable Index terminal recognition, default-off lifecycle, bounded retry, DLQ
+   ordering, and graceful shutdown source contracts.
+   **Remaining:** `/health/ready` and metrics composition, deployment retention
+   approval, PostgreSQL concurrency/retention/replay/rollback, real broker and
+   multi-replica evidence, and retained operator packets.
 
 ## Recheck checkpoint — 2026-07-27
 
-- Reconciled superseded draft PR #2237 and preserved its receipts, cleanup, event,
-  replay, CLI, migration, topology, lockfile, and plan work in a fresh branch.
-- Rechecked the branch against current `main`; intervening Forum, Index evidence,
-  Commerce, Inventory, and benchmark changes touch disjoint paths or were carried
-  forward from the current `main` copy before editing shared Index documentation.
-- Rechecked privacy-before-presentation, bounded followers-only reads, owner-scoped
-  follow writes, Media-owned descriptors, optimistic revision recovery, and no
-  automatic write retry.
-- Rechecked durable Social Graph receipt replay/conflict, completed-only cleanup,
-  sealed transactional relation events, no-op/replay suppression, page-atomic
-  replay, and explicit retention input at source level.
-- Approved `rustok-index` as the first concrete relation-event consumer and rejected
-  Profiles privacy caching, Notifications privacy projection, or any foreign
-  relation table read as substitutes for authoritative owner ports.
-- Added feature-gated Social Graph schema/mutation conversion using relation id as
-  entity identity and positive relation revision as Index source version. Active
-  state upserts; inactive state writes a tombstone.
-- Added generic Index-owned tenant schema registration with exact idempotency,
-  PostgreSQL identity locking, monotonic version/conflict/retired guards, SQLite
-  contract evidence, and a no-direct-source-write boundary.
-- Added transport-neutral Social Graph projector and optional persistent typed-event
-  consumption with schema persistence, Index inbox apply/duplicate/stale recognition,
-  serialized receive/apply/ack, and unrelated sealed-family handling.
-- Broker acknowledgement follows both durable schema and mutation results. Register,
-  apply, or ack failure remains replayable; bounded owner replay uses the same
-  monotonic repair path.
-- Host lifecycle, retry/backoff, DLQ, compilation, tests, formatters, source
-  verifiers, PostgreSQL/multi-replica runs, and runtime evidence remain maintainer-run
-  or pending.
+- Preserved the receipts, cleanup, event, replay, CLI, migration, topology, and
+  verification work from superseded draft PR #2237 in PR #2317.
+- Rechecked privacy-before-presentation, bounded follower reads, owner-scoped writes,
+  Media-owned descriptors, optimistic conflict recovery, and no automatic mutation
+  retry.
+- Rechecked receipt replay/conflict, completed-only cleanup, sealed transactional
+  events, no-op/replay suppression, page-atomic replay, and explicit retention input.
+- Approved Index as the first relation-event consumer while rejecting privacy caches,
+  Notifications projections, and foreign relation-table reads as authorization.
+- Added generic Index-owned schema registration and a transport-neutral projector.
+- Added staged persistent consumption with durable schema/apply/terminal recognition
+  before broker acknowledgement.
+- Added default-off server lifecycle, strict `outbox_iggy` gating, shared shutdown,
+  bounded retry, exact-byte DLQ-before-ack, and acknowledgement-only recovery after
+  durable apply.
+- Tests, formatters, Cargo commands, source verifiers, PostgreSQL, real-broker, and
+  multi-replica scenarios remain maintainer-run or pending.
 
 ## Verification
 
@@ -182,11 +152,14 @@ is enabled.
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
 - `cargo test -p rustok-index schema_registration --lib -- --nocapture`
 - `node scripts/verify/verify-index-schema-registration.mjs`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets`
 - `cargo test -p rustok-social-graph --features index index::tests -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
 - `cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
+- `cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets`
 - `cargo test -p rustok-social-graph-cli -- --nocapture`
 - `cargo test -p rustok-social-graph --test command_receipts_sqlite -- --nocapture`
@@ -201,6 +174,7 @@ is enabled.
 - `node scripts/verify/verify-social-graph-relation-event-replay.mjs`
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
+- `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `node scripts/verify/verify-profiles-storefront-boundary.mjs`
 - `rustok-cli profiles backfill --tenant-id <uuid> --dry-run`
 - `rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run`
@@ -209,25 +183,18 @@ is enabled.
 
 1. Keep profile policy and storage in Profiles.
 2. Keep privacy reads independent from localized presentation and foreign tables.
-3. Public GraphQL/storefront reads must use the canonical visibility matrix.
-4. Presentation consumers use `ProfilePresentationService`; raw readers remain
-   owner-internal.
+3. Public GraphQL/storefront reads use the canonical visibility matrix.
+4. Presentation consumers use `ProfilePresentationService`; raw readers remain owner-internal.
 5. `followers_only` resolves through bounded fail-closed Social Graph ports.
 6. GraphQL hosts bind audience-aware loaders to the request.
 7. Profile media resolves through Media owner ports only.
 8. Remote Media selection is injected; Profiles does not know transport endpoints.
 9. Module UI stays package-owned with explicit transports and package i18n.
-10. Follow controls use owner ports, unique idempotency, optimistic revision, and no
-    automatic write retry.
-11. Operational telemetry and events may contain only documented stable identities,
-    aggregate counters, modes, limits, cursor presence, revisions, outcomes, and
-    durations; never presentation copy, emails, Media/storage/provider details,
-    idempotency keys, expected revisions, raw cursors, claims, roles, channels, or
-    receipt payloads.
-12. Index/search projections are optional consumers. They may use sealed owner events,
-    generic Index contracts, monotonic source versions, and bounded owner replay;
-    they must never authorize profile visibility or read Social Graph tables.
-13. Durable projection workers persist or exactly recognize the tenant schema and
-    owner-specific mutation result before broker acknowledgement. Direct source writes
-    to Index tables and projection-based authorization are forbidden.
+10. Follow controls use owner ports, unique idempotency, optimistic revision, and no automatic retry.
+11. Operational telemetry excludes presentation copy, email, Media/storage/provider details,
+    idempotency keys, expected revisions, raw cursors/payloads, claims, roles, and channels.
+12. Index/search projections may use sealed owner events, generic Index contracts,
+    monotonic source versions, and bounded replay, but never authorize visibility.
+13. Durable projection workers register the tenant schema and persist/recognize the
+    owner result before ack. DLQ publication, when permitted, precedes source ack.
 14. Update Profiles and affected owner docs with every boundary change.
