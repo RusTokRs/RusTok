@@ -50,8 +50,10 @@ Replay is dry-run capable and page-atomic.
 - The server lifecycle is default-off and requires explicit
   `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED=true`, a worker host, and effective
   `outbox_iggy` delivery.
+- Outbound relay and inbound consumer reuse the exact `Arc<IggyTransport>` created by
+  `EventRuntime`; the worker does not create or stop another bundled connector.
 - Shared `StopHandle` controls graceful shutdown and a worker handle exposes task
-  readiness source state.
+  readiness state.
 - Projection failures use bounded exponential retry from reviewed event settings.
 - Before a durable owner result, permanent/exhausted failures may publish exact
   original broker bytes to DLQ and only then acknowledge, when DLQ policy is enabled.
@@ -61,6 +63,9 @@ Replay is dry-run capable and page-atomic.
 - Successfully decoded contract deliveries retain exact raw bytes for lossless DLQ.
   Undecodable broker bytes remain unacknowledged pending a lower-level connector
   poison-message contract.
+- Explicit enablement makes the worker critical in `runtime_guardrails`. Missing,
+  stopped, or invalid state reaches `/health/ready` and aggregate runtime-guardrail
+  metrics under the existing observe/enforce rollout. Disabled execution is healthy.
 - Bounded Social Graph replay uses the same schema/inbox/source-version path for
   projection repair.
 - Profiles privacy remains on synchronous authoritative Social Graph ports.
@@ -90,10 +95,13 @@ Replay is dry-run capable and page-atomic.
 - [x] Add bounded authoritative Social Graph replay through the same family.
 - [x] Add generic Index conversion and Index-owned tenant schema registration.
 - [x] Add persistent result-first Index consumption with duplicate/stale recognition.
-- [x] Add default-off server startup, strict delivery-profile gating, shared shutdown,
-  bounded retry, exact-byte DLQ-before-ack, and acknowledgement-only recovery after
-  durable apply.
-- [x] Add permanent source guards for lifecycle order and foreign-table isolation.
+- [x] Add default-off server startup, strict delivery-profile gating, one shared Iggy
+  connector, shared shutdown, bounded retry, exact-byte DLQ-before-ack, and
+  acknowledgement-only recovery after durable apply.
+- [x] Add enabled-worker readiness through runtime guardrails, `/health/ready`, and
+  aggregate guardrail metrics without degrading disabled execution.
+- [x] Add permanent source guards for lifecycle order, connector ownership, readiness,
+  and foreign-table isolation.
 
 ## Open results
 
@@ -105,10 +113,10 @@ Replay is dry-run capable and page-atomic.
    New families require direct imports from `rustok-events`, semantic coverage, and
    matching owner/outbox/recovery guidance.
 
-3. **Complete operator-visible remote consumer lifecycle.**
-   Wire `SocialGraphIndexWorkerHandle` into `/health/ready`, metrics, and required vs
-   disabled reporting. Preserve default-off semantics and fail startup on invalid
-   enablement/profile combinations.
+3. **Add dedicated remote-consumer observability.**
+   Publish bounded per-consumer throughput, retry, DLQ, lag, last-success, and restart
+   metrics without payload, schema JSON, or relation identifiers. Aggregate guardrail
+   status is already delivered.
 
 4. **Prove remote cursor recovery.**
    Execute real-Iggy restart, missed fast path, redelivery, ack failure, DLQ failure,
@@ -146,6 +154,7 @@ Replay is dry-run capable and page-atomic.
 - `cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
 - `cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture`
+- `cargo test -p rustok-server runtime_guardrails --lib -- --nocapture`
 - `cargo test -p rustok-social-graph --test relation_event_replay_sqlite -- --nocapture`
 - `node scripts/verify/verify-social-graph-relation-event-replay.mjs`
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
@@ -167,8 +176,12 @@ this slice.
 4. Consumers import sealed contracts directly and persist or recognize their tenant
    schema and owner result before acknowledgement.
 5. Source consumers never write another owner's schema/projection tables directly.
-6. DLQ publication, when permitted, precedes source acknowledgement; durable-result
+6. Reuse the host-owned connector; do not create another bundled transport inside a
+   consumer worker.
+7. DLQ publication, when permitted, precedes source acknowledgement; durable-result
    ack failure is acknowledgement-only recovery.
-7. Keep producer storage authoritative for bounded repair.
-8. Update module docs, event flow, and recovery guidance with every contract change.
-9. Keep the central plan registry limited to status and nearest priority.
+8. Explicitly enabled durable workers participate in readiness; disabled optional
+   workers do not degrade the host.
+9. Keep producer storage authoritative for bounded repair.
+10. Update module docs, event flow, and recovery guidance with every contract change.
+11. Keep the central plan registry limited to status and nearest priority.
