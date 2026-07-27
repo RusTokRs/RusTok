@@ -1,0 +1,31 @@
+name: Agent Forum topic descriptor open state 20AP
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/forum-topic-descriptor-materialization-20ap'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+          show-progress: false
+      - name: Apply FORUM-20AP open-state repair
+        shell: bash
+        run: |
+          python3 .github/agent/patch_forum_20ap_open_state.py
+          rm .github/agent/patch_forum_20ap_open_state.py
+          rm .github/workflows/agent-forum-topic-descriptor-open-state-20ap.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(forum): require open topic descriptors"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
