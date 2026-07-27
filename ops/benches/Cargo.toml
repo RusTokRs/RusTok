@@ -53,6 +53,10 @@ path = "src/bin/index_partition_query_evidence.rs"
 name = "index-partition-mutation-evidence"
 path = "src/bin/index_partition_mutation_evidence.rs"
 
+[[bin]]
+name = "index-partition-maintenance-evidence"
+path = "src/bin/index_partition_maintenance_evidence.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false

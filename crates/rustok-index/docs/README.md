@@ -26,8 +26,8 @@ without runtime fan-out.
 - PostgreSQL storage and distributed coordination;
 - schema application and secondary-index lifecycle;
 - measured partition admission and shadow planning;
-- retained partition evidence preparation, snapshot/query/mutation capture, assembly,
-  and validation;
+- retained partition evidence preparation, snapshot/query/mutation/maintenance
+  capture, assembly, and validation;
 - SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
@@ -188,7 +188,20 @@ repeatable-read transaction; the savepoint and outer transaction are both rolled
 back. It requires one affected row on both sides, alternates measurement order,
 calculates p95, retains full JSON EXPLAIN samples, records conservative maximum
 per-sample plan-node WAL bytes, proves single-child shadow pruning, and publishes
-`mutation.json` without overwrite. Maintenance and cutover evidence remain open.
+`mutation.json` without overwrite. The mutation slice recorded that maintenance and cutover evidence remain open.
+
+The owner-operated maintenance evidence runner revalidates the manifest, canonical
+relations, and retained snapshot shadow, then creates one deterministic evidence-only
+schema. It builds isomorphic ordinary and tenant-hash-partitioned clone pairs without
+production constraints or indexes, disables autovacuum on every physical clone, and
+copies logically identical source rows. It commits identical generic entity update
+and link delete/reinsert churn only into those clones. For exactly the manifest
+maintenance run count, it captures pre-cleanup `pg_stat_user_tables` dead tuples,
+alternates side order, times ordinary `VACUUM (ANALYZE)` over every physical table,
+requires zero estimated dead tuples and equal logical digests after cleanup, and
+publishes `maintenance.json` without overwrite. Canonical and retained snapshot
+relations are checked unchanged before and after. Real execution is still an owner
+step, and cutover evidence remains open.
 
 The repository owner still executes and
 retains the PostgreSQL packet. The real query, mutation,
@@ -224,11 +237,12 @@ batch ingestion remain later M3/M4/M5 slices.
 - M3 partition baseline/shadow snapshot runner: `complete`
 - M3 partition query evidence runner: `complete`
 - M3 partition mutation/WAL evidence runner: `complete`
+- M3 partition maintenance evidence runner: `complete`
 - Production persistence: mutation writes, schema/index coordination, partition
-  admission, snapshot/query/mutation capture, evidence assembly, and evidence
-  validation implemented; query adapter, real retained packet execution,
-  maintenance and cutover evidence remain open, and production partition lifecycle
-  is not yet implemented
+  admission, snapshot/query/mutation/maintenance capture, evidence assembly, and
+  evidence validation implemented; query adapter, real retained packet execution,
+  cutover evidence remains open, and production partition lifecycle is not yet
+  implemented
 
 ## Verification
 
@@ -245,6 +259,8 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo test -p rustok-benchmarks partition_query`
 - `cargo check -p rustok-benchmarks --bin index-partition-mutation-evidence`
 - `cargo test -p rustok-benchmarks partition_mutation`
+- `cargo check -p rustok-benchmarks --bin index-partition-maintenance-evidence`
+- `cargo test -p rustok-benchmarks partition_maintenance`
 - `node scripts/verify/index-storage-tooling.mjs contract`
 - `node scripts/verify/index-storage-tooling.mjs fixtures`
 - `node --test scripts/verify/index-partition-evidence-assembly.test.mjs`
@@ -254,6 +270,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `node scripts/verify/verify-index-partition-snapshot-capture.mjs`
 - `node scripts/verify/verify-index-partition-query-evidence.mjs`
 - `node scripts/verify/verify-index-partition-mutation-evidence.mjs`
+- `node scripts/verify/verify-index-partition-maintenance-evidence.mjs`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
 
