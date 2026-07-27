@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use rustok_events::{
-    ContractEventEnvelope, ContractEventEnvelopeError, ContractEventPayload,
-};
+use rustok_events::{ContractEventEnvelope, ContractEventEnvelopeError, ContractEventPayload};
 use rustok_iggy::{IggyTransport, PersistentContractConsumerGroup};
 use rustok_index::{
-    MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
+    IndexSchema, MutationApplyOutcome, MutationDelivery, MutationStorageError,
+    PostgresMutationStore, PostgresSchemaRegistrationStore, SchemaRegistrationError,
     SchemaRegistry, SchemaRegistryError,
 };
 use sea_orm::DatabaseConnection;
@@ -33,6 +32,8 @@ pub enum SocialGraphIndexConsumerError {
     Projection(#[from] SocialGraphIndexError),
     #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
+    #[error(transparent)]
+    SchemaPersistence(#[from] SchemaRegistrationError),
     #[error(transparent)]
     Storage(#[from] MutationStorageError),
 }
@@ -68,13 +69,16 @@ pub fn social_graph_index_delivery_from_envelope(
 
 /// Result-first durable consumer for `social_graph.relation.state_changed`.
 ///
-/// The consumer owns one persistent broker cursor and one Index schema registry.
-/// It acknowledges the exact broker message only after `PostgresMutationStore`
-/// commits an applied result or terminally recognizes duplicate/stale delivery.
-/// A failed apply or acknowledgement leaves the message available for redelivery.
+/// The consumer owns one persistent broker cursor, one validated source schema,
+/// and Index-owned schema/mutation stores. It acknowledges the exact broker message
+/// only after the tenant schema exists and `PostgresMutationStore` commits an
+/// applied result or terminally recognizes duplicate/stale delivery. A failed
+/// registration, apply, or acknowledgement leaves the message replayable.
 pub struct SocialGraphIndexConsumer {
     _transport: Arc<IggyTransport>,
     group: PersistentContractConsumerGroup,
+    schema: IndexSchema,
+    schema_store: PostgresSchemaRegistrationStore,
     store: PostgresMutationStore,
     registry: SchemaRegistry,
 }
@@ -91,11 +95,14 @@ impl SocialGraphIndexConsumer {
             )
             .await
             .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
+        let schema = social_graph_relation_index_schema()?;
         let mut registry = SchemaRegistry::new();
-        registry.register(social_graph_relation_index_schema()?)?;
+        registry.register(schema.clone())?;
         Ok(Self {
             _transport: transport,
             group,
+            schema,
+            schema_store: PostgresSchemaRegistrationStore::new(db.clone()),
             store: PostgresMutationStore::new(db),
             registry,
         })
@@ -114,11 +121,14 @@ impl SocialGraphIndexConsumer {
                 event_type: envelope.event_type().to_string(),
             });
         };
+        self.schema_store
+            .register(envelope.tenant_id(), &self.schema)
+            .await?;
         let outcome = self.store.apply(&self.registry, &delivery).await?;
         Ok(SocialGraphIndexProcessOutcome::Projected(outcome))
     }
 
-    /// Receives, durably applies/recognizes, and then acknowledges one broker message.
+    /// Receives, durably registers/applies/recognizes, and then acknowledges one message.
     ///
     /// `&mut self` deliberately serializes receive/apply/ack on this cursor, preventing
     /// another delivery from overtaking an outstanding unacknowledged message.
