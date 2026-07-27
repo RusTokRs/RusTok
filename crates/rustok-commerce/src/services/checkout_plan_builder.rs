@@ -43,6 +43,11 @@ const CHECKOUT_PLAN_MARKETPLACE_SNAPSHOT_BOUNDARY: &str =
     "commerce_checkout_plan_marketplace_snapshot";
 const MARKETPLACE_SNAPSHOT_OWNER: &str = "rustok_cart";
 const MARKETPLACE_SNAPSHOT_OPERATION: &str = "list_marketplace_line_snapshots";
+const CHECKOUT_PLAN_PRODUCT_PROJECTION_BOUNDARY: &str =
+    "commerce_checkout_plan_product_projection";
+const PRODUCT_PROJECTION_OWNER: &str = "rustok_product";
+const PRODUCT_PROJECTION_READ_OPERATION: &str = "read_product_projection";
+const VARIANT_PRODUCT_PROJECTION_READ_OPERATION: &str = "read_variant_product_projection";
 const CHECKOUT_PLAN_INVENTORY_BOUNDARY: &str = "commerce_checkout_plan_inventory";
 const INVENTORY_OWNER: &str = "rustok_inventory";
 const INVENTORY_AVAILABILITY_OPERATION: &str = "check_availability";
@@ -239,43 +244,46 @@ impl CheckoutPlanBuilder {
             let Some(variant_id) = line_item.variant_id else {
                 continue;
             };
+            let product_context =
+                product_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
             let product = match line_item.product_id {
-                Some(product_id) => {
-                    self.product_catalog_read_port
-                        .read_product_projection(
-                            product_context(
-                                tenant_id,
-                                actor_id,
-                                cart,
-                                public_channel_slug.as_deref(),
-                            ),
-                            ProductProjectionRequest {
-                                product_id,
-                                locale: cart.locale_code.clone(),
-                                fallback_locale: None,
-                            },
+                Some(product_id) => self
+                    .product_catalog_read_port
+                    .read_product_projection(
+                        product_context.clone(),
+                        ProductProjectionRequest {
+                            product_id,
+                            locale: cart.locale_code.clone(),
+                            fallback_locale: None,
+                        },
+                    )
+                    .await
+                    .map_err(|error| {
+                        checkout_plan_product_projection_boundary_error(
+                            &product_context,
+                            PRODUCT_PROJECTION_READ_OPERATION,
+                            error,
                         )
-                        .await
-                }
-                None => {
-                    self.product_catalog_read_port
-                        .read_variant_product_projection(
-                            product_context(
-                                tenant_id,
-                                actor_id,
-                                cart,
-                                public_channel_slug.as_deref(),
-                            ),
-                            VariantProductProjectionRequest {
-                                variant_id,
-                                locale: cart.locale_code.clone(),
-                                fallback_locale: None,
-                            },
+                    })?,
+                None => self
+                    .product_catalog_read_port
+                    .read_variant_product_projection(
+                        product_context.clone(),
+                        VariantProductProjectionRequest {
+                            variant_id,
+                            locale: cart.locale_code.clone(),
+                            fallback_locale: None,
+                        },
+                    )
+                    .await
+                    .map_err(|error| {
+                        checkout_plan_product_projection_boundary_error(
+                            &product_context,
+                            VARIANT_PRODUCT_PROJECTION_READ_OPERATION,
+                            error,
                         )
-                        .await
-                }
-            }
-            .map_err(|error| boundary_error("read_checkout_product_projection", error))?;
+                    })?,
+            };
             let variant = product
                 .variants
                 .iter()
@@ -687,6 +695,70 @@ fn log_checkout_plan_marketplace_snapshot_boundary_failure(
                 retryable = error.retryable,
                 boundary = CHECKOUT_PLAN_MARKETPLACE_SNAPSHOT_BOUNDARY,
                 "checkout plan marketplace snapshot owner boundary was rejected"
+            );
+        }
+    }
+}
+
+fn checkout_plan_product_projection_boundary_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: PortError,
+) -> CheckoutError {
+    log_checkout_plan_product_projection_boundary_failure(context, owner_operation, &error);
+    boundary_error("read_checkout_product_projection", error)
+}
+
+fn log_checkout_plan_product_projection_boundary_failure(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = PRODUCT_PROJECTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage = "read_checkout_product_projection",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_PLAN_PRODUCT_PROJECTION_BOUNDARY,
+                "checkout plan product projection owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = PRODUCT_PROJECTION_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = owner_operation,
+                stage = "read_checkout_product_projection",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_PLAN_PRODUCT_PROJECTION_BOUNDARY,
+                "checkout plan product projection owner boundary was rejected"
             );
         }
     }
