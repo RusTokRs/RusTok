@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use rustok_events::{ContractEventEnvelope, ContractEventEnvelopeError, ContractEventPayload};
 use rustok_iggy::{ConsumedContractEvent, DlqEntry, IggyTransport, PersistentContractConsumerGroup};
@@ -9,10 +10,16 @@ use rustok_index::{
 };
 use sea_orm::DatabaseConnection;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::index::{
     SocialGraphIndexError, social_graph_relation_index_mutation,
     social_graph_relation_index_schema,
+};
+use crate::index_dlq_receipt::{
+    SocialGraphIndexDlqIdentity, SocialGraphIndexDlqPublishClaim, SocialGraphIndexDlqReceipt,
+    SocialGraphIndexDlqReceiptError, SocialGraphIndexDlqReceiptState,
+    SocialGraphIndexDlqReceiptStore,
 };
 
 /// The existing shared domain topic currently carries sealed Social Graph relation facts.
@@ -21,11 +28,17 @@ pub const SOCIAL_GRAPH_INDEX_TOPIC: &str = "domain";
 pub const SOCIAL_GRAPH_INDEX_CONSUMER_GROUP: &str = "rustok-social-graph-index";
 /// Stable Index inbox source identity for relation-event deliveries.
 pub const SOCIAL_GRAPH_INDEX_SOURCE: &str = "social_graph.relation.state_changed.v1";
+/// A crashed publisher may be reclaimed after this bounded durable lease.
+pub const SOCIAL_GRAPH_INDEX_DLQ_PUBLISH_LEASE: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Error)]
 pub enum SocialGraphIndexConsumerError {
     #[error("Social Graph Index transport operation failed: {0}")]
     Transport(String),
+    #[error("Social Graph Index DLQ publication is owned by another live publisher")]
+    DlqPublishInProgress,
+    #[error(transparent)]
+    DlqReceipt(#[from] SocialGraphIndexDlqReceiptError),
     #[error(transparent)]
     Envelope(#[from] ContractEventEnvelopeError),
     #[error(transparent)]
@@ -43,6 +56,8 @@ impl SocialGraphIndexConsumerError {
     pub const fn stable_code(&self) -> &'static str {
         match self {
             Self::Transport(_) => "social_graph.index.transport_unavailable",
+            Self::DlqPublishInProgress => "social_graph.index.dlq_publish_in_progress",
+            Self::DlqReceipt(error) => error.stable_code(),
             Self::Envelope(_) => "social_graph.index.envelope_invalid",
             Self::Projection(_) => "social_graph.index.projection_invalid",
             Self::Registry(_) => "social_graph.index.registry_invalid",
@@ -54,7 +69,8 @@ impl SocialGraphIndexConsumerError {
     /// Only transient transport/storage ownership failures are retried in-process.
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::Transport(_) => true,
+            Self::Transport(_) | Self::DlqPublishInProgress => true,
+            Self::DlqReceipt(error) => error.is_retryable(),
             Self::Envelope(_) | Self::Projection(_) | Self::Registry(_) => false,
             Self::SchemaPersistence(error) => {
                 matches!(error, SchemaRegistrationError::Storage(_))
@@ -74,7 +90,13 @@ impl SocialGraphIndexConsumerError {
 pub enum SocialGraphIndexProcessOutcome {
     Projected(MutationApplyOutcome),
     IgnoredUnrelated { event_type: String },
-    DeadLettered { error_code: &'static str },
+    DeadLettered { error_code: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SocialGraphIndexDlqPublishOutcome {
+    Published,
+    PreviouslyPublished,
 }
 
 /// Converts a validated sealed envelope into one durable Index inbox delivery.
@@ -148,13 +170,16 @@ impl SocialGraphIndexProjector {
 
 /// Result-first durable consumer for `social_graph.relation.state_changed`.
 ///
-/// The consumer owns one persistent broker cursor and one transport-neutral
-/// projector. Host runtimes may retain a received delivery across bounded retries,
-/// but must acknowledge only after projection or successful DLQ publication.
+/// The consumer owns one persistent broker cursor, one transport-neutral projector,
+/// and one owner-side DLQ receipt store. A durable DLQ receipt is checked before
+/// projection so a redelivery cannot cross from an already chosen DLQ terminal result
+/// back into Index mutation work.
 pub struct SocialGraphIndexConsumer {
     transport: Arc<IggyTransport>,
     group: PersistentContractConsumerGroup,
     projector: SocialGraphIndexProjector,
+    dlq_receipts: SocialGraphIndexDlqReceiptStore,
+    dlq_publisher_id: Uuid,
 }
 
 impl SocialGraphIndexConsumer {
@@ -172,7 +197,9 @@ impl SocialGraphIndexConsumer {
         Ok(Self {
             transport,
             group,
-            projector: SocialGraphIndexProjector::new(db)?,
+            projector: SocialGraphIndexProjector::new(db.clone())?,
+            dlq_receipts: SocialGraphIndexDlqReceiptStore::new(db),
+            dlq_publisher_id: Uuid::new_v4(),
         })
     }
 
@@ -209,16 +236,49 @@ impl SocialGraphIndexConsumer {
             .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
     }
 
-    /// Publishes the exact original broker bytes to DLQ without committing the source offset.
+    /// Returns an existing durable DLQ decision for this exact source delivery.
+    pub async fn consumed_dlq_receipt(
+        &self,
+        consumed: &ConsumedContractEvent,
+    ) -> Result<Option<SocialGraphIndexDlqReceipt>, SocialGraphIndexConsumerError> {
+        let identity = self.dlq_identity(consumed)?;
+        self.dlq_receipts.find(&identity).await.map_err(Into::into)
+    }
+
+    /// Publishes exact broker bytes only after durably reserving the source identity.
     ///
-    /// Hosts use this staged operation to distinguish DLQ publication failures from source
-    /// acknowledgement failures and to retry acknowledgement without republishing in-process.
+    /// `Ok` is returned only after the receipt reached `published`, so a later source-ack
+    /// failure or process restart recognizes the terminal DLQ result and skips publication.
+    /// A crash after broker success but before `published` may retry after the lease expires;
+    /// the logical identity remains the original event/source receipt identity.
     pub async fn publish_consumed_to_dlq(
         &self,
         consumed: &ConsumedContractEvent,
-        stable_error_code: &'static str,
+        stable_error_code: &str,
         retry_count: u32,
-    ) -> Result<(), SocialGraphIndexConsumerError> {
+    ) -> Result<SocialGraphIndexDlqPublishOutcome, SocialGraphIndexConsumerError> {
+        let identity = self.dlq_identity(consumed)?;
+        match self
+            .dlq_receipts
+            .reserve_and_claim(
+                &identity,
+                stable_error_code,
+                retry_count,
+                self.dlq_publisher_id,
+                SOCIAL_GRAPH_INDEX_DLQ_PUBLISH_LEASE,
+            )
+            .await?
+        {
+            SocialGraphIndexDlqPublishClaim::AlreadyPublished
+            | SocialGraphIndexDlqPublishClaim::AlreadyAcknowledged => {
+                return Ok(SocialGraphIndexDlqPublishOutcome::PreviouslyPublished);
+            }
+            SocialGraphIndexDlqPublishClaim::Busy => {
+                return Err(SocialGraphIndexConsumerError::DlqPublishInProgress);
+            }
+            SocialGraphIndexDlqPublishClaim::Claimed => {}
+        }
+
         let entry = DlqEntry::new(
             consumed.envelope.id(),
             consumed.topic.clone(),
@@ -227,42 +287,99 @@ impl SocialGraphIndexConsumer {
             retry_count,
         )
         .with_connector_metadata(consumed.connector_metadata.clone());
-        self.transport
-            .move_to_dlq(entry)
-            .await
-            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
+        if let Err(error) = self.transport.move_to_dlq(entry).await {
+            let _ = self
+                .dlq_receipts
+                .release_claim(&identity, self.dlq_publisher_id)
+                .await;
+            return Err(SocialGraphIndexConsumerError::Transport(error.to_string()));
+        }
+        self.dlq_receipts
+            .mark_published(&identity, self.dlq_publisher_id)
+            .await?;
+        Ok(SocialGraphIndexDlqPublishOutcome::Published)
     }
 
-    /// Publishes the exact original broker bytes to DLQ, then commits the source offset.
+    /// Records that the source cursor was committed after a durable DLQ result.
     ///
-    /// This convenience method is valid only for a delivery that has not produced a durable
-    /// Index result. Hosts requiring retry metrics should use [`Self::publish_consumed_to_dlq`]
-    /// followed by [`Self::acknowledge_consumed`] so acknowledgement can be retried without
-    /// republishing the DLQ entry in the same process.
+    /// This bookkeeping occurs after broker acknowledgement and must never be interpreted as
+    /// the durability boundary; `published` is already sufficient to suppress republishing.
+    pub async fn mark_consumed_dlq_acknowledged(
+        &self,
+        consumed: &ConsumedContractEvent,
+    ) -> Result<(), SocialGraphIndexConsumerError> {
+        let identity = self.dlq_identity(consumed)?;
+        self.dlq_receipts
+            .mark_acknowledged(&identity)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Publishes or recognizes the durable DLQ receipt, then commits the source offset.
     pub async fn move_to_dlq_and_acknowledge(
         &self,
         consumed: &ConsumedContractEvent,
-        stable_error_code: &'static str,
+        stable_error_code: &str,
         retry_count: u32,
     ) -> Result<(), SocialGraphIndexConsumerError> {
         self.publish_consumed_to_dlq(consumed, stable_error_code, retry_count)
             .await?;
-        self.acknowledge_consumed(consumed).await
+        self.acknowledge_consumed(consumed).await?;
+        self.mark_consumed_dlq_acknowledged(consumed).await
     }
 
     /// Receives, durably registers/applies/recognizes, and then acknowledges one message.
-    ///
-    /// `&mut self` deliberately serializes receive/apply/ack on this cursor, preventing
-    /// another delivery from overtaking an outstanding unacknowledged message.
     pub async fn process_next(
         &mut self,
     ) -> Result<Option<SocialGraphIndexProcessOutcome>, SocialGraphIndexConsumerError> {
         let Some(consumed) = self.receive_next().await? else {
             return Ok(None);
         };
+        if let Some(receipt) = self.consumed_dlq_receipt(&consumed).await? {
+            match receipt.state {
+                SocialGraphIndexDlqReceiptState::Published
+                | SocialGraphIndexDlqReceiptState::Acknowledged => {
+                    self.acknowledge_consumed(&consumed).await?;
+                    let _ = self.mark_consumed_dlq_acknowledged(&consumed).await;
+                    return Ok(Some(SocialGraphIndexProcessOutcome::DeadLettered {
+                        error_code: receipt.stable_error_code,
+                    }));
+                }
+                SocialGraphIndexDlqReceiptState::Reserved
+                | SocialGraphIndexDlqReceiptState::Publishing => {
+                    return Err(SocialGraphIndexConsumerError::DlqPublishInProgress);
+                }
+            }
+        }
         let outcome = self.project_consumed(&consumed).await?;
         self.acknowledge_consumed(&consumed).await?;
         Ok(Some(outcome))
+    }
+
+    fn dlq_identity(
+        &self,
+        consumed: &ConsumedContractEvent,
+    ) -> Result<SocialGraphIndexDlqIdentity, SocialGraphIndexConsumerError> {
+        consumed.validate_connector_metadata().map_err(|error| {
+            SocialGraphIndexConsumerError::Transport(error.to_string())
+        })?;
+        let source_offset = consumed.offset().ok_or(
+            SocialGraphIndexDlqReceiptError::InvalidIdentity {
+                field: "source_offset",
+                reason: "connector metadata did not provide an offset",
+            },
+        )?;
+        SocialGraphIndexDlqIdentity::new(
+            consumed.envelope.tenant_id(),
+            consumed.envelope.id(),
+            SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
+            consumed.stream.clone(),
+            consumed.topic.clone(),
+            consumed.partition,
+            source_offset,
+            consumed.raw_payload().to_vec(),
+        )
+        .map_err(Into::into)
     }
 }
 
@@ -368,6 +485,7 @@ mod tests {
     #[test]
     fn retry_classification_is_fail_closed() {
         assert!(SocialGraphIndexConsumerError::Transport("down".to_string()).is_retryable());
+        assert!(SocialGraphIndexConsumerError::DlqPublishInProgress.is_retryable());
         assert!(SocialGraphIndexConsumerError::SchemaPersistence(
             SchemaRegistrationError::Storage("down".to_string())
         )
