@@ -14,6 +14,8 @@ pub struct ConsumedContractEvent {
     pub partition: u32,
     pub envelope: ContractEventEnvelope,
     pub connector_metadata: SubscriberMessageMetadata,
+    /// Exact broker payload retained for lossless DLQ publication.
+    pub raw_payload: Vec<u8>,
 }
 
 /// Persistent consumer cursor for sealed typed event-family envelopes.
@@ -51,7 +53,8 @@ impl PersistentContractConsumerGroup {
         let Some(message) = message else {
             return Ok(None);
         };
-        let envelope = self.serializer.deserialize_contract(&message.payload)?;
+        let raw_payload = message.payload;
+        let envelope = self.serializer.deserialize_contract(&raw_payload)?;
         envelope
             .validate_registered_schema()
             .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
@@ -68,6 +71,7 @@ impl PersistentContractConsumerGroup {
             partition: message.metadata.partition,
             envelope,
             connector_metadata: message.metadata,
+            raw_payload,
         }))
     }
 
@@ -98,6 +102,10 @@ impl PersistentContractConsumerGroup {
 impl ConsumedContractEvent {
     pub fn offset(&self) -> Option<u64> {
         self.connector_metadata.offset
+    }
+
+    pub fn raw_payload(&self) -> &[u8] {
+        &self.raw_payload
     }
 
     pub fn validate_connector_metadata(&self) -> Result<()> {
