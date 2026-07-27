@@ -39,7 +39,19 @@ function between(source, start, end, label) {
 
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
+const downstreamPath =
+  "crates/rustok-forum/contracts/forum-notification-navigation-badge.json";
 const contract = JSON.parse(read(contractPath) || "{}");
+const downstreamAbsolute = path.join(repoRoot, downstreamPath);
+const downstream = existsSync(downstreamAbsolute)
+  ? JSON.parse(readFileSync(downstreamAbsolute, "utf8") || "{}")
+  : null;
+const navigationBadgeDelivered =
+  downstream?.schema_version === 1 &&
+  downstream?.task === "FORUM-20AJ" &&
+  downstream?.upstream_task === "FORUM-20AI" &&
+  downstream?.composition?.exact_navigation_badge === true &&
+  downstream?.composition?.generic_header_actions_slot === true;
 const core = read(contract.storefront_core_file ?? "");
 const transport = read(contract.storefront_transport_file ?? "");
 const ui = read(contract.storefront_ui_file ?? "");
@@ -263,14 +275,32 @@ for (const marker of [
 }
 
 for (const marker of [
-  "NotificationsView` now renders the owner-backed grouped inbox",
+  "NotificationsView` renders the owner-backed grouped inbox",
   "exact unread-count badge",
   "authoritative refresh after every mutation",
   "in-memory page deduplication",
   "NotificationUnreadBadge",
-  "global navigation/header composition is not part",
 ]) {
   requireText(readme, marker, `storefront README is missing ${marker}`);
+}
+if (navigationBadgeDelivered) {
+  for (const marker of [
+    "`NotificationNavigation` is a module-owned no-prop header action",
+    "The navigation unread-count read is dual-path",
+    "zero count still leaves the localized Notifications link available",
+    "full grouped inbox, open authorization, and group-state commands are still native-only",
+  ]) {
+    requireText(readme, marker, `FORUM-20AJ storefront README is missing ${marker}`);
+  }
+  if (!downstream.not_delivered?.includes("GraphQL grouped inbox summary and item paging")) {
+    failures.push("FORUM-20AJ must keep grouped inbox GraphQL parity pending");
+  }
+} else {
+  requireText(
+    readme,
+    "global navigation/header composition is not part of this package",
+    "pre-FORUM-20AJ storefront README state is missing",
+  );
 }
 for (const marker of [
   "# FORUM-20AI grouped notification storefront UI",

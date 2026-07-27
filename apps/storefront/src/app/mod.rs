@@ -19,6 +19,11 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
             .into_iter()
             .map(|module| (module.render)())
             .collect::<Vec<_>>();
+    let header_action_views =
+        components_for_slot(StorefrontSlot::HeaderActions, Some(&enabled_modules))
+            .into_iter()
+            .map(|module| (module.render)())
+            .collect::<Vec<_>>();
     let footer_navigation_views =
         components_for_slot(StorefrontSlot::FooterNavigation, Some(&enabled_modules))
             .into_iter()
@@ -36,6 +41,7 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
                 nav_language=strings.nav_language
                 cta_primary=strings.cta_primary
                 navigation_views=header_navigation_views
+                action_views=header_action_views
             />
 
             {body}

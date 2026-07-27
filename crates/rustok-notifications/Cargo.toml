@@ -6,6 +6,7 @@ license.workspace = true
 description = "Notification inbox, preference, fan-out, and delivery orchestration owner"
 
 [dependencies]
+async-graphql.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true

@@ -139,6 +139,7 @@ fn validate_ui_surface_metadata_field(
 fn validate_storefront_slot(slug: &str, field_name: &str, value: &str) -> Result<()> {
     match value.trim() {
         "header_navigation"
+        | "header_actions"
         | "home_after_hero"
         | "home_after_catalog"
         | "home_before_footer"

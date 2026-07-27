@@ -8,8 +8,10 @@ const FOOTER: &str = include_str!("../src/widgets/footer/mod.rs");
 fn storefront_host_places_generic_header_and_footer_contributions() {
     for marker in [
         "HeaderNavigation",
+        "HeaderActions",
         "FooterNavigation",
         "components_for_slot(StorefrontSlot::HeaderNavigation",
+        "components_for_slot(StorefrontSlot::HeaderActions",
         "components_for_slot(StorefrontSlot::FooterNavigation",
     ] {
         assert!(
@@ -22,6 +24,7 @@ fn storefront_host_places_generic_header_and_footer_contributions() {
         "components: Vec<StorefrontUiComponentContract>",
         "storefront_component_render_fn_name",
         "header_navigation",
+        "header_actions",
         "footer_navigation",
     ] {
         assert!(
@@ -31,7 +34,10 @@ fn storefront_host_places_generic_header_and_footer_contributions() {
     }
 
     assert!(HEADER.contains("navigation_views: Vec<AnyView>"));
+    assert!(HEADER.contains("action_views: Vec<AnyView>"));
+    assert!(HEADER.contains("data-storefront-header-actions"));
     assert!(FOOTER.contains("navigation_views: Vec<AnyView>"));
     assert!(!APP.contains("rustok_pages_storefront::PagesHeaderMenu"));
     assert!(!APP.contains("rustok_pages_storefront::PagesFooterMenu"));
+    assert!(!APP.contains("rustok_notifications_storefront::NotificationNavigation"));
 }
