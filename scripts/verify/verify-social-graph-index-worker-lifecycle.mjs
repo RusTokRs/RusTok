@@ -9,6 +9,10 @@ const files = {
     "apps/server/src/services/server_bootstrap.rs",
     "utf8",
   ),
+  eventFactory: readFileSync(
+    "apps/server/src/services/event_transport_factory.rs",
+    "utf8",
+  ),
   worker: readFileSync(
     "apps/server/src/services/social_graph_index_worker.rs",
     "utf8",
@@ -45,7 +49,7 @@ requireText(
 requireText(
   "services module",
   files.services,
-  'pub mod social_graph_index_worker;',
+  "pub mod social_graph_index_worker;",
 );
 requireText(
   "server bootstrap",
@@ -55,50 +59,71 @@ requireText(
 requireText("server bootstrap", files.bootstrap, ".await?;");
 
 for (const marker of [
-  'RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED',
-  'Err(env::VarError::NotPresent) => Ok(false)',
-  'EventDeliveryProfile::OutboxIggy',
-  'requires rustok.events.delivery_profile=outbox_iggy',
-  'SocialGraphIndexWorkerHandle',
-  'pub fn is_ready(&self) -> bool',
-  'StopHandle',
-  'receive_next()',
-  'project_consumed(consumed)',
-  'acknowledge_consumed(consumed)',
-  'move_to_dlq_and_acknowledge',
-  'retry_delay',
-  'settings.events.dlq.enabled',
-  'retrying acknowledgement only',
-  'broker offset uncommitted',
+  "let iggy_transport = Arc::new(",
+  "ctx.shared_insert(Arc::clone(&iggy_transport));",
+  "let transport: Arc<dyn EventTransport> = iggy_transport;",
+  "Creating another bundled transport would start a second native broker",
+]) {
+  requireText("event runtime", files.eventFactory, marker);
+}
+
+for (const marker of [
+  "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED",
+  "Err(env::VarError::NotPresent) => Ok(false)",
+  "EventDeliveryProfile::OutboxIggy",
+  "requires rustok.events.delivery_profile=outbox_iggy",
+  "ctx.shared_get::<Arc<IggyTransport>>()",
+  "outbox_iggy runtime did not publish its configured Iggy transport",
+  "SocialGraphIndexWorkerHandle",
+  "pub fn is_ready(&self) -> bool",
+  "StopHandle",
+  "receive_next()",
+  "project_consumed(consumed)",
+  "acknowledge_consumed(consumed)",
+  "move_to_dlq_and_acknowledge",
+  "retry_delay",
+  "settings.events.dlq.enabled",
+  "retrying acknowledgement only",
+  "broker offset uncommitted",
 ]) {
   requireText("server worker", files.worker, marker);
 }
 
+for (const forbidden of [
+  "IggyTransport::new",
+  "IggyConnectorSettingsService::resolved_config",
+  "shutdown_transport(",
+]) {
+  forbidText("server worker", files.worker, forbidden);
+}
+
 for (const marker of [
-  'pub const fn stable_code(&self)',
-  'pub fn is_retryable(&self)',
-  'pub async fn receive_next(',
-  'pub async fn project_consumed(',
-  'pub async fn acknowledge_consumed(',
-  'pub async fn move_to_dlq_and_acknowledge(',
-  'consumed.raw_payload().to_vec()',
-  'self.transport',
-  '.move_to_dlq(entry)',
-  'self.acknowledge_consumed(consumed).await',
-  'DeadLettered',
+  "pub const fn stable_code(&self)",
+  "pub fn is_retryable(&self)",
+  "pub async fn receive_next(",
+  "pub async fn project_consumed(",
+  "pub async fn acknowledge_consumed(",
+  "pub async fn move_to_dlq_and_acknowledge(",
+  "consumed.raw_payload().to_vec()",
+  "self.transport",
+  ".move_to_dlq(entry)",
+  "self.acknowledge_consumed(consumed).await",
+  "DeadLettered",
 ]) {
   requireText("Social Graph consumer", files.consumer, marker);
 }
 
 for (const marker of [
-  'pub raw_payload: Vec<u8>',
-  'let raw_payload = message.payload;',
-  'pub fn raw_payload(&self) -> &[u8]',
+  "pub raw_payload: Vec<u8>",
+  "let raw_payload = message.payload;",
+  "pub fn raw_payload(&self) -> &[u8]",
 ]) {
   requireText("Iggy contract cursor", files.contractCursor, marker);
 }
 
-const durableApply = files.worker.indexOf("consumer.project_consumed(consumed).await");
+const durableApply = files.worker.indexOf(
+  "consumer.project_consumed(consumed).await",
+);
 const durableAck = files.worker.indexOf("acknowledge_durable_result(");
 if (durableApply < 0 || durableAck <= durableApply) {
   failures.push(
@@ -107,7 +132,9 @@ if (durableApply < 0 || durableAck <= durableApply) {
 }
 
 const dlqPublish = files.consumer.indexOf(".move_to_dlq(entry)");
-const dlqAck = files.consumer.indexOf("self.acknowledge_consumed(consumed).await");
+const dlqAck = files.consumer.indexOf(
+  "self.acknowledge_consumed(consumed).await",
+);
 if (dlqPublish < 0 || dlqAck <= dlqPublish) {
   failures.push("DLQ publication must complete before source acknowledgement");
 }
@@ -117,7 +144,10 @@ const acknowledgeOnlyStart = files.worker.indexOf(
 );
 const acknowledgeOnlyBody =
   acknowledgeOnlyStart >= 0 ? files.worker.slice(acknowledgeOnlyStart) : "";
-for (const forbidden of ["move_to_dlq_and_acknowledge", "project_consumed(consumed)"]) {
+for (const forbidden of [
+  "move_to_dlq_and_acknowledge",
+  "project_consumed(consumed)",
+]) {
   forbidText("acknowledgement-only path", acknowledgeOnlyBody, forbidden);
 }
 
@@ -149,5 +179,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index worker lifecycle verification passed: default-off host composition, outbox_iggy gating, StopHandle shutdown, bounded retries, result-first acknowledgement-only recovery, exact-byte DLQ-before-ack, and owner-table isolation are locked.",
+  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, bounded retries, result-first acknowledgement-only recovery, exact-byte DLQ-before-ack, and owner-table isolation are locked.",
 );
