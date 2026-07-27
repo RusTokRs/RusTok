@@ -611,19 +611,34 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
-        tracing::warn!(
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
-            operation = owner_operation,
-            expected_checkout_operation_id = %checkout_operation_id,
-            code = "fulfillment.checkout_operation_id_invalid",
-            "checkout fulfillment execution received invalid causation identity"
-        );
-        return Err(PortError::validation(
+        let error = PortError::validation(
             "fulfillment.checkout_operation_id_invalid",
             "checkout fulfillment causation_id must match the checkout operation",
-        ));
+        );
+        tracing::warn!(
+            error = ?error,
+            owner = CHECKOUT_FULFILLMENT_OWNER,
+            operation = owner_operation,
+            validation_phase = "causation_id",
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            expected_checkout_operation_id = %checkout_operation_id,
+            code = "fulfillment.checkout_operation_id_invalid",
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+            "checkout fulfillment execution received invalid causation identity"
+        );
+        return Err(error);
     }
     Ok(())
 }
@@ -632,20 +647,35 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            channel = ?context.channel,
-            operation = owner_operation,
-            code = "fulfillment.tenant_id_invalid",
-            "checkout fulfillment execution received invalid tenant context"
-        );
-        PortError::validation(
+    Uuid::parse_str(&context.tenant_id).map_err(|cause| {
+        let error = PortError::validation(
             "fulfillment.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for fulfillment ports",
-        )
+        );
+        tracing::warn!(
+            cause = ?cause,
+            error = ?error,
+            owner = CHECKOUT_FULFILLMENT_OWNER,
+            operation = owner_operation,
+            validation_phase = "tenant_id",
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            code = "fulfillment.tenant_id_invalid",
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+            "checkout fulfillment execution received invalid tenant context"
+        );
+        error
     })
 }
 
