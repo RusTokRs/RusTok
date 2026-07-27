@@ -58,10 +58,16 @@ const operations = [
 for (const [operation, constant] of operations) {
   requireText(
     wrapper,
-    `PricingReadPort::${operation}(&self.inner`,
+    `PricingReadPort::${operation}(`,
     `${operation} unchanged owner delegation`,
   );
   requireText(wrapper, constant, `${operation} stable operation constant`);
+}
+const innerDelegations = wrapper.match(/&self\.inner/g) ?? [];
+if (innerDelegations.length !== operations.length) {
+  failures.push(
+    `expected ${operations.length} unchanged owner delegations, found ${innerDelegations.length}`,
+  );
 }
 
 const retainedContext = [
