@@ -1,6 +1,6 @@
 # Marketplace listing implementation plan
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-07-27
 
 ## Status
 
@@ -148,8 +148,14 @@ migration, contention, mounted-transport, and remote-profile evidence.
   listing ports, an authorizer, and canonical `PortContext` construction.
 - [x] Fail closed with a stable server-function error when the native runtime is not
   mounted instead of panicking or constructing owner dependencies in the UI package.
-- [x] Declare the GraphQL profile as explicitly unmounted instead of silently falling
-  back to native or inventing unsupported schema operations.
+- [x] Publish module-owned GraphQL query and mutation roots over the same typed owner
+  ports as native transport.
+- [x] Replace the fail-closed placeholder with real directory, detail, event-history,
+  and eight-command GraphQL admin operations.
+- [x] Compose one host-owned `MarketplaceListingRuntime` from seller, product, listing,
+  and transactional-event owner adapters and share it with native and GraphQL transports.
+- [x] Resolve authenticated native request identity, tenant, effective locale, channel,
+  permission, deadline, and idempotency key before invoking the shared owner ports.
 - [x] Register the module-owned admin package and locale path in
   `rustok-module.toml`.
 - [x] Register the nested admin crate in the workspace and the admin hydrate/SSR
@@ -163,10 +169,6 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## FFA remaining
 
-- [ ] Provide authenticated request-scoped listing provider/runtime composition from
-  admin hosts.
-- [ ] Publish module-owned listing GraphQL query/mutation roots over the same typed
-  ports, then replace the declared-unmounted GraphQL adapter with real operations.
 - [ ] Add eligibility explanation and paginated event/terms history refinements.
 - [ ] Synchronize `docs/modules/registry.md` after a safe full-document update.
 - [ ] Retain mounted native/GraphQL parity, localized errors, route state, and
@@ -179,8 +181,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 3. [x] Publish the initial module-owned listing FFA source package.
 4. [x] Add workspace/admin feature wiring and platform listing permissions.
 5. [x] Atomically publish the versioned event family through the transactional outbox.
-6. [ ] Mount authenticated request-scoped native provider composition.
-7. [ ] Add listing GraphQL roots and replace the declared-unmounted adapter.
+6. [x] Mount authenticated request-scoped native provider composition.
+7. [x] Add listing GraphQL roots and replace the declared-unmounted adapter.
 8. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
    outbox, restart, and mounted transport evidence.
 9. [ ] Start product matching/approval only after owner/runtime evidence is retained.
@@ -203,6 +205,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `src/lifecycle_event_commands.rs`
 - `src/service.rs`
 - `src/ports.rs`
+- `src/graphql.rs`
 - `admin/Cargo.toml`
 - `admin/src/model.rs`
 - `admin/src/core.rs`
@@ -221,6 +224,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `../../apps/server/tests/marketplace_listing_event_contract_guard.rs`
 - `../../apps/server/tests/marketplace_listing_provenance_cutover_guard.rs`
 - `../../apps/server/tests/marketplace_listing_admin_ffa_guard.rs`
+- `../../apps/server/src/services/commerce_provider_runtime.rs`
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
 - `../../scripts/verify/verify-marketplace-listing-event-contract.mjs`

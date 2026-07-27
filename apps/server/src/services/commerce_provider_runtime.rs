@@ -57,6 +57,62 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
+    #[cfg(feature = "mod-marketplace_seller")]
+    let host = {
+        let runtime = server
+            .shared_get::<rustok_marketplace_seller::MarketplaceSellerRuntime>()
+            .unwrap_or_else(|| {
+                let service = Arc::new(
+                    rustok_marketplace_seller::MarketplaceSellerService::new(server.db_clone()),
+                );
+                let read_port: Arc<dyn rustok_marketplace_seller::MarketplaceSellerReadPort> =
+                    service.clone();
+                let command_port: Arc<dyn rustok_marketplace_seller::MarketplaceSellerCommandPort> =
+                    service;
+                let runtime = rustok_marketplace_seller::MarketplaceSellerRuntime::new(
+                    read_port,
+                    command_port,
+                );
+                server.shared_insert(runtime.clone());
+                runtime
+            });
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(
+        feature = "mod-marketplace_listing",
+        feature = "mod-marketplace_seller",
+        feature = "mod-product"
+    ))]
+    let host = {
+        let runtime = server
+            .shared_get::<rustok_marketplace_listing::MarketplaceListingRuntime>()
+            .unwrap_or_else(|| {
+                let event_bus = server
+                    .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .expect("TransactionalEventBus must be initialized before marketplace listing");
+                let seller_reader = server
+                    .shared_get::<rustok_marketplace_seller::MarketplaceSellerRuntime>()
+                    .expect(
+                        "MarketplaceSellerRuntime must be initialized before marketplace listing",
+                    )
+                    .shared_read_port();
+                let product_reader: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(
+                    rustok_product::CatalogService::new(server.db_clone(), event_bus.clone()),
+                );
+                let ports = Arc::new(rustok_marketplace_listing::MarketplaceListingService::new(
+                    server.db_clone(),
+                    event_bus,
+                    seller_reader,
+                    product_reader,
+                ));
+                let runtime = rustok_marketplace_listing::MarketplaceListingRuntime::new(ports);
+                server.shared_insert(runtime.clone());
+                runtime
+            });
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
     let host = {
         let observers = server

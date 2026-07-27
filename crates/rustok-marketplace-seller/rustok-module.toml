@@ -18,6 +18,7 @@ entry_type = "MarketplaceSellerModule"
 [provides.graphql]
 query = "graphql_root::MarketplaceSellerCombinedQuery"
 mutation = "graphql::MarketplaceSellerMutation"
+runtime_data_factory = "graphql::graphql_runtime_data"
 
 [provides.admin_ui]
 leptos_crate = "rustok-marketplace-seller-admin"

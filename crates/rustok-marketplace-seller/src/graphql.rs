@@ -4,11 +4,11 @@ use async_graphql::{
     Context, Enum, ErrorExtensions, FieldError, InputObject, Json, Object, Result, SimpleObject,
 };
 use chrono::{DateTime, FixedOffset};
-use rustok_api::graphql::GraphQLError;
+use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::request::RequestContext;
 use rustok_api::{
-    AuthContext, ChannelContext, HostRuntimeContext, Permission, PortActor, PortContext, PortError,
-    PortErrorKind, TenantContext, has_any_effective_permission,
+    AuthContext, ChannelContext, Permission, PortActor, PortContext, PortError, PortErrorKind,
+    TenantContext, has_any_effective_permission,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -18,7 +18,7 @@ use crate::{
     CreateMarketplaceSellerInput, ListMarketplaceSellerMembersRequest, ListMarketplaceSellersInput,
     MarketplaceSellerCommandPort, MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole,
     MarketplaceSellerMemberStatus, MarketplaceSellerOnboardingStatus, MarketplaceSellerReadPort,
-    MarketplaceSellerResponse, MarketplaceSellerService, MarketplaceSellerStatus,
+    MarketplaceSellerResponse, MarketplaceSellerRuntime, MarketplaceSellerStatus,
     ReactivateMarketplaceSellerRequest, ReadMarketplaceSellerRequest,
     ReviewMarketplaceSellerOnboardingInput, ReviewMarketplaceSellerOnboardingRequest,
     SubmitMarketplaceSellerOnboardingInput, SubmitMarketplaceSellerOnboardingRequest,
@@ -28,6 +28,15 @@ use crate::{
 };
 
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
+const MODULE_SLUG: &str = "marketplace_seller";
+
+pub fn graphql_runtime_data(
+    inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
+) -> std::result::Result<MarketplaceSellerRuntime, String> {
+    inputs
+        .shared_get::<MarketplaceSellerRuntime>()
+        .ok_or_else(|| "marketplace seller runtime is not composed".to_string())
+}
 
 #[derive(Default)]
 pub struct MarketplaceSellerQuery;
@@ -49,12 +58,13 @@ impl MarketplaceSellerQuery {
                 Permission::MARKETPLACE_SELLERS_LIST,
                 Permission::MARKETPLACE_SELLERS_READ,
             ],
-        )?;
+        )
+        .await?;
         let page = page.unwrap_or(1).max(1) as u64;
         let per_page = per_page.unwrap_or(25).clamp(1, 100) as u64;
         let service = service(ctx)?;
         let result = MarketplaceSellerReadPort::list_sellers(
-            &service,
+            service.read_port(),
             port_context(ctx, auth, None)?,
             ListMarketplaceSellersInput {
                 page,
@@ -79,10 +89,10 @@ impl MarketplaceSellerQuery {
         ctx: &Context<'_>,
         id: Uuid,
     ) -> Result<MarketplaceSellerGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_READ])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_READ]).await?;
         let service = service(ctx)?;
         MarketplaceSellerReadPort::read_seller(
-            &service,
+            service.read_port(),
             port_context(ctx, auth, None)?,
             ReadMarketplaceSellerRequest { seller_id: id },
         )
@@ -96,10 +106,10 @@ impl MarketplaceSellerQuery {
         ctx: &Context<'_>,
         seller_id: Uuid,
     ) -> Result<Vec<MarketplaceSellerMemberGql>> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_READ])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_READ]).await?;
         let service = service(ctx)?;
         MarketplaceSellerReadPort::list_members(
-            &service,
+            service.read_port(),
             port_context(ctx, auth, None)?,
             ListMarketplaceSellerMembersRequest { seller_id },
         )
@@ -120,10 +130,10 @@ impl MarketplaceSellerMutation {
         idempotency_key: String,
         input: MarketplaceSellerCreateInputGql,
     ) -> Result<MarketplaceSellerGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_CREATE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_CREATE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::create_seller(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             CreateMarketplaceSellerInput {
                 handle: input.handle,
@@ -148,10 +158,10 @@ impl MarketplaceSellerMutation {
         seller_id: Uuid,
         input: MarketplaceSellerProfileInputGql,
     ) -> Result<MarketplaceSellerGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::update_seller_profile(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             UpdateMarketplaceSellerProfileRequest {
                 seller_id,
@@ -174,10 +184,10 @@ impl MarketplaceSellerMutation {
         seller_id: Uuid,
         note: Option<String>,
     ) -> Result<MarketplaceSellerGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::submit_seller_onboarding(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             SubmitMarketplaceSellerOnboardingRequest {
                 seller_id,
@@ -197,10 +207,10 @@ impl MarketplaceSellerMutation {
         approved: bool,
         note: Option<String>,
     ) -> Result<MarketplaceSellerGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_MANAGE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_MANAGE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::review_seller_onboarding(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             ReviewMarketplaceSellerOnboardingRequest {
                 seller_id,
@@ -219,10 +229,10 @@ impl MarketplaceSellerMutation {
         seller_id: Uuid,
         reason: String,
     ) -> Result<MarketplaceSellerGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_MANAGE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_MANAGE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::suspend_seller(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             SuspendMarketplaceSellerRequest {
                 seller_id,
@@ -240,10 +250,10 @@ impl MarketplaceSellerMutation {
         idempotency_key: String,
         seller_id: Uuid,
     ) -> Result<MarketplaceSellerGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_MANAGE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_MANAGE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::reactivate_seller(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             ReactivateMarketplaceSellerRequest { seller_id },
         )
@@ -259,10 +269,10 @@ impl MarketplaceSellerMutation {
         seller_id: Uuid,
         input: MarketplaceSellerMemberCreateInputGql,
     ) -> Result<MarketplaceSellerMemberGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::add_seller_member(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             AddMarketplaceSellerMemberRequest {
                 seller_id,
@@ -289,10 +299,10 @@ impl MarketplaceSellerMutation {
         member_id: Uuid,
         input: MarketplaceSellerMemberUpdateInputGql,
     ) -> Result<MarketplaceSellerMemberGql> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_UPDATE]).await?;
         let service = service(ctx)?;
         MarketplaceSellerCommandPort::update_seller_member(
-            &service,
+            service.command_port(),
             port_context(ctx, auth, Some(idempotency_key))?,
             UpdateMarketplaceSellerMemberRequest {
                 seller_id,
@@ -542,14 +552,13 @@ impl From<MarketplaceSellerMemberStatus> for MarketplaceSellerMemberStatusGql {
     }
 }
 
-fn service(ctx: &Context<'_>) -> Result<MarketplaceSellerService> {
-    let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
+fn service(ctx: &Context<'_>) -> Result<&MarketplaceSellerRuntime> {
+    ctx.data::<MarketplaceSellerRuntime>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Marketplace seller runtime is not registered")
-    })?;
-    Ok(MarketplaceSellerService::new(runtime.db_clone()))
+    })
 }
 
-fn require_permissions<'a>(
+async fn require_permissions<'a>(
     ctx: &'a Context<'a>,
     required: &[Permission],
 ) -> Result<&'a AuthContext> {
@@ -562,6 +571,7 @@ fn require_permissions<'a>(
         ));
     }
     require_tenant(ctx, auth)?;
+    require_module_enabled(ctx, MODULE_SLUG).await?;
     Ok(auth)
 }
 

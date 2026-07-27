@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -94,6 +95,34 @@ pub trait MarketplaceListingCommandPort: Send + Sync {
         context: PortContext,
         request: MarketplaceListingIdRequest,
     ) -> Result<MarketplaceListingResponse, PortError>;
+}
+
+/// Combined owner boundary transferred by the host to native and GraphQL
+/// transports. The handle contains no host, database, or product-specific
+/// infrastructure and can therefore wrap either embedded or remote adapters.
+pub trait MarketplaceListingPorts:
+    MarketplaceListingReadPort + MarketplaceListingCommandPort
+{
+}
+
+impl<T> MarketplaceListingPorts for T where
+    T: MarketplaceListingReadPort + MarketplaceListingCommandPort
+{
+}
+
+#[derive(Clone)]
+pub struct MarketplaceListingRuntime {
+    ports: Arc<dyn MarketplaceListingPorts>,
+}
+
+impl MarketplaceListingRuntime {
+    pub fn new(ports: Arc<dyn MarketplaceListingPorts>) -> Self {
+        Self { ports }
+    }
+
+    pub fn ports(&self) -> &dyn MarketplaceListingPorts {
+        self.ports.as_ref()
+    }
 }
 
 #[async_trait]

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -144,6 +145,41 @@ pub trait MarketplaceSellerCommandPort: Send + Sync {
         context: PortContext,
         request: UpdateMarketplaceSellerMemberRequest,
     ) -> Result<MarketplaceSellerMemberResponse, PortError>;
+}
+
+/// Host-composed owner ports used by every marketplace seller transport.
+///
+/// Read and command adapters are kept independently replaceable so a
+/// deployment can select in-process or remote owner implementations without
+/// changing GraphQL, native UI, or downstream marketplace capabilities.
+#[derive(Clone)]
+pub struct MarketplaceSellerRuntime {
+    read_port: Arc<dyn MarketplaceSellerReadPort>,
+    command_port: Arc<dyn MarketplaceSellerCommandPort>,
+}
+
+impl MarketplaceSellerRuntime {
+    pub fn new(
+        read_port: Arc<dyn MarketplaceSellerReadPort>,
+        command_port: Arc<dyn MarketplaceSellerCommandPort>,
+    ) -> Self {
+        Self {
+            read_port,
+            command_port,
+        }
+    }
+
+    pub fn read_port(&self) -> &dyn MarketplaceSellerReadPort {
+        self.read_port.as_ref()
+    }
+
+    pub fn command_port(&self) -> &dyn MarketplaceSellerCommandPort {
+        self.command_port.as_ref()
+    }
+
+    pub fn shared_read_port(&self) -> Arc<dyn MarketplaceSellerReadPort> {
+        self.read_port.clone()
+    }
 }
 
 #[async_trait]

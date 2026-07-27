@@ -33,7 +33,7 @@ entry_type = "MarketplaceModule"
 
 [fba.consumer]
 registry = "contracts/marketplace-fba-registry.json"
-contract_version = "marketplace.family.v2"
+contract_version = "marketplace.family.v3"
 providers = [
     "marketplace_seller",
     "marketplace_listing",

@@ -19,6 +19,11 @@ product = { version_req = ">=0.1.0" }
 [crate]
 entry_type = "MarketplaceListingModule"
 
+[provides.graphql]
+query = "graphql::MarketplaceListingQuery"
+mutation = "graphql::MarketplaceListingMutation"
+runtime_data_factory = "graphql::graphql_runtime_data"
+
 [provides.admin_ui]
 leptos_crate = "rustok-marketplace-listing-admin"
 route_segment = "marketplace-listings"

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "marketplace_listing",
   "server_feature": "mod-marketplace_listing",
-  "status": "pending",
+  "status": "source_wired_execution_pending",
   "default_enabled": false,
-  "note": "The backend owner and distribution module are registered. Server feature wiring remains separate from source owner readiness and must not imply mounted GraphQL or FFA evidence."
+  "note": "The backend owner, distribution module, server feature, GraphQL roots, runtime-data factory, and admin adapters are source-wired. Compiled schema, authenticated mounted execution, and FFA parity evidence are not retained."
 }

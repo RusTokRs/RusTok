@@ -5,6 +5,37 @@ use std::{
 };
 
 use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DbErr, Statement};
+use uuid::Uuid;
+
+/// Returns whether an optional module is enabled for the tenant snapshot that
+/// owns the current request.
+///
+/// GraphQL and native server-function transports share this query so neither
+/// transport can bypass tenant module lifecycle policy.
+pub async fn is_tenant_module_enabled(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    module_slug: &str,
+) -> Result<bool, DbErr> {
+    let backend = db.get_database_backend();
+    let query = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "SELECT 1 FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
+        }
+        _ => {
+            "SELECT 1 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
+        }
+    };
+
+    db.query_one(Statement::from_sql_and_values(
+        backend,
+        query,
+        vec![tenant_id.into(), module_slug.into()],
+    ))
+    .await
+    .map(|row| row.is_some())
+}
 
 /// Immutable host configuration snapshot provided to internal server-function
 /// adapters. It keeps adapters independent of a framework-specific app context.

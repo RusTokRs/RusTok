@@ -77,9 +77,7 @@
   "payout_stage_included": false,
   "event_normalization_included": false,
   "remaining_slices": [
-    "payment refund and chargeback event normalization",
-    "durable reversal event inbox and recovery worker",
-    "seller balance bucket transfer transactions",
-    "payout settlement and payout reversal transactions"
+    "payout provider transfer execution and verified webhook recovery",
+    "deterministic multi-order payout settlement orchestration"
   ]
 }

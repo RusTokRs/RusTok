@@ -4,7 +4,16 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
     let admin_host = include_str!("../../admin/Cargo.toml");
     let permissions = include_str!("../../../crates/rustok-api/src/permissions.rs");
     let owner = include_str!("../../../crates/rustok-marketplace-listing/src/lib.rs");
+    let owner_ports = include_str!("../../../crates/rustok-marketplace-listing/src/ports.rs");
+    let owner_graphql = include_str!("../../../crates/rustok-marketplace-listing/src/graphql.rs");
+    let seller_graphql = include_str!("../../../crates/rustok-marketplace-seller/src/graphql.rs");
+    let seller_ports = include_str!("../../../crates/rustok-marketplace-seller/src/ports.rs");
+    let seller_manifest =
+        include_str!("../../../crates/rustok-marketplace-seller/rustok-module.toml");
+    let api_runtime = include_str!("../../../crates/rustok-api/src/runtime.rs");
     let manifest = include_str!("../../../crates/rustok-marketplace-listing/rustok-module.toml");
+    let server_runtime = include_str!("../src/services/commerce_provider_runtime.rs");
+    let server_manifest = include_str!("../Cargo.toml");
     let cargo = include_str!("../../../crates/rustok-marketplace-listing/admin/Cargo.toml");
     let model = include_str!("../../../crates/rustok-marketplace-listing/admin/src/model.rs");
     let transport =
@@ -22,6 +31,10 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         "rustok-marketplace-listing-admin",
         "route_segment = \"marketplace-listings\"",
         "supported_locales = [\"en\", \"ru\"]",
+        "[provides.graphql]",
+        "graphql::MarketplaceListingQuery",
+        "graphql::MarketplaceListingMutation",
+        "graphql::graphql_runtime_data",
     ] {
         assert!(
             manifest.contains(marker),
@@ -87,31 +100,100 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
     assert!(transport.contains("never falls back"));
 
     for marker in [
-        "MarketplaceListingAdminPorts",
-        "MarketplaceListingAdminRequestScope",
         "MarketplaceListingReadPort::list_listings",
         "MarketplaceListingReadPort::list_listing_events",
         "MarketplaceListingCommandPort::create_listing",
         "MarketplaceListingCommandPort::archive_listing",
         "action.permission()",
-        "marketplace listing native runtime is not mounted in this host",
-        "use_context::<MarketplaceListingAdminNativeRuntime>()",
-        "port_context",
-        "authorize",
+        "use_context::<HostRuntimeContext>()",
+        "shared_get::<rustok_marketplace_listing::MarketplaceListingRuntime>()",
+        "leptos_axum::extract::<AuthContext>()",
+        "leptos_axum::extract::<TenantContext>()",
+        "leptos_axum::extract::<RequestContext>()",
+        "has_effective_permission",
+        "request.user_id != Some(auth.user_id)",
+        "is_tenant_module_enabled(host.db(), tenant.id, \"marketplace_listing\")",
     ] {
         assert!(
             native.contains(marker),
             "listing native adapter is missing {marker}"
         );
     }
-    assert!(!native.contains("expect_context::<MarketplaceListingAdminNativeRuntime>"));
     assert!(!native.contains("entities::"));
     assert!(!native.contains("DatabaseConnection"));
     assert!(!native.contains("MarketplaceListingService::new"));
 
-    assert!(graphql.contains("declared_unmounted"));
-    assert!(graphql.contains("must provide module-owned listing queries and mutations"));
-    assert!(!graphql.contains("fallback"));
+    for marker in [
+        "marketplaceListings",
+        "marketplaceListingEvents",
+        "createMarketplaceListing",
+        "updateMarketplaceListingTerms",
+        "submitMarketplaceListingForReview",
+        "reviewMarketplaceListing",
+        "publishMarketplaceListing",
+        "suspendMarketplaceListing",
+        "reactivateMarketplaceListing",
+        "archiveMarketplaceListing",
+        "execute_graphql",
+    ] {
+        assert!(
+            graphql.contains(marker),
+            "listing GraphQL admin adapter is missing {marker}"
+        );
+    }
+    assert!(!graphql.contains("UNMOUNTED"));
+
+    for marker in [
+        "pub trait MarketplaceListingPorts",
+        "pub struct MarketplaceListingRuntime",
+        "Arc<dyn MarketplaceListingPorts>",
+    ] {
+        assert!(
+            owner_ports.contains(marker),
+            "listing owner runtime is missing {marker}"
+        );
+    }
+    for marker in [
+        "pub struct MarketplaceListingQuery",
+        "pub struct MarketplaceListingMutation",
+        "MarketplaceListingReadPort::list_listings",
+        "MarketplaceListingReadPort::list_listing_events",
+        "MarketplaceListingCommandPort::create_listing",
+        "MarketplaceListingCommandPort::archive_listing",
+        "graphql_runtime_data",
+        "RequestContext",
+        "require_module_enabled(ctx, MODULE_SLUG).await",
+    ] {
+        assert!(
+            owner_graphql.contains(marker),
+            "listing owner GraphQL transport is missing {marker}"
+        );
+    }
+    for marker in [
+        "MarketplaceListingRuntime",
+        "MarketplaceSellerRuntime",
+        "shared_read_port",
+        "ProductCatalogReadPort",
+        "server.shared_insert(runtime.clone())",
+    ] {
+        assert!(
+            server_runtime.contains(marker),
+            "listing host runtime composition is missing {marker}"
+        );
+    }
+    assert!(server_manifest.contains("rustok-marketplace-listing/graphql"));
+    assert!(api_runtime.contains("pub async fn is_tenant_module_enabled"));
+    assert!(transport.contains("pub locale: Option<String>"));
+    assert!(graphql.contains("tenant_slug,\n        locale,"));
+    assert!(owner_graphql.contains(
+        "require_permissions(ctx, &[Permission::MARKETPLACE_LISTINGS_LIST]).await"
+    ));
+    assert!(seller_ports.contains("pub struct MarketplaceSellerRuntime"));
+    assert!(seller_graphql.contains("graphql_runtime_data"));
+    assert!(seller_graphql.contains("require_module_enabled(ctx, MODULE_SLUG).await"));
+    assert!(!seller_graphql.contains("MarketplaceSellerService"));
+    assert!(!seller_graphql.contains("sea_orm::DatabaseConnection"));
+    assert!(seller_manifest.contains("runtime_data_factory = \"graphql::graphql_runtime_data\""));
 
     for marker in [
         "pending_command",

@@ -1,6 +1,6 @@
 # Marketplace family implementation plan
 
-Last reviewed: 2026-07-21
+Last reviewed: 2026-07-27
 
 ## Status
 
@@ -46,6 +46,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   scheduled backfill/recovery, and authenticated REST/GraphQL operator transports.
 - [x] Durable historical reversal-adaptation failure journal with bounded backoff,
   operator review/retry, resolved-row evidence, and PostgreSQL/SQLite/MySQL integrity guards.
+- [x] Host-composed listing owner runtime, authenticated request-scoped native adapter,
+  module-owned GraphQL roots, and real GraphQL admin adapter source.
 
 ## Architecture contract
 
@@ -81,6 +83,7 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 - [x] Publish sealed seller event contracts through the transactional outbox path.
 - [x] Backfill legacy onboarding and suspension prose as explicit legacy snapshots.
 - [x] Project current seller prose from the immutable event timeline.
+- [x] Drop transitional mutable seller prose columns in the final source schema.
 - [x] Publish bounded seller event-history models, native transport, GraphQL transport,
   and Leptos timeline components.
 
@@ -90,8 +93,6 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   construct `OutboxTransport` directly.
 - [ ] Resolve `MarketplaceSellerReadPort` from runtime composition in admin transports;
   transports must not instantiate `MarketplaceSellerService` directly.
-- [ ] Remove transitional mutable prose columns after clean and upgraded migration
-  evidence is retained.
 - [ ] Add normalized KYC/verification facts and a provider SPI without raw provider
   payload persistence.
 - [ ] Add seller-scoped vendor roles, invitations, and capability enforcement.
@@ -113,7 +114,7 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 
 ### Remaining
 
-- [ ] Mount authenticated native provider composition and real GraphQL roots.
+- [x] Mount authenticated native provider composition and real GraphQL roots.
 - [ ] Add the typed checkout-resolution port that validates seller state, listing state,
   terms version, market/channel, product identity, currency, quantity, inventory, and
   fulfillment references before the cart snapshot is written.
@@ -373,7 +374,7 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 
 ### Remaining
 
-- [ ] Reconcile `Cargo.lock` after manifest composition changes.
+- [x] Reconcile `Cargo.lock` after manifest composition changes.
 - [ ] Add moderation RBAC resources and request-scoped runtime port composition.
 - [ ] Publish moderation lifecycle events through the transactional outbox.
 - [ ] Add durable decision-application journal and crash/retry recovery.
@@ -443,7 +444,7 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   source and dependency graph.
 - [x] Compose the durable historical backfill service and adaptation-failure operator paths
   through `MarketplaceFinancialRuntime`, the scheduled worker, REST, GraphQL, and OpenAPI.
-- [ ] Reconcile the workspace lock after all owner crates are registered.
+- [x] Reconcile the workspace lock after all owner crates are registered.
 - [ ] Register request-scoped runtime providers for payout and moderation; compile-time
   module registration is not sufficient.
 - [ ] Update backfill registries with the validated final composed migration order.
@@ -456,7 +457,7 @@ append-only reversal, seller balance projection, root reversal orchestration, no
 refund/chargeback observation, reversal inbox recovery, reversal operator transport, or durable
 historical adaptation-failure batches.
 
-- [ ] Reconcile `Cargo.lock`.
+- [x] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed cart, commerce, marketplace, payment, moderation,
   distribution, server, and migration crates.
 - [ ] Run `cargo check` for cart, marketplace owners, payment, commerce, distribution,
@@ -520,12 +521,14 @@ historical adaptation-failure batches.
 9. [x] Normalize refund/chargeback owner events, mount post-owner observers, and add durable
    reversal recovery.
 10. [x] Add durable historical adaptation-failure tracking.
-11. [ ] Add balance bucket transfers, payout provider journal, webhook inbox, transfer
-    execution, and settlement.
-12. [ ] Add seller/listing moderation adapters and decision-application recovery.
-13. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
-14. [ ] Build vendor and finance control-room surfaces.
-15. [ ] Execute the consolidated validation queue and only then promote readiness.
+11. [x] Add immutable balance bucket transfers with reference lineage and replay-safe
+    admission.
+12. [ ] Add payout provider journal, webhook inbox, transfer execution, lookup recovery,
+    and multi-order settlement.
+13. [ ] Add seller/listing moderation adapters and decision-application recovery.
+14. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
+15. [ ] Build vendor and finance control-room surfaces.
+16. [ ] Execute the consolidated validation queue and only then promote readiness.
 
 ## Primary source paths
 

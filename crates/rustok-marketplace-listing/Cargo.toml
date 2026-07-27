@@ -6,6 +6,7 @@ license.workspace = true
 description = "Marketplace Family seller listing identity, commercial terms, lifecycle, and eligibility owner"
 
 [dependencies]
+async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
 hex.workspace = true
@@ -25,6 +26,10 @@ tracing.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
 uuid.workspace = true
 validator.workspace = true
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]
 
 [dev-dependencies]
 tokio.workspace = true

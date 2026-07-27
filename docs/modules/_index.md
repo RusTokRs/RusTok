@@ -103,6 +103,9 @@ Module local documentation lives inside the crates themselves at
 | `rustok-payment` | [docs](../../crates/rustok-payment/docs/README.md) | [plan](../../crates/rustok-payment/docs/implementation-plan.md) |
 | `rustok-fulfillment` | [docs](../../crates/rustok-fulfillment/docs/README.md) | [plan](../../crates/rustok-fulfillment/docs/implementation-plan.md) |
 | `rustok-commerce` | [docs](../../crates/rustok-commerce/docs/README.md) | [plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
+| `rustok-marketplace` | [docs](../../crates/rustok-marketplace/docs/README.md) | [plan](../../crates/rustok-marketplace/docs/implementation-plan.md) |
+| `rustok-marketplace-seller` | [docs](../../crates/rustok-marketplace-seller/docs/README.md) | [plan](../../crates/rustok-marketplace-seller/docs/implementation-plan.md) |
+| `rustok-marketplace-listing` | [docs](../../crates/rustok-marketplace-listing/docs/README.md) | [plan](../../crates/rustok-marketplace-listing/docs/implementation-plan.md) |
 | `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |
 | `rustok-comments` | [docs](../../crates/rustok-comments/docs/README.md) | [plan](../../crates/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
@@ -127,6 +130,10 @@ Module local documentation lives inside the crates themselves at
 - `rustok-forum`: [README](../../crates/rustok-forum/admin/README.md)
 - `rustok-notifications`: [README](../../crates/rustok-notifications/admin/README.md)
 - `rustok-commerce`: [README](../../crates/rustok-commerce/admin/README.md)
+- `rustok-marketplace-seller`: module-owned package in
+  [`admin/`](../../crates/rustok-marketplace-seller/admin/)
+- `rustok-marketplace-listing`: module-owned package in
+  [`admin/`](../../crates/rustok-marketplace-listing/admin/)
 - Additional owner packages are listed in [UI Packages Index](./UI_PACKAGES_INDEX.md).
 
 ### Optional/Storefront Surfaces

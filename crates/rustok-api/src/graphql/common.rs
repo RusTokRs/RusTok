@@ -171,28 +171,9 @@ fn module_check_error(source: sea_orm::DbErr) -> Error {
 pub async fn require_module_enabled(ctx: &Context<'_>, slug: &str) -> Result<()> {
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
-
-    let backend = db.get_database_backend();
-    let query = match backend {
-        sea_orm::DbBackend::Sqlite => {
-            "SELECT 1 FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
-        }
-        _ => {
-            "SELECT 1 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
-        }
-    };
-
-    use sea_orm::{ConnectionTrait, Statement};
-    let row = db
-        .query_one(Statement::from_sql_and_values(
-            backend,
-            query,
-            vec![tenant.id.into(), slug.into()],
-        ))
+    let enabled = crate::is_tenant_module_enabled(db, tenant.id, slug)
         .await
         .map_err(module_check_error)?;
-
-    let enabled = row.is_some();
 
     if !enabled {
         return Err(async_graphql::Error::new(format!(

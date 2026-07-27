@@ -12,6 +12,8 @@
   ],
   "root_consumer": "marketplace",
   "default_enabled": false,
-  "server_feature_pending": true,
+  "server_feature_source_wired": true,
+  "graphql_feature_source_wired": true,
+  "host_runtime_source_composed": true,
   "runtime_execution_retained": false
 }

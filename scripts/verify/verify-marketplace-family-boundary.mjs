@@ -76,8 +76,9 @@ for (const marker of [
 ]) assertContains(workspace, marker, `${files.workspace}: missing ${marker}`);
 for (const marker of [
   "marketplace_seller =",
+  "marketplace_listing =",
   "marketplace =",
-  'depends_on = ["marketplace_seller"]',
+  'depends_on = ["marketplace_seller", "marketplace_listing"',
 ]) assertContains(modules, marker, `${files.modules}: missing ${marker}`);
 for (const forbidden of [
   "crates/rustok-seller",
@@ -93,7 +94,7 @@ for (const forbidden of [
 
 assertContains(ecommercePlan, "## Marketplace Family", `${files.ecommercePlan}: marketplace family section missing`);
 assertContains(ecommercePlan, "rustok-marketplace-listing", `${files.ecommercePlan}: listing family name missing`);
-assertContains(ecommercePlan, "Marketplace promotion gates", `${files.ecommercePlan}: FFA/FBA gates missing`);
+assertContains(ecommercePlan, "Marketplace production gate", `${files.ecommercePlan}: production gate missing`);
 assertContains(rootManifest, 'slug = "marketplace"', `${files.rootManifest}: root slug missing`);
 assertContains(rootManifest, "[fba.consumer]", `${files.rootManifest}: root consumer contract missing`);
 assertContains(rootRegistry, '"owns_tables": false', `${files.rootRegistry}: root non-ownership missing`);
@@ -211,7 +212,7 @@ for (const marker of [
 assertContains(sellerAdminCore, "MarketplaceSellerAdminTransportProfile", `${files.sellerAdminCore}: transport selection missing`);
 assertContains(sellerAdminCore, "Graphql", `${files.sellerAdminCore}: GraphQL profile missing`);
 assertContains(sellerAdminTransport, "never falls back", `${files.sellerAdminTransport}: explicit no-fallback policy missing`);
-assertContains(sellerAdminTransport, "transport_unmounted", `${files.sellerAdminTransport}: unmounted state missing`);
+assertContains(sellerAdminTransport, "execute_selected_transport", `${files.sellerAdminTransport}: explicit transport executor missing`);
 assertContains(sellerAdminUi, "pub fn MarketplaceSellerAdmin()", `${files.sellerAdminUi}: Leptos adapter missing`);
 
 if (failures.length > 0) {

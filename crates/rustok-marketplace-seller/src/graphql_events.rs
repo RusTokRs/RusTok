@@ -1,19 +1,20 @@
 use std::time::Duration;
 
 use async_graphql::{Context, FieldError, Json, Object, Result, SimpleObject};
-use rustok_api::graphql::GraphQLError;
+use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::request::RequestContext;
 use rustok_api::{
-    AuthContext, ChannelContext, HostRuntimeContext, Permission, PortActor, PortContext, PortError,
-    PortErrorKind, TenantContext, has_any_effective_permission,
+    AuthContext, ChannelContext, Permission, PortActor, PortContext, PortError, PortErrorKind,
+    TenantContext, has_any_effective_permission,
 };
 use uuid::Uuid;
 
 use crate::{
-    ListMarketplaceSellerEventsRequest, MarketplaceSellerReadPort, MarketplaceSellerService,
+    ListMarketplaceSellerEventsRequest, MarketplaceSellerReadPort, MarketplaceSellerRuntime,
 };
 
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
+const MODULE_SLUG: &str = "marketplace_seller";
 
 #[derive(Default)]
 pub struct MarketplaceSellerEventQuery;
@@ -26,10 +27,10 @@ impl MarketplaceSellerEventQuery {
         seller_id: Uuid,
         limit: i32,
     ) -> Result<Vec<MarketplaceSellerEventGql>> {
-        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_READ])?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_READ]).await?;
         let service = service(ctx)?;
         MarketplaceSellerReadPort::list_seller_events(
-            &service,
+            service.read_port(),
             port_context(ctx, auth)?,
             ListMarketplaceSellerEventsRequest {
                 seller_id,
@@ -73,14 +74,13 @@ impl From<crate::MarketplaceSellerEventResponse> for MarketplaceSellerEventGql {
     }
 }
 
-fn service(ctx: &Context<'_>) -> Result<MarketplaceSellerService> {
-    let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
+fn service(ctx: &Context<'_>) -> Result<&MarketplaceSellerRuntime> {
+    ctx.data::<MarketplaceSellerRuntime>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Marketplace seller runtime is not registered")
-    })?;
-    Ok(MarketplaceSellerService::new(runtime.db_clone()))
+    })
 }
 
-fn require_permissions<'a>(
+async fn require_permissions<'a>(
     ctx: &'a Context<'a>,
     required: &[Permission],
 ) -> Result<&'a AuthContext> {
@@ -93,6 +93,7 @@ fn require_permissions<'a>(
         ));
     }
     require_tenant(ctx, auth)?;
+    require_module_enabled(ctx, MODULE_SLUG).await?;
     Ok(auth)
 }
 

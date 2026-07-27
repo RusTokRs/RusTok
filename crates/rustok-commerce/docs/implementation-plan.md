@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-27
 
 ## Source of truth
 
@@ -117,6 +117,7 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   fulfillment persistence/recovery, and order paid transition inside owner modules.
 - [x] Add focused owner-port source tests and static commerce/order identity and
   completion-cutover boundary verifiers.
+
 - [x] Add static compensation and owner-stage guards plus versioned order/payment/
   fulfillment workflow contracts without promoting FBA/FFA status.
 - [x] Execute isolated unit fixtures for the completion-cutover verifier: 3/3 pass.
@@ -171,6 +172,33 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   staged checkout path with typed owner ports or explicit owner-provided adapters.
 - [ ] Propagate typed lifecycle statuses through owner ports and remove string status
   matching from critical checkout, compensation, order, payment, and fulfillment paths.
+
+## Audit 2026-07-27: standalone dependency and topology P0
+
+The marketplace/ecommerce isolation audit reopened the following topology work.
+These are source-contract defects, not verification-only tasks.
+
+- [x] Confirm that ecommerce and marketplace owner crates do not depend on AI, MCP,
+  Alloy, or Media orchestration.
+- [x] Confirm that `rustok-commerce` currently has undeclared hard dependencies on
+  marketplace allocation, commission, ledger, and root orchestration.
+- [x] Confirm that Commerce migrations and `MarketplaceFinancialRuntime` require
+  marketplace owners even though `CommerceModule`, `rustok-module.toml`, and the
+  `mod-commerce` feature do not declare or enable them.
+- [ ] Make marketplace financial integration an explicit optional Commerce capability;
+  base Commerce must compose and migrate without any marketplace owner.
+- [ ] Align Cargo features, `rustok-module.toml`, `CommerceModule::dependencies`,
+  distribution/server features, migration sources, listeners, GraphQL/REST surfaces,
+  and worker startup with that optional capability.
+- [ ] Add a lightweight source guard for the minimal Commerce topology and retain
+  compiled/migration evidence only when the validation policy allows it.
+- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,
+  Payment, and Fulfillment concrete services behind host-composed owner ports.
+- [ ] Correct Product's declared dependency contract or extract its direct
+  inventory/pricing persistence operations behind owner ports; the current manifest
+  declares only Taxonomy while production code uses Inventory and Pricing persistence.
+- [ ] Make the server's AI dependency truly optional so a non-AI ecommerce deployment
+  can be composed without compiling the AI host.
 
 ## FBA/FFA architecture invariants
 
@@ -360,6 +388,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   outbox before receipt completion and transaction commit.
 - [x] Prove completed-receipt replay does not append another lifecycle/member event and
   event persistence failure rolls back state plus the pending receipt.
+- [x] Backfill legacy seller prose as truthful snapshot events, project current prose
+  from the immutable timeline, and drop mutable compatibility columns in source.
 
 ### Seller FFA completed
 
@@ -372,7 +402,6 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 
 ### Seller remaining
 
-- [ ] Backfill/remove seller compatibility snapshots without fabricating attribution.
 - [ ] Add normalized verification facts and KYC provider SPI without raw payloads.
 - [ ] Compile seller/core/GraphQL/admin packages, apply clean/upgraded PostgreSQL
   migrations, and execute locale, replay, tenant, contention, rollback, outbox,
@@ -422,17 +451,14 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Render `legacy_snapshot` events as unknown attribution rather than command facts.
 - [x] Require a request-scoped host runtime with typed listing ports, authorization,
   and canonical `PortContext` construction for native execution.
-- [x] Fail the declared GraphQL profile closed while listing GraphQL roots are absent;
-  do not silently fall back to native or fabricate schema operations.
+- [x] Publish listing GraphQL roots and a real GraphQL admin adapter over the same
+  host-composed typed ports as authenticated native execution.
 - [x] Register the module-owned admin package and locale path in the listing manifest.
 - [x] Register the nested admin crate in workspace/admin hydrate and SSR feature graphs.
 - [x] Add platform `marketplace_listings` permissions and module-owned workflow mapping.
 
 ### Listing remaining
 
-- [ ] Publish listing GraphQL roots over the same typed ports and replace the
-  declared-unmounted FFA adapter.
-- [ ] Provide authenticated request-scoped native runtime composition in admin hosts.
 - [ ] Add product matching/approval before automated EAN/GTIN matching,
   deduplication, or buy-box ranking.
 - [ ] Compile listing/root/provider/admin contracts and execute clean/upgraded
@@ -654,8 +680,8 @@ Source inspection is not execution evidence.
     Compatibility source removal and execution evidence remain separate open tasks.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
-14. [ ] Mount authenticated request-scoped listing native composition.
-15. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+14. [x] Mount authenticated request-scoped listing native composition.
+15. [x] Publish listing GraphQL roots and replace the declared-unmounted adapter.
 16. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
     reconciliation surfaces.
 17. [ ] Run static verifiers and fix remaining source drift.

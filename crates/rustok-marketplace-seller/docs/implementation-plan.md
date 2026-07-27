@@ -73,11 +73,12 @@ migration, contention, mounted-transport, and remote-profile evidence.
   mapping.
 - [x] Publish every completed live seller/member command contract through the
   transactional outbox before receipt completion and transaction commit.
+- [x] Backfill legacy onboarding/suspension prose as explicit legacy snapshot events,
+  project current prose from the immutable timeline, and drop mutable compatibility
+  columns in the final source schema.
 
 ## Ownership remaining
 
-- [ ] Backfill existing onboarding/suspension prose snapshots and remove mutable
-  compatibility columns only after live command event coverage is complete.
 - [ ] Add normalized verification facts and a KYC provider SPI without raw provider
   payload persistence.
 
@@ -159,7 +160,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 4. [x] Bind effective locale to member command identity and emit add/update member
    events atomically.
 5. [x] Add event history to native and GraphQL FFA transports.
-6. [ ] Backfill/remove mutable prose snapshots.
+6. [x] Backfill/remove mutable prose snapshots.
 7. [x] Publish live seller/member events through the transactional outbox.
 8. [ ] Add normalized verification/KYC facts and provider SPI.
 9. [ ] Compile and execute database, contention, replay, tenant, outbox, and mounted

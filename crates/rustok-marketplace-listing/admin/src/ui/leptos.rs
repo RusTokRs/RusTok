@@ -38,7 +38,7 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
     let russian = locale == "ru";
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
     let shell = build_marketplace_listing_admin_shell(Some(locale), profile);
-    let transport = transport_context(profile);
+    let transport = transport_context(profile, Some(locale.to_string()));
 
     let refresh_nonce = RwSignal::new(0_u64);
     let selected_id = RwSignal::new(Option::<String>::None);
@@ -455,13 +455,14 @@ fn render_detail(
 
 fn transport_context(
     profile: MarketplaceListingAdminTransportProfile,
+    locale: Option<String>,
 ) -> MarketplaceListingAdminTransportContext {
     match profile {
         MarketplaceListingAdminTransportProfile::Native => {
             MarketplaceListingAdminTransportContext::native()
         }
         MarketplaceListingAdminTransportProfile::Graphql => {
-            MarketplaceListingAdminTransportContext::graphql(None, None)
+            MarketplaceListingAdminTransportContext::graphql(None, None, locale)
         }
     }
 }

@@ -260,15 +260,15 @@
     "distribution_feature": "mod-marketplace_listing",
     "server_feature": "mod-marketplace_listing",
     "default_enabled": false,
-    "ffa_package": "source_in_progress_unmounted",
+    "ffa_package": "source_composed_execution_pending",
     "ffa_package_path": "crates/rustok-marketplace-listing/admin",
     "workspace_registration": "source_ready",
     "admin_host_feature_graph": "source_ready",
     "admin_route_codegen": "manifest_driven",
-    "native_transport": "request_scoped_host_runtime_unmounted_fail_closed",
-    "graphql_transport": "declared_unmounted",
+    "native_transport": "authenticated_request_scoped_host_runtime_source_composed",
+    "graphql_transport": "module_owned_query_mutation_and_admin_adapter_source_composed",
     "implicit_transport_fallback": false,
-    "authenticated_runtime_mount": "pending"
+    "authenticated_runtime_mount": "source_composed_execution_pending"
   },
   "evidence": {
     "local_plan": "crates/rustok-marketplace-listing/docs/implementation-plan.md",
@@ -372,13 +372,16 @@
           "native_runtime_constructs_no_owner_dependencies",
           "missing_native_runtime_returns_error_not_panic",
           "platform_permission_mapping_owned_by_ffa",
-          "graphql_profile_fails_closed_while_unmounted",
+          "tenant_module_enablement_shared_by_native_and_graphql",
+          "graphql_profile_uses_manifest_composed_owner_runtime",
+          "directory_requires_list_permission_in_both_transports",
+          "effective_locale_forwarded_by_both_transports",
           "retry_reuses_original_idempotency_key",
           "legacy_attribution_rendered_unknown",
           "workspace_and_admin_host_source_wiring_present"
         ]
       }
     ],
-    "known_gap": "compiled clean/upgraded SQLite and PostgreSQL migrations, PostgreSQL outbox contention/rollback, relay/restart, remote-profile, authenticated native runtime composition, real GraphQL schema, readiness-board synchronization, mounted transport, and FFA parity evidence are not yet retained"
+    "known_gap": "compiled clean/upgraded SQLite and PostgreSQL migrations, PostgreSQL outbox contention/rollback, relay/restart, remote-profile execution, authenticated mounted transport, and FFA parity evidence are not yet retained"
   }
 }

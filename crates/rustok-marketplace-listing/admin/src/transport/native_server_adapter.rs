@@ -28,76 +28,6 @@ impl From<ServerFnError> for NativeMarketplaceListingAdminError {
     }
 }
 
-#[cfg(feature = "ssr")]
-pub trait MarketplaceListingAdminPorts:
-    rustok_marketplace_listing::MarketplaceListingReadPort
-    + rustok_marketplace_listing::MarketplaceListingCommandPort
-{
-}
-
-#[cfg(feature = "ssr")]
-impl<T> MarketplaceListingAdminPorts for T where
-    T: rustok_marketplace_listing::MarketplaceListingReadPort
-        + rustok_marketplace_listing::MarketplaceListingCommandPort
-{
-}
-
-#[cfg(feature = "ssr")]
-pub trait MarketplaceListingAdminRequestScope: Send + Sync {
-    /// Platform RBAC remains host-owned, while the module-owned FFA maps every
-    /// workflow to one concrete `marketplace_listings:*` permission.
-    fn authorize(&self, permission: rustok_api::Permission) -> Result<(), String>;
-
-    /// Must preserve canonical tenant, actor, effective locale, correlation,
-    /// deadline, claims, roles, and optional command idempotency identity.
-    fn port_context(
-        &self,
-        idempotency_key: Option<&str>,
-    ) -> Result<rustok_api::PortContext, String>;
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Clone)]
-pub struct MarketplaceListingAdminNativeRuntime {
-    ports: std::sync::Arc<dyn MarketplaceListingAdminPorts>,
-    request_scope: std::sync::Arc<dyn MarketplaceListingAdminRequestScope>,
-}
-
-#[cfg(feature = "ssr")]
-impl MarketplaceListingAdminNativeRuntime {
-    pub fn new(
-        ports: std::sync::Arc<dyn MarketplaceListingAdminPorts>,
-        request_scope: std::sync::Arc<dyn MarketplaceListingAdminRequestScope>,
-    ) -> Self {
-        Self {
-            ports,
-            request_scope,
-        }
-    }
-
-    fn authorize(&self, action: MarketplaceListingAdminAction) -> Result<(), ServerFnError> {
-        self.request_scope
-            .authorize(action.permission())
-            .map_err(ServerFnError::new)
-    }
-
-    fn context(
-        &self,
-        idempotency_key: Option<&str>,
-    ) -> Result<rustok_api::PortContext, ServerFnError> {
-        self.request_scope
-            .port_context(idempotency_key)
-            .map_err(ServerFnError::new)
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn native_runtime() -> Result<MarketplaceListingAdminNativeRuntime, ServerFnError> {
-    use_context::<MarketplaceListingAdminNativeRuntime>().ok_or_else(|| {
-        ServerFnError::new("marketplace listing native runtime is not mounted in this host")
-    })
-}
-
 pub async fn load_directory(
     filters: MarketplaceListingAdminFilters,
 ) -> Result<MarketplaceListingAdminDirectory, NativeMarketplaceListingAdminError> {
@@ -133,13 +63,12 @@ async fn marketplace_listing_directory_native(
             ListMarketplaceListingsInput, MarketplaceListingReadPort,
         };
 
-        let runtime = native_runtime()?;
-        runtime.authorize(MarketplaceListingAdminAction::List)?;
+        let (runtime, context) = native_request(MarketplaceListingAdminAction::List, None).await?;
         let page = filters.page.max(1);
         let per_page = filters.per_page.clamp(1, 100);
         let response = MarketplaceListingReadPort::list_listings(
-            runtime.ports.as_ref(),
-            runtime.context(None)?,
+            runtime.ports(),
+            context,
             ListMarketplaceListingsInput {
                 page,
                 per_page,
@@ -185,19 +114,17 @@ async fn marketplace_listing_detail_native(
             ReadMarketplaceListingRequest,
         };
 
-        let runtime = native_runtime()?;
-        runtime.authorize(MarketplaceListingAdminAction::Read)?;
+        let (runtime, context) = native_request(MarketplaceListingAdminAction::Read, None).await?;
         let listing_id = parse_uuid(listing_id.as_str(), "listing_id")?;
-        let context = runtime.context(None)?;
         let listing = MarketplaceListingReadPort::read_listing(
-            runtime.ports.as_ref(),
+            runtime.ports(),
             context.clone(),
             ReadMarketplaceListingRequest { listing_id },
         )
         .await
         .map_err(map_port_error)?;
         let events = MarketplaceListingReadPort::list_listing_events(
-            runtime.ports.as_ref(),
+            runtime.ports(),
             context,
             ListMarketplaceListingEventsRequest {
                 listing_id,
@@ -247,14 +174,14 @@ async fn marketplace_listing_command_native(
             UpdateMarketplaceListingTermsInput,
         };
 
-        let runtime = native_runtime()?;
-        runtime.authorize(command_action(&command))?;
-        let context = runtime.context(Some(required_text(&idempotency_key, "idempotency_key")?))?;
+        let idempotency_key = required_text(&idempotency_key, "idempotency_key")?;
+        let (runtime, context) =
+            native_request(command_action(&command), Some(idempotency_key)).await?;
 
         let listing = match command {
             MarketplaceListingAdminCommand::Create { draft } => {
                 MarketplaceListingCommandPort::create_listing(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     CreateMarketplaceListingInput {
                         seller_id: parse_uuid(draft.seller_id.as_str(), "seller_id")?,
@@ -280,7 +207,7 @@ async fn marketplace_listing_command_native(
             }
             MarketplaceListingAdminCommand::UpdateTerms { listing_id, draft } => {
                 MarketplaceListingCommandPort::update_listing_terms(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     UpdateMarketplaceListingTermsInput {
                         listing_id: parse_uuid(listing_id.as_str(), "listing_id")?,
@@ -296,7 +223,7 @@ async fn marketplace_listing_command_native(
             }
             MarketplaceListingAdminCommand::SubmitForReview { listing_id } => {
                 MarketplaceListingCommandPort::submit_listing_for_review(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     listing_id_request(listing_id)?,
                 )
@@ -308,7 +235,7 @@ async fn marketplace_listing_command_native(
                 note,
             } => {
                 MarketplaceListingCommandPort::review_listing(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     ReviewMarketplaceListingInput {
                         listing_id: parse_uuid(listing_id.as_str(), "listing_id")?,
@@ -320,7 +247,7 @@ async fn marketplace_listing_command_native(
             }
             MarketplaceListingAdminCommand::Publish { listing_id } => {
                 MarketplaceListingCommandPort::publish_listing(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     listing_id_request(listing_id)?,
                 )
@@ -328,7 +255,7 @@ async fn marketplace_listing_command_native(
             }
             MarketplaceListingAdminCommand::Suspend { listing_id, reason } => {
                 MarketplaceListingCommandPort::suspend_listing(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     SuspendMarketplaceListingInput {
                         listing_id: parse_uuid(listing_id.as_str(), "listing_id")?,
@@ -339,7 +266,7 @@ async fn marketplace_listing_command_native(
             }
             MarketplaceListingAdminCommand::Reactivate { listing_id } => {
                 MarketplaceListingCommandPort::reactivate_listing(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     listing_id_request(listing_id)?,
                 )
@@ -347,7 +274,7 @@ async fn marketplace_listing_command_native(
             }
             MarketplaceListingAdminCommand::Archive { listing_id } => {
                 MarketplaceListingCommandPort::archive_listing(
-                    runtime.ports.as_ref(),
+                    runtime.ports(),
                     context,
                     listing_id_request(listing_id)?,
                 )
@@ -367,6 +294,76 @@ async fn marketplace_listing_command_native(
             "marketplace listing commands require the `ssr` feature",
         ))
     }
+}
+
+#[cfg(feature = "ssr")]
+async fn native_request(
+    action: MarketplaceListingAdminAction,
+    idempotency_key: Option<&str>,
+) -> Result<
+    (
+        rustok_marketplace_listing::MarketplaceListingRuntime,
+        rustok_api::PortContext,
+    ),
+    ServerFnError,
+> {
+    use rustok_api::request::RequestContext;
+    use rustok_api::{AuthContext, HostRuntimeContext, PortActor, TenantContext};
+
+    let host = use_context::<HostRuntimeContext>()
+        .ok_or_else(|| ServerFnError::new("marketplace listing host runtime is not mounted"))?;
+    let runtime = host
+        .shared_get::<rustok_marketplace_listing::MarketplaceListingRuntime>()
+        .ok_or_else(|| ServerFnError::new("marketplace listing owner ports are not composed"))?;
+    let auth = leptos_axum::extract::<AuthContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    let tenant = leptos_axum::extract::<TenantContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    let request = leptos_axum::extract::<RequestContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+
+    if !rustok_api::has_effective_permission(&auth.permissions, &action.permission()) {
+        return Err(ServerFnError::new(
+            "Permission denied: marketplace listing permission required",
+        ));
+    }
+    if auth.tenant_id != tenant.id
+        || request.tenant_id != tenant.id
+        || request.user_id != Some(auth.user_id)
+    {
+        return Err(ServerFnError::new(
+            "Permission denied: marketplace listing request identity mismatch",
+        ));
+    }
+    let module_enabled =
+        rustok_api::is_tenant_module_enabled(host.db(), tenant.id, "marketplace_listing")
+            .await
+            .map_err(|_| {
+                ServerFnError::new("marketplace listing module availability check failed")
+            })?;
+    if !module_enabled {
+        return Err(ServerFnError::new(
+            "Marketplace listing module is not enabled for this tenant",
+        ));
+    }
+
+    let mut context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request.locale,
+        format!("native-marketplace-listing-{}", uuid::Uuid::new_v4()),
+    )
+    .with_deadline(std::time::Duration::from_secs(5));
+    if let Some(channel) = request.channel_slug {
+        context = context.with_channel(channel);
+    }
+    if let Some(key) = idempotency_key {
+        context = context.with_idempotency_key(key.to_string());
+    }
+    Ok((runtime, context))
 }
 
 #[cfg(feature = "ssr")]

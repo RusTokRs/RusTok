@@ -359,7 +359,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 | `marketplace_allocation` | `rustok-marketplace-allocation` | `order`, `marketplace_seller`, `marketplace_listing` | Marketplace allocation decisions between seller listings and order lines |
 | `marketplace_commission` | `rustok-marketplace-commission` | `marketplace_allocation` | Marketplace commission calculation and owner policy |
 | `marketplace_ledger` | `rustok-marketplace-ledger` | `marketplace_commission` | Marketplace ledger entries, balances, and immutable financial records |
-| `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_ledger` | Marketplace seller payout lifecycle and settlement records |
+| `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_ledger` | Marketplace seller payout scheduling and exclusive ledger-entry assignment; provider transfer execution and settlement recovery remain pending |
 | `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` | Marketplace Family orchestration root over seller, listing, allocation, commission, ledger, and payout owner ports; owns no marketplace persistence |
 | `moderation` | `rustok-moderation` | — | Moderation policies, review decisions, and owner enforcement workflows |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Blog domain, posts, categories, tags, transport/UI |

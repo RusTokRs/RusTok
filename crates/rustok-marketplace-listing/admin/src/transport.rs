@@ -12,17 +12,12 @@ use crate::model::{
     MarketplaceListingAdminFilters,
 };
 
-#[cfg(feature = "ssr")]
-pub use native_server_adapter::{
-    MarketplaceListingAdminNativeRuntime, MarketplaceListingAdminPorts,
-    MarketplaceListingAdminRequestScope,
-};
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MarketplaceListingAdminTransportContext {
     pub profile: MarketplaceListingAdminTransportProfile,
     pub access_token: Option<String>,
     pub tenant_slug: Option<String>,
+    pub locale: Option<String>,
 }
 
 impl MarketplaceListingAdminTransportContext {
@@ -31,14 +26,20 @@ impl MarketplaceListingAdminTransportContext {
             profile: MarketplaceListingAdminTransportProfile::Native,
             access_token: None,
             tenant_slug: None,
+            locale: None,
         }
     }
 
-    pub fn graphql(access_token: Option<String>, tenant_slug: Option<String>) -> Self {
+    pub fn graphql(
+        access_token: Option<String>,
+        tenant_slug: Option<String>,
+        locale: Option<String>,
+    ) -> Self {
         Self {
             profile: MarketplaceListingAdminTransportProfile::Graphql,
             access_token,
             tenant_slug,
+            locale,
         }
     }
 
@@ -56,12 +57,20 @@ pub async fn load_marketplace_listing_directory(
 ) -> UiTransportResult<MarketplaceListingAdminDirectory> {
     let graphql_token = context.access_token.clone();
     let graphql_tenant = context.tenant_slug.clone();
+    let graphql_locale = context.locale.clone();
     let native_filters = filters.clone();
     execute_selected_transport(
         "marketplace_listing.directory",
         context.path(),
         move || native_server_adapter::load_directory(native_filters),
-        move || graphql_adapter::load_directory(graphql_token, graphql_tenant, filters),
+        move || {
+            graphql_adapter::load_directory(
+                graphql_token,
+                graphql_tenant,
+                graphql_locale,
+                filters,
+            )
+        },
     )
     .await
 }
@@ -72,12 +81,20 @@ pub async fn load_marketplace_listing_detail(
 ) -> UiTransportResult<MarketplaceListingAdminDetail> {
     let graphql_token = context.access_token.clone();
     let graphql_tenant = context.tenant_slug.clone();
+    let graphql_locale = context.locale.clone();
     let native_id = listing_id.clone();
     execute_selected_transport(
         "marketplace_listing.detail",
         context.path(),
         move || native_server_adapter::load_detail(native_id),
-        move || graphql_adapter::load_detail(graphql_token, graphql_tenant, listing_id),
+        move || {
+            graphql_adapter::load_detail(
+                graphql_token,
+                graphql_tenant,
+                graphql_locale,
+                listing_id,
+            )
+        },
     )
     .await
 }
@@ -89,6 +106,7 @@ pub async fn execute_marketplace_listing_command(
 ) -> UiTransportResult<MarketplaceListingAdminCommandResult> {
     let graphql_token = context.access_token.clone();
     let graphql_tenant = context.tenant_slug.clone();
+    let graphql_locale = context.locale.clone();
     let native_key = idempotency_key.clone();
     let native_command = command.clone();
     execute_selected_transport(
@@ -99,6 +117,7 @@ pub async fn execute_marketplace_listing_command(
             graphql_adapter::execute_command(
                 graphql_token,
                 graphql_tenant,
+                graphql_locale,
                 idempotency_key,
                 command,
             )
