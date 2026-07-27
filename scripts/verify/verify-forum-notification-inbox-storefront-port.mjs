@@ -33,10 +33,32 @@ function between(source, start, end, label) {
   }
   return source.slice(from, to);
 }
+function optionalContract(relativePath) {
+  const absolute = path.join(repoRoot, relativePath);
+  return existsSync(absolute)
+    ? JSON.parse(readFileSync(absolute, "utf8") || "{}")
+    : null;
+}
 
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-inbox-storefront-port.json";
+const nativeContractPath =
+  "crates/rustok-forum/contracts/forum-notification-inbox-native-storefront-adapter.json";
+const groupedUiContractPath =
+  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
 const contract = JSON.parse(read(contractPath) || "{}");
+const nativeContract = optionalContract(nativeContractPath);
+const groupedUiContract = optionalContract(groupedUiContractPath);
+const nativeAdapterDelivered =
+  nativeContract?.schema_version === 1 &&
+  nativeContract?.task === "FORUM-20AH" &&
+  nativeContract?.upstream_task === "FORUM-20AG" &&
+  nativeContract?.composition?.native_server_adapter === true;
+const groupedUiDelivered =
+  groupedUiContract?.schema_version === 1 &&
+  groupedUiContract?.task === "FORUM-20AI" &&
+  groupedUiContract?.upstream_task === "FORUM-20AH" &&
+  groupedUiContract?.composition?.grouped_leptos_ui === true;
 const owner = read(contract.notifications_port_file ?? "");
 const library = read(contract.notifications_lib_file ?? "");
 const cargo = read(contract.notifications_cargo_file ?? "");
@@ -223,7 +245,7 @@ for (const marker of [
   "storefront_reads_derive_exact_scope_and_delegate_authorized_owners",
   "storefront_writes_require_idempotency_and_preserve_exact_state_invariants",
   "storefront_scope_policy_and_owner_errors_fail_closed_without_mutation",
-  "PortActor::service(\"storefront-host\")",
+  'PortActor::service("storefront-host")',
   "notifications.storefront.user_required",
   "notifications.storefront.tenant_invalid",
   "notifications.storefront.user_invalid",
@@ -239,20 +261,44 @@ for (const marker of [
 requireText(
   readme,
   "External transport adapters and grouped UI remain closed",
-  "Notifications README must keep native adapters and UI closed",
+  "Notifications README must keep its pending owner-doc sync explicit",
 );
 requireText(
   liveContract,
   "external inbox transport adapters",
-  "Notifications live contract must keep external adapters pending",
+  "Notifications live contract must keep its pending owner-doc sync explicit",
 );
-for (const marker of [
-  "owner transport-neutral inbox port exists",
-  "explicit unavailable state",
-  "native server adapter",
-  "does not invent unread state",
-]) {
-  requireText(storefrontReadme, marker, `Notifications storefront README is missing ${marker}`);
+if (groupedUiDelivered) {
+  requireText(
+    storefrontReadme,
+    "NotificationsView` now renders the owner-backed grouped inbox",
+    "FORUM-20AI storefront README state is missing",
+  );
+  requireText(
+    storefrontReadme,
+    "authoritative refresh after every mutation",
+    "FORUM-20AI authoritative UI refresh is undocumented",
+  );
+  if (!nativeAdapterDelivered) {
+    failures.push("FORUM-20AI grouped UI requires the FORUM-20AH native adapter contract");
+  }
+} else if (nativeAdapterDelivered) {
+  for (const marker of [
+    "native Leptos server-function adapter",
+    "grouped Leptos inbox view has not been delivered",
+    "does not invent unread state",
+  ]) {
+    requireText(storefrontReadme, marker, `FORUM-20AH storefront README is missing ${marker}`);
+  }
+} else {
+  for (const marker of [
+    "owner transport-neutral inbox port exists",
+    "explicit unavailable state",
+    "native server adapter",
+    "does not invent unread state",
+  ]) {
+    requireText(storefrontReadme, marker, `FORUM-20AG storefront README is missing ${marker}`);
+  }
 }
 for (const marker of [
   "# FORUM-20AG notification inbox storefront port",
