@@ -6,6 +6,11 @@ on:
       - agent/forum-category-topic-create-audience-20aq
     paths:
       - .github/workflows/agent-forum-category-topic-create-audience-20aq.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/agent-forum-category-topic-create-audience-20aq.yml
   workflow_dispatch:
 
 permissions:
