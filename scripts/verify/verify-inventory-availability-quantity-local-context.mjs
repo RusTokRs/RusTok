@@ -127,9 +127,12 @@ for (const [block, config] of [
 
 for (const [value, label] of [
   ['("inventory.validation", "inventory request is invalid")', 'stable validation envelope'],
-  ['AVAILABILITY_OPERATION => "validate_availability_request"', 'availability validation outcome'],
-  ['RESERVE_OPERATION => "validate_reservation_request"', 'reserve validation outcome'],
-  ['RELEASE_OPERATION => "validate_reservation_release_request"', 'release validation outcome'],
+  ['if operation == AVAILABILITY_OPERATION {', 'availability validation routing'],
+  ['"validate_availability_request"', 'availability validation outcome'],
+  ['else if operation == RESERVE_OPERATION {', 'reserve validation routing'],
+  ['"validate_reservation_request"', 'reserve validation outcome'],
+  ['else if operation == RELEASE_OPERATION {', 'release validation routing'],
+  ['"validate_reservation_release_request"', 'release validation outcome'],
   ['("inventory.variant_not_found", "inventory variant was not found") => "load_variant"', 'variant lookup outcome'],
   ['"inventory.insufficient_inventory"', 'insufficient inventory code'],
   ['"inventory reservation conflicts with available stock"', 'insufficient inventory message'],
@@ -166,7 +169,7 @@ for (const [value, label] of [
   ['\n    error\n}', 'same delegated error return'],
 ]) requireText(mapper, value, label);
 
-const unknownReturns = mapper.match(/_ => return error,/g)?.length ?? 0;
+const unknownReturns = mapper.match(/return error[;,]/g)?.length ?? 0;
 if (unknownReturns !== 2) {
   failures.push(`unknown local outcome pass-through count: expected 2, found ${unknownReturns}`);
 }
