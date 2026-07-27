@@ -10,7 +10,8 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const wrapper = read('crates/rustok-order/src/checkout_owner_context.rs');
+const ownerWrapper = read('crates/rustok-order/src/checkout_owner_context.rs');
+const compensationLocal = read('crates/rustok-order/src/checkout_compensation_local_context.rs');
 const lib = read('crates/rustok-order/src/lib.rs');
 const settlement = read('crates/rustok-order/src/checkout_payment_settlement.rs');
 const compensation = read('crates/rustok-order/src/checkout_compensation.rs');
@@ -33,51 +34,59 @@ const between = (content, start, end, label) => {
 };
 
 const compensationImpl = between(
-  wrapper,
+  ownerWrapper,
   'impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {',
   'pub fn in_process_checkout_order_compensation_port(',
-  'compensation wrapper implementation',
+  'compensation owner-context implementation',
 );
 const settlementImpl = between(
-  wrapper,
+  ownerWrapper,
   'impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlementPort {',
   'pub fn in_process_checkout_order_payment_settlement_port(',
-  'settlement wrapper implementation',
+  'settlement owner-context implementation',
 );
 const admission = between(
-  wrapper,
+  ownerWrapper,
   'fn require_order_checkout_write_admission(',
   'fn parse_order_tenant_id(',
   'shared order checkout admission helpers',
 );
 const tenant = between(
-  wrapper,
+  ownerWrapper,
   'fn parse_order_tenant_id(',
   'fn parse_order_actor_id(',
   'shared tenant validation',
 );
 const actor = between(
-  wrapper,
+  ownerWrapper,
   'fn parse_order_actor_id(',
   'fn require_order_checkout_causation(',
   'shared actor validation',
 );
 const causation = between(
-  wrapper,
+  ownerWrapper,
   'fn require_order_checkout_causation(',
   'fn log_order_checkout_context_rejection(',
   'shared causation validation',
 );
-const contextLog = wrapper.slice(wrapper.indexOf('fn log_order_checkout_context_rejection('));
+const contextLog = ownerWrapper.slice(
+  ownerWrapper.indexOf('fn log_order_checkout_context_rejection('),
+);
 
 for (const [value, label] of [
   ['mod checkout_compensation;', 'private compensation implementation module'],
   ['mod checkout_payment_settlement;', 'private settlement implementation module'],
-  ['pub mod checkout_owner_context;', 'public context wrapper module'],
+  ['mod checkout_compensation_local_context;', 'private compensation local wrapper module'],
+  ['#[path = "checkout_owner_context.rs"]', 'owner-context implementation path'],
+  ['mod checkout_owner_context_impl;', 'private owner-context implementation module'],
+  ['pub mod checkout_owner_context {', 'public compatibility facade'],
+  ['pub use crate::checkout_compensation_local_context::{', 'facade compensation wrapper export'],
+  ['pub use crate::checkout_owner_context_impl::{', 'facade settlement wrapper export'],
   ['CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest,', 'compensation contract re-export'],
   ['CheckoutOrderCompensationSnapshot,', 'compensation snapshot re-export'],
   ['CheckoutOrderPaymentSettlementPort, SettleCheckoutOrderPaymentRequest,', 'settlement contract re-export'],
-  ['InProcessCheckoutOrderCompensationPort, InProcessCheckoutOrderPaymentSettlementPort,', 'wrapper struct re-export'],
+  ['pub use checkout_compensation_local_context::{', 'root compensation wrapper export'],
+  ['pub use checkout_owner_context_impl::{', 'root settlement wrapper export'],
   ['in_process_checkout_order_compensation_port,', 'compensation factory re-export'],
   ['in_process_checkout_order_payment_settlement_port,', 'settlement factory re-export'],
 ]) requireText(lib, value, label);
@@ -87,7 +96,7 @@ for (const value of [
   'pub mod checkout_payment_settlement;',
   'pub use checkout_compensation::*;',
   'pub use checkout_payment_settlement::*;',
-]) forbidText(lib, value, 'public context-bypass path');
+]) forbidText(lib, value, 'public legacy context-bypass path');
 
 for (const [value, label] of [
   ['const ORDER_COMPENSATION_OWNER: &str = "rustok_order.checkout_compensation";', 'compensation owner'],
@@ -96,12 +105,12 @@ for (const [value, label] of [
   ['const ORDER_PAYMENT_SETTLEMENT_OWNER: &str = "rustok_order.checkout_payment_settlement";', 'settlement owner'],
   ['const ORDER_PAYMENT_SETTLEMENT_BOUNDARY: &str = "checkout_order_payment_settlement_port";', 'settlement boundary'],
   ['const SETTLE_PAYMENT_OPERATION: &str = "settle_checkout_payment";', 'settlement operation'],
-  ['pub struct InProcessCheckoutOrderCompensationPort {', 'compensation wrapper struct'],
-  ['pub struct InProcessCheckoutOrderPaymentSettlementPort {', 'settlement wrapper struct'],
+  ['pub struct InProcessCheckoutOrderCompensationPort {', 'compensation owner-context wrapper struct'],
+  ['pub struct InProcessCheckoutOrderPaymentSettlementPort {', 'settlement owner-context wrapper struct'],
   ['inner: Arc<dyn CheckoutOrderCompensationPort>', 'compensation inner port'],
   ['inner: Arc<dyn CheckoutOrderPaymentSettlementPort>', 'settlement inner port'],
   ['pub fn with_identity_port(', 'identity-port constructor parity'],
-]) requireText(wrapper, value, label);
+]) requireText(ownerWrapper, value, label);
 
 for (const [block, values, label] of [
   [
@@ -117,7 +126,7 @@ for (const [block, values, label] of [
       'request.checkout_operation_id,',
       'self.inner.compensate_checkout_order(context, request).await',
     ],
-    'compensation wrapper routing',
+    'compensation owner-context routing',
   ],
   [
     settlementImpl,
@@ -132,7 +141,7 @@ for (const [block, values, label] of [
       'request.checkout_operation_id,',
       'self.inner.settle_checkout_payment(context, request).await',
     ],
-    'settlement wrapper routing',
+    'settlement owner-context routing',
   ],
 ]) {
   for (const value of values) requireText(block, value, label);
@@ -202,7 +211,13 @@ for (const [value, label] of [
   ['checkout_payment_settlement::in_process_checkout_order_payment_settlement_port(', 'legacy settlement delegation'],
   ['checkout_compensation::InProcessCheckoutOrderCompensationPort::with_identity_port(', 'compensation constructor parity'],
   ['checkout_payment_settlement::InProcessCheckoutOrderPaymentSettlementPort::with_identity_port(', 'settlement constructor parity'],
-]) requireText(wrapper, value, label);
+]) requireText(ownerWrapper, value, label);
+
+for (const [value, label] of [
+  ['checkout_owner_context_impl::in_process_checkout_order_compensation_port(', 'local wrapper owner-context delegation'],
+  ['checkout_owner_context_impl::InProcessCheckoutOrderCompensationPort::with_identity_port(', 'local wrapper constructor parity'],
+  ['let result = self.inner.compensate_checkout_order(context, request).await;', 'local wrapper preserves accepted delegation'],
+]) requireText(compensationLocal, value, label);
 
 for (const [content, values, label] of [
   [
@@ -233,14 +248,14 @@ for (const [content, values, label] of [
 ]) for (const value of values) requireText(content, value, label);
 
 for (const [pattern, expected, label] of [
-  [/impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort/g, 1, 'compensation wrapper impl count'],
-  [/impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlementPort/g, 1, 'settlement wrapper impl count'],
+  [/impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort/g, 1, 'compensation owner-context impl count'],
+  [/impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlementPort/g, 1, 'settlement owner-context impl count'],
   [/require_order_checkout_write_admission\(/g, 3, 'shared admission definition/use count'],
   [/parse_order_tenant_id\(/g, 3, 'tenant validation definition/use count'],
   [/parse_order_actor_id\(/g, 3, 'actor validation definition/use count'],
   [/require_order_checkout_causation\(/g, 3, 'causation validation definition/use count'],
 ]) {
-  const count = wrapper.match(pattern)?.length ?? 0;
+  const count = ownerWrapper.match(pattern)?.length ?? 0;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
 }
 
@@ -251,5 +266,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Public order checkout factories retain full admission and delegated context before preserving the existing settlement and compensation implementations',
+  '✔ Public order checkout factories preserve admission and delegated context through the compatibility facade before settlement and compensation local wrappers',
 );
