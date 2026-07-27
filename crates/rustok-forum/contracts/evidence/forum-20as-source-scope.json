@@ -1,0 +1,11 @@
+{
+  "task": "FORUM-20AS",
+  "status": "source-ready-unvalidated",
+  "branch": "agent/forum-topic-create-transport-composition-20as",
+  "base_commit": "f7016598afec2a3d354bb6fb6920edfbcb791254",
+  "transports": ["graphql_legacy", "graphql_inline_quotes", "rest_legacy", "rest_inline_quotes"],
+  "facts_provider": "existing host-published SharedForumAudienceFactsPort",
+  "identity_source": "authenticated tenant, auth, and request contexts only",
+  "tests_run": false,
+  "verifiers_run": false
+}
