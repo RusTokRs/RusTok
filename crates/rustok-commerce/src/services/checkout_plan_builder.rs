@@ -39,6 +39,10 @@ use super::{
     CheckoutMarketplaceLineSnapshot, CheckoutOrderPlanPayload, CheckoutResult, StoreContextService,
 };
 
+const CHECKOUT_PLAN_MARKETPLACE_SNAPSHOT_BOUNDARY: &str =
+    "commerce_checkout_plan_marketplace_snapshot";
+const MARKETPLACE_SNAPSHOT_OWNER: &str = "rustok_cart";
+const MARKETPLACE_SNAPSHOT_OPERATION: &str = "list_marketplace_line_snapshots";
 const CHECKOUT_PLAN_INVENTORY_BOUNDARY: &str = "commerce_checkout_plan_inventory";
 const INVENTORY_OWNER: &str = "rustok_inventory";
 const INVENTORY_AVAILABILITY_OPERATION: &str = "check_availability";
@@ -103,20 +107,25 @@ impl CheckoutPlanBuilder {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
 
+        let marketplace_snapshot_context = marketplace_snapshot_context(
+            tenant_id,
+            actor_id,
+            cart,
+            normalize_public_channel_slug(cart.channel_slug.as_deref()).as_deref(),
+        );
         let marketplace_snapshots = self
             .marketplace_snapshot_read_port
             .list_marketplace_line_snapshots(
-                port_context(
-                    tenant_id,
-                    actor_id,
-                    cart,
-                    normalize_public_channel_slug(cart.channel_slug.as_deref()).as_deref(),
-                    "marketplace-snapshot",
-                ),
+                marketplace_snapshot_context.clone(),
                 ListMarketplaceCartLineSnapshotsRequest { cart_id: cart.id },
             )
             .await
-            .map_err(|error| boundary_error("read_marketplace_cart_snapshots", error))?;
+            .map_err(|error| {
+                checkout_plan_marketplace_snapshot_boundary_error(
+                    &marketplace_snapshot_context,
+                    error,
+                )
+            })?;
         let marketplace_lines = build_marketplace_plan_lines(cart, marketplace_snapshots)?;
         let marketplace_sellers = marketplace_lines
             .iter()
@@ -563,6 +572,21 @@ fn merge_metadata(base: Value, patch: Value) -> Value {
     }
 }
 
+fn marketplace_snapshot_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    cart: &CartResponse,
+    channel_slug: Option<&str>,
+) -> PortContext {
+    port_context(
+        tenant_id,
+        actor_id,
+        cart,
+        channel_slug,
+        "marketplace-snapshot",
+    )
+}
+
 fn product_context(
     tenant_id: Uuid,
     actor_id: Uuid,
@@ -603,6 +627,68 @@ fn port_context(
     match channel_slug {
         Some(channel_slug) => context.with_channel(channel_slug),
         None => context,
+    }
+}
+
+fn checkout_plan_marketplace_snapshot_boundary_error(
+    context: &PortContext,
+    error: PortError,
+) -> CheckoutError {
+    log_checkout_plan_marketplace_snapshot_boundary_failure(context, &error);
+    boundary_error("read_marketplace_cart_snapshots", error)
+}
+
+fn log_checkout_plan_marketplace_snapshot_boundary_failure(
+    context: &PortContext,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = MARKETPLACE_SNAPSHOT_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = MARKETPLACE_SNAPSHOT_OPERATION,
+                stage = "read_marketplace_cart_snapshots",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_PLAN_MARKETPLACE_SNAPSHOT_BOUNDARY,
+                "checkout plan marketplace snapshot owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = MARKETPLACE_SNAPSHOT_OWNER,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = MARKETPLACE_SNAPSHOT_OPERATION,
+                stage = "read_marketplace_cart_snapshots",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_PLAN_MARKETPLACE_SNAPSHOT_BOUNDARY,
+                "checkout plan marketplace snapshot owner boundary was rejected"
+            );
+        }
     }
 }
 
