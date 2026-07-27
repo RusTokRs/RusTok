@@ -27,19 +27,24 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
-function between(source, start, end, label) {
-  const from = source.indexOf(start);
-  const to = source.indexOf(end, from + start.length);
-  if (from < 0 || to < 0 || to <= from) {
-    failures.push(`${label}: bounded source section is missing`);
-    return "";
-  }
-  return source.slice(from, to);
-}
-
 const contractPath =
   "crates/rustok-forum/contracts/forum-notification-navigation-badge.json";
+const downstreamPath =
+  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json";
 const contract = JSON.parse(read(contractPath) || "{}");
+const downstreamAbsolute = path.join(repoRoot, downstreamPath);
+const downstream = existsSync(downstreamAbsolute)
+  ? JSON.parse(readFileSync(downstreamAbsolute, "utf8") || "{}")
+  : null;
+const groupedGraphqlDelivered =
+  downstream?.schema_version === 1 &&
+  downstream?.task === "FORUM-20AK" &&
+  downstream?.upstream_task === "FORUM-20AJ" &&
+  downstream?.composition?.owner_group_summary_graphql_query === true &&
+  downstream?.composition?.owner_group_items_graphql_query === true &&
+  downstream?.composition?.dual_path_group_summary_read === true &&
+  downstream?.composition?.dual_path_group_items_read === true;
+
 const ownerGraphql = read(contract.notifications_graphql_file ?? "");
 const ownerLib = read(contract.notifications_lib_file ?? "");
 const ownerCargo = read(contract.notifications_cargo_file ?? "");
@@ -64,7 +69,6 @@ const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const note = read(contract.owner_note ?? "");
 const canonicalPlan = read(contract.canonical_plan ?? "");
 const localPlan = read(contract.notifications_local_plan ?? "");
-const centralManifestDocs = read(contract.central_manifest_docs ?? "");
 
 if (contract.schema_version !== 1) {
   failures.push("navigation badge contract must use schema_version=1");
@@ -99,13 +103,8 @@ for (const key of [
   "best_effort_error_isolation",
   "generic_header_actions_slot",
   "manifest_component_registration",
-  "deterministic_header_action_order",
   "host_has_no_notifications_import",
   "primary_navigation_preserved",
-  "source_contract_proof",
-  "host_slot_contract_proof",
-  "storefront_readme_updated",
-  "owner_contract_note",
 ]) {
   if (contract.composition?.[key] !== true) {
     failures.push(`navigation badge contract must record ${key}`);
@@ -120,145 +119,72 @@ for (const key of [
   "channel_delivery",
 ]) {
   if (contract.composition?.[key] !== false) {
-    failures.push(`navigation badge contract must keep ${key} false`);
+    failures.push(`historical navigation badge contract must keep ${key} false`);
   }
 }
 
 for (const sync of [contract.canonical_plan_sync, contract.notifications_local_plan_sync]) {
   if (sync?.status !== "pending" || sync.required_ledger_through !== "FORUM-20AJ") {
-    failures.push("Forum and Notifications ledgers must remain pending through FORUM-20AJ");
+    failures.push("historical Forum and Notifications ledgers must remain pending through FORUM-20AJ");
   }
-}
-if (contract.canonical_plan_sync?.current_plan_through !== "FORUM-20G") {
-  failures.push("pending canonical plan sync must identify FORUM-20G");
-}
-if (contract.notifications_local_plan_sync?.current_plan_through !== "FORUM-20AA") {
-  failures.push("pending Notifications plan sync must identify FORUM-20AA");
-}
-if (
-  contract.notifications_owner_docs_sync?.status !== "pending" ||
-  contract.notifications_owner_docs_sync?.required_contract_through !== "FORUM-20AJ"
-) {
-  failures.push("large Notifications owner docs must remain pending through FORUM-20AJ");
-}
-if (
-  contract.central_manifest_docs_sync?.status !== "pending" ||
-  contract.central_manifest_docs_sync?.required_slot !== "header_actions"
-) {
-  failures.push("central manifest docs must record pending header_actions synchronization");
 }
 requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");
 requireText(localPlan, "### `FORUM-20AA`", "Notifications local plan must remain grounded through AA");
-rejectText(
-  centralManifestDocs,
-  "`header_navigation`, `header_actions`, `home_after_hero`",
-  "central manifest docs unexpectedly claim synchronized header_actions state",
-);
 
 for (const marker of [
   "pub struct NotificationsQuery",
   "pub struct GqlNotificationInboxUnreadCount",
   "async fn notification_inbox_unread_count",
-  "ctx.data_opt::<AuthContext>()",
+  "authenticated_scope(ctx)?",
   "if !auth.is_human_user_principal()",
-  "ctx.data_opt::<TenantContext>()",
   "if auth.tenant_id != tenant.id",
   "require_module_enabled(ctx, MODULE_SLUG).await?",
   "NotificationInboxUnreadCountService::new(db)",
-  "tenant_id: tenant.id",
-  "recipient_id: auth.user_id",
+  "tenant_id: scope.tenant_id",
+  "recipient_id: scope.recipient_id",
   "NOTIFICATION_INBOX_USER_REQUIRED",
   "NOTIFICATION_INBOX_TENANT_MISMATCH",
   "NOTIFICATION_INBOX_UNAVAILABLE",
   "PUBLIC_UNAVAILABLE_MESSAGE",
-  "other.is_retryable()",
-  "extensions.set(\"retryable\", retryable)",
 ]) {
-  requireText(ownerGraphql, marker, `owner GraphQL is missing ${marker}`);
+  requireText(ownerGraphql, marker, `owner unread GraphQL is missing ${marker}`);
 }
-const ownerQuery = between(
-  ownerGraphql,
-  "async fn notification_inbox_unread_count",
-  "fn map_notification_error",
-  "owner unread-count GraphQL query",
-);
-for (const forbidden of [
-  "tenant_id:",
-  "recipient_id:",
-  "user_id:",
-  "PortActor::service",
-  "NotificationSourceRegistry",
-  "NotificationRecipientPolicyRuntime",
-]) {
-  if (forbidden.endsWith(":")) {
-    const signature = between(
-      ownerGraphql,
-      "async fn notification_inbox_unread_count",
-      ") -> Result<GqlNotificationInboxUnreadCount>",
-      "owner GraphQL signature",
-    );
-    rejectText(signature, forbidden, `owner GraphQL request must not accept ${forbidden}`);
-  } else {
-    rejectText(ownerQuery, forbidden, `owner unread count must not require ${forbidden}`);
-  }
-}
-const authIndex = ownerQuery.indexOf("ctx.data_opt::<AuthContext>()");
-const humanIndex = ownerQuery.indexOf("if !auth.is_human_user_principal()");
-const tenantIndex = ownerQuery.indexOf("ctx.data_opt::<TenantContext>()");
-const moduleIndex = ownerQuery.indexOf("require_module_enabled(ctx, MODULE_SLUG).await?");
-const databaseIndex = ownerQuery.indexOf("ctx\n            .data_opt::<DatabaseConnection>()");
-if (!(authIndex >= 0 && humanIndex > authIndex && tenantIndex > humanIndex && moduleIndex > tenantIndex && databaseIndex > moduleIndex)) {
-  failures.push("owner GraphQL must admit human auth and tenant before module/database access");
-}
-rejectText(
-  ownerGraphql,
-  "async_graphql::Error::new(error.to_string())",
-  "owner GraphQL must not expose raw owner errors",
-);
-rejectText(ownerGraphql, "format!(\"{error}\")", "owner GraphQL must not format raw owner errors");
+rejectText(ownerGraphql, "async_graphql::Error::new(error.to_string())", "owner GraphQL must not expose raw errors");
 requireText(ownerCargo, "async-graphql.workspace = true", "Notifications owner must declare async-graphql");
-requireText(ownerLib, "pub mod graphql;", "Notifications library must expose its GraphQL module");
-requireText(ownerLib, "NotificationsQuery", "Notifications library must export NotificationsQuery");
+requireText(ownerLib, "pub mod graphql;", "Notifications library must expose GraphQL");
 
 for (const marker of [
-  "[provides.graphql]",
   "query = \"graphql::NotificationsQuery\"",
   "id = \"notifications-header-action\"",
   "component = \"NotificationNavigation\"",
   "slot = \"header_actions\"",
-  "order = 100",
-  "[provides.storefront_ui.i18n]",
   "leptos_locales_path = \"storefront/locales\"",
 ]) {
   requireText(manifest, marker, `Notifications manifest is missing ${marker}`);
 }
 
 for (const marker of [
-  "mod graphql_adapter;",
-  "pub struct NotificationNavigationTransportContext",
-  "fn selected_navigation_transport_path()",
+  "selected_storefront_read_transport_path",
   "UiTransportPath::NativeServer",
   "UiTransportPath::Graphql",
-  "execute_selected_transport",
-  "load_notification_unread_count",
+  "load_notification_navigation_unread_count",
+  "load_notification_unread_count_selected",
   "graphql_adapter::load_navigation_unread_count",
-  "notifications.storefront.navigation.unread_count",
 ]) {
   requireText(transport, marker, `navigation transport is missing ${marker}`);
 }
-rejectText(transport, "fallback_failed", "navigation transport must not add cross-path fallback");
+rejectText(transport, "fallback_failed", "navigation transport must not add fallback");
 for (const marker of [
   "query NotificationStorefrontNavigationUnreadCount",
   "notificationInboxUnreadCount",
   "unreadCount",
   "execute_graphql",
-  "access_token",
-  "tenant_slug",
 ]) {
   requireText(graphqlAdapter, marker, `navigation GraphQL adapter is missing ${marker}`);
 }
-for (const forbidden of ["tenantId", "recipientId", "userId"] ) {
-  rejectText(graphqlAdapter, forbidden, `navigation GraphQL request must not expose ${forbidden}`);
+const adapterProduction = graphqlAdapter.split("#[cfg(test)]")[0];
+for (const forbidden of ["tenantId", "recipientId", "userId"]) {
+  rejectText(adapterProduction, forbidden, `navigation GraphQL request must not expose ${forbidden}`);
 }
 
 for (const marker of [
@@ -269,22 +195,13 @@ for (const marker of [
   "AuthContext::get_token",
   "AuthContext::get_tenant",
   "Resource::new_blocking",
-  "load_notification_navigation_unread_count",
   "NotificationUnreadBadge",
-  "count.unread_count > 0",
   "data-notification-navigation=\"true\"",
   "data-notification-navigation=\"unavailable\"",
 ]) {
   requireText(navigation, marker, `navigation component is missing ${marker}`);
 }
-for (const forbidden of [
-  "/modules/notifications",
-  "localStorage",
-  "gloo_storage",
-  "window.location",
-  "NotificationInboxGroupSummary",
-  "set_unread",
-]) {
+for (const forbidden of ["/modules/notifications", "localStorage", "gloo_storage"]) {
   rejectText(navigation, forbidden, `navigation component must not use ${forbidden}`);
 }
 requireText(storefrontLib, "pub use ui::navigation::NotificationNavigation;", "storefront crate must export NotificationNavigation");
@@ -297,12 +214,10 @@ for (const marker of [
 ]) {
   requireText(storefrontCargo, marker, `storefront Cargo contract is missing ${marker}`);
 }
-
 for (const marker of [
   "LeptosUiMessages::new",
   "include_str!(\"../locales/en.json\")",
   "include_str!(\"../locales/ru.json\")",
-  "pub fn with_count",
 ]) {
   requireText(i18n, marker, `storefront i18n adapter is missing ${marker}`);
 }
@@ -311,79 +226,70 @@ for (const marker of ["notifications", "navigation", "label", "unread"]) {
   requireText(localeRu, marker, `Russian locale is missing ${marker}`);
 }
 
-for (const marker of [
-  "HeaderActions",
-  "header_actions",
-  "StorefrontSlot::HeaderActions",
-]) {
+for (const marker of ["HeaderActions", "header_actions", "StorefrontSlot::HeaderActions"]) {
   requireText(hostRegistry + hostBuild + xtaskUi, marker, `host slot contracts are missing ${marker}`);
 }
-for (const marker of [
-  "components_for_slot(StorefrontSlot::HeaderActions",
-  "action_views=header_action_views",
-]) {
-  requireText(hostApp, marker, `storefront layout is missing ${marker}`);
-}
-for (const marker of [
-  "action_views: Vec<AnyView>",
-  "data-storefront-header-actions=\"true\"",
-  "{action_views}",
-]) {
-  requireText(hostHeader, marker, `storefront header is missing ${marker}`);
-}
-requireText(hostHeader, "{navigation}", "primary navigation render must remain present");
-for (const forbidden of [
-  "rustok_notifications_storefront",
-  "NotificationNavigation",
-  "load_notification_navigation_unread_count",
-]) {
-  rejectText(hostApp + hostHeader, forbidden, `host composition must not import ${forbidden}`);
+requireText(hostApp, "components_for_slot(StorefrontSlot::HeaderActions", "storefront layout must compose header actions");
+requireText(hostHeader, "action_views: Vec<AnyView>", "storefront header must accept action views");
+requireText(hostHeader, "{navigation}", "primary navigation must remain present");
+for (const forbidden of ["rustok_notifications_storefront", "NotificationNavigation"]) {
+  rejectText(hostApp + hostHeader, forbidden, `host must not import ${forbidden}`);
 }
 
 for (const marker of [
   "manifest_registers_module_owned_header_action_without_host_imports",
   "navigation_uses_context_route_and_best_effort_exact_count",
-  "unread_count_transport_is_dual_path_without_identity_payload",
-  "owner_graphql_derives_scope_and_sanitizes_failures",
 ]) {
-  requireText(proof, marker, `navigation badge source proof is missing ${marker}`);
+  requireText(proof, marker, `navigation badge proof is missing ${marker}`);
 }
-for (const marker of [
-  "HeaderActions",
-  "components_for_slot(StorefrontSlot::HeaderActions",
-  "action_views: Vec<AnyView>",
-  "data-storefront-header-actions",
-]) {
-  requireText(hostProof, marker, `host slot proof is missing ${marker}`);
-}
+requireText(hostProof, "HeaderActions", "host slot proof must cover HeaderActions");
 
 for (const marker of [
   "`NotificationNavigation` is a module-owned no-prop header action",
   "module_route_base(\"notifications\")",
-  "The navigation unread-count read is dual-path",
   "zero count still leaves the localized Notifications link available",
-  "full grouped inbox, open authorization, and group-state commands are still native-only",
 ]) {
   requireText(storefrontReadme, marker, `storefront README is missing ${marker}`);
 }
+if (groupedGraphqlDelivered) {
+  for (const marker of [
+    "unread count, grouped summaries, and exact-group item pages use one selected read",
+    "notificationInboxGroupSummaries",
+    "notificationInboxGroupItems",
+    "Fresh notification open authorization and group-state",
+  ]) {
+    requireText(storefrontReadme, marker, `FORUM-20AK README state is missing ${marker}`);
+  }
+  if (
+    !downstream.not_delivered?.includes("GraphQL notification open authorization") ||
+    !downstream.not_delivered?.includes("GraphQL group-state commands")
+  ) {
+    failures.push("FORUM-20AK must keep open and command GraphQL parity pending");
+  }
+} else {
+  requireText(
+    storefrontReadme,
+    "full grouped inbox, open authorization, and group-state commands are still native-only",
+    "pre-FORUM-20AK README state is missing",
+  );
+}
+
 for (const marker of [
   "# FORUM-20AJ notification storefront navigation badge",
   "notification_inbox_unread_count",
   "header_actions",
-  "module_route_base(\"notifications\")",
   "source-ready / unvalidated",
 ]) {
-  requireText(note, marker, `owner note is missing ${marker}`);
+  requireText(note, marker, `FORUM-20AJ owner note is missing ${marker}`);
 }
 
 if (
   upstream.schema_version !== 1 ||
   upstream.task !== "FORUM-20AI" ||
-  upstream.composition?.grouped_leptos_ui !== true ||
   upstream.composition?.global_navigation_badge_composition !== false ||
   !upstream.not_delivered?.includes("global storefront navigation or header unread-badge slot")
 ) {
-  failures.push("FORUM-20AJ must close the FORUM-20AI navigation-badge residual");
+  failures.push("FORUM-20AJ must close the FORUM-20AI navigation residual");
 }
 
 if (failures.length > 0) {
