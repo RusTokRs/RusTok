@@ -417,12 +417,15 @@ idempotency admission.
 
 The module-owned grouped storefront view performs an owner-backed SSR bootstrap, bounded raw
 paging, one-group expansion, stale-response rejection, authoritative refresh after writes,
-and browser navigation only after `NotificationStorefrontOpenDecision::Allowed`. The generic
-storefront header resolves the Notifications action from manifest metadata, builds the route
-through `UiRouteContext`, and shows the exact unread badge only when positive while retaining
-the link at zero. Optional capability failures hide the action without failing the header.
+and browser navigation only after `NotificationStorefrontOpenDecision::Allowed`. It
+automatically reloads its bootstrap when the reactive auth token or tenant changes and uses the
+same resolved transport context for exact unread count plus the first bounded summary page. The
+generic storefront header resolves the Notifications action from manifest metadata, builds the
+route through `UiRouteContext`, and shows the exact unread badge only when positive while
+retaining the link at zero. Optional capability failures hide the action without failing the
+header.
 
-Source contracts are guarded by the `FORUM-20AG` through `FORUM-20AL` machine contracts and
+Source contracts are guarded by the `FORUM-20AG` through `FORUM-20AO` machine contracts and
 matching `verify-forum-notification-*` scripts. These source slices remain unvalidated by the
 implementation agent.
 
@@ -447,7 +450,6 @@ continue to succeed when the module is absent or disabled.
   policy changes with final candidate commits;
 - bounded moderator-directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- auth-reactive automatic grouped bootstrap refresh;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - retention, quarantine replay/purge, and administrative repair.

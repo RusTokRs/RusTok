@@ -239,8 +239,10 @@ explicit idempotency plus deadline admission.
 
 The grouped Notifications view uses owner-backed SSR bootstrap, bounded pages, exact-group
 expansion, stale-response guards, authoritative post-command refresh, and allowed-only route
-navigation. A manifest-driven generic header action exposes the localized route and exact
-unread badge without a host import of the Notifications UI. Optional failures degrade by
+navigation. It automatically reloads its bootstrap when the reactive auth token or tenant
+changes and uses the same resolved transport context for exact unread count plus the first
+bounded summary page. A manifest-driven generic header action exposes the localized route and
+exact unread badge without a host import of the Notifications UI. Optional failures degrade by
 omitting the action rather than breaking the storefront shell.
 
 The server starts workers in intake → fanout → candidate order. Invalid or unreadable
@@ -261,7 +263,6 @@ or restricted sources fail closed. Moderator audience expansion remains deferred
 - PostgreSQL cursor/lease contention evidence and operational health/lag metrics;
 - bounded moderator directory expansion;
 - tenant-wide scheduled reconciliation and payload redaction;
-- auth-reactive automatic grouped bootstrap refresh;
 - channel delivery enqueue and transports with delivery-time authorization;
 - retention, quarantine replay/purge, and administrative repair.
 
@@ -323,13 +324,14 @@ node scripts/verify/verify-forum-notification-navigation-badge.mjs
 node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
 node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs
 node scripts/verify/verify-forum-notification-plan-sync.mjs
 cargo xtask module validate notifications
 ```
 
 These commands were not run while publishing
 `NOTIFY-03D/03E/03F/03G/03H/03I` or
-`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN`.
+`FORUM-20R/20S/20T/20U/20V/20W/20X/20Y/20Z/20AA/20AB/20AC/20AD/20AE/20AF/20AG/20AH/20AI/20AJ/20AK/20AL/20AM/20AN/20AO`.
 
 ## Related documents
 

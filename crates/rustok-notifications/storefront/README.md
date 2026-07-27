@@ -28,12 +28,16 @@ no tenant, recipient, or user identity field.
 - fresh open authorization before browser navigation;
 - bounded mark-read, mark-unread, and archive actions;
 - authoritative refresh after every mutation instead of optimistic count changes;
+- automatic auth/session and tenant bootstrap refresh without polling;
 - in-memory page deduplication without local storage or a shadow inbox.
 
 `NotificationsView` renders the owner-backed grouped inbox without a second client-side
 inbox authority. One group action intentionally applies at most 64 eligible owner rows.
 When more rows remain, the UI reports that the caller should repeat the action after the
-authoritative refresh.
+authoritative refresh. `NotificationsView` automatically reloads the grouped bootstrap when
+the reactive token or tenant changes. Its resource source combines the manual refresh nonce
+with `current_notification_storefront_transport_context`, and one resolved context is reused
+for exact unread count plus the first bounded summary page.
 
 The unread count, grouped summaries, exact-group item pages, fresh open authorization,
 and grouped state commands use compile-profile-selected transport facades:
@@ -44,6 +48,8 @@ and grouped state commands use compile-profile-selected transport facades:
 - the existing no-context UI functions remain compatibility wrappers that resolve current
   token and tenant transport credentials before calling the selected facade;
 - explicit-context selected functions remain available to headless consumers;
+- `current_notification_storefront_transport_context` is the reactive no-prop UI resolver for
+  current token and tenant transport credentials;
 - raw native read, open, and group-state functions remain available with explicit
   `_native` names;
 - grouped writes carry one caller-supplied bounded idempotency key through either path;
@@ -96,6 +102,6 @@ one bounded group key, bounded cursor/limit inputs, and a caller-supplied idempo
 the owner port still enforces write deadline and idempotency admission before database access.
 
 Public entry points include `NotificationsView`, `NotificationNavigation`,
-`NotificationUnreadBadge`, compatibility read/open functions, explicit-context selected
-read/open/group-state functions, raw native functions, and the serializable storefront
-request/page models exported from the crate root.
+`NotificationUnreadBadge`, the reactive current transport-context resolver, compatibility
+read/open functions, explicit-context selected read/open/group-state functions, raw native
+functions, and the serializable storefront request/page models exported from the crate root.

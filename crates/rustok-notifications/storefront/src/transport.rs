@@ -62,7 +62,8 @@ fn selected_storefront_write_transport_path() -> UiTransportPath {
     }
 }
 
-fn current_storefront_transport_context() -> NotificationStorefrontTransportContext {
+pub fn current_notification_storefront_transport_context(
+) -> NotificationStorefrontTransportContext {
     let auth = use_context::<AuthContext>();
     let access_token = auth.as_ref().and_then(AuthContext::get_token);
     let tenant_slug = auth
@@ -70,6 +71,10 @@ fn current_storefront_transport_context() -> NotificationStorefrontTransportCont
         .and_then(AuthContext::get_tenant)
         .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
     NotificationStorefrontTransportContext::new(access_token, tenant_slug)
+}
+
+fn current_storefront_transport_context() -> NotificationStorefrontTransportContext {
+    current_notification_storefront_transport_context()
 }
 
 pub async fn load_notification_unread_count_selected(

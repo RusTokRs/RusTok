@@ -66,12 +66,13 @@ for (const key of ["runtime_behavior_changed", "migration_changed", "dependency_
 }
 
 for (const marker of [
-  "FORUM-20A-AL provide",
+  "FORUM-20A-AO provide",
   "### Delivered in `FORUM-20H` through `FORUM-20Q`",
   "### Delivered in `FORUM-20R` through `FORUM-20AF`",
   "### Delivered in `FORUM-20AG` through `FORUM-20AL`",
   "### Delivered in `FORUM-20AM`",
-  "GraphQL group-state mutations",
+  "### Delivered in `FORUM-20AN`",
+  "### Delivered in `FORUM-20AO`",
   "PostgreSQL concurrency",
 ]) {
   requireText(canonical, marker, `canonical plan is missing ${marker}`);
@@ -90,7 +91,8 @@ for (const marker of [
   "### `FORUM-20AI / FORUM-20AJ`",
   "### `FORUM-20AK / FORUM-20AL`",
   "### `FORUM-20AM`",
-  "GraphQL group-state writes remain on the native path",
+  "### `FORUM-20AN`",
+  "### `FORUM-20AO`",
 ]) {
   requireText(local, marker, `Notifications local plan is missing ${marker}`);
 }
@@ -102,16 +104,16 @@ rejectText(
 
 for (const marker of [
   "NotificationInboxStorefrontPort",
-  "feature-gated Notifications GraphQL query root",
   "### 14. Authenticated storefront transport and grouped UI",
-  "GraphQL group-state mutations",
+  "GraphQL now",
+  "automatically reloads its bootstrap",
 ]) {
   requireText(owner, marker, `Notifications owner README is missing ${marker}`);
 }
 for (const marker of [
-  "authenticated native/GraphQL storefront reads",
   "### Authenticated storefront ports, transports, and UI",
-  "GraphQL group-state mutations",
+  "GraphQL group-state mutations now delegate",
+  "automatically reloads its bootstrap",
 ]) {
   requireText(live, marker, `Notifications live contract is missing ${marker}`);
 }
@@ -153,4 +155,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Forum and Notifications plans are synchronized through FORUM-20AL.");
+console.log("Historical FORUM-20AM synchronization remains valid through downstream FORUM-20AO.");
