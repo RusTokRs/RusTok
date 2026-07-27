@@ -82,6 +82,12 @@ const legacyImpl = between(
   'impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentityPort {',
   'legacy availability and quantity implementation',
 );
+const stagedComposition = between(
+  staged,
+  'let event_bus = runtime.event_bus();',
+  'let marketplace_allocation_service = Arc::new(',
+  'mounted staged storefront inventory composition',
+);
 
 for (const [value, label] of [
   ['mod reservation_port_context;', 'private context adapter module'],
@@ -213,13 +219,23 @@ forbidText(
   'journaled direct inventory service composition',
 );
 
-for (const [content, label] of [
-  [staged, 'mounted staged storefront gap'],
-  [legacyStorefront, 'dead-code legacy storefront gap'],
-]) requireText(
-  content,
+for (const [value, label] of [
+  ['let inventory_availability = rustok_inventory::in_process_inventory_reservation_port(', 'mounted staged canonical inventory factory'],
+  ['runtime.db_clone(),', 'mounted staged database delegation'],
+  ['event_bus.clone(),', 'mounted staged event bus delegation'],
+  ['rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone())', 'mounted staged durable reservation factory preserved'],
+  ['let plan_builder = crate::CheckoutPlanBuilder::new(', 'mounted staged plan builder preserved'],
+]) requireText(stagedComposition, value, label);
+forbidText(
+  stagedComposition,
   'rustok_inventory::InventoryService::new(',
-  label,
+  'mounted staged direct inventory service composition',
+);
+
+requireText(
+  legacyStorefront,
+  'rustok_inventory::InventoryService::new(',
+  'dead-code legacy storefront gap',
 );
 
 for (const [pattern, expected, label] of [
@@ -239,5 +255,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Canonical inventory availability and quantity adapter retains full admission and tenant context, with journaled compatibility cut over and mounted storefront gaps explicit',
+  '✔ Canonical inventory availability and quantity adapter retains full admission and tenant context across journaled and mounted staged storefront composition, with only the dead-code legacy storefront gap explicit',
 );
