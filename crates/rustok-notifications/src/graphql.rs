@@ -30,7 +30,6 @@ impl NotificationsQuery {
                 false,
             )
         })?;
-        let tenant = ctx.data_opt::<TenantContext>().ok_or_else(capability_unavailable)?;
         if !auth.is_human_user_principal() {
             return Err(public_error(
                 "NOTIFICATION_INBOX_USER_REQUIRED",
@@ -38,6 +37,7 @@ impl NotificationsQuery {
                 false,
             ));
         }
+        let tenant = ctx.data_opt::<TenantContext>().ok_or_else(capability_unavailable)?;
         if auth.tenant_id != tenant.id {
             return Err(public_error(
                 "NOTIFICATION_INBOX_TENANT_MISMATCH",
@@ -100,6 +100,15 @@ mod tests {
     use super::*;
     use sea_orm::DbErr;
 
+    fn extension_json(error: &async_graphql::Error, key: &str) -> Option<serde_json::Value> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get(key))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+    }
+
     #[test]
     fn database_errors_map_to_generic_retryable_graphql_envelope() {
         let error = map_notification_error(NotificationError::Database(DbErr::Custom(
@@ -107,13 +116,12 @@ mod tests {
         )));
 
         assert_eq!(error.message, PUBLIC_UNAVAILABLE_MESSAGE);
-        let extensions = error.extensions.expect("extensions should be present");
         assert_eq!(
-            extensions.get("code").and_then(|value| value.as_str()),
-            Some("NOTIFICATION_INBOX_UNAVAILABLE")
+            extension_json(&error, "code").and_then(|value| value.as_str().map(ToOwned::to_owned)),
+            Some("NOTIFICATION_INBOX_UNAVAILABLE".to_string())
         );
         assert_eq!(
-            extensions.get("retryable").and_then(|value| value.as_bool()),
+            extension_json(&error, "retryable").and_then(|value| value.as_bool()),
             Some(true)
         );
         assert!(!error.message.contains("secret database detail"));
@@ -126,13 +134,12 @@ mod tests {
         ));
 
         assert_eq!(error.message, "notification inbox identity is invalid");
-        let extensions = error.extensions.expect("extensions should be present");
         assert_eq!(
-            extensions.get("code").and_then(|value| value.as_str()),
-            Some("NOTIFICATION_VALIDATION_ERROR")
+            extension_json(&error, "code").and_then(|value| value.as_str().map(ToOwned::to_owned)),
+            Some("NOTIFICATION_VALIDATION_ERROR".to_string())
         );
         assert_eq!(
-            extensions.get("retryable").and_then(|value| value.as_bool()),
+            extension_json(&error, "retryable").and_then(|value| value.as_bool()),
             Some(false)
         );
     }
