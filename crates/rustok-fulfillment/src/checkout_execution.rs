@@ -13,6 +13,8 @@ use crate::{
     FulfillmentService,
 };
 
+const CHECKOUT_FULFILLMENT_OWNER: &str = "rustok_fulfillment";
+const CHECKOUT_FULFILLMENT_BOUNDARY: &str = "checkout_fulfillment_execution_port";
 const ENSURE_OPERATION: &str = "ensure_checkout_fulfillments";
 const READ_OPERATION: &str = "read_checkout_fulfillments";
 
@@ -254,6 +256,101 @@ pub fn in_process_checkout_fulfillment_execution_port(
     Arc::new(InProcessCheckoutFulfillmentExecutionPort::new(db))
 }
 
+fn require_checkout_fulfillment_read_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::read()).map_err(|error| {
+        log_checkout_fulfillment_admission_rejection(
+            context,
+            owner_operation,
+            "policy",
+            &error,
+        );
+        error
+    })
+}
+
+fn require_checkout_fulfillment_write_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::write()).map_err(|error| {
+        log_checkout_fulfillment_admission_rejection(
+            context,
+            owner_operation,
+            "policy",
+            &error,
+        );
+        error
+    })?;
+    context.require_write_semantics().map_err(|error| {
+        log_checkout_fulfillment_admission_rejection(
+            context,
+            owner_operation,
+            "write_semantics",
+            &error,
+        );
+        error
+    })
+}
+
+fn log_checkout_fulfillment_admission_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    admission_phase: &'static str,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
+                owner_operation,
+                admission_phase,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                "checkout fulfillment owner admission failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = CHECKOUT_FULFILLMENT_OWNER,
+                owner_operation,
+                admission_phase,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                "checkout fulfillment owner admission was rejected"
+            );
+        }
+    }
+}
+
 #[async_trait]
 impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionPort {
     async fn ensure_checkout_fulfillments(
@@ -261,8 +358,7 @@ impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionP
         context: PortContext,
         request: EnsureCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        require_checkout_fulfillment_write_admission(&context, ENSURE_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, ENSURE_OPERATION)?;
         require_operation_context(&context, ENSURE_OPERATION, request.checkout_operation_id)?;
         self.ensure(&context, tenant_id, request).await
@@ -273,7 +369,7 @@ impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionP
         context: PortContext,
         request: ReadCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        require_checkout_fulfillment_read_admission(&context, READ_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, READ_OPERATION)?;
         require_operation_context(&context, READ_OPERATION, request.checkout_operation_id)?;
         self.read(&context, tenant_id, request).await
