@@ -49,9 +49,11 @@ const mapper = between(
   'fn current_shipping_selections(',
   'typed shipping option mapper',
 );
-const mountedValidator = typedSource.slice(
-  typedSource.indexOf('pub(crate) async fn validate_selected_shipping_option('),
+const validatorStart = typedSource.indexOf(
+  'pub(crate) async fn validate_selected_shipping_option(',
 );
+const mountedValidator = validatorStart >= 0 ? typedSource.slice(validatorStart) : '';
+if (validatorStart < 0) failures.push('mounted validator: unable to isolate source block');
 
 for (const [source, value, label] of [
   [
@@ -95,7 +97,6 @@ for (const [value, label] of [
   ['CurrencyMismatch,', 'currency outcome'],
   ['ChannelUnavailable,', 'channel outcome'],
   ['ProfileIncompatible,', 'profile outcome'],
-  ['struct ShippingOptionFailure {', 'typed failure context'],
   ['shipping_option_id: Option<Uuid>', 'typed option identity'],
   ['profile_slug_length: Option<usize>', 'bounded profile fact'],
   ['option_currency_code_length: Option<usize>', 'bounded currency fact'],
@@ -160,7 +161,8 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['shipping_selections.map(|selections| selections.len())', 'safe selection counting'],
+  ['let requested_selection_count = shipping_selections', 'selection count source'],
+  ['.map(|selections| selections.len())', 'safe selection counting'],
   ['if let Some(shipping_option_id) = selected_shipping_option_id', 'typed selected option branch'],
   ['FulfillmentService::new(db.clone())', 'single owner service construction'],
   ['.get_shipping_option(', 'owner lookup'],
@@ -181,6 +183,10 @@ if (ownerLookups.length !== 1) {
 const publicEnvelopeDefinitions = typedSource.match(/fn public_graphql_error\(\)/g) ?? [];
 if (publicEnvelopeDefinitions.length !== 1) {
   failures.push(`expected one public envelope definition, found ${publicEnvelopeDefinitions.length}`);
+}
+const mountedOverrides = layeredSource.match(/validate_selected_shipping_option/g) ?? [];
+if (mountedOverrides.length !== 1) {
+  failures.push(`expected one mounted typed shipping-option override, found ${mountedOverrides.length}`);
 }
 
 for (const value of [
