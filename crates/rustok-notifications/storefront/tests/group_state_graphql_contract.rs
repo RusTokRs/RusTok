@@ -31,6 +31,7 @@ fn owner_mutation_admits_before_bounded_command_and_reuses_port() {
     assert!(OWNER_MANIFEST.contains("mutation = \"graphql::NotificationsMutation\""));
     assert!(OWNER_PORT.contains("PortCallPolicy::write()"));
     assert!(OWNER_PORT.contains("NotificationInboxGroupStateService"));
+    assert!(!OWNER_GRAPHQL.contains("let value = value.trim();"));
 
     let signature = OWNER_GRAPHQL
         .split("async fn notification_inbox_apply_group_state")

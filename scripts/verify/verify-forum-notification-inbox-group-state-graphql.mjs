@@ -139,6 +139,11 @@ requireText(
   "NotificationInboxGroupStateService",
   "owner port must reuse group state service",
 );
+rejectText(
+  owner,
+  "let value = value.trim();",
+  "GraphQL idempotency keys must remain exact opaque values",
+);
 
 const mutation = between(
   owner,

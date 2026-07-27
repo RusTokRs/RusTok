@@ -394,7 +394,6 @@ fn invalid_notification_id() -> async_graphql::Error {
 }
 
 fn parse_idempotency_key(value: String) -> Result<String> {
-    let value = value.trim();
     if value.is_empty()
         || value.len() > MAX_IDEMPOTENCY_KEY_BYTES
         || value.chars().any(char::is_control)
@@ -405,7 +404,7 @@ fn parse_idempotency_key(value: String) -> Result<String> {
             false,
         ));
     }
-    Ok(value.to_string())
+    Ok(value)
 }
 
 fn map_group_summary_page(
