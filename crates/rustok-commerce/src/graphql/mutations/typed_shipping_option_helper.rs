@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use async_graphql::{ErrorExtensions, Result};
-use rustok_fulfillment::{FulfillmentError, FulfillmentService};
+use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_fulfillment::ReadShippingOptionProjectionRequest;
 use uuid::Uuid;
 
 use crate::{
@@ -20,7 +21,9 @@ enum ShippingOptionFailureKind {
     OwnerValidation,
     OwnerNotFound,
     OwnerConflict,
+    OwnerForbidden,
     StorageUnavailable,
+    OwnerInvariant,
     CurrencyMismatch,
     ChannelUnavailable,
     ProfileIncompatible,
@@ -31,13 +34,13 @@ struct ShippingOptionFailure {
     kind: ShippingOptionFailureKind,
     source_owner: &'static str,
     source_operation: &'static str,
-    internal_code: &'static str,
+    internal_code: String,
     internal_kind: &'static str,
     internal_retryable: bool,
     shipping_option_id: Option<Uuid>,
     profile_slug_length: Option<usize>,
     option_currency_code_length: Option<usize>,
-    owner_error: Option<FulfillmentError>,
+    owner_error: Option<PortError>,
 }
 
 impl ShippingOptionFailure {
@@ -51,47 +54,41 @@ impl ShippingOptionFailure {
         )
     }
 
-    fn owner(shipping_option_id: Uuid, error: FulfillmentError) -> Self {
-        let (kind, internal_code, internal_kind, internal_retryable) = match &error {
-            FulfillmentError::Validation(_) => (
+    fn owner(shipping_option_id: Uuid, error: PortError) -> Self {
+        let (kind, internal_kind) = match &error.kind {
+            PortErrorKind::Validation => (
                 ShippingOptionFailureKind::OwnerValidation,
-                "fulfillment.validation",
                 "validation",
-                false,
             ),
-            FulfillmentError::ShippingOptionNotFound(_) => (
+            PortErrorKind::NotFound => (
                 ShippingOptionFailureKind::OwnerNotFound,
-                "fulfillment.shipping_option_not_found",
                 "not_found",
-                false,
             ),
-            FulfillmentError::FulfillmentNotFound(_) => (
-                ShippingOptionFailureKind::OwnerNotFound,
-                "fulfillment.fulfillment_not_found",
-                "not_found",
-                false,
-            ),
-            FulfillmentError::InvalidTransition { .. } => (
+            PortErrorKind::Conflict => (
                 ShippingOptionFailureKind::OwnerConflict,
-                "fulfillment.invalid_transition",
                 "conflict",
-                false,
             ),
-            FulfillmentError::Database(_) => (
+            PortErrorKind::Forbidden => (
+                ShippingOptionFailureKind::OwnerForbidden,
+                "forbidden",
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                 ShippingOptionFailureKind::StorageUnavailable,
-                "fulfillment.database_unavailable",
                 "unavailable",
-                true,
+            ),
+            PortErrorKind::InvariantViolation => (
+                ShippingOptionFailureKind::OwnerInvariant,
+                "invariant",
             ),
         };
 
         Self {
             kind,
             source_owner: "rustok_fulfillment",
-            source_operation: "get_shipping_option",
-            internal_code,
+            source_operation: "read_shipping_option_projection",
+            internal_code: error.code.clone(),
             internal_kind,
-            internal_retryable,
+            internal_retryable: error.retryable,
             shipping_option_id: Some(shipping_option_id),
             profile_slug_length: None,
             option_currency_code_length: None,
@@ -146,7 +143,7 @@ impl ShippingOptionFailure {
             kind,
             source_owner: "rustok_commerce.graphql_shipping_selection",
             source_operation,
-            internal_code,
+            internal_code: internal_code.to_string(),
             internal_kind,
             internal_retryable: false,
             shipping_option_id,
@@ -156,8 +153,12 @@ impl ShippingOptionFailure {
         }
     }
 
-    fn technical_owner_error(&self) -> Option<&FulfillmentError> {
-        if matches!(self.kind, ShippingOptionFailureKind::StorageUnavailable) {
+    fn technical_owner_error(&self) -> Option<&PortError> {
+        if matches!(
+            self.kind,
+            ShippingOptionFailureKind::StorageUnavailable
+                | ShippingOptionFailureKind::OwnerInvariant
+        ) {
             self.owner_error.as_ref()
         } else {
             None
@@ -177,7 +178,7 @@ fn public_graphql_error() -> async_graphql::Error {
 #[allow(clippy::too_many_arguments)]
 fn shipping_option_graphql_error(
     failure: ShippingOptionFailure,
-    tenant_id: Uuid,
+    context: &PortContext,
     cart_id: Uuid,
     selection_count: usize,
     delivery_group_count: usize,
@@ -191,15 +192,23 @@ fn shipping_option_graphql_error(
     let tenant_default_locale_length = tenant_default_locale.map(str::chars).map(Iterator::count);
     let technical_owner_error = failure.technical_owner_error();
 
-    if matches!(failure.kind, ShippingOptionFailureKind::StorageUnavailable) {
+    if matches!(
+        failure.kind,
+        ShippingOptionFailureKind::StorageUnavailable | ShippingOptionFailureKind::OwnerInvariant
+    ) {
         tracing::error!(
             error = ?technical_owner_error,
             owner = failure.source_owner,
             owner_operation = failure.source_operation,
-            internal_code = failure.internal_code,
+            internal_code = %failure.internal_code,
             internal_kind = failure.internal_kind,
             internal_retryable = failure.internal_retryable,
-            tenant_id = %tenant_id,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            context_channel_length = context.channel.as_deref().map(str::len),
+            context_locale_length = context.locale.len(),
+            deadline_ms = ?context.deadline_ms,
             cart_id = %cart_id,
             shipping_option_id = ?failure.shipping_option_id,
             selection_count,
@@ -219,10 +228,15 @@ fn shipping_option_graphql_error(
         tracing::warn!(
             owner = failure.source_owner,
             owner_operation = failure.source_operation,
-            internal_code = failure.internal_code,
+            internal_code = %failure.internal_code,
             internal_kind = failure.internal_kind,
             internal_retryable = failure.internal_retryable,
-            tenant_id = %tenant_id,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            context_channel_length = context.channel.as_deref().map(str::len),
+            context_locale_length = context.locale.len(),
+            deadline_ms = ?context.deadline_ms,
             cart_id = %cart_id,
             shipping_option_id = ?failure.shipping_option_id,
             selection_count,
@@ -269,6 +283,18 @@ pub(crate) async fn validate_selected_shipping_option(
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> Result<()> {
+    let owner_locale = requested_locale
+        .or(tenant_default_locale)
+        .unwrap_or("en");
+    let owner_context = super::shipping_option_read_context::storefront_shipping_option_read_context(
+        tenant_id,
+        cart.id,
+        owner_locale,
+        public_channel_slug,
+        "read-option",
+    );
+    let shipping_option_read_port =
+        super::shipping_option_read_context::storefront_shipping_option_read_port(db.clone());
     let requested_currency_code_length = currency_code.chars().count();
     let requested_selection_count = shipping_selections
         .map(|selections| selections.len())
@@ -285,7 +311,7 @@ pub(crate) async fn validate_selected_shipping_option(
             if cart.delivery_groups.len() > 1 {
                 return Err(shipping_option_graphql_error(
                     ShippingOptionFailure::multiple_delivery_groups(shipping_option_id),
-                    tenant_id,
+                    &owner_context,
                     cart.id,
                     requested_selection_count,
                     cart.delivery_groups.len(),
@@ -316,24 +342,25 @@ pub(crate) async fn validate_selected_shipping_option(
         current_shipping_selections(cart)
     };
     let selection_count = selections.len();
-    let fulfillment_service = FulfillmentService::new(db.clone());
 
     for selection in selections {
         let Some(shipping_option_id) = selection.selected_shipping_option_id else {
             continue;
         };
-        let option = fulfillment_service
-            .get_shipping_option(
-                tenant_id,
-                shipping_option_id,
-                requested_locale,
-                tenant_default_locale,
+        let option = shipping_option_read_port
+            .read_shipping_option_projection(
+                owner_context.clone(),
+                ReadShippingOptionProjectionRequest {
+                    shipping_option_id,
+                    requested_locale: requested_locale.map(str::to_owned),
+                    tenant_default_locale: tenant_default_locale.map(str::to_owned),
+                },
             )
             .await
             .map_err(|error| {
                 shipping_option_graphql_error(
                     ShippingOptionFailure::owner(shipping_option_id, error),
-                    tenant_id,
+                    &owner_context,
                     cart.id,
                     selection_count,
                     cart.delivery_groups.len(),
@@ -349,7 +376,7 @@ pub(crate) async fn validate_selected_shipping_option(
                     option.id,
                     option.currency_code.chars().count(),
                 ),
-                tenant_id,
+                &owner_context,
                 cart.id,
                 selection_count,
                 cart.delivery_groups.len(),
@@ -362,7 +389,7 @@ pub(crate) async fn validate_selected_shipping_option(
         if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
             return Err(shipping_option_graphql_error(
                 ShippingOptionFailure::channel_unavailable(option.id),
-                tenant_id,
+                &owner_context,
                 cart.id,
                 selection_count,
                 cart.delivery_groups.len(),
@@ -382,7 +409,7 @@ pub(crate) async fn validate_selected_shipping_option(
                     option.id,
                     selection.shipping_profile_slug.chars().count(),
                 ),
-                tenant_id,
+                &owner_context,
                 cart.id,
                 selection_count,
                 cart.delivery_groups.len(),
