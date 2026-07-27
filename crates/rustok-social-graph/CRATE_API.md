@@ -136,27 +136,41 @@
 - When enabled, missing/stopped/invalid worker state is critical in
   `runtime_guardrails`, `/health/ready`, and aggregate guardrail metrics. Disabled
   execution contributes no failure.
+- `SocialGraphIndexPositionObserver` also starts only under explicit enablement. It
+  opens a separate read-only SDK connection using shared transport configuration and
+  observes the same `StopHandle`.
+- Position observation never starts/stops a broker, consumes deliveries, stores offsets,
+  or participates in projection readiness. Configuration/connection/snapshot failures
+  are telemetry-only and independently retried.
 
 ## Runtime consumer metrics
 
 - `rustok_telemetry::runtime_consumer_metrics` registers a bounded shared Prometheus
   collector in the existing process registry rendered by `/metrics`.
-- Metrics cover received deliveries, terminal outcome throughput, projection and ack
-  retries, bounded stage/stable-code failures, DLQ publication results, receive-to-ack
-  duration, starts/terminations, in-flight state/timestamp, and last success.
-- Labels are bounded to consumer, stage, outcome, result, reason, and stable error code.
-- Tenant, event, relation, partition, offset, payload, ack token, and raw error text are
-  not labels.
-- Source-position and lag metrics are intentionally absent. They require a connector
-  partition high-watermark plus a partition-qualified acknowledged-position snapshot;
-  one global last offset or event age is not a valid substitute.
+- Delivery metrics cover received deliveries, terminal outcome throughput, projection
+  and ack retries, bounded stage/stable-code failures, DLQ publication results,
+  receive-to-ack duration, starts/terminations, in-flight state/timestamp, and last
+  success.
+- The position observer reads every topic partition plus the persistent group checkpoint
+  and records snapshot timestamp, partition count, and completeness.
+- `rustok_runtime_consumer_lag{aggregation="total|max"}` is published only from a
+  complete coherent every-partition snapshot. Empty partitions contribute zero;
+  missing or checkpoint-ahead-of-high-watermark state makes the snapshot incomplete.
+- Incomplete snapshots set completeness to zero and clear lag gauges, preventing stale
+  values from masquerading as current lag.
+- Labels are bounded to consumer, stage, outcome, result, reason, aggregation, and stable
+  error code.
+- Tenant, event, relation, partition, offset, payload, ack token, credentials, and raw
+  error text are not labels.
+- Event age, processing duration, one delivered offset, and local cursor counters are
+  not valid lag inputs.
 
 ## Authority boundary
 
 - Social Graph owner ports and storage remain authoritative for block/mute/follow.
-- Profiles privacy must not authorize from Index state.
-- The adapter, projector, consumer, worker, and telemetry never read Social Graph owner
-  tables for projection work.
+- Profiles privacy must not authorize from Index state or consumer lag.
+- The adapter, projector, consumer, worker, position observer, and telemetry never read
+  Social Graph owner tables for projection work.
 - Index is optional discovery/query infrastructure and must not authorize presentation.
 
 ## Dependencies
@@ -165,7 +179,8 @@
 - `rustok-core`: module and migration contracts.
 - `rustok-events`: sealed relation event family.
 - optional `rustok-index`: schema, conversion, registration, mutation persistence.
-- optional `rustok-iggy`: persistent typed cursor, exact payload retention, DLQ, ack.
+- optional `rustok-iggy`: persistent typed cursor, exact payload retention, DLQ, ack,
+  and read-only broker position observation.
 - `rustok-outbox`: transactional event bus.
 - sibling CLI uses `rustok-cli-core` and `rustok-runtime`.
 
@@ -181,15 +196,15 @@
 - Registering only in memory and assuming the persisted schema foreign key exists.
 - Writing `index_schemas` directly from Social Graph.
 - Acknowledging before schema and Index result are durable.
-- Creating or shutting down a second Iggy transport in the worker.
+- Creating or shutting down a second Iggy transport in the worker or position observer.
 - DLQing after a durable Index result instead of retrying ack only.
 - Re-serializing a decoded envelope instead of using exact broker bytes.
 - Republish-to-DLQ on every in-process ack retry instead of staged acknowledgement-only
   recovery.
 - Using tenant/event/relation/partition/offset/payload/error text as metric labels.
-- Publishing one global offset or event age as broker lag without partition-qualified
-  acknowledged positions and high-watermarks.
-- Authorizing Profiles visibility from projection state.
+- Publishing lag from an incomplete snapshot, event age, or one global offset.
+- Making observer failure projection-critical or readiness-critical.
+- Authorizing Profiles visibility from projection state or consumer lag.
 
 ## Errors / stable failure families
 
@@ -206,3 +221,4 @@
 - `social_graph.storage_unavailable`
 - Index consumption maps typed schema/registry/mutation failures to bounded
   `social_graph.index.*` host codes without publishing private storage causes.
+- Position observation uses bounded `iggy.consumer_position.*` stable codes.
