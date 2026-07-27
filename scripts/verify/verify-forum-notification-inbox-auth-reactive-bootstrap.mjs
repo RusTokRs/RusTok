@@ -106,6 +106,7 @@ for (const marker of [
   "Effect::new(move |_|",
   "let _ = transport_context.get();",
   "set_refresh_feedback.set(None);",
+  "let initial_feedback = refresh_feedback.get();",
   "Resource::new_blocking",
   "move || (refresh_nonce.get(), transport_context.get())",
   "move |(_, context)| async move { load_inbox_snapshot(context).await }",
