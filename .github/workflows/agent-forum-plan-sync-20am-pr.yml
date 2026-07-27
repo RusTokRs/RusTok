@@ -1,0 +1,46 @@
+name: Agent Forum plan sync 20AM PR trigger
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/forum-notification-plan-sync-20am'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Execute embedded conflict-safe applier
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('.github/workflows/agent-forum-plan-sync-20am.yml')
+          source = source_path.read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if "python3 - <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          program = '\n'.join(line[10:] if line.startswith('          ') else line for line in source[start:end]) + '\n'
+          compile(program, str(source_path), 'exec')
+          exec(compile(program, str(source_path), 'exec'), {'__name__': '__main__'})
+          Path('.github/workflows/agent-forum-plan-sync-20am-pr.yml').unlink()
+          PY
+      - name: Commit synchronized documents
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs(forum): synchronize notification plan through 20AL"
+          git push origin HEAD:agent/forum-notification-plan-sync-20am
