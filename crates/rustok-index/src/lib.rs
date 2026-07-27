@@ -1,15 +1,16 @@
 //! RusToK Index - cross-module relational Index Engine.
 //!
-//! The active implementation is the database-independent generic engine core
-//! under [`domain`] and [`application`]. Storage, ingestion, rebuild, and query
-//! infrastructure are introduced only through the milestones in the live plan.
+//! The active implementation contains the database-independent generic engine
+//! core under [`domain`] and [`application`] plus the canonical M3 PostgreSQL
+//! storage-schema migrations. Runtime storage adapters remain milestone-gated.
 
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod application;
 pub mod domain;
+pub mod migrations;
 
 pub use application::*;
 pub use domain::*;
@@ -41,7 +42,11 @@ impl RusToKModule for IndexModule {
 
 impl MigrationSource for IndexModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
     }
 }
 

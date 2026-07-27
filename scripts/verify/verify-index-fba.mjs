@@ -56,7 +56,6 @@ for (const obsolete of [
   'crates/rustok-index/src/product',
   'crates/rustok-index/src/flex',
   'crates/rustok-index/src/search',
-  'crates/rustok-index/src/migrations',
   'crates/rustok-index/contracts/index-fba-registry.json',
   'crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json',
   'crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json',
@@ -66,7 +65,7 @@ for (const obsolete of [
   if (exists(obsolete)) fail(`obsolete rewrite artifact still exists: ${obsolete}`);
 }
 
-for (const marker of ['pub mod domain;', 'pub mod application;', 'pub use domain::*;', 'pub use application::*;']) {
+for (const marker of ['pub mod domain;', 'pub mod application;', 'pub mod migrations;', 'pub use domain::*;', 'pub use application::*;', 'migrations::migrations()']) {
   if (!lib.includes(marker)) fail(`lib.rs missing ${marker}`);
 }
 for (const marker of ['IndexSchema', 'IndexRecord', 'IndexMutation', 'IndexQuery', 'FilterExpr']) {
@@ -88,7 +87,6 @@ for (const sourceModule of [
   'pub mod product;',
   'pub mod flex;',
   'pub mod search;',
-  'pub mod migrations;',
   'pub mod traits;',
   'pub mod error;',
 ]) {
@@ -116,6 +114,8 @@ for (const marker of [
   '- Current milestone: `M3 - PostgreSQL storage engine`',
   '- M2 storage benchmark: `complete`',
   '- M2 storage decision: `JSONB accepted; rejected prototypes removed`',
+  '- M3 storage-schema foundation: `complete`',
+  '- [x] Add canonical schema/entity/link/inbox/job/checkpoint/consistency migrations.',
   '- [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.',
   '- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.',
   '- [x] Run and archive replacement 100k Product-locale row read, mutation, and',
@@ -302,8 +302,8 @@ for (const binary of [
     fail(`benchmark executable is not registered: ${binary}`);
   }
 }
-if (!normalizedBenchmarkDoc.includes('Production migrations: intentionally absent')) {
-  fail('benchmark documentation must preserve the production-migration boundary');
+if (!normalizedBenchmarkDoc.includes('Production migration foundation: implemented in `rustok-index`; benchmark DDL remains isolated')) {
+  fail('benchmark documentation must preserve the benchmark/production migration boundary');
 }
 if (!normalizedBenchmarkDoc.includes('It does not run `VACUUM FULL`')) {
   fail('benchmark documentation must reject VACUUM FULL as a health assumption');
