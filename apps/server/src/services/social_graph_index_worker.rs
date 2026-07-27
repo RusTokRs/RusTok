@@ -130,6 +130,11 @@ pub async fn start_social_graph_index_worker_if_enabled(
             "{ENABLE_ENV}=true requires rustok.events.delivery_profile=outbox_iggy"
         )));
     }
+    let transport = ctx.shared_get::<Arc<IggyTransport>>().ok_or_else(|| {
+        Error::Message(
+            "outbox_iggy runtime did not publish its configured Iggy transport".to_string(),
+        )
+    })?;
 
     if !ctx.shared_contains::<StopHandle>() {
         let (stop_handle, _stop_rx) = StopHandle::new();
@@ -141,19 +146,7 @@ pub async fn start_social_graph_index_worker_if_enabled(
         .subscribe();
 
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;
-    let iggy_config = crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::resolved_config(ctx)
-        .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Social Graph Index consumer Iggy configuration failed: {error}"
-            ))
-        })?;
-    let transport = Arc::new(IggyTransport::new(iggy_config).await.map_err(|error| {
-        Error::Message(format!(
-            "Social Graph Index consumer broker connection failed: {error}"
-        ))
-    })?);
-    let consumer = SocialGraphIndexConsumer::open(Arc::clone(&transport), ctx.db_clone())
+    let consumer = SocialGraphIndexConsumer::open(transport, ctx.db_clone())
         .await
         .map_err(|error| {
             Error::Message(format!(
@@ -173,19 +166,13 @@ pub async fn start_social_graph_index_worker_if_enabled(
     );
     ctx.shared_insert(SocialGraphIndexWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(social_graph_index_worker_loop(
-            consumer,
-            transport,
-            config,
-            stop_rx,
-        )),
+        _handle: tokio::spawn(social_graph_index_worker_loop(consumer, config, stop_rx)),
     });
     Ok(())
 }
 
 async fn social_graph_index_worker_loop(
     mut consumer: SocialGraphIndexConsumer,
-    transport: Arc<IggyTransport>,
     config: SocialGraphIndexWorkerConfig,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
@@ -195,7 +182,6 @@ async fn social_graph_index_worker_loop(
                 worker = "social_graph_index",
                 "Worker received shutdown signal"
             );
-            shutdown_transport(&transport).await;
             return;
         }
 
@@ -214,7 +200,6 @@ async fn social_graph_index_worker_loop(
                 worker = "social_graph_index",
                 "Worker stopped before next receive"
             );
-            shutdown_transport(&transport).await;
             return;
         };
 
@@ -233,7 +218,6 @@ async fn social_graph_index_worker_loop(
                             event_id = %consumed.envelope.id(),
                             "Worker stopped with broker offset uncommitted"
                         );
-                        shutdown_transport(&transport).await;
                         return;
                     }
                     Err(error) => {
@@ -243,14 +227,12 @@ async fn social_graph_index_worker_loop(
                             error = %error,
                             "Social Graph Index worker terminated with broker offset uncommitted"
                         );
-                        shutdown_transport(&transport).await;
                         return;
                     }
                 }
             }
             Ok(None) => {
                 if wait_or_stop(config.idle_poll, &mut stop_rx).await {
-                    shutdown_transport(&transport).await;
                     return;
                 }
             }
@@ -261,7 +243,6 @@ async fn social_graph_index_worker_loop(
                     retryable = error.is_retryable(),
                     "Social Graph Index broker receive failed; persistent cursor remains uncommitted"
                 );
-                shutdown_transport(&transport).await;
                 return;
             }
         }
@@ -393,16 +374,6 @@ async fn wait_or_stop(
     tokio::select! {
         _ = tokio::time::sleep(delay) => false,
         changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
-    }
-}
-
-async fn shutdown_transport(transport: &IggyTransport) {
-    if let Err(error) = transport.shutdown().await {
-        tracing::warn!(
-            worker = "social_graph_index",
-            error = %error,
-            "Social Graph Index worker transport shutdown failed"
-        );
     }
 }
 
