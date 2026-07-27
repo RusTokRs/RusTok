@@ -63,9 +63,11 @@ for (const marker of [
   ".register(envelope.tenant_id(), &self.schema)",
   "PostgresMutationStore::new(db)",
   "self.store.apply(&self.registry, &delivery).await?",
-  "self.projector.apply_envelope(&consumed.envelope).await?",
-  "self.group",
-  ".acknowledge(&consumed)",
+  "pub async fn receive_next(",
+  "pub async fn project_consumed(",
+  "self.projector.apply_envelope(&consumed.envelope).await",
+  "pub async fn acknowledge_consumed(",
+  ".acknowledge(consumed)",
   "pub async fn process_next(",
   "&mut self",
   "IgnoredUnrelated",
@@ -86,16 +88,31 @@ const registrationPosition = consumerProduction.indexOf(
 const applyPosition = consumerProduction.indexOf(
   "self.store.apply(&self.registry, &delivery).await?",
 );
-const acknowledgePosition = consumerProduction.indexOf(".acknowledge(&consumed)");
 if (
   registrationPosition < 0 ||
   applyPosition < 0 ||
-  acknowledgePosition < 0 ||
-  applyPosition <= registrationPosition ||
-  acknowledgePosition <= applyPosition
+  applyPosition <= registrationPosition
 ) {
   failures.push(
-    "runtime consumer must persist the tenant schema, durably apply or terminally recognize the Index delivery, and only then acknowledge the broker message",
+    "projector must persist the tenant schema before durable mutation apply",
+  );
+}
+
+const processStart = consumerProduction.indexOf("pub async fn process_next(");
+const processBody = processStart >= 0 ? consumerProduction.slice(processStart) : "";
+const projectPosition = processBody.indexOf(
+  "let outcome = self.project_consumed(&consumed).await?;",
+);
+const acknowledgePosition = processBody.indexOf(
+  "self.acknowledge_consumed(&consumed).await?;",
+);
+if (
+  projectPosition < 0 ||
+  acknowledgePosition < 0 ||
+  acknowledgePosition <= projectPosition
+) {
+  failures.push(
+    "direct consumer path must durably project before broker acknowledgement",
   );
 }
 
@@ -124,17 +141,17 @@ for (const marker of [
 requireText(
   "Social Graph plan",
   files.socialPlan,
-  "Delivered durable Index apply/ack consumer",
+  "Delivered persistent consumer, host lifecycle, and readiness",
 );
 requireText(
   "Social Graph plan",
   files.socialPlan,
-  "host lifecycle composition",
+  "Social Graph persistence remains authoritative for drift repair",
 );
 requireText(
   "Profiles plan",
   files.profilesPlan,
-  "projection-based authorization",
+  "never authorizes from an event or Index projection",
 );
 
 if (failures.length > 0) {
@@ -146,5 +163,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index runtime consumer verification passed: optional runtime composition, sealed-family filtering, Index-owned tenant schema persistence, durable inbox apply, result-first acknowledgement, unrelated-event handling, integration fixtures, and authoritative owner-port privacy are locked.",
+  "Social Graph Index runtime consumer verification passed: optional runtime composition, sealed-family filtering, Index-owned tenant schema persistence, staged durable inbox apply, result-first acknowledgement, unrelated-event handling, integration fixtures, and authoritative owner-port privacy are locked.",
 );
