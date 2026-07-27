@@ -6,7 +6,7 @@ license.workspace = true
 description = "Notification inbox, preference, fan-out, and delivery orchestration owner"
 
 [features]
-default = ["server"]
+default = []
 server = ["rustok-api/server"]
 
 [dependencies]
