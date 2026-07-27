@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -11,6 +11,13 @@ use validator::Validate;
 
 use crate::dto::{CartDeliveryGroupResponse, CartResponse, UpdateCartContextInput};
 use crate::{CartError, CartService, CartStatus};
+
+const CART_CHECKOUT_OWNER: &str = "rustok_cart";
+const CART_CHECKOUT_BOUNDARY: &str = "cart_checkout_port";
+const PREPARE_CHECKOUT_OPERATION: &str = "prepare_checkout";
+const READ_CHECKOUT_SNAPSHOT_OPERATION: &str = "read_checkout_snapshot";
+const COMPLETE_CHECKOUT_OPERATION: &str = "complete_checkout";
+const RELEASE_CHECKOUT_OPERATION: &str = "release_checkout";
 
 /// Immutable, transport-neutral checkout snapshot owned by the cart module.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +93,91 @@ pub fn in_process_cart_checkout_port(service: CartService) -> Arc<dyn CartChecko
     Arc::new(InProcessCartCheckoutPort::new(service))
 }
 
+fn require_cart_checkout_read_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::read()).map_err(|error| {
+        log_cart_checkout_admission_rejection(context, owner_operation, "policy", &error);
+        error
+    })
+}
+
+fn require_cart_checkout_write_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::write()).map_err(|error| {
+        log_cart_checkout_admission_rejection(context, owner_operation, "policy", &error);
+        error
+    })?;
+    context.require_write_semantics().map_err(|error| {
+        log_cart_checkout_admission_rejection(
+            context,
+            owner_operation,
+            "write_semantics",
+            &error,
+        );
+        error
+    })
+}
+
+fn log_cart_checkout_admission_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    admission_phase: &'static str,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = CART_CHECKOUT_OWNER,
+                owner_operation,
+                admission_phase,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CART_CHECKOUT_BOUNDARY,
+                "cart checkout owner admission failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = CART_CHECKOUT_OWNER,
+                owner_operation,
+                admission_phase,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                internal_code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = CART_CHECKOUT_BOUNDARY,
+                "cart checkout owner admission was rejected"
+            );
+        }
+    }
+}
+
 #[async_trait]
 impl CartCheckoutPort for InProcessCartCheckoutPort {
     async fn prepare_checkout(
@@ -93,8 +185,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         context: PortContext,
         request: PrepareCartCheckoutSnapshotRequest,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        require_cart_checkout_write_admission(&context, PREPARE_CHECKOUT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context)?;
         validate_prepare_input(&request.input).map_err(cart_error_to_port_error)?;
 
@@ -139,7 +230,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         context: PortContext,
         cart_id: Uuid,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        require_cart_checkout_read_admission(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context)?;
         self.service
             .get_cart(tenant_id, cart_id)
@@ -153,8 +244,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         context: PortContext,
         request: CompleteCartCheckoutRequest,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        require_cart_checkout_write_admission(&context, COMPLETE_CHECKOUT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context)?;
         let cart = self
             .service
@@ -171,8 +261,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         context: PortContext,
         cart_id: Uuid,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
+        require_cart_checkout_write_admission(&context, RELEASE_CHECKOUT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context)?;
         let cart = self
             .service
