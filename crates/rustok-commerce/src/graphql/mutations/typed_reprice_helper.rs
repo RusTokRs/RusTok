@@ -1,7 +1,7 @@
 use async_graphql::{ErrorExtensions, Result};
 use rustok_api::{PortContext, PortError, PortErrorKind, RequestContext};
 use rustok_cart::{CartStorefrontPort, CartStorefrontRepriceRequest};
-use rustok_pricing::{PricingReadPort, ResolveProductPriceRequest};
+use rustok_pricing::ResolveProductPriceRequest;
 use uuid::Uuid;
 
 use crate::storefront_channel::normalize_public_channel_slug;
