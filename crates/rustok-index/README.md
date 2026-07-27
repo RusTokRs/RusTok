@@ -49,13 +49,15 @@ a rewrite goal.
 - M3 atomic mutation persistence: complete
 - M3 schema-application leases: complete
 - M3 secondary-index lifecycle: complete
+- M3 partition admission and shadow planning: complete
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted. M3
 registers the canonical production schema, publishes an Index-owned transactional
-mutation adapter, owns durable schema-application leases, and now manages
-deterministic schema-derived secondary indexes. Query execution and partition
-management remain absent.
+mutation adapter, owns durable schema-application leases, manages deterministic
+schema-derived secondary indexes, and now rejects partition rollout until measured
+shadow evidence passes an explicit policy. Query execution and partition cutover
+remain absent.
 
 The module-owned migration source creates:
 
@@ -99,6 +101,19 @@ reindex, and retirement through fenced `secondary_index` jobs, executes PostgreS
 and `indisvalid` before completion. Retire remains available for retired schemas;
 SQLite is contract-test-only.
 
+`evaluate_partition_admission` keeps the canonical tables unpartitioned unless one
+explicit policy is satisfied by one exact SHA-256 evidence packet. Admission checks
+minimum measured size/row/tenant scale, tenant-predicate coverage, entity and link
+digest parity, shadow catch-up, foreign-key validation, orphan-link absence, query
+plan stability, p95 query/mutation regressions, WAL amplification, partition-size
+skew, and cutover-lock duration. An admitted `PartitionShadowPlan` derives stable
+hash-partition parent/child names and PostgreSQL bootstrap statements for shadow
+relations only. It never emits production table rename, drop, or cutover SQL.
+Tenant-hash modulus must be a power of two from 2 through 128. Actual copy,
+constraint/index attachment, dual-write/replay, cutover, rollback, and durable
+global operation ownership remain later work and require retained PostgreSQL
+evidence.
+
 ## Current entry points
 
 - `IndexModule`
@@ -110,6 +125,8 @@ SQLite is contract-test-only.
   `SchemaApplicationLease`, and `SchemaLeaseAcquireOutcome`
 - `SecondaryIndexPlan`, `SecondaryIndexSpec`, `SecondaryIndexRequest`,
   `SecondaryIndexLease`, and `PostgresSecondaryIndexManager`
+- `PartitionAdmissionPolicy`, `PartitionEvidence`, `PartitionAdmissionOutcome`,
+  `PartitionShadowPlan`, and `evaluate_partition_admission`
 - `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
 - `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
 - `CursorCodec`, `IndexCursor`, and query-scope cursor validation
@@ -135,7 +152,9 @@ SQLite is contract-test-only.
   completion, and attempt fencing;
 - deterministic tenant/schema/fingerprint-bound secondary-index names,
   tagged-payload expressions, concurrent lifecycle, owner verification, catalog
-  readiness checks, and operation fencing.
+  readiness checks, and operation fencing;
+- fail-closed partition admission, exact evidence identity, explicit regression
+  limits, deterministic tenant-hash shadow names, and no destructive cutover SQL.
 
 ## M2 benchmark
 
@@ -157,4 +176,5 @@ DDL remains benchmark-only and must not be copied into production migrations.
 - [M2 storage benchmark contract](./docs/storage-benchmark.md)
 - [M2 replacement evidence runbook](./docs/storage-evidence-runbook.md)
 - [Index Engine rewrite ADR](../../DECISIONS/2026-07-23-index-engine-rewrite.md)
+- [Accepted storage ADR](../../DECISIONS/2026-07-24-index-storage-layout.md)
 - [Platform docs index](../../docs/index.md)

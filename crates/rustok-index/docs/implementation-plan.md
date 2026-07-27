@@ -20,7 +20,7 @@ ingestion, rebuild/reconciliation, operator controls, and the first owner-publis
 vertical slices. It excludes text relevance, ranking, autocomplete, external
 search engines, source-table reads, and source-domain semantics in Index core.
 
-Detailed completed-work evidence belongs in the accepted ADRs, committed evidence
+Detailed completed-work evidence belongs in accepted ADRs, committed evidence
 packets, and Git history. This document remains the live roadmap and verification
 contract.
 
@@ -44,6 +44,8 @@ replaced whenever they conflict with the target architecture.
 7. A milestone is complete only when its acceptance criteria are satisfied.
 8. Benchmark scaffolding is not production persistence and must not leak into
    `rustok-index` migrations or runtime composition.
+9. Partition cutover remains forbidden until retained PostgreSQL shadow evidence
+   satisfies an explicit admission policy.
 
 The repository owner performs test and benchmark execution during this rewrite.
 Commits and pull requests record which checks and evidence runs were not executed.
@@ -62,16 +64,19 @@ Commits and pull requests record which checks and evidence runs were not execute
 - M3 atomic mutation persistence: `complete`
 - M3 schema-application leases: `complete`
 - M3 secondary-index lifecycle: `complete`
-- Production persistence: mutation writes, schema coordination, and schema-derived
-  secondary-index lifecycle implemented; query adapter and partition lifecycle not
-  yet implemented
+- M3 partition admission and shadow planning: `complete`
+- Production persistence: mutation writes, schema coordination, secondary-index
+  lifecycle, and fail-closed partition admission implemented; query adapter and
+  partition copy/cutover lifecycle not yet implemented
 
 The active production crate contains the generic domain/application core, the M3
 production migrations, an Index-owned transactional mutation adapter, a durable
-schema-application lease store, and a schema-derived secondary-index manager.
-Query adapters, partition lifecycle, batch ingestion, and PostgreSQL Testcontainers
-evidence remain open. Benchmark DDL and generated evidence stay under
-`ops/benches`, outside the production module.
+schema-application lease store, a schema-derived secondary-index manager, and a
+measured partition-admission contract that emits shadow bootstrap plans only.
+Query adapters, partition copy/constraint/index attachment, replay/cutover,
+batch ingestion, and PostgreSQL Testcontainers evidence remain open. Benchmark
+DDL and generated evidence stay under `ops/benches`, outside the production
+module.
 
 ## Ownership
 
@@ -112,6 +117,7 @@ crates/rustok-index/src/
       mutation_store.rs
       schema_lease.rs
       secondary_index.rs
+      partition_admission.rs
     events/
     telemetry.rs
   api/
@@ -144,7 +150,8 @@ Selected additions:
 - `petgraph` for deterministic schema/link graph traversal;
 - `icu_locale` with compiled ICU4X data for UTS #35/CLDR locale alias
   canonicalization;
-- `sha2` for stable schema fingerprints and cursor checksums;
+- `sha2` for stable schema fingerprints, cursor checksums, secondary-index
+  definitions, and partition shadow-plan identities;
 - `postcard` plus URL-safe Base64 for versioned keyset cursors.
 
 Add when required:
@@ -162,7 +169,8 @@ Forbidden in Index core:
 - collecting all rebuild IDs in memory;
 - source-table reads;
 - source-domain crate dependencies;
-- unvalidated JSON-only public queries.
+- unvalidated JSON-only public queries;
+- destructive partition cutover without retained evidence and rollback proof.
 
 ## Milestones
 
@@ -216,7 +224,8 @@ schemas and links without Product-specific Index code.
 
 M2 is complete. The remaining JSONB benchmark path is a selected-layout regression
 harness; it is not production persistence and does not reopen the accepted storage
-decision.
+decision. Partitioning was not measured by M2, so the canonical tables remain
+unpartitioned until a separate shadow packet passes admission.
 
 ### M3 - PostgreSQL storage engine
 
@@ -225,7 +234,11 @@ decision.
 - [x] Add atomic entity/link upsert and delete transactions.
 - [x] Add locking/leases for schema application.
 - [x] Add secondary-index planning and lifecycle management.
-- [ ] Add partition management after measured design evidence.
+- [x] Add fail-closed partition admission and deterministic tenant-hash shadow
+      planning.
+- [ ] Execute retained PostgreSQL partition baseline/shadow evidence.
+- [ ] Add partition copy, constraint/index attachment, replay/dual-write, cutover,
+      rollback, and durable global operation ownership.
 - [ ] Add PostgreSQL Testcontainers fixtures.
 - [ ] Cover migration-from-zero, stale mutation, redelivery, rollback,
       concurrency, and tenant/locale isolation in PostgreSQL.
@@ -260,6 +273,17 @@ heartbeats, attempt fencing, persisted schema validation, owner comments, and
 PostgreSQL readiness/validity inspection. Expressions follow the production tagged
 `IndexValue` payload through each field's `value` member. SQLite remains
 contract-test-only; PostgreSQL concurrency and Testcontainers evidence remain open.
+
+The fifth M3 slice publishes `PartitionAdmissionPolicy`, measured baseline/shadow
+evidence types, typed rejection reasons, and `PartitionShadowPlan`. Admission is
+fail-closed unless the packet passes minimum row/byte/tenant scale, tenant-predicate
+coverage, entity/link digest parity, catch-up, foreign-key/orphan checks, query-plan
+stability, p95 query/mutation regression, WAL amplification, partition-size skew,
+and cutover-lock limits. Tenant-hash modulus is restricted to powers of two from 2
+through 128. Admitted plans derive stable SHA-256-bound shadow parent/child names
+and emit only shadow bootstrap DDL. They never rename, drop, or alter production
+relations. Copy, constraints, indexes, replay, cutover, rollback, and global
+operation fencing remain open until retained PostgreSQL evidence exists.
 
 ### M4 - Query engine v1
 
@@ -356,6 +380,7 @@ cargo test -p rustok-index --lib
 node scripts/verify/verify-index-mutation-storage.mjs
 node scripts/verify/verify-index-schema-leases.mjs
 node scripts/verify/verify-index-secondary-index-lifecycle.mjs
+node scripts/verify/verify-index-partition-admission.mjs
 ```
 
 ## Progress log
@@ -370,5 +395,7 @@ node scripts/verify/verify-index-secondary-index-lifecycle.mjs
   heartbeat, terminal completion, and attempt fencing.
 - 2026-07-27: added schema-derived typed/containment secondary-index planning,
   concurrent ensure/reindex/retire execution, catalog readiness checks, durable
-  jobs, owner fingerprints, and operation fencing. Tests and verifiers were left
-  for the repository owner to execute.
+  jobs, owner fingerprints, and operation fencing.
+- 2026-07-27: added fail-closed measured partition admission and deterministic
+  tenant-hash shadow planning without destructive production cutover SQL. Tests,
+  verifiers, and PostgreSQL evidence were left for the repository owner to execute.

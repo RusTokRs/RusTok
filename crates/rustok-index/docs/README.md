@@ -25,6 +25,7 @@ without runtime fan-out.
 - incremental ingestion and inbox deduplication;
 - PostgreSQL storage and distributed coordination;
 - schema application and secondary-index lifecycle;
+- measured partition admission and shadow planning;
 - SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
@@ -35,7 +36,8 @@ without runtime fan-out.
 - typo tolerance, synonyms, autocomplete, and search UX;
 - external search-engine connectors;
 - source-module table reads from Index core;
-- source-specific Product, Content, or Flex logic in the engine.
+- source-specific Product, Content, or Flex logic in the engine;
+- destructive partition cutover without retained PostgreSQL evidence.
 
 ## Integration
 
@@ -91,7 +93,9 @@ and ordinary `VACUUM (ANALYZE)` duration.
 
 Replacement same-commit evidence selected JSONB over typed EAV and hot projection.
 Rejected candidate implementations were deleted. The remaining JSONB path is a
-selected-layout regression harness, not production persistence.
+selected-layout regression harness, not production persistence. Partitioning was
+not part of M2 evidence, so the canonical relations remain unpartitioned by
+default.
 
 ## M3 PostgreSQL storage engine
 
@@ -137,8 +141,22 @@ each index to its full definition hash, and completion checks `indisready` plus
 `indisvalid`. Retirement remains available after schema retirement. SQLite is
 contract-test-only.
 
-Partition lifecycle, PostgreSQL Testcontainers/concurrency evidence, query
-execution, and batch ingestion remain later M3/M4/M5 slices.
+`evaluate_partition_admission` compares one unpartitioned baseline with one exact
+SHA-256 identified tenant-hash shadow packet under an explicit policy. It checks
+measured rows, bytes, tenants, tenant-predicate coverage, entity/link digests,
+catch-up, foreign keys, orphan links, query-plan regressions, p95 query/mutation
+regressions, WAL amplification, partition-size skew, and cutover-lock duration.
+Any failed gate returns `KeepUnpartitioned` with typed reasons.
+
+An admitted `PartitionShadowPlan` derives stable names and bootstrap SQL only for
+shadow hash-partition parents and children. Hash modulus must be a power of two
+from 2 through 128. The plan cannot rename, drop, or alter production entity/link
+relations. Copy, constraint/index attachment, replay or dual-write, durable global
+operation ownership, cutover, rollback, and retained PostgreSQL evidence remain
+open M3 work.
+
+PostgreSQL Testcontainers/concurrency evidence, query execution, and batch
+ingestion remain later M3/M4/M5 slices.
 
 ## Status
 
@@ -155,8 +173,10 @@ execution, and batch ingestion remain later M3/M4/M5 slices.
 - M3 atomic mutation persistence: `complete`
 - M3 schema-application leases: `complete`
 - M3 secondary-index lifecycle: `complete`
-- Production persistence: mutation writes and schema/index coordination implemented;
-  query adapter and partition lifecycle not yet implemented
+- M3 partition admission and shadow planning: `complete`
+- Production persistence: mutation writes, schema/index coordination, and
+  partition admission implemented; query adapter and partition cutover lifecycle
+  not yet implemented
 
 ## Verification
 
@@ -169,6 +189,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `cargo xtask module test index`
 - `node scripts/verify/index-storage-tooling.mjs contract`
 - `node scripts/verify/verify-index-secondary-index-lifecycle.mjs`
+- `node scripts/verify/verify-index-partition-admission.mjs`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
 
