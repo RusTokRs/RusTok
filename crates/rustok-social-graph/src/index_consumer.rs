@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_events::{ContractEventEnvelope, ContractEventEnvelopeError, ContractEventPayload};
-use rustok_iggy::{IggyTransport, PersistentContractConsumerGroup};
+use rustok_iggy::{ConsumedContractEvent, DlqEntry, IggyTransport, PersistentContractConsumerGroup};
 use rustok_index::{
     IndexSchema, MutationApplyOutcome, MutationDelivery, MutationStorageError,
     PostgresMutationStore, PostgresSchemaRegistrationStore, SchemaRegistrationError,
@@ -36,6 +36,38 @@ pub enum SocialGraphIndexConsumerError {
     SchemaPersistence(#[from] SchemaRegistrationError),
     #[error(transparent)]
     Storage(#[from] MutationStorageError),
+}
+
+impl SocialGraphIndexConsumerError {
+    /// Stable bounded code suitable for retry/DLQ telemetry without storage details.
+    pub const fn stable_code(&self) -> &'static str {
+        match self {
+            Self::Transport(_) => "social_graph.index.transport_unavailable",
+            Self::Envelope(_) => "social_graph.index.envelope_invalid",
+            Self::Projection(_) => "social_graph.index.projection_invalid",
+            Self::Registry(_) => "social_graph.index.registry_invalid",
+            Self::SchemaPersistence(_) => "social_graph.index.schema_persistence_failed",
+            Self::Storage(_) => "social_graph.index.mutation_persistence_failed",
+        }
+    }
+
+    /// Only transient transport/storage ownership failures are retried in-process.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Transport(_) => true,
+            Self::Envelope(_) | Self::Projection(_) | Self::Registry(_) => false,
+            Self::SchemaPersistence(error) => {
+                matches!(error, SchemaRegistrationError::Storage(_))
+            }
+            Self::Storage(error) => matches!(
+                error,
+                MutationStorageError::DeliveryInProgress { .. }
+                    | MutationStorageError::Storage(_)
+                    | MutationStorageError::ConcurrentMutationConflict
+                    | MutationStorageError::InboxCompletionLost
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,12 +148,10 @@ impl SocialGraphIndexProjector {
 /// Result-first durable consumer for `social_graph.relation.state_changed`.
 ///
 /// The consumer owns one persistent broker cursor and one transport-neutral
-/// projector. It acknowledges the exact broker message only after the tenant
-/// schema exists and `PostgresMutationStore` commits an applied result or
-/// terminally recognizes duplicate/stale delivery. A failed registration, apply,
-/// or acknowledgement leaves the message replayable.
+/// projector. Host runtimes may retain a received delivery across bounded retries,
+/// but must acknowledge only after projection or successful DLQ publication.
 pub struct SocialGraphIndexConsumer {
-    _transport: Arc<IggyTransport>,
+    transport: Arc<IggyTransport>,
     group: PersistentContractConsumerGroup,
     projector: SocialGraphIndexProjector,
 }
@@ -139,7 +169,7 @@ impl SocialGraphIndexConsumer {
             .await
             .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
         Ok(Self {
-            _transport: transport,
+            transport,
             group,
             projector: SocialGraphIndexProjector::new(db)?,
         })
@@ -149,6 +179,60 @@ impl SocialGraphIndexConsumer {
         &self.projector
     }
 
+    /// Receives one validated broker delivery without committing its offset.
+    pub async fn receive_next(
+        &mut self,
+    ) -> Result<Option<ConsumedContractEvent>, SocialGraphIndexConsumerError> {
+        self.group
+            .receive()
+            .await
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
+    }
+
+    /// Persists or terminally recognizes the owner result without acknowledging.
+    pub async fn project_consumed(
+        &self,
+        consumed: &ConsumedContractEvent,
+    ) -> Result<SocialGraphIndexProcessOutcome, SocialGraphIndexConsumerError> {
+        self.projector.apply_envelope(&consumed.envelope).await
+    }
+
+    /// Commits the exact broker offset after a durable result exists.
+    pub async fn acknowledge_consumed(
+        &self,
+        consumed: &ConsumedContractEvent,
+    ) -> Result<(), SocialGraphIndexConsumerError> {
+        self.group
+            .acknowledge(consumed)
+            .await
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
+    }
+
+    /// Publishes the exact original broker bytes to DLQ, then commits the source offset.
+    ///
+    /// This method is valid only for a delivery that has not produced a durable Index
+    /// result. A failed DLQ publication or acknowledgement leaves the source replayable.
+    pub async fn move_to_dlq_and_acknowledge(
+        &self,
+        consumed: &ConsumedContractEvent,
+        stable_error_code: &'static str,
+        retry_count: u32,
+    ) -> Result<(), SocialGraphIndexConsumerError> {
+        let entry = DlqEntry::new(
+            consumed.envelope.id(),
+            consumed.topic.clone(),
+            consumed.raw_payload().to_vec(),
+            stable_error_code,
+            retry_count,
+        )
+        .with_connector_metadata(consumed.connector_metadata.clone());
+        self.transport
+            .move_to_dlq(entry)
+            .await
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
+        self.acknowledge_consumed(consumed).await
+    }
+
     /// Receives, durably registers/applies/recognizes, and then acknowledges one message.
     ///
     /// `&mut self` deliberately serializes receive/apply/ack on this cursor, preventing
@@ -156,19 +240,11 @@ impl SocialGraphIndexConsumer {
     pub async fn process_next(
         &mut self,
     ) -> Result<Option<SocialGraphIndexProcessOutcome>, SocialGraphIndexConsumerError> {
-        let Some(consumed) = self
-            .group
-            .receive()
-            .await
-            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?
-        else {
+        let Some(consumed) = self.receive_next().await? else {
             return Ok(None);
         };
-        let outcome = self.projector.apply_envelope(&consumed.envelope).await?;
-        self.group
-            .acknowledge(&consumed)
-            .await
-            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
+        let outcome = self.project_consumed(&consumed).await?;
+        self.acknowledge_consumed(&consumed).await?;
         Ok(Some(outcome))
     }
 }
@@ -270,6 +346,23 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn retry_classification_is_fail_closed() {
+        assert!(SocialGraphIndexConsumerError::Transport("down".to_string()).is_retryable());
+        assert!(SocialGraphIndexConsumerError::SchemaPersistence(
+            SchemaRegistrationError::Storage("down".to_string())
+        )
+        .is_retryable());
+        assert!(!SocialGraphIndexConsumerError::SchemaPersistence(
+            SchemaRegistrationError::NilTenantId
+        )
+        .is_retryable());
+        assert!(!SocialGraphIndexConsumerError::Storage(
+            MutationStorageError::DeliveryConflict
+        )
+        .is_retryable());
     }
 
     #[tokio::test]
