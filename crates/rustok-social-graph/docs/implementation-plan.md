@@ -176,7 +176,7 @@ block or mute.
 
 - `rustok-index` is the first named approved consumer for generic relation
   projection supporting future profile discovery/search and other bounded queries;
-- optional feature `index` keeps the consumer adapter out of Social Graph runtime
+- optional feature `index` keeps the conversion adapter out of Social Graph runtime
   composition unless explicitly selected;
 - `social_graph_relation_index_schema()` declares a non-localized relation schema
   with source user, target user, and canonical relation kind fields;
@@ -187,10 +187,30 @@ block or mute.
   Index inbox/mutation store to terminally deduplicate exact delivery and ignore
   lower revisions;
 - the adapter reads no Social Graph tables, contains no broker logic, and cannot be
-  used for privacy authorization;
-- the durable consumer must register the schema, apply/recognize the Index result,
-  acknowledge only after commit, and repair drift through bounded Social Graph
-  replay or authoritative rescan.
+  used for privacy authorization.
+
+## Delivered durable Index apply/ack consumer
+
+- optional feature `index-consumer` adds `rustok-iggy` only when the durable
+  projection runtime is explicitly selected and implies feature `index`;
+- `SocialGraphIndexConsumer::open(...)` opens persistent group
+  `rustok-social-graph-index` on the existing sealed-event `domain` topic;
+- the consumer registers `social_graph_relation_index_schema()` before applying
+  any delivery and owns one `PostgresMutationStore` over the supplied Index database;
+- only `ContractEventPayload::SocialGraphRelation` creates a mutation; unrelated
+  sealed event families are acknowledged without projection by this dedicated group;
+- the envelope event id becomes the stable Index inbox delivery id and the relation
+  revision remains the source version;
+- `process_next(&mut self)` serializes receive, apply, and acknowledgement for one
+  cursor so another message cannot overtake an outstanding delivery;
+- `Applied`, `Duplicate`, and `StaleIgnored` are durable terminal Index outcomes;
+  broker acknowledgement happens only after one of those outcomes is committed;
+- failed validation, storage, or broker acknowledgement remains replayable and does
+  not advance the cursor;
+- bounded Social Graph replay republishes the same sealed facts and therefore uses
+  the same inbox dedupe/source-version path for projection drift repair;
+- host lifecycle composition, retry/backoff, DLQ policy, shutdown/readiness, and
+  retained multi-replica evidence remain pending.
 
 ## Receipt retention and rollout contract
 
@@ -218,13 +238,13 @@ block or mute.
 
 ## Remaining Social Graph scope
 
-- compose the approved Index consumer group, schema registration, durable
-  apply/terminal-recognition, result-first broker acknowledgement, and DLQ policy;
+- compose the delivered Index consumer into host lifecycle with explicit default-off
+  enablement, readiness, shutdown, bounded retry/backoff, and reviewed DLQ policy;
 - prove projection drift repair against bounded owner replay/rescan and show that
   Profiles privacy continues to use authoritative owner ports;
 - configure deployment retention window/cadence and collect CLI live evidence;
 - collect PostgreSQL receipt/event concurrency, cleanup, replay-window, retention,
-  bounded replay, relay, Index apply/ack, and rollback evidence;
+  bounded replay, relay, Index apply/ack, restart/redelivery, and rollback evidence;
 - friendship request/accept/remove lifecycle;
 - broader profile directory/follow UX, custom lists, block/mute management
   transports, and moderation/admin repair commands;
@@ -241,6 +261,8 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets
 cargo test -p rustok-social-graph --features index index::tests -- --nocapture
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets
+cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets
 cargo test -p rustok-social-graph-cli -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
@@ -258,10 +280,11 @@ node scripts/verify/verify-social-graph-receipt-cleanup-cli.mjs
 node scripts/verify/verify-social-graph-relation-outbox.mjs
 node scripts/verify/verify-social-graph-relation-event-replay.mjs
 node scripts/verify/verify-social-graph-index-consumer.mjs
+node scripts/verify/verify-social-graph-index-runtime-consumer.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run
 ```
 
 These commands remain maintainer-run and were not executed manually while
 publishing this slice. `Cargo.lock` must be refreshed by the maintainer because the
-new optional workspace edge may change resolved package dependency metadata.
+new optional `rustok-iggy` and `rustok-index` edges change package dependency metadata.
