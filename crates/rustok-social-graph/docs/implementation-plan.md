@@ -1,263 +1,162 @@
 # `rustok-social-graph` implementation gates
 
-The social graph owner is introduced by `SOCIAL-01A / NOTIFY-07C`. The canonical
-cross-module roadmap remains `crates/rustok-forum/docs/implementation-plan.md`.
+The Social Graph owner was introduced by `SOCIAL-01A / NOTIFY-07C`. This file is
+the live owner plan for relation persistence, privacy reads, durable commands,
+events, replay, maintenance, and approved projections. Cross-module presentation
+policy remains coordinated by `crates/rustok-profiles/docs/implementation-plan.md`.
 
-## Delivered in `SOCIAL-01A / NOTIFY-07C`
+## Current state
 
-- PostgreSQL and SQLite migration
-  `m20260723_000001_create_social_graph_relations`;
-- one tenant-scoped identity row per source user, target user, and relation kind;
-- current `block` and `mute` state with monotonic revision and semantic state replay;
-- tenant-composite foreign keys for both users and self-relation rejection;
-- owner command port with deadline, required idempotency-key presence,
-  source-actor, and optional expected-revision gates;
-- neutral `SocialGraphPrivacyReadPort` for symmetric block and directional mute
-  evaluation;
-- server-owned adapters into Notifications block/mute runtime contracts;
-- notification recipient relation-policy readiness is true with both concrete
-  owner adapters;
-- candidate worker enablement remains a separate explicit gate and is false by
-  default.
+`rustok-social-graph` owns tenant-scoped block, mute, and directional follow state.
+Social Graph persistence and synchronous owner ports remain authoritative for
+privacy and follower policy. Profiles, Notifications, Index, search, or any other
+projection must not read owner tables or authorize from replicated relation state.
 
-Privacy reads remain authoritative when tenant-facing Social Graph surfaces are
-not enabled: disabling management UX must not silently bypass an already stored
-block or mute.
+The source-complete path now includes durable command receipts, bounded cleanup,
+transactional sealed relation events, bounded owner replay, an approved generic
+Index relation projection, Index-owned tenant schema registration, result-first
+persistent Iggy consumption, and a default-off server lifecycle with bounded retry
+and exact-byte DLQ-before-ack behavior.
 
-## Delivered for Profiles follower policy
+Compilation, source verifiers, PostgreSQL concurrency, real-broker restart,
+multi-replica recovery, readiness endpoint integration, and retained runtime
+evidence remain maintainer-run or pending.
 
-- migration `m20260725_000002_add_follow_relation_kind` expands the PostgreSQL and
-  SQLite relation-kind constraint while preserving existing block/mute rows and
-  indexes;
-- `SocialRelationKind::Follow` uses directional follower (`source_user_id`) to
-  profile owner (`target_user_id`) semantics;
-- the owner command port persists follow/unfollow with the same tenant-composite
-  integrity, revision, actor, deadline, and idempotency rules as block/mute;
-- `SocialGraphPrivacyReadPort` exposes directional single-target and bounded
-  multi-target active follow reads;
-- `SocialGraphFollowReadPort` exposes one actor-bound source/target state with
-  active flag and optional current revision, including inactive persisted rows;
-- follow batches accept at most 100 target users, deduplicate input, return only
-  active followed targets, and reject user actors that do not own the source;
-- `rustok-profiles` composes followers-only visibility through the owner port in
-  bounded chunks and propagates owner errors instead of allowing implicitly;
-- the Profiles storefront uses the revision-bearing read for initial state and
-  read-only conflict recovery without automatic command replay;
-- the Social Graph owner remains independent from Profiles presentation storage.
+## Delivered owner relation contract
 
-## Delivered public follow transport
+- PostgreSQL and SQLite migrations own one tenant/source/target/kind relation row.
+- `SocialRelationKind::{Block, Mute, Follow}` defines canonical stored/event values.
+- Source and target use tenant-composite integrity; self-relations are rejected.
+- Relation revisions are positive and monotonic.
+- `SocialGraphCommandPort` requires deadline, non-empty idempotency identity,
+  actor/source ownership, target separation, canonical kind, and optional expected
+  revision.
+- `SocialGraphPrivacyReadPort` owns block/mute/follow policy reads.
+- `SocialGraphFollowReadPort` exposes revision-bearing directional state.
+- Follow batches are bounded to 100 unique targets and fail closed on owner errors.
+- Profiles followers-only presentation always uses these owner ports.
 
-- optional crate feature `graphql` exposes module-owned `SocialGraphQuery` and
-  `SocialGraphMutation` roots through `rustok-module.toml`;
-- `isFollowing(userId)` and `followState(userId)` read only the authenticated
-  human user's directional state and do not expose relation ids;
-- `followUser` and `unfollowUser` require explicit `idempotencyKey`, accept an
-  optional positive 64-bit `expectedRevision`, and delegate to
-  `SocialGraphCommandPort`;
-- transport context is tenant-bound, human-user-only, deadline-aware, and carries
-  authenticated permission claims and optional channel context;
-- service principals and tenant mismatches are rejected before owner calls;
-- validation/conflict/forbidden semantics remain typed while unavailable and
-  invariant failures use static public GraphQL messages.
+## Delivered public follow transport and telemetry
 
-## Delivered owner-operation telemetry
-
-- `SocialGraphCommandPort` owns the telemetry boundary, so GraphQL and operational
-  adapters cannot drift into transport-local instrumentation;
-- one command record is emitted for block/unblock, mute/unmute, and follow/unfollow
-  through the stable `rustok_social_graph::operations` target;
-- records contain only operation, tenant/source/target UUIDs, outcome, bounded
-  duration, stable `PortError.code`, and retryability;
-- idempotency keys, expected revisions, request correlation, locale, channel,
-  claims, and roles are explicitly excluded.
+- Optional feature `graphql` publishes module-owned query and mutation roots.
+- Public reads expose actor-owned following state without relation identifiers.
+- Follow/unfollow requires explicit idempotency key and supports positive expected
+  revision.
+- Human-user, tenant, deadline, claim, and channel context is validated before the
+  owner port.
+- Owner command telemetry records stable operation, bounded identities, outcome,
+  duration, error code, and retryability only.
+- Idempotency keys, request correlation, claims, roles, locale, channel, receipt
+  payloads, and presentation copy remain excluded.
 
 ## Delivered durable command receipts
 
-- migration `m20260726_000003_create_command_receipts` owns PostgreSQL/SQLite
-  `social_graph_command_receipts` with tenant-scoped unique idempotency identity,
-  bounded keys, versioned JSON payloads, processing/completed state, and
-  completion-integrity checks;
-- the owner command port normalizes keys to 1..191 bytes and admits receipts before
-  mutating relation state;
-- receipt reservation, relation mutation, response snapshot, and completion commit
-  share one database transaction;
-- exact replay returns the original relation response snapshot even when a later
-  command has advanced live revision;
-- reusing a key with another source/target/kind/state/expected-revision payload
-  fails with `social_graph.idempotency_conflict` and does not mutate relation state;
-- unsupported receipt schemas and incomplete/corrupt records fail closed as
-  `social_graph.command_receipt_corrupt`;
-- raw idempotency keys and receipt payloads remain excluded from operation telemetry;
-- the migration includes a tenant/status/completion/id cleanup index.
+- Migration `m20260726_000003_create_command_receipts` owns versioned processing and
+  completed receipts with tenant-scoped normalized idempotency identity.
+- Receipt reservation, relation mutation, optional event append, response snapshot,
+  completion, and commit share one database transaction.
+- Exact replay returns the committed response even when live relation revision later
+  advances.
+- Reusing a key with another command identity fails as
+  `social_graph.idempotency_conflict` without mutation.
+- Unsupported, incomplete, or corrupt receipts fail closed as
+  `social_graph.command_receipt_corrupt`.
 
-## Delivered bounded receipt maintenance
+## Delivered receipt maintenance and CLI
 
-- `SocialGraphReceiptMaintenancePort` is implemented by
-  `SocialGraphReceiptMaintenanceService` over the owner database connection;
-- callers require write-port deadline/idempotency semantics and only service/system
-  actors are accepted;
-- commands carry an explicit Unix cutoff, dry-run mode, and limit from 1 to 1000;
-- selection is tenant-scoped, schema-v1, `completed` only, requires non-null
-  completion time, applies a strict cutoff, and orders by `(completed_at, id)`;
-- every candidate request/response snapshot is validated before any delete;
-- deletion repeats tenant/schema/status/cutoff predicates and selected ids only;
-- processing, corrupt, another-tenant, and in-window rows are never candidates;
-- results report matched/deleted counts and oldest retained completion time;
-- aggregate telemetry excludes raw keys and payloads;
-- SQLite evidence covers dry-run, bounded deletion, retained-floor reporting,
-  processing preservation, tenant isolation, user denial, future cutoff, invalid
-  limit, and all-or-nothing corrupt-candidate failure.
+- `SocialGraphReceiptMaintenancePort` and its owner service expose service/system-only
+  bounded dry-run/live cleanup.
+- Selection is tenant-scoped, schema-v1, completed-only, strictly before an explicit
+  cutoff, ordered by `(completed_at, id)`, and all candidates are validated before
+  deletion.
+- Limit is 1..1000; corrupt candidate state fails the complete batch.
+- `rustok-social-graph-cli` exposes `social_graph receipt-cleanup` through the
+  generated distribution registry.
+- Tenant and positive retention days are mandatory; there is no retention default.
+- CLI output is aggregate only and no scheduler or automatic cleanup is enabled.
+- Receipt retention must cover the longest supported client retry horizon, clock
+  skew, and incident replay allowance.
 
-## Delivered owner-local receipt cleanup CLI
+## Delivered transactional relation events and replay
 
-- direct workspace crate `rustok-social-graph-cli` implements the selected
-  distribution `CommandProvider` for `social_graph receipt-cleanup`;
-- `rustok-module.toml` declares `[provides.cli]`, while the generated CLI registry
-  composes `rustok_social_graph_cli::command_provider` from `RuntimeComposition`;
-- `--tenant-id` and positive `--retention-days` are mandatory; there is no
-  deployment retention default;
-- the adapter derives `completed_before_unix_seconds` as `now - retention_days`
-  and delegates to `SocialGraphReceiptMaintenancePort`;
-- `--limit` defaults only the batch size to 100 and remains bounded by the owner
-  maximum of 1000;
-- `--dry-run` selects through the same owner path without deletion;
-- the context uses a system actor, bounded deadline, and operation idempotency
-  identity derived from tenant, cutoff, limit, and mode;
-- output is aggregate only: tenant, retention window, cutoff, mode, limit,
-  matched/deleted counts, and oldest retained completion time;
-- the adapter does not import receipt entities, read receipt tables, schedule
-  execution, or introduce an automatic worker;
-- `docs/receipt-cleanup-cli.md` owns rollout and rollback guidance;
-- `verify-social-graph-receipt-cleanup-cli.mjs` locks workspace, manifest, registry,
-  owner-port delegation, required retention input, bounds, safe output, and absence
-  of scheduler/direct-storage behavior.
-
-## Delivered transactional relation events
-
-- `rustok-events` owns sealed typed contract
-  `social_graph.relation.state_changed` schema version 1;
-- payload contains relation id, source/target user ids, canonical relation kind,
-  active state, and revision only; tenant and actor remain envelope metadata;
-- command idempotency, expected revision, request context, receipt snapshots,
-  claims, roles, locale, and channel are excluded;
-- `SocialGraphService::with_event_bus` is explicit write composition while
-  `SocialGraphService::new` remains read-only composition;
-- new relation or active-state transition publishes through
+- `rustok-events` owns sealed `social_graph.relation.state_changed` v1.
+- Payload contains relation id, source/target user ids, canonical kind, active state,
+  and revision only; tenant and actor remain envelope metadata.
+- A new relation or persisted active-state transition publishes through
   `TransactionalEventBus::publish_contract_in_tx` before receipt completion and
-  shared transaction commit;
-- receipt replay and exact persisted-state no-op publish no new live event;
-- event failure rolls relation and receipt back together and returns
-  `social_graph.event_publication_unavailable`;
-- GraphQL and Profiles native storefront writes require the host transactional bus;
-- SQLite evidence covers create/update payload, no-op/replay suppression, and
-  rollback when `sys_events` is absent.
+  shared commit.
+- Receipt replay and exact persisted-state no-op publish no new live event.
+- Event publication failure rolls relation and receipt back together.
+- `SocialGraphRelationEventMaintenancePort` provides service/system-only tenant and
+  exclusive-UUID-cursor bounded replay with dry-run and page-atomic publication.
+- Replay begins only after event-aware writers are active and is at-least-once.
+- Consumers apply by relation id plus monotonic revision and acknowledge only after
+  their durable result.
+- Social Graph persistence remains authoritative for drift repair.
 
-## Delivered bounded relation-event replay
+## Delivered approved Index contract and storage boundary
 
-- `SocialGraphRelationEventMaintenancePort` is implemented by a separate service
-  with explicitly supplied `TransactionalEventBus`;
-- callers require `PortCallPolicy::event_replay()` and service/system actor;
-- command carries optional exclusive relation UUID cursor, dry-run, and limit 1..1000;
-- selection is tenant-scoped, ordered by UUID, applies `id > cursor`, and returns
-  selected/published counts plus the last selected UUID;
-- dry-run commits no Outbox rows; a live page publishes all selected authoritative
-  relations in one transaction and one append failure rolls the page back;
-- replay starts only after every active writer uses the atomic live path, so the
-  UUID scan covers fixed historical backlog while new writes emit live events;
-- replay is at-least-once; consumers must apply by relation id plus monotonic
-  revision, ignore duplicate/lower revisions, persist their own result, and
-  acknowledge only after durable application;
-- Social Graph storage remains authoritative and replay creates no consumer projection;
-- telemetry is aggregate and excludes raw cursor/per-relation ids;
-- SQLite evidence covers dry-run, tenant isolation, cursor paging, guards, and
-  all-or-nothing second-insert failure.
+- `rustok-index` is the first named approved relation-event consumer.
+- Feature `index` publishes a non-localized generic relation schema and converts the
+  sealed event into `IndexMutation` without broker or database logic.
+- Active state maps to upsert, inactive state to revisioned tombstone, relation id to
+  entity identity, and relation revision to `source_version`.
+- Feature `index-consumer` adds optional Iggy/Index runtime dependencies.
+- `SocialGraphIndexProjector` persists or exactly recognizes the tenant schema through
+  Index-owned `PostgresSchemaRegistrationStore` before mutation apply.
+- Registration is tenant-scoped, exact-version idempotent, monotonic, and fail-closed
+  for contract drift, retired state, invalid tenant, unsupported backend, or storage
+  failure.
+- Social Graph imports no Index entities and never writes `index_schemas` directly.
+- `PostgresMutationStore` atomically records inbox terminal state with active/tombstone
+  projection state.
+- `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable outcomes.
 
-## Delivered first approved Index consumer contract
+## Delivered persistent consumer and host lifecycle
 
-- `rustok-index` is the first named approved consumer for generic relation
-  projection supporting future profile discovery/search and other bounded queries;
-- optional feature `index` keeps the conversion adapter out of Social Graph runtime
-  composition unless explicitly selected;
-- `social_graph_relation_index_schema()` declares a non-localized relation schema
-  with source user, target user, and canonical relation kind fields;
-- `social_graph_relation_index_mutation(...)` accepts the sealed validated event,
-  non-nil tenant/event identity, and uses relation id as Index entity identity;
-- active state maps to an upsert and inactive state maps to a tombstone;
-- positive relation revision maps exactly to Index `source_version`, enabling the
-  Index inbox/mutation store to terminally deduplicate exact delivery and ignore
-  lower revisions;
-- the adapter reads no Social Graph tables, contains no broker logic, and cannot be
-  used for privacy authorization.
-
-## Delivered durable Index apply/ack consumer
-
-- optional feature `index-consumer` adds `rustok-iggy` only when the durable
-  projection runtime is explicitly selected and implies feature `index`;
-- `SocialGraphIndexProjector` is transport-neutral and owns the in-memory schema,
-  Index-owned `PostgresSchemaRegistrationStore`, and `PostgresMutationStore`;
-- for each relevant tenant envelope, the projector persists or exactly recognizes
-  `social_graph_relation_index_schema()` before the mutation can rely on its foreign key;
-- persisted registration is exact-version idempotent and fail-closed for nil tenant,
-  contract drift, lower unregistered version, retired schema, unsupported backend,
-  malformed state, or database failure;
-- Social Graph never imports Index entities or writes `index_schemas` directly;
-- `SocialGraphIndexConsumer::open(...)` opens persistent group
-  `rustok-social-graph-index` on the existing sealed-event `domain` topic;
-- only `ContractEventPayload::SocialGraphRelation` reaches schema registration and
-  mutation apply; unrelated sealed families are acknowledged without projection;
-- the envelope event id becomes the stable Index inbox delivery id and the relation
-  revision remains the source version;
-- `process_next(&mut self)` serializes receive, tenant schema registration, mutation
-  apply/terminal recognition, and acknowledgement for one cursor;
-- `Applied`, `Duplicate`, and `StaleIgnored` are durable terminal Index outcomes;
-  broker acknowledgement happens only after schema and mutation outcomes commit;
-- failed validation, schema registration, mutation storage, or broker acknowledgement
-  remains replayable and does not advance the cursor;
-- SQLite projector evidence covers schema insertion, active apply, exact duplicate,
-  newer inactive tombstone, and one persisted tenant schema;
-- bounded Social Graph replay republishes the same sealed facts and therefore uses
-  the same schema/inbox/source-version path for projection drift repair;
-- host lifecycle composition, retry/backoff, DLQ policy, shutdown/readiness, and
-  retained PostgreSQL/multi-replica evidence remain pending.
-
-## Receipt retention and rollout contract
-
-- Receipts are externally observable idempotency state, not an expendable cache.
-- The deployment retention window must cover the longest supported client retry
-  horizon plus clock skew and incident replay allowance.
-- The owner-local CLI requires the window explicitly and derives the cutoff; it
-  does not provide a retention default.
-- Automatic cleanup remains disabled. Deployment cadence or a future worker needs
-  separate reviewed configuration and retained PostgreSQL/runtime evidence.
-- Run one-tenant replay/conflict evidence, then CLI dry-run, review the retained
-  floor, and only then execute bounded live batches.
-- Application rollback retains receipt tables and rows and pauses cleanup.
-- Unsupported schema, incomplete row, or unexpected processing state remains
-  fail-closed and requires operator review.
-
-## Promoted by Notifications work
-
-- production candidate workers consume Social Graph only through existing policy
-  adapters and remain separately gated;
-- Notifications supported outbox intake is independent from Social Graph and does
-  not move owner relation state into Notifications;
-- candidate and intake workers keep their own default-off enablement and recovery
-  contracts.
+- Persistent group `rustok-social-graph-index` consumes the shared `domain` topic.
+- Only `ContractEventPayload::SocialGraphRelation` reaches schema registration and
+  mutation apply; unrelated sealed families are acknowledged without projection.
+- `receive_next`, `project_consumed`, and `acknowledge_consumed` expose a staged
+  result-first flow while retaining one outstanding cursor delivery.
+- Stable error codes and retry classification separate transient transport/storage
+  ownership failures from permanent validation/contract conflicts.
+- `process_next(&mut self)` remains the direct serialized receive/register/apply/ack
+  path.
+- The server `mod-social_graph` feature composes `index-consumer`, but execution is
+  default-off until `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED=true`.
+- Explicit enablement requires a worker host and effective `outbox_iggy` delivery.
+- `SocialGraphIndexWorkerHandle` exposes instance/task state and the worker subscribes
+  to shared `StopHandle` shutdown.
+- Projection retry is bounded exponential backoff derived from reviewed event relay
+  settings.
+- Before a durable Index result, a permanent or exhausted projection failure is
+  published to DLQ only when event DLQ is enabled; exact original broker bytes are
+  published before source acknowledgement.
+- When DLQ is disabled or DLQ publication fails, the worker terminates with the source
+  offset uncommitted.
+- After a durable Index result, only acknowledgement is retried. Ack failure is never
+  converted into a poison delivery; redelivery is duplicate/stale safe.
+- Malformed bytes that fail before a decoded `ConsumedContractEvent` remain
+  unacknowledged pending a lower-level connector poison-delivery contract.
 
 ## Remaining Social Graph scope
 
-- compose the delivered Index consumer into host lifecycle with explicit default-off
-  enablement, readiness, shutdown, bounded retry/backoff, and reviewed DLQ policy;
-- prove PostgreSQL concurrent schema registration and projection drift repair against
-  bounded owner replay/rescan while Profiles privacy stays on authoritative owner ports;
-- configure deployment retention window/cadence and collect CLI live evidence;
-- collect PostgreSQL receipt/event concurrency, cleanup, replay-window, retention,
-  bounded replay, relay, Index register/apply/ack, restart/redelivery, and rollback evidence;
-- friendship request/accept/remove lifecycle;
-- broader profile directory/follow UX, custom lists, block/mute management
-  transports, and moderation/admin repair commands;
-- retained runtime evidence for event relay/replay, receipt replay/conflict/cleanup,
-  CLI dry-run/live batches, Index projection repair, and telemetry failure classes.
+1. Wire `SocialGraphIndexWorkerHandle` into `/health/ready`, operator metrics, and
+   explicit required/disabled lifecycle reporting.
+2. Execute PostgreSQL concurrent schema-registration and mutation evidence.
+3. Prove real Iggy restart/redelivery, ack failure, DLQ failure, and multi-replica
+   cursor ownership behavior.
+4. Deliberately corrupt/delete projection state and prove repair through bounded owner
+   replay/rescan while Profiles privacy remains on authoritative owner ports.
+5. Decide whether DLQ publication requires an additional durable owner receipt to
+   deduplicate publish-success/source-ack-failure windows.
+6. Configure deployment receipt-retention window/cadence and retain CLI dry-run/live
+   evidence.
+7. Collect receipt/event concurrency, cleanup, replay-window, relay, rollback, and
+   telemetry failure-class evidence.
+8. Continue friendship request/accept/remove lifecycle, broader directory/follow UX,
+   custom lists, block/mute management transports, and moderation/admin repair.
 
 ## Verification
 
@@ -268,12 +167,15 @@ cargo test -p rustok-events --test social_graph_contracts -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets
 cargo test -p rustok-index schema_registration --lib -- --nocapture
 node scripts/verify/verify-index-schema-registration.mjs
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features graphql --all-targets
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets
 cargo test -p rustok-social-graph --features index index::tests -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets
 cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets
+cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph-cli --all-targets
 cargo test -p rustok-social-graph-cli -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
@@ -292,10 +194,11 @@ node scripts/verify/verify-social-graph-relation-outbox.mjs
 node scripts/verify/verify-social-graph-relation-event-replay.mjs
 node scripts/verify/verify-social-graph-index-consumer.mjs
 node scripts/verify/verify-social-graph-index-runtime-consumer.mjs
+node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run
 ```
 
-These commands remain maintainer-run and were not executed manually while
-publishing this slice. `Cargo.lock` must be refreshed by the maintainer because the
-new optional `rustok-iggy` and `rustok-index` edges change package dependency metadata.
+These commands remain maintainer-run and were not executed manually while publishing
+this slice. `Cargo.lock` must be refreshed because the optional Index/Iggy feature
+edges and server feature resolution change package dependency metadata.
