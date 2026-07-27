@@ -42,7 +42,7 @@ propagation remains open for a later source/query signature change.
 
 ## Typed owner mapping
 
-The query facade maps `PortErrorKind` without using owner message text:
+The storefront list facade maps `PortErrorKind` without using owner message text:
 
 | Port kind | Public message | Public code | Retryable |
 | --- | --- | --- | --- |
@@ -58,6 +58,19 @@ existing `FulfillmentError` public policy. Forbidden and invariant outcomes are
 fail-closed coverage for the complete port kind set and are not status
 promotions.
 
+Single lookup preserves the existing source contract rather than changing
+`query.rs`:
+
+- owner `NotFound` becomes the stable compatibility variant
+  `ShippingOptionNotFound`, so the resolver still returns `Ok(None)`;
+- validation, conflict, unavailable, timeout, forbidden, and invariant outcomes
+  become stable compatibility `FulfillmentError` values;
+- the unchanged resolver converts those stable values through its existing
+  generic `COMMERCE_QUERY_OPERATION_FAILED` redaction path.
+
+No `PortError.message` or original fulfillment message is copied into these
+compatibility values.
+
 ## Diagnostics
 
 The port-backed query boundary records:
@@ -71,8 +84,9 @@ The port-backed query boundary records:
 - exact owner port operation;
 - optional shipping-option id;
 - requested/default locale lengths;
+- stable port error kind name;
 - owner code, kind, and retryability;
-- public code and retryability;
+- public or optional-result policy;
 - boundary `commerce_graphql_query_fulfillment_facade`.
 
 Unavailable, timeout, and invariant outcomes use error severity and retain the
@@ -85,14 +99,16 @@ owner-local diagnostics and technical database cause.
 - `query.rs` is unchanged and remains facade-routed.
 - Both existing source-level `FulfillmentService::new(db.clone())` calls still
   resolve through the private safe facade.
+- Single shipping-option not-found still returns `None` rather than a GraphQL
+  error.
 - Storefront currency, channel-visibility, and shipping-profile filtering remain
   unchanged after owner projections are returned.
 - Shipping-option GraphQL DTOs and successful results are unchanged.
 - Admin `list_all_shipping_options` and fulfillment lifecycle query behavior
   remain on the existing concrete delegate.
-- Admin order lookup keeps its existing generic
-  `COMMERCE_QUERY_OPERATION_FAILED` fail-closed envelope after compatibility
-  string conversion.
+- Admin order lookup and non-not-found single shipping-option failures keep their
+  existing generic `COMMERCE_QUERY_OPERATION_FAILED` fail-closed envelope after
+  stable compatibility conversion.
 - The fulfillment FFA/FBA status and `ShippingSelectionPort` contract are
   unchanged.
 
