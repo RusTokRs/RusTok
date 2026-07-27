@@ -2973,6 +2973,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::PublishRequestMissingAlloyAuthoredStage
         | ModuleGovernanceError::PublishRequestArtifactOriginUnclassified
         | ModuleGovernanceError::PublishRequestMissingAuthorSignature
+        | ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract
         | ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission
         | ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission
         | ModuleGovernanceError::PublishRequestMissingAlloyPlatformAdmission

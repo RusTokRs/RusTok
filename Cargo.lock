@@ -14014,6 +14014,7 @@ dependencies = [
 name = "rustok-notifications"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
  "chrono",
  "rustok-api",
@@ -14054,9 +14055,14 @@ name = "rustok-notifications-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "leptos-auth",
  "leptos_axum",
  "rustok-api",
+ "rustok-graphql",
  "rustok-notifications",
+ "rustok-ui-core",
+ "rustok-ui-i18n-leptos",
+ "rustok-ui-transport",
  "serde",
  "serde_json",
  "uuid",

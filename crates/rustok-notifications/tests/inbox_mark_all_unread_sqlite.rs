@@ -360,6 +360,7 @@ fn available(decision: NotificationInboxStateDecision) -> (bool, NotificationInb
 
 fn snapshot(stored: &notification::Model) -> NotificationInboxStateSnapshot {
     NotificationInboxStateSnapshot {
+        notification_id: stored.id,
         state: stored.state,
         seen_at: stored.seen_at.to_owned(),
         read_at: stored.read_at.to_owned(),

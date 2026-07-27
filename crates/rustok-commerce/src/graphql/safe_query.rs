@@ -408,10 +408,15 @@ mod source {
 
     mod rustok_fulfillment_shim {
         use ::rustok_fulfillment::{
-            FulfillmentError, FulfillmentResponse, FulfillmentResult, ShippingOptionResponse,
+            FulfillmentError, FulfillmentResponse, FulfillmentResult, ListFulfillmentsInput,
+            ShippingOptionResponse,
         };
         use ::sea_orm::DatabaseConnection;
         use ::uuid::Uuid;
+
+        pub mod error {
+            pub use ::rustok_fulfillment::error::*;
+        }
 
         const GRAPHQL_QUERY_FULFILLMENT_BOUNDARY: &str =
             "commerce_graphql_query_fulfillment_facade";
@@ -425,6 +430,30 @@ mod source {
                 Self {
                     inner: ::rustok_fulfillment::FulfillmentService::new(db),
                 }
+            }
+
+            pub async fn get_shipping_option(
+                &self,
+                tenant_id: Uuid,
+                id: Uuid,
+                requested_locale: Option<&str>,
+                tenant_default_locale: Option<&str>,
+            ) -> FulfillmentResult<ShippingOptionResponse> {
+                self.inner
+                    .get_shipping_option(tenant_id, id, requested_locale, tenant_default_locale)
+                    .await
+                    .map_err(|error| {
+                        log_fulfillment_query_error(
+                            &error,
+                            tenant_id,
+                            "shipping_option",
+                            "get_shipping_option",
+                            None,
+                            requested_locale,
+                            tenant_default_locale,
+                        );
+                        error
+                    })
             }
 
             pub async fn list_shipping_options(
@@ -449,6 +478,73 @@ mod source {
                             None,
                             requested_locale,
                             tenant_default_locale,
+                        );
+                        error
+                    })
+            }
+
+            pub async fn list_all_shipping_options(
+                &self,
+                tenant_id: Uuid,
+                requested_locale: Option<&str>,
+                tenant_default_locale: Option<&str>,
+            ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+                self.inner
+                    .list_all_shipping_options(tenant_id, requested_locale, tenant_default_locale)
+                    .await
+                    .map_err(|error| {
+                        log_fulfillment_query_error(
+                            &error,
+                            tenant_id,
+                            "shipping_options",
+                            "list_all_shipping_options",
+                            None,
+                            requested_locale,
+                            tenant_default_locale,
+                        );
+                        error
+                    })
+            }
+
+            pub async fn get_fulfillment(
+                &self,
+                tenant_id: Uuid,
+                id: Uuid,
+            ) -> FulfillmentResult<FulfillmentResponse> {
+                self.inner
+                    .get_fulfillment(tenant_id, id)
+                    .await
+                    .map_err(|error| {
+                        log_fulfillment_query_error(
+                            &error,
+                            tenant_id,
+                            "fulfillment",
+                            "get_fulfillment",
+                            None,
+                            None,
+                            None,
+                        );
+                        error
+                    })
+            }
+
+            pub async fn list_fulfillments(
+                &self,
+                tenant_id: Uuid,
+                input: ListFulfillmentsInput,
+            ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
+                self.inner
+                    .list_fulfillments(tenant_id, input)
+                    .await
+                    .map_err(|error| {
+                        log_fulfillment_query_error(
+                            &error,
+                            tenant_id,
+                            "fulfillments",
+                            "list_fulfillments",
+                            None,
+                            None,
+                            None,
                         );
                         error
                     })
