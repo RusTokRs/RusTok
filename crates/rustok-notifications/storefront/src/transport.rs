@@ -8,10 +8,12 @@ pub use native_server_adapter::{
 
 use crate::core::NotificationStorefrontState;
 
-/// Returns the explicit degraded UI state until the grouped inbox view is composed.
+/// Returns the legacy explicit degraded sentinel for callers that have not composed
+/// the grouped inbox resource yet.
 ///
-/// The native owner adapter is available to callers, but the current view must not
-/// synthesize unread state, persist a shadow inbox, or claim mounted UI readiness.
+/// `NotificationsView` no longer uses this sentinel. It reads the owner-backed native
+/// transport and renders loading, empty, error, paging, and mutation states without
+/// persisting a shadow inbox or inventing unread totals.
 pub fn load_notification_storefront_state() -> NotificationStorefrontState {
     NotificationStorefrontState::foundation()
 }
