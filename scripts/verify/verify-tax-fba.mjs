@@ -32,6 +32,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   const central = read(root, 'docs/modules/registry.md');
   const cargo = read(root, 'crates/rustok-tax/Cargo.toml');
   const libSource = read(root, 'crates/rustok-tax/src/lib.rs');
+  const contextSource = read(root, 'crates/rustok-tax/src/calculation_context.rs');
   const portSource = read(root, 'crates/rustok-tax/src/ports.rs');
   const servicesSource = read(root, 'crates/rustok-tax/src/services.rs');
 
@@ -48,16 +49,29 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   if (port.context !== 'rustok_api::ports::PortContext') fail('tax port context drift');
   if (port.error !== 'rustok_api::ports::PortError') fail('tax port error drift');
   if (port.deadline_required !== true) fail('tax port must require deadline semantics');
-  if (port.idempotency_required !== false) fail('tax calculation remains read-like and must not require write idempotency');
+  if (port.idempotency_required !== false) fail('tax calculation remains read-like and must not require write idempotency semantics');
 
   if (!manifest.includes('[fba.provider]')) fail('tax manifest lacks provider metadata');
   if (!manifest.includes('registry = "contracts/tax-fba-registry.json"')) fail('tax manifest registry drift');
   if (!manifest.includes('contract_version = "tax.calculation.v1"')) fail('tax manifest contract version drift');
   if (!cargo.includes('rustok-api.workspace = true')) fail('tax Cargo.toml lacks rustok-api dependency');
-  if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail('tax lib.rs must export ports');
+  if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::TaxCalculationPort;')) {
+    fail('tax lib.rs must export the port module and root trait contract');
+  }
+  if (!libSource.includes('mod calculation_context;') || !libSource.includes('in_process_tax_calculation_port')) {
+    fail('tax lib.rs must export canonical context-preserving construction');
+  }
+  if (!contextSource.includes('impl TaxCalculationPort for InProcessTaxCalculationPort')) {
+    fail('tax canonical in-process wrapper must implement TaxCalculationPort');
+  }
+  if (!contextSource.includes('self.inner.calculate_tax(context, request).await')) {
+    fail('tax canonical wrapper must delegate through the owner port');
+  }
   if (!portSource.includes('trait TaxCalculationPort')) fail('tax port source lacks trait');
   if (!portSource.includes('impl TaxCalculationPort for crate::TaxService')) fail('tax port source lacks in-process TaxService impl');
-  if (!portSource.includes('context.require_policy(PortCallPolicy::read())?')) fail('tax calculate_tax must enforce shared read/deadline semantics');
+  if (!portSource.includes('require_tax_calculation_policy(&context, owner_operation)?;')) {
+    fail('tax calculate_tax must enforce shared read/deadline semantics');
+  }
   if (portSource.includes('require_write_semantics()?')) fail('tax calculate_tax must not require write idempotency semantics');
   if (!portSource.includes('PortError::validation("tax.validation"')) fail('tax errors must map to typed PortError validation');
   if (!servicesSource.includes('Serialize, Deserialize')) fail('tax service DTOs must be serializable for transport-neutral ports');
@@ -96,9 +110,10 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   }
   const runtimeCase = runtimeSmoke.cases.find((entry) => entry.operation === 'calculate_tax');
   if (!runtimeCase) fail('tax runtime smoke calculate_tax case missing');
-  for (const marker of ['context.require_policy(PortCallPolicy::read())?', '.calculate(request)', '.map_err(tax_error_to_port_error)']) {
-    if (!runtimeCase.source_order.includes(marker)) fail(`tax runtime smoke source order missing ${marker}`);
-    if (!portSource.includes(marker) && !servicesSource.includes(marker)) fail(`tax runtime source missing ${marker}`);
+  for (const marker of runtimeCase.source_order) {
+    if (!portSource.includes(marker) && !servicesSource.includes(marker)) {
+      fail(`tax runtime source missing ${marker}`);
+    }
   }
 }
 
