@@ -11,7 +11,7 @@ permissions:
 jobs:
   apply:
     if: github.head_ref == 'agent/forum-notification-group-state-graphql-20an'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
