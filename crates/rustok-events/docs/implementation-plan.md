@@ -71,14 +71,17 @@ UUID-cursor bounded, dry-run capable, and page-atomic in Outbox. It begins only
 after event-aware writers are active, so the cursor covers fixed historical backlog
 while concurrent new relations use the live atomic path.
 
-`rustok-index` is now the first named approved consumer. The optional Social Graph
-owner adapter converts the sealed event into a generic `IndexMutation`, uses the
-relation revision as monotonic `source_version`, upserts active relations, and
-writes inactive tombstones. This is a source conversion contract only: durable
-Iggy consumer-group composition, schema registration, Index apply/terminal result,
-result-first acknowledgement, DLQ handling, and replay-driven drift repair remain
-open. Profiles privacy continues to use synchronous authoritative Social Graph
-ports and must never use the Index projection for authorization.
+`rustok-index` is the first named approved consumer. The optional Social Graph
+conversion maps the sealed event into a generic `IndexMutation`, uses the relation
+revision as monotonic `source_version`, upserts active relations, and writes inactive
+tombstones. Feature `index-consumer` now owns one persistent typed-event group,
+registers the owner schema, applies through `PostgresMutationStore`, and commits the
+broker offset only after `Applied`, `Duplicate`, or `StaleIgnored`. Other sealed
+families on the shared domain topic are ignored by this dedicated group. Bounded
+Social Graph replay follows the same Index inbox path for repair. Host lifecycle,
+retry/backoff, DLQ, readiness/shutdown, and multi-replica evidence remain open.
+Profiles privacy continues to use synchronous authoritative Social Graph ports and
+must never use the Index projection for authorization.
 
 The module-build dispatcher is the first owner-specific remote consumer shape: it
 retains one remote Iggy cursor, persists or recognizes an idempotent owner result,
@@ -127,6 +130,9 @@ than assuming remote event replay.
   page-atomic rollback, and source guardrails.
 - [x] Name `rustok-index` as the first approved relation-event consumer and add the
   feature-gated owner conversion to monotonic generic Index mutations.
+- [x] Add the optional persistent Social Graph -> Index consumer with owner schema
+  registration, Index inbox apply/duplicate/stale recognition, serialized
+  receive/apply/ack, unrelated-family handling, and result-first acknowledgement.
 
 ## Open results
 
@@ -146,27 +152,26 @@ than assuming remote event replay.
 
 3. **Provide an approved inbound delivery contract for remote consumers.** The
    local listener bus is not replayable and does not consume remote Iggy/outbox
-   deliveries. Define which platform component owns receive, acknowledgement,
-   persisted offsets, restart, gap recovery and DLQ behavior before owner modules
-   use events for cross-replica cache or projection correctness.
-   **Depends on:** selected Iggy/outbox runtime and an explicit consumer group/offset contract.
+   deliveries. Complete platform ownership for restart, gap recovery, backoff,
+   readiness/shutdown and DLQ behavior before owner modules rely on remote events
+   for cross-replica correctness.
+   **Depends on:** selected Iggy/outbox runtime and explicit consumer group/offset contracts.
    **Done when:** at least one multi-replica owner consumer can miss a fast-path
    event, restart, replay from persisted state, recover its projection/cache, and
-   acknowledge only after successful durable application. The module-build
-   dispatcher supplies the result-first cursor shape; real-broker multi-replica
-   recovery evidence remains outstanding.
+   acknowledge only after successful durable application. Module-build and Social
+   Graph Index consumers now supply result-first source shapes; real-broker
+   multi-replica recovery evidence remains outstanding.
 
-4. **Complete the approved Social Graph -> Index consumer.** The consumer need is
-   named and the pure source conversion exists. Compose schema registration and a
-   persistent contract consumer group, apply or terminally recognize each mutation
-   through the Index owner inbox/store, acknowledge only after that result is
-   durable, route poison deliveries through reviewed DLQ policy, and repair drift
-   against bounded Social Graph replay/rescan.
-   **Depends on:** Index source registry/ingestion composition and inbound
-   persisted-offset ownership.
+4. **Operationalize the approved Social Graph -> Index consumer.** The persistent
+   group, schema registration, Index apply/terminal recognition, and result-first
+   acknowledgement are source-complete. Compose default-off host lifecycle,
+   readiness/shutdown, bounded retry/backoff and reviewed DLQ policy, then prove
+   restart/redelivery and replay/rescan drift repair.
+   **Depends on:** Index ingestion runtime composition and platform consumer lifecycle ownership.
    **Done when:** duplicate/lower revisions are ignored, newer revisions win,
    inactive tombstones remove active projection state, restart/redelivery is safe,
-   bounded replay repairs deliberate drift, and Profiles privacy remains on owner ports.
+   bounded replay repairs deliberate drift, poison delivery has a reviewed recovery
+   route, and Profiles privacy remains on owner ports.
 
 5. **Synchronize event contracts with recovery guidance.** Update outbox, replay,
    reindex, and DLQ documentation with a schema or versioning change.
@@ -182,9 +187,12 @@ than assuming remote event replay.
 - `cargo run -p rustok-events --example event_contract_digests`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index --all-targets`
 - `cargo test -p rustok-social-graph --features index index::tests -- --nocapture`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
+- `cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture`
 - `cargo test -p rustok-social-graph --test relation_event_replay_sqlite -- --nocapture`
 - `node scripts/verify/verify-social-graph-relation-event-replay.mjs`
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
+- `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `cargo test -p rustok-server --test event_bus_runtime_guard`
 - `cargo test -p rustok-server event_forwarder --lib`
 - `cargo clippy -p rustok-server --lib -- -D warnings`
