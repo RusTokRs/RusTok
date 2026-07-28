@@ -129,6 +129,7 @@ The following commands were not run by the implementation agent:
 cargo test -p rustok-forum posting_policy_approved_facts -- --nocapture
 cargo test -p rustok-server --features mod-forum host_runtime_extensions_register_admin_mutation_providers -- --nocapture
 node scripts/verify/verify-forum-approved-posts-posting-facts.mjs
+node scripts/verify/verify-forum-approved-posts-index-debt.mjs
 node scripts/verify/verify-forum-topic-reading-posting-facts.mjs
 node scripts/verify/verify-forum-posting-policy-facts.mjs
 cargo xtask module validate forum
