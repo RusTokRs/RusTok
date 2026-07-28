@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS forum_user_trust_states (
     CONSTRAINT fk_forum_user_trust_state_user
         FOREIGN KEY (tenant_id, user_id)
         REFERENCES users (tenant_id, id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
+        ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT ck_forum_user_trust_state_user_id
         CHECK (user_id <> '00000000-0000-0000-0000-000000000000'::uuid),
     CONSTRAINT ck_forum_user_trust_state_level
@@ -77,11 +77,7 @@ CREATE TABLE IF NOT EXISTS forum_user_trust_revisions (
     CONSTRAINT fk_forum_user_trust_revision_user
         FOREIGN KEY (tenant_id, user_id)
         REFERENCES users (tenant_id, id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT fk_forum_user_trust_revision_actor
-        FOREIGN KEY (tenant_id, changed_by_user_id)
-        REFERENCES users (tenant_id, id)
-        ON UPDATE CASCADE ON DELETE SET NULL,
+        ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT ck_forum_user_trust_revision_user_id
         CHECK (user_id <> '00000000-0000-0000-0000-000000000000'::uuid),
     CONSTRAINT ck_forum_user_trust_revision_actor_id
@@ -127,7 +123,15 @@ CREATE OR REPLACE FUNCTION forum_reject_user_trust_revision_mutation()
 RETURNS trigger AS $$
 BEGIN
     RAISE EXCEPTION 'forum user trust revisions are append-only';
-    RETURN COALESCE(NEW, OLD);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION forum_reject_user_trust_state_delete()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'forum user trust state cannot be deleted directly';
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -240,6 +244,11 @@ DROP TRIGGER IF EXISTS forum_user_trust_state_update ON forum_user_trust_states;
 CREATE TRIGGER forum_user_trust_state_update
 BEFORE UPDATE ON forum_user_trust_states
 FOR EACH ROW EXECUTE FUNCTION forum_validate_user_trust_state_update();
+
+DROP TRIGGER IF EXISTS forum_user_trust_state_delete ON forum_user_trust_states;
+CREATE TRIGGER forum_user_trust_state_delete
+BEFORE DELETE ON forum_user_trust_states
+FOR EACH ROW EXECUTE FUNCTION forum_reject_user_trust_state_delete();
 "#;
 
 const POSTGRES_DOWN: &str = r#"
@@ -248,6 +257,7 @@ DROP TABLE IF EXISTS forum_user_trust_states;
 DROP FUNCTION IF EXISTS forum_validate_user_trust_state_update();
 DROP FUNCTION IF EXISTS forum_validate_user_trust_state_insert();
 DROP FUNCTION IF EXISTS forum_validate_user_trust_revision_insert();
+DROP FUNCTION IF EXISTS forum_reject_user_trust_state_delete();
 DROP FUNCTION IF EXISTS forum_reject_user_trust_revision_mutation();
 "#;
 
@@ -264,7 +274,7 @@ CREATE TABLE IF NOT EXISTS forum_user_trust_states (
     PRIMARY KEY (tenant_id, user_id),
     FOREIGN KEY (tenant_id, user_id)
         REFERENCES users (tenant_id, id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
+        ON UPDATE CASCADE ON DELETE RESTRICT,
     CHECK (user_id <> '00000000-0000-0000-0000-000000000000'),
     CHECK (trust_level BETWEEN 0 AND 100),
     CHECK (revision > 0)
@@ -286,10 +296,7 @@ CREATE TABLE IF NOT EXISTS forum_user_trust_revisions (
     UNIQUE (tenant_id, idempotency_key),
     FOREIGN KEY (tenant_id, user_id)
         REFERENCES users (tenant_id, id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (tenant_id, changed_by_user_id)
-        REFERENCES users (tenant_id, id)
-        ON UPDATE CASCADE ON DELETE SET NULL,
+        ON UPDATE CASCADE ON DELETE RESTRICT,
     CHECK (user_id <> '00000000-0000-0000-0000-000000000000'),
     CHECK (
         changed_by_user_id IS NULL
@@ -397,6 +404,12 @@ BEGIN
            AND revision.previous_trust_level = OLD.trust_level
            AND revision.trust_level = NEW.trust_level
     ) THEN RAISE(ABORT, 'forum user trust state update must match the next immutable revision') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_user_trust_state_delete
+BEFORE DELETE ON forum_user_trust_states
+BEGIN
+    SELECT RAISE(ABORT, 'forum user trust state cannot be deleted directly');
 END;
 "#;
 
