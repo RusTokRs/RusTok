@@ -16,7 +16,7 @@ or unavailable rows as absent.
 never reads relation tables and never authorizes from an event, Index projection,
 decoded/raw DLQ receipt, neutral receipt aggregate, broker identifier, consumer
 offset, lag metric, poison health signal, PostgreSQL evidence packet, physical Iggy
-header observation, or any real-Iggy evidence harness.
+header observation, deduplication count observation, or any real-Iggy evidence harness.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and MIME
 constraints and exposes only Media-selected descriptors. It does not know storage
@@ -137,7 +137,7 @@ External real-Iggy cursor evidence is source-complete and runtime-pending:
   offset;
 - an independent real DLQ cursor verifies both payloads byte-for-byte.
 
-A separate external physical-header harness is also source-complete and runtime-pending:
+External physical-header evidence is source-complete and runtime-pending:
 
 - one production `ConsumedContractDecodeFailure` creates one `DlqEntry`;
 - one production `IggyTransport::move_to_dlq` call publishes the entry;
@@ -146,13 +146,34 @@ A separate external physical-header harness is also source-complete and runtime-
 - physical `message.header.id` must equal the connector UUID as `u128`;
 - physical partition must equal `(uuid_as_u128 mod 3) + 1` and remain one-based;
 - physical payload must remain exact;
-- only the probe's physical header offset is committed.
+- only the probe's physical header offset is committed, then both probe and transport
+  shut down explicitly.
 
-The SDK probe cannot publish, acknowledge a source cursor, modify a receipt, delete a
-stream, or change deduplication. The lifecycle harness does not prove the physical
-header; the header harness does not prove source cursor lifecycle. Neither proves
-PostgreSQL ordering, deduplication, bundled mode, TLS/auth, multi-replica behavior, or
-physical exactly-once.
+External deduplication behavior evidence is now source-complete and runtime-pending.
+Four separately configured disposable brokers are required. Every scenario uses a
+unique one-partition stream, production `move_to_dlq`, and a count-only SDK
+`get_topic` observer:
+
+- disabled `A, A`: `0 -> 1 -> 2`;
+- enabled immediate `A, A`: `0 -> 1 -> 1`;
+- `max_entries = 1`, `A, A, B, A`: `0 -> 1 -> 1 -> 2 -> 3`;
+- expiry `A, A, wait, A`: `0 -> 1 -> 1 -> 2`.
+
+The capacity scenario proves immediate suppression before `B` and observed acceptance
+of `A` afterward. The expiry scenario proves immediate suppression before one bounded
+operator-configured wait. The observer can only read partition `messages_count` and
+shut down; it cannot publish, consume payloads, store offsets, modify configuration,
+delete streams, or mutate receipts.
+
+The test does not read back server configuration. Retained execution must include
+reviewed configuration digests for `enabled`, `max_entries`, and `expiry`, require all
+four named tests to execute rather than skip, and retain broker/toolchain/source/output
+metadata without credentials. The short behavior sequences do not prove that a chosen
+window covers the maximum production lease/restart/reconnect/recovery horizon.
+
+Cursor lifecycle, physical header, dedup behavior, PostgreSQL ordering, and production
+confirmation policy are separate evidence boundaries. None authorizes Profiles and none
+alone proves physical exactly-once.
 
 ## FFA/FBA boundary
 
@@ -193,18 +214,19 @@ physical exactly-once.
    Run the clean-commit capture runner, review the bounded packet, commit the canonical
    JSON, and repeat whenever a bound source hash changes.
 
-6. **Execute external cursor and header evidence.**
-   Run both harnesses on a disposable broker and retain separate packets for source
-   reconnect/redelivery and physical UUID/header/partition observation.
+6. **Execute external cursor, header, and dedup evidence.**
+   Run the three harnesses on reviewed disposable brokers and retain separate packets
+   for source reconnect/redelivery, physical UUID/header/partition, and the four dedup
+   count sequences plus reviewed configuration digests.
 
 7. **Compose receipt-plus-broker evidence.**
    Prove reserve/claim -> exact publish -> durable `published` -> source ack ->
    best-effort `acknowledged`, process loss, acknowledgement-only recovery, and
    multi-replica claim ownership on PostgreSQL plus real Iggy.
 
-8. **Prove duplicate and confirmation behavior separately.**
-   Exercise publisher reconnect and the same deterministic UUID with deduplication
-   disabled, enabled, capacity-evicted, and expired. Choose an enforced dedup window or
+8. **Prove confirmation-window sufficiency.**
+   Compare dedup `max_entries`/`expiry` against maximum publication lease, restart,
+   reconnect, and operator recovery horizons. Choose an enforced monitored window or a
    stronger outbox/transaction mechanism before any stronger duplicate guarantee.
 
 9. **Retain production operations.**
@@ -226,14 +248,12 @@ physical exactly-once.
   health, and the operator runbook.
 - Added isolated PostgreSQL scenarios and clean-commit retained evidence tooling; the
   execution packet remains pending.
-- Added a versioned external-Iggy cursor contract, opt-in real cursor/DLQ harness,
-  no-ack transport reconnect/redelivery, exact-byte DLQ checks, explicit cursor
-  advancement, and a static verifier.
-- Added a separate physical-header contract and harness for one production publication,
-  exact UUID/u128 header mapping, one-based partition routing, exact payload, probe-only
-  SDK access, and probe offset commit.
-- Kept duplicate suppression, database ordering, bundled/TLS/auth, and multi-replica
-  claims explicitly open.
+- Added external-Iggy cursor reconnect/redelivery and exact-byte DLQ source evidence.
+- Added one-message physical UUID/u128 header and one-based partition source evidence.
+- Added four external dedup behavior scenarios for disabled, enabled, one-entry capacity
+  eviction, and expiry, with count-only observation and reviewed-config boundaries.
+- Kept server-config readback, retained external execution, production recovery-window
+  sufficiency, database ordering, bundled/TLS/auth, and multi-replica claims open.
 - Tests, Cargo commands, formatters, source verifiers, PostgreSQL, external/bundled Iggy,
   and multi-replica scenarios were not run, per maintainer instruction.
 
@@ -248,9 +268,11 @@ physical exactly-once.
 - `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
 - `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy -- --nocapture --test-threads=1`
 - `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy_header -- --nocapture --test-threads=1`
+- `RUSTOK_IGGY_DEDUP_DISABLED_ADDRESS='host:8090' RUSTOK_IGGY_DEDUP_ENABLED_ADDRESS='host:8091' RUSTOK_IGGY_DEDUP_CAPACITY_ADDRESS='host:8092' RUSTOK_IGGY_DEDUP_EXPIRY_ADDRESS='host:8093' RUSTOK_IGGY_DEDUP_EXPIRY_WAIT_MS='1500' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy_dedup -- --nocapture --test-threads=1`
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
 - `node scripts/verify/verify-iggy-contract-poison-external-evidence.mjs`
 - `node scripts/verify/verify-iggy-contract-poison-external-header-evidence.mjs`
+- `node scripts/verify/verify-iggy-contract-poison-external-dedup-evidence.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture`
@@ -311,8 +333,10 @@ physical exactly-once.
     become stale when a bound source SHA-256 changes.
 18. Real-Iggy fixture injection may create malformed bytes, but production receive, DLQ,
     and acknowledgement must use reviewed transport APIs.
-19. Direct SDK probes may only observe explicitly scoped broker facts and commit their
-    own probe offsets; they must not publish, choose policy, or mutate receipts.
-20. Do not claim deduplication, database ordering, bundled, TLS/auth, multi-replica, or
-    exactly-once proof from one-message physical-header evidence.
-21. Update Profiles and affected owner docs with every boundary change.
+19. Direct SDK probes may only observe explicitly scoped broker facts and shut down;
+    they must not publish, choose policy, modify configuration, or mutate receipts.
+20. Dedup behavior tests require separately reviewed server configs and cannot present
+    operator claims as server readback.
+21. Do not claim production-window sufficiency or exactly-once from short disabled,
+    enabled, capacity, or expiry sequences.
+22. Update Profiles and affected owner docs with every boundary change.
