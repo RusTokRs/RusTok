@@ -24,7 +24,11 @@ bounded consumer proof only and does not close the module transport gate.
 Product runtime contract, commerce transport, and module metadata remain synchronized.
 The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
-The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, optional catalog filters/sorts, detached-value marker contract, and no-compile schema guardrail are source-locked.
+The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, catalog
+search-option discovery, detached-value marker contract, and no-compile schema
+guardrail are source-locked. Storefront/admin catalog filter and sort execution
+remains open until typed query state, both transports, server-side semantics,
+and owner UI controls are connected end to end.
 Product write GraphQL derives tenant and actor exclusively from authenticated
 contexts. Product-owned `map_product_public_error` is shared by GraphQL and
 native admin/storefront transports; it keeps internal errors in structured logs
@@ -95,7 +99,8 @@ rustok-pricing` dependency cycle.
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
-  `scripts/verify/verify-product-storefront-boundary.mjs`, and
+  `scripts/verify/verify-product-storefront-boundary.mjs`,
+  `scripts/verify/verify-product-catalog-controls-plan-sync.mjs`, and
   `scripts/verify/verify-ai-product-fba.mjs` for the AI consumer contract.
 
 ## Open results
@@ -112,10 +117,20 @@ rustok-pricing` dependency cycle.
    shared [Richtext plan](../../../docs/modules/rich-text-implementation-plan.md),
    assign an owner profile, migrate both transports, and keep short/meta
    descriptions plain text.
+3. Connect product-owned storefront/admin catalog controls only after the typed
+   snake_case query contract (`search`, `category_id`, `sort_by`,
+   `sort_direction`, `attribute_filters`) is carried through core request
+   models, native and GraphQL adapters, server-side filters/sorts, and both UI
+   surfaces. Recheck on 2026-07-28 found that current `main` exposes catalog
+   search-option metadata, but storefront `RouteInput`/`FetchRequest` and the
+   admin list transport do not carry the complete contract. The previous
+   completed marker was therefore reverted and is guarded against source drift.
 
 ## Verification
 
-- [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
+- [ ] Connect storefront/admin UI controls to optional catalog filters/sorts.
+- `node scripts/verify/verify-product-catalog-controls-plan-sync.mjs`
+- `node scripts/verify/verify-product-catalog-controls-plan-sync.test.mjs`
 - `npm run verify:product:runtime-fallback-smoke`
 - `npm run verify:product:admin-boundary`
 - `npm run verify:product:storefront-boundary`
