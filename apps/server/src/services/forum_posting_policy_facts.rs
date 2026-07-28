@@ -181,7 +181,7 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, Database, Set};
 
-    use crate::models::users;
+    use crate::models::{tenants, users};
 
     use super::*;
 
@@ -219,6 +219,16 @@ mod tests {
         user_id: Uuid,
         created_at: DateTime<Utc>,
     ) {
+        let mut tenant = tenants::ActiveModel::new(
+            "Forum account-age test tenant",
+            &format!("forum-account-age-{tenant_id}"),
+        );
+        tenant.id = Set(tenant_id);
+        tenant
+            .insert(db)
+            .await
+            .expect("insert account-age test tenant");
+
         let mut user = users::ActiveModel::new(
             tenant_id,
             &format!("{user_id}@example.com"),
@@ -263,10 +273,7 @@ mod tests {
             .expect("fixed observation time");
         let created_at = observed_at - ChronoDuration::days(3) - ChronoDuration::seconds(17);
         insert_user(&db, tenant_id, user_id, created_at).await;
-        let provider = ServerForumAccountAgeFactPort::with_clock(
-            db,
-            fixed_clock(observed_at),
-        );
+        let provider = ServerForumAccountAgeFactPort::with_clock(db, fixed_clock(observed_at));
 
         let response = provider
             .resolve_forum_posting_policy_fact(
@@ -373,10 +380,7 @@ mod tests {
             observed_at + ChronoDuration::seconds(1),
         )
         .await;
-        let provider = ServerForumAccountAgeFactPort::with_clock(
-            db,
-            fixed_clock(observed_at),
-        );
+        let provider = ServerForumAccountAgeFactPort::with_clock(db, fixed_clock(observed_at));
 
         let error = provider
             .resolve_forum_posting_policy_fact(
