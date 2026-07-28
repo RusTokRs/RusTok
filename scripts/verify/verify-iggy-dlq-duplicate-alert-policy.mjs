@@ -80,7 +80,7 @@ if (
   contract.schema_version !== 1 ||
   contract.module !== "iggy" ||
   contract.packet !== "dlq-duplicate-alert-policy-source" ||
-  contract.status !== "source_complete_runtime_composition_pending_server_integration" ||
+  contract.status !== "source_complete_server_observer_execution_pending" ||
   contract.owner !== "rustok-iggy" ||
   contract.source !== sourcePath ||
   contract.summary_source !== summaryPath ||
@@ -156,7 +156,8 @@ for (const [operation, allowed] of Object.entries(contract.mutation_boundary ?? 
 }
 
 if (
-  contract.runtime_composition?.status !== "source_complete_server_integration_pending" ||
+  contract.runtime_composition?.status !==
+    "source_complete_server_observer_execution_pending" ||
   contract.runtime_composition?.contract !== runtimeContractPath ||
   contract.runtime_composition?.source !== runtimeSourcePath ||
   contract.runtime_composition?.input !== "DlqDuplicateSummary" ||
@@ -165,12 +166,13 @@ if (
   contract.runtime_composition?.single_writer !== true ||
   contract.runtime_composition?.unavailable_clears_evaluation !== true ||
   runtimeContract.packet !== "dlq-duplicate-alert-runtime-source" ||
-  runtimeContract.status !== "source_complete_server_integration_pending" ||
+  runtimeContract.status !== "source_complete_server_observer_execution_pending" ||
   runtimeContract.source !== runtimeSourcePath ||
   runtimeContract.policy_source !== sourcePath ||
-  runtimeContract.summary_source !== summaryPath
+  runtimeContract.summary_source !== summaryPath ||
+  runtimeContract.server_observer?.status !== "source_complete_execution_pending"
 ) {
-  fail("DLQ duplicate alert runtime composition relationship drift");
+  fail("DLQ duplicate alert runtime/server-observer relationship drift");
 }
 
 const requiredExcludedFields = new Set([
@@ -193,7 +195,9 @@ for (const field of contract.privacy_boundary?.evaluation_excludes ?? []) {
   requiredExcludedFields.delete(field);
 }
 if (requiredExcludedFields.size > 0) {
-  fail(`DLQ duplicate alert privacy exclusions are incomplete: ${[...requiredExcludedFields].join(", ")}`);
+  fail(`DLQ duplicate alert privacy exclusions are incomplete: ${[
+    ...requiredExcludedFields,
+  ].join(", ")}`);
 }
 
 if (
@@ -236,19 +240,11 @@ for (const marker of [
   'Self::Warning => "iggy.dlq_duplicate.alert.warning"',
   'Self::Critical => "iggy.dlq_duplicate.alert.critical"',
   "pub struct DlqDuplicateAlertEvaluation",
-  "level: DlqDuplicateAlertLevel",
-  "physical_duplicates: bool",
-  "identity_conflict: bool",
-  "duplicate_messages_threshold_reached: bool",
-  "duplicate_groups_threshold_reached: bool",
-  "max_copies_threshold_reached: bool",
   "pub const fn requires_manual_review(&self) -> bool",
-  "pub enum DlqDuplicateAlertPolicyError",
   'Self::InvalidThresholds => "iggy.dlq_duplicate.alert_policy_invalid"',
 ]) {
   requireText("DLQ duplicate alert policy source", source, marker);
 }
-
 for (const testName of expectedTests) {
   requireText("DLQ duplicate alert policy tests", source, `fn ${testName}()`);
 }
@@ -259,10 +255,6 @@ if (countText(source, "#[test]") !== expectedTests.length) {
 for (const marker of [
   "pub warning_duplicate_messages:",
   "pub critical_duplicate_messages:",
-  "pub warning_duplicate_groups:",
-  "pub critical_duplicate_groups:",
-  "pub warning_max_copies_per_message_id:",
-  "pub critical_max_copies_per_message_id:",
   "Serialize",
   "Deserialize",
   "tokio::sync::watch",
@@ -277,10 +269,8 @@ for (const marker of [
   ".replay(",
   ".retry_entry(",
   ".reserve_and_claim(",
-  ".release_claim(",
   ".mark_published(",
   ".mark_acknowledged(",
-  ".send(",
   ".notify(",
   ".page(",
 ]) {
@@ -315,7 +305,6 @@ for (const exportName of expectedExports) {
 }
 
 const requiredRemainingWork = new Set([
-  "server_observer_integration",
   "telemetry_and_health_projection",
   "alert_delivery_and_suppression_outside_policy",
   "retained_policy_integration_evidence",
@@ -324,7 +313,9 @@ const requiredRemainingWork = new Set([
 ]);
 for (const item of contract.remaining_work ?? []) requiredRemainingWork.delete(item);
 if (requiredRemainingWork.size > 0) {
-  fail(`DLQ duplicate alert remaining work drift: ${[...requiredRemainingWork].join(", ")}`);
+  fail(`DLQ duplicate alert remaining work drift: ${[
+    ...requiredRemainingWork,
+  ].join(", ")}`);
 }
 
 if (failures.length > 0) {
@@ -334,5 +325,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate alert policy source verified: explicit monotonic thresholds, clear/notice/warning/critical precedence, conflict-critical manual escalation, count-only boolean projection, stable codes, no production defaults, no broker/receipt access, no notification dispatch, no destructive action, and the single-writer stale-clearing latest-value runtime composition are locked; server integration remains pending.",
+  "Iggy DLQ duplicate alert policy source verified: explicit monotonic thresholds, clear/notice/warning/critical precedence, conflict-critical manual escalation, count-only boolean projection, stable codes, no production defaults, no broker/receipt access, no notification dispatch, no destructive action, and the single-writer runtime plus mode-aware server observer relationship are locked; execution and telemetry/health projection remain pending.",
 );
