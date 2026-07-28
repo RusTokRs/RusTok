@@ -16,6 +16,9 @@ use crate::{
     ForumQuoteTargetKindInput, ReplyResponse, ReplyService, TopicResponse, TopicService,
     UpdateReplyCommandInput, UpdateTopicCommandInput,
 };
+use crate::reply_create_transport::{
+    ForumReplyCreateTransport, reply_create_audience_port_context,
+};
 use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
@@ -193,11 +196,24 @@ impl ForumContentCommandMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let reply = ReplyService::new(db.clone(), event_bus.clone())
-            .create_command(
+        let audience_context = reply_create_audience_port_context(
+            ForumReplyCreateTransport::Graphql,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+        let reply = runtime
+            .reply_service(db.clone(), event_bus.clone())
+            .create_command_with_audience_context(
                 tenant_id,
                 security(&auth),
                 topic_id,
+                audience_context,
                 CreateReplyCommandInput {
                     locale: input.locale,
                     content: input.content,
