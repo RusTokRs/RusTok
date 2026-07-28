@@ -30,10 +30,15 @@ const DEFAULT_POLL_MS: u64 = 30_000;
 const MAX_POLL_MS: u64 = 300_000;
 const DEFAULT_MAX_MESSAGES: u32 = 1_000;
 const DEFAULT_BATCH_SIZE: u32 = 100;
+const STARTUP_CONFIGURATION_INVALID: &str =
+    "iggy.dlq_duplicate.alert_server_observer_configuration_invalid";
+const STARTUP_RUNTIME_UNAVAILABLE: &str =
+    "iggy.dlq_duplicate.alert_server_observer_runtime_unavailable";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventDlqDuplicateAlertObserverMode {
     Disabled,
+    Unavailable,
     NotApplicableMemory,
     NotApplicableOutboxLocal,
     IggyBundled,
@@ -77,7 +82,13 @@ pub async fn start_event_dlq_duplicate_alert_observer(
         return Ok(());
     }
 
-    let enabled = optional_bool_env(ENABLE_ENV, false)?;
+    let enabled = match optional_bool_env(ENABLE_ENV, false) {
+        Ok(enabled) => enabled,
+        Err(_) => {
+            record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);
+            return Ok(());
+        }
+    };
     if !enabled {
         ctx.shared_insert(EventDlqDuplicateAlertObserverHandle {
             mode: EventDlqDuplicateAlertObserverMode::Disabled,
@@ -87,10 +98,17 @@ pub async fn start_event_dlq_duplicate_alert_observer(
         return Ok(());
     }
 
-    let runtime = ctx
-        .shared_get::<Arc<EventRuntime>>()
-        .ok_or_else(|| Error::Message("EventRuntime is unavailable".to_string()))?;
-    let mode = observer_mode(runtime.delivery_profile, runtime.iggy_mode.as_ref())?;
+    let Some(runtime) = ctx.shared_get::<Arc<EventRuntime>>() else {
+        record_startup_unavailable(ctx, STARTUP_RUNTIME_UNAVAILABLE);
+        return Ok(());
+    };
+    let mode = match observer_mode(runtime.delivery_profile, runtime.iggy_mode.as_ref()) {
+        Ok(mode) => mode,
+        Err(_) => {
+            record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);
+            return Ok(());
+        }
+    };
     if matches!(
         mode,
         EventDlqDuplicateAlertObserverMode::NotApplicableMemory
@@ -108,13 +126,18 @@ pub async fn start_event_dlq_duplicate_alert_observer(
         return Ok(());
     }
 
-    let transport = ctx.shared_get::<Arc<IggyTransport>>().ok_or_else(|| {
-        Error::Message(
-            "outbox_iggy runtime did not publish its configured Iggy transport".to_string(),
-        )
-    })?;
+    let Some(transport) = ctx.shared_get::<Arc<IggyTransport>>() else {
+        record_startup_unavailable(ctx, STARTUP_RUNTIME_UNAVAILABLE);
+        return Ok(());
+    };
     let iggy_config = transport.config().clone();
-    let config = EventDlqDuplicateAlertObserverConfig::from_env()?;
+    let config = match EventDlqDuplicateAlertObserverConfig::from_env() {
+        Ok(config) => config,
+        Err(_) => {
+            record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);
+            return Ok(());
+        }
+    };
 
     if !ctx.shared_contains::<StopHandle>() {
         let (stop_handle, _stop_rx) = StopHandle::new();
@@ -142,6 +165,18 @@ pub async fn start_event_dlq_duplicate_alert_observer(
         "Starting mode-aware physical DLQ duplicate alert observer"
     );
     Ok(())
+}
+
+fn record_startup_unavailable(ctx: &ServerRuntimeContext, error_code: &'static str) {
+    ctx.shared_insert(EventDlqDuplicateAlertObserverHandle {
+        mode: EventDlqDuplicateAlertObserverMode::Unavailable,
+        subscriber: None,
+        handle: None,
+    });
+    tracing::warn!(
+        error_code,
+        "Physical DLQ duplicate alert observer startup is unavailable; event delivery remains active"
+    );
 }
 
 async fn observer_loop(
@@ -354,6 +389,18 @@ mod tests {
             EventDlqDuplicateAlertObserverMode::IggyExternal
         );
         assert!(observer_mode(EventDeliveryProfile::OutboxIggy, None).is_err());
+    }
+
+    #[test]
+    fn startup_unavailable_state_has_no_task_or_snapshot() {
+        let handle = EventDlqDuplicateAlertObserverHandle {
+            mode: EventDlqDuplicateAlertObserverMode::Unavailable,
+            subscriber: None,
+            handle: None,
+        };
+        assert_eq!(handle.mode(), EventDlqDuplicateAlertObserverMode::Unavailable);
+        assert_eq!(handle.current_snapshot(), None);
+        assert!(!handle.is_finished());
     }
 
     #[test]
