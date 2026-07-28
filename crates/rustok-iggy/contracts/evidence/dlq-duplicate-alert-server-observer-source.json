@@ -37,7 +37,9 @@
   },
   "scan": {
     "topic": "dlq",
-    "all_configured_domain_partitions": true,
+    "configured_domain_partition_allowlist": true,
+    "global_message_budget_may_stop_before_later_partitions": true,
+    "partition_fairness_claimed": false,
     "explicit_start_offset": true,
     "bounded_max_messages": true,
     "bounded_batch_size": true,
@@ -102,7 +104,7 @@
   },
   "required_iggy_tests": [
     "bundled_mode_requires_matching_loopback_address",
-    "all_configured_partitions_are_scanned_once",
+    "all_configured_partitions_are_included_in_request",
     "invalid_partition_count_fails_closed",
     "stable_errors_expose_no_connection_details"
   ],
@@ -115,6 +117,7 @@
   "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md",
   "execution_status": "source_not_run",
   "remaining_work": [
+    "partition_fairness_or_per_partition_budget_policy",
     "telemetry_projection_outside_observer",
     "health_projection_without_readiness_coupling",
     "notification_delivery_and_suppression",
