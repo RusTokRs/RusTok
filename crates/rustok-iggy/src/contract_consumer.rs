@@ -153,10 +153,10 @@ impl PersistentContractConsumerGroup {
     ) -> Result<()> {
         consumed.validate_connector_metadata()?;
         self.acknowledge_metadata(
-            &consumed.stream,
-            &consumed.topic,
-            consumed.partition,
-            &consumed.connector_metadata,
+            consumed.stream(),
+            consumed.topic(),
+            consumed.partition(),
+            consumed.connector_metadata(),
             "Undecodable contract delivery",
         )
         .await
