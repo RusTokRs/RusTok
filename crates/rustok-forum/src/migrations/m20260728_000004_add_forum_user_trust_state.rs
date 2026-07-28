@@ -220,10 +220,31 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION forum_apply_user_trust_revision()
+RETURNS trigger AS $$
+BEGIN
+    INSERT INTO forum_user_trust_states (
+        tenant_id, user_id, trust_level, revision, updated_at
+    ) VALUES (
+        NEW.tenant_id, NEW.user_id, NEW.trust_level, NEW.revision, NEW.created_at
+    )
+    ON CONFLICT (tenant_id, user_id) DO UPDATE
+       SET trust_level = EXCLUDED.trust_level,
+           revision = EXCLUDED.revision,
+           updated_at = EXCLUDED.updated_at;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 DROP TRIGGER IF EXISTS forum_user_trust_revision_insert ON forum_user_trust_revisions;
 CREATE TRIGGER forum_user_trust_revision_insert
 BEFORE INSERT ON forum_user_trust_revisions
 FOR EACH ROW EXECUTE FUNCTION forum_validate_user_trust_revision_insert();
+
+DROP TRIGGER IF EXISTS forum_user_trust_revision_apply ON forum_user_trust_revisions;
+CREATE TRIGGER forum_user_trust_revision_apply
+AFTER INSERT ON forum_user_trust_revisions
+FOR EACH ROW EXECUTE FUNCTION forum_apply_user_trust_revision();
 
 DROP TRIGGER IF EXISTS forum_user_trust_revision_update ON forum_user_trust_revisions;
 CREATE TRIGGER forum_user_trust_revision_update
@@ -254,6 +275,7 @@ FOR EACH ROW EXECUTE FUNCTION forum_reject_user_trust_state_delete();
 const POSTGRES_DOWN: &str = r#"
 DROP TABLE IF EXISTS forum_user_trust_revisions;
 DROP TABLE IF EXISTS forum_user_trust_states;
+DROP FUNCTION IF EXISTS forum_apply_user_trust_revision();
 DROP FUNCTION IF EXISTS forum_validate_user_trust_state_update();
 DROP FUNCTION IF EXISTS forum_validate_user_trust_state_insert();
 DROP FUNCTION IF EXISTS forum_validate_user_trust_revision_insert();
@@ -365,6 +387,20 @@ BEGIN
          WHERE state.tenant_id = NEW.tenant_id
            AND state.user_id = NEW.user_id
     ) THEN RAISE(ABORT, 'forum user trust previous level does not match current state') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS forum_user_trust_revision_apply
+AFTER INSERT ON forum_user_trust_revisions
+BEGIN
+    INSERT INTO forum_user_trust_states (
+        tenant_id, user_id, trust_level, revision, updated_at
+    ) VALUES (
+        NEW.tenant_id, NEW.user_id, NEW.trust_level, NEW.revision, NEW.created_at
+    )
+    ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+        trust_level = excluded.trust_level,
+        revision = excluded.revision,
+        updated_at = excluded.updated_at;
 END;
 
 CREATE TRIGGER IF NOT EXISTS forum_user_trust_revision_update
