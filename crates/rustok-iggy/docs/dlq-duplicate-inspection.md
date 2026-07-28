@@ -76,7 +76,9 @@ PollingStrategy::offset(explicit_offset)
 auto_commit = false
 ```
 
-One request permits at most 128 partitions, 10,000 messages globally, and batches of 1,000. It validates returned partition, count, monotonic offsets, and header identity before returning only `DlqDuplicateSummary`.
+One request permits at most 128 partition identifiers, 10,000 messages globally, and batches of 1,000. It validates returned partition, count, monotonic offsets, and header identity before returning only `DlqDuplicateSummary`.
+
+The global message budget is shared across the ordered partition allowlist. It may be exhausted before later partitions are polled, so the scanner and observer make no partition-fairness claim.
 
 ## Count-only alert policy
 
@@ -102,9 +104,11 @@ The runtime is a latest-value channel, not an event log. It adds no serializatio
 
 ## Mode-aware server observer
 
-The host now owns an explicit capability gate across all event-delivery profiles:
+The host owns an explicit capability gate across every delivery/startup mode:
 
 ```text
+disabled      -> Disabled
+startup issue -> Unavailable, no task or snapshot
 memory        -> NotApplicableMemory
 outbox_local  -> NotApplicableOutboxLocal
 outbox_iggy   -> IggyBundled or IggyExternal
@@ -121,24 +125,28 @@ For `outbox_iggy`, the observer reuses the exact active transport configuration 
 - connection/scan failure publishes unavailable state and retries later;
 - event delivery and module projection remain active.
 
-The observer supports all configured domain partitions and delegates every scan to the bounded `auto_commit=false` scanner.
+Observer-specific startup failures are non-fatal. Invalid observer configuration or a missing observer dependency records `Unavailable`, logs only a stable code, and returns success to server bootstrap.
+
+The observer includes every configured domain partition in the scanner request, but the single global budget may prevent later partitions from being polled.
+
+Each poll reuses the same configured explicit start offset. This is a repeated bounded window, not a moving cursor, current-tail monitor, or complete-history observer. Moving-window and per-partition cursor/fairness behavior remain separate design work.
 
 ## Safe operational sequence
 
 1. resolve the active event delivery profile;
 2. return not-applicable before Iggy access for `memory` or `outbox_local`;
 3. for `outbox_iggy`, use the already-active bundled or external configuration;
-4. scan bounded explicit offsets with `auto_commit=false`;
+4. scan one bounded explicit-offset window with `auto_commit=false`;
 5. evaluate through explicit thresholds;
 6. publish only the identifier-free latest snapshot;
-7. mark unavailable after failures or shutdown;
-8. keep telemetry, health, notification delivery, and destructive actions in separate owners.
+7. mark unavailable after startup, connection, scan, or shutdown failures without stopping the host;
+8. keep cursor/fairness policy, telemetry, health, notification delivery, and destructive actions in separate owners.
 
 ## Runtime and retained evidence status
 
 The opt-in external harness and privacy-safe retained tooling are source-complete. The canonical execution JSON remains absent until a maintainer runs the reviewed external-Iggy scenario successfully.
 
-The mode-aware server observer is source-complete. Runtime execution, identifier-free telemetry, optional operational health without readiness coupling, and retained server evidence remain pending.
+The mode-aware server observer is source-complete. Runtime execution, moving-window/fairness semantics, identifier-free telemetry, optional operational health without readiness coupling, and retained server evidence remain pending.
 
 ## Source verification
 
@@ -157,8 +165,9 @@ No tests, Cargo commands, formatters, verifiers, broker scans, server observers,
 ## Remaining work
 
 1. execute and retain the reviewed external-Iggy duplicate scan packet;
-2. define identifier-free telemetry and optional operational health;
-3. retain mode-aware server observer execution evidence;
-4. define alert routing, cooldown, and suppression separately;
-5. design acknowledgement/delete/replay as a separately authorized operation;
-6. correlate aggregate receipt and duplicate health without exporting message identities.
+2. define partition fairness/per-partition budgets and a moving-window or per-partition cursor policy;
+3. define identifier-free telemetry and optional operational health;
+4. retain mode-aware server observer execution evidence;
+5. define alert routing, cooldown, and suppression separately;
+6. design acknowledgement/delete/replay as a separately authorized operation;
+7. correlate aggregate receipt and duplicate health without exporting message identities.
