@@ -73,7 +73,6 @@ impl std::fmt::Debug for IggyDlqDuplicateAlertObserver {
         formatter
             .debug_struct("IggyDlqDuplicateAlertObserver")
             .field("partition_count", &self.request.partitions().len())
-            .field("start_offset", &self.request.start_offset())
             .field("max_messages", &self.request.max_messages())
             .field("batch_size", &self.request.batch_size())
             .finish_non_exhaustive()
