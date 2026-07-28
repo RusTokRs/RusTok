@@ -43,6 +43,10 @@
     "global_message_budget_may_stop_before_later_partitions": true,
     "partition_fairness_claimed": false,
     "explicit_start_offset": true,
+    "same_configured_start_offset_reused_each_poll": true,
+    "moving_cursor": false,
+    "current_tail_coverage_claimed": false,
+    "complete_history_claimed": false,
     "bounded_max_messages": true,
     "bounded_batch_size": true,
     "auto_commit": false,
@@ -127,6 +131,7 @@
   "execution_status": "source_not_run",
   "remaining_work": [
     "partition_fairness_or_per_partition_budget_policy",
+    "moving_window_or_per_partition_cursor_policy",
     "telemetry_projection_outside_observer",
     "health_projection_without_readiness_coupling",
     "notification_delivery_and_suppression",
