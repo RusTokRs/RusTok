@@ -61,7 +61,7 @@ node scripts/verify/index-storage-tooling.mjs partition-report \
   --root evidence/index-partition/retained-run
 ```
 
-`partition-report` requires a regular non-symlink bundle and keeps `capture.json`, the packet, the admission file, and all six raw artifacts inside that bundle. It recalculates packet assembly and admission from the retained bytes, rejects raw-artifact, packet, or admission drift, checks that all nine files have distinct filesystem identities, and prints a stable Markdown inventory with exact-byte SHA-256 digests, PostgreSQL identity, provenance, calculated measurements, outcome, and typed reasons.
+`partition-report` requires a regular non-symlink bundle and keeps `capture.json`, the packet, the admission file, and all six raw artifacts inside that bundle. It reads every authoritative file through a stable file descriptor, binds the inspected bytes to an internal `dev:ino` identity, recalculates packet assembly and admission from the retained bytes, rejects raw-artifact, packet, or admission drift, checks that all nine files have distinct filesystem identities, and prints a stable Markdown inventory with exact-byte SHA-256 digests, PostgreSQL identity, provenance, calculated measurements, outcome, and typed reasons.
 
 The report command writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. Shell redirection may save the derived report outside the immutable bundle, but the six raw artifacts, `capture.json`, `partition-packet.json`, and `admission.json` remain the authoritative archive inputs. A report does not change admission and does not authorize production lifecycle work.
 
@@ -77,7 +77,7 @@ node scripts/verify/index-storage-tooling.mjs partition-archive-manifest \
 
 `partition-archive-manifest` runs the same retained-bundle inspection as `partition-report`, refuses any outcome other than `admitted`, and prints JSON containing the evidence identity, packet digest, provenance, PostgreSQL identity, all nine relative paths, exact-byte SHA-256 digests, byte counts, and total retained bytes. Its `manifest_digest` is the SHA-256 digest of canonical JSON for the manifest payload before the `manifest_digest` field is added, under `canonical_json_without_manifest_digest_v1`.
 
-The archive-manifest command writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. Shell redirection may save this derived index outside the immutable bundle. The manifest does not replace or modify the nine authoritative retained files, does not change admission, and does not authorize production lifecycle work.
+The archive-manifest command writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. Shell redirection may save this derived index outside the immutable bundle. The manifest does not replace or modify the nine authoritative retained files, does not expose internal filesystem identities, does not change admission, and does not authorize production lifecycle work.
 
 ## Verify a saved archive manifest
 
@@ -91,7 +91,7 @@ node scripts/verify/index-storage-tooling.mjs partition-archive-verify \
 
 `partition-archive-verify` requires the saved manifest to be a non-empty regular non-symlink file outside the immutable bundle. It rejects lexical or canonical paths inside the bundle and rejects a hard-link alias to any of the nine retained files. It reads the saved manifest through one stable file descriptor, verifies the saved `manifest_digest`, reruns the full retained-bundle inspection, rebuilds the admitted archive manifest, and canonical-compares the complete saved manifest to the recalculated result.
 
-Before publishing success, the verifier rereads all nine retained files through stable file descriptors and compares their current byte counts and exact-byte SHA-256 digests to the completed inspection. It fails closed on post-inspection exact-byte drift, current retained-file aliasing, or identity/content drift while a file is being read. This closes the gap where a bundle could change between inspection and receipt publication.
+Before publishing success, the verifier rereads all nine retained files through stable file descriptors and compares their current filesystem identities, byte counts, and exact-byte SHA-256 digests to the completed inspection. It fails closed on same-byte filesystem identity replacement, post-inspection exact-byte drift, current retained-file aliasing, or identity/content drift while a file is being read. This closes the gap where a bundle path could be replaced between inspection and receipt publication even when the replacement bytes are identical.
 
 A successful verification prints a deterministic `index_partition_retained_archive_verification_v1` receipt with `retained_files_rechecked: true`, the evidence ID, packet and manifest digests, exact-byte SHA-256 of the saved manifest file, retained file count, total retained bytes, and `production_lifecycle_authorized: false`. The verifier writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. The receipt is derived metadata, not a tenth authoritative evidence input and not production authorization.
 
