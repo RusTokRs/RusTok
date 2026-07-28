@@ -2,9 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_api::{
-    Permission, PortActor, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{Permission, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_core::SecurityContext;
 use rustok_forum::{
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
