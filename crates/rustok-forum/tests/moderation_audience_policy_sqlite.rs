@@ -9,7 +9,7 @@ use rustok_forum::{
     ForumAudienceConstraints, ForumAudienceFacts, ForumAudienceFactsPort,
     ForumAudienceFactsRequest, ForumCategoryModerationAudiencePolicyService, ForumError,
     ForumModule, ModerationService, ReplyService, ReplyStatus,
-    SetForumCategoryModerationAudiencePolicyInput, TopicService, TopicStatus,
+    SetForumCategoryModerationAudiencePolicyInput, TopicService,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
