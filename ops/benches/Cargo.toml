@@ -61,6 +61,10 @@ path = "src/bin/index_partition_maintenance_evidence.rs"
 name = "index-partition-cutover-evidence"
 path = "src/bin/index_partition_cutover_evidence.rs"
 
+[[bin]]
+name = "index-partition-capture-finalize"
+path = "src/bin/index_partition_capture_finalize.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false
