@@ -28,6 +28,8 @@ try {
   const planTest = read('scripts/verify/index-partition-full-capture-plan.test.mjs');
   const reviewCore = read('scripts/verify/index-partition-review-core.mjs');
   const reviewCli = read('scripts/verify/render-index-partition-review.mjs');
+  const archiveCore = read('scripts/verify/index-partition-archive-manifest-core.mjs');
+  const archiveCli = read('scripts/verify/render-index-partition-archive-manifest.mjs');
   const reviewTest = read('scripts/verify/index-partition-review.test.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
@@ -131,7 +133,26 @@ try {
     'process.stdout.write',
     'It writes no files.',
   ], 'retained partition review CLI');
-  forbidMarkers(`${reviewCore}\n${reviewCli}`, [
+  requireMarkers(archiveCore, [
+    'index_partition_retained_archive_manifest_v1',
+    'canonical_json_without_manifest_digest_v1',
+    'REVIEW_CONTRACT',
+    "admission.outcome !== 'admitted'",
+    'must contain exactly nine retained files',
+    'total_bytes: totalBytes',
+    "sha256Hex(Buffer.from(canonicalJson(payload), 'utf8'))",
+  ], 'retained partition archive manifest core');
+  requireMarkers(archiveCli, [
+    "'--root'",
+    "'--packet'",
+    "'--admission'",
+    'inspectRetainedPartitionBundle',
+    'buildRetainedPartitionArchiveManifest',
+    'JSON.stringify(manifest, null, 2)',
+    'process.stdout.write',
+    'It writes no files.',
+  ], 'retained partition archive manifest CLI');
+  forbidMarkers(`${reviewCore}\n${reviewCli}\n${archiveCore}\n${archiveCli}`, [
     'writeFileSync',
     'mkdirSync',
     'renameSync',
@@ -139,10 +160,15 @@ try {
     'spawnSync',
     'DATABASE_URL',
     'INDEX_PARTITION_ALLOW',
-  ], 'retained partition review tooling');
+  ], 'retained partition review and archive tooling');
   requireMarkers(reviewTest, [
     'renders a deterministic read-only nine-file retained bundle review',
     'Retained file count: `9`',
+    'prints a deterministic read-only admitted archive manifest',
+    'index_partition_retained_archive_manifest_v1',
+    'canonical_json_without_manifest_digest_v1',
+    "createHash('sha256').update(canonicalJson(payload)).digest('hex')",
+    'refuses an archive manifest for a non-admitted retained bundle',
     'assert.deepEqual(snapshot(context.root), before)',
     'saved admission that does not match recalculated packet admission',
     'rejects raw artifact drift from the retained packet',
@@ -153,6 +179,8 @@ try {
     'index-partition-full-capture-plan.test.mjs',
     'partition-report',
     'render-index-partition-review.mjs',
+    'partition-archive-manifest',
+    'render-index-partition-archive-manifest.mjs',
     'index-partition-review.test.mjs',
     'verify-index-partition-full-capture.mjs',
   ], 'index storage tooling router');
@@ -170,6 +198,9 @@ try {
     'partition-report',
     'all nine retained files',
     'recalculates packet assembly and admission',
+    'partition-archive-manifest',
+    'refuses any outcome other than `admitted`',
+    'canonical_json_without_manifest_digest_v1',
     'writes no files',
     'forbidden before one retained admitted packet',
   ], 'full partition capture runbook');
