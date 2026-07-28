@@ -1,10 +1,8 @@
-use std::future::Future;
 use std::time::Duration;
 
 use rustok_api::{AuthContext, PortContext, RequestContext};
 use uuid::Uuid;
 
-use crate::audience::SharedForumAudienceFactsPort;
 use crate::error::{ForumError, ForumResult};
 
 const FORUM_MODERATION_FACTS_DEADLINE: Duration = Duration::from_secs(5);
@@ -22,53 +20,6 @@ impl ForumModerationTransport {
             Self::Rest => "rest",
         }
     }
-}
-
-#[derive(Clone)]
-pub(crate) struct ForumModerationTransportScopeData {
-    audience_facts: Option<SharedForumAudienceFactsPort>,
-    context: PortContext,
-}
-
-impl ForumModerationTransportScopeData {
-    pub(crate) fn new(
-        audience_facts: Option<SharedForumAudienceFactsPort>,
-        context: PortContext,
-    ) -> Self {
-        Self {
-            audience_facts,
-            context,
-        }
-    }
-}
-
-tokio::task_local! {
-    static CURRENT_FORUM_MODERATION_TRANSPORT_SCOPE: ForumModerationTransportScopeData;
-}
-
-pub(crate) async fn with_forum_moderation_transport_scope<F>(
-    scope: ForumModerationTransportScopeData,
-    future: F,
-) -> F::Output
-where
-    F: Future,
-{
-    CURRENT_FORUM_MODERATION_TRANSPORT_SCOPE
-        .scope(scope, future)
-        .await
-}
-
-pub(crate) fn current_moderation_audience_facts() -> Option<SharedForumAudienceFactsPort> {
-    CURRENT_FORUM_MODERATION_TRANSPORT_SCOPE
-        .try_with(|scope| scope.audience_facts.clone())
-        .ok()
-        .flatten()
-}
-
-pub(crate) fn current_moderation_audience_context() -> Option<PortContext> {
-    CURRENT_FORUM_MODERATION_TRANSPORT_SCOPE
-        .try_with(|scope| scope.context.clone())
-        .ok()
 }
 
 /// Builds the exact authenticated caller context used by moderation audience facts.
