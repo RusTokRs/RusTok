@@ -26,6 +26,5 @@ default = ["iggy"]
 iggy = ["dep:iggy", "rustok-iggy-connector/iggy"]
 
 [dev-dependencies]
-futures-util.workspace = true
 tokio.workspace = true
 serde_yaml.workspace = true
