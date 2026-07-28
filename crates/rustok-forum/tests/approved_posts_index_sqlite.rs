@@ -21,6 +21,21 @@ async fn setup() -> sea_orm::DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("approved-post index SQLite database should connect");
+
+    // Forum trust-state migrations reference the platform-owned users table.
+    // Keep this isolated module proof self-contained with only the exact
+    // identity columns consumed by the migration chain.
+    db.execute_unprepared(
+        r#"
+        CREATE TABLE users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        )
+        "#,
+    )
+    .await
+    .expect("SQLite platform user fixture should be created");
+
     let schema = SchemaManager::new(&db);
     for migration in TaxonomyModule.migrations() {
         migration
@@ -92,39 +107,50 @@ async fn approved_posts_aggregate_uses_partial_author_indexes_on_sqlite() {
         "approved-reply subquery must use {REPLY_INDEX}; observed plan:\n{plan}"
     );
 
-    for (index_name, required_fragments) in [
-        (
-            TOPIC_INDEX,
-            ["tenant_id, author_id", "author_id IS NOT NULL", "deleted_at IS NULL"].as_slice(),
-        ),
-        (
-            REPLY_INDEX,
-            [
-                "tenant_id, author_id, topic_id",
-                "author_id IS NOT NULL",
-                "status = 'approved'",
-                "deleted_at IS NULL",
-            ]
-            .as_slice(),
-        ),
-    ] {
-        let row = db
-            .query_one(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
-                vec![index_name.into()],
-            ))
-            .await
-            .expect("SQLite index definition lookup should succeed")
-            .unwrap_or_else(|| panic!("SQLite migration should create {index_name}"));
-        let definition = row
-            .try_get::<String>("", "sql")
-            .expect("SQLite index definition should be text");
-        for fragment in required_fragments {
-            assert!(
-                definition.contains(fragment),
-                "{index_name} is missing `{fragment}`: {definition}"
-            );
-        }
+    assert_index_definition(
+        &db,
+        TOPIC_INDEX,
+        &[
+            "tenant_id, author_id",
+            "author_id IS NOT NULL",
+            "deleted_at IS NULL",
+        ],
+    )
+    .await;
+    assert_index_definition(
+        &db,
+        REPLY_INDEX,
+        &[
+            "tenant_id, author_id, topic_id",
+            "author_id IS NOT NULL",
+            "status = 'approved'",
+            "deleted_at IS NULL",
+        ],
+    )
+    .await;
+}
+
+async fn assert_index_definition(
+    db: &sea_orm::DatabaseConnection,
+    index_name: &str,
+    required_fragments: &[&str],
+) {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            vec![index_name.into()],
+        ))
+        .await
+        .expect("SQLite index definition lookup should succeed")
+        .unwrap_or_else(|| panic!("SQLite migration should create {index_name}"));
+    let definition = row
+        .try_get::<String>("", "sql")
+        .expect("SQLite index definition should be text");
+    for fragment in required_fragments {
+        assert!(
+            definition.contains(fragment),
+            "{index_name} is missing `{fragment}`: {definition}"
+        );
     }
 }
