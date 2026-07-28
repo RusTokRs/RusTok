@@ -22,8 +22,9 @@ pub struct ForumReplyCreateAudienceAuthorization {
     pub category_id: Uuid,
     pub evaluated_layers: usize,
     pub allowed: bool,
+    /// Exact denying category layer. `None` on a denied result identifies the
+    /// already-present `topic_id` as the final topic-local denying layer.
     pub denied_by_category_id: Option<Uuid>,
-    pub denied_by_topic_id: Option<Uuid>,
     pub reason: ForumAudienceDecisionReason,
 }
 
@@ -93,7 +94,6 @@ impl ForumReplyCreateAudienceAuthorizationService {
                     evaluated_layers,
                     allowed: false,
                     denied_by_category_id: Some(layer.category_id),
-                    denied_by_topic_id: None,
                     reason: decision.reason,
                 });
             }
@@ -114,7 +114,6 @@ impl ForumReplyCreateAudienceAuthorizationService {
                     evaluated_layers,
                     allowed: false,
                     denied_by_category_id: None,
-                    denied_by_topic_id: Some(topic_id),
                     reason: decision.reason,
                 });
             }
@@ -126,7 +125,6 @@ impl ForumReplyCreateAudienceAuthorizationService {
             evaluated_layers,
             allowed: true,
             denied_by_category_id: None,
-            denied_by_topic_id: None,
             reason: last_reason,
         })
     }
