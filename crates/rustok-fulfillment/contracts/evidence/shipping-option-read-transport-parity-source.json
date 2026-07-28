@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-28",
+  "status": "source_audit_only_unvalidated",
+  "source_revision": "aa1f12d7660bda14daa5d8ade11d3074418a573f",
+  "scope": "shipping-option projection reads across mounted commerce transports",
+  "graphql": {
+    "composition": "application_host",
+    "runtime": "CommerceShippingOptionReadRuntime",
+    "operations": [
+      "ShippingOptionReadPort::list_shipping_option_projections",
+      "ShippingOptionReadPort::read_shipping_option_projection",
+      "ShippingOptionAdminReadPort::list_all_shipping_option_projections"
+    ],
+    "storefront_active_only": true,
+    "admin_inactive_before_filters": true,
+    "single_lookup_optional_not_found": true
+  },
+  "rest": {
+    "composition": "direct_concrete_service",
+    "storefront_active_list": {
+      "source": "crates/rustok-commerce/src/controllers/store/products.rs",
+      "operation": "FulfillmentService::list_shipping_options",
+      "currency_filter_retained": true,
+      "public_channel_filter_retained": true,
+      "shipping_profile_filter_retained": true
+    },
+    "admin_list_all": {
+      "source": "crates/rustok-commerce/src/controllers/admin/shipping.rs",
+      "operation": "FulfillmentService::list_all_shipping_options",
+      "inactive_before_filters": true,
+      "active_currency_provider_search_pagination_retained": true
+    },
+    "admin_lookup": {
+      "source": "crates/rustok-commerce/src/controllers/admin/shipping.rs",
+      "operation": "FulfillmentService::get_shipping_option"
+    },
+    "cutover_required": true
+  },
+  "native_ffa": {
+    "projection_read_surface": "absent_by_design",
+    "selection_surface": "ShippingSelectionPort",
+    "selection_transports": [
+      "native_server",
+      "graphql"
+    ],
+    "expand_selection_contract_for_projection_parity": false
+  },
+  "decision": {
+    "next_slice": "migrate_rest_projection_reads_to_host_composed_owner_ports",
+    "preserve_existing_http_success_filters": true,
+    "preserve_existing_http_public_envelopes": true,
+    "do_not_add_native_projection_api_without_a_consumer_contract": true
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  }
+}
