@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use thiserror::Error;
@@ -33,7 +33,7 @@ impl ConsumerPoisonReceiptState {
 }
 
 /// Immutable connector delivery identity for bytes that cannot be trusted as a
-/// decoded domain event.
+/// decoded domain event. An empty payload is valid exact broker input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsumerPoisonIdentity {
     delivery_id: Uuid,
@@ -72,12 +72,6 @@ impl ConsumerPoisonIdentity {
             return Err(ConsumerPoisonReceiptError::InvalidIdentity {
                 field: "source_partition",
                 reason: "must be positive",
-            });
-        }
-        if payload.is_empty() {
-            return Err(ConsumerPoisonReceiptError::InvalidIdentity {
-                field: "payload",
-                reason: "must not be empty",
             });
         }
         source_offset_i64(source_offset)?;
@@ -144,7 +138,7 @@ pub enum ConsumerPoisonReceiptError {
         field: &'static str,
         reason: &'static str,
     },
-    #[error("consumer poison source coordinates were reused for different bytes or identity")]
+    #[error("consumer poison identity was reused for different source coordinates or bytes")]
     IdentityConflict,
     #[error("stored consumer poison receipt state is invalid: {0}")]
     InvalidStoredState(String),
@@ -194,8 +188,8 @@ impl ConsumerPoisonReceiptStore {
             .db
             .query_one(Statement::from_sql_and_values(
                 backend,
-                select_receipt_sql(backend, false),
-                receipt_key_values(identity),
+                select_receipt_by_source_sql(backend, false),
+                source_key_values(identity),
             ))
             .await
             .map_err(storage_error)?;
@@ -260,6 +254,22 @@ impl ConsumerPoisonReceiptStore {
     ) -> Result<ConsumerPoisonPublishClaim, ConsumerPoisonReceiptError> {
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
+
+        // A deterministic delivery UUID is globally bound to one source delivery.
+        // Check it before insert so a UUID collision is a terminal identity conflict,
+        // not a retryable storage failure hidden behind ON CONFLICT DO NOTHING.
+        if let Some(row) = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                select_receipt_by_delivery_id_sql(backend, true),
+                vec![uuid_value(identity.delivery_id, backend)],
+            ))
+            .await
+            .map_err(storage_error)?
+        {
+            decode_and_validate_receipt(&row, identity, backend)?;
+        }
+
         transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -282,16 +292,31 @@ impl ConsumerPoisonReceiptStore {
         let row = transaction
             .query_one(Statement::from_sql_and_values(
                 backend,
-                select_receipt_sql(backend, true),
-                receipt_key_values(identity),
+                select_receipt_by_source_sql(backend, true),
+                source_key_values(identity),
             ))
             .await
-            .map_err(storage_error)?
-            .ok_or_else(|| {
-                ConsumerPoisonReceiptError::Storage(
+            .map_err(storage_error)?;
+        let row = match row {
+            Some(row) => row,
+            None => {
+                if let Some(row) = transaction
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        select_receipt_by_delivery_id_sql(backend, true),
+                        vec![uuid_value(identity.delivery_id, backend)],
+                    ))
+                    .await
+                    .map_err(storage_error)?
+                {
+                    decode_and_validate_receipt(&row, identity, backend)?;
+                    unreachable!("matching delivery UUID must also match source coordinates");
+                }
+                return Err(ConsumerPoisonReceiptError::Storage(
                     "reserved consumer poison receipt disappeared before claim".to_owned(),
-                )
-            })?;
+                ));
+            }
+        };
         let receipt = decode_and_validate_receipt(&row, identity, backend)?;
         match receipt.state {
             ConsumerPoisonReceiptState::Published => {
@@ -312,7 +337,7 @@ impl ConsumerPoisonReceiptStore {
                 })?
                 .into(),
         ];
-        values.extend(receipt_key_values(identity));
+        values.extend(source_key_values(identity));
         let claimed = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -328,8 +353,8 @@ impl ConsumerPoisonReceiptStore {
         let current = transaction
             .query_one(Statement::from_sql_and_values(
                 backend,
-                select_receipt_sql(backend, true),
-                receipt_key_values(identity),
+                select_receipt_by_source_sql(backend, true),
+                source_key_values(identity),
             ))
             .await
             .map_err(storage_error)?
@@ -360,7 +385,7 @@ impl ConsumerPoisonReceiptStore {
         let backend = self.db.get_database_backend();
         ensure_supported_backend(backend)?;
         let mut values = vec![uuid_value(publisher_id, backend)];
-        values.extend(receipt_key_values(identity));
+        values.extend(source_key_values(identity));
         self.db
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -380,7 +405,7 @@ impl ConsumerPoisonReceiptStore {
         let backend = self.db.get_database_backend();
         ensure_supported_backend(backend)?;
         let mut values = vec![uuid_value(publisher_id, backend)];
-        values.extend(receipt_key_values(identity));
+        values.extend(source_key_values(identity));
         let updated = self
             .db
             .execute(Statement::from_sql_and_values(
@@ -394,9 +419,10 @@ impl ConsumerPoisonReceiptStore {
             return Ok(());
         }
         match self.find(identity).await?.map(|receipt| receipt.state) {
-            Some(ConsumerPoisonReceiptState::Published | ConsumerPoisonReceiptState::Acknowledged) => {
-                Ok(())
-            }
+            Some(
+                ConsumerPoisonReceiptState::Published
+                | ConsumerPoisonReceiptState::Acknowledged,
+            ) => Ok(()),
             _ => Err(ConsumerPoisonReceiptError::ClaimLost),
         }
     }
@@ -412,7 +438,7 @@ impl ConsumerPoisonReceiptStore {
             .execute(Statement::from_sql_and_values(
                 backend,
                 mark_acknowledged_sql(backend),
-                receipt_key_values(identity),
+                source_key_values(identity),
             ))
             .await
             .map_err(storage_error)?;
@@ -427,7 +453,7 @@ impl ConsumerPoisonReceiptStore {
 }
 
 fn decode_and_validate_receipt(
-    row: &sea_orm::QueryResult,
+    row: &QueryResult,
     identity: &ConsumerPoisonIdentity,
     backend: DbBackend,
 ) -> Result<ConsumerPoisonReceipt, ConsumerPoisonReceiptError> {
@@ -552,7 +578,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
 }
 
 fn stored_uuid(
-    row: &sea_orm::QueryResult,
+    row: &QueryResult,
     column: &str,
     backend: DbBackend,
 ) -> Result<Uuid, ConsumerPoisonReceiptError> {
@@ -577,7 +603,7 @@ fn source_offset_value(offset: u64) -> Result<SqlValue, ConsumerPoisonReceiptErr
     Ok(source_offset_i64(offset)?.into())
 }
 
-fn receipt_key_values(identity: &ConsumerPoisonIdentity) -> Vec<SqlValue> {
+fn source_key_values(identity: &ConsumerPoisonIdentity) -> Vec<SqlValue> {
     vec![
         identity.consumer_group.clone().into(),
         identity.source_stream.clone().into(),
@@ -596,16 +622,28 @@ fn insert_receipt_sql(backend: DbBackend) -> String {
     )
 }
 
-fn select_receipt_sql(backend: DbBackend, lock: bool) -> String {
+fn select_receipt_by_source_sql(backend: DbBackend, lock: bool) -> String {
     let prefix = placeholder_prefix(backend);
-    let lock = if lock && backend == DbBackend::Postgres {
-        " FOR UPDATE"
-    } else {
-        ""
-    };
+    let lock = row_lock(backend, lock);
     format!(
         "SELECT delivery_id, consumer_group, source_stream, source_topic, source_partition, source_offset, payload, stable_error_code, delivery_attempt_count, state FROM iggy_consumer_poison_receipts WHERE consumer_group = {prefix}1 AND source_stream = {prefix}2 AND source_topic = {prefix}3 AND source_partition = {prefix}4 AND source_offset = {prefix}5 LIMIT 1{lock}"
     )
+}
+
+fn select_receipt_by_delivery_id_sql(backend: DbBackend, lock: bool) -> String {
+    let prefix = placeholder_prefix(backend);
+    let lock = row_lock(backend, lock);
+    format!(
+        "SELECT delivery_id, consumer_group, source_stream, source_topic, source_partition, source_offset, payload, stable_error_code, delivery_attempt_count, state FROM iggy_consumer_poison_receipts WHERE delivery_id = {prefix}1 LIMIT 1{lock}"
+    )
+}
+
+fn row_lock(backend: DbBackend, lock: bool) -> &'static str {
+    if lock && backend == DbBackend::Postgres {
+        " FOR UPDATE"
+    } else {
+        ""
+    }
 }
 
 fn claim_receipt_sql(backend: DbBackend) -> String {
@@ -656,14 +694,19 @@ mod tests {
 
     use super::*;
 
-    fn identity(delivery_id: Uuid, payload: Vec<u8>) -> ConsumerPoisonIdentity {
+    fn identity(
+        delivery_id: Uuid,
+        source_partition: u32,
+        source_offset: u64,
+        payload: Vec<u8>,
+    ) -> ConsumerPoisonIdentity {
         ConsumerPoisonIdentity::new(
             delivery_id,
             "rustok-social-graph-index",
             "rustok",
             "domain",
-            1,
-            42,
+            source_partition,
+            source_offset,
             payload,
         )
         .unwrap()
@@ -698,11 +741,11 @@ mod tests {
     }
 
     #[test]
-    fn identity_is_immutable_and_rejects_missing_facts() {
-        let identity = identity(Uuid::from_u128(7), vec![1, 2, 3]);
+    fn identity_is_immutable_and_empty_payload_is_valid() {
+        let identity = identity(Uuid::from_u128(7), 1, 42, Vec::new());
         assert_eq!(identity.delivery_id(), Uuid::from_u128(7));
         assert_eq!(identity.source_offset(), 42);
-        assert_eq!(identity.payload(), &[1, 2, 3]);
+        assert!(identity.payload().is_empty());
         assert!(
             ConsumerPoisonIdentity::new(
                 Uuid::nil(),
@@ -720,7 +763,7 @@ mod tests {
     #[tokio::test]
     async fn claim_publish_and_acknowledge_are_idempotent() {
         let store = sqlite_store().await;
-        let identity = identity(Uuid::new_v4(), vec![1, 2, 3]);
+        let identity = identity(Uuid::new_v4(), 1, 42, vec![1, 2, 3]);
         let first_publisher = Uuid::new_v4();
         let second_publisher = Uuid::new_v4();
         assert_eq!(
@@ -788,7 +831,7 @@ mod tests {
     #[tokio::test]
     async fn same_source_coordinates_reject_different_identity_or_bytes() {
         let store = sqlite_store().await;
-        let original = identity(Uuid::new_v4(), vec![1, 2, 3]);
+        let original = identity(Uuid::new_v4(), 1, 42, vec![1, 2, 3]);
         store
             .reserve_and_claim(
                 &original,
@@ -799,9 +842,39 @@ mod tests {
             )
             .await
             .unwrap();
-        let conflicting = identity(Uuid::new_v4(), vec![9, 9, 9]);
+        let conflicting = identity(Uuid::new_v4(), 1, 42, vec![9, 9, 9]);
         assert!(matches!(
             store.find(&conflicting).await,
+            Err(ConsumerPoisonReceiptError::IdentityConflict)
+        ));
+    }
+
+    #[tokio::test]
+    async fn same_delivery_id_rejects_different_source_coordinates() {
+        let store = sqlite_store().await;
+        let delivery_id = Uuid::new_v4();
+        let original = identity(delivery_id, 1, 42, Vec::new());
+        store
+            .reserve_and_claim(
+                &original,
+                "iggy.contract.decode_invalid",
+                1,
+                Uuid::new_v4(),
+                Duration::from_secs(30),
+            )
+            .await
+            .unwrap();
+        let conflicting = identity(delivery_id, 2, 43, Vec::new());
+        assert!(matches!(
+            store
+                .reserve_and_claim(
+                    &conflicting,
+                    "iggy.contract.decode_invalid",
+                    1,
+                    Uuid::new_v4(),
+                    Duration::from_secs(30),
+                )
+                .await,
             Err(ConsumerPoisonReceiptError::IdentityConflict)
         ));
     }
