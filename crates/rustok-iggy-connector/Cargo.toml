@@ -16,17 +16,21 @@ uuid.workspace = true
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+sea-orm = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }
 
 [features]
 default = []
 # Enable Iggy SDK support (for full functionality)
 iggy = ["dep:iggy"]
-migrations = ["dep:sea-orm-migration"]
+migrations = ["dep:sea-orm", "dep:sea-orm-migration"]
 
 [dependencies.iggy]
 version = "0.10.0"
 optional = true
+
+[dev-dependencies]
+sea-orm = { workspace = true, features = ["sqlx-sqlite"] }
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["thiserror"]
