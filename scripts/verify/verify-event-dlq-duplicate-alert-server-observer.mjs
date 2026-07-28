@@ -87,6 +87,8 @@ if (
   contract.activation?.outbox_local_requires_iggy !== false ||
   contract.activation?.outbox_iggy_requires_shared_transport !== true ||
   contract.activation?.outbox_iggy_missing_active_mode_fails_closed !== true ||
+  contract.activation?.observer_startup_failure_is_non_fatal !== true ||
+  contract.activation?.startup_failure_mode !== "unavailable" ||
   contract.activation?.non_iggy_profiles_are_errors !== false
 ) {
   fail("DLQ duplicate observer activation boundary drift");
@@ -108,6 +110,7 @@ if (
   contract.runtime?.publisher !== "DlqDuplicateAlertRuntimePublisher" ||
   contract.runtime?.initial_snapshot_unavailable !== true ||
   contract.runtime?.success_publishes_identifier_free_evaluation !== true ||
+  contract.runtime?.startup_failure_records_unavailable_without_task !== true ||
   contract.runtime?.connection_failure_marks_unavailable !== true ||
   contract.runtime?.scan_failure_marks_unavailable !== true ||
   contract.runtime?.shutdown_marks_unavailable !== true ||
@@ -115,6 +118,16 @@ if (
   contract.runtime?.event_delivery_remains_active !== true
 ) {
   fail("DLQ duplicate observer runtime boundary drift");
+}
+if (
+  !sameValue(contract.startup_stable_codes, {
+    configuration_invalid:
+      "iggy.dlq_duplicate.alert_server_observer_configuration_invalid",
+    runtime_unavailable:
+      "iggy.dlq_duplicate.alert_server_observer_runtime_unavailable",
+  })
+) {
+  fail("DLQ duplicate observer startup stable-code drift");
 }
 for (const [operation, allowed] of Object.entries(contract.lifecycle_boundary ?? {})) {
   if (allowed !== false) fail(`observer lifecycle coupling became allowed: ${operation}`);
@@ -139,6 +152,7 @@ const expectedIggyTests = [
 ];
 const expectedServerTests = [
   "every_event_delivery_profile_has_an_explicit_observer_mode",
+  "startup_unavailable_state_has_no_task_or_snapshot",
   "boolean_parser_is_bounded",
 ];
 if (!sameValue(contract.required_iggy_tests, expectedIggyTests)) {
@@ -157,7 +171,7 @@ if (countText(iggySource, "#[test]") !== expectedIggyTests.length) {
   fail("Iggy observer source must contain exactly four focused tests");
 }
 if (countText(serverSource, "#[test]") !== expectedServerTests.length) {
-  fail("server observer source must contain exactly two focused tests");
+  fail("server observer source must contain exactly three focused tests");
 }
 
 for (const marker of [
@@ -183,14 +197,19 @@ for (const marker of [
 
 for (const marker of [
   'const ENABLE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED";',
+  '"iggy.dlq_duplicate.alert_server_observer_configuration_invalid"',
+  '"iggy.dlq_duplicate.alert_server_observer_runtime_unavailable"',
   "pub enum EventDlqDuplicateAlertObserverMode",
+  "Unavailable",
   "NotApplicableMemory",
   "NotApplicableOutboxLocal",
   "IggyBundled",
   "IggyExternal",
   "pub async fn start_event_dlq_duplicate_alert_observer(",
-  "let enabled = optional_bool_env(ENABLE_ENV, false)?;",
-  "let mode = observer_mode(runtime.delivery_profile, runtime.iggy_mode.as_ref())?;",
+  "let enabled = match optional_bool_env(ENABLE_ENV, false)",
+  "record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);",
+  "record_startup_unavailable(ctx, STARTUP_RUNTIME_UNAVAILABLE);",
+  "return Ok(());",
   "EventDeliveryProfile::Memory",
   "EventDeliveryProfile::OutboxLocal",
   "EventDeliveryProfile::OutboxIggy",
@@ -199,6 +218,7 @@ for (const marker of [
   "ctx.shared_get::<Arc<IggyTransport>>()",
   "DlqDuplicateAlertRuntimePublisher::new(config.policy)",
   "IggyDlqDuplicateAlertObserver::connect(",
+  "if let Some(connected) = observer.take()",
   "connected.summarize().await",
   "publisher.publish(&summary)",
   "publisher.mark_unavailable()",
@@ -328,5 +348,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, fail-closed OutboxIggy active-mode selection, bundled/external observation, a configured partition allowlist under one bounded global message budget without a fairness claim, auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
+  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, non-fatal Unavailable startup state, fail-closed OutboxIggy mode selection, bundled/external observation, a configured partition allowlist under one bounded global message budget without a fairness claim, auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
 );
