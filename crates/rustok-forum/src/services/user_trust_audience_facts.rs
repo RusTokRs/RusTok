@@ -14,31 +14,50 @@ use crate::entities::forum_user_trust_state;
 use super::user_trust::MAX_FORUM_USER_TRUST_LEVEL;
 
 const INVALID_REQUEST_CODE: &str = "forum.user_trust_facts.invalid_request";
-const UNSUPPORTED_REQUEST_CODE: &str = "forum.user_trust_facts.unsupported_request";
 const TENANT_MISMATCH_CODE: &str = "forum.user_trust_facts.tenant_mismatch";
 const ACTOR_MISMATCH_CODE: &str = "forum.user_trust_facts.actor_mismatch";
+const FALLBACK_UNAVAILABLE_CODE: &str = "forum.user_trust_facts.membership_provider_unavailable";
+const FALLBACK_RESPONSE_CODE: &str = "forum.user_trust_facts.membership_response_invalid";
 const STORAGE_UNAVAILABLE_CODE: &str = "forum.user_trust_facts.storage_unavailable";
 const STORAGE_INVARIANT_CODE: &str = "forum.user_trust_facts.storage_invariant";
 
 /// Forum-owned exact-actor adapter for the authoritative user trust projection.
 ///
-/// The adapter accepts only a normalized trust-only request for the exact user
-/// represented by the read-only `PortContext`. It reads `forum_user_trust_states`
-/// directly because that table is the Forum owner projection. Missing state is
-/// the canonical fail-closed trust level `0`; `forum_user_stats` is never read or
-/// interpreted by this adapter.
+/// Membership dimensions are delegated as one request with trust explicitly
+/// disabled. A returned Channel or Groups membership already decides the
+/// positive-selector union and is returned without a trust read. Only a bounded
+/// confirmed membership miss reaches `forum_user_trust_states`. Missing trust
+/// state is the canonical fail-closed level `0`; `forum_user_stats` is never read
+/// or interpreted by this adapter.
 #[derive(Clone)]
 pub struct ForumUserTrustAudienceFactsPort {
     db: DatabaseConnection,
+    membership_facts: Option<SharedForumAudienceFactsPort>,
 }
 
 impl ForumUserTrustAudienceFactsPort {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            membership_facts: None,
+        }
     }
 
-    pub fn shared(db: DatabaseConnection) -> SharedForumAudienceFactsPort {
-        Arc::new(Self::new(db))
+    pub fn with_membership_facts(
+        db: DatabaseConnection,
+        membership_facts: SharedForumAudienceFactsPort,
+    ) -> Self {
+        Self {
+            db,
+            membership_facts: Some(membership_facts),
+        }
+    }
+
+    pub fn shared(
+        db: DatabaseConnection,
+        membership_facts: SharedForumAudienceFactsPort,
+    ) -> SharedForumAudienceFactsPort {
+        Arc::new(Self::with_membership_facts(db, membership_facts))
     }
 }
 
@@ -51,8 +70,71 @@ impl ForumAudienceFactsPort for ForumUserTrustAudienceFactsPort {
     ) -> Result<ForumAudienceFacts, PortError> {
         let request = normalize_request(request)?;
         validate_context(&context, &request)?;
-        validate_trust_only_request(&request)?;
 
+        if !request.channel_slugs.is_empty() || !request.group_ids.is_empty() {
+            let membership_facts = self
+                .resolve_membership_facts(context.clone(), &request)
+                .await?;
+            if !membership_facts.channel_memberships.is_empty()
+                || !membership_facts.group_memberships.is_empty()
+                || !request.include_trust_level
+            {
+                return Ok(membership_facts);
+            }
+        }
+
+        let trust_level = if request.include_trust_level {
+            Some(self.read_trust_level(&request).await?)
+        } else {
+            None
+        };
+
+        Ok(ForumAudienceFacts {
+            tenant_id: request.tenant_id,
+            user_id: request.user_id,
+            trust_level,
+            channel_memberships: Vec::new(),
+            group_memberships: Vec::new(),
+        })
+    }
+}
+
+impl ForumUserTrustAudienceFactsPort {
+    async fn resolve_membership_facts(
+        &self,
+        context: PortContext,
+        request: &ForumAudienceFactsRequest,
+    ) -> Result<ForumAudienceFacts, PortError> {
+        let Some(membership_facts) = &self.membership_facts else {
+            return Err(PortError::unavailable(
+                FALLBACK_UNAVAILABLE_CODE,
+                "Forum Channel or Groups audience facts are unavailable",
+            ));
+        };
+        let membership_request = ForumAudienceFactsRequest {
+            tenant_id: request.tenant_id,
+            user_id: request.user_id,
+            include_trust_level: false,
+            channel_slugs: request.channel_slugs.clone(),
+            group_ids: request.group_ids.clone(),
+        };
+        let facts = membership_facts
+            .resolve_forum_audience_facts(context, membership_request.clone())
+            .await?;
+        facts
+            .validate_for_request(&membership_request)
+            .map_err(|_| {
+                PortError::invariant_violation(
+                    FALLBACK_RESPONSE_CODE,
+                    "Forum membership facts returned an invalid bounded response",
+                )
+            })
+    }
+
+    async fn read_trust_level(
+        &self,
+        request: &ForumAudienceFactsRequest,
+    ) -> Result<u8, PortError> {
         let state = forum_user_trust_state::Entity::find_by_id((request.tenant_id, request.user_id))
             .one(&self.db)
             .await
@@ -62,18 +144,10 @@ impl ForumAudienceFactsPort for ForumUserTrustAudienceFactsPort {
                     "Forum user trust facts storage is unavailable",
                 )
             })?;
-        let trust_level = state
-            .map(|state| validate_state(&request, state))
-            .transpose()?
-            .unwrap_or(0);
-
-        Ok(ForumAudienceFacts {
-            tenant_id: request.tenant_id,
-            user_id: request.user_id,
-            trust_level: Some(trust_level),
-            channel_memberships: Vec::new(),
-            group_memberships: Vec::new(),
-        })
+        state
+            .map(|state| validate_state(request, state))
+            .transpose()
+            .map(|level| level.unwrap_or(0))
     }
 }
 
@@ -105,19 +179,6 @@ fn validate_context(
         return Err(PortError::forbidden(
             ACTOR_MISMATCH_CODE,
             "Forum user trust facts require the exact requested user actor",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_trust_only_request(request: &ForumAudienceFactsRequest) -> Result<(), PortError> {
-    if !request.include_trust_level
-        || !request.channel_slugs.is_empty()
-        || !request.group_ids.is_empty()
-    {
-        return Err(PortError::validation(
-            UNSUPPORTED_REQUEST_CODE,
-            "Forum user trust facts require one trust-only request",
         ));
     }
     Ok(())
