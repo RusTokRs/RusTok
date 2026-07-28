@@ -46,17 +46,30 @@ service or in-process read provider inside Commerce:
 - REST storefront active-list;
 - REST admin list-all and single lookup.
 
-The GraphQL facade retains one concrete `FulfillmentService` only for fulfillment
-lifecycle and order-to-fulfillment compatibility reads. Admin REST
-shipping-option mutations continue to use the concrete lifecycle owner and are
-outside the projection-read cutover. Directly embedded GraphQL schemas retain an
-explicit in-process compatibility fallback outside the private facade.
+The source transport inventory has status `source_cutover_ready_unvalidated`. It
+records host-composed GraphQL/REST source topology, retained filters and HTTP
+envelopes, context/deadline propagation, and the absence of concrete read
+construction. It explicitly records `runtime_parity_proven: false`.
 
-The source transport inventory now has status
-`source_cutover_ready_unvalidated`. It records host-composed GraphQL/REST source
-topology, retained filters and HTTP envelopes, context/deadline propagation, and
-the absence of concrete read construction. It explicitly records
-`runtime_parity_proven: false`.
+Fulfillment lifecycle projection lookup, filtered list, and latest-by-order are
+now published through `FulfillmentReadPort`. `InProcessFulfillmentReadPort` owns
+concrete `FulfillmentService` construction, requires read policy, parses tenant
+identity from `PortContext`, preserves existing filter and ordering semantics, and
+maps every current owner error to stable `PortError`.
+
+Commerce now publishes a separate host-selectable
+`CommerceFulfillmentLifecycleReadRuntime`. GraphQL runtime-data construction uses
+a runtime already present in `HostRuntimeContext` and otherwise retains an
+explicit in-process fallback from the host database. This keeps the owner
+contract injectable without claiming that the default server has cached or
+attached the runtime.
+
+Default `ServerRuntimeContext` composition, resolver/HTTP injection, and consumer
+cutover remain open. The private GraphQL compatibility facade still retains one
+concrete `FulfillmentService` for fulfillment lookup, list, and latest-by-order.
+Admin REST still constructs the service for fulfillment list and detail reads.
+Fulfillment lifecycle mutations remain on their existing concrete/orchestration
+owner paths and are outside this read boundary.
 
 The native FFA surface remains seller/cart selection through
 `ShippingSelectionPort`; it does not publish complete projection list or lookup
@@ -74,15 +87,19 @@ operations. No projection API should be added without a concrete consumer.
 - Published checkout execution port: `CheckoutFulfillmentExecutionPort`.
 - Mounted checkout provider: `TypedCheckoutFulfillmentExecutionPort` over the
   owner execution adapter.
-- Source-ready internal read boundaries: `ShippingOptionReadPort` and
-  `ShippingOptionAdminReadPort`; these are not new FBA provider contracts.
+- Source-ready internal read boundaries: `ShippingOptionReadPort`,
+  `ShippingOptionAdminReadPort`, and `FulfillmentReadPort`; these are not new FBA
+  provider contracts.
 - Contract/provider evidence remains in the existing fulfillment evidence
   matrices and live-adapter files.
 - Shipping-option source evidence:
   `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`.
-  It is unvalidated source evidence and does not promote status.
-- Focused guards cover owner boundaries, GraphQL host composition, REST host
-  composition, typed HTTP envelopes, and the separate native selection surface.
+- Fulfillment lifecycle read source evidence:
+  `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`.
+- Both files are unvalidated source evidence and do not promote status.
+- Focused guards cover owner boundaries, published Commerce runtime containers,
+  current mounted consumers, typed public envelopes, and the separate native
+  selection surface.
 - Compile, migrated database, mounted transport, restart, contention, and remote
   evidence remain missing.
 
@@ -129,6 +146,36 @@ operations. No projection API should be added without a concrete consumer.
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
 
+## Fulfillment lifecycle read source checklist
+
+- [x] Publish one owner `FulfillmentReadPort` for single projection, filtered list,
+  and latest-by-order reads.
+- [x] Preserve the existing `FulfillmentResponse`, list filters, pagination total,
+  latest-created ordering, and optional latest-by-order result.
+- [x] Require read policy and parse tenant identity from `PortContext`.
+- [x] Map every current `FulfillmentError` variant to stable owner `PortError`
+  values without owner-message control flow.
+- [x] Export the canonical `in_process_fulfillment_read_port` factory.
+- [x] Publish `CommerceFulfillmentLifecycleReadRuntime` with public host-selected
+  and in-process constructors plus a clone getter.
+- [x] Allow Commerce GraphQL runtime-data construction to consume a host-provided
+  lifecycle runtime while retaining an explicit in-process compatibility fallback.
+- [x] Retain source evidence and a focused guard that explicitly record default
+  server composition plus GraphQL/admin REST consumer cutovers as incomplete.
+- [ ] Compose/cache the lifecycle runtime once in the default application host,
+  preserve externally installed adapters, and expose it to both GraphQL and
+  `CommerceHttpRuntime`.
+- [ ] Add resolver scope or equivalent request-safe injection for GraphQL.
+- [ ] Cut GraphQL fulfillment lookup, filtered list, and latest-by-order reads over
+  to `FulfillmentReadPort` while preserving optional-not-found and public error
+  behavior.
+- [ ] Cut admin REST fulfillment list and detail reads over to the same owner port
+  while preserving pagination and current HTTP status/code/message policy.
+- [ ] Remove the remaining concrete `FulfillmentService` field from the private
+  GraphQL compatibility facade; lifecycle mutation services remain unchanged.
+- [ ] Execute compile, mounted GraphQL/REST lifecycle query, deadline, tenant,
+  filter, optional-not-found, failure, and remote evidence.
+
 ## Open results
 
 1. **Prove checkout fulfillment identity and replay.** Execute create/adopt/read,
@@ -171,12 +218,16 @@ operations. No projection API should be added without a concrete consumer.
    envelopes, and no mounted projection transport constructs a concrete read
    service or provider.
 
-6. **Publish remaining fulfillment query read ports.** Add owner boundaries for
-   fulfillment lifecycle list/lookup and order-to-fulfillment reads, then remove
-   the remaining concrete delegate from the GraphQL compatibility facade.
-   **Depends on:** stable projection and optional-not-found contracts.
-   **Done when:** all mounted fulfillment query reads consume host-composed owner
-   ports and lifecycle ownership remains in fulfillment.
+6. **Cut mounted lifecycle reads over to the owner port.** Compose/cache the
+   host-selectable `CommerceFulfillmentLifecycleReadRuntime`, inject it into
+   GraphQL and Commerce HTTP, route GraphQL lookup/list/latest-by-order and admin
+   REST list/detail through `FulfillmentReadPort`, and remove the private GraphQL
+   concrete delegate.
+   **Depends on:** the published owner port/runtime and stable transport-specific
+   optional-not-found/public error contracts.
+   **Done when:** mounted GraphQL and REST lifecycle reads consume the host-selected
+   owner port, preserve their existing response policy, and no mounted lifecycle
+   read constructs `FulfillmentService` inside Commerce.
 
 7. **Execute remote contracts.** Turn shipping-selection and checkout-execution
    matrices into provider execution before promoting beyond `boundary_ready`.
@@ -191,6 +242,7 @@ operations. No projection API should be added without a concrete consumer.
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 - `node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`
+- `node scripts/verify/verify-fulfillment-lifecycle-read-port.mjs`
 - `node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs`
 - `node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
@@ -206,6 +258,7 @@ operations. No projection API should be added without a concrete consumer.
 - `cargo check -p rustok-commerce --all-features`
 - Targeted checkout fulfillment identity/lifecycle/restart/contention tests.
 - Targeted shipping-option GraphQL/REST parity, context, error, and remote tests.
+- Targeted fulfillment lifecycle owner-port and mounted GraphQL/REST query tests.
 
 No verification command was executed in this source wave.
 

@@ -14,6 +14,7 @@ pub struct DlqEntry {
     pub error: String,
     pub retry_count: u32,
     pub connector_metadata: Option<SubscriberMessageMetadata>,
+    broker_message_id: Option<Uuid>,
 }
 
 impl DlqEntry {
@@ -31,12 +32,24 @@ impl DlqEntry {
             error: error.into(),
             retry_count,
             connector_metadata: None,
+            broker_message_id: None,
         }
     }
 
     pub fn with_connector_metadata(mut self, metadata: SubscriberMessageMetadata) -> Self {
         self.connector_metadata = Some(metadata);
         self
+    }
+
+    /// Sets the stable Iggy message header ID used by optional server-side
+    /// duplicate suppression. The owner receipt remains the durable source of truth.
+    pub fn with_broker_message_id(mut self, message_id: Uuid) -> Self {
+        self.broker_message_id = Some(message_id);
+        self
+    }
+
+    pub fn broker_message_id(&self) -> Option<Uuid> {
+        self.broker_message_id
     }
 
     pub fn source_offset(&self) -> Option<u64> {
@@ -92,9 +105,11 @@ impl DlqManager {
     pub async fn move_to_dlq(&self, connector: &dyn IggyConnector, entry: DlqEntry) -> Result<()> {
         let stream = self.stream.read().await.clone();
         let topic = self.topic.read().await.clone();
+        let publish_event_id = entry.broker_message_id.unwrap_or(entry.event_id);
 
         warn!(
             event_id = %entry.event_id,
+            broker_message_id = %publish_event_id,
             original_topic = %entry.original_topic,
             error = %entry.error,
             retry_count = entry.retry_count,
@@ -110,7 +125,7 @@ impl DlqManager {
             topic,
             entry.event_id.to_string(),
             entry.payload,
-            format!("dlq-{}", entry.event_id),
+            publish_event_id.to_string(),
         );
 
         connector.publish(request).await.map_err(|e| {
@@ -184,5 +199,21 @@ mod tests {
 
         assert!(!entry.payload.is_empty());
         assert_eq!(entry.retry_count, 2);
+        assert_eq!(entry.broker_message_id(), None);
+    }
+
+    #[test]
+    fn dlq_entry_retains_explicit_broker_message_id() {
+        let broker_message_id = Uuid::from_u128(42);
+        let entry = DlqEntry::new(
+            Uuid::from_u128(1),
+            "domain",
+            vec![1, 2, 3],
+            "Processing failed",
+            2,
+        )
+        .with_broker_message_id(broker_message_id);
+
+        assert_eq!(entry.broker_message_id(), Some(broker_message_id));
     }
 }

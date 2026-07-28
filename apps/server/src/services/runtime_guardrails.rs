@@ -11,6 +11,12 @@ use crate::services::seo_redirect_cache_reconciliation::{
     SeoRedirectCacheReconciliationHandle, seo_redirect_cache_reconciliation_required,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
+#[cfg(feature = "mod-social_graph")]
+use crate::services::social_graph_index_poison_observer::SocialGraphIndexPoisonObserverHandle;
+#[cfg(feature = "mod-social_graph")]
+use crate::services::social_graph_index_worker::{
+    SocialGraphIndexWorkerHandle, social_graph_index_consumer_enabled,
+};
 use crate::services::tenant_locale_generation::TenantLocaleGenerationListenerHandle;
 
 mod base {
@@ -52,6 +58,8 @@ pub async fn collect_runtime_guardrail_snapshot(
             .map(|handle| handle.is_ready()),
         RuntimeGuardrailStatus::Critical,
     );
+    #[cfg(feature = "mod-social_graph")]
+    observe_social_graph_index_worker(ctx, &mut snapshot);
     #[cfg(feature = "mod-seo")]
     if seo_redirect_cache_reconciliation_required(ctx) {
         observe_worker(
@@ -99,6 +107,37 @@ pub async fn collect_runtime_guardrail_snapshot(
     );
     apply_rollout_status(&mut snapshot);
     snapshot
+}
+
+#[cfg(feature = "mod-social_graph")]
+fn observe_social_graph_index_worker(
+    ctx: &ServerRuntimeContext,
+    snapshot: &mut RuntimeGuardrailSnapshot,
+) {
+    match social_graph_index_consumer_enabled() {
+        Ok(false) => {}
+        Ok(true) => {
+            observe_worker(
+                snapshot,
+                "Social Graph Index durable consumer",
+                ctx.shared_get::<SocialGraphIndexWorkerHandle>()
+                    .map(|handle| handle.is_ready()),
+                RuntimeGuardrailStatus::Critical,
+            );
+            observe_worker(
+                snapshot,
+                "Social Graph Index poison receipt observer",
+                ctx.shared_get::<SocialGraphIndexPoisonObserverHandle>()
+                    .map(|handle| handle.is_ready()),
+                RuntimeGuardrailStatus::Degraded,
+            );
+        }
+        Err(error) => escalate_snapshot(
+            snapshot,
+            RuntimeGuardrailStatus::Critical,
+            format!("Social Graph Index consumer enablement is invalid: {error}"),
+        ),
+    }
 }
 
 fn observe_worker(

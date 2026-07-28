@@ -1,26 +1,44 @@
 use std::collections::BTreeSet;
 
 use chrono::Utc;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter,
 };
 use uuid::Uuid;
 
 use crate::entities::relation;
 use crate::error::{SocialGraphError, SocialGraphResult};
 use crate::model::SocialRelationKind;
+use crate::receipts::{self, SocialGraphCommandReceiptAdmission, SocialGraphCommandReceiptRequest};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SocialGraphService {
     db: DatabaseConnection,
+    event_bus: Option<TransactionalEventBus>,
+}
+
+struct RelationMutationResult {
+    relation: relation::Model,
+    state_changed: bool,
 }
 
 impl SocialGraphService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            event_bus: None,
+        }
+    }
+
+    pub fn with_event_bus(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self {
+            db,
+            event_bus: Some(event_bus),
+        }
     }
 
     pub async fn relation_state(
@@ -39,80 +57,143 @@ impl SocialGraphService {
             .await?)
     }
 
-    pub async fn set_relation_state(
+    pub(crate) async fn set_relation_state_with_receipt(
         &self,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        source_user_id: Uuid,
+        target_user_id: Uuid,
+        relation_kind: SocialRelationKind,
+        active: bool,
+        expected_revision: Option<i64>,
+        idempotency_key: String,
+    ) -> SocialGraphResult<relation::Model> {
+        validate_pair(source_user_id, target_user_id)?;
+        let event_bus = self
+            .event_bus
+            .as_ref()
+            .ok_or(SocialGraphError::EventPublicationUnavailable)?;
+        let request = SocialGraphCommandReceiptRequest {
+            source_user_id,
+            target_user_id,
+            relation_kind,
+            active,
+            expected_revision,
+        };
+
+        match receipts::admit(&self.db, tenant_id, idempotency_key, &request).await? {
+            SocialGraphCommandReceiptAdmission::Replay(receipt) => {
+                receipts::replay(receipt, &request)
+            }
+            SocialGraphCommandReceiptAdmission::New(receipt) => {
+                let result = self
+                    .set_relation_state_in(
+                        &receipt.transaction,
+                        tenant_id,
+                        source_user_id,
+                        target_user_id,
+                        relation_kind,
+                        active,
+                        expected_revision,
+                    )
+                    .await;
+                match result {
+                    Ok(result) => {
+                        receipts::complete(
+                            receipt,
+                            &result.relation,
+                            result.state_changed,
+                            actor_id,
+                            event_bus,
+                        )
+                        .await
+                    }
+                    Err(error) => receipts::rollback(receipt, error).await,
+                }
+            }
+        }
+    }
+
+    async fn set_relation_state_in(
+        &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         source_user_id: Uuid,
         target_user_id: Uuid,
         relation_kind: SocialRelationKind,
         active: bool,
         expected_revision: Option<i64>,
-    ) -> SocialGraphResult<relation::Model> {
-        validate_pair(source_user_id, target_user_id)?;
-        let txn = self.db.begin().await?;
+    ) -> SocialGraphResult<RelationMutationResult> {
         let existing = relation::Entity::find()
             .filter(relation::Column::TenantId.eq(tenant_id))
             .filter(relation::Column::SourceUserId.eq(source_user_id))
             .filter(relation::Column::TargetUserId.eq(target_user_id))
             .filter(relation::Column::RelationKind.eq(relation_kind))
-            .one(&txn)
+            .one(txn)
             .await?;
 
-        let model = match existing {
+        let result = match existing {
             Some(existing) => {
                 if expected_revision.is_some_and(|expected| expected != existing.revision) {
                     return Err(SocialGraphError::RevisionConflict);
                 }
                 if existing.active == active {
-                    txn.commit().await?;
-                    return Ok(existing);
-                }
+                    RelationMutationResult {
+                        relation: existing,
+                        state_changed: false,
+                    }
+                } else {
+                    let next_revision = existing
+                        .revision
+                        .checked_add(1)
+                        .ok_or(SocialGraphError::RevisionConflict)?;
+                    let now: DateTimeWithTimeZone = Utc::now().into();
+                    let updated = relation::Entity::update_many()
+                        .col_expr(relation::Column::Active, Expr::value(active))
+                        .col_expr(relation::Column::Revision, Expr::value(next_revision))
+                        .col_expr(relation::Column::UpdatedAt, Expr::value(now))
+                        .filter(relation::Column::Id.eq(existing.id))
+                        .filter(relation::Column::Revision.eq(existing.revision))
+                        .exec(txn)
+                        .await?;
+                    if updated.rows_affected != 1 {
+                        return Err(SocialGraphError::RevisionConflict);
+                    }
 
-                let next_revision = existing
-                    .revision
-                    .checked_add(1)
-                    .ok_or(SocialGraphError::RevisionConflict)?;
-                let now: DateTimeWithTimeZone = Utc::now().into();
-                let updated = relation::Entity::update_many()
-                    .col_expr(relation::Column::Active, Expr::value(active))
-                    .col_expr(relation::Column::Revision, Expr::value(next_revision))
-                    .col_expr(relation::Column::UpdatedAt, Expr::value(now))
-                    .filter(relation::Column::Id.eq(existing.id))
-                    .filter(relation::Column::Revision.eq(existing.revision))
-                    .exec(&txn)
-                    .await?;
-                if updated.rows_affected != 1 {
-                    return Err(SocialGraphError::RevisionConflict);
+                    RelationMutationResult {
+                        relation: relation::Entity::find_by_id(existing.id)
+                            .one(txn)
+                            .await?
+                            .ok_or(SocialGraphError::RevisionConflict)?,
+                        state_changed: true,
+                    }
                 }
-
-                relation::Entity::find_by_id(existing.id)
-                    .one(&txn)
-                    .await?
-                    .ok_or(SocialGraphError::RevisionConflict)?
             }
             None => {
                 if expected_revision.is_some() {
                     return Err(SocialGraphError::RevisionConflict);
                 }
                 let now: DateTimeWithTimeZone = Utc::now().into();
-                relation::ActiveModel {
-                    id: Set(Uuid::new_v4()),
-                    tenant_id: Set(tenant_id),
-                    source_user_id: Set(source_user_id),
-                    target_user_id: Set(target_user_id),
-                    relation_kind: Set(relation_kind),
-                    active: Set(active),
-                    revision: Set(1),
-                    created_at: Set(now.clone()),
-                    updated_at: Set(now),
+                RelationMutationResult {
+                    relation: relation::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        tenant_id: Set(tenant_id),
+                        source_user_id: Set(source_user_id),
+                        target_user_id: Set(target_user_id),
+                        relation_kind: Set(relation_kind),
+                        active: Set(active),
+                        revision: Set(1),
+                        created_at: Set(now.clone()),
+                        updated_at: Set(now),
+                    }
+                    .insert(txn)
+                    .await?,
+                    state_changed: true,
                 }
-                .insert(&txn)
-                .await?
             }
         };
 
-        txn.commit().await?;
-        Ok(model)
+        Ok(result)
     }
 
     pub async fn blocks_between(

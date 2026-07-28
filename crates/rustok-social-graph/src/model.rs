@@ -12,3 +12,13 @@ pub enum SocialRelationKind {
     #[sea_orm(string_value = "follow")]
     Follow,
 }
+
+impl SocialRelationKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Mute => "mute",
+            Self::Follow => "follow",
+        }
+    }
+}

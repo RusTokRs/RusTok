@@ -72,8 +72,8 @@ It is important to distinguish:
 | `cart` | `rustok-cart` | — |
 | `customer` | `rustok-customer` | — |
 | `product` | `rustok-product` | `taxonomy` |
-| `profiles` | `rustok-profiles` | `taxonomy` |
-| `social_graph` | `rustok-social-graph` | — |
+| `profiles` | `rustok-profiles` | `media`, `social_graph`, `taxonomy` |
+| `social_graph` | `rustok-social-graph` | `outbox` |
 | `groups` | `rustok-groups` | — |
 | `region` | `rustok-region` | — |
 | `pricing` | `rustok-pricing` | `product` |
@@ -168,7 +168,3 @@ platform module in `modules.toml`.
 - [Module and Application Registry](./registry.md)
 - [Module Documentation Index](./_index.md)
 - [Module Platform Crate Registry](./crates-registry.md)
-- [`rustok-module.toml` Contract](./manifest.md)
-- [Rich Text Implementation Plan](./rich-text-implementation-plan.md)
-- [Page Builder Implementation Plan](./page-builder-implementation-plan.md)
-- [Module Architecture](../architecture/modules.md)

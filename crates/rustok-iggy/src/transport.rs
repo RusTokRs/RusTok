@@ -6,6 +6,8 @@ use tracing::{error, info};
 use crate::config::{IggyConfig, IggyMode};
 use crate::consumer::PersistentConsumerGroup;
 use crate::contract_consumer::PersistentContractConsumerGroup;
+#[cfg(feature = "iggy")]
+use crate::dlq_publisher::IggyDlqPublisher;
 use crate::producer;
 use crate::serialization::{EventSerializer, JsonSerializer, MessagePackSerializer};
 use crate::topology::TopologyManager;
@@ -13,11 +15,15 @@ use rustok_core::Result;
 use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_events::{ContractEventEnvelope, EventEnvelope};
 use rustok_iggy_connector::{BundledConnector, ConnectorConfig, ExternalConnector, IggyConnector};
+#[cfg(feature = "iggy")]
+use tokio::sync::Mutex;
 
 pub struct IggyTransport {
     config: IggyConfig,
     connector: Arc<dyn IggyConnector>,
     serializer: Arc<dyn EventSerializer>,
+    #[cfg(feature = "iggy")]
+    dlq_publisher: Mutex<Option<IggyDlqPublisher>>,
 }
 
 impl IggyTransport {
@@ -57,12 +63,18 @@ impl IggyTransport {
             config,
             connector,
             serializer,
+            #[cfg(feature = "iggy")]
+            dlq_publisher: Mutex::new(None),
         })
     }
 
     pub async fn shutdown(&self) -> Result<()> {
         info!(mode = %self.config.mode, "Shutting down Iggy transport");
 
+        #[cfg(feature = "iggy")]
+        {
+            *self.dlq_publisher.lock().await = None;
+        }
         self.connector.shutdown().await.map_err(|error| {
             error!(error = %error, "Failed to shutdown Iggy connector");
             rustok_core::Error::External(error.to_string())
@@ -115,6 +127,38 @@ impl IggyTransport {
     }
 
     pub async fn move_to_dlq(&self, entry: crate::dlq::DlqEntry) -> Result<()> {
+        #[cfg(feature = "iggy")]
+        if entry.broker_message_id().is_some() {
+            let mut publisher = self.dlq_publisher.lock().await;
+            if publisher.is_none() {
+                let connected = IggyDlqPublisher::connect(&self.config).await.map_err(|error| {
+                    tracing::error!(
+                        error_code = error.stable_code(),
+                        error = %error,
+                        "Failed to connect deterministic Iggy DLQ publisher"
+                    );
+                    rustok_core::Error::External(error.to_string())
+                })?;
+                *publisher = Some(connected);
+            }
+
+            let result = publisher
+                .as_ref()
+                .expect("deterministic DLQ publisher must be initialized")
+                .publish(&entry)
+                .await;
+            if let Err(error) = result {
+                tracing::error!(
+                    error_code = error.stable_code(),
+                    error = %error,
+                    "Deterministic Iggy DLQ publication failed; dropping SDK client for reconnect"
+                );
+                *publisher = None;
+                return Err(rustok_core::Error::External(error.to_string()));
+            }
+            return Ok(());
+        }
+
         crate::dlq::DlqManager::new()
             .with_stream(self.config.topology.stream_name.clone())
             .move_to_dlq(&*self.connector, entry)

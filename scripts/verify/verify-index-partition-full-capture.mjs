@@ -26,6 +26,9 @@ try {
   const module = read('ops/benches/src/index_storage/mod.rs');
   const orchestrator = read('scripts/verify/run-index-partition-evidence.mjs');
   const planTest = read('scripts/verify/index-partition-full-capture-plan.test.mjs');
+  const reviewCore = read('scripts/verify/index-partition-review-core.mjs');
+  const reviewCli = read('scripts/verify/render-index-partition-review.mjs');
+  const reviewTest = read('scripts/verify/index-partition-review.test.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
   const plan = read('crates/rustok-index/docs/implementation-plan.md');
@@ -106,10 +109,51 @@ try {
     'INDEX_PARTITION_QUERY_AUDIT',
     'plan refuses partial output reuse without starting Cargo',
   ], 'full capture plan fixture');
+  requireMarkers(reviewCore, [
+    'index_partition_retained_bundle_review_v1',
+    'RAW_ARTIFACT_ROLES',
+    'assemblePartitionPacket',
+    'assertCanonicalMatch(packet, assembled.packet',
+    'validatePartitionPacket(packet)',
+    'assertCanonicalMatch(admission, recalculatedAdmission',
+    'aliases another retained bundle file',
+    'sha256Hex(file.bytes)',
+    'Exact-byte SHA-256',
+    'does not create, edit, or admit evidence',
+    'Production partition copy/replay',
+  ], 'retained partition review core');
+  requireMarkers(reviewCli, [
+    "'--root'",
+    "'--packet'",
+    "'--admission'",
+    'inspectRetainedPartitionBundle',
+    'renderRetainedPartitionReview',
+    'process.stdout.write',
+    'It writes no files.',
+  ], 'retained partition review CLI');
+  forbidMarkers(`${reviewCore}\n${reviewCli}`, [
+    'writeFileSync',
+    'mkdirSync',
+    'renameSync',
+    'rmSync',
+    'spawnSync',
+    'DATABASE_URL',
+    'INDEX_PARTITION_ALLOW',
+  ], 'retained partition review tooling');
+  requireMarkers(reviewTest, [
+    'renders a deterministic read-only nine-file retained bundle review',
+    'Retained file count: `9`',
+    'assert.deepEqual(snapshot(context.root), before)',
+    'saved admission that does not match recalculated packet admission',
+    'rejects raw artifact drift from the retained packet',
+  ], 'retained partition review fixture');
   requireMarkers(tooling, [
     'partition-capture',
     'run-index-partition-evidence.mjs',
     'index-partition-full-capture-plan.test.mjs',
+    'partition-report',
+    'render-index-partition-review.mjs',
+    'index-partition-review.test.mjs',
     'verify-index-partition-full-capture.mjs',
   ], 'index storage tooling router');
   requireMarkers(runbook, [
@@ -123,6 +167,10 @@ try {
     'does not print the `DATABASE_URL` value',
     'INDEX_PARTITION_ALLOW_FULL_CAPTURE=1',
     'index-partition-capture-finalize',
+    'partition-report',
+    'all nine retained files',
+    'recalculates packet assembly and admission',
+    'writes no files',
     'forbidden before one retained admitted packet',
   ], 'full partition capture runbook');
   requireMarkers(plan, [

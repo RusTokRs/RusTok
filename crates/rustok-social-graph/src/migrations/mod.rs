@@ -1,5 +1,7 @@
 mod m20260723_000001_create_social_graph_relations;
 mod m20260725_000002_add_follow_relation_kind;
+mod m20260726_000003_create_command_receipts;
+mod m20260727_000004_create_index_dlq_receipts;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -8,6 +10,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
         Box::new(m20260723_000001_create_social_graph_relations::Migration),
         Box::new(m20260725_000002_add_follow_relation_kind::Migration),
+        Box::new(m20260726_000003_create_command_receipts::Migration),
+        Box::new(m20260727_000004_create_index_dlq_receipts::Migration),
     ]
 }
 
@@ -20,6 +24,14 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260725_000002_add_follow_relation_kind",
             vec!["m20260723_000001_create_social_graph_relations"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260726_000003_create_command_receipts",
+            vec!["m20260725_000002_add_follow_relation_kind"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260727_000004_create_index_dlq_receipts",
+            vec!["m20260726_000003_create_command_receipts"],
         ),
     ]
 }

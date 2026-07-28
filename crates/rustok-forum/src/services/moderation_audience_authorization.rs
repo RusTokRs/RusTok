@@ -1,4 +1,4 @@
-use rustok_api::{Action, PortContext, Resource};
+use rustok_api::{Action, PortActorKind, PortContext, Resource};
 use rustok_core::SecurityContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
@@ -56,6 +56,7 @@ impl ForumModerationAudienceAuthorizationService {
         context: Option<PortContext>,
     ) -> ForumResult<ForumModerationAudienceAuthorization> {
         enforce_scope(security, Resource::ForumTopics, Action::Moderate)?;
+        let context = exact_transport_context(tenant_id, security, context)?;
         let topic = forum_topic::Entity::find_by_id(topic_id)
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -74,6 +75,7 @@ impl ForumModerationAudienceAuthorizationService {
         context: Option<PortContext>,
     ) -> ForumResult<ForumModerationAudienceAuthorization> {
         enforce_scope(security, Resource::ForumReplies, Action::Moderate)?;
+        let context = exact_transport_context(tenant_id, security, context)?;
         let reply = forum_reply::Entity::find_by_id(reply_id)
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -215,6 +217,34 @@ impl ForumModerationAudienceAuthorizationService {
             })
             .unwrap_or_default())
     }
+}
+
+fn exact_transport_context(
+    tenant_id: Uuid,
+    security: &SecurityContext,
+    context: Option<PortContext>,
+) -> ForumResult<Option<PortContext>> {
+    let Some(context) = context else {
+        return Ok(None);
+    };
+
+    if context.tenant_id != tenant_id.to_string() {
+        return Err(ForumError::Validation(
+            "Forum moderation transport tenant does not match the owner command".to_string(),
+        ));
+    }
+    let Some(user_id) = security.user_id else {
+        return Err(ForumError::Validation(
+            "Forum moderation transport requires an authenticated user actor".to_string(),
+        ));
+    };
+    if context.actor.kind != PortActorKind::User || context.actor.id != user_id.to_string() {
+        return Err(ForumError::Validation(
+            "Forum moderation transport actor does not match the owner command".to_string(),
+        ));
+    }
+
+    Ok(Some(context))
 }
 
 fn owner_facts_still_required(

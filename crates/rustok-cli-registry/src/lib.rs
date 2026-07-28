@@ -68,30 +68,31 @@ mod tests {
     }
 
     #[test]
-    fn selected_distribution_includes_platform_provider() {
+    fn selected_distribution_includes_registered_owner_providers() {
         let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
         let registry = selected_distribution_registry(&runtime);
+        let commands = registry.commands();
 
         assert!(!registry.is_empty());
-        assert_eq!(registry.providers().len(), 2);
+        assert_eq!(registry.providers().len(), 7);
         assert!(
-            registry
-                .commands()
+            commands
                 .iter()
                 .any(|command| command.namespace == "core" && command.name == "version")
         );
         assert!(
-            registry
-                .commands()
+            commands
                 .iter()
-                .any(|command| command.namespace == "media" && command.name == "cleanup")
+                .any(|command| command.namespace == "media" && command.name == "reconcile")
         );
+        assert!(commands.iter().any(|command| {
+            command.namespace == "social_graph" && command.name == "receipt-cleanup"
+        }));
     }
 
     #[test]
     fn registry_exposes_provider_references() {
         let registry = SelectedDistributionRegistry::from_providers(vec![Box::new(ModuleProvider)]);
-
         assert_eq!(registry.providers().len(), 1);
         assert_eq!(registry.commands()[0].namespace, "module");
         assert_eq!(registry.commands()[0].name, "inspect");

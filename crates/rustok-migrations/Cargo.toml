@@ -19,6 +19,7 @@ tokio.workspace = true
 # Platform-core dependencies
 rustok-core.workspace = true
 rustok-modules.workspace = true
+rustok-tenant.workspace = true
 # Module crates — each owns its own migration files
 alloy.workspace = true
 rustok-auth.workspace = true
@@ -52,6 +53,8 @@ rustok-search.workspace = true
 rustok-taxonomy.workspace = true
 rustok-workflow.workspace = true
 rustok-media.workspace = true
+rustok-profiles.workspace = true
+rustok-social-graph.workspace = true
 rustok-translation.workspace = true
 rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 

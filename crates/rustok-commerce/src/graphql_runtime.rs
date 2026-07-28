@@ -6,8 +6,9 @@ use async_graphql::extensions::{
 use async_graphql::{Context, ServerResult, Value};
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_fulfillment::{
-    ShippingOptionAdminReadPort, ShippingOptionReadPort,
-    in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
+    FulfillmentReadPort, ShippingOptionAdminReadPort, ShippingOptionReadPort,
+    in_process_fulfillment_read_port, in_process_shipping_option_admin_read_port,
+    in_process_shipping_option_read_port,
 };
 use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::DatabaseConnection;
@@ -47,6 +48,30 @@ impl CommerceShippingOptionReadRuntime {
 
     pub fn shipping_option_admin_read_port(&self) -> Arc<dyn ShippingOptionAdminReadPort> {
         self.shipping_option_admin_reads.clone()
+    }
+}
+
+/// Host-selectable fulfillment lifecycle projection read port.
+///
+/// The runtime is separate from shipping-option reads so hosts can select different adapters.
+/// Until the mounted server and consumers are cut over, GraphQL runtime-data construction retains
+/// an explicit in-process fallback.
+#[derive(Clone)]
+pub struct CommerceFulfillmentLifecycleReadRuntime {
+    fulfillment_reads: Arc<dyn FulfillmentReadPort>,
+}
+
+impl CommerceFulfillmentLifecycleReadRuntime {
+    pub fn new(fulfillment_reads: Arc<dyn FulfillmentReadPort>) -> Self {
+        Self { fulfillment_reads }
+    }
+
+    pub fn in_process(db: DatabaseConnection) -> Self {
+        Self::new(in_process_fulfillment_read_port(db))
+    }
+
+    pub fn fulfillment_read_port(&self) -> Arc<dyn FulfillmentReadPort> {
+        self.fulfillment_reads.clone()
     }
 }
 
@@ -94,17 +119,19 @@ pub(crate) fn shipping_option_read_runtime_for_current_graphql_scope(
         .unwrap_or_else(|_| CommerceShippingOptionReadRuntime::in_process(db))
 }
 
-/// Provider registries and host-composed ports available to every commerce GraphQL resolver.
+/// Provider registries and host-selectable ports available to every commerce GraphQL resolver.
 ///
 /// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual
-/// provider registries remain deterministic fallbacks for tests and deployments that have not
-/// installed external providers. Mounted shipping-option reads are required host data.
+/// provider registries remain deterministic fallbacks. Mounted shipping-option reads require host
+/// data; fulfillment lifecycle reads retain an explicit in-process fallback until their consumer
+/// cutover is complete.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
     shipping_option_read_runtime: CommerceShippingOptionReadRuntime,
+    fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
 }
 
 impl CommerceGraphqlRuntimeData {
@@ -122,6 +149,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn shipping_option_read_runtime(&self) -> CommerceShippingOptionReadRuntime {
         self.shipping_option_read_runtime.clone()
+    }
+
+    pub fn fulfillment_lifecycle_read_runtime(&self) -> CommerceFulfillmentLifecycleReadRuntime {
+        self.fulfillment_lifecycle_read_runtime.clone()
     }
 }
 
@@ -148,6 +179,11 @@ pub fn attach_schema_data(
                 "commerce GraphQL requires CommerceShippingOptionReadRuntime in host composition"
                     .to_string()
             })?,
+        fulfillment_lifecycle_read_runtime: inputs
+            .shared_get::<CommerceFulfillmentLifecycleReadRuntime>()
+            .unwrap_or_else(|| {
+                CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone())
+            }),
     })
 }
 
