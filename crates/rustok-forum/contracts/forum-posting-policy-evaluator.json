@@ -2,6 +2,8 @@
   "schema_version": 1,
   "task": "FORUM-26D",
   "upstream_task": "FORUM-26C",
+  "downstream_fact_composition_task": "FORUM-26E",
+  "downstream_contract": "crates/rustok-forum/contracts/forum-posting-policy-facts.json",
   "scope": "Pure deterministic Forum-owned posting-policy evaluator and explicit rule precedence over the normalized FORUM-26C contract",
   "contract_file": "crates/rustok-forum/src/services/posting_policy.rs",
   "evaluator_file": "crates/rustok-forum/src/services/posting_policy_evaluator.rs",
