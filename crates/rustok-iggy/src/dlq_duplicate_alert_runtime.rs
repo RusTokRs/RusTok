@@ -50,12 +50,13 @@ impl DlqDuplicateAlertRuntimeSnapshot {
     }
 }
 
-/// Publisher side of the in-memory duplicate alert runtime composition.
+/// Single-writer publisher side of the in-memory duplicate alert runtime composition.
 ///
 /// It does not scan Iggy, read poison receipts, persist state, dispatch notifications, choose
 /// cooldown or suppression, affect readiness, or mutate broker/receipt/Profile state.
 pub struct DlqDuplicateAlertRuntimePublisher {
     policy: DlqDuplicateAlertPolicy,
+    generation: u64,
     sender: watch::Sender<DlqDuplicateAlertRuntimeSnapshot>,
 }
 
@@ -68,7 +69,11 @@ impl DlqDuplicateAlertRuntimePublisher {
     ) {
         let (sender, receiver) = watch::channel(DlqDuplicateAlertRuntimeSnapshot::unavailable(0));
         (
-            Self { policy, sender },
+            Self {
+                policy,
+                generation: 0,
+                sender,
+            },
             DlqDuplicateAlertRuntimeSubscriber { receiver },
         )
     }
@@ -81,10 +86,10 @@ impl DlqDuplicateAlertRuntimePublisher {
 
     /// Evaluates one already-observed count-only summary and replaces the latest snapshot.
     pub fn publish(
-        &self,
+        &mut self,
         summary: &DlqDuplicateSummary,
     ) -> Result<DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeError> {
-        let generation = self.next_generation()?;
+        let generation = self.advance_generation()?;
         let snapshot = DlqDuplicateAlertRuntimeSnapshot::available(
             generation,
             self.policy.evaluate(summary),
@@ -96,19 +101,19 @@ impl DlqDuplicateAlertRuntimePublisher {
     /// Marks observation unavailable and clears the prior evaluation so stale severity is not
     /// presented as current state.
     pub fn mark_unavailable(
-        &self,
+        &mut self,
     ) -> Result<DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeError> {
-        let snapshot = DlqDuplicateAlertRuntimeSnapshot::unavailable(self.next_generation()?);
+        let snapshot = DlqDuplicateAlertRuntimeSnapshot::unavailable(self.advance_generation()?);
         self.sender.send_replace(snapshot);
         Ok(snapshot)
     }
 
-    fn next_generation(&self) -> Result<u64, DlqDuplicateAlertRuntimeError> {
-        self.sender
-            .borrow()
+    fn advance_generation(&mut self) -> Result<u64, DlqDuplicateAlertRuntimeError> {
+        self.generation = self
             .generation
             .checked_add(1)
-            .ok_or(DlqDuplicateAlertRuntimeError::GenerationOverflow)
+            .ok_or(DlqDuplicateAlertRuntimeError::GenerationOverflow)?;
+        Ok(self.generation)
     }
 }
 
@@ -182,7 +187,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_replaces_latest_identifier_free_evaluation() {
-        let (publisher, mut subscriber) = DlqDuplicateAlertRuntimePublisher::new(policy());
+        let (mut publisher, mut subscriber) = DlqDuplicateAlertRuntimePublisher::new(policy());
         let published = publisher
             .publish(&summary(&[(1, &[1]), (1, &[1]), (2, &[2]), (2, &[2])]))
             .unwrap();
@@ -199,7 +204,7 @@ mod tests {
 
     #[test]
     fn unavailable_transition_clears_stale_evaluation() {
-        let (publisher, subscriber) = DlqDuplicateAlertRuntimePublisher::new(policy());
+        let (mut publisher, subscriber) = DlqDuplicateAlertRuntimePublisher::new(policy());
         publisher
             .publish(&summary(&[(1, &[1]), (1, &[1])]))
             .unwrap();
@@ -212,7 +217,7 @@ mod tests {
 
     #[test]
     fn independent_subscribers_receive_the_same_latest_snapshot() {
-        let (publisher, first) = DlqDuplicateAlertRuntimePublisher::new(policy());
+        let (mut publisher, first) = DlqDuplicateAlertRuntimePublisher::new(policy());
         let second = publisher.subscribe();
         let published = publisher
             .publish(&summary(&[(7, &[1]), (7, &[2])]))
