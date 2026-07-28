@@ -37,6 +37,15 @@
 - `pub struct ForumCategoryReplyCreateAudiencePolicyService`
 - `ForumCategoryReplyCreateAudiencePolicyService::get(tenant_id, category_id, security) -> ForumCategoryReplyCreateAudiencePolicy`
 - `ForumCategoryReplyCreateAudiencePolicyService::set(tenant_id, category_id, security, SetForumCategoryReplyCreateAudiencePolicyInput) -> ForumCategoryReplyCreateAudiencePolicy`
+- `pub struct ForumTopicReplyCreateAudiencePolicyService`
+- `ForumTopicReplyCreateAudiencePolicyService::get(tenant_id, topic_id, security) -> ForumTopicReplyCreateAudiencePolicy`
+- `ForumTopicReplyCreateAudiencePolicyService::set(tenant_id, topic_id, security, SetForumTopicReplyCreateAudiencePolicyInput) -> ForumTopicReplyCreateAudiencePolicy`
+- `pub struct ForumCategoryModerationAudiencePolicyService`
+- `ForumCategoryModerationAudiencePolicyService::get(tenant_id, category_id, security) -> ForumCategoryModerationAudiencePolicy`
+- `ForumCategoryModerationAudiencePolicyService::set(tenant_id, category_id, security, SetForumCategoryModerationAudiencePolicyInput) -> ForumCategoryModerationAudiencePolicy`
+- `pub struct ForumModerationAudienceAuthorizationService`, `ForumModerationAudienceAuthorization`
+- `ModerationService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> ModerationService`
+- `ModerationService::*_with_audience_context(..., PortContext) -> ForumResult<()>` for reply status, topic pin/lock/status, and solution commands
 - `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
 - `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
 - `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
@@ -120,6 +129,24 @@
 - Both legacy and inline-quote GraphQL and REST reply-create transports preserve the owner gate before writes; locally decidable policies remain compatible when the provider is absent.
 - `ForumGraphqlRuntimeData` and `ForumHttpRuntime` create `ReplyService` from the same optional `SharedForumAudienceFactsPort` already used by topic creation.
 - Run `node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs`, `node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs` after changing this boundary.
+### Topic reply-create audience narrowing
+- `ForumTopicReplyCreateAudiencePolicyService` stores an optional normalized topic-local reply-create layer independently from `forum_topic_audience_*` content visibility.
+- Managed `get` and atomic replacement `set` require `forum_topics:manage`; empty constraints clear only the local topic layer.
+- `FORUM-20AX` evaluates all inherited category layers followed by the optional topic layer, so a topic can narrow but never broaden its category reply-create policy.
+- Internal authorization identifies the exact category or topic layer that denied the actor while retaining one generic public denial.
+- Existing legacy and inline-quote owner paths, plus their composed GraphQL and REST transports, inherit the topic check without DTO or transport changes.
+- PostgreSQL and SQLite enforce tenant/topic ownership, typed relations, immutable rows, and bounded direct channel/group/allow/deny inserts.
+- Run `node scripts/verify/verify-forum-topic-reply-create-audience-policy.mjs`, `node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs` after changing this boundary.
+### Category moderation audience policy
+- `ForumCategoryModerationAudiencePolicyService` stores a normalized category-local moderator audience independently from content visibility and posting eligibility.
+- `FORUM-20AY` evaluates every inherited root-to-category layer before topic/reply moderation writes; explicit deny retains precedence and a child cannot broaden an ancestor.
+- Managed `get` and atomic replacement `set` require `forum_categories:manage`; empty constraints restore inheritance.
+- Existing context-free moderation methods preserve unrestricted, role-only, and explicit-user behavior. Trust, Channel, or Groups selectors require exact context plus `SharedForumAudienceFactsPort` and otherwise fail closed.
+- `ModerationService::with_audience_facts` and context-aware command variants cover reply status, topic pin/lock/status, and solution commands before their write transactions.
+- Topic authors retain the existing owned-update path for marking or clearing solutions; only the moderator fallback is audience-gated.
+- PostgreSQL and SQLite enforce tenant/category ownership, immutable rows, bounded relations, and one shared advisory key for owner replacement and direct bounded inserts.
+- GraphQL/REST exact context composition remains `FORUM-20AZ`; no moderation DTO changed in `FORUM-20AY`.
+- Run `node scripts/verify/verify-forum-moderation-audience-policy.mjs` after changing this boundary.
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
@@ -192,6 +219,7 @@
 - Signatures `approve_reply`, `reject_reply`, `hide_reply`, `pin_topic`, `unpin_topic` now accept `tenant_id: Uuid`
 - `close_topic`, `archive_topic` now accept `tenant_id: Uuid`
 - Added `mark_solution(tenant_id, topic_id, reply_id, security)` and `clear_solution(tenant_id, topic_id, security)`
+- `FORUM-20AY` adds `with_audience_facts` plus context-aware variants for every topic/reply moderation command and moderator solution fallback.
 ### VoteService
 - Added `set_topic_vote(tenant_id, topic_id, security, value)` and `clear_topic_vote(tenant_id, topic_id, security)`
 - Added `set_reply_vote(tenant_id, reply_id, security, value)` and `clear_reply_vote(tenant_id, reply_id, security)`
@@ -233,6 +261,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Quote replacement is exposed only through `ForumQuoteCommandService`; inline quote create/edit is exposed through topic/reply command facades.
 - The legacy facade methods convert into command DTOs and preserve existing quotes on body updates.
 - Relation snapshots are read only through `ForumRelationReadService` or materialized inside an active owner transaction.
+- Moderation transports must call `ModerationService`; audience evaluation remains owner-side and precedes every moderation write transaction.
 - Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
 
 ## Dependencies on Other RusToK Crates
@@ -271,6 +300,9 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Treats `forum_user_stats` activity counters as Forum trust state.
 - Builds reply-create audience identity from DTO fields or bypasses the exact transport context and host-composed `ReplyService`.
+- Reuses `forum_topic_audience_*` visibility rows for topic-local reply-create narrowing instead of the separate owner policy.
+- Applies moderator audience policy to a topic author's owned solution command instead of only the moderation fallback.
+- Opens a moderation write transaction before category audience authorization or queries Channel/Groups tables directly.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -289,6 +321,8 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
 - Category topic-create and reply-create audience layers are normalized, independently inherited, bounded, immutable on direct update and separate from content visibility.
+- Topic-local reply-create audience is a separate normalized final narrowing layer evaluated only after every inherited category reply-create layer.
+- Category moderation audience is normalized, inherited as a conjunction, and evaluated before all moderator-owned topic/reply/solution writes while preserving the topic-author solution owner path.
 - Topic/reply create transports derive exact tenant, actor, claims, locale, deadline, and route channel only from authenticated runtime contexts and use the same host-published optional audience facts port.
 - Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
 - Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.

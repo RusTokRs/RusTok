@@ -14,6 +14,10 @@ const forbidMarkers = (source, markers, label) => {
     if (source.includes(marker)) throw new Error(`${label} must not contain ${marker}`);
   }
 };
+const requireExactlyOnce = (source, marker, label) => {
+  const count = source.split(marker).length - 1;
+  if (count !== 1) throw new Error(`${label} must contain ${marker} exactly once; found ${count}`);
+};
 
 try {
   const finalizer = read('ops/benches/src/index_storage/partition_capture.rs');
@@ -21,8 +25,16 @@ try {
   const cargo = read('ops/benches/Cargo.toml');
   const module = read('ops/benches/src/index_storage/mod.rs');
   const orchestrator = read('scripts/verify/run-index-partition-evidence.mjs');
+  const planTest = read('scripts/verify/index-partition-full-capture-plan.test.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
+  const plan = read('crates/rustok-index/docs/implementation-plan.md');
+  const m3Start = plan.indexOf('### M3 - PostgreSQL storage engine');
+  const retainedStart = plan.indexOf('#### Retained repository contract wording');
+  if (m3Start < 0 || retainedStart <= m3Start) {
+    throw new Error('implementation plan must contain a bounded primary M3 checklist');
+  }
+  const primaryM3Checklist = plan.slice(m3Start, retainedStart);
 
   requireMarkers(finalizer, [
     'INDEX_PARTITION_ALLOW_CAPTURE_FINALIZE',
@@ -55,6 +67,18 @@ try {
   ], 'index storage module exports');
   requireMarkers(orchestrator, [
     'INDEX_PARTITION_ALLOW_FULL_CAPTURE',
+    "'--plan'",
+    'index_partition_full_capture_plan_v1',
+    'preflight_completed: true',
+    'database_connection_attempted: false',
+    'writes_performed: false',
+    'baseEnvironmentOverrides',
+    'INDEX_PARTITION_MANIFEST',
+    'environment_overrides',
+    'No Cargo or Node evidence stage is started.',
+    'if (options.plan)',
+    'JSON.stringify(plan, null, 2)',
+    'for (const stage of stages)',
     'index-partition-snapshot-capture',
     'index-partition-query-evidence',
     'index-partition-mutation-evidence',
@@ -72,19 +96,61 @@ try {
     'ALTER TABLE index_links',
     'dual-write',
   ], 'full capture tooling');
+  requireMarkers(planTest, [
+    'prints a no-write eight-stage full-capture plan',
+    "CARGO: path.join(workspace, 'missing-cargo')",
+    'database_connection_attempted',
+    'writes_performed',
+    'secret-value-must-not-be-printed',
+    'plan.stages[0].environment_overrides',
+    'INDEX_PARTITION_QUERY_AUDIT',
+    'plan refuses partial output reuse without starting Cargo',
+  ], 'full capture plan fixture');
   requireMarkers(tooling, [
     'partition-capture',
     'run-index-partition-evidence.mjs',
+    'index-partition-full-capture-plan.test.mjs',
     'verify-index-partition-full-capture.mjs',
   ], 'index storage tooling router');
   requireMarkers(runbook, [
     'M3 partition cutover rehearsal evidence runner: `complete`',
     'M3 retained packet owner orchestration: `complete`',
     'Real retained PostgreSQL packet execution: `open`',
+    'partition-capture --plan',
+    'does not open a PostgreSQL connection',
+    'does not start Cargo or Node evidence stages',
+    'does not create the bundle directory or any output file',
+    'does not print the `DATABASE_URL` value',
     'INDEX_PARTITION_ALLOW_FULL_CAPTURE=1',
     'index-partition-capture-finalize',
     'forbidden before one retained admitted packet',
   ], 'full partition capture runbook');
+  requireMarkers(plan, [
+    'M3 partition cutover rehearsal evidence runner: `complete`',
+    'M3 retained packet owner orchestration: `complete`',
+    'Real retained PostgreSQL packet execution: `open`',
+    '- [x] Add owner-operated PostgreSQL cutover/rollback rehearsal evidence capture.',
+    '- [x] Add owner-operated full retained packet orchestration and capture finalization.',
+    '12. The cutover rehearsal runner validates production and retained shadow identities,',
+    '13. The full-capture orchestrator requires one explicit owner opt-in, one immutable',
+    'one retained admitted packet, query adapter, and production partition',
+  ], 'Index implementation plan');
+  requireExactlyOnce(
+    primaryM3Checklist,
+    '- [ ] Execute one fresh full PostgreSQL capture and retain all six raw artifacts,',
+    'primary M3 checklist',
+  );
+  requireExactlyOnce(
+    primaryM3Checklist,
+    '- [ ] Review and archive one complete admitted real packet before production lifecycle',
+    'primary M3 checklist',
+  );
+  forbidMarkers(primaryM3Checklist, [
+    'Execute and retain PostgreSQL baseline/shadow, query, mutation, and maintenance',
+    'Execute retained PostgreSQL maintenance and cutover evidence.',
+    'Execute retained PostgreSQL cutover evidence.',
+    'Assemble and validate one complete retained real packet.',
+  ], 'primary M3 checklist');
 
   console.log(`${prefix} contract satisfied`);
 } catch (error) {

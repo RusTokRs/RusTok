@@ -10,33 +10,30 @@ use crate::audience::{
     ForumAudienceConstraints, ForumAudienceDecisionReason, ForumAudienceEvaluator,
     ForumAudienceFacts, ForumAudienceFactsResolver, SharedForumAudienceFactsPort,
 };
-use crate::entities::forum_topic;
+use crate::entities::{forum_reply, forum_topic};
 use crate::error::{ForumError, ForumResult};
 
+use super::category_moderation_audience::load_category_moderation_audience_policy;
 use super::rbac::enforce_scope;
-use super::topic_reply_create_audience::load_topic_reply_create_audience_policy_for_topic;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct ForumReplyCreateAudienceAuthorization {
-    pub topic_id: Uuid,
+pub struct ForumModerationAudienceAuthorization {
     pub category_id: Uuid,
     pub evaluated_layers: usize,
     pub allowed: bool,
-    /// Exact denying category layer. `None` on a denied result identifies the
-    /// already-present `topic_id` as the final topic-local denying layer.
     pub denied_by_category_id: Option<Uuid>,
     pub reason: ForumAudienceDecisionReason,
 }
 
-/// Evaluates inherited category layers followed by the optional topic-local
-/// reply-create narrowing before the raw reply owner prepares relations or
-/// writes reply, body, counter, user-stat, or event rows.
-pub struct ForumReplyCreateAudienceAuthorizationService {
+/// Evaluates inherited category moderation audience layers before a moderation
+/// owner opens its write transaction or mutates topic, reply, counter, stat,
+/// solution, journal, or outbox state.
+pub struct ForumModerationAudienceAuthorizationService {
     db: sea_orm::DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
 }
 
-impl ForumReplyCreateAudienceAuthorizationService {
+impl ForumModerationAudienceAuthorizationService {
     pub fn new(
         db: sea_orm::DatabaseConnection,
         facts_port: Option<SharedForumAudienceFactsPort>,
@@ -51,26 +48,96 @@ impl ForumReplyCreateAudienceAuthorizationService {
         Self::new(db, None)
     }
 
-    pub async fn evaluate(
+    pub async fn evaluate_topic(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         security: &SecurityContext,
         context: Option<PortContext>,
-    ) -> ForumResult<ForumReplyCreateAudienceAuthorization> {
-        enforce_scope(security, Resource::ForumReplies, Action::Create)?;
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        enforce_scope(security, Resource::ForumTopics, Action::Moderate)?;
         let topic = forum_topic::Entity::find_by_id(topic_id)
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or(ForumError::TopicNotFound(topic_id))?;
-        let category_id = topic.category_id;
-        let policy =
-            load_topic_reply_create_audience_policy_for_topic(&self.db, tenant_id, &topic).await?;
+        self.evaluate_category(tenant_id, topic.category_id, security, context)
+            .await
+    }
 
+    pub async fn evaluate_reply(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        expected_topic_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        enforce_scope(security, Resource::ForumReplies, Action::Moderate)?;
+        let reply = forum_reply::Entity::find_by_id(reply_id)
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ForumError::ReplyNotFound(reply_id))?;
+        if reply.topic_id != expected_topic_id {
+            return Err(ForumError::Validation(
+                "Reply belongs to another topic".to_string(),
+            ));
+        }
+        let topic = forum_topic::Entity::find_by_id(expected_topic_id)
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ForumError::TopicNotFound(expected_topic_id))?;
+        self.evaluate_category(tenant_id, topic.category_id, security, context)
+            .await
+    }
+
+    pub async fn require_topic(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        let authorization = self
+            .evaluate_topic(tenant_id, topic_id, security, context)
+            .await?;
+        self.require_allowed(authorization)
+    }
+
+    pub async fn require_reply(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        expected_topic_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        let authorization = self
+            .evaluate_reply(
+                tenant_id,
+                reply_id,
+                expected_topic_id,
+                security,
+                context,
+            )
+            .await?;
+        self.require_allowed(authorization)
+    }
+
+    async fn evaluate_category(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        let policy =
+            load_category_moderation_audience_policy(&self.db, tenant_id, category_id).await?;
         let mut evaluated_layers = 0usize;
         let mut last_reason = ForumAudienceDecisionReason::Unrestricted;
-        for layer in policy.inherited_category_layers {
+        for layer in policy.effective_layers {
             evaluated_layers += 1;
             let facts = self
                 .facts_for_layer(
@@ -88,8 +155,7 @@ impl ForumReplyCreateAudienceAuthorizationService {
             )?;
             last_reason = decision.reason;
             if !decision.allowed {
-                return Ok(ForumReplyCreateAudienceAuthorization {
-                    topic_id,
+                return Ok(ForumModerationAudienceAuthorization {
                     category_id,
                     evaluated_layers,
                     allowed: false,
@@ -99,28 +165,7 @@ impl ForumReplyCreateAudienceAuthorizationService {
             }
         }
 
-        if let Some(constraints) = policy.configured_constraints {
-            evaluated_layers += 1;
-            let facts = self
-                .facts_for_layer(tenant_id, security, context, &constraints)
-                .await?;
-            let decision =
-                ForumAudienceEvaluator::decide(tenant_id, &constraints, security, &facts)?;
-            last_reason = decision.reason;
-            if !decision.allowed {
-                return Ok(ForumReplyCreateAudienceAuthorization {
-                    topic_id,
-                    category_id,
-                    evaluated_layers,
-                    allowed: false,
-                    denied_by_category_id: None,
-                    reason: decision.reason,
-                });
-            }
-        }
-
-        Ok(ForumReplyCreateAudienceAuthorization {
-            topic_id,
+        Ok(ForumModerationAudienceAuthorization {
             category_id,
             evaluated_layers,
             allowed: true,
@@ -129,19 +174,13 @@ impl ForumReplyCreateAudienceAuthorizationService {
         })
     }
 
-    pub async fn require(
+    fn require_allowed(
         &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-        security: &SecurityContext,
-        context: Option<PortContext>,
-    ) -> ForumResult<ForumReplyCreateAudienceAuthorization> {
-        let authorization = self
-            .evaluate(tenant_id, topic_id, security, context)
-            .await?;
+        authorization: ForumModerationAudienceAuthorization,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
         if !authorization.allowed {
             return Err(ForumError::forbidden(
-                "Forum reply creation is unavailable for the current audience",
+                "Forum moderation is unavailable for the current audience",
             ));
         }
         Ok(authorization)
