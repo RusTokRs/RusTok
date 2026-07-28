@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -6,9 +7,14 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { assemblePartitionPacket } from './index-partition-evidence-assembly-core.mjs';
-import { prepareManifest, validatePartitionPacket } from './index-partition-evidence-core.mjs';
+import {
+  canonicalJson,
+  prepareManifest,
+  validatePartitionPacket,
+} from './index-partition-evidence-core.mjs';
 
-const script = path.resolve('scripts/verify/render-index-partition-review.mjs');
+const reportScript = path.resolve('scripts/verify/render-index-partition-review.mjs');
+const archiveManifestScript = path.resolve('scripts/verify/render-index-partition-archive-manifest.mjs');
 const digest = (character) => character.repeat(64);
 
 const writeJson = (filename, value) => writeFileSync(filename, `${JSON.stringify(value, null, 2)}\n`);
@@ -120,11 +126,14 @@ const buildBundle = () => {
   return { root };
 };
 
-const runReport = (root) => spawnSync(
+const runScript = (script, root) => spawnSync(
   process.execPath,
   [script, '--root', root],
   { encoding: 'utf8' },
 );
+
+const runReport = (root) => runScript(reportScript, root);
+const runArchiveManifest = (root) => runScript(archiveManifestScript, root);
 
 const snapshot = (root) => Object.fromEntries(
   readdirSync(root).sort().map((filename) => [filename, readFileSync(path.join(root, filename))]),
@@ -146,6 +155,56 @@ test('renders a deterministic read-only nine-file retained bundle review', () =>
     assert.match(first.stdout, /Recalculated admission matches saved admission: `true`/u);
     assert.match(first.stdout, /Production partition copy\/replay/u);
     assert.deepEqual(snapshot(context.root), before);
+  } finally {
+    rmSync(context.root, { recursive: true, force: true });
+  }
+});
+
+test('prints a deterministic read-only admitted archive manifest', () => {
+  const context = buildBundle();
+  try {
+    const before = snapshot(context.root);
+    const first = runArchiveManifest(context.root);
+    const second = runArchiveManifest(context.root);
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(first.stderr, '');
+    assert.equal(first.stdout, second.stdout);
+    const manifest = JSON.parse(first.stdout);
+    const { manifest_digest: manifestDigest, ...payload } = manifest;
+    assert.equal(manifest.contract, 'index_partition_retained_archive_manifest_v1');
+    assert.equal(manifest.digest_contract, 'canonical_json_without_manifest_digest_v1');
+    assert.equal(manifest.source_review_contract, 'index_partition_retained_bundle_review_v1');
+    assert.equal(manifest.admission_outcome, 'admitted');
+    assert.equal(manifest.file_count, 9);
+    assert.equal(manifest.files.length, 9);
+    assert.equal(
+      manifest.total_bytes,
+      manifest.files.reduce((total, file) => total + file.bytes, 0),
+    );
+    assert.equal(
+      manifestDigest,
+      createHash('sha256').update(canonicalJson(payload)).digest('hex'),
+    );
+    assert.deepEqual(snapshot(context.root), before);
+  } finally {
+    rmSync(context.root, { recursive: true, force: true });
+  }
+});
+
+test('refuses an archive manifest for a non-admitted retained bundle', () => {
+  const context = buildBundle();
+  try {
+    const packetPath = path.join(context.root, 'partition-packet.json');
+    const admissionPath = path.join(context.root, 'admission.json');
+    const packet = JSON.parse(readFileSync(packetPath, 'utf8'));
+    packet.manifest.thresholds.maximum_query_p95_regression_bps = 0;
+    writeJson(packetPath, packet);
+    writeJson(admissionPath, validatePartitionPacket(packet));
+    const result = runArchiveManifest(context.root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /requires admission outcome admitted/u);
+    assert.equal(result.stdout, '');
   } finally {
     rmSync(context.root, { recursive: true, force: true });
   }

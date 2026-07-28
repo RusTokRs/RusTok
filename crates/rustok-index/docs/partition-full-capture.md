@@ -65,6 +65,19 @@ node scripts/verify/index-storage-tooling.mjs partition-report \
 
 The report command writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. Shell redirection may save the derived report outside the immutable bundle, but the six raw artifacts, `capture.json`, `partition-packet.json`, and `admission.json` remain the authoritative archive inputs. A report does not change admission and does not authorize production lifecycle work.
 
+## Machine-readable admitted archive manifest
+
+After the report is reviewed and the retained outcome is `admitted`, print a deterministic machine-readable archive manifest:
+
+```bash
+node scripts/verify/index-storage-tooling.mjs partition-archive-manifest \
+  --root evidence/index-partition/retained-run
+```
+
+`partition-archive-manifest` runs the same retained-bundle inspection as `partition-report`, refuses any outcome other than `admitted`, and prints JSON containing the evidence identity, packet digest, provenance, PostgreSQL identity, all nine relative paths, exact-byte SHA-256 digests, byte counts, and total retained bytes. Its `manifest_digest` is the SHA-256 digest of canonical JSON for the manifest payload before the `manifest_digest` field is added, under `canonical_json_without_manifest_digest_v1`.
+
+The archive-manifest command writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. Shell redirection may save this derived index outside the immutable bundle. The manifest does not replace or modify the nine authoritative retained files, does not change admission, and does not authorize production lifecycle work.
+
 A failed attempt may leave evidence schemas or raw artifacts for inspection. Do not edit or reuse them. Prepare a fresh manifest run key and a new empty directory.
 
 This tooling does not authorize or implement production relation rename/drop, copy/replay, dual-write, cutover, cleanup, or query-adapter changes. Admission remains a measured owner decision based on the retained packet.

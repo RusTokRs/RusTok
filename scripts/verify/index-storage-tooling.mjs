@@ -23,25 +23,27 @@ const usage = () => {
   node scripts/verify/index-storage-tooling.mjs partition-assemble --manifest <manifest.json> --capture <capture.json> --output <packet.json>
   node scripts/verify/index-storage-tooling.mjs partition-validate --input <packet.json> --output <admission.json>
   node scripts/verify/index-storage-tooling.mjs partition-report --root <bundle-directory> [--packet <packet.json>] [--admission <admission.json>]
+  node scripts/verify/index-storage-tooling.mjs partition-archive-manifest --root <bundle-directory> [--packet <packet.json>] [--admission <admission.json>]
   node scripts/verify/index-storage-tooling.mjs hash <comparison.json>
   node scripts/verify/index-storage-tooling.mjs prepare --comparison <comparison.json> --selected <prototype> --owner <owner> --date <YYYY-MM-DD> --output <decision.json> [--force]
   node scripts/verify/index-storage-tooling.mjs render --comparison <comparison.json> --decision <decision.json> --output <adr.md>
   node scripts/verify/index-storage-tooling.mjs verify-adr --comparison <comparison.json> --decision <decision.json> --adr <adr.md>
 
 Commands:
-  contract            Run static Index boundary, evidence, partition, standalone-tool, and ADR guards.
-  fixtures            Run standalone, evidence, comparator, decision, partition, and ADR fixture suites.
-  packet              Validate one smoke, 100k, or 1m storage evidence packet.
-  compare             Generate a cross-scale storage comparison.
-  partition-prepare   Bind an immutable partition evidence manifest and shadow-only bootstrap SQL.
-  partition-capture   Print a no-write preflight plan or run every owner-operated capture, assembly, and validation stage.
-  partition-assemble  Build one packet from six retained raw JSON artifacts and exact-byte hashes.
-  partition-validate  Validate a measured partition packet and publish calculated admission output.
-  partition-report    Recalculate and render a read-only review of all nine retained bundle files.
-  hash                Print the SHA-256 digest of the exact comparison.json bytes.
-  prepare             Create a non-overwriting manual decision draft bound to exact comparison bytes.
-  render              Finalize the manual storage ADR with comparison and decision SHA-256 bindings.
-  verify-adr          Verify a saved ADR against exact comparison and decision bytes.`);
+  contract                    Run static Index boundary, evidence, partition, standalone-tool, and ADR guards.
+  fixtures                    Run standalone, evidence, comparator, decision, partition, and ADR fixture suites.
+  packet                      Validate one smoke, 100k, or 1m storage evidence packet.
+  compare                     Generate a cross-scale storage comparison.
+  partition-prepare           Bind an immutable partition evidence manifest and shadow-only bootstrap SQL.
+  partition-capture           Print a no-write preflight plan or run every owner-operated capture, assembly, and validation stage.
+  partition-assemble          Build one packet from six retained raw JSON artifacts and exact-byte hashes.
+  partition-validate          Validate a measured partition packet and publish calculated admission output.
+  partition-report            Recalculate and render a read-only review of all nine retained bundle files.
+  partition-archive-manifest  Print a deterministic JSON archive manifest for one admitted retained bundle.
+  hash                        Print the SHA-256 digest of the exact comparison.json bytes.
+  prepare                     Create a non-overwriting manual decision draft bound to exact comparison bytes.
+  render                      Finalize the manual storage ADR with comparison and decision SHA-256 bindings.
+  verify-adr                  Verify a saved ADR against exact comparison and decision bytes.`);
 };
 
 const runNode = (args, label, environment = process.env) => {
@@ -216,6 +218,9 @@ switch (command) {
     break;
   case 'partition-report':
     runScript('render-index-partition-review.mjs', args);
+    break;
+  case 'partition-archive-manifest':
+    runScript('render-index-partition-archive-manifest.mjs', args);
     break;
   case 'hash':
     runScript('hash-index-storage-comparison.mjs', args);
