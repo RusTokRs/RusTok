@@ -1,8 +1,13 @@
 use sea_orm_migration::prelude::*;
 
+#[path = "consumer_poison_inspection.rs"]
+mod consumer_poison_inspection;
 #[path = "consumer_poison_receipt.rs"]
 mod consumer_poison_receipt;
 
+pub use consumer_poison_inspection::{
+    ConsumerPoisonReceiptInspector, ConsumerPoisonReceiptSummary,
+};
 pub use consumer_poison_receipt::{
     ConsumerPoisonIdentity, ConsumerPoisonPublishClaim, ConsumerPoisonReceipt,
     ConsumerPoisonReceiptError, ConsumerPoisonReceiptState, ConsumerPoisonReceiptStore,
