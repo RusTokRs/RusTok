@@ -355,7 +355,11 @@ impl ModerationService {
         security: SecurityContext,
     ) -> ForumResult<()> {
         self.mark_solution_with_optional_audience_context(
-            tenant_id, tenant_id, topic_id, reply_id, security, None,
+            tenant_id,
+            topic_id,
+            reply_id,
+            security,
+            None,
         )
         .await
     }
@@ -370,7 +374,6 @@ impl ModerationService {
         context: PortContext,
     ) -> ForumResult<()> {
         self.mark_solution_with_optional_audience_context(
-            tenant_id,
             tenant_id,
             topic_id,
             reply_id,
@@ -488,7 +491,6 @@ impl ModerationService {
     async fn mark_solution_with_optional_audience_context(
         &self,
         tenant_id: Uuid,
-        _audience_tenant_id: Uuid,
         topic_id: Uuid,
         reply_id: Uuid,
         security: SecurityContext,
@@ -717,11 +719,13 @@ fn uses_topic_owner_scope(
     security: &SecurityContext,
     topic_author_id: Option<Uuid>,
 ) -> bool {
-    enforce_owned_scope(
-        security,
-        Resource::ForumTopics,
-        Action::Update,
-        topic_author_id,
-    )
-    .is_ok()
+    topic_author_id.is_some()
+        && security.user_id == topic_author_id
+        && enforce_owned_scope(
+            security,
+            Resource::ForumTopics,
+            Action::Update,
+            topic_author_id,
+        )
+        .is_ok()
 }
