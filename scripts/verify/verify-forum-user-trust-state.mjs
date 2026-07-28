@@ -55,6 +55,8 @@ for (const key of [
   "forum_owned_authoritative_trust_state",
   "separate_from_forum_user_stats",
   "absent_state_defaults_to_zero",
+  "revision_insert_materializes_current_state",
+  "owner_writes_revision_only",
   "revision_advances_exactly_once",
   "previous_level_matches_current_state",
   "state_must_match_revision",
@@ -63,6 +65,7 @@ for (const key of [
   "direct_state_delete_rejected",
   "tenant_user_composite_foreign_key",
   "target_user_delete_restricted_to_preserve_audit",
+  "change_actor_retained_as_audit_snapshot",
   "managed_get_set_history",
   "authenticated_change_actor_required",
   "manual_override_only_in_this_slice",
@@ -112,6 +115,11 @@ for (const marker of [
   "forum user trust revision must advance exactly once",
   "forum user trust previous level does not match current state",
   "forum user trust state update must match the next immutable revision",
+  "CREATE OR REPLACE FUNCTION forum_apply_user_trust_revision()",
+  "CREATE TRIGGER forum_user_trust_revision_apply",
+  "AFTER INSERT ON forum_user_trust_revisions",
+  "ON CONFLICT (tenant_id, user_id) DO UPDATE",
+  "CREATE TRIGGER IF NOT EXISTS forum_user_trust_revision_apply",
   "hashtextextended(NEW.tenant_id::text || ':' || NEW.user_id::text || ':trust', 26)",
   "idx_forum_user_trust_revisions_history",
 ]) {
@@ -131,6 +139,11 @@ rejectText(
   migration,
   "ON DELETE SET NULL",
   "composite actor SET NULL must not corrupt tenant identity",
+);
+rejectText(
+  migration,
+  "FOREIGN KEY (tenant_id, changed_by_user_id)",
+  "change actor must remain an immutable audit snapshot rather than a deletion dependency",
 );
 
 for (const marker of [
@@ -166,9 +179,12 @@ for (const marker of [
   "Forum trust changes require an authenticated user actor",
   "Forum trust idempotency key was already used for another change",
   "MAX_FORUM_USER_TRUST_HISTORY_PAGE: u16 = 100",
+  "MAX_FORUM_USER_TRUST_LEVEL: u8 = crate::audience::MAX_FORUM_AUDIENCE_TRUST_LEVEL",
   'format!("{tenant_id}:{user_id}:trust")',
   '"SELECT pg_advisory_xact_lock(hashtextextended($1, 26))"',
   ".limit(u64::from(limit) + 1)",
+  "Forum trust revision did not materialize a current state",
+  "Forum trust materialized state does not match its immutable revision",
 ]) {
   requireText(service, marker, `user trust owner service is missing ${marker}`);
 }
@@ -179,10 +195,11 @@ for (const forbidden of [
   "TopicService",
   "ReplyService",
   "ModerationService",
+  "forum_user_trust_state::ActiveModel",
   "reqwest",
   "openai",
 ]) {
-  rejectText(service, forbidden, `trust owner must not derive or enforce through ${forbidden}`);
+  rejectText(service, forbidden, `trust owner must not derive, enforce, or write state directly through ${forbidden}`);
 }
 
 for (const marker of [
@@ -194,6 +211,7 @@ for (const marker of [
   "UPDATE forum_user_trust_revisions SET trust_level = 99",
   "DELETE FROM forum_user_trust_revisions",
   "UPDATE forum_user_trust_states SET trust_level = 50, revision = 2",
+  "DELETE FROM forum_user_trust_states",
   "trust_owner_requires_manage_scope_and_exact_idempotent_payload",
 ]) {
   requireText(sqliteProof, marker, `SQLite trust proof is missing ${marker}`);
@@ -210,6 +228,7 @@ for (const marker of [
   "pub mod forum_user_trust_state;",
   "ForumUserTrustRevisionEntity",
   "ForumUserTrustStateEntity",
+  "ForumUserTrustChangeKind",
 ]) {
   requireText(entityMod, marker, `entity registry is missing ${marker}`);
 }
@@ -222,11 +241,17 @@ for (const marker of [
   requireText(serviceMod, marker, `service registry is missing ${marker}`);
   requireText(crateRoot, marker, `crate root is missing public trust API ${marker}`);
 }
+requireText(
+  crateRoot,
+  "ForumUserTrustChangeKind",
+  "crate root must expose the public trust change kind",
+);
 
 for (const marker of [
   "# FORUM-26A user trust state",
   "source-ready / unvalidated",
   "Absence of a current row means trust level `0`",
+  "`AFTER INSERT` triggers materialize its matching current state",
   "`forum_user_stats` remains an activity-counter projection",
   "no trust facts adapter",
   "no automatic posting-policy evaluator",
