@@ -50,6 +50,12 @@ for (const marker of [
 ]) {
   requireText("Iggy consumer poison migration", files.migrations, marker);
 }
+for (const forbidden of [
+  "octet_length(payload) > 0",
+  "CHECK (length(payload) > 0)",
+]) {
+  forbidText("exact payload migration", files.migrations, forbidden);
+}
 
 for (const marker of [
   "pub struct ConsumerPoisonIdentity",
@@ -74,9 +80,12 @@ for (const marker of [
   "first_delivery_attempt_count",
   "source_offset_i64",
   "stored_payload != identity.payload",
+  "select_receipt_by_delivery_id_sql",
   "lease_expires_at <= CURRENT_TIMESTAMP",
   "retained.stable_error_code",
   "retained.first_delivery_attempt_count",
+  "identity_is_immutable_and_empty_payload_is_valid",
+  "same_delivery_id_rejects_different_source_coordinates",
 ]) {
   requireText("Iggy consumer poison receipt store", files.receipts, marker);
 }
@@ -90,6 +99,7 @@ for (const forbidden of [
   "pub source_partition:",
   "pub source_offset:",
   "pub payload:",
+  "payload.is_empty()",
   "tenant_id",
   "event_id",
   "DomainEvent",
@@ -113,12 +123,23 @@ for (const marker of [
   requireText("raw decode-failure bridge facts", files.decodeFailure, marker);
 }
 
-const insert = files.receipts.indexOf("insert_receipt_sql(backend)");
-const select = files.receipts.indexOf("select_receipt_sql(backend, true)", insert);
-const claim = files.receipts.indexOf("claim_receipt_sql(backend)", select);
-if (insert < 0 || select <= insert || claim <= select) {
+const deliveryLookup = files.receipts.indexOf(
+  "select_receipt_by_delivery_id_sql(backend, true)",
+);
+const insert = files.receipts.indexOf("insert_receipt_sql(backend)", deliveryLookup);
+const sourceSelect = files.receipts.indexOf(
+  "select_receipt_by_source_sql(backend, true)",
+  insert,
+);
+const claim = files.receipts.indexOf("claim_receipt_sql(backend)", sourceSelect);
+if (
+  deliveryLookup < 0 ||
+  insert <= deliveryLookup ||
+  sourceSelect <= insert ||
+  claim <= sourceSelect
+) {
   failures.push(
-    "receipt reservation must persist, reload/validate, and only then claim publication",
+    "receipt reservation must validate delivery UUID, persist, reload exact source identity, and only then claim publication",
   );
 }
 
@@ -131,5 +152,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy consumer poison receipt verification passed: connector-owned migration registration, immutable private source identity, exact-byte conflict validation, retry/error classification independence, retained first diagnostics, leased reserve/publish/ack states, bounded stable errors, and no tenant/event/authorization or implicit broker side effects are locked.",
+  "Iggy consumer poison receipt verification passed: connector-owned migration registration, immutable private source identity, empty exact payload retention, source and UUID collision validation, retry/error classification independence, retained first diagnostics, leased reserve/publish/ack states, bounded stable errors, and no tenant/event/authorization or implicit broker side effects are locked.",
 );
