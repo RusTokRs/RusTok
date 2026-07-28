@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "module": "social-graph",
+  "packet": "index-raw-poison-publish-mark-ambiguity-source",
+  "status": "source_complete_runtime_pending",
+  "test_target": "index_raw_poison_publish_mark_ambiguity",
+  "feature": "index-consumer",
+  "database_environment": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_DATABASE_URL",
+  "shared_optional_environment": [
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_IGGY_USERNAME",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_IGGY_PASSWORD"
+  ],
+  "scenarios": [
+    {
+      "case": "dedup_enabled_closes_publish_mark_ambiguity_without_physical_duplicate",
+      "address_environment": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_ENABLED_ADDRESS",
+      "required_observed_dlq_counts": [
+        0,
+        1,
+        1
+      ],
+      "meaning": "the recovery publisher retries the same deterministic broker message ID after the first publish succeeded but before PostgreSQL reached published; enabled server-side deduplication suppresses the physical duplicate"
+    },
+    {
+      "case": "dedup_disabled_exposes_publish_mark_ambiguity_as_physical_duplicate",
+      "address_environment": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_DISABLED_ADDRESS",
+      "required_observed_dlq_counts": [
+        0,
+        1,
+        2
+      ],
+      "meaning": "the same recovery retry is accepted as a second physical DLQ message when server-side deduplication is disabled"
+    }
+  ],
+  "required_sequence": [
+    "receive_malformed_source_without_acknowledgement",
+    "reserve_and_claim_first_publisher_with_one_second_lease",
+    "publish_exact_bytes_through_production_iggy_transport",
+    "observe_one_physical_dlq_message",
+    "retain_postgresql_receipt_in_publishing",
+    "reject_live_second_claim_as_busy",
+    "shutdown_first_transport_without_source_acknowledgement_or_mark_published",
+    "wait_bounded_time_for_natural_lease_expiry",
+    "reopen_same_stream_and_fixed_consumer_group",
+    "receive_same_offset_delivery_uuid_and_exact_bytes",
+    "reclaim_receipt_with_second_publisher",
+    "fence_first_publisher_mark_published_as_claim_lost",
+    "retry_same_deterministic_broker_message_id_through_production_transport",
+    "observe_mode_specific_physical_dlq_count",
+    "persist_published_with_recovery_publisher",
+    "acknowledge_source_offset",
+    "persist_acknowledged_bookkeeping",
+    "receive_next_source_offset"
+  ],
+  "lease_boundary": {
+    "duration_seconds": 1,
+    "wait_milliseconds": 1500,
+    "direct_receipt_sql_mutation": false,
+    "clock_source": "postgresql_current_timestamp"
+  },
+  "broker_observer": {
+    "implementation": "read_only_iggy_sdk_topic_metadata",
+    "allowed_operation": "get_topic_partition_messages_count",
+    "direct_sdk_producer": false,
+    "unique_stream_per_case": true,
+    "domain_partitions": 1,
+    "replication_factor": 1
+  },
+  "production_paths": {
+    "source_consumer": "rustok_social_graph::index_consumer::SocialGraphIndexConsumer",
+    "dlq_publisher": "rustok_iggy::IggyTransport::move_to_dlq",
+    "receipt_store": "rustok_iggy_connector::migrations::ConsumerPoisonReceiptStore",
+    "worker": "apps/server/src/services/social_graph_index_worker.rs"
+  },
+  "required_production_order": [
+    "reserve_and_claim",
+    "transport.move_to_dlq",
+    "mark_raw_poison_published",
+    "acknowledge_decode_failure",
+    "mark_acknowledged"
+  ],
+  "isolation": {
+    "postgresql_schema": "unique_per_case",
+    "postgresql_pool_max_connections": 1,
+    "iggy_stream": "unique_per_case",
+    "enabled_and_disabled_addresses_must_be_distinct_when_both_are_present": true,
+    "localhost_fallback": false,
+    "database_url_fallback": false,
+    "default_credentials": false,
+    "stream_deletion_claim": false
+  },
+  "source_files": [
+    "crates/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs",
+    "crates/rustok-social-graph/Cargo.toml",
+    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+    "crates/rustok-iggy/src/transport.rs",
+    "apps/server/src/services/social_graph_index_worker.rs"
+  ],
+  "verifier": "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity.mjs",
+  "documentation": "crates/rustok-social-graph/docs/index-raw-poison-publish-mark-ambiguity-evidence.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-publish-mark-ambiguity-checkpoint.md",
+  "non_claims": [
+    "postgresql_iggy_transaction",
+    "physical_exactly_once_without_deduplication",
+    "production_dedup_window_sufficiency",
+    "dedup_configuration_readback",
+    "bundled_iggy",
+    "tls_auth_failover",
+    "multi_replica_ownership",
+    "profiles_authorization"
+  ],
+  "execution_status": "not_run"
+}
