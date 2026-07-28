@@ -43,6 +43,9 @@
     }
   ],
   "source_files": [
+    "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution-contract.json",
+    "scripts/evidence/capture-iggy-consumer-poison-postgres.mjs",
+    "scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs",
     "crates/rustok-iggy-connector/tests/consumer_poison_receipt_postgres_environment.rs",
     "crates/rustok-iggy-connector/tests/consumer_poison_receipt_postgres.rs",
     "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
