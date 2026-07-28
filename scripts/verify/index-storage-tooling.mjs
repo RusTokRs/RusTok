@@ -19,6 +19,7 @@ const usage = () => {
   node scripts/verify/index-storage-tooling.mjs packet --scale <smoke|100k|1m> [--root <directory>]
   node scripts/verify/index-storage-tooling.mjs compare --input <directory> [--input <directory>] [--output <directory>]
   node scripts/verify/index-storage-tooling.mjs partition-prepare --input <config.json> --manifest <manifest.json> --bootstrap <bootstrap.sql>
+  node scripts/verify/index-storage-tooling.mjs partition-capture --manifest <manifest.json> --query-audit <query-audit.json> --root <bundle-directory> [--packet <packet.json>] [--admission <admission.json>]
   node scripts/verify/index-storage-tooling.mjs partition-assemble --manifest <manifest.json> --capture <capture.json> --output <packet.json>
   node scripts/verify/index-storage-tooling.mjs partition-validate --input <packet.json> --output <admission.json>
   node scripts/verify/index-storage-tooling.mjs hash <comparison.json>
@@ -32,6 +33,7 @@ Commands:
   packet              Validate one smoke, 100k, or 1m storage evidence packet.
   compare             Generate a cross-scale storage comparison.
   partition-prepare   Bind an immutable partition evidence manifest and shadow-only bootstrap SQL.
+  partition-capture   Run every owner-operated raw capture, finalize capture identity, assemble, and validate.
   partition-assemble  Build one packet from six retained raw JSON artifacts and exact-byte hashes.
   partition-validate  Validate a measured partition packet and publish calculated admission output.
   hash                Print the SHA-256 digest of the exact comparison.json bytes.
@@ -70,6 +72,7 @@ const runContract = (args) => {
     'verify-index-partition-mutation-evidence.mjs',
     'verify-index-partition-maintenance-evidence.mjs',
     'verify-index-partition-cutover-evidence.mjs',
+    'verify-index-partition-full-capture.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-standalone-tools.mjs',
@@ -197,6 +200,9 @@ switch (command) {
     break;
   case 'partition-prepare':
     runScript('prepare-index-partition-evidence.mjs', args);
+    break;
+  case 'partition-capture':
+    runScript('run-index-partition-evidence.mjs', args);
     break;
   case 'partition-assemble':
     runScript('assemble-index-partition-evidence.mjs', args);

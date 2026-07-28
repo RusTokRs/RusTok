@@ -4,6 +4,7 @@ mod database_metadata;
 mod explain;
 mod maintenance_runner;
 mod mutation_runner;
+mod partition_capture;
 mod partition_cutover;
 mod partition_maintenance;
 mod partition_mutation;
@@ -21,6 +22,9 @@ pub use maintenance_runner::{
     MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
 };
 pub use mutation_runner::{MutationBenchmarkReport, run_mutations, write_mutation_report};
+pub use partition_capture::{
+    PartitionCaptureFinalize, PartitionCaptureFinalizeConfig, finalize_partition_capture,
+};
 pub use partition_cutover::{
     PartitionCutoverCapture, PartitionCutoverConfig, capture_partition_cutover_evidence,
 };
