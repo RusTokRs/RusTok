@@ -36,18 +36,25 @@ publishing. The inspector never returns delivery identifiers, source coordinates
 payloads, classifications, publisher identities, or timestamps and performs no claim,
 repair, retention, deletion, publication, or acknowledgement action.
 
-The Social Graph Index owner/server path now composes both durable recovery and
-read-only observation. The worker constructs `ConsumerPoisonIdentity`, recognizes an
-existing receipt before applying current DLQ policy, reserves/claims new work, publishes
-exact bytes through `rustok-iggy`, persists `published`, commits the source cursor, and
-then records `acknowledged` as best-effort bookkeeping. A separate observer polls only
-the inspector aggregate and exports bounded Prometheus counts. Observer failure clears
-stale metrics and never stops projection.
+The Social Graph Index owner/server path composes both durable recovery and read-only
+observation. The worker constructs `ConsumerPoisonIdentity`, recognizes an existing
+receipt before applying current DLQ policy, reserves/claims new work, publishes exact
+bytes through `rustok-iggy`, persists `published`, commits the source cursor, and then
+records `acknowledged` as best-effort bookkeeping. A separate observer polls only the
+inspector aggregate and exports bounded Prometheus counts. Observer failure clears stale
+metrics and never stops projection.
 
-The explicit platform append-only migration tail now includes both
+The explicit platform append-only migration tail includes both
 `m20260727_000004_create_index_dlq_receipts` and
 `m20260728_000001_create_consumer_poison_receipts`, preserving the previously published
 migration prefix.
+
+An opt-in PostgreSQL integration harness now creates a unique schema per scenario and
+applies connector migrations directly. It defines source evidence for independent
+concurrent claim connections, lease reclaim/fencing, collision rollback,
+first-diagnostic retention, empty payloads, terminal recognition, and aggregate
+inspection. The harness is source-complete but has not been executed; PostgreSQL runtime
+proof remains open.
 
 ## FFA/FBA boundary
 
@@ -81,6 +88,12 @@ migration prefix.
   derive labels from delivery-level facts.
 - Profiles and Social Graph must never authorize from this receipt, its aggregate
   inspection, metrics, or any broker state.
+- PostgreSQL evidence is opt-in through
+  `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL` with `DATABASE_URL` fallback. Tests use
+  unique schemas and contain no default credentials, shared-table truncation, or
+  database creation/deletion.
+- Direct test SQL is limited to deterministic lease expiry and read-only diagnostics;
+  production receipt transitions are exercised through the public store API.
 - The server enables feature `migrations` explicitly when it composes the neutral store;
   runtime availability does not rely on transitive feature unification.
 - Existing source guard: `node scripts/verify/verify-iggy-connector-source.mjs`.
@@ -90,6 +103,8 @@ migration prefix.
   `node scripts/verify/verify-iggy-consumer-poison-inspection.mjs`.
 - Owner observer/metrics guard:
   `node scripts/verify/verify-social-graph-index-poison-observer.mjs`.
+- PostgreSQL evidence guard:
+  `node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs`.
 
 ## Delivered results
 
@@ -112,6 +127,10 @@ migration prefix.
 7. **Count-only owner observability.** A separate server observer exports fixed receipt
    states, snapshot availability, and snapshot time; unavailable inspection clears stale
    gauges and leaves recovery behavior unchanged.
+8. **PostgreSQL evidence harness.** Four opt-in isolated-schema scenarios cover concurrent
+   ownership, lease reclaim/fencing, collision rollback, first-diagnostic retention,
+   empty payloads, terminal redelivery, and aggregate consistency without claiming an
+   executed runtime result.
 
 ## Next results
 
@@ -119,18 +138,21 @@ migration prefix.
    exact publish-before-ack ordering, acknowledgement-only redelivery, reconnect, exact
    commit, publication failure, restart, and multi-replica behavior in bundled and
    external environments.
-2. **Verify PostgreSQL receipt concurrency and inspection.** Prove claim ownership,
-   lease expiry and reclaim, UUID/source collisions, first-diagnostic retention,
-   rollback, terminal recognition, aggregate consistency, read-only inspection, and
-   observer behavior under multiple workers.
-3. **Harden lifecycle failure behavior.** Define reconnect/backoff, authentication, TLS,
+2. **Execute and retain PostgreSQL receipt evidence.** Run the isolated-schema harness
+   against PostgreSQL, retain command/environment/server-version evidence, repeat the
+   concurrent ownership scenario, and prove cleanup. Source coverage exists; runtime
+   execution remains owner work.
+3. **Extend PostgreSQL evidence to multi-replica observer behavior.** Prove aggregate
+   consistency during concurrent claims, lease expiry, terminal transitions, and
+   observer polling without adding mutation policy to inspection.
+4. **Harden lifecycle failure behavior.** Define reconnect/backoff, authentication, TLS,
    existing-topology validation, batching, and shutdown semantics without simulated
    fallback.
-4. **Retain operational evidence.** Exercise count-only metrics, unavailable snapshot
+5. **Retain operational evidence.** Exercise count-only metrics, unavailable snapshot
    clearing, expired-lease diagnosis, publication ambiguity, and acknowledgement-only
    recovery. Keep alert thresholds, reclaim, repair, and retention as explicit reviewed
    policy rather than storage side effects.
-5. **Complete packaging evidence.** Prove bundled distributions install the pinned
+6. **Complete packaging evidence.** Prove bundled distributions install the pinned
    server artifact and external-only distributions omit it.
 
 ## Verification
@@ -141,8 +163,10 @@ migration prefix.
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `node scripts/verify/verify-social-graph-index-poison-observer.mjs`
+- `node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture`
+- `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' cargo test -p rustok-iggy-connector --features migrations --test consumer_poison_receipt_postgres -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
@@ -158,4 +182,5 @@ scenarios remain maintainer-run and were not executed in this slice.
 - [Module documentation](./README.md)
 - [Iggy transport plan](../../rustok-iggy/docs/implementation-plan.md)
 - [Poison observer runbook](../../rustok-social-graph/docs/index-poison-receipt-observer.md)
+- [PostgreSQL poison evidence guide](./consumer-poison-postgres-evidence.md)
 - [Iggy integration reference](../../../docs/references/iggy/README.md)
