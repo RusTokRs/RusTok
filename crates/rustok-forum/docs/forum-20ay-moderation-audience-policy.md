@@ -11,7 +11,7 @@ Status: source-ready / unvalidated.
 - Every public topic and reply moderation command resolves the exact tenant-scoped target category and evaluates every inherited layer before opening its write transaction.
 - Existing context-free commands preserve compatibility for unrestricted, role-only, and explicit-user decisions. Unresolved trust, Channel, or Groups selectors require an exact `PortContext` and an injected `SharedForumAudienceFactsPort`.
 - `ModerationService::with_audience_facts` and context-aware command variants publish the owner seam needed for a later GraphQL/REST composition slice.
-- Moderator use of `mark_solution` and `clear_solution` is audience-gated. The topic author's existing owned-update path remains independent from moderator audience policy.
+- Moderator use of `mark_solution` and `clear_solution` is audience-gated. The exact tenant-scoped topic author remains independently authorized to select or clear a solution without receiving moderator privileges.
 - Denied or unresolved decisions occur before topic/reply status, pin, lock, counter, user-stat, solution, journal, and outbox writes.
 - PostgreSQL and SQLite enforce tenant/category ownership, typed values, immutable rows, and bounded direct channel/group/allow/deny inserts.
 - PostgreSQL managed replacement and direct bounded inserts use the same category moderation advisory lock key.
