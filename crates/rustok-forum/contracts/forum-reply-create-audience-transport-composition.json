@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20AW",
+  "upstream_task": "FORUM-20AV",
+  "scope": "GraphQL, REST, and host-runtime composition for exact reply-create audience facts",
+  "transport_context_file": "crates/rustok-forum/src/reply_create_transport.rs",
+  "graphql_runtime_file": "crates/rustok-forum/src/graphql/runtime_data.rs",
+  "graphql_legacy_mutation_file": "crates/rustok-forum/src/graphql/mutation.rs",
+  "graphql_command_mutation_file": "crates/rustok-forum/src/graphql/content_commands.rs",
+  "http_runtime_file": "crates/rustok-forum/src/controllers/mod.rs",
+  "http_legacy_create_file": "crates/rustok-forum/src/controllers/replies.rs",
+  "http_command_create_file": "crates/rustok-forum/src/controllers/content_commands.rs",
+  "owner_enforcement_file": "crates/rustok-forum/src/services/reply_facade.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20aw-reply-create-audience-transport-composition.md",
+  "crate_api": "crates/rustok-forum/CRATE_API.md",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "source_verifier": "scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs",
+  "composition": {
+    "shared_exact_transport_context_builder": true,
+    "auth_tenant_request_identity_validation": true,
+    "dto_identity_forbidden": true,
+    "read_deadline_semantics": true,
+    "permission_claim_forwarding": true,
+    "resolved_route_channel_forwarding": true,
+    "graphql_legacy_create_composed": true,
+    "graphql_command_create_composed": true,
+    "rest_legacy_create_composed": true,
+    "rest_command_create_composed": true,
+    "graphql_runtime_facts_consumed": true,
+    "http_runtime_facts_consumed": true,
+    "host_extension_facts_reused": true,
+    "missing_provider_fail_closed": true,
+    "local_policy_compatibility_preserved": true,
+    "owner_authorization_before_writes_preserved": true,
+    "migration_changed": false,
+    "reply_create_dto_changed": false,
+    "forum_groups_dependency_added": false,
+    "trust_facts_adapter_added": false,
+    "topic_local_narrowing_added": false,
+    "moderation_audience_added": false,
+    "canonical_plan_rewritten": false
+  },
+  "closes_upstream_residuals": [
+    "GraphQL reply-create audience context composition",
+    "REST reply-create audience context composition",
+    "host runtime Forum audience facts injection for reply creation"
+  ],
+  "not_delivered": [
+    "safe canonical Forum plan ledger update through FORUM-20AW",
+    "topic-local reply audience narrowing",
+    "moderation audience policy persistence and enforcement",
+    "Forum trust owner state and facts adapter",
+    "remaining Forum read search index SEO and deep-link audience migration",
+    "visibility-scoped category and all-read commands",
+    "tenant-wide scheduled reconciliation and payload redaction",
+    "channel delivery enqueue and delivery-time authorization",
+    "PostgreSQL concurrency and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-forum reply_create_transport -- --nocapture",
+      "cargo test -p rustok-forum graphql::runtime_data -- --nocapture",
+      "node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs",
+      "node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
