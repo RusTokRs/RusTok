@@ -97,6 +97,27 @@ for (const forbidden of [
   forbidText("read-only poison observer production code", observerProduction, forbidden);
 }
 
+const snapshotFailureStart = observerProduction.indexOf("match inspector");
+const snapshotFailureEnd = observerProduction.indexOf("fn record_summary");
+if (snapshotFailureStart < 0 || snapshotFailureEnd <= snapshotFailureStart) {
+  failures.push("poison observer snapshot failure path could not be isolated");
+} else {
+  const snapshotFailurePath = observerProduction.slice(
+    snapshotFailureStart,
+    snapshotFailureEnd,
+  );
+  requireText(
+    "poison snapshot failure path",
+    snapshotFailurePath,
+    "error_code = error.stable_code()",
+  );
+  forbidText(
+    "poison snapshot failure path",
+    snapshotFailurePath,
+    "error = %error",
+  );
+}
+
 for (const forbidden of [
   '"delivery_id"',
   '"source_stream"',
@@ -121,5 +142,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index poison observer verification passed: count-only bounded states, stale-value clearing, fixed consumer scope, read-only inspection, and delivery/privacy isolation are locked.",
+  "Social Graph Index poison observer verification passed: count-only bounded states, stale-value clearing, fixed consumer scope, read-only inspection, bounded failure logging, and delivery/privacy isolation are locked.",
 );
