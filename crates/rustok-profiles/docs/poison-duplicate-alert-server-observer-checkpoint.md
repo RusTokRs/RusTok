@@ -16,9 +16,11 @@ bounded physical DLQ scan
 
 The observer is intentionally not a Profiles service. Profiles remains a consumer of authoritative privacy and relationship owner ports only.
 
-## Delivery modes are explicit
+## Delivery and startup modes are explicit
 
 ```text
+disabled      -> Disabled
+startup issue -> Unavailable, no task or snapshot
 memory        -> NotApplicableMemory
 outbox_local  -> NotApplicableOutboxLocal
 outbox_iggy   -> IggyBundled or IggyExternal
@@ -33,6 +35,13 @@ For `memory` and `outbox_local`:
 
 For `outbox_iggy`, the observer uses the exact shared transport configuration activated by the event runtime. It does not create another transport or broker. Missing active Iggy mode fails closed rather than being guessed.
 
+Observer-specific startup errors are non-fatal. Invalid observer configuration or a missing observer dependency records `Unavailable`, logs only a stable code, and returns success to server bootstrap. Event delivery and module projection continue.
+
+```text
+iggy.dlq_duplicate.alert_server_observer_configuration_invalid
+iggy.dlq_duplicate.alert_server_observer_runtime_unavailable
+```
+
 ## Bundled and external Iggy
 
 - bundled mode connects to the existing validated loopback broker and matching TCP port;
@@ -42,7 +51,7 @@ The observer never starts or owns the bundled process and never shuts down the s
 
 ## Bounded scan semantics
 
-The observer builds an allowlist containing every configured domain partition and delegates it to the existing explicit-offset scanner with `auto_commit=false`.
+The observer builds an allowlist containing every configured domain partition and delegates it to the explicit-offset scanner with `auto_commit=false`.
 
 The scanner uses one **global** message budget across the ordered allowlist. An earlier busy partition can exhaust that budget before later partitions are polled. This checkpoint therefore makes no partition-fairness or complete-history claim.
 
@@ -56,7 +65,7 @@ The observer is default-off:
 RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED=false
 ```
 
-When active on `outbox_iggy`, all warning and critical thresholds must be supplied explicitly. The library and server do not invent production tolerance defaults.
+When active on `outbox_iggy`, all warning and critical thresholds must be supplied explicitly. Invalid values enter non-fatal `Unavailable` state; the library and server do not invent production tolerance defaults.
 
 ## Shared operational projection
 
@@ -66,44 +75,33 @@ When active on `outbox_iggy`, all warning and critical thresholds must be suppli
 - whether the task has finished;
 - the latest optional `DlqDuplicateAlertRuntimeSnapshot`.
 
-The snapshot contains generation, availability, and the identifier-free alert evaluation. On connection failure, scan failure, or shutdown, availability becomes false and the prior evaluation is cleared.
+Startup-unavailable state has no task and no snapshot. After a task starts, connection failure, scan failure, or shutdown clears runtime availability and prior evaluation.
 
-This state may later feed telemetry or an operational health endpoint, but it must not become readiness or authorization input.
+This state may later feed telemetry or an operational health endpoint, but it must not become bootstrap, readiness, or authorization input.
 
 ## Profiles authorization boundary
 
 No profile visibility, ownership, follower access, relationship, block, mute, audience, storefront presentation, author card, or privacy-port result may depend on:
 
 - event delivery profile;
-- observer applicability or availability;
+- observer startup, applicability, availability, or generation;
 - Iggy bundled/external mode;
 - partition ordering, fairness, or budget exhaustion;
-- duplicate alert level;
-- threshold booleans;
+- duplicate alert level or threshold booleans;
 - scanner connection state;
-- alert generation;
 - retained observer evidence.
 
-A missing or failed Iggy observer never changes Profiles data access. Event delivery and module projection remain active.
+A missing or failed observer never changes Profiles data access. Event delivery and module projection remain active.
 
 ## Privacy boundary
 
 The observer does not expose broker addresses/credentials, stream coordinates, UUIDs, payloads/digests, poison receipt identities, raw client errors, raw thresholds, or source counts.
 
-Logs and shared state retain only stable codes, availability, generation, alert level, and aggregate boolean reasons.
+Logs and shared state retain only stable codes, mode, availability, generation, alert level, and aggregate boolean reasons.
 
 ## Mutation boundary
 
-The observer cannot:
-
-- publish or acknowledge messages;
-- commit consumer offsets;
-- delete, purge, replay, or retry DLQ entries;
-- claim or mark poison receipts;
-- start or stop the bundled Iggy process;
-- change event delivery configuration;
-- dispatch notifications;
-- alter Profiles state.
+The observer cannot publish/acknowledge messages, commit offsets, delete/purge/replay/retry DLQ entries, mutate poison receipts, start/stop bundled Iggy, change event delivery, dispatch notifications, or alter Profiles state.
 
 ## Source ownership
 
@@ -120,7 +118,7 @@ scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 2. add identifier-free telemetry projection;
 3. add optional operational health without readiness coupling;
 4. define notification routing, cooldown, and suppression separately;
-5. retain execution evidence for applicable Iggy modes;
+5. retain execution evidence for applicable Iggy and unavailable startup modes;
 6. keep destructive reconciliation separately authorized.
 
 Tests, Cargo commands, formatters, verifiers, server startup, broker connections, alert delivery, and retained capture were not run by the implementation agent.
