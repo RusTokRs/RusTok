@@ -51,6 +51,8 @@ requireText("lib.rs", files.lib, "pub mod index_consumer;");
 
 for (const marker of [
   "PersistentContractConsumerGroup",
+  "PersistentContractDelivery",
+  "ConsumedContractDecodeFailure",
   "open_persistent_contract_consumer_group",
   "SOCIAL_GRAPH_INDEX_CONSUMER_GROUP",
   'SOCIAL_GRAPH_INDEX_TOPIC: &str = "domain"',
@@ -63,13 +65,18 @@ for (const marker of [
   ".register(envelope.tenant_id(), &self.schema)",
   "PostgresMutationStore::new(db)",
   "self.store.apply(&self.registry, &delivery).await?",
+  "pub async fn receive_delivery(",
+  ".receive_delivery()",
   "pub async fn receive_next(",
+  "PersistentContractDelivery::Event(consumed)",
+  "PersistentContractDelivery::DecodeFailure(failure)",
   "pub async fn project_consumed(",
   "self.projector.apply_envelope(&consumed.envelope).await",
   "pub async fn acknowledge_consumed(",
   ".acknowledge(consumed)",
+  "pub async fn acknowledge_decode_failure(",
+  ".acknowledge_decode_failure(consumed)",
   "pub async fn process_next(",
-  "&mut self",
   "IgnoredUnrelated",
 ]) {
   requireText("runtime consumer", consumerProduction, marker);
@@ -98,6 +105,22 @@ if (
   );
 }
 
+const typedReceiveStart = consumerProduction.indexOf(
+  "pub async fn receive_delivery(",
+);
+const compatibilityReceiveStart = consumerProduction.indexOf(
+  "pub async fn receive_next(",
+  typedReceiveStart,
+);
+if (
+  typedReceiveStart < 0 ||
+  compatibilityReceiveStart <= typedReceiveStart
+) {
+  failures.push(
+    "typed receive must be the primary owner boundary and compatibility receive must delegate after it",
+  );
+}
+
 const processStart = consumerProduction.indexOf("pub async fn process_next(");
 const processBody = processStart >= 0 ? consumerProduction.slice(processStart) : "";
 const projectPosition = processBody.indexOf(
@@ -112,8 +135,34 @@ if (
   acknowledgePosition <= projectPosition
 ) {
   failures.push(
-    "direct consumer path must durably project before broker acknowledgement",
+    "direct decoded consumer path must durably project before broker acknowledgement",
   );
+}
+
+const rawAckStart = consumerProduction.indexOf(
+  "pub async fn acknowledge_decode_failure(",
+);
+const rawAckEnd = consumerProduction.indexOf(
+  "pub async fn consumed_dlq_receipt(",
+  rawAckStart,
+);
+const rawAckBody =
+  rawAckStart >= 0 && rawAckEnd > rawAckStart
+    ? consumerProduction.slice(rawAckStart, rawAckEnd)
+    : "";
+requireText(
+  "raw acknowledgement adapter",
+  rawAckBody,
+  ".acknowledge_decode_failure(consumed)",
+);
+for (const forbidden of [
+  "project_consumed",
+  "publish_consumed_to_dlq",
+  "move_to_dlq",
+  "tenant_id",
+  "event_id",
+]) {
+  forbidText("raw acknowledgement adapter", rawAckBody, forbidden);
 }
 
 for (const forbidden of [
@@ -163,5 +212,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index runtime consumer verification passed: optional runtime composition, sealed-family filtering, Index-owned tenant schema persistence, staged durable inbox apply, result-first acknowledgement, unrelated-event handling, integration fixtures, and authoritative owner-port privacy are locked.",
+  "Social Graph Index runtime consumer verification passed: optional runtime composition, typed event/decode-failure receive, sealed-family filtering, Index-owned tenant schema persistence, staged durable inbox apply, decoded result-first acknowledgement, raw acknowledgement isolation, unrelated-event handling, integration fixtures, and authoritative owner-port privacy are locked.",
 );
