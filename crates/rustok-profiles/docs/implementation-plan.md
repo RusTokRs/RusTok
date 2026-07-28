@@ -15,8 +15,8 @@ or unavailable rows as absent.
 `followers_only` resolves through authoritative Social Graph owner ports. Profiles
 never reads relation tables and never authorizes from an event, Index projection,
 decoded/raw DLQ receipt, neutral receipt aggregate, broker identifier, consumer
-offset, lag metric, poison health signal, PostgreSQL evidence packet, or real-Iggy
-evidence harness.
+offset, lag metric, poison health signal, PostgreSQL evidence packet, physical Iggy
+header observation, or any real-Iggy evidence harness.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and MIME
 constraints and exposes only Media-selected descriptors. It does not know storage
@@ -123,7 +123,7 @@ PostgreSQL evidence tooling is source-complete:
 The canonical PostgreSQL execution JSON remains absent until a maintainer executes the
 runner successfully.
 
-External real-Iggy source evidence is now defined:
+External real-Iggy cursor evidence is source-complete and runtime-pending:
 
 - one unique disposable/operator-cleaned stream and one partition;
 - two non-empty malformed payloads injected only through fixture-level
@@ -131,15 +131,28 @@ External real-Iggy source evidence is now defined:
 - production typed receive retains exact first bytes, offset, ack token, stable code,
   and deterministic UUID without source ack;
 - production `IggyTransport::move_to_dlq` publishes the exact first bytes;
-- dropping and reopening the same source group must redeliver the same offset, bytes,
-  and UUID;
+- first transport shutdown without source ack followed by a new transport and the same
+  group must redeliver the same offset, bytes, and UUID;
 - explicit source ack must then expose the second malformed payload at a greater
   offset;
 - an independent real DLQ cursor verifies both payloads byte-for-byte.
 
-This harness is source-complete and runtime-pending. It does not prove PostgreSQL
-receipt ordering, the physical Iggy header ID, deduplication, bundled mode, TLS/auth,
-reconnect, multi-replica behavior, or physical exactly-once.
+A separate external physical-header harness is also source-complete and runtime-pending:
+
+- one production `ConsumedContractDecodeFailure` creates one `DlqEntry`;
+- one production `IggyTransport::move_to_dlq` call publishes the entry;
+- a probe-only SDK consumer opened before publication reads exactly one physical DLQ
+  message;
+- physical `message.header.id` must equal the connector UUID as `u128`;
+- physical partition must equal `(uuid_as_u128 mod 3) + 1` and remain one-based;
+- physical payload must remain exact;
+- only the probe's physical header offset is committed.
+
+The SDK probe cannot publish, acknowledge a source cursor, modify a receipt, delete a
+stream, or change deduplication. The lifecycle harness does not prove the physical
+header; the header harness does not prove source cursor lifecycle. Neither proves
+PostgreSQL ordering, deduplication, bundled mode, TLS/auth, multi-replica behavior, or
+physical exactly-once.
 
 ## FFA/FBA boundary
 
@@ -180,21 +193,19 @@ reconnect, multi-replica behavior, or physical exactly-once.
    Run the clean-commit capture runner, review the bounded packet, commit the canonical
    JSON, and repeat whenever a bound source hash changes.
 
-6. **Execute external real-Iggy raw lifecycle evidence.**
-   Run the new harness on a disposable broker, retain broker/toolchain/configuration
-   metadata and output/source digests, and repeat no-ack reopen/redelivery plus explicit
-   cursor advancement.
+6. **Execute external cursor and header evidence.**
+   Run both harnesses on a disposable broker and retain separate packets for source
+   reconnect/redelivery and physical UUID/header/partition observation.
 
 7. **Compose receipt-plus-broker evidence.**
    Prove reserve/claim -> exact publish -> durable `published` -> source ack ->
    best-effort `acknowledged`, process loss, acknowledgement-only recovery, and
    multi-replica claim ownership on PostgreSQL plus real Iggy.
 
-8. **Prove header and confirmation behavior.**
-   Inspect the physical UUID header, same-partition routing, publisher reconnect, and
-   duplicate behavior with deduplication disabled, enabled, capacity-evicted, and
-   expired. Choose an enforced dedup window or stronger outbox/transaction mechanism
-   before any stronger duplicate guarantee.
+8. **Prove duplicate and confirmation behavior separately.**
+   Exercise publisher reconnect and the same deterministic UUID with deduplication
+   disabled, enabled, capacity-evicted, and expired. Choose an enforced dedup window or
+   stronger outbox/transaction mechanism before any stronger duplicate guarantee.
 
 9. **Retain production operations.**
    Prove bundled mode, restart, TLS/auth/failover, position reconnect, rebalance,
@@ -215,10 +226,14 @@ reconnect, multi-replica behavior, or physical exactly-once.
   health, and the operator runbook.
 - Added isolated PostgreSQL scenarios and clean-commit retained evidence tooling; the
   execution packet remains pending.
-- Added a versioned external-Iggy source contract, opt-in real cursor/DLQ harness,
-  no-ack reopen/redelivery, exact-byte DLQ checks, explicit cursor advancement, and a
-  static verifier.
-- Removed the stale verifier claim that no Social Graph worker was wired.
+- Added a versioned external-Iggy cursor contract, opt-in real cursor/DLQ harness,
+  no-ack transport reconnect/redelivery, exact-byte DLQ checks, explicit cursor
+  advancement, and a static verifier.
+- Added a separate physical-header contract and harness for one production publication,
+  exact UUID/u128 header mapping, one-based partition routing, exact payload, probe-only
+  SDK access, and probe offset commit.
+- Kept duplicate suppression, database ordering, bundled/TLS/auth, and multi-replica
+  claims explicitly open.
 - Tests, Cargo commands, formatters, source verifiers, PostgreSQL, external/bundled Iggy,
   and multi-replica scenarios were not run, per maintainer instruction.
 
@@ -232,8 +247,10 @@ reconnect, multi-replica behavior, or physical exactly-once.
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
 - `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy -- --nocapture --test-threads=1`
+- `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy_header -- --nocapture --test-threads=1`
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
 - `node scripts/verify/verify-iggy-contract-poison-external-evidence.mjs`
+- `node scripts/verify/verify-iggy-contract-poison-external-header-evidence.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture`
@@ -294,6 +311,8 @@ reconnect, multi-replica behavior, or physical exactly-once.
     become stale when a bound source SHA-256 changes.
 18. Real-Iggy fixture injection may create malformed bytes, but production receive, DLQ,
     and acknowledgement must use reviewed transport APIs.
-19. Do not claim physical header, deduplication, database ordering, bundled, TLS/auth, or
-    multi-replica proof from the external cursor lifecycle harness.
-20. Update Profiles and affected owner docs with every boundary change.
+19. Direct SDK probes may only observe explicitly scoped broker facts and commit their
+    own probe offsets; they must not publish, choose policy, or mutate receipts.
+20. Do not claim deduplication, database ordering, bundled, TLS/auth, multi-replica, or
+    exactly-once proof from one-message physical-header evidence.
+21. Update Profiles and affected owner docs with every boundary change.
