@@ -193,7 +193,7 @@ for (const marker of [
   "FORUM-20A-AU provide",
   "### Delivered in `FORUM-20AT`",
   "### Delivered in `FORUM-20AU`",
-  "implement Forum trust owner state under `FORUM-26`",
+  "## `FORUM-26` — anti-spam, limits and trust levels",
   "verify-forum-audience-channel-facts-host-runtime.mjs",
 ]) {
   requireText(plan, marker, `canonical Forum plan is missing ${marker}`);
