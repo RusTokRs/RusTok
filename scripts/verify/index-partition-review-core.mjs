@@ -3,6 +3,7 @@ import {
   fstatSync,
   lstatSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
 } from 'node:fs';
@@ -125,6 +126,110 @@ const assertCanonicalMatch = (actual, expected, label) => {
   }
 };
 
+const directoryFilename = (canonicalRoot, relativeDirectory) => path.resolve(
+  canonicalRoot,
+  relativeDirectory.split('/').join(path.sep),
+);
+
+const readStableDirectorySnapshot = (canonicalRoot, relativeDirectory) => {
+  const filename = directoryFilename(canonicalRoot, relativeDirectory);
+  ensureInsideRoot(canonicalRoot, filename, `retained bundle directory ${relativeDirectory || '.'}`);
+  const before = lstatSync(filename, { bigint: true });
+  if (before.isSymbolicLink() || !before.isDirectory()) {
+    throw new Error(`retained bundle directory ${relativeDirectory || '.'} must be a regular non-symlink directory`);
+  }
+  const canonical = realpathSync.native(filename);
+  ensureInsideRoot(canonicalRoot, canonical, `retained bundle directory ${relativeDirectory || '.'}`);
+  const entries = readdirSync(filename).sort();
+  const after = lstatSync(filename, { bigint: true });
+  if (after.isSymbolicLink()
+      || !after.isDirectory()
+      || identityOf(before) !== identityOf(after)
+      || fingerprintOf(before) !== fingerprintOf(after)) {
+    throw new Error(`retained bundle directory ${relativeDirectory || '.'} changed while it was being read`);
+  }
+  return {
+    path: relativeDirectory,
+    identity: identityOf(after),
+    fingerprint: fingerprintOf(after),
+    entries,
+  };
+};
+
+const collectRetainedBundleDirectoryInventory = ({ canonicalRoot, expectedFiles }) => {
+  const requiredDirectories = new Set(['']);
+  for (const relativeFile of expectedFiles) {
+    let directory = path.posix.dirname(relativeFile);
+    while (directory !== '.') {
+      requiredDirectories.add(directory);
+      directory = path.posix.dirname(directory);
+    }
+  }
+
+  const seenFiles = new Set();
+  const directories = [];
+  const walk = (relativeDirectory) => {
+    const snapshot = readStableDirectorySnapshot(canonicalRoot, relativeDirectory);
+    directories.push(snapshot);
+    const filename = directoryFilename(canonicalRoot, relativeDirectory);
+    for (const entry of snapshot.entries) {
+      const relativeEntry = relativeDirectory ? `${relativeDirectory}/${entry}` : entry;
+      const entryPath = path.join(filename, entry);
+      const stat = lstatSync(entryPath, { bigint: true });
+      if (stat.isSymbolicLink()) {
+        throw new Error(`unexpected retained bundle entry ${relativeEntry}: symbolic links are forbidden`);
+      }
+      if (stat.isDirectory()) {
+        if (!requiredDirectories.has(relativeEntry)) {
+          throw new Error(`unexpected retained bundle entry ${relativeEntry}`);
+        }
+        walk(relativeEntry);
+      } else if (stat.isFile()) {
+        if (!expectedFiles.has(relativeEntry)) {
+          throw new Error(`unexpected retained bundle entry ${relativeEntry}`);
+        }
+        seenFiles.add(relativeEntry);
+      } else {
+        throw new Error(`unexpected retained bundle entry ${relativeEntry}: special files are forbidden`);
+      }
+    }
+  };
+
+  walk('');
+  for (const expectedFile of expectedFiles) {
+    if (!seenFiles.has(expectedFile)) {
+      throw new Error(`retained bundle inventory is missing ${expectedFile}`);
+    }
+  }
+  return directories.sort((left, right) => left.path.localeCompare(right.path));
+};
+
+export const inspectRetainedBundleDirectoryInventory = ({ root, files }) => {
+  const resolvedRoot = path.resolve(root);
+  const rootSnapshot = readRootSnapshot(resolvedRoot);
+  const canonicalRoot = rootSnapshot.canonical;
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error('retained bundle inventory files must be a non-empty array');
+  }
+  const expectedFiles = new Set();
+  for (const [index, filename] of files.entries()) {
+    const canonical = realpathSync.native(path.resolve(filename));
+    ensureInsideRoot(canonicalRoot, canonical, `retained bundle inventory file ${index}`);
+    const relative = portablePath(path.relative(canonicalRoot, canonical));
+    if (relative.length === 0 || expectedFiles.has(relative)) {
+      throw new Error('retained bundle inventory files must resolve to distinct files below the root');
+    }
+    expectedFiles.add(relative);
+  }
+  const first = collectRetainedBundleDirectoryInventory({ canonicalRoot, expectedFiles });
+  const second = collectRetainedBundleDirectoryInventory({ canonicalRoot, expectedFiles });
+  if (canonicalJson(first) !== canonicalJson(second)) {
+    throw new Error('retained bundle directory inventory changed during inspection');
+  }
+  assertRootSnapshot(resolvedRoot, rootSnapshot);
+  return second;
+};
+
 export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath }) => {
   const resolvedRoot = path.resolve(root);
   const rootSnapshot = readRootSnapshot(resolvedRoot);
@@ -179,6 +284,12 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
   }
 
   const files = [];
+  const retainedCanonicalFiles = [];
+  const retainedFileSnapshots = [
+    { label: 'capture file', file: captureFile },
+    { label: 'packet file', file: packetFile },
+    { label: 'admission file', file: admissionFile },
+  ];
   for (const role of RAW_ARTIFACT_ROLES) {
     const canonical = assembled.resolvedPaths.get(role);
     const identity = assembled.identities.get(role);
@@ -188,6 +299,11 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
       throw new Error(`capture artifact ${role} changed after it was read`);
     }
     assertDistinctIdentity(seenIdentities, identity, `capture artifact ${role}`);
+    retainedCanonicalFiles.push(canonical);
+    retainedFileSnapshots.push({
+      label: `capture artifact ${role}`,
+      file: { canonical, identity, fingerprint },
+    });
     files.push({
       role,
       path: portablePath(path.relative(canonicalRoot, canonical)),
@@ -202,6 +318,7 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
     ['packet', resolvedPacketPath, packetFile],
     ['admission', resolvedAdmissionPath, admissionFile],
   ]) {
+    retainedCanonicalFiles.push(file.canonical);
     files.push({
       role,
       path: portablePath(path.relative(resolvedRoot, filename)),
@@ -212,6 +329,26 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
     });
   }
 
+  const initialDirectories = inspectRetainedBundleDirectoryInventory({
+    root: resolvedRoot,
+    files: retainedCanonicalFiles,
+  });
+  for (const { label, file } of retainedFileSnapshots) {
+    const stat = lstatSync(file.canonical, { bigint: true });
+    if (stat.isSymbolicLink()
+        || !stat.isFile()
+        || identityOf(stat) !== file.identity
+        || fingerprintOf(stat) !== file.fingerprint) {
+      throw new Error(`${label} changed after directory inspection`);
+    }
+  }
+  const directories = inspectRetainedBundleDirectoryInventory({
+    root: resolvedRoot,
+    files: retainedCanonicalFiles,
+  });
+  if (canonicalJson(initialDirectories) !== canonicalJson(directories)) {
+    throw new Error('retained bundle directory inventory changed after file recheck');
+  }
   assertRootSnapshot(resolvedRoot, rootSnapshot);
 
   return {
@@ -219,6 +356,7 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
     rootIdentity: rootSnapshot.identity,
     rootFingerprint: rootSnapshot.fingerprint,
     rootCanonical: rootSnapshot.canonical,
+    directories,
     packet,
     admission: recalculatedAdmission,
     files,
