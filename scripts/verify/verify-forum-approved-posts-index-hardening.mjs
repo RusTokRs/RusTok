@@ -84,6 +84,10 @@ for (const marker of [
 for (const marker of [
   "EXPLAIN QUERY PLAN",
   "sqlite_master",
+  "CREATE TABLE users",
+  "id TEXT NOT NULL PRIMARY KEY",
+  "tenant_id TEXT NOT NULL",
+  "Forum trust-state migrations reference the platform-owned users table",
   "approved_posts_aggregate_uses_partial_author_indexes_on_sqlite",
 ]) {
   requireText(sqliteProof, marker, `SQLite proof is missing ${marker}`);
@@ -112,7 +116,7 @@ for (const marker of [
   "partial author indexes",
   "owner query and its semantics remain unchanged",
   "posting-policy evaluation or precedence change",
-  "posting owner enforcement",
+  "topic, reply, edit, or bump owner enforcement",
   "not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-26I owner note is missing ${marker}`);
