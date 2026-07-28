@@ -8,6 +8,23 @@
   "test_target": "dlq_duplicate_external_scan",
   "test": "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
   "case": "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+  "command": {
+    "program": "cargo",
+    "args": [
+      "test",
+      "-p",
+      "rustok-iggy",
+      "--features",
+      "iggy",
+      "--test",
+      "dlq_duplicate_external_scan",
+      "--",
+      "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
   "environment": {
     "address": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_ADDRESS",
     "optional_username": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_USERNAME",
