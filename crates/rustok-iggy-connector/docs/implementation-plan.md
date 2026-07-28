@@ -17,10 +17,12 @@ the transport becomes ready.
 
 Feature `migrations` now registers `m20260728_000001_create_consumer_poison_receipts`
 and exposes `ConsumerPoisonReceiptStore`. The receipt is neutral because malformed
-bytes have no trusted tenant or domain event identity. It binds one deterministic
-connector delivery UUID to consumer group, stream, topic, partition, offset, exact
-payload, bounded error code, and observed attempt count. Source coordinates are unique;
-conflicting identity or bytes fail closed.
+bytes have no trusted tenant or domain event identity. Its immutable identity binds one
+deterministic connector delivery UUID to consumer group, stream, topic, partition,
+offset, and exact payload. Source coordinates are unique; another UUID or payload for
+the same coordinates fails closed. The first bounded error code and observed delivery
+attempt are retained as diagnostics, but later classification/retry drift does not
+redefine connector identity.
 
 Receipt states are `reserved`, leased `publishing`, terminal `published`, and
 post-source-commit `acknowledged`. The store performs no broker publication, DLQ routing,
@@ -48,6 +50,8 @@ complete any required publication before it calls the cursor acknowledgement API
   connector delivery UUID plus exact bytes after decode/schema failure.
 - Consumer workers own retry limits, DLQ publication choice, and source acknowledgement
   ordering; the connector receipt only records durable result progress.
+- Error kind and delivery attempt are retained first-observation diagnostics, not
+  connector identity fields.
 - The receipt contains no tenant, decoded event, actor, claims, locale, credentials,
   acknowledgement token, or authorization state.
 - Profiles and Social Graph must never authorize from this receipt or any broker state.
@@ -57,9 +61,9 @@ complete any required publication before it calls the cursor acknowledgement API
 ## Delivered results
 
 1. **Exact connector cursor ownership.** One cursor owns receive and exact scoped commit.
-2. **Neutral durable poison result boundary.** PostgreSQL/SQLite DDL, source-coordinate
-   uniqueness, exact-byte conflict validation, leased publication claims, terminal
-   recognition, and bounded stable errors are source-complete.
+2. **Neutral durable poison result boundary.** PostgreSQL/SQLite DDL, private immutable
+   source identity, exact-byte conflict validation, first-diagnostic retention, leased
+   publication claims, terminal recognition, and bounded stable errors are source-complete.
 3. **No invented domain ownership.** The receipt does not require or synthesize tenant
    or event identity and has no authorization side effect.
 
