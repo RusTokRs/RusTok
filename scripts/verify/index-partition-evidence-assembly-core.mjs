@@ -1,4 +1,11 @@
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+} from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -54,6 +61,49 @@ const parseJsonBytes = (bytes, label) => {
 };
 
 const identityOf = (stat) => `${stat.dev}:${stat.ino}`;
+const fingerprintOf = (stat) => [
+  identityOf(stat),
+  stat.size,
+  stat.mtimeNs,
+  stat.ctimeNs,
+].join(':');
+
+const readStableRegularFile = (filename, label) => {
+  const pathStatBefore = lstatSync(filename, { bigint: true });
+  if (pathStatBefore.isSymbolicLink() || !pathStatBefore.isFile()) {
+    throw new Error(`${label} must be a regular non-symlink file`);
+  }
+
+  const descriptor = openSync(filename, 'r');
+  try {
+    const descriptorStatBefore = fstatSync(descriptor, { bigint: true });
+    if (!descriptorStatBefore.isFile()
+        || identityOf(descriptorStatBefore) !== identityOf(pathStatBefore)) {
+      throw new Error(`${label} changed before it could be read`);
+    }
+
+    const bytes = readFileSync(descriptor);
+    const descriptorStatAfter = fstatSync(descriptor, { bigint: true });
+    const pathStatAfter = lstatSync(filename, { bigint: true });
+    if (pathStatAfter.isSymbolicLink()
+        || !pathStatAfter.isFile()
+        || identityOf(pathStatAfter) !== identityOf(descriptorStatAfter)
+        || fingerprintOf(descriptorStatBefore) !== fingerprintOf(descriptorStatAfter)
+        || fingerprintOf(descriptorStatAfter) !== fingerprintOf(pathStatAfter)) {
+      throw new Error(`${label} changed while it was being read`);
+    }
+    if (bytes.length === 0) throw new Error(`${label} must not be empty`);
+
+    return {
+      bytes,
+      identity: identityOf(descriptorStatAfter),
+      fingerprint: fingerprintOf(descriptorStatAfter),
+      canonical: realpathSync.native(filename),
+    };
+  } finally {
+    closeSync(descriptor);
+  }
+};
 
 const resolveArtifactPath = (bundleRoot, canonicalBundleRoot, relative, label) => {
   requireNonEmptyString(relative, label);
@@ -102,32 +152,34 @@ export const readCaptureArtifacts = ({ capturePath, capture }) => {
   const canonicalBundleRoot = realpathSync.native(bundleRoot);
   const resolvedPaths = new Map();
   const identities = new Map();
+  const fingerprints = new Map();
+  const byteLengths = new Map();
   const seenIdentities = new Set();
   const rawArtifacts = {};
   const parsed = {};
 
   for (const role of RAW_ARTIFACT_ROLES) {
+    const label = `capture artifact ${role}`;
     const { resolved, canonical } = resolveArtifactPath(
       bundleRoot,
       canonicalBundleRoot,
       capture.artifacts[role],
       `capture.artifacts.${role}`,
     );
-    const stat = lstatSync(resolved);
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error(`capture artifact ${role} must be a regular non-symlink file`);
+    const file = readStableRegularFile(resolved, label);
+    if (file.canonical !== canonical) {
+      throw new Error(`${label} changed before it could be read`);
     }
-    const identity = identityOf(stat);
-    if (seenIdentities.has(identity)) {
+    if (seenIdentities.has(file.identity)) {
       throw new Error(`capture artifact files must be unique; ${role} aliases another role`);
     }
-    seenIdentities.add(identity);
-    const bytes = readFileSync(resolved);
-    if (bytes.length === 0) throw new Error(`capture artifact ${role} must not be empty`);
-    resolvedPaths.set(role, canonical);
-    identities.set(role, identity);
-    rawArtifacts[role] = sha256Hex(bytes);
-    parsed[role] = parseJsonBytes(bytes, `capture artifact ${role}`);
+    seenIdentities.add(file.identity);
+    resolvedPaths.set(role, file.canonical);
+    identities.set(role, file.identity);
+    fingerprints.set(role, file.fingerprint);
+    byteLengths.set(role, file.bytes.length);
+    rawArtifacts[role] = sha256Hex(file.bytes);
+    parsed[role] = parseJsonBytes(file.bytes, label);
   }
 
   requireObject(parsed.baseline, 'baseline artifact');
@@ -137,12 +189,26 @@ export const readCaptureArtifacts = ({ capturePath, capture }) => {
   requireArray(parsed.maintenance, 'maintenance artifact');
   requireArray(parsed.cutover, 'cutover artifact');
 
-  return { rawArtifacts, parsed, resolvedPaths, identities };
+  return {
+    rawArtifacts,
+    parsed,
+    resolvedPaths,
+    identities,
+    fingerprints,
+    byteLengths,
+  };
 };
 
 export const assemblePartitionPacket = ({ manifest, capturePath, capture }) => {
   validatePreparedManifest(manifest);
-  const { rawArtifacts, parsed, resolvedPaths, identities } = readCaptureArtifacts({
+  const {
+    rawArtifacts,
+    parsed,
+    resolvedPaths,
+    identities,
+    fingerprints,
+    byteLengths,
+  } = readCaptureArtifacts({
     capturePath,
     capture,
   });
@@ -161,5 +227,11 @@ export const assemblePartitionPacket = ({ manifest, capturePath, capture }) => {
     cutover_rehearsals: parsed.cutover,
   };
   validatePartitionPacket(packet);
-  return { packet, resolvedPaths, identities };
+  return {
+    packet,
+    resolvedPaths,
+    identities,
+    fingerprints,
+    byteLengths,
+  };
 };

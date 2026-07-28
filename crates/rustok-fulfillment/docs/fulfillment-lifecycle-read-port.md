@@ -1,6 +1,6 @@
 # Fulfillment lifecycle read port
 
-Status: source cutover, unvalidated.
+Status: source cutover, unvalidated; mounted projection-parity capture published.
 
 ## Scope
 
@@ -80,8 +80,8 @@ schemas.
 
 ## GraphQL cutover
 
-The existing mounted `CommerceShippingOptionReadScope` now scopes both read
-runtimes for each resolver task:
+The existing mounted `CommerceShippingOptionReadScope` scopes both read runtimes
+for each resolver task:
 
 - `CommerceShippingOptionReadRuntime`;
 - `CommerceFulfillmentLifecycleReadRuntime`.
@@ -136,6 +136,37 @@ retryability. Only technical database events retain the typed internal cause.
 The GraphQL and admin REST boundaries additionally retain transport operation,
 resource identity, public policy code, retryability, and deadline context.
 
+## Mounted projection-parity capture
+
+The locked execution contract is:
+
+`crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`
+
+The maintainer-owned runner is:
+
+`scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs`
+
+It compares mounted GraphQL and admin REST behavior for:
+
+- single fulfillment lookup/detail projection equality;
+- filtered list projection order, pagination, and total equality;
+- latest fulfillment by order against REST detail;
+- GraphQL `null` versus REST `404 commerce_admin_not_found` for absence.
+
+The runner hashes normalized owner projections, source files, and the locked
+contract. It does not retain the bearer token, authorization header, raw response
+bodies, or fulfillment metadata. Output is written atomically and an existing
+packet is never overwritten implicitly.
+
+Publishing this contract does not prove runtime behavior. A successful future
+capture may prove bounded mounted projection parity, but wider
+`runtime_parity_proven` remains false until deadline/failure injection, process
+restart, external-adapter identity, and remote-adapter behavior are retained.
+
+The capture runbook is:
+
+`crates/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md`
+
 ## Evidence
 
 Source evidence is retained at:
@@ -144,18 +175,20 @@ Source evidence is retained at:
 
 Its status is `source_cutover_unvalidated`. It records completed default server
 composition, GraphQL lifecycle lookup/list/latest-by-order cutover, admin REST
-list/detail cutover, and concrete GraphQL delegate removal. Runtime parity remains
-explicitly unproven.
+list/detail cutover, concrete GraphQL delegate removal, and publication of the
+mounted projection-parity capture contract. Capture execution and all runtime
+parity flags remain false.
 
 ## Intended checks
 
 ```bash
 node scripts/verify/verify-fulfillment-lifecycle-read-port.mjs
 node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs
+node scripts/verify/verify-fulfillment-lifecycle-transport-parity-capture.mjs
 cargo check -p rustok-fulfillment --lib
 cargo check -p rustok-commerce --lib
 cargo check -p rustok-server --features mod-commerce
 ```
 
-Tests, Cargo commands, formatting, verifiers, workflows, and CI were not run by
-the implementation agent.
+Tests, Cargo commands, formatting, verifiers, capture execution, workflows, and CI
+were not run by the implementation agent.

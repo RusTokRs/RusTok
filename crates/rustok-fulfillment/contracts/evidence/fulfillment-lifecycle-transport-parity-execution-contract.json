@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "module": "fulfillment",
+  "packet": "fulfillment-lifecycle-transport-parity-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "source_base_revision": "75db491faebadac59440a705a4f201567466f3e9",
+  "runner": "scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs",
+  "verifier": "scripts/verify/verify-fulfillment-lifecycle-transport-parity-capture.mjs",
+  "evidence_path": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution.json",
+  "evidence_status": "runtime_execution_pending",
+  "source_files": [
+    "apps/server/src/controllers/graphql.rs",
+    "crates/rustok-commerce/src/graphql/query.rs",
+    "crates/rustok-commerce/src/graphql/safe_query.rs",
+    "crates/rustok-commerce/src/graphql_runtime.rs",
+    "crates/rustok-commerce/src/controllers/admin/fulfillments.rs",
+    "crates/rustok-fulfillment/src/fulfillment_read.rs",
+    "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json"
+  ],
+  "required_environment": [
+    "RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL",
+    "RUSTOK_FULFILLMENT_PARITY_REST_BASE_URL",
+    "RUSTOK_FULFILLMENT_PARITY_TENANT_ID",
+    "RUSTOK_FULFILLMENT_PARITY_AUTH_TOKEN",
+    "RUSTOK_FULFILLMENT_PARITY_DETAIL_ID",
+    "RUSTOK_FULFILLMENT_PARITY_ORDER_ID",
+    "RUSTOK_FULFILLMENT_PARITY_STATUS",
+    "RUSTOK_FULFILLMENT_PARITY_LATEST_ID",
+    "RUSTOK_FULFILLMENT_PARITY_MISSING_ID",
+    "RUSTOK_FULFILLMENT_PARITY_SOURCE_REVISION",
+    "RUSTOK_FULFILLMENT_PARITY_ADAPTER_PROFILE"
+  ],
+  "optional_environment": {
+    "RUSTOK_FULFILLMENT_PARITY_TENANT_HEADER": "X-Tenant-ID",
+    "RUSTOK_FULFILLMENT_PARITY_LOCALE": "en",
+    "RUSTOK_FULFILLMENT_PARITY_PAGE": "1",
+    "RUSTOK_FULFILLMENT_PARITY_PER_PAGE": "100",
+    "RUSTOK_FULFILLMENT_PARITY_TIMEOUT_MS": "10000",
+    "RUSTOK_FULFILLMENT_PARITY_RUNTIME_INSTANCE": "unreported"
+  },
+  "request_policy": {
+    "graphql_method": "POST",
+    "rest_method": "GET",
+    "graphql_mounted_path": "/api/graphql/",
+    "rest_list_path": "/admin/fulfillments",
+    "rest_detail_path_template": "/admin/fulfillments/{fulfillment_id}",
+    "maximum_response_bytes": 1048576,
+    "allow_http_for_local_capture": true,
+    "forbid_url_credentials_query_and_fragment": true
+  },
+  "scenarios": [
+    {
+      "id": "lookup_rest_detail_projection_parity",
+      "graphql_field": "fulfillment",
+      "rest_path": "/admin/fulfillments/{detail_id}",
+      "assertions": [
+        "both transports succeed",
+        "normalized fulfillment projections are identical"
+      ]
+    },
+    {
+      "id": "filtered_list_projection_parity",
+      "graphql_field": "fulfillments",
+      "rest_path": "/admin/fulfillments?status={status}&order_id={order_id}&page={page}&per_page={per_page}",
+      "assertions": [
+        "ordered normalized projections are identical",
+        "pagination total is identical",
+        "page and per-page are preserved"
+      ]
+    },
+    {
+      "id": "latest_by_order_projection_parity",
+      "graphql_field": "order.fulfillment",
+      "rest_path": "/admin/fulfillments/{latest_id}",
+      "assertions": [
+        "GraphQL latest fulfillment id matches the expected owner projection",
+        "GraphQL latest projection equals REST detail projection"
+      ]
+    },
+    {
+      "id": "optional_not_found_transport_policy",
+      "graphql_field": "fulfillment",
+      "rest_path": "/admin/fulfillments/{missing_id}",
+      "assertions": [
+        "GraphQL returns null without an error",
+        "REST returns 404 commerce_admin_not_found"
+      ]
+    }
+  ],
+  "retained_boundary": {
+    "bearer_token_retained": false,
+    "raw_response_bodies_retained": false,
+    "fulfillment_metadata_retained": false,
+    "normalized_projection_hashes_retained": true,
+    "source_hashes_retained": true,
+    "urls_retained_without_credentials_query_or_fragment": true,
+    "transport_projection_parity_requires_successful_capture": true,
+    "restart_deadline_failure_and_remote_adapter_evidence_separate": true
+  }
+}

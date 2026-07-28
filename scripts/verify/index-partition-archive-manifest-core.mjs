@@ -54,6 +54,22 @@ const requireDigest = (value, label) => {
   return digest;
 };
 
+const requireIdentity = (value, label) => {
+  const identity = requireNonEmptyString(value, label);
+  if (!/^\d+:\d+$/u.test(identity)) {
+    throw new Error(`${label} must be a decimal device:inode identity`);
+  }
+  return identity;
+};
+
+const requireFingerprint = (value, label) => {
+  const fingerprint = requireNonEmptyString(value, label);
+  if (!/^\d+:\d+:\d+:\d+:\d+$/u.test(fingerprint)) {
+    throw new Error(`${label} must be a decimal device:inode:size:mtimeNs:ctimeNs fingerprint`);
+  }
+  return fingerprint;
+};
+
 const parseJsonBytes = (bytes, label) => {
   try {
     return JSON.parse(bytes.toString('utf8'));
@@ -105,6 +121,7 @@ const readStableRegularFile = (filename, label) => {
     return {
       bytes,
       identity: identityOf(descriptorStatAfter),
+      fingerprint: fingerprintOf(descriptorStatAfter),
       canonical: realpathSync.native(filename),
     };
   } finally {
@@ -112,7 +129,28 @@ const readStableRegularFile = (filename, label) => {
   }
 };
 
-const normalizeFiles = (files) => {
+const readRootSnapshot = (resolvedRoot) => {
+  const stat = lstatSync(resolvedRoot, { bigint: true });
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error('retained bundle root must be a regular non-symlink directory');
+  }
+  return {
+    identity: identityOf(stat),
+    fingerprint: fingerprintOf(stat),
+    canonical: realpathSync.native(resolvedRoot),
+  };
+};
+
+const assertRootUnchanged = ({ resolvedRoot, expected }) => {
+  const current = readRootSnapshot(resolvedRoot);
+  if (current.identity !== expected.identity
+      || current.canonical !== expected.canonical) {
+    throw new Error('retained bundle root changed after inspection');
+  }
+  return current;
+};
+
+const normalizeFiles = (files, { requireInspectionSnapshot = false } = {}) => {
   if (!Array.isArray(files) || files.length !== 9) {
     throw new Error('inspection.files must contain exactly nine retained files');
   }
@@ -128,7 +166,18 @@ const normalizeFiles = (files) => {
     if (paths.has(retainedPath)) throw new Error(`inspection.files contains duplicate path ${retainedPath}`);
     roles.add(role);
     paths.add(retainedPath);
-    return { role, path: retainedPath, bytes, sha256 };
+    const normalized = { role, path: retainedPath, bytes, sha256 };
+    if (requireInspectionSnapshot) {
+      normalized.identity = requireIdentity(
+        file.identity,
+        `inspection.files[${index}].identity`,
+      );
+      normalized.fingerprint = requireFingerprint(
+        file.fingerprint,
+        `inspection.files[${index}].fingerprint`,
+      );
+    }
+    return normalized;
   });
 };
 
@@ -151,9 +200,30 @@ const assertRetainedFilesUnchanged = ({
       throw new Error(`retained bundle file ${file.role} aliases another retained bundle file after inspection`);
     }
     retainedIdentities.add(current.identity);
+    if (current.identity !== file.identity) {
+      throw new Error(`retained bundle file ${file.role} identity changed after inspection`);
+    }
     if (current.bytes.length !== file.bytes || sha256Hex(current.bytes) !== file.sha256) {
       throw new Error(`retained bundle file ${file.role} changed after inspection`);
     }
+    if (current.fingerprint !== file.fingerprint) {
+      throw new Error(`retained bundle file ${file.role} metadata changed after inspection`);
+    }
+  }
+};
+
+const assertSavedManifestUnchanged = ({
+  resolvedManifestPath,
+  canonicalRoot,
+  initial,
+}) => {
+  const current = readStableRegularFile(resolvedManifestPath, 'saved archive manifest');
+  ensureOutsideRoot(canonicalRoot, current.canonical, 'saved archive manifest');
+  if (current.identity !== initial.identity
+      || current.fingerprint !== initial.fingerprint
+      || current.canonical !== initial.canonical
+      || !current.bytes.equals(initial.bytes)) {
+    throw new Error('saved archive manifest changed after it was verified');
   }
 };
 
@@ -196,12 +266,18 @@ export const verifySavedRetainedPartitionArchiveManifest = ({
   manifestPath,
 }) => {
   const expected = buildRetainedPartitionArchiveManifest(inspection);
+  const inspectedFiles = normalizeFiles(inspection.files, { requireInspectionSnapshot: true });
+  const inspectedRoot = {
+    identity: requireIdentity(inspection.rootIdentity, 'inspection.rootIdentity'),
+    canonical: requireNonEmptyString(inspection.rootCanonical, 'inspection.rootCanonical'),
+  };
   const resolvedRoot = path.resolve(requireNonEmptyString(root, 'root'));
   const resolvedManifestPath = path.resolve(requireNonEmptyString(manifestPath, 'manifestPath'));
   ensureOutsideRoot(resolvedRoot, resolvedManifestPath, 'saved archive manifest');
 
+  const currentRoot = assertRootUnchanged({ resolvedRoot, expected: inspectedRoot });
+  const canonicalRoot = currentRoot.canonical;
   const manifestFile = readStableRegularFile(resolvedManifestPath, 'saved archive manifest');
-  const canonicalRoot = realpathSync.native(resolvedRoot);
   ensureOutsideRoot(canonicalRoot, manifestFile.canonical, 'saved archive manifest');
 
   const saved = requireObject(
@@ -220,11 +296,17 @@ export const verifySavedRetainedPartitionArchiveManifest = ({
   }
 
   assertRetainedFilesUnchanged({
-    files: expected.files,
+    files: inspectedFiles,
     resolvedRoot,
     canonicalRoot,
     manifestIdentity: manifestFile.identity,
   });
+  assertSavedManifestUnchanged({
+    resolvedManifestPath,
+    canonicalRoot,
+    initial: manifestFile,
+  });
+  assertRootUnchanged({ resolvedRoot, expected: inspectedRoot });
 
   return {
     contract: ARCHIVE_VERIFICATION_CONTRACT,
