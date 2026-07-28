@@ -35,11 +35,15 @@ Complete shipping-option active list and lookup use `ShippingOptionReadPort`,
 while administrative list-all uses the separate `ShippingOptionAdminReadPort`.
 The root in-process factories own `FulfillmentService` construction, require read
 policy, preserve requested and default locale values, and map owner failures to
-stable `PortError` envelopes. Mounted commerce GraphQL shipping-option
-validation, shipping enrichment, storefront listing, single lookup, and
-administrative list-all now route through those owner ports. The private Commerce
-facade retains one concrete `FulfillmentService` only for fulfillment lifecycle
-and order-to-fulfillment compatibility reads. The seller/cart
+stable `PortError` envelopes. The application host now composes both read ports
+once in `HostRuntimeContext`; manifest GraphQL runtime data carries them into a
+resolver-scoped async task, and the private Commerce facade only consumes those
+scoped owner ports. Mounted shipping enrichment, storefront listing, single
+lookup, and administrative list-all therefore no longer construct their
+in-process providers inside the Commerce seam. The facade retains one concrete
+`FulfillmentService` only for fulfillment lifecycle and order-to-fulfillment
+compatibility reads. Directly embedded standalone schemas retain an explicit
+in-process compatibility fallback outside the facade. The seller/cart
 `ShippingSelectionPort` contract is unchanged.
 
 Stable fulfillment keys and metadata identity remain owner-local compatibility
@@ -73,7 +77,8 @@ identity and database uniqueness migration remain open.
   owner-admin/storefront, checkout execution, and typed lifecycle split.
 - `scripts/verify/verify-fulfillment-shipping-option-read-port.mjs` and
   `scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs` guard the
-  internal shipping-option read boundaries and mounted GraphQL query cutover.
+  internal shipping-option read boundaries, mounted GraphQL query cutover, and
+  server host composition.
 - No status promotion is claimed from source. Compile, upgraded database,
   contention, restart, mounted transport, and remote evidence remain missing.
 
@@ -111,8 +116,9 @@ identity and database uniqueness migration remain open.
 - [x] Cut mounted GraphQL single lookup and administrative `shipping_options`
   list-all over to owner read ports while preserving optional-not-found and
   `FULFILLMENT_*` public envelopes.
-- [ ] Inject the read ports from the application host rather than constructing
-  root in-process providers inside the commerce seam.
+- [x] Inject both read ports from application-host composition through typed
+  runtime data and resolver-scoped async context; keep standalone fallback outside
+  the private facade.
 - [ ] Execute compile, mounted GraphQL, REST/native parity, deadline, failure,
   and remote-profile evidence.
 
@@ -148,16 +154,15 @@ identity and database uniqueness migration remain open.
    **Done when:** production-like execution proves degraded fallback and typed
    adapter errors while `FulfillmentService` remains the sole lifecycle owner.
 
-5. **Prove and host-compose shipping-option reads.** Execute active list,
-   administrative list-all, and lookup through mounted GraphQL consumers,
-   compare REST/native behavior, and move provider construction to the
-   application host.
+5. **Prove shipping-option transport parity.** Execute active list,
+   administrative list-all, and lookup through mounted GraphQL consumers and
+   compare REST/native behavior against the same owner projections.
    **Depends on:** compiled fulfillment/commerce crates and mounted transport
    fixtures.
    **Done when:** all transports retain locale/channel/deadline context, expose
    identical owner projections with correct active/inactive semantics, and no
-   commerce transport constructs a concrete fulfillment service or in-process
-   provider.
+   mounted commerce transport constructs a concrete fulfillment service or
+   in-process read provider.
 
 6. **Execute remote contracts.** Turn shipping-selection and checkout-execution
    matrices into provider execution before promoting beyond `boundary_ready`.

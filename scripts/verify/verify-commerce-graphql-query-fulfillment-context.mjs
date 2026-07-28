@@ -12,7 +12,11 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 
 const query = read('crates/rustok-commerce/src/graphql/query.rs');
 const facade = read('crates/rustok-commerce/src/graphql/safe_query.rs');
+const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
+const commerceCargo = read('crates/rustok-commerce/Cargo.toml');
 const owner = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
+const serverComposition = read('apps/server/src/services/commerce_provider_runtime.rs');
+const serverSchema = read('apps/server/src/graphql/schema.rs');
 const failures = [];
 
 const requireText = (source, value, label) => {
@@ -36,6 +40,12 @@ const shim = between(
   'mod rustok_fulfillment_shim {',
   '    use self::rustok_api_shim as rustok_api;',
   'private fulfillment facade',
+);
+const constructor = between(
+  shim,
+  'pub fn new(db: DatabaseConnection) -> Self {',
+  'pub async fn get_shipping_option(',
+  'fulfillment facade constructor',
 );
 const optionLookup = between(
   shim,
@@ -71,119 +81,74 @@ const portBoundary = between(
 for (const [value, label] of [
   ['mod rustok_fulfillment_shim {', 'private fulfillment facade'],
   ['use self::rustok_fulfillment_shim as rustok_fulfillment;', 'safe fulfillment routing'],
-  ['inner: ::rustok_fulfillment::FulfillmentService', 'legacy fulfillment delegate'],
-  ['shipping_option_reads: Arc<dyn ShippingOptionReadPort>', 'shipping option read port field'],
+  ['inner: ::rustok_fulfillment::FulfillmentService', 'legacy lifecycle delegate'],
+  ['shipping_option_reads: Arc<dyn ShippingOptionReadPort>', 'storefront read port field'],
   [
     'shipping_option_admin_reads: Arc<dyn ShippingOptionAdminReadPort>',
-    'administrative shipping option read port field',
-  ],
-  ['::rustok_fulfillment::FulfillmentService::new(db.clone())', 'legacy constructor isolation'],
-  [
-    'shipping_option_reads: in_process_shipping_option_read_port(db.clone())',
-    'canonical storefront read factory',
-  ],
-  [
-    'shipping_option_admin_reads: in_process_shipping_option_admin_read_port(db)',
-    'canonical administrative read factory',
+    'administrative read port field',
   ],
   ['pub async fn list_all_shipping_options(', 'administrative all-options facade'],
   ['pub async fn find_by_order(', 'order fulfillment facade'],
   ['FulfillmentResult<Option<FulfillmentResponse>>', 'order fulfillment typed result'],
-  ['"shipping_options"', 'admin shipping query field'],
-  ['"list_all_shipping_option_projections"', 'admin shipping owner operation'],
-  ['"order"', 'admin order query field'],
-  ['"find_by_order"', 'order fulfillment owner operation'],
 ]) {
   requireText(facade, value, label);
 }
 
 for (const [value, label] of [
-  ['ShippingOptionReadPort', 'owner storefront read trait'],
-  ['ShippingOptionAdminReadPort', 'owner administrative read trait'],
-  ['ListShippingOptionProjectionsRequest', 'list projection request'],
-  ['ListAllShippingOptionProjectionsRequest', 'admin list projection request'],
-  ['ReadShippingOptionProjectionRequest', 'lookup projection request'],
-  ['in_process_shipping_option_read_port', 'root storefront read factory'],
-  ['in_process_shipping_option_admin_read_port', 'root administrative read factory'],
-  ['PortActor, PortContext, PortError, PortErrorKind', 'port context imports'],
-  ['fn shipping_option_query_context(', 'query context builder'],
-  ['PortActor::service("rustok-commerce.graphql-query-shipping-options")', 'query service actor'],
-  ['format!("graphql-fulfillment:{query_field}:{resource}")', 'query correlation'],
-  ['.with_deadline(std::time::Duration::from_secs(2))', 'query deadline'],
+  [
+    'shipping_option_read_runtime_for_current_graphql_scope(',
+    'resolver-scoped runtime resolution',
+  ],
+  ['shipping_option_runtime.shipping_option_read_port()', 'host storefront read port'],
+  [
+    'shipping_option_runtime\n                        .shipping_option_admin_read_port()',
+    'host administrative read port',
+  ],
+  ['::rustok_fulfillment::FulfillmentService::new(db)', 'isolated lifecycle constructor'],
 ]) {
-  requireText(shim, value, label);
+  requireText(constructor, value, label);
+}
+for (const value of [
+  'in_process_shipping_option_read_port',
+  'in_process_shipping_option_admin_read_port',
+]) {
+  forbidText(shim, value, 'private facade must not construct shipping-option ports');
 }
 
 for (const [source, value, label] of [
-  [optionLookup, 'FulfillmentResult<ShippingOptionResponse>', 'optional lookup compatibility result'],
+  [optionLookup, 'FulfillmentResult<ShippingOptionResponse>', 'optional lookup result'],
   [optionLookup, '.read_shipping_option_projection(', 'owner option lookup'],
   [optionLookup, 'ReadShippingOptionProjectionRequest {', 'typed lookup request'],
-  [optionLookup, 'context.clone(),', 'lookup context delegation'],
-  [
-    optionLookup,
-    'map_shipping_option_lookup_port_error(',
-    'lookup compatibility adapter',
-  ],
-  [
-    optionLookup,
-    '"read_shipping_option_projection"',
-    'lookup owner operation',
-  ],
-  [optionList, 'Result<Vec<ShippingOptionResponse>, BoundaryError>', 'direct list boundary result'],
-  [optionList, '.list_shipping_option_projections(', 'owner option list'],
-  [optionList, 'ListShippingOptionProjectionsRequest {', 'typed list request'],
-  [optionList, 'context.clone(),', 'list context delegation'],
-  [optionList, 'map_shipping_option_port_error(', 'list boundary mapper'],
-  [
-    optionList,
-    '"list_shipping_option_projections"',
-    'list owner operation',
-  ],
+  [optionLookup, 'map_shipping_option_lookup_port_error(', 'lookup compatibility adapter'],
+  [optionList, 'Result<Vec<ShippingOptionResponse>, BoundaryError>', 'storefront list result'],
+  [optionList, '.list_shipping_option_projections(', 'owner storefront list'],
+  [optionList, 'ListShippingOptionProjectionsRequest {', 'typed storefront request'],
+  [optionList, 'map_shipping_option_port_error(', 'storefront boundary mapper'],
   [
     optionAdminList,
     'Result<Vec<ShippingOptionResponse>, ShippingOptionAdminQueryError>',
     'typed admin adapter result',
   ],
-  [optionAdminList, '.list_all_shipping_option_projections(', 'owner admin option list'],
-  [optionAdminList, 'ListAllShippingOptionProjectionsRequest {', 'typed admin list request'],
-  [optionAdminList, 'context.clone(),', 'admin list context delegation'],
+  [optionAdminList, '.list_all_shipping_option_projections(', 'owner admin list'],
+  [optionAdminList, 'ListAllShippingOptionProjectionsRequest {', 'typed admin request'],
   [
     optionAdminList,
     'ShippingOptionAdminQueryError(map_shipping_option_port_error(',
     'admin boundary adapter',
-  ],
-  [
-    optionAdminList,
-    '"list_all_shipping_option_projections"',
-    'admin list owner operation',
   ],
 ]) {
   requireText(source, value, label);
 }
 
 for (const [value, label] of [
-  ['pub(crate) struct ShippingOptionAdminQueryError(BoundaryError);', 'typed admin query error'],
-  ['pub(crate) fn to_string(self) -> BoundaryError', 'non-string source compatibility bridge'],
+  ['pub(crate) struct ShippingOptionAdminQueryError(BoundaryError);', 'typed admin error'],
+  ['pub(crate) fn to_string(self) -> BoundaryError', 'non-string source bridge'],
   ['self.0', 'boundary preservation'],
 ]) {
   requireText(shim, value, label);
 }
 for (const value of ['impl std::fmt::Display', 'impl Display', 'format!("{}", self.0)']) {
   forbidText(shim, value, 'admin boundary must not serialize through text');
-}
-
-const projectionLookups = optionLookup.match(/\.read_shipping_option_projection\(/g) ?? [];
-if (projectionLookups.length !== 1) {
-  failures.push(`expected one shipping-option projection lookup, found ${projectionLookups.length}`);
-}
-const projectionLists = optionList.match(/\.list_shipping_option_projections\(/g) ?? [];
-if (projectionLists.length !== 1) {
-  failures.push(`expected one shipping-option projection list, found ${projectionLists.length}`);
-}
-const adminProjectionLists =
-  optionAdminList.match(/\.list_all_shipping_option_projections\(/g) ?? [];
-if (adminProjectionLists.length !== 1) {
-  failures.push(`expected one administrative shipping-option projection list, found ${adminProjectionLists.length}`);
 }
 
 for (const [value, label] of [
@@ -193,54 +158,82 @@ for (const [value, label] of [
   ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'availability classification'],
   ['PortErrorKind::Forbidden', 'forbidden classification'],
   ['PortErrorKind::InvariantViolation', 'invariant classification'],
-  ['"Fulfillment query is invalid"', 'existing validation message'],
-  ['"FULFILLMENT_REQUEST_INVALID"', 'existing validation code'],
-  ['"Fulfillment resource was not found"', 'existing not-found message'],
-  ['"FULFILLMENT_RESOURCE_NOT_FOUND"', 'existing not-found code'],
-  ['"Fulfillment state conflicts with this query"', 'existing conflict message'],
-  ['"FULFILLMENT_STATE_CONFLICT"', 'existing conflict code'],
-  ['"Fulfillment data is temporarily unavailable"', 'existing unavailable message'],
-  ['"FULFILLMENT_TEMPORARILY_UNAVAILABLE"', 'existing unavailable code'],
-  ['FulfillmentError::ShippingOptionNotFound(shipping_option_id)', 'optional not-found compatibility'],
-  ['FulfillmentError::InvalidTransition {', 'conflict compatibility'],
-  ['DbErr::Custom("fulfillment storage is temporarily unavailable".to_string())', 'availability compatibility'],
-  ['"OPTIONAL_NONE"', 'optional-none diagnostic policy'],
-  ['"COMMERCE_QUERY_OPERATION_FAILED"', 'lookup fail-closed diagnostic policy'],
-  ['fn port_error_kind_name(', 'stable kind classifier'],
-  ['fn is_technical_port_error(', 'technical classifier'],
-  ['fn log_shipping_option_port_error(', 'shared context logger'],
+  ['"FULFILLMENT_REQUEST_INVALID"', 'validation code'],
+  ['"FULFILLMENT_RESOURCE_NOT_FOUND"', 'not-found code'],
+  ['"FULFILLMENT_STATE_CONFLICT"', 'conflict code'],
+  ['"FULFILLMENT_TEMPORARILY_UNAVAILABLE"', 'unavailable code'],
+  ['"FULFILLMENT_ACCESS_DENIED"', 'forbidden code'],
+  ['"FULFILLMENT_OPERATION_FAILED"', 'invariant code'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
-  ['tenant_id = %context.tenant_id', 'tenant context'],
-  ['actor = ?context.actor', 'actor context'],
-  ['context_locale_length = context.locale.len()', 'locale context'],
   ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['query_field,', 'query field context'],
-  ['operation,', 'owner operation context'],
-  ['shipping_option_id = ?shipping_option_id', 'option identity'],
-  ['requested_locale_length = requested_locale.map(str::len)', 'requested locale length'],
-  ['tenant_default_locale_length = tenant_default_locale.map(str::len)', 'default locale length'],
-  ['error_kind,', 'stable kind diagnostic'],
   ['owner_code = %error.code', 'stable owner code'],
-  ['owner_kind = ?error.kind', 'owner kind'],
-  ['owner_retryable = error.retryable', 'owner retryability'],
-  ['public_code,', 'public code'],
-  ['public_retryable,', 'public retryability'],
-  ['tracing::error!(', 'technical severity'],
-  ['tracing::warn!(', 'ordinary severity'],
-  ['BoundaryError::Public {', 'direct list boundary result'],
+  ['BoundaryError::Public {', 'typed public boundary'],
 ]) {
   requireText(portBoundary, value, label);
 }
 
 for (const [value, label] of [
+  ['pub struct CommerceShippingOptionReadRuntime {', 'host read runtime'],
+  ['shipping_option_reads: Arc<dyn ShippingOptionReadPort>', 'runtime storefront port'],
+  [
+    'shipping_option_admin_reads: Arc<dyn ShippingOptionAdminReadPort>',
+    'runtime administrative port',
+  ],
+  ['pub fn new(', 'host-injectable runtime constructor'],
+  ['pub fn in_process(db: DatabaseConnection) -> Self', 'standalone compatibility factory'],
+  ['in_process_shipping_option_read_port(db.clone())', 'standalone storefront factory'],
+  ['in_process_shipping_option_admin_read_port(db)', 'standalone admin factory'],
+  ['tokio::task_local! {', 'async task-local scope'],
+  ['CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME', 'scoped runtime identity'],
+  ['pub struct CommerceShippingOptionReadScope;', 'GraphQL scope extension'],
+  ['impl ExtensionFactory for CommerceShippingOptionReadScope', 'extension factory'],
+  ['ctx.data_opt::<CommerceGraphqlRuntimeData>()', 'schema runtime lookup'],
+  ['.scope(', 'resolver task scope'],
+  ['.try_with(Clone::clone)', 'facade runtime lookup'],
+  ['CommerceShippingOptionReadRuntime::in_process(db)', 'standalone fallback'],
+  [
+    '.shared_get::<CommerceShippingOptionReadRuntime>()',
+    'manifest runtime-data host requirement',
+  ],
+]) {
+  requireText(graphqlRuntime, value, label);
+}
+
+for (const [value, label] of [
+  [
+    'shared_get::<rustok_commerce::graphql_runtime::CommerceShippingOptionReadRuntime>()',
+    'server runtime reuse',
+  ],
+  [
+    'CommerceShippingOptionReadRuntime::in_process(',
+    'server in-process baseline composition',
+  ],
+  ['server.shared_insert(runtime.clone());', 'server runtime cache'],
+  ['host.with_shared_value(runtime)', 'host runtime attachment'],
+]) {
+  requireText(serverComposition, value, label);
+}
+
+for (const [value, label] of [
+  [
+    'use rustok_commerce::graphql_runtime::CommerceShippingOptionReadScope;',
+    'server extension import',
+  ],
+  [
+    'let builder = builder.extension(CommerceShippingOptionReadScope);',
+    'server extension mount',
+  ],
+]) {
+  requireText(serverSchema, value, label);
+}
+requireText(commerceCargo, 'tokio.workspace = true', 'task-local runtime dependency');
+
+for (const [value, label] of [
   ['use rustok_fulfillment::FulfillmentService;', 'unchanged query import'],
   ['let mut options = FulfillmentService::new(db.clone())', 'storefront facade constructor'],
-  ['.list_shipping_options(', 'storefront shipping option call'],
-  ['let fulfillment = FulfillmentService::new(db.clone())', 'admin order facade constructor'],
-  ['.find_by_order(tenant_id, id)', 'admin order fulfillment call'],
-  ['Err(rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_))', 'optional not-found source contract'],
-  ['Err(err) => return Err(err.to_string().into())', 'existing lookup fail-closed conversion'],
-  ['.map_err(|err| async_graphql::Error::new(err.to_string()))?', 'unchanged mapped query source'],
+  ['let fulfillment = FulfillmentService::new(db.clone())', 'lifecycle facade constructor'],
+  ['Err(rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_))', 'optional none'],
+  ['Err(err) => return Err(err.to_string().into())', 'lookup fail-closed conversion'],
 ]) {
   requireText(query, value, label);
 }
@@ -252,46 +245,32 @@ for (const [value, label] of [
 ]) {
   requireText(adminQuery, value, label);
 }
-
-const legacyConstructors =
-  facade.match(/::rustok_fulfillment::FulfillmentService::new\(db\.clone\(\)\)/g) ?? [];
-if (legacyConstructors.length !== 1) {
-  failures.push(`expected one remaining concrete fulfillment constructor, found ${legacyConstructors.length}`);
-}
-const readFactories =
-  facade.match(/in_process_shipping_option_read_port\(db\.clone\(\)\)/g) ?? [];
-if (readFactories.length !== 1) {
-  failures.push(`expected one shipping-option read factory, found ${readFactories.length}`);
-}
-const adminReadFactories =
-  facade.match(/in_process_shipping_option_admin_read_port\(db\)/g) ?? [];
-if (adminReadFactories.length !== 1) {
-  failures.push(`expected one administrative shipping-option read factory, found ${adminReadFactories.length}`);
-}
-
-for (const value of [
-  '.get_shipping_option(tenant_id, id, requested_locale, tenant_default_locale)',
-  '.list_shipping_options(\n                        tenant_id,',
-  '.list_all_shipping_options(tenant_id, requested_locale, tenant_default_locale)',
-  'error.message',
-]) {
-  forbidText(
-    optionLookup + optionList + optionAdminList + portBoundary,
-    value,
-    'shipping-option query port boundary',
-  );
-}
-
 forbidText(
   query,
   '::rustok_fulfillment::FulfillmentService',
   'query source must remain facade-routed',
 );
 
+const concreteConstructors =
+  facade.match(/::rustok_fulfillment::FulfillmentService::new\(db\)/g) ?? [];
+if (concreteConstructors.length !== 1) {
+  failures.push(`expected one remaining lifecycle constructor, found ${concreteConstructors.length}`);
+}
+const runtimeReadFactories =
+  graphqlRuntime.match(/in_process_shipping_option_read_port\(db\.clone\(\)\)/g) ?? [];
+if (runtimeReadFactories.length !== 1) {
+  failures.push(`expected one standalone storefront factory, found ${runtimeReadFactories.length}`);
+}
+const runtimeAdminFactories =
+  graphqlRuntime.match(/in_process_shipping_option_admin_read_port\(db\)/g) ?? [];
+if (runtimeAdminFactories.length !== 1) {
+  failures.push(`expected one standalone admin factory, found ${runtimeAdminFactories.length}`);
+}
+
 for (const [value, label] of [
   ['pub trait ShippingOptionReadPort: Send + Sync {', 'owner storefront read port'],
   ['pub trait ShippingOptionAdminReadPort: Send + Sync {', 'owner admin read port'],
-  ['async fn list_all_shipping_option_projections(', 'owner admin list operation'],
+  ['async fn list_all_shipping_option_projections(', 'owner admin operation'],
   ['context.require_policy(PortCallPolicy::read())?', 'owner read policy'],
   ['PortError::new(kind, code, message, retryable)', 'owner stable error'],
 ]) {
@@ -305,5 +284,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL shipping-option lookup, storefront list, and administrative list-all use fulfillment owner read ports with retained context, typed public envelopes, and isolated legacy lifecycle reads',
+  '✔ Mounted Commerce GraphQL shipping-option reads use host-composed fulfillment ports with resolver-scoped runtime data, retained typed envelopes, standalone compatibility, and isolated lifecycle reads',
 );

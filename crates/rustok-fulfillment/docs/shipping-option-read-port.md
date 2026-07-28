@@ -72,6 +72,24 @@ or one growing storefront interface. That keeps storefront active-only semantics
 separate from the admin requirement to inspect inactive shipping options and
 avoids breaking existing `ShippingOptionReadPort` implementors.
 
+## Application-host composition
+
+The mounted server composes one `CommerceShippingOptionReadRuntime` from the two
+root factories and stores it in `HostRuntimeContext`. Manifest-generated Commerce
+GraphQL runtime data requires that typed runtime during schema construction.
+`CommerceShippingOptionReadScope` then copies the runtime into a Tokio task-local
+scope for each resolver execution.
+
+The private Commerce fulfillment facade resolves the scoped runtime and clones
+its two owner ports. It no longer imports or calls the root in-process factories.
+This preserves the unchanged `query.rs` compatibility facade while keeping
+provider construction in the application host.
+
+Directly embedded schemas that do not install the mounted server extension use
+an explicit `CommerceShippingOptionReadRuntime::in_process` compatibility
+fallback in the Commerce GraphQL runtime module. The fallback is outside the
+private facade and is not evidence of mounted transport composition or parity.
+
 ## Stable owner errors
 
 | Owner outcome | Port kind | Code | Retryable |
@@ -109,8 +127,7 @@ validation, not-found, and conflict events do not add raw owner message fields.
 
 ## Mounted commerce cutover
 
-Mounted Commerce GraphQL shipping-option paths now use the root read-port
-factories:
+Mounted Commerce GraphQL shipping-option paths use the host-composed read ports:
 
 - shipping-option validation and single query lookup call
   `read_shipping_option_projection`;
@@ -146,6 +163,7 @@ node scripts/verify/verify-commerce-graphql-shipping-option-typed-error.mjs
 node scripts/verify/verify-commerce-graphql-shipping-enrichment-typed-error.mjs
 cargo check -p rustok-fulfillment --lib
 cargo check -p rustok-commerce --lib
+cargo check -p rustok-server --features mod-commerce
 ```
 
 No command was executed locally in this source wave.
@@ -154,8 +172,6 @@ No command was executed locally in this source wave.
 
 This slice does not:
 
-- inject the read ports from the application host rather than root in-process
-  factories;
 - propagate public channel into every query read context;
 - migrate REST/native shipping reads;
 - publish owner read ports for fulfillment lifecycle and order-to-fulfillment
@@ -163,5 +179,5 @@ This slice does not:
 - retire `FulfillmentService` from fulfillment-owned compatibility adapters;
 - modify `ShippingSelectionPort`;
 - add or change an FBA registry contract;
-- provide runtime, remote-profile, restart, or contention evidence;
+- provide compile, mounted runtime, remote-profile, restart, or contention evidence;
 - promote fulfillment or ecommerce FFA/FBA status.

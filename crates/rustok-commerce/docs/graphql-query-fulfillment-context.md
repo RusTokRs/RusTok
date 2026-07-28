@@ -4,8 +4,8 @@ Status: `source_ready_unvalidated`
 
 ## Shipping-option read cutover
 
-The safe commerce GraphQL query facade now routes all mounted shipping-option
-reads through fulfillment-owned read ports:
+The safe Commerce GraphQL query facade routes all mounted shipping-option reads
+through fulfillment-owned read ports:
 
 - `storefront_shipping_options` delegates
   `ShippingOptionReadPort::list_shipping_option_projections`;
@@ -23,9 +23,28 @@ lifecycle reads not covered by this slice:
 - fulfillment lookup/list;
 - order-to-fulfillment lookup.
 
-This is a partial topology result. It closes concrete service delegation for
-shipping-option query reads, but it does not claim that every fulfillment query
-method is owner-port composed.
+This is a partial topology result. It closes concrete service and provider
+construction for mounted shipping-option GraphQL reads, but it does not claim
+that every fulfillment query method is owner-port composed.
+
+## Application-host composition
+
+The server's commerce runtime bootstrap constructs one
+`CommerceShippingOptionReadRuntime` from the storefront and administrative root
+factories, caches it in `ServerRuntimeContext`, and attaches it to
+`HostRuntimeContext`. The manifest GraphQL data factory requires that typed
+runtime and stores it in `CommerceGraphqlRuntimeData`.
+
+`CommerceShippingOptionReadScope` is mounted as an async-graphql extension. For
+each resolver it copies the typed runtime into a Tokio task-local scope. The
+private fulfillment facade resolves that scoped runtime and clones both owner
+ports; it no longer imports or calls either root in-process factory.
+
+Directly embedded schemas that do not mount the server extension retain an
+explicit `CommerceShippingOptionReadRuntime::in_process` compatibility fallback
+in the public Commerce GraphQL runtime module. The fallback preserves existing
+standalone schema tests and embeddings without turning the private facade back
+into a provider constructor.
 
 ## Retained read context
 
@@ -62,7 +81,7 @@ fail-closed coverage for the complete port kind set and are not status
 promotions.
 
 The administrative resolver source still contains its existing
-`async_graphql::Error::new(err.to_string())` call. The private facade now returns
+`async_graphql::Error::new(err.to_string())` call. The private facade returns
 `ShippingOptionAdminQueryError`, whose inherent `to_string` method consumes the
 adapter and returns the already-typed `BoundaryError`. Rust resolves that
 inherent method before the standard `ToString` trait, so no string is created,
@@ -108,8 +127,8 @@ owner-local diagnostics and technical database cause.
 ## Preserved contracts
 
 - `query.rs` is unchanged and remains facade-routed.
-- Both existing source-level `FulfillmentService::new(db.clone())` calls still
-  resolve through the private safe facade.
+- Existing source-level `FulfillmentService::new(db.clone())` calls still resolve
+  through the private safe facade.
 - Single shipping-option not-found still returns `None` rather than a GraphQL
   error.
 - Storefront active-only semantics, currency, channel-visibility, and
@@ -119,6 +138,8 @@ owner-local diagnostics and technical database cause.
 - Shipping-option GraphQL DTOs and successful results are unchanged.
 - Fulfillment lifecycle and order lookup remain on the isolated concrete
   delegate.
+- Directly embedded schemas keep an explicit compatibility fallback without
+  changing the mounted server composition path.
 - Admin order lookup and non-not-found single shipping-option failures keep their
   existing generic `COMMERCE_QUERY_OPERATION_FAILED` fail-closed envelope after
   stable compatibility conversion.
@@ -127,17 +148,15 @@ owner-local diagnostics and technical database cause.
 
 ## Still open
 
-- Inject both shipping-option read ports from the application host rather than
-  using root in-process factories inside the private facade.
 - Add public-channel propagation to the shipping-option query `PortContext`.
 - Publish owner ports for fulfillment lifecycle query reads, then remove the
   remaining concrete `FulfillmentService` field.
 - Migrate REST/native shipping reads and retain parity evidence.
 - Continue reviewing order, payment, customer, inventory, region, channel,
-  catalog, and remaining commerce query conversions that still pass through
+  catalog, and remaining Commerce query conversions that still pass through
   dynamic strings.
-- Add compile, transport, deadline, REST/native parity, and remote evidence
-  before promoting any FBA/FFA status.
+- Add compile, mounted transport, deadline, REST/native parity, and remote
+  evidence before promoting any FBA/FFA status.
 
 ## Intended checks
 
@@ -146,6 +165,7 @@ node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs
 node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs
 node scripts/verify/verify-commerce-graphql-query-error-boundary.mjs
 cargo check -p rustok-commerce --lib
+cargo check -p rustok-server --features mod-commerce
 ```
 
 Tests, Cargo commands, formatting commands, verifiers, workflow checks, and CI
