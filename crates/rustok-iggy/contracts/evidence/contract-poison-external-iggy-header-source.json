@@ -36,6 +36,7 @@
     "assert_received_partition_equals_expected_one_based_partition",
     "assert_physical_payload_is_exact",
     "commit_probe_header_offset_only",
+    "drop_probe_consumer_and_shutdown_probe_client",
     "shutdown_production_transport"
   ],
   "production_paths": [
@@ -55,7 +56,8 @@
       "read_header_id",
       "read_partition_id",
       "read_payload",
-      "store_probe_offset"
+      "store_probe_offset",
+      "shutdown"
     ],
     "forbidden_operations": [
       "publish",
