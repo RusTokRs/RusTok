@@ -119,11 +119,14 @@
       "bundled",
       "external"
     ],
+    "startup_failure_non_fatal": true,
+    "partition_fairness_claimed": false,
     "readiness_dependency": false,
     "profiles_authorization": false
   },
   "remaining_work": [
     "retained_external_iggy_duplicate_scan_evidence",
+    "partition_fairness_or_per_partition_budget_policy",
     "telemetry_and_health_projection",
     "alert_delivery_and_suppression_outside_policy",
     "operator_ack_delete_replay_workflow_outside_inspector",
