@@ -63,28 +63,43 @@ consumer-group checkpoint for that partition. Aggregate lag is published only wh
 every partition is empty or has a coherent stored offset not ahead of the observed
 high-watermark. Missing checkpoints and inconsistent observations fail closed.
 
-An opt-in external-Iggy source harness now uses one unique stream and one partition to
-exercise the production raw-poison cursor path. It injects two malformed fixtures,
-receives the first through `PersistentContractConsumerGroup`, publishes exact bytes
-through `IggyTransport::move_to_dlq`, drops the source cursor without acknowledgement,
-requires same-offset/bytes/UUID redelivery after reopening the group, acknowledges it
-explicitly, and then requires the second offset to become visible. An independent real
-DLQ cursor verifies both payloads byte-for-byte. The harness is source-complete and has
-not been executed.
+The External raw-poison lifecycle harness uses one unique stream and one partition to
+exercise the production cursor path. It injects two malformed fixtures, receives the
+first through `PersistentContractConsumerGroup`, publishes exact bytes through
+`IggyTransport::move_to_dlq`, shuts down the transport without source acknowledgement,
+requires same-offset/bytes/UUID redelivery through a new transport and the same group,
+acknowledges it explicitly, and then requires the second offset to become visible. An
+independent real DLQ cursor verifies both payloads byte-for-byte. The harness is
+source-complete and has not been executed.
 
-The harness intentionally does not inspect the physical Iggy header, compose the
-PostgreSQL receipt store, exercise deduplication, or claim bundled/TLS/auth/multi-replica
-proof. Those remain separate retained evidence boundaries.
+A separate physical-header harness now covers the publisher wire contract without
+repeating the lifecycle scenario. It creates a production `ConsumedContractDecodeFailure`,
+derives one `DlqEntry`, publishes exactly once through `IggyTransport::move_to_dlq`, and
+uses a probe-only SDK consumer on `dlq` to require:
+
+- physical `message.header.id == broker_message_id.as_u128()`;
+- physical partition equals `(uuid_as_u128 mod partitions) + 1` and remains in the
+  one-based range;
+- physical payload is exact;
+- only the probe message's physical header offset is committed.
+
+The SDK probe cannot publish, create source fixtures, acknowledge source cursors,
+modify receipts, delete streams, or change deduplication. The physical-header harness
+is source-complete and runtime-pending.
+
+Neither external harness composes PostgreSQL receipt ordering, exercises broker
+suppression, or claims bundled/TLS/auth/multi-replica proof. Source cursor lifecycle,
+physical header observation, database ordering, and deduplication remain distinct
+evidence boundaries.
 
 Replay remains intentionally unavailable. A production replay API requires bounded
 broker reads, republish, durable progress/idempotency evidence, and a real broker
 integration test. DLQ retry requires a complete `DlqEntry`; there is no ID-only API
 that can claim success without the original payload.
 
-Compilation, source-verifier execution, external-Iggy raw cursor execution,
-deterministic-header/deduplication, receipt-plus-broker ordering, position/reconnect,
-persisted-offset, TLS/auth, bundled-mode, and multi-replica evidence remain
-maintainer-run or pending.
+Compilation, source-verifier execution, external-Iggy cursor/header execution,
+deduplication, receipt-plus-broker ordering, position/reconnect, persisted-offset,
+TLS/auth, bundled-mode, and multi-replica evidence remain maintainer-run or pending.
 
 ## Boundary and dependencies
 
@@ -104,11 +119,13 @@ maintainer-run or pending.
 - Consumer workers compose typed receive, connector receipt recognition/claim,
   exact-byte DLQ publication, durable `published`, source acknowledgement, and
   best-effort `acknowledged` in that order.
-- The external evidence fixture connector may publish arbitrary malformed bytes only.
-  Production receive, classification, DLQ publication, and source acknowledgement must
-  remain on `IggyTransport`/`PersistentContractConsumerGroup` APIs.
-- The external harness creates unique streams but does not use an unreviewed deletion
-  API. It requires a disposable broker or operator-approved cleanup.
+- The lifecycle fixture connector may publish arbitrary malformed bytes only.
+  Production receive, classification, DLQ publication, reconnect, and source ack remain
+  on `IggyTransport`/`PersistentContractConsumerGroup` APIs.
+- The physical-header SDK client is observation-only: connect, open a unique DLQ group,
+  receive one message, inspect header/partition/payload, and commit that probe offset.
+- External evidence creates unique streams but does not use an unreviewed deletion API.
+  It requires a disposable broker or operator-approved cleanup.
 - Consumers such as Outbox and Social Graph use public transport contracts rather than
   connector cursor internals.
 - Transport positions, tenant/event identities, broker IDs, credentials, raw payloads,
@@ -147,22 +164,25 @@ maintainer-run or pending.
     reviewed loopback endpoint already managed by `IggyTransport`; external clients reuse
     reviewed address/auth/TLS configuration.
 11. **External raw-poison lifecycle harness.** A versioned source contract, opt-in real
-    external broker test, bounded timeouts, exact-byte DLQ cursor, no-ack reopen/redelivery,
-    explicit source advancement, and static guard define the first broker-backed raw
-    decode-failure evidence without overclaiming unexecuted runtime proof.
+    external broker test, bounded timeouts, exact-byte DLQ cursor, no-ack transport
+    reconnect/redelivery, explicit source advancement, and static guard define the first
+    broker-backed raw cursor evidence without claiming execution.
+12. **Physical header/partition harness.** A separate source contract and static guard
+    define one production DLQ publication plus a probe-only SDK read that checks exact
+    UUID/u128 header mapping, one-based UUID partition routing, exact payload, and probe
+    offset commit without introducing deduplication claims.
 
 ## Next results
 
-1. **Execute external raw receive and acknowledgement evidence.** Run the new harness on
-   a disposable external Iggy server, retain broker/version/configuration metadata and
-   source/output digests, and repeat reopen/redelivery behavior. Source coverage exists;
-   runtime execution remains maintainer work.
+1. **Execute external lifecycle and header evidence.** Run both harnesses on a disposable
+   external Iggy server, retain broker/version/configuration metadata and source/output
+   digests, and keep their runtime packets separate.
 2. **Compose receipt-plus-broker ordering evidence.** Add PostgreSQL receipt storage to a
    broker-backed scenario and prove reserve/claim -> exact publish -> durable `published`
    -> source ack -> best-effort `acknowledged`, including acknowledgement-only recovery.
-3. **Verify deterministic DLQ header behavior.** Use a read-only SDK probe to prove the
-   outgoing header ID and one-based partition, then exercise publish failure reconnect and
-   duplicate behavior with deduplication disabled, enabled, capacity-evicted, and expired.
+3. **Verify duplicate behavior separately.** Exercise publish failure reconnect and the
+   same deterministic UUID with deduplication disabled, enabled, capacity-evicted, and
+   expired. Do not infer these outcomes from the one-message header probe.
 4. **Verify bundled raw lifecycle.** Repeat the external scenario through the packaged
    bundled server and prove start, readiness, restart, durable data reuse, and shutdown.
 5. **Verify connector receipt concurrency.** Execute and retain the existing PostgreSQL
@@ -186,12 +206,14 @@ maintainer-run or pending.
 - `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
 - `cargo test -p rustok-iggy --test integration`
 - `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy -- --nocapture --test-threads=1`
+- `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy_header -- --nocapture --test-threads=1`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
 - `node scripts/verify/verify-iggy-contract-poison-external-evidence.mjs`
+- `node scripts/verify/verify-iggy-contract-poison-external-header-evidence.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
 - `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
@@ -211,4 +233,5 @@ this slice.
 - [Module documentation](./README.md)
 - [Connector plan](../../rustok-iggy-connector/docs/implementation-plan.md)
 - [External raw poison evidence guide](./contract-poison-external-evidence.md)
+- [External physical header evidence guide](./contract-poison-external-header-evidence.md)
 - [Iggy integration reference](../../../docs/references/iggy/README.md)
