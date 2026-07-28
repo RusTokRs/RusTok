@@ -218,7 +218,8 @@ requireOrder("publish/mark ambiguity recovery helper", test, [
 ]);
 
 for (const marker of [
-  "DATABASE_URL",
+  'env::var("DATABASE_URL")',
+  'std::env::var("DATABASE_URL")',
   "localhost",
   "127.0.0.1",
   "UPDATE iggy_consumer_poison_receipts",
@@ -242,7 +243,7 @@ requireText(
 for (const marker of [
   "must be a whole number of seconds",
   "lease_expires_at <= CURRENT_TIMESTAMP",
-  "ConsumerPoisonReceiptError::ClaimLost",
+  "Self::ClaimLost",
   "WHERE publisher_id =",
   "state = 'publishing'",
 ]) {
