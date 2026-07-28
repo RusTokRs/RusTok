@@ -60,7 +60,7 @@ mutation retry.
 - A read-only observer reads every `domain` partition plus the persistent group
   checkpoint. Complete total/max lag is published only when every partition is
   coherent; missing/inconsistent checkpoints clear lag gauges.
-- Main now also contains generic Index partition snapshot/query/mutation evidence.
+- Main also contains generic Index partition snapshot/query/mutation evidence.
   That strengthens the shared Index substrate but does not validate this Social
   Graph consumer, its schema registration, or Profiles presentation policy.
 
@@ -68,10 +68,10 @@ mutation retry.
 
 The previous consumer path deserialized before returning a delivery. Malformed
 JSON/MessagePack or a registered-schema failure therefore surfaced only as a
-receive error: exact bytes and connector coordinates were not available to the
+receive error: exact bytes and connector coordinates were unavailable to the
 owner worker, and the offset remained uncommitted.
 
-`rustok-iggy` now defines a connector-level source contract:
+`rustok-iggy` now defines the source contract:
 
 - `PersistentContractConsumerGroup::receive_delivery()` returns either a
   validated event or `ConsumedContractDecodeFailure`;
@@ -83,17 +83,30 @@ owner worker, and the offset remained uncommitted.
 - a versioned UUIDv8 is derived from stream/topic/partition/offset/exact payload;
   error kind, retry count, time, process identity, connector message identity,
   acknowledgement token, credentials, and randomness are excluded;
-- the UUID may be used as a connector delivery and broker message identity, but
-  it is not a decoded event id and does not create a tenant-scoped durable receipt;
 - acknowledgement remains a separate explicit call after an approved terminal
   poison result exists;
 - compatibility `receive()` still returns a bounded error and performs no
   implicit acknowledgement.
 
-The Social Graph Index worker is not wired to this new result yet. That is
-intentional: undecodable bytes cannot safely reuse the existing tenant/event DLQ
-receipt by fabricating trusted facts. The next runtime slice must select a neutral
-durable connector poison receipt/outbox/transaction boundary before acknowledging.
+`rustok-iggy-connector` now owns the neutral durable result boundary:
+
+- migration `m20260728_000001_create_consumer_poison_receipts` is registered
+  through the existing connector migration hook;
+- source coordinates `(consumer_group, stream, topic, partition, offset)` are
+  unique and bind one deterministic connector delivery UUID plus exact bytes;
+- reuse with another UUID, payload, stable code, or observed attempt count fails
+  closed as an identity conflict;
+- states are `reserved`, leased `publishing`, `published`, and `acknowledged`;
+- expired publication leases may be reclaimed, while terminal states are
+  recognized idempotently;
+- the store performs no publish, DLQ routing, source commit, or authorization.
+
+The Social Graph Index worker is not wired to this result yet. That remains
+intentional until the worker can prove exact-byte publish and durable `published`
+before source acknowledgement, then recover redelivery without duplicate publish.
+The platform append-only migration tail also needs reconciliation: both the
+existing Social Graph Index DLQ migration and the connector poison migration must
+be appended without rewriting the published prefix.
 
 ## FFA/FBA boundary
 
@@ -156,11 +169,12 @@ durable connector poison receipt/outbox/transaction boundary before acknowledgin
    decision, multi-replica evidence, and retained operator packets.
 
 6. **Handle undecodable sealed contract deliveries without invented ownership.**
-   **Status:** connector source contract complete; worker integration not started.
-   **Next:** add a neutral durable poison receipt/outbox/transaction contract keyed
-   by immutable broker coordinates plus exact payload, wire the Social Graph Index
-   worker to `receive_delivery`, persist/publish before ack, recover redelivery
-   idempotently, and keep this path operationally independent from Profiles privacy.
+   **Status:** typed source delivery and neutral durable receipt are source-complete;
+   migration-tail reconciliation and worker integration are not complete.
+   **Next:** append both pending receipt migrations to the platform release-order
+   tail, wire the Social Graph Index worker to `receive_delivery`, construct the
+   neutral identity, publish exact bytes before `mark_published`, acknowledge only
+   afterward, and mark `acknowledged` as best-effort bookkeeping.
    **Done when:** malformed bytes can be retained, classified, durably terminalized,
    published/recovered, and acknowledged without fabricated tenant/event identity,
    implicit commits, duplicate authorization effects, or exactly-once claims.
@@ -168,20 +182,24 @@ durable connector poison receipt/outbox/transaction boundary before acknowledgin
 ## Recheck checkpoint — 2026-07-28
 
 - Rechecked the canonical Profiles plan, superseded PR #2237, draft PR #2317,
-  current `main`, and the latest generic Index partition evidence.
-- Preserved the receipts, cleanup, sealed event, replay, schema registration,
-  persistent worker, durable DLQ receipt, deterministic broker identity, readiness,
-  telemetry, and position-observer work from PR #2317 in the replacement branch.
+  replacement PR #2338, current `main`, and generic Index partition evidence.
+- Preserved receipts, cleanup, sealed events, replay, schema registration,
+  persistent worker, durable decoded-event DLQ receipts, deterministic broker
+  identity, readiness, telemetry, and position observation from PR #2317.
 - Reconfirmed privacy-before-presentation, bounded follower reads, owner-scoped
   writes, Media-owned descriptors, no automatic mutation retry, and the rule that
   Index/broker state never authorizes profile presentation.
-- Identified the raw decode gap before owner processing and added a typed
-  connector-level exact-byte failure contract with explicit acknowledgement.
-- Did not wire malformed bytes into the Social Graph tenant-scoped DLQ receipt,
-  because tenant/event facts are unavailable and must not be synthesized.
-- Current replacement branch still descends from PR #2317 head and therefore must
-  be synchronized with current `main` before final merge; `Cargo.lock` must be
-  refreshed by Cargo after that synchronization.
+- Added the typed exact-byte decode-failure contract with explicit acknowledgement.
+- Added connector-owned neutral receipt DDL/store with source-coordinate uniqueness,
+  exact-byte conflict detection, leased publication, terminal recognition, and
+  bounded stable errors.
+- Kept malformed bytes outside the Social Graph tenant/event receipt because those
+  trusted facts are unavailable and must not be synthesized.
+- Found that `m20260727_000004_create_index_dlq_receipts` is absent from the current
+  explicit append-only migration tail; the connector receipt migration must be
+  appended with it before compatibility validation.
+- The replacement branch still descends from PR #2317 and must be synchronized with
+  current `main`; `Cargo.lock` must be refreshed by Cargo afterward.
 - Tests, Cargo commands, formatters, source verifiers, PostgreSQL, real-broker, and
   multi-replica scenarios were not run, per maintainer instruction.
 
@@ -195,6 +213,9 @@ durable connector poison receipt/outbox/transaction boundary before acknowledgin
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
+- `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
+- `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
