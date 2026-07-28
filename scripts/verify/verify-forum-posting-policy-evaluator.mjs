@@ -126,9 +126,32 @@ const expectedPrecedence = [
 if (JSON.stringify(contract.precedence) !== JSON.stringify(expectedPrecedence)) {
   failures.push("FORUM-26D machine precedence must remain exact and ordered");
 }
+if (
+  JSON.stringify(contract.composition?.candidate_limit_precedence) !==
+  JSON.stringify(["link_limit", "mention_limit", "attachment_limit"])
+) {
+  failures.push("FORUM-26D candidate-limit precedence must remain exact and ordered");
+}
+
+for (const residual of [
+  "authoritative account age reading approved-post flag reputation and moderation-history fact adapters",
+  "policy configuration persistence and administration",
+  "topic reply edit and bump owner enforcement",
+  "shared distributed rate-limit reservation and commit execution",
+  "duplicate-content hashing and retained fingerprint",
+  "external or AI spam scoring",
+  "automatic trust promotion and demotion",
+  "GraphQL REST OpenAPI admin and storefront policy surfaces",
+  "PostgreSQL and cross-consumer runtime evidence",
+]) {
+  if (!contract.not_delivered?.includes(residual)) {
+    failures.push(`FORUM-26D must keep ${residual} explicitly open`);
+  }
+}
 
 for (const marker of [
   "pub const FORUM_POSTING_POLICY_PRECEDENCE",
+  "const MAX_SIGNED_EVIDENCE: u64",
   "pub struct ForumPostingWindowLimit",
   "pub maximum_count: u32",
   "pub window_seconds: u32",
@@ -148,6 +171,8 @@ for (const marker of [
   "pub maximum_links: Option<u16>",
   "pub maximum_mentions: Option<u16>",
   "pub maximum_attachments: Option<u16>",
+  "validate_positive_unsigned_minimum",
+  "value > MAX_SIGNED_EVIDENCE",
   "pub fn required_facts(",
   "required_facts_for_normalized_rules",
   "pub struct ForumPostingPolicyEvaluator",
@@ -241,12 +266,14 @@ for (const marker of [
   "bump_interval_returns_exact_remaining_delay",
   "candidate_limits_follow_link_mention_attachment_order",
   "passing_snapshot_is_allowed_and_body_size_is_not_invented_as_a_rule",
+  "empty_rules_allow_without_owner_facts",
   "invalid_noop_or_unbounded_rules_fail_closed",
   "reserved_future_rules_are_not_in_current_precedence",
   "ForumPostingPolicyOutcome::Indeterminate",
   "ForumPostingPolicyDecisionReason::ActiveFlags",
   "ForumPostingPolicyDecisionReason::ReplyRateLimit",
   "ForumPostingPolicyDecisionReason::BumpInterval",
+  "i64::MAX as u64 + 1",
 ]) {
   requireText(proof, marker, `posting policy evaluator source proof is missing ${marker}`);
 }
@@ -269,8 +296,14 @@ for (const marker of [
   "FORUM_POSTING_POLICY_PRECEDENCE",
 ]) {
   requireText(services, marker, `Forum services registry is missing ${marker}`);
-  requireText(crateRoot, marker.replace("mod posting_policy_evaluator;", "ForumPostingPolicyEvaluator"),
-    `Forum crate root is missing evaluator export for ${marker}`);
+}
+for (const marker of [
+  "ForumPostingPolicyEvaluator",
+  "ForumPostingPolicyRules",
+  "ForumPostingWindowLimit",
+  "FORUM_POSTING_POLICY_PRECEDENCE",
+]) {
+  requireText(crateRoot, marker, `Forum crate root is missing ${marker}`);
 }
 
 for (const marker of [
