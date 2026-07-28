@@ -57,6 +57,17 @@ test('prints a no-write eight-stage full-capture plan', () => {
       'INDEX_PARTITION_ALLOW_FULL_CAPTURE',
       'DATABASE_URL',
     ]);
+    assert.deepEqual(plan.stages[0].environment_overrides, [
+      'INDEX_PARTITION_MANIFEST',
+      'INDEX_PARTITION_EVIDENCE_ROOT',
+      'INDEX_PARTITION_QUERY_OUTPUT',
+      'INDEX_PARTITION_MUTATION_OUTPUT',
+      'INDEX_PARTITION_MAINTENANCE_OUTPUT',
+      'INDEX_PARTITION_CUTOVER_OUTPUT',
+      'INDEX_PARTITION_CAPTURE_OUTPUT',
+      'INDEX_PARTITION_QUERY_AUDIT',
+      'INDEX_PARTITION_ALLOW_SHADOW_COPY',
+    ]);
     assert.deepEqual(
       plan.stages.map((stage) => stage.identifier),
       [
