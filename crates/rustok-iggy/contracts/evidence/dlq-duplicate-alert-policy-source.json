@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-alert-policy-source",
+  "status": "source_complete_runtime_integration_pending",
+  "owner": "rustok-iggy",
+  "source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
+  "summary_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "public_exports": [
+    "DlqDuplicateAlertPolicy",
+    "DlqDuplicateAlertLevel",
+    "DlqDuplicateAlertEvaluation",
+    "DlqDuplicateAlertPolicyError"
+  ],
+  "thresholds": {
+    "caller_must_supply_all": true,
+    "production_defaults": false,
+    "warning_duplicate_messages_minimum": 1,
+    "critical_duplicate_messages_not_below_warning": true,
+    "warning_duplicate_groups_minimum": 1,
+    "critical_duplicate_groups_not_below_warning": true,
+    "warning_max_copies_per_message_id_minimum": 2,
+    "critical_max_copies_not_below_warning": true,
+    "invalid_thresholds_fail_closed": true
+  },
+  "levels": [
+    "clear",
+    "notice",
+    "warning",
+    "critical"
+  ],
+  "precedence": [
+    "identity_conflict_is_always_critical",
+    "critical_numeric_threshold",
+    "warning_numeric_threshold",
+    "physical_duplicate_below_threshold_is_notice",
+    "no_physical_duplicate_is_clear"
+  ],
+  "evaluated_dimensions": [
+    "duplicate_messages",
+    "duplicate_groups",
+    "max_copies_per_message_id",
+    "identity_conflict"
+  ],
+  "evaluation_projection": [
+    "level",
+    "physical_duplicates",
+    "identity_conflict",
+    "duplicate_messages_threshold_reached",
+    "duplicate_groups_threshold_reached",
+    "max_copies_threshold_reached"
+  ],
+  "stable_codes": {
+    "clear": "iggy.dlq_duplicate.alert.clear",
+    "notice": "iggy.dlq_duplicate.alert.notice",
+    "warning": "iggy.dlq_duplicate.alert.warning",
+    "critical": "iggy.dlq_duplicate.alert.critical",
+    "invalid_policy": "iggy.dlq_duplicate.alert_policy_invalid"
+  },
+  "manual_review": {
+    "identity_conflict": true,
+    "numeric_critical_without_identity_conflict": false,
+    "destructive_action": false
+  },
+  "privacy_boundary": {
+    "input_is_count_only_summary": true,
+    "evaluation_excludes": [
+      "broker_address",
+      "stream",
+      "topic",
+      "partition",
+      "offset",
+      "broker_message_id",
+      "payload",
+      "payload_sha256",
+      "receipt_identity",
+      "error_code",
+      "publisher_identity",
+      "timestamp",
+      "credential",
+      "raw_threshold_values"
+    ],
+    "serialization_added": false
+  },
+  "policy_boundary": {
+    "delivery_channel_selection": false,
+    "paging_or_notification_dispatch": false,
+    "suppression_or_cooldown": false,
+    "scan_scheduling": false,
+    "threshold_persistence": false,
+    "broker_access": false,
+    "receipt_access": false,
+    "profiles_authorization": false
+  },
+  "mutation_boundary": {
+    "acknowledge": false,
+    "delete": false,
+    "purge": false,
+    "replay": false,
+    "retry": false,
+    "publish": false,
+    "claim_or_mark_receipt": false,
+    "change_broker_configuration": false
+  },
+  "required_source_tests": [
+    "invalid_threshold_ordering_fails_closed",
+    "clear_and_notice_remain_below_operator_thresholds",
+    "warning_reports_only_reached_warning_dimensions",
+    "critical_numeric_threshold_takes_precedence",
+    "identity_conflict_is_always_critical_and_manual"
+  ],
+  "remaining_work": [
+    "runtime_alert_integration",
+    "alert_delivery_and_suppression_outside_policy",
+    "retained_policy_integration_evidence",
+    "authorized_destructive_reconciliation_workflow",
+    "aggregate_receipt_and_duplicate_health_correlation"
+  ],
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-alert-policy.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-policy-checkpoint.md",
+  "execution_status": "source_not_run"
+}
