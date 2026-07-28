@@ -2,11 +2,12 @@
 
 ## Scope
 
-`contract_poison_external_iggy.rs` is an opt-in integration harness for the real external Iggy cursor and DLQ path. It proves the transport-level boundary around broker bytes that cannot decode into a trusted contract envelope.
+`contract_poison_external_iggy.rs` is an opt-in integration harness for the real external Iggy cursor and DLQ path. It defines the transport-level evidence boundary around broker bytes that cannot decode into a trusted contract envelope.
 
 The harness uses production APIs for:
 
-- topology startup through `IggyTransport::new`;
+- topology startup and reconnect through `IggyTransport::new`;
+- transport shutdown through `IggyTransport::shutdown`;
 - persistent typed receive through `open_persistent_contract_consumer_group` and `receive_delivery`;
 - exact-byte raw failure conversion through `ConsumedContractDecodeFailure`;
 - deterministic DLQ entry construction through `to_dlq_entry`;
@@ -56,15 +57,16 @@ Two distinct non-empty malformed payloads are published to the single `domain` p
 2. Exact bytes, offset, ack token, stable `decode_invalid` classification, and deterministic connector delivery UUID are retained.
 3. The failure is published to `dlq` through `IggyTransport::move_to_dlq`.
 4. The independent DLQ cursor receives the exact first payload and explicitly acknowledges it.
-5. The source cursor is dropped without source acknowledgement.
-6. Reopening the same source group must redeliver the same offset, bytes, and delivery UUID.
-7. Explicit source acknowledgement then permits the cursor to receive the second payload at a greater offset.
-8. The second payload is also published to DLQ, verified byte-for-byte, and explicitly acknowledged on both DLQ and source cursors.
-9. The fixture connector and transport shut down explicitly.
+5. The source cursor is dropped without source acknowledgement, and the first external transport is shut down.
+6. A newly connected `IggyTransport` opens the same stream and source consumer group.
+7. The new cursor must redeliver the same offset, bytes, and delivery UUID.
+8. Explicit source acknowledgement then permits that cursor to receive the second payload at a greater offset.
+9. The second payload is published through the reopened transport, verified byte-for-byte on DLQ, and explicitly acknowledged on both cursors.
+10. The fixture connector and reopened transport shut down explicitly.
 
 ## Evidence boundary
 
-This scenario proves only the real external broker cursor and transport path described above. It does **not** prove:
+This scenario proves only the real external broker cursor and transport path described above after it is actually executed. It does **not** prove:
 
 - connector database receipt ordering or `published` persistence;
 - the deterministic UUID being present in the physical Iggy message header;
@@ -93,4 +95,4 @@ The username/password variables may both be omitted when the disposable broker p
 
 ## Evidence status
 
-The source contract, opt-in harness, and static verifier are source-complete. The contract remains `source_complete_runtime_pending`, and no Cargo command, source verifier, or external Iggy scenario was executed while authoring this slice.
+The source contract, opt-in harness, transport reconnect scenario, and static verifier are source-complete. The contract remains `source_complete_runtime_pending`, and no Cargo command, source verifier, or external Iggy scenario was executed while authoring this slice.
