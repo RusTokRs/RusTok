@@ -26,9 +26,12 @@ The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
 The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, catalog
 search-option discovery, detached-value marker contract, and no-compile schema
-guardrail are source-locked. Storefront/admin catalog filter and sort execution
-remains open until typed query state, both transports, server-side semantics,
-and owner UI controls are connected end to end.
+guardrail are source-locked. Storefront title search now uses typed
+`CatalogListInput`, a Product-owned `StorefrontProductListQuery`, server-side
+translation-title filtering, the native owner endpoint, the existing GraphQL
+search filter, and a snake_case `search` UI control. The broader
+storefront/admin catalog filter and sort result remains open until category,
+sort, attribute-filter, and admin parity are connected end to end.
 Product write GraphQL derives tenant and actor exclusively from authenticated
 contexts. Product-owned `map_product_public_error` is shared by GraphQL and
 native admin/storefront transports; it keeps internal errors in structured logs
@@ -117,18 +120,19 @@ rustok-pricing` dependency cycle.
    shared [Richtext plan](../../../docs/modules/rich-text-implementation-plan.md),
    assign an owner profile, migrate both transports, and keep short/meta
    descriptions plain text.
-3. Connect product-owned storefront/admin catalog controls only after the typed
-   snake_case query contract (`search`, `category_id`, `sort_by`,
-   `sort_direction`, `attribute_filters`) is carried through core request
-   models, native and GraphQL adapters, server-side filters/sorts, and both UI
-   surfaces. Recheck on 2026-07-28 found that current `main` exposes catalog
-   search-option metadata, but storefront `RouteInput`/`FetchRequest` and the
-   admin list transport do not carry the complete contract. The previous
-   completed marker was therefore reverted and is guarded against source drift.
+3. Complete the product-owned catalog controls contract. The first 2026-07-28
+   execution slice closes storefront title search through typed UI state, both
+   selected transports, and Product-owned server-side filtering. The task stays
+   open for storefront category/sort/attribute filters and matching admin
+   controls. The completed marker must not return until the full snake_case
+   query contract (`search`, `category_id`, `sort_by`, `sort_direction`,
+   `attribute_filters`) is carried through core request models, native and
+   GraphQL adapters, server-side semantics, and both UI surfaces.
 
 ## Verification
 
 - [ ] Connect storefront/admin UI controls to optional catalog filters/sorts.
+- [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - `node scripts/verify/verify-product-catalog-controls-plan-sync.mjs`
 - `node scripts/verify/verify-product-catalog-controls-plan-sync.test.mjs`
 - `npm run verify:product:runtime-fallback-smoke`
