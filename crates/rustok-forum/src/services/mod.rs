@@ -68,6 +68,7 @@ mod topic_owner {
 mod topic_reply_create_audience;
 pub mod topic_visibility;
 pub mod user_stats;
+mod user_trust;
 pub mod vote;
 pub mod widget_contract;
 
@@ -134,5 +135,10 @@ pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
 };
 pub use user_stats::UserStatsService;
+pub use user_trust::{
+    ForumUserTrustChange, ForumUserTrustRevision, ForumUserTrustRevisionPage,
+    ForumUserTrustService, ForumUserTrustState, MAX_FORUM_USER_TRUST_HISTORY_PAGE,
+    MAX_FORUM_USER_TRUST_LEVEL, SetForumUserTrustInput,
+};
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;
