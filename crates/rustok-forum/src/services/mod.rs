@@ -29,6 +29,7 @@ mod mention_relation_tests {
 }
 pub mod moderation;
 mod moderation_audience_authorization;
+mod posting_policy;
 mod quote_command;
 mod rbac;
 pub mod read_model;
@@ -102,6 +103,14 @@ pub(crate) use mention_relation::MentionRelationService;
 pub use moderation::ModerationService;
 pub use moderation_audience_authorization::{
     ForumModerationAudienceAuthorization, ForumModerationAudienceAuthorizationService,
+};
+pub use posting_policy::{
+    ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyDecision,
+    ForumPostingPolicyDecisionReason, ForumPostingPolicyEvaluationInput,
+    ForumPostingPolicyEvidence, ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
+    ForumPostingPolicyMeasureUnit, ForumPostingPolicyOutcome, ForumPostingPolicyUnavailableFact,
+    ForumPostingWindowCount, MAX_FORUM_POSTING_POLICY_FACTS,
+    MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
 };
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
