@@ -3,14 +3,21 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use rustok_iggy::{ConsumedContractEvent, IggyTransport};
+use rustok_iggy::{
+    ConsumedContractDecodeFailure, ConsumedContractEvent, IggyTransport,
+    PersistentContractDelivery,
+};
+use rustok_iggy_connector::migrations::{
+    ConsumerPoisonIdentity, ConsumerPoisonPublishClaim, ConsumerPoisonReceiptStore,
+};
 use rustok_index::MutationApplyOutcome;
 use rustok_social_graph::index_consumer::{
-    SOCIAL_GRAPH_INDEX_DLQ_RECEIPT_RECOVERED_CODE, SocialGraphIndexConsumer,
-    SocialGraphIndexDlqPublishOutcome, SocialGraphIndexProcessOutcome,
+    SOCIAL_GRAPH_INDEX_CONSUMER_GROUP, SOCIAL_GRAPH_INDEX_DLQ_RECEIPT_RECOVERED_CODE,
+    SocialGraphIndexConsumer, SocialGraphIndexDlqPublishOutcome, SocialGraphIndexProcessOutcome,
 };
 use rustok_telemetry::runtime_consumer_metrics;
 use tokio::task::JoinHandle;
+use uuid::Uuid;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
@@ -22,11 +29,13 @@ const ENABLE_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_IDLE_POLL_MS";
 const DEFAULT_IDLE_POLL_MS: u64 = 500;
 const MAX_IDLE_POLL_MS: u64 = 60_000;
+const RAW_POISON_PUBLISH_LEASE: Duration = Duration::from_secs(30);
 const METRICS_CONSUMER: &str = "social_graph_index";
 const STAGE_STARTUP: &str = "startup";
 const STAGE_RECEIVE: &str = "receive";
 const STAGE_PROJECTION: &str = "projection";
 const STAGE_DLQ_PUBLISH: &str = "dlq_publish";
+const STAGE_POISON_RECEIPT: &str = "poison_receipt";
 const STAGE_ACKNOWLEDGEMENT: &str = "acknowledgement";
 const DLQ_RECEIPT_IN_PROGRESS_CODE: &str = "social_graph.index.dlq_publish_in_progress";
 static SOCIAL_GRAPH_INDEX_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -164,7 +173,7 @@ pub async fn start_social_graph_index_worker_if_enabled(
         .subscribe();
 
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;
-    let consumer = match SocialGraphIndexConsumer::open(transport, ctx.db_clone()).await {
+    let consumer = match SocialGraphIndexConsumer::open(Arc::clone(&transport), ctx.db_clone()).await {
         Ok(consumer) => consumer,
         Err(error) => {
             runtime_consumer_metrics::record_failure(
@@ -178,26 +187,38 @@ pub async fn start_social_graph_index_worker_if_enabled(
             )));
         }
     };
+    let poison_receipts = ConsumerPoisonReceiptStore::new(ctx.db_clone());
+    let poison_publisher_id = Uuid::new_v4();
 
     let instance_id = SOCIAL_GRAPH_INDEX_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     runtime_consumer_metrics::record_worker_start(METRICS_CONSUMER);
     tracing::info!(
         worker = METRICS_CONSUMER,
         instance_id,
-        consumer_group = rustok_social_graph::index_consumer::SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
+        consumer_group = SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
         dlq_enabled = config.dlq_enabled,
         max_attempts = config.max_attempts,
         "Starting Social Graph Index consumer worker"
     );
     ctx.shared_insert(SocialGraphIndexWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(social_graph_index_worker_loop(consumer, config, stop_rx)),
+        _handle: tokio::spawn(social_graph_index_worker_loop(
+            consumer,
+            transport,
+            poison_receipts,
+            poison_publisher_id,
+            config,
+            stop_rx,
+        )),
     });
     Ok(())
 }
 
 async fn social_graph_index_worker_loop(
-    mut consumer: SocialGraphIndexConsumer,
+    consumer: SocialGraphIndexConsumer,
+    transport: Arc<IggyTransport>,
+    poison_receipts: ConsumerPoisonReceiptStore,
+    poison_publisher_id: Uuid,
     config: SocialGraphIndexWorkerConfig,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
@@ -212,7 +233,7 @@ async fn social_graph_index_worker_loop(
         }
 
         let received = tokio::select! {
-            result = consumer.receive_next() => Some(result),
+            result = consumer.receive_delivery() => Some(result),
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     None
@@ -231,44 +252,24 @@ async fn social_graph_index_worker_loop(
         };
 
         match received {
-            Ok(Some(consumed)) => {
-                let delivery_started = Instant::now();
-                runtime_consumer_metrics::begin_delivery(METRICS_CONSUMER, consumed.offset());
-                match process_delivery(&consumer, &config, &mut stop_rx, &consumed).await {
-                    Ok(DeliveryCompletion::Completed(outcome)) => {
-                        let outcome_label = process_outcome_label(&outcome);
-                        runtime_consumer_metrics::complete_delivery(
-                            METRICS_CONSUMER,
-                            outcome_label,
-                            delivery_started.elapsed(),
-                            consumed.offset(),
-                        );
-                        tracing::debug!(
-                            worker = METRICS_CONSUMER,
-                            event_id = %consumed.envelope.id(),
-                            outcome = ?outcome,
-                            "Social Graph Index delivery completed"
-                        );
-                    }
-                    Ok(DeliveryCompletion::Stopped) => {
-                        record_worker_termination("shutdown_in_flight");
-                        tracing::info!(
-                            worker = METRICS_CONSUMER,
-                            event_id = %consumed.envelope.id(),
-                            "Worker stopped with broker offset uncommitted"
-                        );
-                        return;
-                    }
-                    Err(error) => {
-                        record_worker_termination("delivery_failure");
-                        tracing::error!(
-                            worker = METRICS_CONSUMER,
-                            event_id = %consumed.envelope.id(),
-                            error = %error,
-                            "Social Graph Index worker terminated with broker offset uncommitted"
-                        );
-                        return;
-                    }
+            Ok(Some(PersistentContractDelivery::Event(consumed))) => {
+                if !handle_event_delivery(&consumer, &config, &mut stop_rx, consumed).await {
+                    return;
+                }
+            }
+            Ok(Some(PersistentContractDelivery::DecodeFailure(failure))) => {
+                if !handle_decode_failure(
+                    &consumer,
+                    &transport,
+                    &poison_receipts,
+                    poison_publisher_id,
+                    &config,
+                    &mut stop_rx,
+                    failure,
+                )
+                .await
+                {
+                    return;
                 }
             }
             Ok(None) => {
@@ -296,6 +297,116 @@ async fn social_graph_index_worker_loop(
     }
 }
 
+async fn handle_event_delivery(
+    consumer: &SocialGraphIndexConsumer,
+    config: &SocialGraphIndexWorkerConfig,
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    consumed: ConsumedContractEvent,
+) -> bool {
+    let delivery_started = Instant::now();
+    runtime_consumer_metrics::begin_delivery(METRICS_CONSUMER, consumed.offset());
+    match process_delivery(consumer, config, stop_rx, &consumed).await {
+        Ok(DeliveryCompletion::Completed(outcome)) => {
+            let outcome_label = process_outcome_label(&outcome);
+            runtime_consumer_metrics::complete_delivery(
+                METRICS_CONSUMER,
+                outcome_label,
+                delivery_started.elapsed(),
+                consumed.offset(),
+            );
+            tracing::debug!(
+                worker = METRICS_CONSUMER,
+                event_id = %consumed.envelope.id(),
+                outcome = ?outcome,
+                "Social Graph Index delivery completed"
+            );
+            true
+        }
+        Ok(DeliveryCompletion::Stopped) => {
+            record_worker_termination("shutdown_in_flight");
+            tracing::info!(
+                worker = METRICS_CONSUMER,
+                event_id = %consumed.envelope.id(),
+                "Worker stopped with broker offset uncommitted"
+            );
+            false
+        }
+        Err(error) => {
+            record_worker_termination("delivery_failure");
+            tracing::error!(
+                worker = METRICS_CONSUMER,
+                event_id = %consumed.envelope.id(),
+                error = %error,
+                "Social Graph Index worker terminated with broker offset uncommitted"
+            );
+            false
+        }
+    }
+}
+
+async fn handle_decode_failure(
+    consumer: &SocialGraphIndexConsumer,
+    transport: &Arc<IggyTransport>,
+    poison_receipts: &ConsumerPoisonReceiptStore,
+    poison_publisher_id: Uuid,
+    config: &SocialGraphIndexWorkerConfig,
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    failure: ConsumedContractDecodeFailure,
+) -> bool {
+    let delivery_started = Instant::now();
+    runtime_consumer_metrics::begin_delivery(METRICS_CONSUMER, Some(failure.offset()));
+    match process_decode_failure(
+        consumer,
+        transport,
+        poison_receipts,
+        poison_publisher_id,
+        config,
+        stop_rx,
+        &failure,
+    )
+    .await
+    {
+        Ok(RawPoisonCompletion::Completed { recovered }) => {
+            runtime_consumer_metrics::complete_delivery(
+                METRICS_CONSUMER,
+                if recovered {
+                    "decode_dead_letter_recovered"
+                } else {
+                    "decode_dead_lettered"
+                },
+                delivery_started.elapsed(),
+                Some(failure.offset()),
+            );
+            tracing::warn!(
+                worker = METRICS_CONSUMER,
+                error_code = failure.stable_error_code(),
+                recovered,
+                "Undecodable Social Graph Index delivery reached a durable neutral result and was acknowledged"
+            );
+            true
+        }
+        Ok(RawPoisonCompletion::Stopped) => {
+            record_worker_termination("shutdown_in_flight");
+            tracing::info!(
+                worker = METRICS_CONSUMER,
+                error_code = failure.stable_error_code(),
+                "Worker stopped with undecodable broker offset uncommitted"
+            );
+            false
+        }
+        Err(error) => {
+            record_worker_termination("decode_failure_terminalization_failed");
+            tracing::error!(
+                worker = METRICS_CONSUMER,
+                error_code = failure.stable_error_code(),
+                error = %error,
+                "Social Graph Index worker terminated with undecodable broker offset uncommitted"
+            );
+            false
+        }
+    }
+}
+
 fn record_worker_termination(reason: &'static str) {
     runtime_consumer_metrics::record_worker_termination(METRICS_CONSUMER, reason);
 }
@@ -309,6 +420,12 @@ enum DeliveryCompletion {
 #[derive(Debug)]
 enum DlqPublishCompletion {
     Published(SocialGraphIndexDlqPublishOutcome),
+    Stopped,
+}
+
+#[derive(Debug)]
+enum RawPoisonCompletion {
+    Completed { recovered: bool },
     Stopped,
 }
 
@@ -335,10 +452,7 @@ async fn process_delivery(
                 );
                 if retryable && attempt < config.max_attempts {
                     let delay = retry_delay(config, attempt);
-                    runtime_consumer_metrics::record_retry(
-                        METRICS_CONSUMER,
-                        STAGE_PROJECTION,
-                    );
+                    runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_PROJECTION);
                     tracing::warn!(
                         worker = METRICS_CONSUMER,
                         event_id = %consumed.envelope.id(),
@@ -425,9 +539,7 @@ async fn publish_dead_lettered_result(
             Ok(outcome) => {
                 let result = match outcome {
                     SocialGraphIndexDlqPublishOutcome::Published => "published",
-                    SocialGraphIndexDlqPublishOutcome::PreviouslyPublished => {
-                        "already_published"
-                    }
+                    SocialGraphIndexDlqPublishOutcome::PreviouslyPublished => "already_published",
                 };
                 runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, result);
                 return Ok(DlqPublishCompletion::Published(outcome));
@@ -439,10 +551,7 @@ async fn publish_dead_lettered_result(
                     STAGE_DLQ_PUBLISH,
                     error.stable_code(),
                 );
-                runtime_consumer_metrics::record_retry(
-                    METRICS_CONSUMER,
-                    STAGE_DLQ_PUBLISH,
-                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_DLQ_PUBLISH);
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
@@ -465,6 +574,300 @@ async fn publish_dead_lettered_result(
                 runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "failure");
                 return Err(format!(
                     "durable DLQ receipt publication failed after {attempt} attempt(s) [{}]",
+                    error.stable_code()
+                ));
+            }
+        }
+    }
+}
+
+async fn process_decode_failure(
+    consumer: &SocialGraphIndexConsumer,
+    transport: &Arc<IggyTransport>,
+    poison_receipts: &ConsumerPoisonReceiptStore,
+    poison_publisher_id: Uuid,
+    config: &SocialGraphIndexWorkerConfig,
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    failure: &ConsumedContractDecodeFailure,
+) -> std::result::Result<RawPoisonCompletion, String> {
+    if !config.dlq_enabled {
+        runtime_consumer_metrics::record_failure(
+            METRICS_CONSUMER,
+            STAGE_DLQ_PUBLISH,
+            failure.stable_error_code(),
+        );
+        return Err(format!(
+            "undecodable contract delivery [{}] cannot be acknowledged while DLQ is disabled",
+            failure.stable_error_code()
+        ));
+    }
+
+    let identity = ConsumerPoisonIdentity::new(
+        failure.delivery_id(),
+        SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
+        failure.stream(),
+        failure.topic(),
+        failure.partition(),
+        failure.offset(),
+        failure.raw_payload().to_vec(),
+    )
+    .map_err(|error| format!("neutral poison identity rejected [{}]", error.stable_code()))?;
+
+    let mut attempt = 1;
+    let recovered = loop {
+        match poison_receipts
+            .reserve_and_claim(
+                &identity,
+                failure.stable_error_code(),
+                1,
+                poison_publisher_id,
+                RAW_POISON_PUBLISH_LEASE,
+            )
+            .await
+        {
+            Ok(ConsumerPoisonPublishClaim::AlreadyPublished)
+            | Ok(ConsumerPoisonPublishClaim::AlreadyAcknowledged) => {
+                runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "already_published");
+                break true;
+            }
+            Ok(ConsumerPoisonPublishClaim::Busy) if attempt < config.max_attempts => {
+                let delay = retry_delay(config, attempt);
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    "iggy.connector.poison_claim_busy",
+                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_POISON_RECEIPT);
+                tracing::warn!(
+                    worker = METRICS_CONSUMER,
+                    error_code = failure.stable_error_code(),
+                    attempt,
+                    retry_delay_ms = duration_millis(delay),
+                    "Neutral poison receipt is owned by another publisher; retaining the source delivery"
+                );
+                if wait_or_stop(delay, stop_rx).await {
+                    return Ok(RawPoisonCompletion::Stopped);
+                }
+                attempt += 1;
+            }
+            Ok(ConsumerPoisonPublishClaim::Busy) => {
+                return Err(format!(
+                    "neutral poison receipt remained busy after {attempt} attempt(s)"
+                ));
+            }
+            Ok(ConsumerPoisonPublishClaim::Claimed) => {
+                match transport.move_to_dlq(failure.to_dlq_entry(1)).await {
+                    Ok(()) => {
+                        runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "published");
+                        mark_raw_poison_published(
+                            poison_receipts,
+                            &identity,
+                            poison_publisher_id,
+                            config,
+                            stop_rx,
+                        )
+                        .await?;
+                        break false;
+                    }
+                    Err(error) if attempt < config.max_attempts => {
+                        let _ = poison_receipts
+                            .release_claim(&identity, poison_publisher_id)
+                            .await;
+                        let delay = retry_delay(config, attempt);
+                        runtime_consumer_metrics::record_failure(
+                            METRICS_CONSUMER,
+                            STAGE_DLQ_PUBLISH,
+                            "social_graph.index.transport_unavailable",
+                        );
+                        runtime_consumer_metrics::record_retry(
+                            METRICS_CONSUMER,
+                            STAGE_DLQ_PUBLISH,
+                        );
+                        tracing::warn!(
+                            worker = METRICS_CONSUMER,
+                            error_code = failure.stable_error_code(),
+                            attempt,
+                            retry_delay_ms = duration_millis(delay),
+                            error = %error,
+                            "Exact-byte raw poison publication failed; released claim and retained source offset"
+                        );
+                        if wait_or_stop(delay, stop_rx).await {
+                            return Ok(RawPoisonCompletion::Stopped);
+                        }
+                        attempt += 1;
+                    }
+                    Err(error) => {
+                        let _ = poison_receipts
+                            .release_claim(&identity, poison_publisher_id)
+                            .await;
+                        runtime_consumer_metrics::record_failure(
+                            METRICS_CONSUMER,
+                            STAGE_DLQ_PUBLISH,
+                            "social_graph.index.transport_unavailable",
+                        );
+                        runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "failure");
+                        return Err(format!(
+                            "exact-byte raw poison publication failed after {attempt} attempt(s): {error}"
+                        ));
+                    }
+                }
+            }
+            Err(error) if error.is_retryable() && attempt < config.max_attempts => {
+                let delay = retry_delay(config, attempt);
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    error.stable_code(),
+                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_POISON_RECEIPT);
+                tracing::warn!(
+                    worker = METRICS_CONSUMER,
+                    error_code = error.stable_code(),
+                    attempt,
+                    retry_delay_ms = duration_millis(delay),
+                    "Neutral poison receipt persistence failed; retaining source offset"
+                );
+                if wait_or_stop(delay, stop_rx).await {
+                    return Ok(RawPoisonCompletion::Stopped);
+                }
+                attempt += 1;
+            }
+            Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    error.stable_code(),
+                );
+                return Err(format!(
+                    "neutral poison receipt failed after {attempt} attempt(s) [{}]",
+                    error.stable_code()
+                ));
+            }
+        }
+    };
+
+    acknowledge_raw_poison_result(
+        consumer,
+        poison_receipts,
+        &identity,
+        config,
+        stop_rx,
+        failure,
+        recovered,
+    )
+    .await
+}
+
+async fn mark_raw_poison_published(
+    poison_receipts: &ConsumerPoisonReceiptStore,
+    identity: &ConsumerPoisonIdentity,
+    poison_publisher_id: Uuid,
+    config: &SocialGraphIndexWorkerConfig,
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+) -> std::result::Result<(), String> {
+    let mut attempt = 1;
+    loop {
+        match poison_receipts
+            .mark_published(identity, poison_publisher_id)
+            .await
+        {
+            Ok(()) => return Ok(()),
+            Err(error) if error.is_retryable() && attempt < config.max_attempts => {
+                let delay = retry_delay(config, attempt);
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    error.stable_code(),
+                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_POISON_RECEIPT);
+                tracing::warn!(
+                    worker = METRICS_CONSUMER,
+                    error_code = error.stable_code(),
+                    attempt,
+                    retry_delay_ms = duration_millis(delay),
+                    "Raw poison bytes were published but durable published state failed; retrying persistence only"
+                );
+                if wait_or_stop(delay, stop_rx).await {
+                    return Err(
+                        "worker stopped after raw poison publication with source offset uncommitted"
+                            .to_string(),
+                    );
+                }
+                attempt += 1;
+            }
+            Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    error.stable_code(),
+                );
+                return Err(format!(
+                    "raw poison publication succeeded but durable published state failed after {attempt} attempt(s) [{}]",
+                    error.stable_code()
+                ));
+            }
+        }
+    }
+}
+
+async fn acknowledge_raw_poison_result(
+    consumer: &SocialGraphIndexConsumer,
+    poison_receipts: &ConsumerPoisonReceiptStore,
+    identity: &ConsumerPoisonIdentity,
+    config: &SocialGraphIndexWorkerConfig,
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    failure: &ConsumedContractDecodeFailure,
+    recovered: bool,
+) -> std::result::Result<RawPoisonCompletion, String> {
+    let mut attempt = 1;
+    loop {
+        match consumer.acknowledge_decode_failure(failure).await {
+            Ok(()) => {
+                if let Err(error) = poison_receipts.mark_acknowledged(identity).await {
+                    runtime_consumer_metrics::record_failure(
+                        METRICS_CONSUMER,
+                        STAGE_POISON_RECEIPT,
+                        error.stable_code(),
+                    );
+                    tracing::warn!(
+                        worker = METRICS_CONSUMER,
+                        error_code = error.stable_code(),
+                        "Raw poison source offset committed but receipt acknowledgement bookkeeping failed"
+                    );
+                }
+                return Ok(RawPoisonCompletion::Completed { recovered });
+            }
+            Err(error) if attempt < config.max_attempts => {
+                let delay = retry_delay(config, attempt);
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_ACKNOWLEDGEMENT,
+                    error.stable_code(),
+                );
+                runtime_consumer_metrics::record_retry(
+                    METRICS_CONSUMER,
+                    STAGE_ACKNOWLEDGEMENT,
+                );
+                tracing::warn!(
+                    worker = METRICS_CONSUMER,
+                    error_code = error.stable_code(),
+                    attempt,
+                    retry_delay_ms = duration_millis(delay),
+                    "Durable neutral poison result exists but broker acknowledgement failed; retrying acknowledgement only"
+                );
+                if wait_or_stop(delay, stop_rx).await {
+                    return Ok(RawPoisonCompletion::Stopped);
+                }
+                attempt += 1;
+            }
+            Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_ACKNOWLEDGEMENT,
+                    error.stable_code(),
+                );
+                return Err(format!(
+                    "raw poison broker acknowledgement failed after {attempt} attempt(s) [{}]; durable neutral receipt remains published and redelivery retries acknowledgement only",
                     error.stable_code()
                 ));
             }
