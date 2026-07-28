@@ -321,7 +321,18 @@ pub fn build_shared_runtime_extensions_with_host_providers(
                 db.clone(),
                 groups,
             );
+        let posting_policy_facts = crate::services::forum_posting_policy_facts::ServerForumPostingPolicyFactsComposer::shared(
+            db.clone(),
+            audience_facts.clone(),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "Forum posting policy fact composition failed: {}",
+                error.code
+            ))
+        })?;
         extensions.insert(audience_facts);
+        extensions.insert(posting_policy_facts);
     }
 
     #[cfg(feature = "mod-forum")]
@@ -455,6 +466,10 @@ mod tests {
         assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
         #[cfg(feature = "mod-forum")]
         assert!(extensions.contains::<rustok_forum::SharedForumAudienceFactsPort>());
+        #[cfg(feature = "mod-forum")]
+        assert!(extensions.contains::<
+            crate::services::forum_posting_policy_facts::SharedForumPostingPolicyFactsComposer,
+        >());
         #[cfg(feature = "mod-notifications")]
         assert!(
             rustok_notifications::api::notification_source_registry_from_extensions(
