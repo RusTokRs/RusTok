@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "module": "social-graph",
+  "packet": "index-raw-poison-publish-mark-ambiguity-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "source_contract": "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json",
+  "runner": "scripts/evidence/capture-social-graph-index-raw-poison-publish-mark-ambiguity.mjs",
+  "verifier": "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity-retained.mjs",
+  "evidence_path": "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution.json",
+  "test_target": "index_raw_poison_publish_mark_ambiguity",
+  "database_environment": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_DATABASE_URL",
+  "postgres_artifact_environment": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_POSTGRES_ARTIFACT",
+  "shared_optional_environment": [
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_IGGY_USERNAME",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_IGGY_PASSWORD"
+  ],
+  "lease_reclaim_wait_milliseconds": 1500,
+  "scenarios": [
+    {
+      "case": "dedup_enabled_closes_publish_mark_ambiguity_without_physical_duplicate",
+      "address_env": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_ENABLED_ADDRESS",
+      "config_path_env": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_ENABLED_CONFIG_PATH",
+      "server_artifact_env": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_ENABLED_SERVER_ARTIFACT",
+      "expected_configuration": {
+        "enabled": true,
+        "max_entries": "at_least_1",
+        "expiry": "longer_than_lease_reclaim_wait"
+      },
+      "expected_partition_message_counts": [0, 1, 1]
+    },
+    {
+      "case": "dedup_disabled_exposes_publish_mark_ambiguity_as_physical_duplicate",
+      "address_env": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_DISABLED_ADDRESS",
+      "config_path_env": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_DISABLED_CONFIG_PATH",
+      "server_artifact_env": "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_AMBIGUITY_DEDUP_DISABLED_SERVER_ARTIFACT",
+      "expected_configuration": {
+        "enabled": false,
+        "max_entries": "optional",
+        "expiry": "optional"
+      },
+      "expected_partition_message_counts": [0, 1, 2]
+    }
+  ],
+  "command_template": {
+    "program": "cargo",
+    "args_before_case": [
+      "test",
+      "-p",
+      "rustok-social-graph",
+      "--features",
+      "index-consumer",
+      "--test",
+      "index_raw_poison_publish_mark_ambiguity",
+      "--"
+    ],
+    "args_after_case": ["--exact", "--nocapture", "--test-threads=1"]
+  },
+  "reviewed_configuration": {
+    "section": "system.message_deduplication",
+    "persisted_fields": [
+      "enabled",
+      "max_entries",
+      "expiry",
+      "expiry_milliseconds",
+      "canonical_sha256"
+    ],
+    "full_config_path_persisted": false,
+    "full_config_sha256_persisted": false,
+    "full_config_content_persisted": false
+  },
+  "source_files": [
+    "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json",
+    "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution-contract.json",
+    "crates/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs",
+    "crates/rustok-social-graph/Cargo.toml",
+    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+    "crates/rustok-iggy/src/transport.rs",
+    "apps/server/src/services/social_graph_index_worker.rs",
+    "scripts/evidence/capture-social-graph-index-raw-poison-publish-mark-ambiguity.mjs",
+    "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity.mjs",
+    "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity-retained.mjs"
+  ],
+  "privacy_boundary": {
+    "forbidden_persisted_values": [
+      "database_url",
+      "broker_address",
+      "config_path",
+      "username",
+      "password",
+      "connection_string",
+      "full_config_content",
+      "full_config_sha256",
+      "raw_test_output",
+      "payload",
+      "source_offset",
+      "delivery_uuid",
+      "ack_token",
+      "schema_name",
+      "stream_name"
+    ]
+  },
+  "non_claims": [
+    "postgresql_iggy_transaction",
+    "physical_exactly_once_without_deduplication",
+    "production_dedup_window_sufficiency_beyond_reviewed_configuration",
+    "active_server_configuration_readback",
+    "bundled_iggy",
+    "tls_auth_failover",
+    "multi_replica_ownership",
+    "profiles_authorization"
+  ],
+  "evidence_status": "runtime_execution_pending"
+}
