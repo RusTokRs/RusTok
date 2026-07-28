@@ -1,6 +1,8 @@
+mod catalog_list_native;
 mod graphql_adapter;
 mod native_server_adapter;
 
+use crate::catalog_controls::CatalogListInput;
 use crate::core::FetchRequest;
 use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
 use rustok_ui_transport::{
@@ -21,13 +23,17 @@ fn selected_transport_path() -> UiTransportPath {
     }
 }
 
-pub async fn fetch_products(request: FetchRequest) -> TransportResult<StorefrontProductsData> {
+pub async fn fetch_products(
+    request: FetchRequest,
+    controls: CatalogListInput,
+) -> TransportResult<StorefrontProductsData> {
     let native_request = request.clone();
+    let native_controls = controls.clone();
     execute_selected_transport(
         "product",
         selected_transport_path(),
-        move || native_server_adapter::fetch_products(native_request),
-        move || graphql_adapter::fetch_products(request),
+        move || catalog_list_native::fetch_products(native_request, native_controls),
+        move || graphql_adapter::fetch_products(request, controls),
     )
     .await
 }
