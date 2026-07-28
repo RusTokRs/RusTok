@@ -14,6 +14,10 @@ const forbidMarkers = (source, markers, label) => {
     if (source.includes(marker)) throw new Error(`${label} must not contain ${marker}`);
   }
 };
+const requireExactlyOnce = (source, marker, label) => {
+  const count = source.split(marker).length - 1;
+  if (count !== 1) throw new Error(`${label} must contain ${marker} exactly once; found ${count}`);
+};
 
 try {
   const finalizer = read('ops/benches/src/index_storage/partition_capture.rs');
@@ -23,6 +27,13 @@ try {
   const orchestrator = read('scripts/verify/run-index-partition-evidence.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
+  const plan = read('crates/rustok-index/docs/implementation-plan.md');
+  const m3Start = plan.indexOf('### M3 - PostgreSQL storage engine');
+  const retainedStart = plan.indexOf('#### Retained repository contract wording');
+  if (m3Start < 0 || retainedStart <= m3Start) {
+    throw new Error('implementation plan must contain a bounded primary M3 checklist');
+  }
+  const primaryM3Checklist = plan.slice(m3Start, retainedStart);
 
   requireMarkers(finalizer, [
     'INDEX_PARTITION_ALLOW_CAPTURE_FINALIZE',
@@ -85,6 +96,32 @@ try {
     'index-partition-capture-finalize',
     'forbidden before one retained admitted packet',
   ], 'full partition capture runbook');
+  requireMarkers(plan, [
+    'M3 partition cutover rehearsal evidence runner: `complete`',
+    'M3 retained packet owner orchestration: `complete`',
+    'Real retained PostgreSQL packet execution: `open`',
+    '- [x] Add owner-operated PostgreSQL cutover/rollback rehearsal evidence capture.',
+    '- [x] Add owner-operated full retained packet orchestration and capture finalization.',
+    '12. The cutover rehearsal runner validates production and retained shadow identities,',
+    '13. The full-capture orchestrator requires one explicit owner opt-in, one immutable',
+    'one retained admitted packet, query adapter, and production partition',
+  ], 'Index implementation plan');
+  requireExactlyOnce(
+    primaryM3Checklist,
+    '- [ ] Execute one fresh full PostgreSQL capture and retain all six raw artifacts,',
+    'primary M3 checklist',
+  );
+  requireExactlyOnce(
+    primaryM3Checklist,
+    '- [ ] Review and archive one complete admitted real packet before production lifecycle',
+    'primary M3 checklist',
+  );
+  forbidMarkers(primaryM3Checklist, [
+    'Execute and retain PostgreSQL baseline/shadow, query, mutation, and maintenance',
+    'Execute retained PostgreSQL maintenance and cutover evidence.',
+    'Execute retained PostgreSQL cutover evidence.',
+    'Assemble and validate one complete retained real packet.',
+  ], 'primary M3 checklist');
 
   console.log(`${prefix} contract satisfied`);
 } catch (error) {
