@@ -86,7 +86,7 @@
     "result": "DlqDuplicateSummary"
   },
   "alert_policy": {
-    "status": "source_complete_runtime_integration_pending",
+    "status": "source_complete_runtime_composition_pending_server_integration",
     "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json",
     "source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
     "input": "DlqDuplicateSummary",
@@ -96,9 +96,22 @@
     "notification_dispatch": false,
     "destructive_action": false
   },
+  "alert_runtime": {
+    "status": "source_complete_server_integration_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json",
+    "source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+    "input": "DlqDuplicateSummary",
+    "result": "DlqDuplicateAlertRuntimeSnapshot",
+    "latest_value": true,
+    "single_writer": true,
+    "unavailable_clears_evaluation": true,
+    "notification_dispatch": false,
+    "destructive_action": false
+  },
   "remaining_work": [
     "retained_external_iggy_duplicate_scan_evidence",
-    "runtime_alert_integration",
+    "server_alert_observer_integration",
+    "telemetry_and_health_projection",
     "alert_delivery_and_suppression_outside_policy",
     "operator_ack_delete_replay_workflow_outside_inspector",
     "correlation_with_count_only_receipt_health_without_identifier_export"
