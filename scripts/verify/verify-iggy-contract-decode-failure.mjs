@@ -51,6 +51,7 @@ for (const marker of [
   "ContractDecodeFailureKind::Deserialize",
   "ContractDecodeFailureKind::SchemaValidation",
   "pub async fn acknowledge_decode_failure",
+  "consumed.connector_metadata()",
   "Persistent contract delivery rejected [{}]",
 ]) {
   requireText("persistent contract decode-failure cursor", files.consumer, marker);
@@ -70,10 +71,14 @@ for (const marker of [
   'b"rustok.iggy.contract.decode_failure.delivery_id.v1"',
   'Self::Deserialize => "iggy.contract.decode_invalid"',
   'Self::SchemaValidation => "iggy.contract.schema_invalid"',
+  "source_offset: u64",
+  "pub const fn offset(&self) -> u64",
+  "pub fn connector_metadata(&self)",
+  "self.connector_metadata.offset != Some(self.source_offset)",
   "hash_part(&mut hasher, self.stream.as_bytes())",
   "hash_part(&mut hasher, self.topic.as_bytes())",
   "hash_part(&mut hasher, &self.partition.to_be_bytes())",
-  ".offset()",
+  "hash_part(&mut hasher, &self.source_offset.to_be_bytes())",
   "hash_part(&mut hasher, &self.raw_payload)",
   "bytes[6] = (bytes[6] & 0x0f) | 0x80",
   "bytes[8] = (bytes[8] & 0x3f) | 0x80",
@@ -85,6 +90,12 @@ for (const marker of [
   requireText("contract decode-failure identity", files.failure, marker);
 }
 for (const forbidden of [
+  "pub stream:",
+  "pub topic:",
+  "pub partition:",
+  "pub connector_metadata:",
+  "pub raw_payload:",
+  "pub kind:",
   "Uuid::new_v4",
   "SystemTime",
   "DefaultHasher",
@@ -120,5 +131,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy contract decode-failure verification passed: metadata-before-decode, exact raw bytes and source coordinates, bounded failure codes, stable UUIDv8 connector identity, explicit post-result acknowledgement, compatibility no-ack behavior, and no invented tenant/event identity are locked.",
+  "Iggy contract decode-failure verification passed: metadata-before-decode, immutable exact raw bytes and source coordinates, bounded failure codes, stable UUIDv8 connector identity, explicit post-result acknowledgement, compatibility no-ack behavior, and no invented tenant/event identity are locked.",
 );
