@@ -17,13 +17,19 @@ Status: source-ready / unvalidated.
 - No reply-create, quote, GraphQL, REST, or OpenAPI DTO fields changed.
 - No migrations or dependencies changed.
 - No Forum-to-Groups crate dependency was added.
-- No trust facts adapter or Forum trust owner state was added.
-- No topic-local reply audience narrowing or moderation audience policy was added.
+- No trust facts adapter or Forum trust owner state was added by this slice.
+  Authoritative Forum trust is now supplied separately through
+  `ForumUserTrustAudienceFactsPort`.
+- No topic-local reply audience narrowing or moderation audience policy was added
+  by this slice; those boundaries were subsequently delivered in `FORUM-20AX`
+  and `FORUM-20AY`.
 - The host publication path is reused without a second provider registry or transport-owned facts query.
 
-## Canonical plan debt
+## Canonical plan synchronization
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten in this slice. The available GitHub contents API requires complete-file replacement, while that roadmap exceeds two thousand lines; risking unrelated roadmap loss is not acceptable. A later safe repository-local edit must advance the FORUM-20 ledger through `FORUM-20AW`, place this delivered section after `FORUM-20AV`, and retain reply topic-local narrowing plus moderation audience work as remaining scope.
+Resolved by `FORUM-20BA`. The canonical plan records reply-create owner
+enforcement and exact GraphQL/REST composition before the later topic-local and
+moderation audience slices.
 
 ## Validation status
 

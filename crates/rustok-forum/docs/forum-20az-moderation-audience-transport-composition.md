@@ -18,11 +18,15 @@ Status: source-ready / unvalidated.
 - No new GraphQL field, REST route, OpenAPI shape, public request/response DTO, migration, dependency, host/server source, or Forum trust state is added.
 - No approve/reject/hide reply transport or pin/lock/status topic transport is introduced because those owner methods have no existing public Forum route in the current runtime.
 - Existing context-free `ModerationService` methods remain available for direct owner consumers and locally decidable compatibility; transport call sites use only context-aware methods.
-- Trust remains blocked on `FORUM-26` and is never derived from `forum_user_stats` activity counters.
+- Authoritative Forum trust is host-composed through
+  `ForumUserTrustAudienceFactsPort`; this slice did not create that owner state
+  and never derives trust from `forum_user_stats` activity counters.
 
-## Canonical plan debt
+## Canonical plan synchronization
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten in this slice. The available GitHub contents API requires complete-file replacement while the roadmap exceeds two thousand lines; risking unrelated roadmap loss is not acceptable. A later safe repository-local edit must advance the FORUM-20 ledger through `FORUM-20AZ`, retain Forum trust ownership and remaining exact-read migrations as open scope, and fix the previously recorded historical grammar typo.
+Resolved by `FORUM-20BA`. The canonical ledger records existing solution-route
+composition through `FORUM-20AZ`, while future moderation routes remain required
+to reuse the context-aware owner boundary.
 
 ## Validation status
 

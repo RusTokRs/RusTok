@@ -16,12 +16,17 @@ Status: source-ready / unvalidated.
 - Topic reply-create policy does not read or mutate `forum_topic_audience_*` visibility rows.
 - No GraphQL, REST, OpenAPI, quote, or owner DTO fields changed.
 - No dependency or host/server composition changed.
-- No Forum trust state or trust facts adapter was added; activity counters remain unrelated to trust.
-- Moderation audience policy remains a separate next slice.
+- No Forum trust state or trust facts adapter was added by this slice.
+  Authoritative Forum trust is now supplied by the Forum owner through
+  `ForumUserTrustAudienceFactsPort`; activity counters remain unrelated to trust.
+- Moderation audience policy was a separate next slice and was subsequently
+  delivered in `FORUM-20AY`.
 
-## Canonical plan debt
+## Canonical plan synchronization
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten in this slice. The available GitHub contents API requires complete-file replacement, while the roadmap exceeds two thousand lines; risking unrelated roadmap loss is not acceptable. A later safe repository-local edit must advance the FORUM-20 ledger through `FORUM-20AX`, remove topic-local reply narrowing from remaining scope, keep moderation audiences and Forum trust work open, and fix the previously recorded historical grammar typo.
+Resolved by `FORUM-20BA`. The canonical ledger now removes topic-local reply
+narrowing from remaining scope and records the later moderation audience chain
+through `FORUM-20AZ`.
 
 ## Validation status
 

@@ -10,7 +10,7 @@ Status: source-ready / unvalidated.
 - Empty constraints clear only the target category layer and restore inherited root-to-category moderation policy.
 - Every public topic and reply moderation command resolves the exact tenant-scoped target category and evaluates every inherited layer before opening its write transaction.
 - Existing context-free commands preserve compatibility for unrestricted, role-only, and explicit-user decisions. Unresolved trust, Channel, or Groups selectors require an exact `PortContext` and an injected `SharedForumAudienceFactsPort`.
-- `ModerationService::with_audience_facts` and context-aware command variants publish the owner seam needed for a later GraphQL/REST composition slice.
+- `ModerationService::with_audience_facts` and context-aware command variants publish the owner seam needed for transport composition.
 - Moderator use of `mark_solution` and `clear_solution` is audience-gated. The exact tenant-scoped topic author remains independently authorized to select or clear a solution without receiving moderator privileges.
 - Denied or unresolved decisions occur before topic/reply status, pin, lock, counter, user-stat, solution, journal, and outbox writes.
 - PostgreSQL and SQLite enforce tenant/category ownership, typed values, immutable rows, and bounded direct channel/group/allow/deny inserts.
@@ -19,14 +19,19 @@ Status: source-ready / unvalidated.
 ## Boundary
 
 - GraphQL, REST, OpenAPI, quote, and moderation DTOs are unchanged.
-- Existing transports still call context-free moderation methods; exact transport context composition remains `FORUM-20AZ`.
-- No Forum trust owner state or trust facts adapter is added. Trust remains blocked on `FORUM-26` and is never derived from `forum_user_stats`.
+- Existing solution transports were composed in `FORUM-20AZ`; moderation owner
+  methods without an existing public route remain transport-neutral.
+- No Forum trust owner state or trust facts adapter was added by this slice.
+  Authoritative Forum trust is now host-composed through
+  `ForumUserTrustAudienceFactsPort` and is never derived from `forum_user_stats`.
 - No topic-local moderation layer, report queue, restriction, audit, or anti-spam policy is added.
 - No dependency or host/server source changes are included.
 
-## Canonical plan debt
+## Canonical plan synchronization
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten in this slice. The available GitHub contents API requires complete-file replacement while that roadmap exceeds two thousand lines; risking unrelated roadmap loss is not acceptable. A later safe repository-local edit must advance the FORUM-20 ledger through `FORUM-20AY`, retain moderation transport composition as remaining scope, and fix the previously recorded historical grammar typo.
+Resolved by `FORUM-20BA`. The canonical ledger records category moderation
+audience persistence/enforcement and the existing solution transport composition
+through `FORUM-20AZ`.
 
 ## Validation status
 
