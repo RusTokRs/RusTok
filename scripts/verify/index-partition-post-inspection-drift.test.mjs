@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -23,17 +30,21 @@ const roles = [
   'admission',
 ];
 
+const identityOf = (stat) => `${stat.dev}:${stat.ino}`;
+
 const buildContext = () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'index-partition-post-inspection-'));
   const files = roles.map((role, index) => {
     const relativePath = `${role}.json`;
+    const filename = path.join(root, relativePath);
     const bytes = Buffer.from(`${JSON.stringify({ role, index })}\n`, 'utf8');
-    writeFileSync(path.join(root, relativePath), bytes);
+    writeFileSync(filename, bytes);
     return {
       role,
       path: relativePath,
       bytes: bytes.length,
       sha256: sha256Hex(bytes),
+      identity: identityOf(lstatSync(filename, { bigint: true })),
     };
   });
   const inspection = {
@@ -80,6 +91,7 @@ test('rechecks all retained files before publishing an archive verification rece
   const context = buildContext();
   try {
     const manifestBefore = readFileSync(context.manifestPath);
+    const savedManifest = JSON.parse(manifestBefore.toString('utf8'));
     const receipt = verifySavedRetainedPartitionArchiveManifest({
       inspection: context.inspection,
       root: context.root,
@@ -89,6 +101,7 @@ test('rechecks all retained files before publishing an archive verification rece
     assert.equal(receipt.retained_files_rechecked, true);
     assert.equal(receipt.file_count, 9);
     assert.equal(receipt.production_lifecycle_authorized, false);
+    assert.equal(Object.hasOwn(savedManifest.files[0], 'identity'), false);
     assert.deepEqual(readFileSync(context.manifestPath), manifestBefore);
   } finally {
     cleanup(context);
@@ -106,6 +119,31 @@ test('fails closed when a retained file changes after inspection', () => {
         manifestPath: context.manifestPath,
       }),
       /retained bundle file query changed after inspection/u,
+    );
+  } finally {
+    cleanup(context);
+  }
+});
+
+test('fails closed on a same-byte retained file identity replacement after inspection', () => {
+  const context = buildContext();
+  try {
+    const target = path.join(context.root, 'query.json');
+    const replacement = path.join(context.root, 'query.replacement');
+    const bytes = readFileSync(target);
+    const identityBefore = identityOf(lstatSync(target, { bigint: true }));
+    writeFileSync(replacement, bytes);
+    rmSync(target);
+    renameSync(replacement, target);
+    const identityAfter = identityOf(lstatSync(target, { bigint: true }));
+    assert.notEqual(identityAfter, identityBefore);
+    assert.throws(
+      () => verifySavedRetainedPartitionArchiveManifest({
+        inspection: context.inspection,
+        root: context.root,
+        manifestPath: context.manifestPath,
+      }),
+      /retained bundle file query identity changed after inspection/u,
     );
   } finally {
     cleanup(context);
