@@ -4,9 +4,7 @@ Status: **server composition source complete; runtime execution pending**.
 
 ## What changed
 
-The host now has one global event-delivery observer composition for the physical DLQ duplicate alert path.
-
-It combines:
+The host now has one global event-delivery observer composition for the physical DLQ duplicate alert path:
 
 ```text
 bounded physical DLQ scan
@@ -19,8 +17,6 @@ bounded physical DLQ scan
 The observer is intentionally not a Profiles service. Profiles remains a consumer of authoritative privacy and relationship owner ports only.
 
 ## Delivery modes are explicit
-
-The composition does not assume that every deployment uses Iggy:
 
 ```text
 memory        -> NotApplicableMemory
@@ -35,16 +31,22 @@ For `memory` and `outbox_local`:
 - no alert thresholds are required;
 - not-applicable state is not an error or degraded Profiles condition.
 
-For `outbox_iggy`, the observer uses the exact shared transport configuration already activated by the event runtime. It does not create another transport or broker.
+For `outbox_iggy`, the observer uses the exact shared transport configuration activated by the event runtime. It does not create another transport or broker. Missing active Iggy mode fails closed rather than being guessed.
 
 ## Bundled and external Iggy
-
-Both Iggy deployment modes are handled explicitly:
 
 - bundled mode connects to the existing validated loopback broker and matching TCP port;
 - external mode connects to reviewed configured addresses and credentials.
 
 The observer never starts or owns the bundled process and never shuts down the shared event transport.
+
+## Bounded scan semantics
+
+The observer builds an allowlist containing every configured domain partition and delegates it to the existing explicit-offset scanner with `auto_commit=false`.
+
+The scanner uses one **global** message budget across the ordered allowlist. An earlier busy partition can exhaust that budget before later partitions are polled. This checkpoint therefore makes no partition-fairness or complete-history claim.
+
+A future per-partition budget or fairness policy must remain operational and must not become a Profiles input.
 
 ## Activation and policy
 
@@ -75,6 +77,7 @@ No profile visibility, ownership, follower access, relationship, block, mute, au
 - event delivery profile;
 - observer applicability or availability;
 - Iggy bundled/external mode;
+- partition ordering, fairness, or budget exhaustion;
 - duplicate alert level;
 - threshold booleans;
 - scanner connection state;
@@ -85,16 +88,7 @@ A missing or failed Iggy observer never changes Profiles data access. Event deli
 
 ## Privacy boundary
 
-The observer does not expose:
-
-- broker addresses or credentials;
-- stream/topic/partition/offset;
-- deterministic message UUIDs;
-- payloads or payload digests;
-- poison receipt identities;
-- raw client errors;
-- raw threshold values;
-- source counts.
+The observer does not expose broker addresses/credentials, stream coordinates, UUIDs, payloads/digests, poison receipt identities, raw client errors, raw thresholds, or source counts.
 
 Logs and shared state retain only stable codes, availability, generation, alert level, and aggregate boolean reasons.
 
@@ -122,10 +116,11 @@ scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 
 ## Remaining work
 
-1. add identifier-free telemetry projection;
-2. add optional operational health without readiness coupling;
-3. define notification routing, cooldown, and suppression separately;
-4. retain execution evidence for applicable Iggy modes;
-5. keep any destructive reconciliation separately authorized.
+1. define partition fairness or an explicit per-partition budget policy;
+2. add identifier-free telemetry projection;
+3. add optional operational health without readiness coupling;
+4. define notification routing, cooldown, and suppression separately;
+5. retain execution evidence for applicable Iggy modes;
+6. keep destructive reconciliation separately authorized.
 
 Tests, Cargo commands, formatters, verifiers, server startup, broker connections, alert delivery, and retained capture were not run by the implementation agent.
