@@ -68,9 +68,9 @@ async fn fair_window_scans_each_partition_and_differs_from_global_budget() -> Te
     )
     .await?;
 
-    let partition_one_duplicate_id = broker_message_id_for_partition(1);
-    let partition_one_overflow_id = broker_message_id_for_partition(1);
-    let partition_two_conflict_id = broker_message_id_for_partition(2);
+    let partition_one_duplicate_id = broker_message_id_for_partition(2, 1);
+    let partition_one_overflow_id = broker_message_id_for_partition(4, 1);
+    let partition_two_conflict_id = broker_message_id_for_partition(1, 2);
 
     let partition_one_payload = vec![0xff, 0x00, 0x71, 0x01];
     let partition_one_overflow_payload = vec![0xff, 0x00, 0x71, 0x02];
@@ -193,16 +193,13 @@ async fn publish_physical(
     Ok(())
 }
 
-fn broker_message_id_for_partition(partition: u32) -> Uuid {
-    assert!(PARTITIONS.contains(&partition));
-    loop {
-        let candidate = Uuid::new_v4();
-        let selected =
-            (candidate.as_u128() % u128::from(PARTITION_COUNT)) as u32 + 1;
-        if selected == partition {
-            return candidate;
-        }
-    }
+fn broker_message_id_for_partition(value: u128, expected_partition: u32) -> Uuid {
+    assert!(value > 0);
+    assert!(PARTITIONS.contains(&expected_partition));
+    let candidate = Uuid::from_u128(value);
+    let selected = (candidate.as_u128() % u128::from(PARTITION_COUNT)) as u32 + 1;
+    assert_eq!(selected, expected_partition);
+    candidate
 }
 
 async fn assert_no_stored_offsets(
