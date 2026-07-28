@@ -7,9 +7,26 @@ Status:
 - Real retained PostgreSQL packet execution: `open`.
 - Production partition copy, replay, dual-write, cutover, rollback automation, cleanup, and query-adapter work: `forbidden before one retained admitted packet`.
 
+## No-write preflight plan
+
+Run the same owner command with `--plan` before starting a fresh retained capture:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
+INDEX_PARTITION_ALLOW_FULL_CAPTURE=1 \
+node scripts/verify/index-storage-tooling.mjs partition-capture --plan \
+  --manifest evidence/index-partition/manifest.json \
+  --query-audit evidence/index-partition/query-audit.json \
+  --root evidence/index-partition/retained-run
+```
+
+The plan requires the same `DATABASE_URL` presence and full-capture opt-in as the real command. It validates that the manifest and query audit are non-empty regular files, resolves every retained output inside the bundle root, rejects partial-output reuse, and prints the exact eight-stage execution contract as JSON.
+
+Plan mode does not open a PostgreSQL connection, does not start Cargo or Node evidence stages, does not create the bundle directory or any output file, and does not print the `DATABASE_URL` value. A successful plan confirms only local environment and filesystem readiness; PostgreSQL 16 identity, JIT state, and measured evidence remain runtime checks.
+
 ## Owner command
 
-Use one fresh immutable manifest and an empty bundle directory. The command refuses partial-output reuse and does not resume a failed attempt.
+Use one fresh immutable manifest and an empty bundle directory. The command refuses partial-output reuse and does not resume a failed attempt. After reviewing the no-write plan, rerun the same command without `--plan`:
 
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
