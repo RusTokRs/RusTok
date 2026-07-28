@@ -49,12 +49,17 @@ The explicit platform append-only migration tail includes both
 `m20260728_000001_create_consumer_poison_receipts`, preserving the previously published
 migration prefix.
 
-An opt-in PostgreSQL integration harness now creates a unique schema per scenario and
-applies connector migrations directly. It defines source evidence for independent
+An opt-in PostgreSQL integration harness creates a unique schema per scenario and
+applies connector migrations directly. Four source-complete scenarios cover independent
 concurrent claim connections, lease reclaim/fencing, collision rollback,
 first-diagnostic retention, empty payloads, terminal recognition, and aggregate
-inspection. The harness is source-complete but has not been executed; PostgreSQL runtime
-proof remains open.
+inspection.
+
+A retained execution contract now locks the exact Cargo commands, required cases,
+source-hash set, metadata fields, and canonical evidence path. A clean-commit runner
+collects bounded PostgreSQL/toolchain metadata and writes an evidence packet atomically
+only after every required case succeeds. The packet is intentionally absent until a
+maintainer executes the runner; PostgreSQL runtime proof remains open.
 
 ## FFA/FBA boundary
 
@@ -94,6 +99,11 @@ proof remains open.
   database creation/deletion.
 - Direct test SQL is limited to deterministic lease expiry and read-only diagnostics;
   production receipt transitions are exercised through the public store API.
+- Retained execution requires a clean commit, unchanged source hashes, exact contract
+  commands, one unambiguous PostgreSQL server version, and all required test cases.
+- Retained packets never store the database URL, host, database name, credentials, raw
+  test output, delivery identity, source coordinates, or payload. Raw output is reduced
+  to SHA-256 plus byte count.
 - The server enables feature `migrations` explicitly when it composes the neutral store;
   runtime availability does not rely on transitive feature unification.
 - Existing source guard: `node scripts/verify/verify-iggy-connector-source.mjs`.
@@ -103,8 +113,10 @@ proof remains open.
   `node scripts/verify/verify-iggy-consumer-poison-inspection.mjs`.
 - Owner observer/metrics guard:
   `node scripts/verify/verify-social-graph-index-poison-observer.mjs`.
-- PostgreSQL evidence guard:
+- PostgreSQL harness guard:
   `node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs`.
+- Retained execution guard:
+  `node scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs`.
 
 ## Delivered results
 
@@ -131,6 +143,9 @@ proof remains open.
    ownership, lease reclaim/fencing, collision rollback, first-diagnostic retention,
    empty payloads, terminal redelivery, and aggregate consistency without claiming an
    executed runtime result.
+9. **Retained PostgreSQL execution contract.** An environment metadata test, clean-commit
+   runner, atomic evidence writer, source/output digests, and strict verifier define how
+   runtime proof becomes retainable without storing credentials or delivery-level facts.
 
 ## Next results
 
@@ -138,10 +153,11 @@ proof remains open.
    exact publish-before-ack ordering, acknowledgement-only redelivery, reconnect, exact
    commit, publication failure, restart, and multi-replica behavior in bundled and
    external environments.
-2. **Execute and retain PostgreSQL receipt evidence.** Run the isolated-schema harness
-   against PostgreSQL, retain command/environment/server-version evidence, repeat the
-   concurrent ownership scenario, and prove cleanup. Source coverage exists; runtime
-   execution remains owner work.
+2. **Execute and retain PostgreSQL receipt evidence.** Run
+   `capture-iggy-consumer-poison-postgres.mjs` from a clean commit, review the generated
+   packet, verify it, and commit the canonical evidence JSON. Repeat execution when any
+   bound source hash changes. Source coverage and capture tooling exist; runtime execution
+   remains owner work.
 3. **Extend PostgreSQL evidence to multi-replica observer behavior.** Prove aggregate
    consistency during concurrent claims, lease expiry, terminal transitions, and
    observer polling without adding mutation policy to inspection.
@@ -164,9 +180,11 @@ proof remains open.
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `node scripts/verify/verify-social-graph-index-poison-observer.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs`
+- `node scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture`
 - `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' cargo test -p rustok-iggy-connector --features migrations --test consumer_poison_receipt_postgres -- --nocapture`
+- `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' node scripts/evidence/capture-iggy-consumer-poison-postgres.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
