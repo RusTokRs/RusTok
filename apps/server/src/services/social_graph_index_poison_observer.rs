@@ -56,7 +56,7 @@ pub async fn start_social_graph_index_poison_observer_if_enabled(
 
     let poll = match poison_poll_interval() {
         Ok(poll) => poll,
-        Err(error) => {
+        Err(_) => {
             consumer_poison_metrics::record_unavailable(METRICS_CONSUMER);
             runtime_consumer_metrics::record_failure(
                 METRICS_CONSUMER,
@@ -65,7 +65,7 @@ pub async fn start_social_graph_index_poison_observer_if_enabled(
             );
             tracing::warn!(
                 worker = METRICS_CONSUMER,
-                error = %error,
+                error_code = CONFIGURATION_ERROR,
                 "Consumer poison observer configuration is invalid; projection remains active"
             );
             return Ok(());
@@ -120,7 +120,6 @@ async fn poison_observer_loop(
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     error_code = error.stable_code(),
-                    error = %error,
                     "Count-only poison receipt snapshot failed; projection remains active"
                 );
             }
