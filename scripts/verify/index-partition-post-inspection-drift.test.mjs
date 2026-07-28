@@ -4,6 +4,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -19,7 +20,10 @@ import {
   verifySavedRetainedPartitionArchiveManifest,
 } from './index-partition-archive-manifest-core.mjs';
 import { sha256Hex } from './index-partition-evidence-core.mjs';
-import { REVIEW_CONTRACT } from './index-partition-review-core.mjs';
+import {
+  inspectRetainedBundleDirectoryInventory,
+  REVIEW_CONTRACT,
+} from './index-partition-review-core.mjs';
 
 const roles = [
   'baseline',
@@ -41,10 +45,22 @@ const fingerprintOf = (stat) => [
   stat.ctimeNs,
 ].join(':');
 
-const buildContext = () => {
+const directorySnapshot = (root, relativePath = '') => {
+  const filename = path.resolve(root, relativePath);
+  const stat = lstatSync(filename, { bigint: true });
+  return {
+    path: relativePath,
+    identity: identityOf(stat),
+    fingerprint: fingerprintOf(stat),
+    entries: readdirSync(filename).sort(),
+  };
+};
+
+const buildContext = ({ nested = false } = {}) => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'index-partition-post-inspection-'));
+  if (nested) mkdirSync(path.join(root, 'nested'));
   const files = roles.map((role, index) => {
-    const relativePath = `${role}.json`;
+    const relativePath = nested && role === 'query' ? 'nested/query.json' : `${role}.json`;
     const filename = path.join(root, relativePath);
     const bytes = Buffer.from(`${JSON.stringify({ role, index })}\n`, 'utf8');
     writeFileSync(filename, bytes);
@@ -58,11 +74,16 @@ const buildContext = () => {
       fingerprint: fingerprintOf(stat),
     };
   });
-  const rootStat = lstatSync(root, { bigint: true });
+  const rootDirectory = directorySnapshot(root);
   const inspection = {
     contract: REVIEW_CONTRACT,
-    rootIdentity: identityOf(rootStat),
+    rootIdentity: rootDirectory.identity,
+    rootFingerprint: rootDirectory.fingerprint,
     rootCanonical: root,
+    directories: [
+      rootDirectory,
+      ...(nested ? [directorySnapshot(root, 'nested')] : []),
+    ],
     packet: {
       database: {
         version: 'PostgreSQL 16.4',
@@ -121,7 +142,44 @@ test('rechecks the complete filesystem snapshot before publishing an archive ver
     assert.equal(Object.hasOwn(savedManifest.files[0], 'identity'), false);
     assert.equal(Object.hasOwn(savedManifest.files[0], 'fingerprint'), false);
     assert.equal(Object.hasOwn(savedManifest, 'rootIdentity'), false);
+    assert.equal(Object.hasOwn(savedManifest, 'rootFingerprint'), false);
+    assert.equal(Object.hasOwn(savedManifest, 'directories'), false);
     assert.deepEqual(readFileSync(context.manifestPath), manifestBefore);
+  } finally {
+    cleanup(context);
+  }
+});
+
+test('rejects unexpected retained bundle entries before inspection completes', () => {
+  const context = buildContext();
+  try {
+    writeFileSync(path.join(context.root, 'unexpected.json'), '{}\n');
+    assert.throws(
+      () => inspectRetainedBundleDirectoryInventory({
+        root: context.root,
+        files: context.inspection.files.map((file) => path.join(context.root, file.path)),
+      }),
+      /unexpected retained bundle entry unexpected\.json/u,
+    );
+  } finally {
+    cleanup(context);
+  }
+});
+
+test('fails closed when nested retained bundle inventory changes after inspection', () => {
+  const context = buildContext({ nested: true });
+  try {
+    const rootFingerprintBefore = fingerprintOf(lstatSync(context.root, { bigint: true }));
+    writeFileSync(path.join(context.root, 'nested', 'unexpected.json'), '{}\n');
+    assert.equal(fingerprintOf(lstatSync(context.root, { bigint: true })), rootFingerprintBefore);
+    assert.throws(
+      () => verifySavedRetainedPartitionArchiveManifest({
+        inspection: context.inspection,
+        root: context.root,
+        manifestPath: context.manifestPath,
+      }),
+      /retained bundle directory nested (metadata|inventory) changed after inspection/u,
+    );
   } finally {
     cleanup(context);
   }
@@ -162,7 +220,7 @@ test('fails closed on a same-byte retained file identity replacement after inspe
         root: context.root,
         manifestPath: context.manifestPath,
       }),
-      /retained bundle (root changed|file query identity changed) after inspection/u,
+      /retained bundle (root changed|directory \. metadata changed|file query identity changed) after inspection/u,
     );
   } finally {
     cleanup(context);
@@ -189,6 +247,31 @@ test('fails closed when retained metadata changes with the same inode and bytes'
         manifestPath: context.manifestPath,
       }),
       /retained bundle file query metadata changed after inspection/u,
+    );
+  } finally {
+    cleanup(context);
+  }
+});
+
+test('fails closed when retained bundle root metadata changes with the same inode', () => {
+  const context = buildContext();
+  try {
+    const before = lstatSync(context.root, { bigint: true });
+    const identityBefore = identityOf(before);
+    const fingerprintBefore = fingerprintOf(before);
+    const atime = new Date(Number(before.atimeMs));
+    const mtime = new Date(Number(before.mtimeMs) + 2_000);
+    utimesSync(context.root, atime, mtime);
+    const after = lstatSync(context.root, { bigint: true });
+    assert.equal(identityOf(after), identityBefore);
+    assert.notEqual(fingerprintOf(after), fingerprintBefore);
+    assert.throws(
+      () => verifySavedRetainedPartitionArchiveManifest({
+        inspection: context.inspection,
+        root: context.root,
+        manifestPath: context.manifestPath,
+      }),
+      /retained bundle root changed after inspection/u,
     );
   } finally {
     cleanup(context);

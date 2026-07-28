@@ -1,6 +1,6 @@
 # Count-only physical DLQ duplicate inspection
 
-Status: **transport-neutral source complete; bounded external-Iggy scan adapter pending**.
+Status: **classifier and bounded external-Iggy adapter source-complete; runtime evidence pending**.
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Physical copies can exceed one when:
 - capacity pressure evicted the ID;
 - a failover or unsupported broker path did not preserve the expected dedup state.
 
-`dlq_duplicate_inspection.rs` provides a transport-neutral, read-only reduction for a bounded set of physical observations.
+`dlq_duplicate_inspection.rs` provides a transport-neutral, read-only reduction for a bounded set of physical observations. `dlq_duplicate_external_scan.rs` now provides the bounded external-Iggy polling adapter described in `dlq-duplicate-external-scan.md`.
 
 ## Input boundary
 
@@ -89,15 +89,17 @@ The summary does not expose:
 - timestamps;
 - credentials.
 
-The classifier does not implement serialization. A future operator endpoint must preserve the same count-only projection unless a separately authorized forensic workflow is explicitly designed.
+The classifier does not implement serialization. Any operator endpoint must preserve the same count-only projection unless a separately authorized forensic workflow is explicitly designed.
 
 ## Mutation boundary
 
-The classifier cannot:
+The classifier and external scanner cannot:
 
 - acknowledge a DLQ cursor;
-- delete a physical message;
+- store or auto-commit a consumer offset;
+- delete or purge physical messages;
 - replay or retry a message;
+- publish a message;
 - repair broker state;
 - claim or release a poison receipt;
 - mark a receipt published or acknowledged;
@@ -133,42 +135,59 @@ Neither summary contains identifiers, so they cannot be joined message-by-messag
 
 These are operator interpretations, not storage-layer decisions.
 
+## Bounded external-Iggy adapter
+
+`IggyDlqDuplicateScanner` borrows an already connected `IggyClient` and polls only:
+
+```text
+topic = dlq
+standalone consumer
+explicit positive partition
+PollingStrategy::offset(explicit_offset)
+auto_commit = false
+```
+
+One request permits at most 128 partitions, 10,000 messages globally, and batches of 1,000. It validates returned partition, count, monotonic offsets, and header identity before returning only `DlqDuplicateSummary`.
+
+The adapter does not own credentials or connection lifecycle, query topology metadata, join a consumer group, persist progress, or call shutdown. See `dlq-duplicate-external-scan.md` for the complete contract.
+
 ## Safe operational sequence
 
-A future bounded external-Iggy adapter should:
-
-1. open a read-only scan cursor or metadata reader over an explicitly selected DLQ scope;
-2. enforce a maximum message count and bounded time window;
-3. extract only the physical header UUID and exact bytes into in-memory observations;
-4. call `summarize_dlq_duplicates`;
-5. publish only the count-only summary;
-6. close the observer without acknowledging, deleting, replaying, or moving messages.
+1. select an external service, stream, explicit partition allowlist, offset, and message cap;
+2. connect and authenticate an `IggyClient` outside the scanner;
+3. call the bounded scanner using explicit-offset polling with `auto_commit=false`;
+4. publish only the count-only summary;
+5. close the client through the caller-owned lifecycle;
+6. treat the result as a bounded window, not automatically as complete history.
 
 Any destructive action must be a separate, explicitly authorized workflow with its own preview, selection, audit, and retained evidence.
 
-## Source tests
+## Source tests and guards
 
-The focused unit cases define:
+The focused classifier cases define:
 
 - same ID and exact bytes counted as ordinary physical duplicates;
 - same ID and different bytes escalated as an identity conflict;
 - empty scan and empty payload behavior;
 - nil ID rejection and stable error code.
 
+The external scanner cases define request bounds and identifier-free stable errors.
+
 Suggested maintainer commands:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
-cargo test -p rustok-iggy dlq_duplicate_inspection -- --nocapture
+node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
+cargo test -p rustok-iggy dlq_duplicate -- --nocapture
 ```
 
-No tests, Cargo commands, formatters, verifiers, or external-Iggy scans were run while defining this source slice.
+No tests, Cargo commands, formatters, verifiers, or external-Iggy scans were run while defining these source slices.
 
 ## Remaining work
 
-1. add a bounded read-only external-Iggy scan adapter;
-2. prove physical header extraction and count-only projection against a disposable broker;
-3. retain runtime evidence without identifiers, payloads, addresses, credentials, or raw logs;
+1. prove physical header and exact-byte ingestion against a disposable external broker;
+2. prove explicit-offset polling does not store consumer progress;
+3. retain runtime evidence without identifiers, payloads, addresses, credentials, offsets, or raw logs;
 4. define alert thresholds outside the inspector;
 5. design any acknowledgement/delete/replay workflow as a separate authorized operation;
 6. correlate aggregate receipt and duplicate health without exporting message identities.

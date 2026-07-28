@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-external-scan-runtime-source",
+  "status": "source_complete_runtime_pending",
+  "owner": "rustok-iggy",
+  "feature": "iggy",
+  "test_target": "dlq_duplicate_external_scan",
+  "test": "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
+  "case": "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+  "command": {
+    "program": "cargo",
+    "args": [
+      "test",
+      "-p",
+      "rustok-iggy",
+      "--features",
+      "iggy",
+      "--test",
+      "dlq_duplicate_external_scan",
+      "--",
+      "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
+  "environment": {
+    "address": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_ADDRESS",
+    "optional_username": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_USERNAME",
+    "optional_password": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_PASSWORD",
+    "default_address": false,
+    "default_credentials": false
+  },
+  "reviewed_broker_requirement": {
+    "mode": "external_disposable_or_operator_cleaned",
+    "message_deduplication_enabled": false,
+    "configuration_readback_by_test": false,
+    "reason": "the test requires repeated deterministic header UUIDs to remain as separate physical messages"
+  },
+  "topology": {
+    "unique_stream_per_run": true,
+    "topic": "dlq",
+    "domain_partitions": 1,
+    "replication_factor": 1,
+    "stream_deletion_by_test": false
+  },
+  "fixture_publication": {
+    "api": "IggyTransport::move_to_dlq",
+    "direct_sdk_producer": false,
+    "physical_messages": 4,
+    "ordinary_duplicate": {
+      "copies": 2,
+      "same_header_uuid": true,
+      "same_exact_bytes": true
+    },
+    "identity_conflict": {
+      "copies": 2,
+      "same_header_uuid": true,
+      "different_exact_bytes": true
+    }
+  },
+  "scan_request": {
+    "partitions": [1],
+    "start_offset": 0,
+    "max_messages": 4,
+    "batch_size": 4,
+    "runs": 2,
+    "same_request_reused": true
+  },
+  "required_summary": {
+    "total_messages": 4,
+    "unique_message_ids": 2,
+    "duplicate_messages": 2,
+    "duplicate_groups": 2,
+    "conflicting_payload_groups": 1,
+    "max_copies_per_message_id": 2,
+    "has_physical_duplicates": true,
+    "has_identity_conflicts": true,
+    "requires_manual_review": true
+  },
+  "offset_non_mutation": {
+    "consumer_kind": "standalone_consumer",
+    "consumer_name": "rustok-dlq-duplicate-readonly-v1",
+    "partition": 1,
+    "checks": [
+      "before_fixture_publication",
+      "after_first_scan",
+      "after_second_scan"
+    ],
+    "required_stored_offset": null,
+    "second_scan_summary_equals_first": true,
+    "auto_commit": false
+  },
+  "sdk_observer_boundary": {
+    "allowed": [
+      "connect",
+      "IggyDlqDuplicateScanner_explicit_offset_poll",
+      "get_consumer_offset",
+      "shutdown"
+    ],
+    "forbidden": [
+      "send_messages",
+      "store_consumer_offset",
+      "delete_consumer_offset",
+      "consumer_group_cursor",
+      "acknowledge",
+      "store_offset",
+      "delete_stream",
+      "delete_topic",
+      "purge_topic",
+      "configuration_mutation"
+    ]
+  },
+  "privacy_boundary": {
+    "source_assertions_may_compare_exact_bytes": false,
+    "summary_only": true,
+    "no_logs_of": [
+      "address",
+      "credential",
+      "stream_name",
+      "partition_offset",
+      "header_uuid",
+      "payload"
+    ]
+  },
+  "retained_execution": {
+    "status": "source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json",
+    "runner": "scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs",
+    "verifier": "scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs",
+    "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json",
+    "canonical_packet_present": false
+  },
+  "source_files": [
+    "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+    "crates/rustok-iggy/src/dlq.rs",
+    "crates/rustok-iggy/src/transport.rs"
+  ],
+  "non_claims": [
+    "active_server_configuration_readback",
+    "production_history_complete",
+    "production_dedup_window_sufficiency",
+    "stored_offset_non_mutation_runtime_executed",
+    "retained_runtime_evidence",
+    "bundled_iggy",
+    "tls_auth_failover",
+    "multi_partition_runtime",
+    "destructive_reconciliation",
+    "profiles_authorization"
+  ],
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-external-scan-runtime-evidence.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-external-runtime-checkpoint.md",
+  "execution_status": "not_run"
+}

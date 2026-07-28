@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "iggy",
   "packet": "dlq-duplicate-inspection-source",
-  "status": "source_complete_runtime_adapter_pending",
+  "status": "source_complete_runtime_evidence_pending",
   "owner": "rustok-iggy",
   "source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
   "public_exports": [
@@ -78,8 +78,14 @@
     "receipt_summary": "ConsumerPoisonReceiptInspector",
     "receipt_and_physical_duplicate_summaries_are_independent": true
   },
+  "runtime_adapter": {
+    "status": "source_complete_runtime_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json",
+    "source": "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "auto_commit": false,
+    "result": "DlqDuplicateSummary"
+  },
   "remaining_work": [
-    "bounded_read_only_iggy_dlq_scan_adapter",
     "retained_external_iggy_duplicate_scan_evidence",
     "operator_alert_threshold_policy",
     "operator_ack_delete_replay_workflow_outside_inspector",

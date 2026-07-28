@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-external-scan-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "source_contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json",
+  "runner": "scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs",
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs",
+  "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json",
+  "evidence_status": "runtime_execution_pending",
+  "command": {
+    "program": "cargo",
+    "args": [
+      "test",
+      "-p",
+      "rustok-iggy",
+      "--features",
+      "iggy",
+      "--test",
+      "dlq_duplicate_external_scan",
+      "--",
+      "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
+  "case": "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+  "required_environment": {
+    "address": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_ADDRESS",
+    "config_path": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_CONFIG_PATH",
+    "server_artifact": "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_SERVER_ARTIFACT"
+  },
+  "optional_environment": [
+    "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_USERNAME",
+    "RUSTOK_IGGY_DUPLICATE_SCAN_TEST_PASSWORD"
+  ],
+  "reviewed_configuration": {
+    "section": "system.message_deduplication",
+    "required_enabled": false,
+    "retain_only": [
+      "section",
+      "enabled",
+      "canonical_sha256"
+    ],
+    "config_path_outside_repository": true,
+    "full_content_retained": false,
+    "full_file_sha256_retained": false
+  },
+  "required_summary": {
+    "total_messages": 4,
+    "unique_message_ids": 2,
+    "duplicate_messages": 2,
+    "duplicate_groups": 2,
+    "conflicting_payload_groups": 1,
+    "max_copies_per_message_id": 2,
+    "has_physical_duplicates": true,
+    "has_identity_conflicts": true,
+    "requires_manual_review": true
+  },
+  "required_offset_observations": {
+    "before_fixture_publication_stored_offset_present": false,
+    "after_first_scan_stored_offset_present": false,
+    "after_second_scan_stored_offset_present": false
+  },
+  "runner_requirements": {
+    "clean_working_tree_before": true,
+    "clean_working_tree_after": true,
+    "full_git_commit": true,
+    "commit_unchanged": true,
+    "source_hashes_unchanged": true,
+    "exact_case_only": true,
+    "running_one_test_required": true,
+    "skip_rejected": true,
+    "atomic_write_after_pass": true
+  },
+  "retained_packet": {
+    "reviewed_artifact_labels": true,
+    "canonical_dedup_configuration": true,
+    "git_toolchain_timestamps": true,
+    "exact_command": true,
+    "current_source_sha256": true,
+    "test_output_sha256_and_bytes": true,
+    "aggregate_summary_assertions": true,
+    "aggregate_absent_offset_assertions": true,
+    "case_result": "pass"
+  },
+  "privacy_exclusions": [
+    "database_url",
+    "broker_address",
+    "config_path",
+    "config_full_content",
+    "config_full_file_sha256",
+    "username",
+    "password",
+    "connection_string",
+    "raw_test_output",
+    "stream_name",
+    "partition_id",
+    "offset",
+    "broker_message_id",
+    "delivery_uuid",
+    "payload",
+    "payload_sha256",
+    "ack_token",
+    "raw_iggy_error"
+  ],
+  "source_files": [
+    "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+    "crates/rustok-iggy/src/dlq.rs",
+    "crates/rustok-iggy/src/transport.rs",
+    "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json",
+    "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json",
+    "scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs",
+    "scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs"
+  ],
+  "non_claims": [
+    "active_server_configuration_readback",
+    "production_history_complete",
+    "production_dedup_window_sufficiency",
+    "bundled_iggy",
+    "tls_auth_failover",
+    "multi_partition_runtime",
+    "destructive_reconciliation",
+    "profiles_authorization"
+  ]
+}

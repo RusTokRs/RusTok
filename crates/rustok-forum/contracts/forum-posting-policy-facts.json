@@ -2,6 +2,8 @@
   "schema_version": 1,
   "task": "FORUM-26E",
   "upstream_task": "FORUM-26D",
+  "downstream_account_age_task": "FORUM-26F",
+  "downstream_account_age_contract": "crates/rustok-forum/contracts/forum-account-age-posting-facts.json",
   "related_tasks": ["FORUM-26A", "FORUM-26B", "FORUM-26C"],
   "scope": "Rules-driven authoritative owner-fact composition for Forum posting policy with a real trust bridge and explicit unavailable states for undelivered owners",
   "composition_file": "crates/rustok-forum/src/services/posting_policy_facts.rs",

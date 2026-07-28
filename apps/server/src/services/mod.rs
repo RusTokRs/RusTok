@@ -54,6 +54,8 @@ pub mod forum_audience_facts {
 pub mod forum_audience_group_facts;
 #[cfg(feature = "mod-forum")]
 pub mod forum_notification_recipient_context;
+#[cfg(feature = "mod-forum")]
+pub mod forum_posting_policy_facts;
 pub mod graphql_schema;
 pub mod iggy_connector_control_adapter;
 pub mod iggy_connector_settings_service;

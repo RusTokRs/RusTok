@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-external-scan-source",
+  "status": "source_complete_runtime_pending",
+  "owner": "rustok-iggy",
+  "feature": "iggy",
+  "source": "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+  "classifier_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "public_exports": [
+    "IggyDlqDuplicateScanRequest",
+    "IggyDlqDuplicateScanner",
+    "IggyDlqDuplicateScanError"
+  ],
+  "iggy_poll_boundary": {
+    "client": "already_connected_IggyClient_borrow",
+    "topic": "dlq",
+    "consumer_kind": "standalone_consumer",
+    "consumer_name": "rustok-dlq-duplicate-readonly-v1",
+    "partition_selection": "explicit_positive_unique_partition_ids",
+    "polling_strategy": "explicit_offset",
+    "auto_commit": false,
+    "topic_metadata_read": false,
+    "connection_lifecycle_owned_by_caller": true
+  },
+  "request_boundary": {
+    "same_start_offset_for_each_partition": true,
+    "maximum_partitions": 128,
+    "maximum_messages": 10000,
+    "maximum_batch_messages": 1000,
+    "batch_not_greater_than_scan_limit": true,
+    "empty_partition_list_rejected": true,
+    "zero_partition_rejected": true,
+    "duplicate_partition_rejected": true,
+    "zero_message_or_batch_limit_rejected": true
+  },
+  "response_validation": {
+    "partition_must_match_request": true,
+    "reported_count_must_match_messages": true,
+    "reported_count_must_not_exceed_batch": true,
+    "offsets_must_be_monotonic": true,
+    "offsets_must_not_precede_requested_offset": true,
+    "offset_overflow_rejected": true,
+    "nil_physical_header_uuid_rejected_by_classifier": true
+  },
+  "result": {
+    "type": "DlqDuplicateSummary",
+    "identifier_free": true,
+    "payload_free": true,
+    "broker_coordinate_free": true,
+    "raw_client_error_free": true
+  },
+  "privacy_boundary": {
+    "error_messages_exclude": [
+      "broker_address",
+      "stream_name",
+      "partition_id",
+      "offset",
+      "message_id",
+      "payload",
+      "credential",
+      "raw_iggy_error"
+    ],
+    "result_excludes": [
+      "broker_address",
+      "stream",
+      "topic",
+      "partition",
+      "offset",
+      "broker_message_id",
+      "payload",
+      "payload_sha256",
+      "credential"
+    ]
+  },
+  "mutation_boundary": {
+    "auto_commit": false,
+    "store_consumer_offset": false,
+    "acknowledge": false,
+    "delete": false,
+    "purge": false,
+    "publish": false,
+    "replay": false,
+    "retry": false,
+    "receipt_mutation": false,
+    "connection_shutdown": false
+  },
+  "stable_errors": {
+    "invalid_request": "iggy.dlq_duplicate.scan_invalid",
+    "poll_failed": "iggy.dlq_duplicate.scan_failed",
+    "invalid_broker_response": "iggy.dlq_duplicate.scan_response_invalid",
+    "offset_overflow": "iggy.dlq_duplicate.scan_offset_overflow",
+    "classifier_errors_preserved": true
+  },
+  "required_source_tests": [
+    "bounded_request_requires_unique_positive_partitions",
+    "bounded_request_rejects_unbounded_counts",
+    "stable_errors_do_not_expose_broker_coordinates"
+  ],
+  "runtime_harness": {
+    "status": "source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json",
+    "test": "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
+    "case": "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+    "reviewed_dedup_disabled_broker_required": true,
+    "two_identical_scans": true,
+    "three_absent_offset_checks": true
+  },
+  "source_files": [
+    "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+    "crates/rustok-iggy/src/lib.rs"
+  ],
+  "remaining_work": [
+    "retained_external_iggy_duplicate_scan_evidence",
+    "operator_alert_threshold_policy",
+    "authorized_destructive_reconciliation_workflow",
+    "aggregate_receipt_and_duplicate_health_correlation"
+  ],
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-external-scan.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-external-scan-checkpoint.md",
+  "execution_status": "source_not_run"
+}
