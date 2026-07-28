@@ -54,6 +54,14 @@ const requireDigest = (value, label) => {
   return digest;
 };
 
+const requireIdentity = (value, label) => {
+  const identity = requireNonEmptyString(value, label);
+  if (!/^\d+:\d+$/u.test(identity)) {
+    throw new Error(`${label} must be a decimal device:inode identity`);
+  }
+  return identity;
+};
+
 const parseJsonBytes = (bytes, label) => {
   try {
     return JSON.parse(bytes.toString('utf8'));
@@ -112,7 +120,7 @@ const readStableRegularFile = (filename, label) => {
   }
 };
 
-const normalizeFiles = (files) => {
+const normalizeFiles = (files, { requireInspectionIdentity = false } = {}) => {
   if (!Array.isArray(files) || files.length !== 9) {
     throw new Error('inspection.files must contain exactly nine retained files');
   }
@@ -128,7 +136,14 @@ const normalizeFiles = (files) => {
     if (paths.has(retainedPath)) throw new Error(`inspection.files contains duplicate path ${retainedPath}`);
     roles.add(role);
     paths.add(retainedPath);
-    return { role, path: retainedPath, bytes, sha256 };
+    const normalized = { role, path: retainedPath, bytes, sha256 };
+    if (requireInspectionIdentity) {
+      normalized.identity = requireIdentity(
+        file.identity,
+        `inspection.files[${index}].identity`,
+      );
+    }
+    return normalized;
   });
 };
 
@@ -151,6 +166,9 @@ const assertRetainedFilesUnchanged = ({
       throw new Error(`retained bundle file ${file.role} aliases another retained bundle file after inspection`);
     }
     retainedIdentities.add(current.identity);
+    if (current.identity !== file.identity) {
+      throw new Error(`retained bundle file ${file.role} identity changed after inspection`);
+    }
     if (current.bytes.length !== file.bytes || sha256Hex(current.bytes) !== file.sha256) {
       throw new Error(`retained bundle file ${file.role} changed after inspection`);
     }
@@ -196,6 +214,7 @@ export const verifySavedRetainedPartitionArchiveManifest = ({
   manifestPath,
 }) => {
   const expected = buildRetainedPartitionArchiveManifest(inspection);
+  const inspectedFiles = normalizeFiles(inspection.files, { requireInspectionIdentity: true });
   const resolvedRoot = path.resolve(requireNonEmptyString(root, 'root'));
   const resolvedManifestPath = path.resolve(requireNonEmptyString(manifestPath, 'manifestPath'));
   ensureOutsideRoot(resolvedRoot, resolvedManifestPath, 'saved archive manifest');
@@ -220,7 +239,7 @@ export const verifySavedRetainedPartitionArchiveManifest = ({
   }
 
   assertRetainedFilesUnchanged({
-    files: expected.files,
+    files: inspectedFiles,
     resolvedRoot,
     canonicalRoot,
     manifestIdentity: manifestFile.identity,

@@ -1,4 +1,11 @@
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+} from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -21,6 +28,12 @@ const descriptorNames = Object.freeze({
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const identityOf = (stat) => `${stat.dev}:${stat.ino}`;
+const fingerprintOf = (stat) => [
+  identityOf(stat),
+  stat.size,
+  stat.mtimeNs,
+  stat.ctimeNs,
+].join(':');
 const portablePath = (value) => value.split(path.sep).join('/');
 
 const requireObject = (value, label) => {
@@ -43,19 +56,40 @@ const ensureInsideRoot = (root, filename, label) => {
   }
 };
 
-const readRegularFile = (filename, label) => {
-  const stat = lstatSync(filename);
-  if (stat.isSymbolicLink() || !stat.isFile()) {
+const readStableRegularFile = (filename, label) => {
+  const pathStatBefore = lstatSync(filename, { bigint: true });
+  if (pathStatBefore.isSymbolicLink() || !pathStatBefore.isFile()) {
     throw new Error(`${label} must be a regular non-symlink file`);
   }
-  const bytes = readFileSync(filename);
-  if (bytes.length === 0) throw new Error(`${label} must not be empty`);
-  return {
-    bytes,
-    stat,
-    identity: identityOf(stat),
-    canonical: realpathSync.native(filename),
-  };
+
+  const descriptor = openSync(filename, 'r');
+  try {
+    const descriptorStatBefore = fstatSync(descriptor, { bigint: true });
+    if (!descriptorStatBefore.isFile()
+        || identityOf(descriptorStatBefore) !== identityOf(pathStatBefore)) {
+      throw new Error(`${label} changed before it could be read`);
+    }
+
+    const bytes = readFileSync(descriptor);
+    const descriptorStatAfter = fstatSync(descriptor, { bigint: true });
+    const pathStatAfter = lstatSync(filename, { bigint: true });
+    if (pathStatAfter.isSymbolicLink()
+        || !pathStatAfter.isFile()
+        || identityOf(pathStatAfter) !== identityOf(descriptorStatAfter)
+        || fingerprintOf(descriptorStatBefore) !== fingerprintOf(descriptorStatAfter)
+        || fingerprintOf(descriptorStatAfter) !== fingerprintOf(pathStatAfter)) {
+      throw new Error(`${label} changed while it was being read`);
+    }
+    if (bytes.length === 0) throw new Error(`${label} must not be empty`);
+
+    return {
+      bytes,
+      identity: identityOf(descriptorStatAfter),
+      canonical: realpathSync.native(filename),
+    };
+  } finally {
+    closeSync(descriptor);
+  }
 };
 
 const assertDistinctIdentity = (seen, identity, label) => {
@@ -93,9 +127,9 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
     throw new Error('capture, packet, and admission files must be distinct');
   }
 
-  const captureFile = readRegularFile(capturePath, 'capture file');
-  const packetFile = readRegularFile(resolvedPacketPath, 'packet file');
-  const admissionFile = readRegularFile(resolvedAdmissionPath, 'admission file');
+  const captureFile = readStableRegularFile(capturePath, 'capture file');
+  const packetFile = readStableRegularFile(resolvedPacketPath, 'packet file');
+  const admissionFile = readStableRegularFile(resolvedAdmissionPath, 'admission file');
   for (const [label, file] of [
     ['capture file', captureFile],
     ['packet file', packetFile],
@@ -128,14 +162,18 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
   const files = [];
   for (const role of RAW_ARTIFACT_ROLES) {
     const canonical = assembled.resolvedPaths.get(role);
-    const stat = lstatSync(canonical);
     const identity = assembled.identities.get(role);
+    const stat = lstatSync(canonical, { bigint: true });
+    if (stat.isSymbolicLink() || !stat.isFile() || identityOf(stat) !== identity) {
+      throw new Error(`capture artifact ${role} changed after it was read`);
+    }
     assertDistinctIdentity(seenIdentities, identity, `capture artifact ${role}`);
     files.push({
       role,
       path: portablePath(path.relative(canonicalRoot, canonical)),
-      bytes: stat.size,
+      bytes: assembled.byteLengths.get(role),
       sha256: packet.raw_artifacts[role],
+      identity,
     });
   }
   for (const [role, filename, file] of [
@@ -148,6 +186,7 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
       path: portablePath(path.relative(resolvedRoot, filename)),
       bytes: file.bytes.length,
       sha256: sha256Hex(file.bytes),
+      identity: file.identity,
     });
   }
 
