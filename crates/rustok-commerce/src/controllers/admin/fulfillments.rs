@@ -3,9 +3,14 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext};
-use rustok_fulfillment::{FulfillmentError, FulfillmentService};
+use rustok_api::{
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    TenantContext,
+};
+use rustok_fulfillment::{
+    FulfillmentError, FulfillmentService, ListFulfillmentProjectionsRequest,
+    ReadFulfillmentProjectionRequest,
+};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -18,7 +23,7 @@ use crate::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
     dto::{
         CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput,
-        FulfillmentResponse, ListFulfillmentsInput, ReopenFulfillmentInput, ReshipFulfillmentInput,
+        FulfillmentResponse, ReopenFulfillmentInput, ReshipFulfillmentInput,
         ShipFulfillmentInput,
     },
 };
@@ -51,6 +56,95 @@ impl AdminFulfillmentErrorContext {
     }
 }
 
+fn admin_fulfillment_read_port_context(
+    tenant_id: Uuid,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    fulfillment_id: Option<Uuid>,
+    operation: &'static str,
+) -> PortContext {
+    let resource_id = fulfillment_id.unwrap_or(tenant_id);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-fulfillment:{operation}:{resource_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_admin_fulfillment_port_error(
+    context: AdminFulfillmentErrorContext,
+    port_context: &PortContext,
+    owner_operation: &'static str,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+            "Fulfillment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_fulfillment_failed",
+            "Fulfillment operation could not be completed safely",
+            "invariant_violation",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_FULFILLMENT_OWNER,
+        owner_operation,
+        correlation_id = %port_context.correlation_id,
+        tenant_id = %context.tenant_id,
+        fulfillment_id = ?context.fulfillment_id,
+        order_id = ?context.order_id,
+        operation = %context.operation,
+        actor = ?port_context.actor,
+        channel = ?port_context.channel,
+        locale = %port_context.locale,
+        deadline_ms = ?port_context.deadline_ms,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_FULFILLMENT_BOUNDARY,
+        "commerce admin fulfillment owner read failed"
+    );
+    HttpError::new(status, code, message)
+}
+
 /// List admin fulfillments
 #[utoipa::path(
     get,
@@ -66,6 +160,7 @@ pub async fn list_fulfillments(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Query(params): Query<ListFulfillmentsParams>,
 ) -> HttpResult<Json<PaginatedResponse<FulfillmentResponse>>> {
     ensure_permissions(
@@ -75,10 +170,18 @@ pub async fn list_fulfillments(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (fulfillments, total) = FulfillmentService::new(runtime.db_clone())
-        .list_fulfillments(
-            tenant.id,
-            ListFulfillmentsInput {
+    let read_context = admin_fulfillment_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        None,
+        "list_fulfillments",
+    );
+    let page = runtime
+        .fulfillment_read_port()
+        .list_fulfillment_projections(
+            read_context.clone(),
+            ListFulfillmentProjectionsRequest {
                 page: pagination.page,
                 per_page: pagination.limit(),
                 status: params.status,
@@ -88,15 +191,21 @@ pub async fn list_fulfillments(
         )
         .await
         .map_err(|error| {
-            map_admin_fulfillment_error(
+            map_admin_fulfillment_port_error(
                 AdminFulfillmentErrorContext::new(tenant.id, None, None, "list_fulfillments"),
+                &read_context,
+                "list_fulfillment_projections",
                 error,
             )
         })?;
 
     Ok(Json(PaginatedResponse {
-        data: fulfillments,
-        meta: super::super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
+        data: page.items,
+        meta: super::super::common::PaginationMeta::new(
+            pagination.page,
+            pagination.limit(),
+            page.total,
+        ),
     }))
 }
 
@@ -160,6 +269,7 @@ pub async fn show_fulfillment(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
@@ -168,12 +278,25 @@ pub async fn show_fulfillment(
         "Permission denied: fulfillments:read required",
     )?;
 
-    let fulfillment = FulfillmentService::new(runtime.db_clone())
-        .get_fulfillment(tenant.id, id)
+    let read_context = admin_fulfillment_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "get_fulfillment",
+    );
+    let fulfillment = runtime
+        .fulfillment_read_port()
+        .read_fulfillment_projection(
+            read_context.clone(),
+            ReadFulfillmentProjectionRequest { fulfillment_id: id },
+        )
         .await
         .map_err(|error| {
-            map_admin_fulfillment_error(
+            map_admin_fulfillment_port_error(
                 AdminFulfillmentErrorContext::new(tenant.id, Some(id), None, "get_fulfillment"),
+                &read_context,
+                "read_fulfillment_projection",
                 error,
             )
         })?;

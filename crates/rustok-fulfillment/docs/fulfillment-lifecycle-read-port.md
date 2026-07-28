@@ -1,6 +1,6 @@
 # Fulfillment lifecycle read port
 
-Status: source-composed, unvalidated.
+Status: source REST cutover, unvalidated.
 
 ## Scope
 
@@ -14,8 +14,9 @@ projection reads used by Commerce query consumers. It is separate from:
 - fulfillment lifecycle mutation methods, which remain on `FulfillmentService`.
 
 The owner read boundary and Commerce runtime container are published. The default
-application host now composes and attaches that runtime, and `CommerceHttpRuntime`
-requires it. GraphQL/admin REST handlers have not yet been cut over to the port.
+application host composes and attaches that runtime, `CommerceHttpRuntime`
+requires it, and admin REST list/detail now consume its owner port. GraphQL
+lifecycle handlers have not yet been cut over.
 
 ## Operations
 
@@ -64,7 +65,7 @@ conflict outcomes retain stable owner codes.
 It remains separate from `CommerceShippingOptionReadRuntime`, allowing different
 adapters for lifecycle and shipping-option projections.
 
-The application server now:
+The application server:
 
 1. reuses a lifecycle runtime already installed in `ServerRuntimeContext`;
 2. otherwise constructs the deterministic in-process runtime once;
@@ -78,32 +79,45 @@ Commerce GraphQL runtime-data construction consumes the host-provided runtime.
 Its explicit in-process fallback remains for directly embedded compatibility
 schemas until the GraphQL facade cutover is complete.
 
-`CommerceHttpRuntime::from_host` now fails closed when
+`CommerceHttpRuntime::from_host` fails closed when
 `CommerceFulfillmentLifecycleReadRuntime` is absent and exposes the cloned
-`FulfillmentReadPort` for route handlers. No HTTP handler consumes it yet in this
-slice.
+`FulfillmentReadPort` for route handlers.
 
-## Consumer boundary
+## Admin REST cutover
 
-The current private Commerce GraphQL fulfillment facade still constructs one
-concrete `FulfillmentService` for:
+`GET /admin/fulfillments` now calls `list_fulfillment_projections` and preserves:
+
+- page and per-page values;
+- status, order, and customer filters;
+- the owner pagination total;
+- the existing `PaginatedResponse<FulfillmentResponse>` envelope.
+
+`GET /admin/fulfillments/{id}` now calls `read_fulfillment_projection` and keeps
+the existing detail envelope and not-found policy.
+
+Both handlers construct `PortContext` with tenant identity, authenticated user
+actor, request locale, optional request channel, a resource-scoped correlation
+id, and a two-second deadline. `PortErrorKind` maps to the existing public
+validation, not-found, conflict, permission, unavailable, and safe-failure HTTP
+policies without copying owner messages.
+
+Admin lifecycle create/ship/deliver/reopen/reship/cancel paths remain on their
+existing concrete or orchestration services. This read cutover does not change
+mutation ownership or behavior.
+
+## Remaining GraphQL boundary
+
+The private Commerce GraphQL fulfillment facade still constructs one concrete
+`FulfillmentService` for:
 
 - fulfillment lookup;
 - fulfillment list;
 - latest fulfillment by order.
 
-Admin REST also still constructs `FulfillmentService` for:
-
-- `GET /admin/fulfillments`;
-- `GET /admin/fulfillments/{id}`.
-
-Lifecycle mutations remain intentionally outside this read boundary.
-
-The next cutover slice must route the GraphQL and REST read consumers through the
-already host-composed `FulfillmentReadPort`, preserve each transport's
-optional-not-found and public error policy, add request-safe GraphQL scope, and
-remove only the private GraphQL concrete delegate. No mounted consumer is claimed
-in this slice.
+The next cutover slice must add request-safe GraphQL lifecycle runtime scope,
+route those three reads through the already host-composed `FulfillmentReadPort`,
+preserve optional-not-found and public error behavior, and remove only the
+private GraphQL concrete delegate. Lifecycle mutation services remain unchanged.
 
 ## Diagnostics
 
@@ -112,15 +126,19 @@ length, locale length, causation/trace presence, deadline, relevant fulfillment,
 order, customer, and status facts, stable owner code, error kind, and
 retryability. Only technical database events retain the typed internal cause.
 
+The admin REST boundary additionally records the public HTTP code/status and the
+stable owner code, retryability, actor, channel, locale, deadline, resource, and
+transport operation.
+
 ## Evidence
 
 Source evidence is retained at:
 
 `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`
 
-Its status is `source_composed_unvalidated`. It records completed default server
-cache/attachment and mandatory Commerce HTTP runtime injection while keeping
-GraphQL/admin REST consumer cutover and private concrete delegate removal false.
+Its status is `source_rest_cutover_unvalidated`. It records completed default
+server composition and admin REST list/detail cutover while keeping GraphQL
+facade cutover and private concrete delegate removal false.
 
 ## Intended checks
 

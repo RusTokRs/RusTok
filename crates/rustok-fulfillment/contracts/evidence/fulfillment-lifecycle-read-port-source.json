@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-28",
-  "status": "source_composed_unvalidated",
-  "source_base_revision": "765b12129b500292c05d5f8a17f0e3902d345fb2",
+  "status": "source_rest_cutover_unvalidated",
+  "source_base_revision": "8a5e251eec95d7fcda54e0ba5c7df4560ef70935",
   "scope": "fulfillment lifecycle projection reads for mounted Commerce queries",
   "owner": {
     "crate": "rustok-fulfillment",
@@ -58,11 +58,22 @@
     "commerce_http_runtime_required": true,
     "external_adapter_preserved": true
   },
+  "admin_rest": {
+    "list_consumer": "list_fulfillment_projections",
+    "detail_consumer": "read_fulfillment_projection",
+    "pagination_total_preserved": true,
+    "filters_preserved": true,
+    "public_error_policy_preserved": true,
+    "tenant_actor_locale_channel_correlation_propagated": true,
+    "deadline_seconds": 2,
+    "concrete_service_read_construction": false,
+    "mutation_service_construction_unchanged": true
+  },
   "consumer_cutover": {
     "graphql_compatibility_facade": false,
-    "admin_rest_list_show": false,
+    "admin_rest_list_show": true,
     "concrete_delegate_removed": false,
-    "next_slice": "route admin REST list/show and GraphQL lookup/list/latest-by-order through the host-composed FulfillmentReadPort while preserving transport-specific optional-not-found and public error policy"
+    "next_slice": "add request-safe GraphQL lifecycle runtime scope and route fulfillment lookup/list/latest-by-order through FulfillmentReadPort while preserving optional-not-found and public error policy"
   },
   "validation": {
     "tests_run": false,
