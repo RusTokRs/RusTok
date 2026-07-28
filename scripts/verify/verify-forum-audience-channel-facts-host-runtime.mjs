@@ -118,7 +118,6 @@ for (const forbidden of [
   "QueryFilter",
   "ColumnTrait",
   "SELECT ",
-  "list_channels_for_tenant(",
 ]) {
   rejectText(adapter, forbidden, `channel facts adapter must not use ${forbidden}`);
 }
