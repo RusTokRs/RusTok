@@ -13,6 +13,9 @@ use crate::{
     CreateReplyCommandInput, CreateTopicCommandInput, ReplyResponse, ReplyService, TopicResponse,
     TopicService, UpdateReplyCommandInput, UpdateTopicCommandInput,
 };
+use crate::reply_create_transport::{
+    ForumReplyCreateTransport, reply_create_audience_port_context,
+};
 use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
@@ -113,6 +116,7 @@ pub async fn create_reply(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
     Json(input): Json<CreateReplyCommandInput>,
 ) -> HttpResult<(StatusCode, Json<ReplyResponse>)> {
@@ -121,8 +125,23 @@ pub async fn create_reply(
         Permission::FORUM_REPLIES_CREATE,
         "Permission denied: forum_replies:create required",
     )?;
-    let reply = ReplyService::new(runtime.db_clone(), runtime.event_bus())
-        .create_command(tenant.id, forum_security(&auth), topic_id, input)
+    let audience_context = reply_create_audience_port_context(
+        ForumReplyCreateTransport::Rest,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        tenant.default_locale.as_str(),
+    )
+    .map_err(command_error)?;
+    let reply = runtime
+        .reply_service()
+        .create_command_with_audience_context(
+            tenant.id,
+            forum_security(&auth),
+            topic_id,
+            audience_context,
+            input,
+        )
         .await
         .map_err(command_error)?;
     Ok((StatusCode::CREATED, Json(reply)))

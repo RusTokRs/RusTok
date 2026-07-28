@@ -2,13 +2,13 @@ use rustok_api::graphql::GraphqlRuntimeInputs;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
-use crate::{SharedForumAudienceFactsPort, TopicService};
+use crate::{ReplyService, SharedForumAudienceFactsPort, TopicService};
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
 ///
 /// The optional facts port is published by the host runtime extension registry.
-/// Its absence is preserved so locally decidable topic-create policies continue
-/// to work while trust, Channel, or Groups facts fail closed in the owner.
+/// Its absence is preserved so locally decidable create policies continue to
+/// work while trust, Channel, or Groups facts fail closed in the owner.
 #[derive(Clone, Default)]
 pub struct ForumGraphqlRuntimeData {
     audience_facts: Option<SharedForumAudienceFactsPort>,
@@ -31,6 +31,17 @@ impl ForumGraphqlRuntimeData {
         match self.audience_facts.clone() {
             Some(facts) => TopicService::with_audience_facts(db, event_bus, facts),
             None => TopicService::new(db, event_bus),
+        }
+    }
+
+    pub(crate) fn reply_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> ReplyService {
+        match self.audience_facts.clone() {
+            Some(facts) => ReplyService::with_audience_facts(db, event_bus, facts),
+            None => ReplyService::new(db, event_bus),
         }
     }
 }

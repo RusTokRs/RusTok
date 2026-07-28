@@ -177,9 +177,21 @@ for (const marker of [
 for (const marker of [
   "ForumCategoryReplyCreateAudiencePolicyService",
   "reply-create audience policy",
-  "does not yet change `ReplyService::create`",
+  "FORUM-20AU",
 ]) {
   requireText(crateApi, marker, `Forum CRATE_API is missing ${marker}`);
+}
+if (
+  !crateApi.includes("does not yet change `ReplyService::create`") &&
+  !(
+    crateApi.includes("`FORUM-20AV`") &&
+    crateApi.includes("`FORUM-20AW`") &&
+    crateApi.includes("ReplyService::create_with_audience_context")
+  )
+) {
+  failures.push(
+    "Forum CRATE_API must retain the FORUM-20AU persistence-only statement or document downstream FORUM-20AV/20AW composition",
+  );
 }
 for (const marker of [
   "FORUM-20A-AU provide",
