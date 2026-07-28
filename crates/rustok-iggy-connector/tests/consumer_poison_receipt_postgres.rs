@@ -21,6 +21,7 @@ const CONSUMER_GROUP: &str = "rustok-social-graph-index";
 struct PostgresPoisonReceiptTestDb {
     control: DatabaseConnection,
     db: DatabaseConnection,
+    database_url: String,
     schema_name: String,
 }
 
@@ -43,8 +44,7 @@ impl PostgresPoisonReceiptTestDb {
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
 
-        let db = connect(&database_url).await?;
-        set_search_path(&db, &schema_name).await?;
+        let db = connect_in_schema(&database_url, &schema_name).await?;
         let setup_result = async {
             let manager = SchemaManager::new(&db);
             for migration in rustok_iggy_connector::migrations::migrations() {
@@ -64,8 +64,13 @@ impl PostgresPoisonReceiptTestDb {
         Ok(Some(Self {
             control,
             db,
+            database_url,
             schema_name,
         }))
+    }
+
+    async fn connect_worker(&self) -> TestResult<DatabaseConnection> {
+        connect_in_schema(&self.database_url, &self.schema_name).await
     }
 
     async fn cleanup(self) -> TestResult<()> {
@@ -88,8 +93,8 @@ async fn concurrent_publishers_have_one_claim_owner() -> TestResult<()> {
     let identity = identity(Uuid::new_v4(), 1, 42, vec![1, 2, 3])?;
     let first_publisher = Uuid::new_v4();
     let second_publisher = Uuid::new_v4();
-    let first_store = ConsumerPoisonReceiptStore::new(test_db.db.clone());
-    let second_store = ConsumerPoisonReceiptStore::new(test_db.db.clone());
+    let first_store = ConsumerPoisonReceiptStore::new(test_db.connect_worker().await?);
+    let second_store = ConsumerPoisonReceiptStore::new(test_db.connect_worker().await?);
 
     let (first, second) = tokio::join!(
         first_store.reserve_and_claim(
@@ -400,10 +405,19 @@ fn postgres_database_url() -> Option<String> {
 async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
     let mut options = ConnectOptions::new(database_url.to_owned());
     options
-        .max_connections(4)
+        .max_connections(1)
         .min_connections(1)
         .sqlx_logging(false);
     Ok(Database::connect(options).await?)
+}
+
+async fn connect_in_schema(
+    database_url: &str,
+    schema_name: &str,
+) -> TestResult<DatabaseConnection> {
+    let db = connect(database_url).await?;
+    set_search_path(&db, schema_name).await?;
+    Ok(db)
 }
 
 async fn set_search_path(db: &DatabaseConnection, schema_name: &str) -> TestResult<()> {
