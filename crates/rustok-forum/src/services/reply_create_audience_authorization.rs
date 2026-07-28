@@ -13,8 +13,8 @@ use crate::audience::{
 use crate::entities::forum_topic;
 use crate::error::{ForumError, ForumResult};
 
-use super::category_reply_create_audience::load_category_reply_create_audience_policy;
 use super::rbac::enforce_scope;
+use super::topic_reply_create_audience::load_topic_reply_create_audience_policy_for_topic;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ForumReplyCreateAudienceAuthorization {
@@ -22,12 +22,15 @@ pub struct ForumReplyCreateAudienceAuthorization {
     pub category_id: Uuid,
     pub evaluated_layers: usize,
     pub allowed: bool,
+    /// Exact denying category layer. `None` on a denied result identifies the
+    /// already-present `topic_id` as the final topic-local denying layer.
     pub denied_by_category_id: Option<Uuid>,
     pub reason: ForumAudienceDecisionReason,
 }
 
-/// Evaluates the inherited category reply-create audience before the raw reply
-/// owner prepares relations or writes reply, body, counter, user-stat, or event rows.
+/// Evaluates inherited category layers followed by the optional topic-local
+/// reply-create narrowing before the raw reply owner prepares relations or
+/// writes reply, body, counter, user-stat, or event rows.
 pub struct ForumReplyCreateAudienceAuthorizationService {
     db: sea_orm::DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
@@ -63,11 +66,11 @@ impl ForumReplyCreateAudienceAuthorizationService {
             .ok_or(ForumError::TopicNotFound(topic_id))?;
         let category_id = topic.category_id;
         let policy =
-            load_category_reply_create_audience_policy(&self.db, tenant_id, category_id).await?;
+            load_topic_reply_create_audience_policy_for_topic(&self.db, tenant_id, &topic).await?;
 
         let mut evaluated_layers = 0usize;
         let mut last_reason = ForumAudienceDecisionReason::Unrestricted;
-        for layer in policy.effective_layers {
+        for layer in policy.inherited_category_layers {
             evaluated_layers += 1;
             let facts = self
                 .facts_for_layer(
@@ -91,6 +94,26 @@ impl ForumReplyCreateAudienceAuthorizationService {
                     evaluated_layers,
                     allowed: false,
                     denied_by_category_id: Some(layer.category_id),
+                    reason: decision.reason,
+                });
+            }
+        }
+
+        if let Some(constraints) = policy.configured_constraints {
+            evaluated_layers += 1;
+            let facts = self
+                .facts_for_layer(tenant_id, security, context, &constraints)
+                .await?;
+            let decision =
+                ForumAudienceEvaluator::decide(tenant_id, &constraints, security, &facts)?;
+            last_reason = decision.reason;
+            if !decision.allowed {
+                return Ok(ForumReplyCreateAudienceAuthorization {
+                    topic_id,
+                    category_id,
+                    evaluated_layers,
+                    allowed: false,
+                    denied_by_category_id: None,
                     reason: decision.reason,
                 });
             }

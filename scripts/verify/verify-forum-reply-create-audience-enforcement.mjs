@@ -39,6 +39,11 @@ const services = read(contract.services_module ?? "");
 const crateRoot = read(contract.crate_root ?? "");
 const test = read(contract.runtime_test_file ?? "");
 const note = read(contract.owner_note ?? "");
+const topicLocalContractPath =
+  "crates/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json";
+const topicLocalContract = existsSync(path.join(repoRoot, topicLocalContractPath))
+  ? JSON.parse(read(topicLocalContractPath) || "{}")
+  : null;
 
 if (
   contract.schema_version !== 1 ||
@@ -94,8 +99,6 @@ for (const marker of [
   "enforce_scope(security, Resource::ForumReplies, Action::Create)?",
   "forum_topic::Entity::find_by_id(topic_id)",
   ".filter(forum_topic::Column::TenantId.eq(tenant_id))",
-  "load_category_reply_create_audience_policy(&self.db, tenant_id, category_id)",
-  "for layer in policy.effective_layers",
   "ForumAudienceEvaluator::decide(",
   "owner_facts_still_required(constraints, security)",
   "context.ok_or_else(||",
@@ -103,6 +106,24 @@ for (const marker of [
   "Forum reply creation is unavailable for the current audience",
 ]) {
   requireText(authorization, marker, `reply-create authorization is missing ${marker}`);
+}
+const historicalCategoryOnly =
+  authorization.includes(
+    "load_category_reply_create_audience_policy(&self.db, tenant_id, category_id)",
+  ) && authorization.includes("for layer in policy.effective_layers");
+const downstreamTopicNarrowing =
+  authorization.includes(
+    "load_topic_reply_create_audience_policy_for_topic(&self.db, tenant_id, &topic)",
+  ) &&
+  authorization.includes("for layer in policy.inherited_category_layers") &&
+  authorization.includes("if let Some(constraints) = policy.configured_constraints") &&
+  topicLocalContract?.schema_version === 1 &&
+  topicLocalContract?.task === "FORUM-20AX" &&
+  topicLocalContract?.composition?.root_category_to_topic_conjunction === true;
+if (!historicalCategoryOnly && !downstreamTopicNarrowing) {
+  failures.push(
+    "reply-create authorization must retain FORUM-20AV category enforcement or the FORUM-20AX cumulative topic narrowing",
+  );
 }
 for (const forbidden of [
   "forum_user_stats",

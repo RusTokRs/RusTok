@@ -61,14 +61,15 @@ pub use services::{
     ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage, ForumTopicAudiencePolicy,
     ForumTopicAudiencePolicyService, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
-    ForumTopicReadState, ForumTopicReadStateService, ForumTopicUnreadSummary,
-    ForumTopicVisibilityScope, ForumTopicVisibilityService, ForumWidgetContractService,
-    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
-    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
-    SetForumCategoryAudiencePolicyInput, SetForumCategoryReplyCreateAudiencePolicyInput,
+    ForumTopicReadState, ForumTopicReadStateService, ForumTopicReplyCreateAudiencePolicy,
+    ForumTopicReplyCreateAudiencePolicyService, ForumTopicUnreadSummary, ForumTopicVisibilityScope,
+    ForumTopicVisibilityService, ForumWidgetContractService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
+    MarkForumTopicReadInput, MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
+    ModerationService, ReplyService, RevisionService, SetForumCategoryAudiencePolicyInput,
+    SetForumCategoryReplyCreateAudiencePolicyInput,
     SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
-    SetForumTopicAudiencePolicyInput, SubscriptionService, TopicService, UserStatsService,
-    VoteService,
+    SetForumTopicAudiencePolicyInput, SetForumTopicReplyCreateAudiencePolicyInput,
+    SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
