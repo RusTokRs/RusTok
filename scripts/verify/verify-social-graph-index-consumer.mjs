@@ -81,7 +81,12 @@ requireText(
 requireText(
   "Profiles plan",
   files.profilesPlan,
-  "never authorizes from an event or Index projection",
+  "never authorizes from an event",
+);
+requireText(
+  "Profiles plan",
+  files.profilesPlan,
+  "Index/search projections may use sealed owner events",
 );
 requireText(
   "Profiles plan",
