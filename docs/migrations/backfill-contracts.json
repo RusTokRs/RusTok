@@ -30,6 +30,13 @@
       "reason": "Creates empty durable poison-delivery receipt storage for future Social Graph Index failures; historical broker publication and source-ack outcomes cannot be reconstructed safely and must not be fabricated"
     },
     {
+      "id": "iggy-consumer-poison-receipts-bootstrap",
+      "migration": "m20260728_000001_create_consumer_poison_receipts",
+      "mode": "none",
+      "owner": "rustok-iggy-connector",
+      "reason": "Creates empty neutral durable result storage for future undecodable broker deliveries; historical exact payloads, connector coordinates, publication outcomes, and source acknowledgements cannot be reconstructed safely and must not be fabricated"
+    },
+    {
       "id": "profiles-tables-bootstrap",
       "migration": "m20260326_000001_create_profiles_tables",
       "mode": "none",
