@@ -13,12 +13,16 @@
 - Own storage-backed media lifecycle state while calling the shared `object_store` runtime directly.
 - Own durable write-port idempotency receipts and tenant-composite persistence integrity.
 - Publish `MediaTranslationTargetProvider` for bounded exact-locale discovery,
-  exact reads, validation, CAS apply, and tenant-scoped change-cursor repair
-  through the shared translation target registry.
+  exact reads, validation, CAS apply, exact aggregate coverage, and
+  tenant-scoped change-cursor repair through the shared translation target
+  registry.
 - Commit every translation write with an append-only owner cursor record and
   content-free `translation.target.changed` outbox event in one owner
   transaction; provider apply also commits its stable idempotency receipt in
   that transaction.
+- Commit translated-asset deletion and active-asset failure with
+  deleted/unavailable translation cursor evidence so aggregate freshness
+  cannot remain falsely current.
 - Generate immutable source and rendition keys through the canonical tenant/date/shard policy.
 - Own validated image edit recipes and bounded pure-Rust processing.
 - Publish the module-local `rustok-media-cli` adapter with `media reconcile`, keeping CLI/runtime assembly outside the domain crate.
@@ -78,6 +82,9 @@
 - Change cursors are ordered owner-generated identifiers. Every non-empty
   `read_changes` page returns the last consumed identifier as its checkpoint;
   replaying a provider idempotency key does not append another change or event.
+- Aggregate progress counts only exact target-row values for source-eligible
+  active assets. It brackets count queries with the owner cursor and retries a
+  changing observation instead of returning internally inconsistent facts.
 - Reconciliation prioritizes delete tombstones, rotates ready blobs through persisted progress, and preserves owner-local lifecycle evidence. Missing rendition output is isolated from a healthy source asset.
 - Upload-session reconciliation removes completed or expired staging objects and preserves retryable failures. Repeating finalization returns the asset already bound to the session.
 - Public-image capability URLs bind the stable asset id to the active blob checksum. Changing the active blob changes the URL; deleting or failing the asset/blob makes the old URL unavailable.

@@ -18,8 +18,8 @@ use rustok_outbox::{SysEvents, SysEventsMigration};
 use rustok_storage::{LocalStorageConfig, StorageRuntime};
 use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, ReadTranslationResourceRequest,
-    TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
-    TranslationTargetProvider,
+    TranslationFieldPatch, TranslationPatchRequest, TranslationTargetCapability,
+    TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, QueryFilter, Statement,
@@ -139,6 +139,19 @@ async fn upload_persists_asset_and_immutable_blob_then_deletes_through_tombstone
         .upload(png_upload(tenant_id))
         .await
         .expect("upload should succeed");
+    service
+        .upsert_translation(
+            tenant_id,
+            item.id,
+            UpsertTranslationInput {
+                locale: "en".to_string(),
+                title: Some("Missing source asset".to_string()),
+                alt_text: None,
+                caption: None,
+            },
+        )
+        .await
+        .expect("translation evidence fixture should be created");
     assert!(
         item.storage_path
             .starts_with(&format!("media/objects/tenants/{tenant_id}/"))
@@ -192,6 +205,19 @@ async fn reconciliation_marks_missing_blob_and_preserves_database_evidence() {
         .upload(png_upload(tenant_id))
         .await
         .expect("upload should succeed");
+    service
+        .upsert_translation(
+            tenant_id,
+            item.id,
+            UpsertTranslationInput {
+                locale: "en".to_string(),
+                title: Some("Missing source asset".to_string()),
+                alt_text: None,
+                caption: None,
+            },
+        )
+        .await
+        .expect("translation evidence fixture should be created");
 
     storage
         .objects
@@ -219,6 +245,15 @@ async fn reconciliation_marks_missing_blob_and_preserves_database_evidence() {
     assert_eq!(failed_blob.state, BlobState::Failed.as_str());
     assert_eq!(failed_blob.reconcile_attempts, 1);
     assert!(failed_blob.last_error.is_some());
+    let unavailable_changes = translation_change::Entity::find()
+        .filter(translation_change::Column::TenantId.eq(tenant_id))
+        .filter(translation_change::Column::AssetId.eq(item.id))
+        .filter(translation_change::Column::Lifecycle.eq("unavailable"))
+        .all(&database)
+        .await
+        .expect("unavailable translation changes should query");
+    assert_eq!(unavailable_changes.len(), 1);
+    assert_eq!(unavailable_changes[0].operation, "unavailable");
 }
 
 #[tokio::test]
@@ -614,7 +649,7 @@ async fn translation_target_provider_applies_and_replays_one_exact_locale_patch(
         )
         .await
         .expect("exact source should be created");
-    let provider = MediaTranslationTargetProvider::new(service);
+    let provider = MediaTranslationTargetProvider::new(service.clone());
     let read_context = PortContext::new(
         tenant_id.to_string(),
         PortActor::system(),
@@ -812,4 +847,197 @@ async fn translation_target_provider_applies_and_replays_one_exact_locale_patch(
             .and_then(|field| field.exact_target_value.as_deref()),
         Some("Héros")
     );
+}
+
+#[tokio::test]
+async fn translation_target_progress_counts_only_exact_locale_values_and_source_eligible_assets() {
+    let (database, storage, _directory) = test_runtime().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&database, tenant_id).await;
+    let service = Arc::new(MediaService::new(database, storage));
+
+    let first = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("first media fixture should upload");
+    service
+        .upsert_translation(
+            tenant_id,
+            first.id,
+            UpsertTranslationInput {
+                locale: "en-US".to_string(),
+                title: Some("Hero".to_string()),
+                alt_text: Some("Hero image".to_string()),
+                caption: None,
+            },
+        )
+        .await
+        .expect("first exact source should be created");
+    service
+        .upsert_translation(
+            tenant_id,
+            first.id,
+            UpsertTranslationInput {
+                locale: "fr".to_string(),
+                title: Some("Héros".to_string()),
+                alt_text: None,
+                caption: None,
+            },
+        )
+        .await
+        .expect("first exact target should be created");
+
+    let second = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("second media fixture should upload");
+    service
+        .upsert_translation(
+            tenant_id,
+            second.id,
+            UpsertTranslationInput {
+                locale: "en-US".to_string(),
+                title: None,
+                alt_text: None,
+                caption: Some("Source caption".to_string()),
+            },
+        )
+        .await
+        .expect("second exact source should be created");
+
+    let target_only = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("target-only media fixture should upload");
+    service
+        .upsert_translation(
+            tenant_id,
+            target_only.id,
+            UpsertTranslationInput {
+                locale: "fr".to_string(),
+                title: Some("Target without requested source".to_string()),
+                alt_text: Some("Target-only alt text".to_string()),
+                caption: Some("Target-only caption".to_string()),
+            },
+        )
+        .await
+        .expect("target-only exact locale should be created");
+
+    let provider = MediaTranslationTargetProvider::new(service.clone());
+    assert!(
+        provider
+            .descriptor()
+            .capabilities
+            .contains(&TranslationTargetCapability::AggregateProgress)
+    );
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::system(),
+        "en-US",
+        "translation-progress",
+    )
+    .with_deadline(Duration::from_secs(5));
+    let exact = provider
+        .read_progress(
+            context.clone(),
+            TranslationTargetProgressRequest {
+                source_locale: TenantLocale::new("en-US").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+            },
+        )
+        .await
+        .expect("exact Media progress should aggregate");
+    assert_eq!(exact.resources, 2);
+    assert_eq!(exact.required_units, 0);
+    assert_eq!(exact.optional_units, 6);
+    assert_eq!(exact.exact_optional_units, 1);
+    assert_eq!(exact.complete_resources, 2);
+    assert!(exact.owner_change_cursor.is_some());
+
+    let fallback_candidate = provider
+        .read_progress(
+            context,
+            TranslationTargetProgressRequest {
+                source_locale: TenantLocale::new("en-US").unwrap(),
+                target_locale: TenantLocale::new("fr-CA").unwrap(),
+            },
+        )
+        .await
+        .expect("fallback-candidate progress should aggregate");
+    assert_eq!(fallback_candidate.resources, 2);
+    assert_eq!(fallback_candidate.exact_optional_units, 0);
+
+    let exact_cursor = exact
+        .owner_change_cursor
+        .clone()
+        .expect("non-empty progress should expose the owner cursor");
+    service
+        .delete(tenant_id, first.id)
+        .await
+        .expect("deleting a translated asset should succeed");
+    let after_delete = provider
+        .read_progress(
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::system(),
+                "en-US",
+                "translation-progress-after-delete",
+            )
+            .with_deadline(Duration::from_secs(5)),
+            TranslationTargetProgressRequest {
+                source_locale: TenantLocale::new("en-US").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+            },
+        )
+        .await
+        .expect("progress after owner lifecycle change should aggregate");
+    assert_eq!(after_delete.resources, 1);
+    assert_eq!(after_delete.exact_optional_units, 0);
+    assert_ne!(
+        after_delete
+            .owner_change_cursor
+            .as_ref()
+            .map(|cursor| cursor.as_str()),
+        Some(exact_cursor.as_str())
+    );
+    let lifecycle_changes = provider
+        .read_changes(
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::system(),
+                "en-US",
+                "translation-progress-delete-cursor",
+            )
+            .with_deadline(Duration::from_secs(5)),
+            TranslationTargetChangesRequest {
+                after: Some(exact_cursor),
+                limit: 10,
+            },
+        )
+        .await
+        .expect("owner lifecycle changes should be cursor-readable");
+    assert_eq!(lifecycle_changes.changes.len(), 2);
+    assert!(lifecycle_changes.changes.iter().all(|change| {
+        change.lifecycle == rustok_translation_targets::TranslationResourceLifecycle::Deleted
+    }));
+
+    let foreign_tenant = provider
+        .read_progress(
+            PortContext::new(
+                Uuid::new_v4().to_string(),
+                PortActor::system(),
+                "en-US",
+                "translation-progress-tenant-isolation",
+            )
+            .with_deadline(Duration::from_secs(5)),
+            TranslationTargetProgressRequest {
+                source_locale: TenantLocale::new("en-US").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+            },
+        )
+        .await
+        .expect("foreign tenant progress should aggregate");
+    assert_eq!(foreign_tenant.resources, 0);
+    assert_eq!(foreign_tenant.exact_optional_units, 0);
+    assert!(foreign_tenant.owner_change_cursor.is_none());
 }

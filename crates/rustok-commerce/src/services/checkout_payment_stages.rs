@@ -1,8 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_order::{OrderResponse, OrderStatusKind};
 use rustok_payment::{
     AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
@@ -323,12 +321,7 @@ impl CheckoutPaymentStageExecutor {
             )
             .await
             .map_err(|error| {
-                payment_boundary_error(
-                    &read_context,
-                    "read_checkout_collection",
-                    "read",
-                    error,
-                )
+                payment_boundary_error(&read_context, "read_checkout_collection", "read", error)
             })?;
         validate_collection(&collection, tenant_id, &identity)?;
         if !collection.status_kind().is_captured()

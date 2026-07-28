@@ -1,3 +1,4 @@
+#[path = "safe_query/query_error_boundary.rs"]
 mod query_error_boundary;
 
 pub(crate) const MODULE_SLUG: &str = super::MODULE_SLUG;
@@ -37,6 +38,7 @@ pub(crate) async fn require_storefront_channel_enabled(
         .map_err(Into::into)
 }
 
+#[path = "safe_query/source.rs"]
 mod source;
 
 pub use source::CommerceQuery;

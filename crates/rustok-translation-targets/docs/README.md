@@ -28,6 +28,14 @@ Provider registration is keyed by `(owner_slug, resource_kind)` and duplicate
 keys fail startup. Owners declare only implemented capabilities; consumers must
 not emulate a missing capability.
 
+`AggregateProgress` returns bounded, content-free facts for one exact
+source/target locale pair: required and optional unit totals, exact target
+counts, required-field resource completeness, and the owner change cursor that
+frames the observation. Providers must reject impossible facts where an exact
+count exceeds its denominator. Fallback values and storage-only `und` values
+never increment exact coverage. Because cursors are opaque, consumers may test
+equality but must not invent a numeric cursor distance.
+
 The executable reference provider in
 `tests/reference_provider_conformance.rs` demonstrates the minimum owner
 behavior without becoming a production fallback. It proves exact-locale

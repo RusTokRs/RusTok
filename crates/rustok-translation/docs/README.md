@@ -58,6 +58,11 @@ The implemented persistence foundation owns:
   resources, and character workload. Workflow mutations refresh it
   transactionally, and `TranslationProgressService::rebuild_job_progress`
   repairs it from source snapshots, current proposals, and owner receipts;
+- provider-level exact-locale progress through the neutral owner SPI.
+  `TranslationProgressService::read_provider_progress` validates owner facts
+  and compares the owner cursor with the tenant/provider inventory checkpoint,
+  exposing only truthful `current`, `behind`, or `unknown` freshness. Opaque
+  cursors are never treated as numeric distances;
 - typed content-free workflow events for job, assignment, proposal, apply, and
   recovery transitions, including job completion and explicit item retry,
   persisted through the Core outbox in the same transaction as their state
@@ -73,6 +78,11 @@ Owner modules register `TranslationTargetProvider` implementations through
 `ModuleRuntimeExtensions`. The module consumes the resulting
 `TranslationTargetRegistry`; missing providers and missing capabilities fail
 explicitly.
+
+The first production aggregate is `media/asset`. Translation never reads Media
+tables: Media counts exact target values for source-eligible active assets and
+returns the cursor from a stable owner-change window. Runtime locale fallback
+does not contribute to those counts.
 
 `rustok-translation-targets` remains a separate Cargo package even if its
 physical directory is later moved under `crates/rustok-translation/`. This

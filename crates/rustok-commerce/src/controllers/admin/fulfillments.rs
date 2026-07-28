@@ -23,8 +23,7 @@ use crate::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
     dto::{
         CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput,
-        FulfillmentResponse, ReopenFulfillmentInput, ReshipFulfillmentInput,
-        ShipFulfillmentInput,
+        FulfillmentResponse, ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
     },
 };
 

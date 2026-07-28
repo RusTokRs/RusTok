@@ -14,16 +14,14 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
-    CommerceError,
-    storefront_channel::is_metadata_visible_for_public_channel,
+    CommerceError, storefront_channel::is_metadata_visible_for_public_channel,
     storefront_shipping::effective_shipping_profile_slug,
 };
 
 use super::super::types::AddStorefrontCartLineItemInput;
 use super::legacy_helpers::ResolvedStorefrontLineItemInput;
 
-const STOREFRONT_LINE_ITEM_GRAPHQL_BOUNDARY: &str =
-    "commerce_graphql_storefront_line_item";
+const STOREFRONT_LINE_ITEM_GRAPHQL_BOUNDARY: &str = "commerce_graphql_storefront_line_item";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StorefrontLineItemFailureKind {

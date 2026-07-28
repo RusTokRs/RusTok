@@ -4,8 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use rustok_iggy::{
-    ConsumedContractDecodeFailure, ConsumedContractEvent, IggyTransport,
-    PersistentContractDelivery,
+    ConsumedContractDecodeFailure, ConsumedContractEvent, IggyTransport, PersistentContractDelivery,
 };
 use rustok_iggy_connector::migrations::{
     ConsumerPoisonIdentity, ConsumerPoisonPublishClaim, ConsumerPoisonReceiptStore,
@@ -71,8 +70,7 @@ impl SocialGraphIndexWorkerConfig {
 
         let base_backoff =
             Duration::from_millis(settings.events.relay_retry_policy.base_backoff_ms);
-        let max_backoff =
-            Duration::from_millis(settings.events.relay_retry_policy.max_backoff_ms);
+        let max_backoff = Duration::from_millis(settings.events.relay_retry_policy.max_backoff_ms);
         if base_backoff.is_zero() || max_backoff < base_backoff {
             return Err(Error::Message(
                 "Social Graph Index consumer retry backoff must be positive and bounded"
@@ -126,9 +124,7 @@ pub fn social_graph_index_consumer_enabled() -> Result<bool> {
     }
 }
 
-pub async fn start_social_graph_index_worker_if_enabled(
-    ctx: &ServerRuntimeContext,
-) -> Result<()> {
+pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
     if !ctx.settings().runtime.runs_background_workers()
         || ctx.shared_contains::<SocialGraphIndexWorkerHandle>()
     {
@@ -174,20 +170,21 @@ pub async fn start_social_graph_index_worker_if_enabled(
         .subscribe();
 
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;
-    let consumer = match SocialGraphIndexConsumer::open(Arc::clone(&transport), ctx.db_clone()).await {
-        Ok(consumer) => consumer,
-        Err(error) => {
-            runtime_consumer_metrics::record_failure(
-                METRICS_CONSUMER,
-                STAGE_STARTUP,
-                error.stable_code(),
-            );
-            return Err(Error::Message(format!(
-                "Social Graph Index consumer startup failed [{}]",
-                error.stable_code()
-            )));
-        }
-    };
+    let consumer =
+        match SocialGraphIndexConsumer::open(Arc::clone(&transport), ctx.db_clone()).await {
+            Ok(consumer) => consumer,
+            Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_STARTUP,
+                    error.stable_code(),
+                );
+                return Err(Error::Message(format!(
+                    "Social Graph Index consumer startup failed [{}]",
+                    error.stable_code()
+                )));
+            }
+        };
     let poison_receipts = ConsumerPoisonReceiptStore::new(ctx.db_clone());
     let poison_publisher_id = Uuid::new_v4();
 
@@ -226,10 +223,7 @@ async fn social_graph_index_worker_loop(
     loop {
         if *stop_rx.borrow() {
             record_worker_termination("shutdown");
-            tracing::info!(
-                worker = METRICS_CONSUMER,
-                "Worker received shutdown signal"
-            );
+            tracing::info!(worker = METRICS_CONSUMER, "Worker received shutdown signal");
             return;
         }
 
@@ -472,12 +466,7 @@ async fn process_delivery(
                 let continuing_durable_receipt = error_code == DLQ_RECEIPT_IN_PROGRESS_CODE;
                 if config.dlq_enabled || continuing_durable_receipt {
                     let publish_outcome = match publish_dead_lettered_result(
-                        consumer,
-                        config,
-                        stop_rx,
-                        consumed,
-                        error_code,
-                        attempt,
+                        consumer, config, stop_rx, consumed, error_code, attempt,
                     )
                     .await?
                     {
@@ -488,8 +477,7 @@ async fn process_delivery(
                         || matches!(
                             publish_outcome,
                             SocialGraphIndexDlqPublishOutcome::PreviouslyPublished
-                        )
-                    {
+                        ) {
                         SOCIAL_GRAPH_INDEX_DLQ_RECEIPT_RECOVERED_CODE
                     } else {
                         error_code
@@ -718,10 +706,7 @@ async fn process_decode_failure(
                             STAGE_DLQ_PUBLISH,
                             "social_graph.index.transport_unavailable",
                         );
-                        runtime_consumer_metrics::record_retry(
-                            METRICS_CONSUMER,
-                            STAGE_DLQ_PUBLISH,
-                        );
+                        runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_DLQ_PUBLISH);
                         tracing::warn!(
                             worker = METRICS_CONSUMER,
                             error_code = failure.stable_error_code(),
@@ -883,10 +868,7 @@ async fn acknowledge_raw_poison_result(
                     STAGE_ACKNOWLEDGEMENT,
                     error.stable_code(),
                 );
-                runtime_consumer_metrics::record_retry(
-                    METRICS_CONSUMER,
-                    STAGE_ACKNOWLEDGEMENT,
-                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_ACKNOWLEDGEMENT);
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     error_code = error.stable_code(),
@@ -932,10 +914,7 @@ async fn acknowledge_terminal_result(
                     STAGE_ACKNOWLEDGEMENT,
                     error.stable_code(),
                 );
-                runtime_consumer_metrics::record_retry(
-                    METRICS_CONSUMER,
-                    STAGE_ACKNOWLEDGEMENT,
-                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_ACKNOWLEDGEMENT);
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
@@ -978,9 +957,9 @@ fn process_outcome_label(outcome: &SocialGraphIndexProcessOutcome) -> &'static s
         SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Duplicate { .. }) => {
             "duplicate"
         }
-        SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::StaleIgnored { .. }) => {
-            "stale_ignored"
-        }
+        SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::StaleIgnored {
+            ..
+        }) => "stale_ignored",
         SocialGraphIndexProcessOutcome::IgnoredUnrelated { .. } => "ignored_unrelated",
         SocialGraphIndexProcessOutcome::DeadLettered { .. } => "dead_lettered",
     }
@@ -998,10 +977,7 @@ fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-async fn wait_or_stop(
-    delay: Duration,
-    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
-) -> bool {
+async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
     tokio::select! {
         _ = tokio::time::sleep(delay) => false,
         changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
@@ -1022,9 +998,7 @@ fn optional_u64_env(name: &str, default: u64) -> Result<u64> {
             .parse::<u64>()
             .map_err(|error| Error::Message(format!("{name} is invalid: {error}"))),
         Err(env::VarError::NotPresent) => Ok(default),
-        Err(error) => Err(Error::Message(format!(
-            "failed to read {name}: {error}"
-        ))),
+        Err(error) => Err(Error::Message(format!("failed to read {name}: {error}"))),
     }
 }
 

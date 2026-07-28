@@ -4,10 +4,9 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_forum::{
-    ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer,
-    ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
-    ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
-    ForumPostingTrustFactPort, SharedForumAudienceFactsPort,
+    ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer, ForumPostingPolicyOwnerFactPort,
+    ForumPostingPolicyOwnerFactRequest, ForumPostingPolicyOwnerFactResponse,
+    ForumPostingPolicyOwnerFactValue, ForumPostingTrustFactPort, SharedForumAudienceFactsPort,
     SharedForumPostingPolicyOwnerFactPort,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -22,8 +21,7 @@ const USER_NOT_FOUND_CODE: &str = "forum.account_age_facts.user_not_found";
 const STORAGE_UNAVAILABLE_CODE: &str = "forum.account_age_facts.storage_unavailable";
 const STORAGE_INVARIANT_CODE: &str = "forum.account_age_facts.storage_invariant";
 
-pub(crate) type SharedForumPostingPolicyFactsComposer =
-    Arc<ForumPostingPolicyFactsComposer>;
+pub(crate) type SharedForumPostingPolicyFactsComposer = Arc<ForumPostingPolicyFactsComposer>;
 
 type AccountAgeClock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 
@@ -178,8 +176,8 @@ mod tests {
     use chrono::{Duration as ChronoDuration, TimeZone};
     use rustok_api::{PortActor, PortErrorKind};
     use rustok_forum::{
-        ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
-        ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyCompositionRequest,
+        ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest, ForumPostingAction,
+        ForumPostingCandidateMetrics, ForumPostingPolicyCompositionRequest,
         ForumPostingPolicyFactsComposer, ForumPostingPolicyRules, ForumPostingTrustFactPort,
         SharedForumAudienceFactsPort,
     };

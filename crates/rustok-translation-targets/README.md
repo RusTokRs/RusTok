@@ -10,7 +10,8 @@ plane.
 
 - Define stable owner/resource/field identities and opaque revisions.
 - Keep exact-locale state separate from rendered fallback.
-- Define bounded list, read, validate, and idempotent apply operations.
+- Define bounded list, read, exact aggregate progress, validate, and idempotent
+  apply operations.
 - Require actor-neutral apply request hashing with per-call actor
   re-authorization so unknown outcomes can be recovered safely.
 - Declare field value profiles, translation strategy, data classification, and
@@ -36,6 +37,8 @@ plane.
 - `TranslationResourceSnapshot`
 - `TranslationPatchRequest`
 - `TranslationApplicationReceipt`
+- `TranslationTargetProgressRequest`
+- `TranslationTargetProgressFacts`
 
 Executable positive and negative reference-provider fixtures live in
 `tests/reference_provider_conformance.rs`. They cover exact-locale discovery,

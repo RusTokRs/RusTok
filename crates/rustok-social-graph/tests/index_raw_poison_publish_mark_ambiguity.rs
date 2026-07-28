@@ -15,9 +15,7 @@ use rustok_iggy_connector::migrations::{
     ConsumerPoisonIdentity, ConsumerPoisonPublishClaim, ConsumerPoisonReceiptError,
     ConsumerPoisonReceiptState, ConsumerPoisonReceiptStore,
 };
-use rustok_iggy_connector::{
-    ConnectorConfig, ExternalConnector, IggyConnector, PublishRequest,
-};
+use rustok_iggy_connector::{ConnectorConfig, ExternalConnector, IggyConnector, PublishRequest};
 use rustok_social_graph::index_consumer::{
     SOCIAL_GRAPH_INDEX_CONSUMER_GROUP, SocialGraphIndexConsumer,
 };
@@ -122,7 +120,8 @@ impl PostgresIggyAmbiguityEvidence {
 }
 
 #[tokio::test]
-async fn dedup_enabled_closes_publish_mark_ambiguity_without_physical_duplicate() -> TestResult<()> {
+async fn dedup_enabled_closes_publish_mark_ambiguity_without_physical_duplicate() -> TestResult<()>
+{
     exercise_publish_mark_ambiguity(
         DEDUP_ENABLED_ADDRESS_ENV,
         "dedup_enabled",
@@ -194,9 +193,9 @@ async fn exercise_publish_mark_ambiguity(
     assert_message_count(&observer, &stream, 0).await?;
 
     let first_entry = first_failure.to_dlq_entry(1);
-    let first_broker_message_id = first_entry
-        .broker_message_id()
-        .ok_or_else(|| invalid_data("raw poison ambiguity entry has no deterministic message ID"))?;
+    let first_broker_message_id = first_entry.broker_message_id().ok_or_else(|| {
+        invalid_data("raw poison ambiguity entry has no deterministic message ID")
+    })?;
     first_transport.move_to_dlq(first_entry).await?;
     assert_message_count(&observer, &stream, 1).await?;
     assert_receipt_state(&store, &identity, ConsumerPoisonReceiptState::Publishing).await?;
@@ -220,7 +219,8 @@ async fn exercise_publish_mark_ambiguity(
 
     let recovery_transport = Arc::new(IggyTransport::new(evidence.config.clone()).await?);
     let recovery_consumer =
-        SocialGraphIndexConsumer::open(Arc::clone(&recovery_transport), evidence.db.clone()).await?;
+        SocialGraphIndexConsumer::open(Arc::clone(&recovery_transport), evidence.db.clone())
+            .await?;
     let redelivered = receive_decode_failure(&recovery_consumer).await?;
     assert_eq!(redelivered.offset(), first_offset);
     assert_eq!(redelivered.delivery_id(), first_delivery_id);
@@ -244,14 +244,15 @@ async fn exercise_publish_mark_ambiguity(
     ));
 
     let retry_entry = redelivered.to_dlq_entry(2);
-    assert_eq!(retry_entry.broker_message_id(), Some(first_broker_message_id));
+    assert_eq!(
+        retry_entry.broker_message_id(),
+        Some(first_broker_message_id)
+    );
     recovery_transport.move_to_dlq(retry_entry).await?;
     assert_message_count(&observer, &stream, expected_retry_count).await?;
     assert_receipt_state(&store, &identity, ConsumerPoisonReceiptState::Publishing).await?;
 
-    store
-        .mark_published(&identity, recovery_publisher)
-        .await?;
+    store.mark_published(&identity, recovery_publisher).await?;
     assert_receipt_state(&store, &identity, ConsumerPoisonReceiptState::Published).await?;
     recovery_consumer
         .acknowledge_decode_failure(&redelivered)
@@ -292,7 +293,9 @@ async fn receive_decode_failure(
     let delivery = timeout(RECEIVE_TIMEOUT, consumer.receive_delivery())
         .await
         .map_err(|_| invalid_data("timed out waiting for publish/mark ambiguity delivery"))??
-        .ok_or_else(|| invalid_data("source cursor ended before publish/mark ambiguity delivery"))?;
+        .ok_or_else(|| {
+            invalid_data("source cursor ended before publish/mark ambiguity delivery")
+        })?;
     match delivery {
         PersistentContractDelivery::DecodeFailure(failure) => Ok(failure),
         PersistentContractDelivery::Event(_) => Err(invalid_data(
@@ -367,10 +370,7 @@ fn postgres_database_url() -> Option<String> {
         .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
 }
 
-fn external_iggy_config(
-    address_env: &'static str,
-    scope: &str,
-) -> TestResult<Option<IggyConfig>> {
+fn external_iggy_config(address_env: &'static str, scope: &str) -> TestResult<Option<IggyConfig>> {
     let address = match env::var(address_env) {
         Ok(value) => bounded_env(address_env, value, 255)?,
         Err(env::VarError::NotPresent) => return Ok(None),
@@ -427,7 +427,11 @@ fn ensure_distinct_mode_addresses() -> TestResult<()> {
 }
 
 fn validate_address(name: &'static str, address: &str) -> Result<(), IoError> {
-    if address.contains("://") || address.contains('@') || address.contains('?') || address.contains('#') {
+    if address.contains("://")
+        || address.contains('@')
+        || address.contains('?')
+        || address.contains('#')
+    {
         return Err(invalid_data(format!(
             "{name} must be host:port without credentials or URL delimiters"
         )));
@@ -542,7 +546,10 @@ fn sanitize_identifier(value: &str) -> String {
 }
 
 fn unique_name(scope: &str) -> String {
-    format!("rustok-sg-poison-ambiguity-{scope}-{}", Uuid::new_v4().simple())
+    format!(
+        "rustok-sg-poison-ambiguity-{scope}-{}",
+        Uuid::new_v4().simple()
+    )
 }
 
 fn invalid_data(message: impl Into<String>) -> IoError {

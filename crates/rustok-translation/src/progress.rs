@@ -1,9 +1,16 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use chrono::{DateTime, FixedOffset, Utc};
-use rustok_api::{Action, PortCallPolicy, PortContext, Resource};
+use rustok_api::{Action, PortCallPolicy, PortContext, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext, generate_id};
-use rustok_translation_targets::{FieldKey, TranslationFieldPatch, TranslationResourceSnapshot};
+use rustok_translation_targets::{
+    FieldKey, OpaqueCursor, OwnerSlug, ResourceKind, TranslationFieldPatch,
+    TranslationResourceSnapshot, TranslationTargetCapability, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetRegistry,
+};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
     TransactionTrait,
@@ -14,7 +21,7 @@ use uuid::Uuid;
 
 use crate::{
     TranslationError, TranslationResult,
-    entities::{apply_receipt, job, job_item, job_progress, proposal},
+    entities::{apply_receipt, job, job_item, job_progress, proposal, provider_checkpoint},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,13 +55,37 @@ pub struct JobProgressRecord {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderProjectionFreshness {
+    Current,
+    Behind,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderProgressRecord {
+    pub owner_slug: OwnerSlug,
+    pub resource_kind: ResourceKind,
+    pub source_locale: TenantLocale,
+    pub target_locale: TenantLocale,
+    pub facts: TranslationTargetProgressFacts,
+    pub projected_cursor: Option<OpaqueCursor>,
+    pub checkpoint_revision: Option<i64>,
+    pub checkpoint_updated_at: Option<DateTime<FixedOffset>>,
+    pub freshness: ProviderProjectionFreshness,
+}
+
 pub struct TranslationProgressService {
     database: DatabaseConnection,
+    providers: Arc<TranslationTargetRegistry>,
 }
 
 impl TranslationProgressService {
-    pub fn new(database: DatabaseConnection) -> Self {
-        Self { database }
+    pub fn new(database: DatabaseConnection, providers: Arc<TranslationTargetRegistry>) -> Self {
+        Self {
+            database,
+            providers,
+        }
     }
 
     pub async fn read_job_progress(
@@ -83,6 +114,74 @@ impl TranslationProgressService {
         let progress = refresh_job_progress(&transaction, tenant_id, job_id).await?;
         transaction.commit().await?;
         Ok(progress)
+    }
+
+    pub async fn read_provider_progress(
+        &self,
+        context: PortContext,
+        owner_slug: OwnerSlug,
+        resource_kind: ResourceKind,
+        source_locale: TenantLocale,
+        target_locale: TenantLocale,
+    ) -> TranslationResult<ProviderProgressRecord> {
+        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        let request = TranslationTargetProgressRequest {
+            source_locale: source_locale.clone(),
+            target_locale: target_locale.clone(),
+        };
+        request
+            .validate()
+            .map_err(|error| TranslationError::InvalidRequest(error.to_string()))?;
+        let provider = self
+            .providers
+            .get(&owner_slug, &resource_kind)
+            .ok_or_else(|| TranslationError::ProviderNotFound {
+                owner_slug: owner_slug.as_str().to_string(),
+                resource_kind: resource_kind.as_str().to_string(),
+            })?;
+        if !provider
+            .descriptor()
+            .capabilities
+            .contains(&TranslationTargetCapability::AggregateProgress)
+        {
+            return Err(TranslationError::AggregateProgressUnavailable);
+        }
+
+        let facts = provider.read_progress(context, request).await?;
+        facts
+            .validate()
+            .map_err(|error| TranslationError::InvalidProviderProgress(error.to_string()))?;
+        let checkpoint = provider_checkpoint::Entity::find()
+            .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
+            .filter(provider_checkpoint::Column::OwnerSlug.eq(owner_slug.as_str()))
+            .filter(provider_checkpoint::Column::ResourceKind.eq(resource_kind.as_str()))
+            .one(&self.database)
+            .await?;
+        let projected_cursor = checkpoint
+            .as_ref()
+            .and_then(|checkpoint| checkpoint.cursor.as_deref())
+            .map(OpaqueCursor::new)
+            .transpose()
+            .map_err(|error| TranslationError::InvalidProviderCheckpoint(error.to_string()))?;
+        let freshness = match checkpoint.as_ref() {
+            None => ProviderProjectionFreshness::Unknown,
+            Some(_) if projected_cursor == facts.owner_change_cursor => {
+                ProviderProjectionFreshness::Current
+            }
+            Some(_) => ProviderProjectionFreshness::Behind,
+        };
+
+        Ok(ProviderProgressRecord {
+            owner_slug,
+            resource_kind,
+            source_locale,
+            target_locale,
+            facts,
+            projected_cursor,
+            checkpoint_revision: checkpoint.as_ref().map(|checkpoint| checkpoint.revision),
+            checkpoint_updated_at: checkpoint.map(|checkpoint| checkpoint.updated_at),
+            freshness,
+        })
     }
 }
 

@@ -18,6 +18,12 @@ pub enum TranslationError {
     CursorDidNotAdvance,
     #[error("translation provider does not expose bounded resource listing")]
     FullRescanUnavailable,
+    #[error("translation provider does not expose aggregate progress")]
+    AggregateProgressUnavailable,
+    #[error("translation provider returned invalid aggregate progress: {0}")]
+    InvalidProviderProgress(String),
+    #[error("translation provider checkpoint is invalid: {0}")]
+    InvalidProviderCheckpoint(String),
     #[error("translation full-rescan change drain did not converge")]
     FullRescanChangeDrainLimit,
     #[error("translation full-rescan cursor did not advance")]

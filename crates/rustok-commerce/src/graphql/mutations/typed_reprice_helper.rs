@@ -52,12 +52,10 @@ impl RepriceFailure {
 }
 
 fn public_graphql_error() -> async_graphql::Error {
-    async_graphql::Error::new("Cart pricing could not be refreshed").extend_with(
-        |_, extensions| {
-            extensions.set("code", "CART_REPRICE_FAILED");
-            extensions.set("retryable", true);
-        },
-    )
+    async_graphql::Error::new("Cart pricing could not be refreshed").extend_with(|_, extensions| {
+        extensions.set("code", "CART_REPRICE_FAILED");
+        extensions.set("retryable", true);
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -74,7 +72,11 @@ fn reprice_graphql_error(
     currency_code_length: usize,
     request_channel_slug_length: Option<usize>,
 ) -> async_graphql::Error {
-    let context_channel_length = context.channel.as_deref().map(str::chars).map(Iterator::count);
+    let context_channel_length = context
+        .channel
+        .as_deref()
+        .map(str::chars)
+        .map(Iterator::count);
     let context_locale_length = context.locale.chars().count();
     let technical = matches!(
         &failure.error.kind,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use rustok_events::{ContractEventEnvelope, ContractEventEnvelopeError, ContractEventPayload};
+use rustok_events::{ContractEventEnvelope, ContractEventPayload, EventContractEnvelopeError};
 use rustok_iggy::{
     ConsumedContractDecodeFailure, ConsumedContractEvent, DlqEntry, IggyTransport,
     PersistentContractConsumerGroup, PersistentContractDelivery,
@@ -16,8 +16,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::index::{
-    SocialGraphIndexError, social_graph_relation_index_mutation,
-    social_graph_relation_index_schema,
+    SocialGraphIndexError, social_graph_relation_index_mutation, social_graph_relation_index_schema,
 };
 use crate::index_dlq_message_id::social_graph_index_dlq_broker_message_id;
 use crate::index_dlq_receipt::{
@@ -47,7 +46,7 @@ pub enum SocialGraphIndexConsumerError {
     #[error(transparent)]
     DlqReceipt(#[from] SocialGraphIndexDlqReceiptError),
     #[error(transparent)]
-    Envelope(#[from] ContractEventEnvelopeError),
+    Envelope(#[from] EventContractEnvelopeError),
     #[error(transparent)]
     Projection(#[from] SocialGraphIndexError),
     #[error(transparent)]
@@ -114,11 +113,8 @@ pub fn social_graph_index_delivery_from_envelope(
     let ContractEventPayload::SocialGraphRelation(event) = payload else {
         return Ok(None);
     };
-    let mutation = social_graph_relation_index_mutation(
-        envelope.tenant_id(),
-        envelope.id(),
-        event.clone(),
-    )?;
+    let mutation =
+        social_graph_relation_index_mutation(envelope.tenant_id(), envelope.id(), event.clone())?;
     Ok(Some(MutationDelivery::from_event(
         SOCIAL_GRAPH_INDEX_SOURCE,
         mutation,
@@ -324,9 +320,9 @@ impl SocialGraphIndexConsumer {
     ) -> Result<SocialGraphIndexDlqPublishOutcome, SocialGraphIndexConsumerError> {
         let identity = self.dlq_identity(consumed)?;
         let existing = self.dlq_receipts.find(&identity).await?;
-        let effective_error_code = existing
-            .as_ref()
-            .map_or(stable_error_code, |receipt| receipt.stable_error_code.as_str());
+        let effective_error_code = existing.as_ref().map_or(stable_error_code, |receipt| {
+            receipt.stable_error_code.as_str()
+        });
         let effective_retry_count = existing
             .as_ref()
             .map_or(retry_count, |receipt| receipt.projection_attempt_count);
@@ -415,12 +411,13 @@ impl SocialGraphIndexConsumer {
         consumed
             .validate_connector_metadata()
             .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))?;
-        let source_offset = consumed.offset().ok_or(
-            SocialGraphIndexDlqReceiptError::InvalidIdentity {
-                field: "source_offset",
-                reason: "connector metadata did not provide an offset",
-            },
-        )?;
+        let source_offset =
+            consumed
+                .offset()
+                .ok_or(SocialGraphIndexDlqReceiptError::InvalidIdentity {
+                    field: "source_offset",
+                    reason: "connector metadata did not provide an offset",
+                })?;
         SocialGraphIndexDlqIdentity::new(
             consumed.envelope.tenant_id(),
             consumed.envelope.id(),
@@ -476,11 +473,9 @@ mod tests {
             .await
             .unwrap();
         let tenant_id = Uuid::from_u128(1);
-        db.execute_unprepared(&format!(
-            "INSERT INTO tenants (id) VALUES ('{tenant_id}')"
-        ))
-        .await
-        .unwrap();
+        db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
+            .await
+            .unwrap();
         let manager = SchemaManager::new(&db);
         for migration in IndexModule.migrations() {
             migration.up(&manager).await.unwrap();
@@ -538,18 +533,20 @@ mod tests {
     fn retry_classification_is_fail_closed() {
         assert!(SocialGraphIndexConsumerError::Transport("down".to_string()).is_retryable());
         assert!(SocialGraphIndexConsumerError::DlqPublishInProgress.is_retryable());
-        assert!(SocialGraphIndexConsumerError::SchemaPersistence(
-            SchemaRegistrationError::Storage("down".to_string())
-        )
-        .is_retryable());
-        assert!(!SocialGraphIndexConsumerError::SchemaPersistence(
-            SchemaRegistrationError::NilTenantId
-        )
-        .is_retryable());
-        assert!(!SocialGraphIndexConsumerError::Storage(
-            MutationStorageError::DeliveryConflict
-        )
-        .is_retryable());
+        assert!(
+            SocialGraphIndexConsumerError::SchemaPersistence(SchemaRegistrationError::Storage(
+                "down".to_string()
+            ))
+            .is_retryable()
+        );
+        assert!(
+            !SocialGraphIndexConsumerError::SchemaPersistence(SchemaRegistrationError::NilTenantId)
+                .is_retryable()
+        );
+        assert!(
+            !SocialGraphIndexConsumerError::Storage(MutationStorageError::DeliveryConflict)
+                .is_retryable()
+        );
     }
 
     #[tokio::test]

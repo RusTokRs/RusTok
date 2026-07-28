@@ -1,6 +1,4 @@
-use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_order::{
@@ -217,8 +215,7 @@ impl CheckoutOrderStageExecutor {
                                 "recover_existing",
                                 error,
                             )
-                        })?
-                    {
+                        })? {
                         Some(order) => order,
                         None => {
                             let completion = self

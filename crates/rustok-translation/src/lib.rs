@@ -14,7 +14,10 @@ pub use error::{TranslationError, TranslationResult};
 pub use inventory::{
     TranslationInventoryRebuildResult, TranslationInventoryService, TranslationInventorySyncResult,
 };
-pub use progress::{JobProgressRecord, TranslationProgressService};
+pub use progress::{
+    JobProgressRecord, ProviderProgressRecord, ProviderProjectionFreshness,
+    TranslationProgressService,
+};
 pub use workflow::{
     AddItemInput, ApplyProposalInput, ApplyRecord, ApproveProposalInput, AssignItemInput,
     AssignmentRecord, CancelJobInput, CancellationRecord, CreateJobInput, JobItemRecord, JobRecord,

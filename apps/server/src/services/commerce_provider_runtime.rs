@@ -91,9 +91,9 @@ pub fn attach_commerce_provider_registries(
         let runtime = server
             .shared_get::<rustok_marketplace_seller::MarketplaceSellerRuntime>()
             .unwrap_or_else(|| {
-                let service = Arc::new(
-                    rustok_marketplace_seller::MarketplaceSellerService::new(server.db_clone()),
-                );
+                let service = Arc::new(rustok_marketplace_seller::MarketplaceSellerService::new(
+                    server.db_clone(),
+                ));
                 let read_port: Arc<dyn rustok_marketplace_seller::MarketplaceSellerReadPort> =
                     service.clone();
                 let command_port: Arc<dyn rustok_marketplace_seller::MarketplaceSellerCommandPort> =

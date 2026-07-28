@@ -72,7 +72,10 @@ This is the active cross-cutting implementation plan. As of 2026-07-28:
   proposal, while conflict/stale work remains rebase-required. A content-free
   per-job workflow progress projection is updated transactionally and can be
   deterministically rebuilt with source/proposal digest and receipt checks.
-  Provider-level exact-locale coverage/lag and
+  Provider-level exact-locale coverage is now read through the neutral owner
+  SPI, validated by Translation, and paired with tenant/provider inventory
+  checkpoints as `current`, `behind`, or `unknown`; numeric lag is deliberately
+  absent because owner cursors are opaque. Required-locale policy and
   recovery/assignment/cancellation/retry transport/UI remain open;
 - `rustok-translation-targets` now defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
@@ -80,7 +83,10 @@ This is the active cross-cutting implementation plan. As of 2026-07-28:
 - Media is the first registered owner provider. Its exact-locale CAS apply,
   stable receipt, append-only tenant cursor, and content-free owner event are
   transactional; every other Media translation write emits the same repair
-  evidence;
+  evidence. Its aggregate progress counts only exact target-row values for
+  source-eligible active assets inside a stable cursor window. Translated-asset
+  deletion and failure emit deleted/unavailable cursor evidence, so lifecycle
+  changes cannot leave projection freshness falsely current;
 - no module-owned translation UI exists;
 - the proposed ownership decision is recorded in
   `DECISIONS/2026-07-26-translation-control-plane-boundary.md`;
@@ -1128,10 +1134,13 @@ Deliverables:
 - [x] scaffold the optional `rustok-translation` module with local docs, manifest,
   migrations, permissions, workers, FBA evidence, and `not_started` FFA/FBA
   status;
-- [ ] complete policies, QA, and provider-level exact-locale coverage/lag;
-  job completion, safe blocked-item retry, rebuildable job workflow progress,
-  jobs, items, proposals, assignments, cancellation, receipts, durable apply
-  recovery, and rebuildable inventory are implemented;
+- [x] implement provider-level exact-locale coverage and opaque-cursor
+  freshness, with Media as the first production aggregate and Translation-side
+  fact validation;
+- [ ] complete required-target-locale policies and QA; job completion, safe
+  blocked-item retry, rebuildable job workflow progress, jobs, items,
+  proposals, assignments, cancellation, receipts, durable apply recovery, and
+  rebuildable inventory are implemented;
 - [ ] implement GraphQL and native server-function service adapters;
 - [ ] implement module-owned Leptos and Next admin shells;
 - [ ] verify module disablement leaves owner reads and locale fallback unchanged.

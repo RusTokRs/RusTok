@@ -412,9 +412,7 @@ fn decode_and_validate_receipt(
 ) -> Result<SocialGraphIndexDlqReceipt, SocialGraphIndexDlqReceiptError> {
     let stored_stream: String = row.try_get("", "source_stream").map_err(storage_error)?;
     let stored_topic: String = row.try_get("", "source_topic").map_err(storage_error)?;
-    let stored_partition: i64 = row
-        .try_get("", "source_partition")
-        .map_err(storage_error)?;
+    let stored_partition: i64 = row.try_get("", "source_partition").map_err(storage_error)?;
     let stored_offset: i64 = row.try_get("", "source_offset").map_err(storage_error)?;
     let stored_payload: Vec<u8> = row.try_get("", "payload").map_err(storage_error)?;
     let stored_tenant = stored_uuid(row, "tenant_id", backend)?;
@@ -500,9 +498,7 @@ fn validate_lease_duration(
     Ok(seconds)
 }
 
-fn ensure_supported_backend(
-    backend: DbBackend,
-) -> Result<(), SocialGraphIndexDlqReceiptError> {
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), SocialGraphIndexDlqReceiptError> {
     match backend {
         DbBackend::Postgres => Ok(()),
         DbBackend::Sqlite if cfg!(test) => Ok(()),

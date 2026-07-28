@@ -9,6 +9,8 @@ machine-translation orchestration.
 ## Responsibilities
 
 - Maintain rebuildable tenant translation inventory and provider checkpoints.
+- Read validated exact-locale owner aggregates and expose projection freshness
+  by opaque cursor equality.
 - Maintain a content-free, rebuildable per-job workflow progress projection.
 - Persist tenant-scoped jobs, immutable owner source snapshots, proposal and
   approval records, and owner-application receipts.
@@ -27,6 +29,8 @@ machine-translation orchestration.
 - `TranslationWorkflowService`
 - `TranslationProgressService`
 - `JobProgressRecord`
+- `ProviderProgressRecord`
+- `ProviderProjectionFreshness`
 - `CreateJobInput`
 - `AddItemInput`
 - `SaveProposalInput`
@@ -68,6 +72,9 @@ machine-translation orchestration.
   assignment, resource-completion, and character-workload counters in the same
   transaction as workflow mutations. A Manage-authorized rebuild repairs the
   projection deterministically from workflow evidence.
+- Reads provider aggregates only through the neutral SPI, rejects impossible
+  facts, and reports checkpoint freshness as `current`, `behind`, or `unknown`
+  without interpreting opaque cursors as numeric distances.
 - Persists apply intent before invoking an owner and records `applied` only
   after validating and durably storing the owner's stable receipt.
 - Allows an operator with both Translation Manage and Publish permissions to

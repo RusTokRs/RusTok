@@ -67,10 +67,12 @@ selection.
   `TranslationProgressService` provides tenant-isolated reads and a
   Manage-authorized deterministic rebuild that verifies source/proposal
   digests and owner receipt evidence.
-- Media is the first owner provider with durable change-cursor repair.
-- Provider-level exact-locale coverage/lag aggregation, policies, memory,
-  glossaries, interchange, transports, UI, and AI integration are not
-  implemented yet.
+- Media is the first owner provider with durable change-cursor repair and
+  exact-locale aggregate coverage. Translation validates provider facts and
+  reports tenant-scoped projection freshness as `current`, `behind`, or
+  `unknown` by opaque cursor equality.
+- Policies, QA, memory, glossaries, interchange, transports, UI, and AI
+  integration are not implemented yet.
 
 ## FFA/FBA status
 
@@ -89,7 +91,7 @@ selection.
 1. Complete Media multi-replica evidence for the implemented inventory replay,
    tenant isolation, stale-checkpoint conflict, provider outage, and
    full-rescan recovery contracts.
-2. Add provider-level exact-locale coverage and projection-lag aggregation.
+2. Complete required-target-locale policy and QA orchestration.
 3. Publish operator recovery, assignment, cancellation, retry, and progress through
    native/GraphQL transport parity.
 4. Add translation memory and versioned glossaries with separate permissions.

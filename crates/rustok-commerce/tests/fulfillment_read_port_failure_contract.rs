@@ -87,9 +87,10 @@ impl FulfillmentReadPort for ScriptedFulfillmentReadPort {
         _request: ReadFulfillmentProjectionRequest,
     ) -> Result<FulfillmentResponse, PortError> {
         self.record("read_fulfillment_projection", context);
-        Err(self.read_error.clone().unwrap_or_else(|| {
-            PortError::not_found("test.fulfillment_not_found", OWNER_SENTINEL)
-        }))
+        Err(self
+            .read_error
+            .clone()
+            .unwrap_or_else(|| PortError::not_found("test.fulfillment_not_found", OWNER_SENTINEL)))
     }
 
     async fn list_fulfillment_projections(
@@ -112,10 +113,7 @@ impl FulfillmentReadPort for ScriptedFulfillmentReadPort {
         context: PortContext,
         _request: FindLatestFulfillmentByOrderProjectionRequest,
     ) -> Result<Option<FulfillmentResponse>, PortError> {
-        self.record(
-            "find_latest_fulfillment_by_order_projection",
-            context,
-        );
+        self.record("find_latest_fulfillment_by_order_projection", context);
         match self.read_error.clone() {
             Some(error) => Err(error),
             None => Ok(None),
@@ -251,11 +249,7 @@ fn response_json(response: &async_graphql::Response) -> Value {
     serde_json::to_value(response).expect("GraphQL response should serialize")
 }
 
-fn port_error(
-    kind: PortErrorKind,
-    code: &'static str,
-    retryable: bool,
-) -> PortError {
+fn port_error(kind: PortErrorKind, code: &'static str, retryable: bool) -> PortError {
     PortError::new(kind, code, OWNER_SENTINEL, retryable)
 }
 
@@ -312,11 +306,7 @@ async fn graphql_fulfillment_lookup_preserves_typed_port_errors_and_redacts_owne
             true,
         ),
         (
-            port_error(
-                PortErrorKind::InvariantViolation,
-                "owner.invariant",
-                false,
-            ),
+            port_error(PortErrorKind::InvariantViolation, "owner.invariant", false),
             "FULFILLMENT_OPERATION_FAILED",
             false,
         ),
@@ -343,10 +333,7 @@ async fn graphql_fulfillment_lookup_preserves_typed_port_errors_and_redacts_owne
         let error = &payload["errors"][0];
 
         assert_eq!(error["extensions"]["code"], json!(expected_code));
-        assert_eq!(
-            error["extensions"]["retryable"],
-            json!(expected_retryable)
-        );
+        assert_eq!(error["extensions"]["retryable"], json!(expected_retryable));
         assert!(
             !payload.to_string().contains(OWNER_SENTINEL),
             "owner message escaped through GraphQL: {payload}"
@@ -527,11 +514,7 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
             "commerce_admin_fulfillment_storage_unavailable",
         ),
         (
-            port_error(
-                PortErrorKind::InvariantViolation,
-                "owner.invariant",
-                false,
-            ),
+            port_error(PortErrorKind::InvariantViolation, "owner.invariant", false),
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_admin_fulfillment_failed",
         ),
@@ -562,8 +545,7 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("REST error body should read");
-        let payload: Value =
-            serde_json::from_slice(&body).expect("REST error body should be JSON");
+        let payload: Value = serde_json::from_slice(&body).expect("REST error body should be JSON");
         assert_eq!(payload["code"], json!(expected_code));
         assert!(
             !String::from_utf8_lossy(&body).contains(OWNER_SENTINEL),

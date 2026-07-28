@@ -51,7 +51,8 @@ impl CommerceHttpRuntime {
     fn shipping_option_read_port(
         &self,
     ) -> std::sync::Arc<dyn rustok_fulfillment::ShippingOptionReadPort> {
-        self.shipping_option_read_runtime.shipping_option_read_port()
+        self.shipping_option_read_runtime
+            .shipping_option_read_port()
     }
 
     fn shipping_option_admin_read_port(
@@ -61,9 +62,7 @@ impl CommerceHttpRuntime {
             .shipping_option_admin_read_port()
     }
 
-    fn fulfillment_read_port(
-        &self,
-    ) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentReadPort> {
+    fn fulfillment_read_port(&self) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentReadPort> {
         self.fulfillment_lifecycle_read_runtime
             .fulfillment_read_port()
     }

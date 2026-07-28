@@ -1369,7 +1369,7 @@ impl MediaService {
         active.active_blob_id = Set(None);
         active.updated_at = Set(now);
         active.delete_requested_at = Set(Some(now));
-        active.update(&transaction).await?;
+        let updated_asset = active.update(&transaction).await?;
         BlobEntity::update_many()
             .col_expr(
                 BlobCol::State,
@@ -1383,6 +1383,31 @@ impl MediaService {
             .filter(BlobCol::State.ne(BlobState::Deleted.as_str()))
             .exec(&transaction)
             .await?;
+        let translations = TransEntity::find()
+            .filter(TransCol::TenantId.eq(tenant_id))
+            .filter(TransCol::AssetId.eq(id))
+            .all(&transaction)
+            .await?;
+        let resource_revision = media_resource_revision(&updated_asset);
+        let correlation_id = generate_id().to_string();
+        for translation in translations {
+            record_translation_change_in_transaction(
+                &transaction,
+                &self.translation_event_bus,
+                TranslationChangeEvidence {
+                    tenant_id,
+                    media_id: id,
+                    locale: &translation.locale,
+                    resource_revision: &resource_revision,
+                    target_revision: translation.revision,
+                    operation: "delete",
+                    lifecycle: "deleted",
+                    actor_id: None,
+                    correlation_id: correlation_id.clone(),
+                },
+            )
+            .await?;
+        }
         transaction.commit().await?;
         rustok_telemetry::metrics::record_media_delete(&tenant_id.to_string());
         self.reconcile_asset_deletion(tenant_id, id).await?;
@@ -1455,6 +1480,8 @@ impl MediaService {
                 locale: &item.locale,
                 resource_revision: &resource_revision,
                 target_revision: item.revision,
+                operation: "upsert",
+                lifecycle: "active",
                 actor_id: None,
                 correlation_id: generate_id().to_string(),
             },
@@ -1485,6 +1512,8 @@ impl MediaService {
                 locale: &target_locale,
                 resource_revision: &resource_revision,
                 target_revision: translation.revision,
+                operation: "upsert",
+                lifecycle: "active",
                 actor_id: None,
                 correlation_id: generate_id().to_string(),
             },
@@ -1786,6 +1815,7 @@ impl MediaService {
                     let asset_id = row.asset_id;
                     let blob_id = row.id;
                     let tenant_id = row.tenant_id;
+                    let transaction = self.db.begin().await?;
                     let mut active: BlobActiveModel = row.into();
                     active.state = Set(BlobState::Failed.as_str().to_string());
                     active.reconcile_attempts = Set(active
@@ -1795,26 +1825,56 @@ impl MediaService {
                         .saturating_add(1));
                     active.last_error = Set(Some("object missing from storage".to_string()));
                     active.last_reconciled_at = Set(Utc::now().fixed_offset());
-                    active.update(&self.db).await?;
+                    active.update(&transaction).await?;
                     let asset = AssetEntity::find_by_id(asset_id)
                         .filter(AssetCol::TenantId.eq(tenant_id))
-                        .one(&self.db)
+                        .one(&transaction)
                         .await?;
                     if asset.as_ref().and_then(|asset| asset.active_blob_id) == Some(blob_id) {
-                        AssetEntity::update_many()
+                        let now = Utc::now().fixed_offset();
+                        let update = AssetEntity::update_many()
                             .col_expr(
                                 AssetCol::LifecycleState,
                                 sea_orm::sea_query::Expr::value(AssetState::Failed.as_str()),
                             )
-                            .col_expr(
-                                AssetCol::UpdatedAt,
-                                sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
-                            )
+                            .col_expr(AssetCol::UpdatedAt, sea_orm::sea_query::Expr::value(now))
                             .filter(AssetCol::Id.eq(asset_id))
                             .filter(AssetCol::TenantId.eq(tenant_id))
                             .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
-                            .exec(&self.db)
+                            .exec(&transaction)
                             .await?;
+                        if update.rows_affected == 1 {
+                            let updated_asset = AssetEntity::find_by_id(asset_id)
+                                .filter(AssetCol::TenantId.eq(tenant_id))
+                                .one(&transaction)
+                                .await?
+                                .ok_or(MediaError::NotFound(asset_id))?;
+                            let translations = TransEntity::find()
+                                .filter(TransCol::TenantId.eq(tenant_id))
+                                .filter(TransCol::AssetId.eq(asset_id))
+                                .all(&transaction)
+                                .await?;
+                            let resource_revision = media_resource_revision(&updated_asset);
+                            let correlation_id = generate_id().to_string();
+                            for translation in translations {
+                                record_translation_change_in_transaction(
+                                    &transaction,
+                                    &self.translation_event_bus,
+                                    TranslationChangeEvidence {
+                                        tenant_id,
+                                        media_id: asset_id,
+                                        locale: &translation.locale,
+                                        resource_revision: &resource_revision,
+                                        target_revision: translation.revision,
+                                        operation: "unavailable",
+                                        lifecycle: "unavailable",
+                                        actor_id: None,
+                                        correlation_id: correlation_id.clone(),
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
                     } else {
                         RenditionEntity::update_many()
                             .col_expr(
@@ -1837,9 +1897,10 @@ impl MediaService {
                             )
                             .filter(RenditionCol::TenantId.eq(tenant_id))
                             .filter(RenditionCol::ResultBlobId.eq(blob_id))
-                            .exec(&self.db)
+                            .exec(&transaction)
                             .await?;
                     }
+                    transaction.commit().await?;
                     report.missing_marked += 1;
                 }
                 MediaReconciliationDecision::RetryLater => {

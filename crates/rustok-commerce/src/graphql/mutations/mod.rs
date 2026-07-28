@@ -7,6 +7,20 @@ pub mod cart;
 #[allow(dead_code)]
 #[path = "safe_helpers.rs"]
 mod cart_safe_helpers;
+pub mod catalog;
+#[path = "safe_checkout.rs"]
+pub mod checkout;
+pub mod fulfillment;
+#[path = "layered_order_helpers.rs"]
+pub mod helpers;
+#[allow(dead_code)]
+#[path = "safe_legacy_helpers.rs"]
+mod legacy_helpers;
+pub mod pricing;
+pub mod provider_operations;
+pub mod reconciliation;
+#[path = "safe_order_helpers.rs"]
+mod safe_order_helpers_impl;
 #[path = "shipping_option_read_context.rs"]
 mod shipping_option_read_context;
 #[path = "typed_line_item_helpers.rs"]
@@ -17,20 +31,6 @@ mod typed_reprice_helper;
 mod typed_shipping_enrichment_helper;
 #[path = "typed_shipping_option_helper.rs"]
 mod typed_shipping_option_helper;
-pub mod catalog;
-#[path = "safe_checkout.rs"]
-pub mod checkout;
-pub mod fulfillment;
-#[path = "safe_order_helpers.rs"]
-mod safe_order_helpers_impl;
-#[path = "layered_order_helpers.rs"]
-pub mod helpers;
-#[allow(dead_code)]
-#[path = "safe_legacy_helpers.rs"]
-mod legacy_helpers;
-pub mod pricing;
-pub mod provider_operations;
-pub mod reconciliation;
 
 #[derive(MergedObject, Default)]
 pub struct CommerceMutation(

@@ -213,10 +213,7 @@ fn position_poll_interval() -> Result<Duration> {
     Ok(Duration::from_millis(value))
 }
 
-async fn wait_or_stop(
-    delay: Duration,
-    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
-) -> bool {
+async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
     tokio::select! {
         _ = tokio::time::sleep(delay) => false,
         changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),

@@ -56,30 +56,16 @@ impl ShippingOptionFailure {
 
     fn owner(shipping_option_id: Uuid, error: PortError) -> Self {
         let (kind, internal_kind) = match &error.kind {
-            PortErrorKind::Validation => (
-                ShippingOptionFailureKind::OwnerValidation,
-                "validation",
-            ),
-            PortErrorKind::NotFound => (
-                ShippingOptionFailureKind::OwnerNotFound,
-                "not_found",
-            ),
-            PortErrorKind::Conflict => (
-                ShippingOptionFailureKind::OwnerConflict,
-                "conflict",
-            ),
-            PortErrorKind::Forbidden => (
-                ShippingOptionFailureKind::OwnerForbidden,
-                "forbidden",
-            ),
-            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
-                ShippingOptionFailureKind::StorageUnavailable,
-                "unavailable",
-            ),
-            PortErrorKind::InvariantViolation => (
-                ShippingOptionFailureKind::OwnerInvariant,
-                "invariant",
-            ),
+            PortErrorKind::Validation => (ShippingOptionFailureKind::OwnerValidation, "validation"),
+            PortErrorKind::NotFound => (ShippingOptionFailureKind::OwnerNotFound, "not_found"),
+            PortErrorKind::Conflict => (ShippingOptionFailureKind::OwnerConflict, "conflict"),
+            PortErrorKind::Forbidden => (ShippingOptionFailureKind::OwnerForbidden, "forbidden"),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+                (ShippingOptionFailureKind::StorageUnavailable, "unavailable")
+            }
+            PortErrorKind::InvariantViolation => {
+                (ShippingOptionFailureKind::OwnerInvariant, "invariant")
+            }
         };
 
         Self {
@@ -167,12 +153,10 @@ impl ShippingOptionFailure {
 }
 
 fn public_graphql_error() -> async_graphql::Error {
-    async_graphql::Error::new("Selected shipping option is invalid").extend_with(
-        |_, extensions| {
-            extensions.set("code", "SHIPPING_OPTION_INVALID");
-            extensions.set("retryable", false);
-        },
-    )
+    async_graphql::Error::new("Selected shipping option is invalid").extend_with(|_, extensions| {
+        extensions.set("code", "SHIPPING_OPTION_INVALID");
+        extensions.set("retryable", false);
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -283,16 +267,15 @@ pub(crate) async fn validate_selected_shipping_option(
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> Result<()> {
-    let owner_locale = requested_locale
-        .or(tenant_default_locale)
-        .unwrap_or("en");
-    let owner_context = super::shipping_option_read_context::storefront_shipping_option_read_context(
-        tenant_id,
-        cart.id,
-        owner_locale,
-        public_channel_slug,
-        "read-option",
-    );
+    let owner_locale = requested_locale.or(tenant_default_locale).unwrap_or("en");
+    let owner_context =
+        super::shipping_option_read_context::storefront_shipping_option_read_context(
+            tenant_id,
+            cart.id,
+            owner_locale,
+            public_channel_slug,
+            "read-option",
+        );
     let shipping_option_read_port =
         super::shipping_option_read_context::storefront_shipping_option_read_port(db.clone());
     let requested_currency_code_length = currency_code.chars().count();
@@ -399,10 +382,10 @@ pub(crate) async fn validate_selected_shipping_option(
                 tenant_default_locale,
             ));
         }
-        let required_shipping_profiles = BTreeSet::from([
-            normalize_shipping_profile_slug(selection.shipping_profile_slug.as_str())
-                .unwrap_or_else(|| "default".to_string()),
-        ]);
+        let required_shipping_profiles = BTreeSet::from([normalize_shipping_profile_slug(
+            selection.shipping_profile_slug.as_str(),
+        )
+        .unwrap_or_else(|| "default".to_string())]);
         if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
             return Err(shipping_option_graphql_error(
                 ShippingOptionFailure::profile_incompatible(

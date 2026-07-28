@@ -24,6 +24,8 @@
 - observability signals for upload, delete, rendition, upload sessions, reconciliation, and storage health;
 - owner-local lifecycle persistence and restart-safe reconciliation;
 - immutable image renditions with bounded processing;
+- the `media/asset` translation-target provider, including exact-locale
+  aggregate coverage and a tenant-scoped change cursor;
 - Local and env-gated S3-compatible lifecycle integration sources.
 
 ## Public image delivery contract
@@ -48,6 +50,11 @@ Direct-public media has the same public-delivery revocation model as before: onc
 - Profiles consumes the owner descriptor and separately revalidates tenant, profile uploader, and image MIME before presentation;
 - `rustok-seo` and other metadata consumers may emit only Media-approved public descriptors;
 - no consumer reads Media tables, object keys, or storage handles directly;
+- Translation consumes exact Media coverage only through
+  `TranslationTargetProvider::read_progress`. Media aggregates source-eligible
+  active assets, counts only exact target-row values, and brackets the
+  aggregate with its owner cursor. Translation writes, translated-asset
+  deletion, and active-asset failure all append cursor evidence transactionally;
 - whole-module remote extraction must define how the Media-owned public URL and byte endpoint are reached before claiming provider parity. The current capability is embedded-runtime source-complete only.
 
 ## Verification

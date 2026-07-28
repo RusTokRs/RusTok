@@ -43,8 +43,7 @@ const CHECKOUT_PLAN_MARKETPLACE_SNAPSHOT_BOUNDARY: &str =
     "commerce_checkout_plan_marketplace_snapshot";
 const MARKETPLACE_SNAPSHOT_OWNER: &str = "rustok_cart";
 const MARKETPLACE_SNAPSHOT_OPERATION: &str = "list_marketplace_line_snapshots";
-const CHECKOUT_PLAN_PRODUCT_PROJECTION_BOUNDARY: &str =
-    "commerce_checkout_plan_product_projection";
+const CHECKOUT_PLAN_PRODUCT_PROJECTION_BOUNDARY: &str = "commerce_checkout_plan_product_projection";
 const PRODUCT_PROJECTION_OWNER: &str = "rustok_product";
 const PRODUCT_PROJECTION_READ_OPERATION: &str = "read_product_projection";
 const VARIANT_PRODUCT_PROJECTION_READ_OPERATION: &str = "read_variant_product_projection";
@@ -329,7 +328,9 @@ impl CheckoutPlanBuilder {
                     },
                 )
                 .await
-                .map_err(|error| checkout_plan_inventory_boundary_error(&inventory_context, error))?;
+                .map_err(|error| {
+                    checkout_plan_inventory_boundary_error(&inventory_context, error)
+                })?;
             if !availability.available {
                 return Err(CheckoutError::Validation(format!(
                     "Variant {variant_id} does not have enough available inventory for the cart channel"

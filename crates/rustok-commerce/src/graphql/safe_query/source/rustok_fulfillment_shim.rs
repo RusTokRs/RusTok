@@ -2,12 +2,11 @@ use std::sync::Arc;
 
 use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use ::rustok_fulfillment::{
-    FindLatestFulfillmentByOrderProjectionRequest, FulfillmentReadPort,
-    FulfillmentResponse, ListAllShippingOptionProjectionsRequest,
-    ListFulfillmentProjectionsRequest, ListFulfillmentsInput,
-    ListShippingOptionProjectionsRequest, ReadFulfillmentProjectionRequest,
-    ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort,
-    ShippingOptionReadPort, ShippingOptionResponse,
+    FindLatestFulfillmentByOrderProjectionRequest, FulfillmentReadPort, FulfillmentResponse,
+    ListAllShippingOptionProjectionsRequest, ListFulfillmentProjectionsRequest,
+    ListFulfillmentsInput, ListShippingOptionProjectionsRequest, ReadFulfillmentProjectionRequest,
+    ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort, ShippingOptionReadPort,
+    ShippingOptionResponse,
 };
 use ::sea_orm::DatabaseConnection;
 use ::uuid::Uuid;
@@ -47,8 +46,7 @@ use error::FulfillmentError;
 
 pub type FulfillmentResult<T> = Result<T, FulfillmentError>;
 
-const GRAPHQL_QUERY_FULFILLMENT_BOUNDARY: &str =
-    "commerce_graphql_query_fulfillment_facade";
+const GRAPHQL_QUERY_FULFILLMENT_BOUNDARY: &str = "commerce_graphql_query_fulfillment_facade";
 
 pub(crate) struct ShippingOptionAdminQueryError(BoundaryError);
 

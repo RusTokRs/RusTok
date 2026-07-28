@@ -633,11 +633,7 @@ pub async fn show_shipping_option(
         .await
         .map_err(|error| {
             map_admin_shipping_option_port_error(
-                AdminShippingOptionErrorContext::new(
-                    tenant.id,
-                    Some(id),
-                    "get_shipping_option",
-                ),
+                AdminShippingOptionErrorContext::new(tenant.id, Some(id), "get_shipping_option"),
                 &read_context,
                 "read_shipping_option_projection",
                 error,

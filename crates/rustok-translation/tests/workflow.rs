@@ -914,7 +914,10 @@ async fn workflow_events_are_content_free_and_replay_once() {
 #[tokio::test]
 async fn successful_terminal_apply_completes_the_job_and_updates_progress_atomically() {
     let (database, service, tenant_id, _) = fixture_with_apply_state().await;
-    let progress_service = TranslationProgressService::new(database.clone());
+    let progress_service = TranslationProgressService::new(
+        database.clone(),
+        Arc::new(TranslationTargetRegistry::default()),
+    );
     let (item_id, proposal_id) =
         create_approved_item(&service, tenant_id, "progress-completion").await;
     let item = job_item::Entity::find_by_id(item_id)
@@ -972,7 +975,10 @@ async fn successful_terminal_apply_completes_the_job_and_updates_progress_atomic
 #[tokio::test]
 async fn progress_rebuild_repairs_drift_is_idempotent_and_tenant_isolated() {
     let (database, service, tenant_id) = fixture().await;
-    let progress_service = TranslationProgressService::new(database.clone());
+    let progress_service = TranslationProgressService::new(
+        database.clone(),
+        Arc::new(TranslationTargetRegistry::default()),
+    );
     let job = service
         .create_job(
             write_context(tenant_id, "create-job-progress-rebuild"),
@@ -1051,7 +1057,10 @@ async fn progress_rebuild_repairs_drift_is_idempotent_and_tenant_isolated() {
 #[tokio::test]
 async fn blocked_item_retry_is_explicit_actor_bound_and_does_not_retry_conflicts() {
     let (database, service, tenant_id, apply_state) = fixture_with_apply_state().await;
-    let progress_service = TranslationProgressService::new(database.clone());
+    let progress_service = TranslationProgressService::new(
+        database.clone(),
+        Arc::new(TranslationTargetRegistry::default()),
+    );
     let (item_id, proposal_id) = create_approved_item(&service, tenant_id, "retry-blocked").await;
     apply_state
         .next_error

@@ -18,7 +18,10 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 - `MediaTranslationTargetProvider` is registered by the server composition
   root as `media/asset`. It exposes bounded UUID cursor discovery, exact
   locale-only snapshots, stable field identities and hashes, permission floors,
-  validation, one-resource CAS apply, and a tenant-scoped owner change cursor.
+  validation, one-resource CAS apply, exact source/target aggregate coverage,
+  and a tenant-scoped owner change cursor. Aggregate reads use a stable
+  before/after cursor window, count no locale fallback, and expose only
+  source-eligible active assets.
 - Provider apply commits the exact target update, stable idempotency receipt,
   append-only change record, and content-free `translation.target.changed`
   outbox event in the same transaction. Replay returns the original receipt
@@ -32,6 +35,9 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
   record and owner event atomically with the locale row, so REST, GraphQL,
   native, AI-originated, embedded-port, and provider paths cannot silently
   bypass inventory repair evidence.
+- Translated-asset deletion and active-asset failure append deleted/unavailable
+  cursor records and owner events in the same owner transaction as their
+  lifecycle transition, preventing false-current Translation projections.
 - Production inventory enablement still requires projection replay, cursor
   checkpoint recovery, and sustained multi-replica operational evidence.
 - Direct uploads write an object, then atomically persist one asset and one immutable ready blob. Ambiguous database outcomes preserve the object for reconciliation.
@@ -99,6 +105,19 @@ The database remains the index; consumers never derive or list these keys.
 
 ## Verification
 
+- `scripts/verify/verify-media-admin-boundary.mjs` is the fast boundary
+  guardrail for the module-owned admin package. It locks the host-neutral
+  `HostRuntimeContext` native adapter alongside the parallel GraphQL and REST
+  adapters.
+- `contracts/media-fba-registry.json` is the machine-readable provider
+  contract. Its static and degraded-path evidence is retained in
+  `contracts/evidence/media-contract-test-static-matrix.json`,
+  `contracts/evidence/media-runtime-fallback-smoke.json`, and
+  `contracts/evidence/media-port-error-matrix.json`.
+- The whole-module extraction pilot and public URL policy remain governed by
+  `DECISIONS/2026-07-16-media-search-extraction-boundaries.md`;
+  `MediaAssetSummary` is the content-free read projection used by the FBA
+  contract.
 - `cargo test -p rustok-media --test public_image_proxy -- --nocapture`
 - `cargo test -p rustok-media-transport --test port_conformance -- --nocapture`
 - `node scripts/verify/verify-media-public-image-proxy.mjs`

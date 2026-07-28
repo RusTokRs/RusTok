@@ -1,8 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::{
     CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest, CartResponse,
     CartStatus,
@@ -259,8 +257,7 @@ impl CheckoutCompensationService {
         actor_id: Uuid,
         operation: &checkout_operation::Model,
     ) -> CheckoutCompensationResult<()> {
-        let payment_context =
-            payment_context(tenant_id, actor_id, operation, self.port_deadline);
+        let payment_context = payment_context(tenant_id, actor_id, operation, self.port_deadline);
         let snapshot = self
             .payment_compensation_port
             .compensate_checkout_payment(
@@ -369,12 +366,8 @@ impl CheckoutCompensationService {
                 status if status == CheckoutInventoryReservationStatus::Planned.as_str() => {}
                 status if status == CheckoutInventoryReservationStatus::Released.as_str() => {}
                 status if status == CheckoutInventoryReservationStatus::Reserved.as_str() => {
-                    let inventory_context = inventory_context(
-                        tenant_id,
-                        operation,
-                        &reservation,
-                        self.port_deadline,
-                    );
+                    let inventory_context =
+                        inventory_context(tenant_id, operation, &reservation, self.port_deadline);
                     let released = self
                         .reservation_port
                         .release_inventory_by_identity(

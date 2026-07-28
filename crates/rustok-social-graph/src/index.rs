@@ -164,8 +164,14 @@ mod tests {
     #[test]
     fn relation_schema_is_valid_and_non_localized() {
         let schema = social_graph_relation_index_schema().unwrap();
-        assert_eq!(schema.reference.module.as_str(), SOCIAL_GRAPH_RELATION_INDEX_MODULE);
-        assert_eq!(schema.reference.entity.as_str(), SOCIAL_GRAPH_RELATION_INDEX_ENTITY);
+        assert_eq!(
+            schema.reference.module.as_str(),
+            SOCIAL_GRAPH_RELATION_INDEX_MODULE
+        );
+        assert_eq!(
+            schema.reference.entity.as_str(),
+            SOCIAL_GRAPH_RELATION_INDEX_ENTITY
+        );
         assert_eq!(schema.locale_mode, LocaleMode::None);
         assert_eq!(schema.fields.len(), 3);
         assert!(schema.links.is_empty());
@@ -176,8 +182,8 @@ mod tests {
     fn active_relation_maps_to_monotonic_upsert() {
         let tenant_id = Uuid::from_u128(1);
         let event_id = Uuid::from_u128(2);
-        let mutation = social_graph_relation_index_mutation(tenant_id, event_id, event(true, 7))
-            .unwrap();
+        let mutation =
+            social_graph_relation_index_mutation(tenant_id, event_id, event(true, 7)).unwrap();
 
         let IndexMutation::Upsert {
             event_id: actual_event_id,
@@ -191,7 +197,9 @@ mod tests {
         assert_eq!(record.key.entity_id, Uuid::from_u128(10));
         assert_eq!(record.source_version, 7);
         assert_eq!(
-            record.fields.get(&FieldName::new(RELATION_KIND_FIELD).unwrap()),
+            record
+                .fields
+                .get(&FieldName::new(RELATION_KIND_FIELD).unwrap()),
             Some(&IndexValue::String("follow".to_string()))
         );
     }

@@ -14,11 +14,15 @@ use rustok_translation_targets::{
     TranslationPatchValidation, TranslationResourceIdentity, TranslationResourceLifecycle,
     TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
     TranslationStrategy, TranslationTargetCapability, TranslationTargetChange,
-    TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProvider,
+    TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationValueProfile,
     validate_translation_apply_context, validate_translation_read_context,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+    Select, TransactionTrait, sea_query::SelectStatement,
+};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -45,6 +49,8 @@ use crate::{
 };
 
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
+const TRANSLATABLE_FIELD_COUNT: u64 = 3;
+const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 #[derive(Clone)]
 /// Owner adapter that exposes Media localized metadata through the neutral
@@ -69,6 +75,7 @@ impl MediaTranslationTargetProvider {
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
                 TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
                 TranslationTargetCapability::ChangeCursor,
@@ -339,6 +346,8 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
                     locale: request.target_locale.as_str(),
                     resource_revision: receipt.resource_revision.as_str(),
                     target_revision: applied.revision,
+                    operation: "upsert",
+                    lifecycle: "active",
                     actor_id: event_actor_id(&context)?,
                     correlation_id: context.correlation_id.clone(),
                 },
@@ -358,6 +367,40 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
             self.fail_receipt(lease, error).await;
         }
         result
+    }
+
+    async fn read_progress(
+        &self,
+        context: PortContext,
+        request: TranslationTargetProgressRequest,
+    ) -> Result<TranslationTargetProgressFacts, PortError> {
+        validate_translation_read_context(&context)?;
+        authorize(&context, Action::Read)?;
+        request
+            .validate()
+            .map_err(|error| contract_validation_error(error.to_string()))?;
+        let tenant_id = parse_tenant_id(&context)?;
+
+        for _ in 0..PROGRESS_STABILITY_ATTEMPTS {
+            let cursor_before = self.latest_change_cursor(tenant_id).await?;
+            let mut facts = self.progress_facts(tenant_id, &request).await?;
+            let cursor_after = self.latest_change_cursor(tenant_id).await?;
+            if cursor_before == cursor_after {
+                facts.owner_change_cursor = cursor_after;
+                facts.validate().map_err(|error| {
+                    PortError::invariant_violation(
+                        "media.translation_progress_invalid",
+                        error.to_string(),
+                    )
+                })?;
+                return Ok(facts);
+            }
+        }
+
+        Err(PortError::unavailable(
+            "media.translation_progress_unstable",
+            "media translation progress changed while it was being aggregated",
+        ))
     }
 
     async fn read_changes(
@@ -408,6 +451,121 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
             next_cursor,
         })
     }
+}
+
+impl MediaTranslationTargetProvider {
+    async fn latest_change_cursor(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<Option<OpaqueCursor>, PortError> {
+        TranslationChangeEntity::find()
+            .filter(TranslationChangeColumn::TenantId.eq(tenant_id))
+            .order_by_desc(TranslationChangeColumn::Id)
+            .one(self.service.database())
+            .await
+            .map_err(|error| media_error_to_port_error(MediaError::Db(error)))?
+            .map(|change| {
+                OpaqueCursor::new(change.id.to_string()).map_err(|error| {
+                    PortError::invariant_violation(
+                        "media.translation_change_cursor_invalid",
+                        error.to_string(),
+                    )
+                })
+            })
+            .transpose()
+    }
+
+    async fn progress_facts(
+        &self,
+        tenant_id: Uuid,
+        request: &TranslationTargetProgressRequest,
+    ) -> Result<TranslationTargetProgressFacts, PortError> {
+        let resources = eligible_source_translations(tenant_id, request.source_locale.as_str())
+            .count(self.service.database())
+            .await
+            .map_err(|error| media_error_to_port_error(MediaError::Db(error)))?;
+        let optional_units = resources
+            .checked_mul(TRANSLATABLE_FIELD_COUNT)
+            .ok_or_else(|| {
+                PortError::invariant_violation(
+                    "media.translation_progress_overflow",
+                    "media translation progress count overflow",
+                )
+            })?;
+
+        let mut exact_optional_units = 0_u64;
+        for column in [
+            TranslationColumn::Title,
+            TranslationColumn::AltText,
+            TranslationColumn::Caption,
+        ] {
+            exact_optional_units = exact_optional_units
+                .checked_add(
+                    exact_target_field_count(
+                        self.service.database(),
+                        tenant_id,
+                        request.source_locale.as_str(),
+                        request.target_locale.as_str(),
+                        column,
+                    )
+                    .await?,
+                )
+                .ok_or_else(|| {
+                    PortError::invariant_violation(
+                        "media.translation_progress_overflow",
+                        "media translation progress count overflow",
+                    )
+                })?;
+        }
+
+        Ok(TranslationTargetProgressFacts {
+            required_units: 0,
+            exact_required_units: 0,
+            optional_units,
+            exact_optional_units,
+            resources,
+            // Media metadata fields are optional by owner contract, so no
+            // optional absence can make a source-eligible resource incomplete.
+            complete_resources: resources,
+            owner_change_cursor: None,
+        })
+    }
+}
+
+fn eligible_source_translations(tenant_id: Uuid, source_locale: &str) -> Select<TranslationEntity> {
+    TranslationEntity::find()
+        .inner_join(AssetEntity)
+        .filter(TranslationColumn::TenantId.eq(tenant_id))
+        .filter(TranslationColumn::Locale.eq(source_locale))
+        .filter(AssetColumn::TenantId.eq(tenant_id))
+        .filter(AssetColumn::LifecycleState.eq(AssetState::Active.as_str()))
+}
+
+fn eligible_source_asset_ids(tenant_id: Uuid, source_locale: &str) -> SelectStatement {
+    eligible_source_translations(tenant_id, source_locale)
+        .select_only()
+        .column(TranslationColumn::AssetId)
+        .into_query()
+}
+
+async fn exact_target_field_count(
+    database: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    source_locale: &str,
+    target_locale: &str,
+    column: TranslationColumn,
+) -> Result<u64, PortError> {
+    TranslationEntity::find()
+        .filter(TranslationColumn::TenantId.eq(tenant_id))
+        .filter(TranslationColumn::Locale.eq(target_locale))
+        .filter(
+            TranslationColumn::AssetId
+                .in_subquery(eligible_source_asset_ids(tenant_id, source_locale)),
+        )
+        .filter(column.is_not_null())
+        .count(database)
+        .await
+        .map_err(|error| media_error_to_port_error(MediaError::Db(error)))
 }
 
 fn change_from_model(change: TranslationChangeModel) -> Result<TranslationTargetChange, PortError> {

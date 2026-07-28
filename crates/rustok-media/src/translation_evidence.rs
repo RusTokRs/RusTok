@@ -18,6 +18,8 @@ pub(crate) struct TranslationChangeEvidence<'a> {
     pub locale: &'a str,
     pub resource_revision: &'a str,
     pub target_revision: i64,
+    pub operation: &'a str,
+    pub lifecycle: &'a str,
     pub actor_id: Option<Uuid>,
     pub correlation_id: String,
 }
@@ -34,8 +36,8 @@ pub(crate) async fn record_translation_change_in_transaction(
         locale: Set(evidence.locale.to_string()),
         resource_revision: Set(evidence.resource_revision.to_string()),
         target_revision: Set(evidence.target_revision),
-        operation: Set("upsert".to_string()),
-        lifecycle: Set("active".to_string()),
+        operation: Set(evidence.operation.to_string()),
+        lifecycle: Set(evidence.lifecycle.to_string()),
         created_at: Set(Utc::now().fixed_offset()),
     }
     .insert(transaction)
@@ -53,7 +55,7 @@ pub(crate) async fn record_translation_change_in_transaction(
                 changed_locale: evidence.locale.to_string(),
                 resource_revision: evidence.resource_revision.to_string(),
                 target_revision: evidence.target_revision.to_string(),
-                operation: "upsert".to_string(),
+                operation: evidence.operation.to_string(),
                 correlation_id: evidence.correlation_id,
             },
         )

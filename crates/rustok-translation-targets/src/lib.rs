@@ -95,6 +95,12 @@ pub enum TranslationTargetContractError {
     EmptyReceiptIdentity(&'static str),
     #[error("AI-exportable field `{0}` has a forbidden data classification")]
     UnsafeAiExport(FieldKey),
+    #[error("translation progress exact required units exceed required units")]
+    ExactRequiredUnitsOverflow,
+    #[error("translation progress exact optional units exceed optional units")]
+    ExactOptionalUnitsOverflow,
+    #[error("translation progress complete resources exceed resources")]
+    CompleteResourcesOverflow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -330,6 +336,21 @@ pub struct TranslationTargetProgressFacts {
     pub resources: u64,
     pub complete_resources: u64,
     pub owner_change_cursor: Option<OpaqueCursor>,
+}
+
+impl TranslationTargetProgressFacts {
+    pub fn validate(&self) -> Result<(), TranslationTargetContractError> {
+        if self.exact_required_units > self.required_units {
+            return Err(TranslationTargetContractError::ExactRequiredUnitsOverflow);
+        }
+        if self.exact_optional_units > self.optional_units {
+            return Err(TranslationTargetContractError::ExactOptionalUnitsOverflow);
+        }
+        if self.complete_resources > self.resources {
+            return Err(TranslationTargetContractError::CompleteResourcesOverflow);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -756,6 +777,32 @@ mod tests {
     #[test]
     fn tenant_locale_type_rejects_unknown_provenance() {
         assert!(TenantLocale::new("und").is_err());
+    }
+
+    #[test]
+    fn aggregate_progress_rejects_impossible_counts_and_equal_locales() {
+        let request = TranslationTargetProgressRequest {
+            source_locale: TenantLocale::new("en").unwrap(),
+            target_locale: TenantLocale::new("en").unwrap(),
+        };
+        assert_eq!(
+            request.validate(),
+            Err(TranslationTargetContractError::EqualSourceAndTargetLocale)
+        );
+
+        let facts = TranslationTargetProgressFacts {
+            required_units: 1,
+            exact_required_units: 2,
+            optional_units: 3,
+            exact_optional_units: 3,
+            resources: 1,
+            complete_resources: 1,
+            owner_change_cursor: None,
+        };
+        assert_eq!(
+            facts.validate(),
+            Err(TranslationTargetContractError::ExactRequiredUnitsOverflow)
+        );
     }
 
     #[test]

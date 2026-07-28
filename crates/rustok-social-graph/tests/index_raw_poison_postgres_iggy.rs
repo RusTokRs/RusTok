@@ -123,7 +123,8 @@ async fn raw_poison_persists_published_before_source_acknowledgement() -> TestRe
     let stream = evidence.config.topology.stream_name.clone();
     let dlq_group = unique_name("ordering-dlq");
     let transport = Arc::new(IggyTransport::new(evidence.config.clone()).await?);
-    let consumer = SocialGraphIndexConsumer::open(Arc::clone(&transport), evidence.db.clone()).await?;
+    let consumer =
+        SocialGraphIndexConsumer::open(Arc::clone(&transport), evidence.db.clone()).await?;
     let mut dlq_cursor = evidence
         .fixture
         .open_consumer_group(&stream, "dlq", &dlq_group)
@@ -232,7 +233,8 @@ async fn published_redelivery_is_acknowledgement_only_without_republication() ->
 
     let reopened_transport = Arc::new(IggyTransport::new(evidence.config.clone()).await?);
     let reopened_consumer =
-        SocialGraphIndexConsumer::open(Arc::clone(&reopened_transport), evidence.db.clone()).await?;
+        SocialGraphIndexConsumer::open(Arc::clone(&reopened_transport), evidence.db.clone())
+            .await?;
     let redelivered = receive_decode_failure(&reopened_consumer).await?;
     assert_eq!(redelivered.offset(), first_offset);
     assert_eq!(redelivered.delivery_id(), first_delivery_id);
@@ -305,9 +307,11 @@ async fn receive_cursor_message(
     let message = timeout(RECEIVE_TIMEOUT, cursor.receive())
         .await
         .map_err(|_| invalid_data("timed out waiting for a raw poison DLQ message"))??;
-    message.ok_or_else(|| Box::<dyn Error + Send + Sync>::from(invalid_data(
-        "raw poison DLQ cursor ended before a message",
-    )))
+    message.ok_or_else(|| {
+        Box::<dyn Error + Send + Sync>::from(invalid_data(
+            "raw poison DLQ cursor ended before a message",
+        ))
+    })
 }
 
 async fn acknowledge_cursor_message(

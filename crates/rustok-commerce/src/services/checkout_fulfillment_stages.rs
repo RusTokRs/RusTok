@@ -1,8 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_fulfillment::{
     CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
     EnsureCheckoutFulfillmentsRequest, FulfillmentResponse, ReadCheckoutFulfillmentsRequest,
@@ -510,13 +508,7 @@ fn fulfillment_stage_boundary_error(
     stage: &'static str,
     error: PortError,
 ) -> CheckoutFulfillmentStageError {
-    log_checkout_fulfillment_stage_boundary_failure(
-        context,
-        owner,
-        owner_operation,
-        stage,
-        &error,
-    );
+    log_checkout_fulfillment_stage_boundary_failure(context, owner, owner_operation, stage, &error);
     CheckoutFulfillmentStageError::Boundary {
         stage,
         code: error.code,

@@ -3,8 +3,7 @@ mod async_graphql_shim {
 
     pub type Error = super::super::query_error_boundary::BoundaryError;
     pub type FieldError = super::super::query_error_boundary::BoundaryError;
-    pub type Result<T> =
-        std::result::Result<T, super::super::query_error_boundary::BoundaryError>;
+    pub type Result<T> = std::result::Result<T, super::super::query_error_boundary::BoundaryError>;
 }
 
 use self::async_graphql_shim as async_graphql;
@@ -54,7 +53,9 @@ mod rustok_api_shim {
 
             fn not_found(message: &str) -> BoundaryError {
                 BoundaryError::from(
-                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::not_found(message),
+                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::not_found(
+                        message,
+                    ),
                 )
             }
         }
@@ -70,6 +71,7 @@ mod rustok_api_shim {
     }
 }
 
+#[path = "source/rustok_fulfillment_shim.rs"]
 mod rustok_fulfillment_shim;
 
 use self::rustok_api_shim as rustok_api;

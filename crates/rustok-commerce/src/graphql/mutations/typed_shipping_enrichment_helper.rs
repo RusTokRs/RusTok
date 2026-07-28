@@ -4,8 +4,7 @@ use rustok_fulfillment::ListShippingOptionProjectionsRequest;
 use uuid::Uuid;
 
 use crate::{
-    dto::CartResponse,
-    storefront_channel::normalize_public_channel_slug,
+    dto::CartResponse, storefront_channel::normalize_public_channel_slug,
     storefront_shipping::enrich_cart_delivery_groups_from_options,
 };
 
@@ -34,30 +33,17 @@ struct ShippingEnrichmentFailure {
 impl ShippingEnrichmentFailure {
     fn from_owner(error: PortError) -> Self {
         let (kind, internal_kind) = match &error.kind {
-            PortErrorKind::Validation => (
-                ShippingEnrichmentFailureKind::Validation,
-                "validation",
-            ),
-            PortErrorKind::NotFound => (
-                ShippingEnrichmentFailureKind::NotFound,
-                "not_found",
-            ),
-            PortErrorKind::Conflict => (
-                ShippingEnrichmentFailureKind::Conflict,
-                "conflict",
-            ),
-            PortErrorKind::Forbidden => (
-                ShippingEnrichmentFailureKind::Forbidden,
-                "forbidden",
-            ),
+            PortErrorKind::Validation => (ShippingEnrichmentFailureKind::Validation, "validation"),
+            PortErrorKind::NotFound => (ShippingEnrichmentFailureKind::NotFound, "not_found"),
+            PortErrorKind::Conflict => (ShippingEnrichmentFailureKind::Conflict, "conflict"),
+            PortErrorKind::Forbidden => (ShippingEnrichmentFailureKind::Forbidden, "forbidden"),
             PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                 ShippingEnrichmentFailureKind::StorageUnavailable,
                 "unavailable",
             ),
-            PortErrorKind::InvariantViolation => (
-                ShippingEnrichmentFailureKind::Invariant,
-                "invariant",
-            ),
+            PortErrorKind::InvariantViolation => {
+                (ShippingEnrichmentFailureKind::Invariant, "invariant")
+            }
         };
 
         Self {
@@ -181,13 +167,14 @@ pub(crate) async fn enrich_storefront_cart(
     let currency_code_length = cart.currency_code.chars().count();
     let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
         .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
-    let owner_context = super::shipping_option_read_context::storefront_shipping_option_read_context(
-        tenant_id,
-        cart.id,
-        request_context.locale.as_str(),
-        public_channel_slug.as_deref(),
-        "list-options",
-    );
+    let owner_context =
+        super::shipping_option_read_context::storefront_shipping_option_read_context(
+            tenant_id,
+            cart.id,
+            request_context.locale.as_str(),
+            public_channel_slug.as_deref(),
+            "list-options",
+        );
     let shipping_option_read_port =
         super::shipping_option_read_context::storefront_shipping_option_read_port(db.clone());
 

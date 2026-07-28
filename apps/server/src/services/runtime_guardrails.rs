@@ -120,15 +120,17 @@ fn observe_social_graph_index_worker(
             observe_worker(
                 snapshot,
                 "Social Graph Index durable consumer",
-                ctx.shared_get::<SocialGraphIndexWorkerHandle>()
-                    .map(|handle| handle.is_ready()),
+                ctx.shared_map::<SocialGraphIndexWorkerHandle, _>(
+                    SocialGraphIndexWorkerHandle::is_ready,
+                ),
                 RuntimeGuardrailStatus::Critical,
             );
             observe_worker(
                 snapshot,
                 "Social Graph Index poison receipt observer",
-                ctx.shared_get::<SocialGraphIndexPoisonObserverHandle>()
-                    .map(|handle| handle.is_ready()),
+                ctx.shared_map::<SocialGraphIndexPoisonObserverHandle, _>(
+                    SocialGraphIndexPoisonObserverHandle::is_ready,
+                ),
                 RuntimeGuardrailStatus::Degraded,
             );
         }

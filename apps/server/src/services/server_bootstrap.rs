@@ -77,7 +77,7 @@ pub(crate) fn known_dev_jwt_fragment(secret: &str) -> Option<&'static str> {
 
 #[cfg_attr(debug_assertions, allow(dead_code))]
 pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static str> {
-    const SAMPLE_PATTERNS: &[&str] = &["://postgres:postgres@", "://rustok:rustok@"]; 
+    const SAMPLE_PATTERNS: &[&str] = &["://postgres:postgres@", "://rustok:rustok@"];
     SAMPLE_PATTERNS
         .iter()
         .copied()
