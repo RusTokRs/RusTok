@@ -16,6 +16,49 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
   "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution-contract.json";
+const expectedRunnerPath = "scripts/evidence/capture-iggy-consumer-poison-postgres.mjs";
+const expectedVerifierPath =
+  "scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs";
+const expectedEvidencePath =
+  "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution.json";
+const expectedCommands = [
+  {
+    program: "cargo",
+    args: [
+      "test",
+      "-p",
+      "rustok-iggy-connector",
+      "--features",
+      "migrations",
+      "--test",
+      "consumer_poison_receipt_postgres_environment",
+      "--",
+      "--nocapture",
+      "--test-threads=1",
+    ],
+  },
+  {
+    program: "cargo",
+    args: [
+      "test",
+      "-p",
+      "rustok-iggy-connector",
+      "--features",
+      "migrations",
+      "--test",
+      "consumer_poison_receipt_postgres",
+      "--",
+      "--nocapture",
+      "--test-threads=1",
+    ],
+  },
+];
+const expectedCaseNames = [
+  "concurrent_publishers_have_one_claim_owner",
+  "expired_lease_is_reclaimed_and_fences_the_previous_publisher",
+  "conflicts_roll_back_without_overwriting_original_identity",
+  "terminal_states_and_aggregate_inspection_remain_consistent",
+];
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));
 const outputPath = resolve(repoRoot, contract.evidence_path);
 
@@ -112,6 +155,32 @@ function ensureOutputInsideRepository() {
   }
 }
 
+function validateContractBoundary() {
+  if (
+    contract.schema_version !== 1 ||
+    contract.module !== "iggy-connector" ||
+    contract.packet !== "consumer-poison-postgres-execution-contract" ||
+    contract.status !== "runtime_execution_contract_locked"
+  ) {
+    fail("retained evidence contract identity drift");
+  }
+  if (
+    contract.runner !== expectedRunnerPath ||
+    contract.verifier !== expectedVerifierPath ||
+    contract.evidence_path !== expectedEvidencePath ||
+    contract.evidence_status !== "runtime_execution_pending"
+  ) {
+    fail("retained evidence tooling or output boundary drift");
+  }
+  if (!sameRecord(contract.commands, expectedCommands)) {
+    fail("retained evidence command allowlist drift");
+  }
+  const caseNames = contract.required_cases?.map((requiredCase) => requiredCase.case);
+  if (!sameRecord(caseNames, expectedCaseNames)) {
+    fail("retained evidence required case allowlist drift");
+  }
+}
+
 function validateDatabaseUrl() {
   const primary = process.env[contract.database_url_env];
   const fallback = process.env[contract.database_url_fallback_env];
@@ -133,9 +202,13 @@ function validateDatabaseUrl() {
   return primary ? contract.database_url_env : contract.database_url_fallback_env;
 }
 
+function workingTreeStatus() {
+  return runChecked("git", ["status", "--porcelain=v1", "--untracked-files=all"])
+    .stdout;
+}
+
 function ensureCleanCommit() {
-  const status = runChecked("git", ["status", "--porcelain=v1", "--untracked-files=all"]);
-  if (status.stdout.trim()) {
+  if (workingTreeStatus().trim()) {
     fail("working tree must be clean before retained evidence execution");
   }
   const commit = oneLine(
@@ -146,6 +219,12 @@ function ensureCleanCommit() {
     fail("git commit must be a full lowercase SHA-1");
   }
   return commit;
+}
+
+function ensureCleanAfterExecution() {
+  if (workingTreeStatus().trim()) {
+    fail("working tree changed during retained evidence execution");
+  }
 }
 
 function executeContractCommand(command) {
@@ -165,6 +244,7 @@ function writeAtomically(packet) {
 
 try {
   ensureOutputInsideRepository();
+  validateContractBoundary();
   const databaseUrlSource = validateDatabaseUrl();
   const gitCommit = ensureCleanCommit();
   const initialSourceSha256 = sourceHashes();
@@ -172,11 +252,8 @@ try {
   const rustcVersion = oneLine(runChecked("rustc", ["--version"]).stdout, "rustc_version");
   const startedAt = new Date().toISOString();
 
-  if (!Array.isArray(contract.commands) || contract.commands.length !== 2) {
-    fail("retained evidence contract must contain exactly two commands");
-  }
-  const environmentResult = executeContractCommand(contract.commands[0]);
-  const scenarioResult = executeContractCommand(contract.commands[1]);
+  const environmentResult = executeContractCommand(expectedCommands[0]);
+  const scenarioResult = executeContractCommand(expectedCommands[1]);
   const environmentOutput = `${environmentResult.stdout}\n${environmentResult.stderr}`;
   const scenarioOutput = `${scenarioResult.stdout}\n${scenarioResult.stderr}`;
 
@@ -210,6 +287,7 @@ try {
   if (!sameRecord(finalSourceSha256, initialSourceSha256)) {
     fail("retained evidence source files changed during execution");
   }
+  ensureCleanAfterExecution();
   const completedAt = new Date().toISOString();
   const combinedOutput = `${environmentOutput}\n--- consumer poison scenarios ---\n${scenarioOutput}`;
 
@@ -235,7 +313,7 @@ try {
       cargo: cargoVersion,
       rustc: rustcVersion,
     },
-    commands: contract.commands,
+    commands: expectedCommands,
     source_sha256: finalSourceSha256,
     test_output_sha256: sha256(combinedOutput),
     test_output_bytes: Buffer.byteLength(combinedOutput),
