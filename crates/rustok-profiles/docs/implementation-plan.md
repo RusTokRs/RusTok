@@ -14,7 +14,8 @@ restricted or unavailable rows as absent.
 
 `followers_only` visibility resolves through authoritative Social Graph owner
 ports. Profiles never reads relation tables and never authorizes from an event,
-Index projection, DLQ receipt, broker identifier, consumer offset, or lag metric.
+Index projection, decoded/raw DLQ receipt, broker identifier, consumer offset, or
+lag metric.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and
 MIME constraints and exposes only Media-selected descriptors. Profiles does not
@@ -42,17 +43,18 @@ mutation retry.
   persistence before Index inbox apply.
 - `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable results.
 - The persistent consumer retains one outstanding delivery and acknowledges only
-  after schema/mutation or durable DLQ results exist.
+  after schema/mutation or durable decoded/raw DLQ results exist.
 - Runtime execution is default-off through
   `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED`; explicit enablement requires a
   worker host and `outbox_iggy`.
 - Relay and consumer reuse the single `Arc<IggyTransport>` owned by `EventRuntime`.
-- Projection, DLQ publication, and acknowledgement failures use bounded retry.
+- Projection, decoded/raw DLQ publication, neutral receipt, and acknowledgement
+  failures use bounded retry.
 - Migration `m20260727_000004_create_index_dlq_receipts` stores immutable poison
   source coordinates and exact broker bytes under trusted tenant/consumer/event
   identity.
-- Receipt states reserve and lease publication, then persist `published` before
-  source acknowledgement. Existing `published`/`acknowledged` receipts are
+- Decoded receipt states reserve and lease publication, then persist `published`
+  before source acknowledgement. Existing `published`/`acknowledged` receipts are
   recognized before projection and enter acknowledgement-only recovery.
 - A versioned length-framed SHA-256 construction derives one UUIDv8 from the
   immutable trusted receipt identity and exact payload. Retry count, time,
@@ -88,13 +90,15 @@ owner worker, and the offset remained uncommitted.
 - compatibility `receive()` still returns a bounded error and performs no
   implicit acknowledgement.
 
-`rustok-iggy-connector` now owns the neutral durable result boundary:
+`rustok-iggy-connector` owns the neutral durable result boundary:
 
 - migration `m20260728_000001_create_consumer_poison_receipts` is registered
   through the existing connector migration hook;
 - source coordinates `(consumer_group, stream, topic, partition, offset)` are
   unique and bind one deterministic connector delivery UUID plus exact bytes;
-- reuse with another UUID or exact payload fails closed as an identity conflict;
+- empty payload is valid exact broker input;
+- reuse with another UUID, coordinate set, or exact payload fails closed as an
+  identity conflict;
 - the first stable error code and observed delivery attempt are retained as
   diagnostics, while later decoder classification or retry-count drift does not
   redefine the connector delivery identity;
@@ -103,12 +107,24 @@ owner worker, and the offset remained uncommitted.
   recognized idempotently;
 - the store performs no publish, DLQ routing, source commit, or authorization.
 
-The Social Graph Index worker is not wired to this result yet. That remains
-intentional until the worker can prove exact-byte publish and durable `published`
-before source acknowledgement, then recover redelivery without duplicate publish.
-The platform append-only migration tail also needs reconciliation: both the
-existing Social Graph Index DLQ migration and the connector poison migration must
-be appended without rewriting the published prefix.
+The Social Graph Index worker is now wired to the typed result:
+
+- `SocialGraphIndexConsumer::receive_delivery` exposes events and decode failures
+  without committing either;
+- the worker checks for an existing neutral receipt before applying current DLQ
+  policy, so a previously selected result continues recovery even when new DLQ
+  decisions are later disabled;
+- a new undecodable delivery remains uncommitted while DLQ is disabled;
+- a claimed receipt publishes `failure.to_dlq_entry(1)` with exact bytes and the
+  deterministic connector UUID, then persists `published` before source ack;
+- `published`/`acknowledged` redelivery skips publication and enters ack-only
+  recovery;
+- source ack precedes best-effort `mark_acknowledged` bookkeeping;
+- the raw path never invokes Index projection and never creates tenant/event facts.
+
+The remaining blocker is migration-order reconciliation: both the existing Social
+Graph Index DLQ migration and the connector poison migration must be appended to
+the explicit platform release-order tail without rewriting its published prefix.
 
 ## FFA/FBA boundary
 
@@ -134,9 +150,9 @@ be appended without rewriting the published prefix.
    **Status:** source-complete for owner privacy ports, public GraphQL lookups,
    author cards, storefront, Customer Admin enrichment, receipt-aware commands,
    transactional events, cleanup CLI, bounded replay, schema registration,
-   result-first Index apply/ack, durable decoded-event DLQ receipt recovery,
-   deterministic broker identity, shared-transport lifecycle, readiness, delivery
-   telemetry, and broker-backed complete lag observation.
+   result-first Index apply/ack, durable decoded-event and raw-delivery DLQ receipt
+   recovery, deterministic broker identity, shared-transport lifecycle, readiness,
+   delivery telemetry, and broker-backed complete lag observation.
    **Remaining:** prove bounded replay/rescan repair and retain compiled/runtime
    evidence for privacy, receipts, cleanup, event relay/replay, schema concurrency,
    broker restart/redelivery/DLQ receipt/header/dedup/position observation,
@@ -161,25 +177,27 @@ be appended without rewriting the published prefix.
 
 5. **Complete audit and operational evidence.**
    **Status:** source-complete for Profiles operations, Social Graph command
-   telemetry, durable command/decoded-event DLQ receipts, deterministic DLQ broker
-   identity, maintenance, events, replay, cleanup CLI, persisted schema
-   registration, durable terminal recognition, default-off shared transport
-   lifecycle, retries, shutdown, readiness, bounded metrics, and complete lag.
+   telemetry, durable command/decoded-event/raw-delivery DLQ receipts,
+   deterministic DLQ broker identity, maintenance, events, replay, cleanup CLI,
+   persisted schema registration, durable terminal recognition, default-off shared
+   transport lifecycle, retries, shutdown, readiness, bounded metrics, and complete
+   lag.
    **Remaining:** deployment retention approval, PostgreSQL concurrency/retention/
    replay/rollback, real broker observer/reconnect/TLS/rebalance, deterministic
    header and dedup disabled/enabled/expiry/capacity evidence, confirmation-policy
    decision, multi-replica evidence, and retained operator packets.
 
 6. **Handle undecodable sealed contract deliveries without invented ownership.**
-   **Status:** typed source delivery and neutral durable receipt are source-complete;
-   migration-tail reconciliation and worker integration are not complete.
+   **Status:** source-complete for typed receive, immutable connector identity,
+   neutral durable receipt, exact-byte DLQ publication, durable published-before-ack,
+   existing-result recovery, and best-effort post-ack bookkeeping.
    **Next:** append both pending receipt migrations to the platform release-order
-   tail, wire the Social Graph Index worker to `receive_delivery`, construct the
-   neutral identity, publish exact bytes before `mark_published`, acknowledge only
-   afterward, and mark `acknowledged` as best-effort bookkeeping.
-   **Done when:** malformed bytes can be retained, classified, durably terminalized,
+   tail, reconcile with current `main`, refresh `Cargo.lock`, and execute PostgreSQL
+   plus real-Iggy failure/restart/multi-replica evidence.
+   **Done when:** malformed bytes are retained, classified, durably terminalized,
    published/recovered, and acknowledged without fabricated tenant/event identity,
-   implicit commits, duplicate authorization effects, or exactly-once claims.
+   implicit commits, duplicate authorization effects, or exactly-once claims, and
+   the behavior is retained by compiled/database/broker evidence.
 
 ## Recheck checkpoint — 2026-07-28
 
@@ -193,10 +211,15 @@ be appended without rewriting the published prefix.
   Index/broker state never authorizes profile presentation.
 - Added the typed exact-byte decode-failure contract with explicit acknowledgement.
 - Added connector-owned neutral receipt DDL/store with private immutable source
-  identity, exact-byte conflict detection, first-diagnostic retention, leased
-  publication, terminal recognition, and bounded stable errors.
-- Kept malformed bytes outside the Social Graph tenant/event receipt because those
-  trusted facts are unavailable and must not be synthesized.
+  identity, empty exact-byte support, collision detection, first-diagnostic
+  retention, leased publication, terminal recognition, and bounded stable errors.
+- Wired the Social Graph Index owner adapter and server worker to typed raw delivery.
+- Added exact-byte reserve/publish/mark-published/source-ack ordering and ack-only
+  redelivery recovery without tenant/event synthesis or Index projection.
+- Preserved an existing durable raw result across later DLQ policy disablement while
+  leaving a new undecodable delivery uncommitted when no terminal policy is enabled.
+- Enabled connector migration/storage API explicitly in the server dependency rather
+  than relying on transitive feature unification.
 - Registered the connector migration in the truthful `mode: none` backfill ledger.
 - Found that `m20260727_000004_create_index_dlq_receipts` is absent from the current
   explicit append-only migration tail; the connector receipt migration must be
@@ -263,4 +286,6 @@ be appended without rewriting the published prefix.
     partition or offset as metric labels.
 15. Undecodable bytes must not invent tenant or domain event identity. Use a neutral
     connector poison contract and acknowledge only after its terminal result exists.
-16. Update Profiles and affected owner docs with every boundary change.
+16. Existing durable poison choices remain recoverable across later policy disablement;
+    new undecodable deliveries remain uncommitted without an enabled terminal policy.
+17. Update Profiles and affected owner docs with every boundary change.
