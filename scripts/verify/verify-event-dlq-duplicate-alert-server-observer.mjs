@@ -99,6 +99,10 @@ if (
   contract.scan?.global_message_budget_may_stop_before_later_partitions !== true ||
   contract.scan?.partition_fairness_claimed !== false ||
   contract.scan?.explicit_start_offset !== true ||
+  contract.scan?.same_configured_start_offset_reused_each_poll !== true ||
+  contract.scan?.moving_cursor !== false ||
+  contract.scan?.current_tail_coverage_claimed !== false ||
+  contract.scan?.complete_history_claimed !== false ||
   contract.scan?.bounded_max_messages !== true ||
   contract.scan?.bounded_batch_size !== true ||
   contract.scan?.auto_commit !== false ||
@@ -197,6 +201,7 @@ for (const marker of [
 
 for (const marker of [
   'const ENABLE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED";',
+  'const START_OFFSET_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET";',
   '"iggy.dlq_duplicate.alert_server_observer_configuration_invalid"',
   '"iggy.dlq_duplicate.alert_server_observer_runtime_unavailable"',
   "pub enum EventDlqDuplicateAlertObserverMode",
@@ -209,7 +214,6 @@ for (const marker of [
   "let enabled = match optional_bool_env(ENABLE_ENV, false)",
   "record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);",
   "record_startup_unavailable(ctx, STARTUP_RUNTIME_UNAVAILABLE);",
-  "return Ok(());",
   "EventDeliveryProfile::Memory",
   "EventDeliveryProfile::OutboxLocal",
   "EventDeliveryProfile::OutboxIggy",
@@ -218,8 +222,10 @@ for (const marker of [
   "ctx.shared_get::<Arc<IggyTransport>>()",
   "DlqDuplicateAlertRuntimePublisher::new(config.policy)",
   "IggyDlqDuplicateAlertObserver::connect(",
+  "config.start_offset",
   "if let Some(connected) = observer.take()",
   "connected.summarize().await",
+  "observer = Some(connected);",
   "publisher.publish(&summary)",
   "publisher.mark_unavailable()",
   "event delivery remains active",
@@ -269,6 +275,7 @@ for (const marker of [
 requireText("runtime composition", runtimeSource, "pub struct DlqDuplicateAlertRuntimePublisher");
 requireText("runtime composition", runtimeSource, "pub fn mark_unavailable(");
 requireText("bounded scanner", scannerSource, "let mut remaining = request.max_messages;");
+requireText("bounded scanner", scannerSource, "let mut next_offset = request.start_offset;");
 requireText("bounded scanner", scannerSource, "if remaining == 0");
 requireText("bounded scanner", scannerSource, "requested_count,\n                        false,");
 requireText("Iggy module registry", lib, "pub mod dlq_duplicate_alert_observer;");
@@ -330,6 +337,7 @@ if (
 
 const requiredRemaining = new Set([
   "partition_fairness_or_per_partition_budget_policy",
+  "moving_window_or_per_partition_cursor_policy",
   "telemetry_projection_outside_observer",
   "health_projection_without_readiness_coupling",
   "notification_delivery_and_suppression",
@@ -348,5 +356,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, non-fatal Unavailable startup state, fail-closed OutboxIggy mode selection, bundled/external observation, a configured partition allowlist under one bounded global message budget without a fairness claim, auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
+  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, non-fatal Unavailable startup state, fail-closed OutboxIggy mode selection, bundled/external observation, a configured partition allowlist under one bounded global message budget without fairness, moving-cursor, current-tail, or complete-history claims, auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
 );
