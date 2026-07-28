@@ -73,6 +73,7 @@ for (const key of [
   "raw_group_bound",
   "raw_allow_deny_user_bounds",
   "immutable_relation_rows",
+  "shared_postgres_advisory_lock",
   "postgres_and_sqlite_migration",
 ]) {
   if (contract.composition?.[key] !== true) {
@@ -104,6 +105,7 @@ for (const marker of [
   "forum_validate_topic_reply_create_audience_group_insert",
   "forum_validate_topic_reply_create_audience_user_insert",
   "forum_reject_topic_reply_create_audience_update",
+  "NEW.topic_id::text || ':reply-create'",
   ") >= 32",
   ") >= 100",
   "DatabaseBackend::Postgres",
@@ -119,6 +121,7 @@ for (const marker of [
   "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?",
   "lock_category_tree_in_tx(&txn, tenant_id)",
   "lock_topic_reply_create_audience_in_tx(&txn, tenant_id, topic_id)",
+  "format!(\"{tenant_id}:{topic_id}:reply-create\")",
   "load_category_reply_create_audience_policy(&txn, tenant_id, topic.category_id)",
   "forum_topic_reply_create_audience_policy::Entity::delete_many()",
   "if !constraints_are_empty(&constraints)",
