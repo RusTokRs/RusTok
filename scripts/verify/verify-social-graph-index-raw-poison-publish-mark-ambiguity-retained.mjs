@@ -193,7 +193,9 @@ if (
 
 for (const marker of [
   "function oneLine(value, field, maximumLength = 256)",
-  "/[\\r\\n]/u.test(normalized)",
+  "value.trim() !== value",
+  "/[\\r\\n]/u.test(value)",
+  "process.env[contract.database_environment] ??",
   "validateDatabaseUrl();",
   "validateCredentialsPair();",
   "validateAddress(process.env[scenario.address_env]",
