@@ -35,15 +35,18 @@
     "publish_first_failure_through_iggy_transport_move_to_dlq",
     "receive_and_ack_exact_first_dlq_payload",
     "drop_source_cursor_without_ack",
-    "reopen_same_source_group_and_receive_same_offset_payload_and_delivery_uuid",
+    "shutdown_first_transport_without_source_ack",
+    "connect_new_transport_with_same_stream_and_source_group",
+    "receive_same_offset_payload_and_delivery_uuid_after_reconnect",
     "explicitly_acknowledge_redelivered_failure",
     "receive_second_payload_at_a_greater_offset",
     "publish_and_verify_exact_second_dlq_payload",
     "explicitly_acknowledge_second_failure",
-    "shutdown_fixture_connector_and_transport"
+    "shutdown_fixture_connector_and_reopened_transport"
   ],
   "production_paths": [
     "IggyTransport::new",
+    "IggyTransport::shutdown",
     "IggyTransport::open_persistent_contract_consumer_group",
     "PersistentContractConsumerGroup::receive_delivery",
     "ConsumedContractDecodeFailure::to_dlq_entry",
