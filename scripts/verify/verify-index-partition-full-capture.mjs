@@ -32,6 +32,8 @@ try {
   const archiveCli = read('scripts/verify/render-index-partition-archive-manifest.mjs');
   const archiveVerifyCli = read('scripts/verify/verify-index-partition-archive-manifest.mjs');
   const reviewTest = read('scripts/verify/index-partition-review.test.mjs');
+  const postInspectionGuard = read('scripts/verify/verify-index-partition-post-inspection-drift.mjs');
+  const postInspectionTest = read('scripts/verify/index-partition-post-inspection-drift.test.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
   const plan = read('crates/rustok-index/docs/implementation-plan.md');
@@ -147,6 +149,7 @@ try {
     'saved archive manifest aliases a retained bundle file',
     'saved archive manifest digest does not match canonical payload',
     'saved archive manifest does not match recalculated retained bundle manifest',
+    'retained_files_rechecked: true',
     'production_lifecycle_authorized: false',
   ], 'retained partition archive manifest core');
   requireMarkers(archiveCli, [
@@ -198,6 +201,19 @@ try {
     'saved admission that does not match recalculated packet admission',
     'rejects raw artifact drift from the retained packet',
   ], 'retained partition review fixture');
+  requireMarkers(postInspectionGuard, [
+    '[verify-index-partition-post-inspection-drift]',
+    'readStableRegularFile',
+    'assertRetainedFilesUnchanged',
+    'changed after inspection',
+    'retained_files_rechecked: true',
+    'production_lifecycle_authorized: false',
+  ], 'post-inspection drift guard');
+  requireMarkers(postInspectionTest, [
+    'rechecks all retained files before publishing an archive verification receipt',
+    'fails closed when a retained file changes after inspection',
+    'retained bundle file query changed after inspection',
+  ], 'post-inspection drift fixture');
   requireMarkers(tooling, [
     'partition-capture',
     'run-index-partition-evidence.mjs',
@@ -210,6 +226,8 @@ try {
     'verify-index-partition-archive-manifest.mjs',
     'index-partition-review.test.mjs',
     'verify-index-partition-full-capture.mjs',
+    'verify-index-partition-post-inspection-drift.mjs',
+    'index-partition-post-inspection-drift.test.mjs',
   ], 'index storage tooling router');
   requireMarkers(runbook, [
     'M3 partition cutover rehearsal evidence runner: `complete`',
