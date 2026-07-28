@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-28
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-AS provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors; FORUM-20AQ adds normalized inherited category topic-create audience persistence; FORUM-20AR enforces that policy in every topic-create owner path; FORUM-20AS composes exact GraphQL/REST caller context and the host-published Groups facts provider into both create transports. Reply/moderate audiences, remaining trust/channel facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-AT provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors; FORUM-20AQ adds normalized inherited category topic-create audience persistence; FORUM-20AR enforces that policy in every topic-create owner path; FORUM-20AS composes exact GraphQL/REST caller context and the host-published Groups facts provider into both create transports; FORUM-20AT publishes an exact active current-Channel fact ahead of optional Groups fallback. Reply/moderate audiences, remaining trust facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1356,13 +1356,30 @@ visibility policy. Do not place ACL policy in arbitrary JSON.
 - consume the existing feature-guarded Groups facts publication for both transports while keeping
   provider absence fail closed and adding no topic-create DTO, migration, or Forum-to-Groups dependency.
 
+### Delivered in `FORUM-20AT`
+
+- publish one host-owned composite `SharedForumAudienceFactsPort` for every Forum build while
+  preserving the historical `FORUM-20Q` Groups adapter as an optional owner-backed fallback;
+- accept a Channel match only from the exact normalized requested `PortContext.channel`, then
+  confirm that slug through `ChannelReadPort` as active and tenant-matching;
+- never list or probe unrequested channels, and let an exact current-Channel match decide the
+  positive-selector union before optional Groups or unavailable trust facts are consulted;
+- keep Channel-only topic-create policy operational when Groups is not compiled, while requested
+  Groups or trust facts remain typed retryable unavailable when no delivered selector decides;
+- add inline host tests, a machine-readable contract and a static verifier without migrations,
+  public DTO changes, or a new Forum-to-Channel dependency.
+
 ### Compatibility and degraded mode
 
 The nullable public/authenticated category floor and the normalized category/topic
 layers require no destructive backfill. Existing content without richer layers keeps
 its previous audience. Locally decidable role and explicit-user decisions do not
-require optional facts providers; unresolved trust, channel, or group facts fail
-closed and can never broaden a decision.
+require optional facts providers. FORUM-20AT requires no migration or public DTO change:
+the host already owns the Channel runtime, and exact current-Channel facts are available
+in every Forum build. A missing or unrequested route channel is an authoritative Channel
+miss, not a discovery trigger. When Groups is not compiled, requested Groups facts remain
+typed retryable unavailable unless an exact Channel match already decides the union;
+unresolved trust facts remain fail closed in every profile.
 
 Forum producer commands remain independent from Notifications availability. The
 Notifications module stays default-off, derives storefront tenant and recipient identity
@@ -1374,8 +1391,8 @@ supply write deadline and idempotency semantics.
 
 ### Remaining scope
 
-- provide Forum trust and Channel membership facts adapters; keep the delivered Groups
-  adapter exact, bounded, and owner-backed;
+- provide Forum trust facts adapter; keep the delivered Channel and Groups adapters exact,
+  bounded, tenant-scoped, and owner-backed;
 - add reply and moderation audience policies plus owner write commands;
 - migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
   same exact richer audience decision;
@@ -1416,6 +1433,9 @@ node scripts/verify/verify-forum-notification-recipient-target-open.mjs
 node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs
 node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs
 node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs
+cargo test -p rustok-server --features mod-forum forum_audience_facts -- --nocapture
+cargo test -p rustok-server --features mod-forum,mod-groups forum_audience_facts -- --nocapture
+node scripts/verify/verify-forum-audience-channel-facts-host-runtime.mjs
 node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs
 node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs
 node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
@@ -1437,10 +1457,9 @@ npm run verify:forum:storefront-boundary
 ```
 
 Tests, Cargo, verifiers and CI were not run while publishing the source-ready
-FORUM-20C-G read-composition, capability-contract and category-persistence
-slices. `FORUM-20` remains `in_progress` until topic narrowing, richer read
-composition, write audiences and all cross-consumer paths are delivered with
-maintainer runtime evidence.
+FORUM-20C-AT read-composition, capability-contract, persistence, transport, and
+host-facts slices. `FORUM-20` remains `in_progress` until the remaining owner and
+cross-consumer paths are delivered with maintainer runtime evidence.
 
 ## `FORUM-21` — move, merge, split and fork topics
 
@@ -2224,10 +2243,8 @@ Recommended next slices:
     storefront bulk composition after the complete `FORUM-20` policy can page an
     exact category or tenant scope;
 11. `FORUM-19`: reports/moderation/restrictions;
-12. continue `FORUM-20` with normalized topic narrowing persistence and commands,
-    exact trust/channel/group provider adapters, then compose inherited category
-    plus topic layers into owner reads before adding write audiences and remaining
-    consumers;
+12. continue `FORUM-20` with the Forum trust facts adapter, then add reply and
+    moderation write audiences and migrate remaining owner reads and consumers;
 13. `FORUM-23`: index projections;
 14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.

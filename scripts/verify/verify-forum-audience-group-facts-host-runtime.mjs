@@ -103,19 +103,35 @@ if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deli
 }
 if (planSync.status === "pending") {
   if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as the current plan boundary");
+    failures.push("pending canonical plan synchronization must identify FORUM-20G as the historical plan boundary");
   }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in the current FORUM-20A-G ledger row",
-  );
-  for (const slice of deliveredSlices) {
-    rejectText(
+  const downstreamSynchronizationRecorded =
+    plan.includes("### Delivered in `FORUM-20AM`") &&
+    plan.includes("### Delivered in `FORUM-20AT`");
+  if (downstreamSynchronizationRecorded) {
+    requireText(
       plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
+      "FORUM-20A-AT provide",
+      "downstream canonical plan must advance the FORUM-20 ledger through AT",
     );
+    requireText(
+      plan,
+      "### Delivered in `FORUM-20H` through `FORUM-20Q`",
+      "downstream canonical plan must retain the consolidated FORUM-20H through FORUM-20Q history",
+    );
+  } else {
+    requireText(
+      plan,
+      "FORUM-20A-G provide",
+      "pending canonical plan synchronization must remain grounded in the historical FORUM-20A-G ledger row",
+    );
+    for (const slice of deliveredSlices) {
+      rejectText(
+        plan,
+        `### Delivered in \`${slice}\``,
+        `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
+      );
+    }
   }
 } else if (planSync.status === "synchronized") {
   requireText(plan, "FORUM-20A-Q provide", "synchronized canonical plan must advance the FORUM-20 ledger through Q");
@@ -176,6 +192,7 @@ for (const marker of [
 }
 for (const marker of [
   "ServerForumAudienceGroupFactsPort::shared(",
+  "ServerForumAudienceFactsPort::shared(",
   "extensions.insert(audience_facts)",
   "extensions.contains::<rustok_forum::SharedForumAudienceFactsPort>()",
 ]) {
@@ -253,4 +270,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Forum audience group facts host runtime contract is source-ready.");
+console.log("Historical FORUM-20Q Groups facts contract remains valid through FORUM-20AT.");
