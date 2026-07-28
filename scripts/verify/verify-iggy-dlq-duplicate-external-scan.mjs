@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json";
+const runtimeContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
+const runtimeTestPath = "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs";
 const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
 const classifierPath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
@@ -14,6 +17,8 @@ const expectedVerifier = "scripts/verify/verify-iggy-dlq-duplicate-external-scan
 const expectedDocumentation = "crates/rustok-iggy/docs/dlq-duplicate-external-scan.md";
 const expectedProfilesCheckpoint =
   "crates/rustok-profiles/docs/poison-duplicate-external-scan-checkpoint.md";
+const expectedRuntimeCase =
+  "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset";
 const expectedExports = [
   "IggyDlqDuplicateScanRequest",
   "IggyDlqDuplicateScanner",
@@ -26,6 +31,10 @@ const expectedTests = [
 ];
 
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));
+const runtimeContract = JSON.parse(
+  readFileSync(resolve(repoRoot, runtimeContractPath), "utf8"),
+);
+const runtimeTest = readFileSync(resolve(repoRoot, runtimeTestPath), "utf8");
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
 const classifier = readFileSync(resolve(repoRoot, classifierPath), "utf8");
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
@@ -76,6 +85,22 @@ if (
   contract.profiles_checkpoint !== expectedProfilesCheckpoint
 ) {
   fail("external DLQ duplicate scan verifier or documentation path drift");
+}
+if (
+  contract.runtime_harness?.status !== "source_complete_execution_pending" ||
+  contract.runtime_harness?.contract !== runtimeContractPath ||
+  contract.runtime_harness?.test !== runtimeTestPath ||
+  contract.runtime_harness?.case !== expectedRuntimeCase ||
+  contract.runtime_harness?.reviewed_dedup_disabled_broker_required !== true ||
+  contract.runtime_harness?.two_identical_scans !== true ||
+  contract.runtime_harness?.three_absent_offset_checks !== true ||
+  runtimeContract.packet !== "dlq-duplicate-external-scan-runtime-source" ||
+  runtimeContract.status !== "source_complete_runtime_pending" ||
+  runtimeContract.test !== runtimeTestPath ||
+  runtimeContract.case !== expectedRuntimeCase ||
+  runtimeContract.execution_status !== "not_run"
+) {
+  fail("external DLQ duplicate scan runtime harness relationship drift");
 }
 if (
   contract.iggy_poll_boundary?.client !== "already_connected_IggyClient_borrow" ||
@@ -186,6 +211,34 @@ for (const marker of [
 }
 
 for (const marker of [
+  `async fn ${expectedRuntimeCase}(`,
+  "IggyTransport::new(config.clone()).await?",
+  "IggyDlqDuplicateScanner::new(&client, &stream)?",
+  "let first = scanner.summarize(&request).await?;",
+  "let second = scanner.summarize(&request).await?;",
+  "assert_eq!(second, first);",
+  ".get_consumer_offset(consumer, stream_id, topic_id, Some(PARTITION_ID))",
+  "if stored.is_some()",
+]) {
+  requireText("external DLQ duplicate scan runtime harness", runtimeTest, marker);
+}
+if (countText(runtimeTest, "assert_no_stored_offset(") !== 4) {
+  fail("external DLQ duplicate scan runtime harness must contain three offset checks");
+}
+for (const marker of [
+  ".store_consumer_offset(",
+  ".delete_consumer_offset(",
+  ".store_offset(",
+  ".acknowledge(",
+  ".send_messages(",
+  ".delete_stream(",
+  ".delete_topic(",
+  ".purge_topic(",
+]) {
+  forbidText("external DLQ duplicate scan runtime harness", runtimeTest, marker);
+}
+
+for (const marker of [
   "pub struct DlqDuplicateObservation",
   "pub struct DlqDuplicateSummary",
   "pub fn summarize_dlq_duplicates(",
@@ -226,16 +279,15 @@ if (requiredPrivacyExclusions.size > 0) {
   );
 }
 
-const requiredNonClaims = new Set([
-  "disposable_external_iggy_runtime_scan_harness",
+const requiredRemaining = new Set([
   "retained_external_iggy_duplicate_scan_evidence",
   "operator_alert_threshold_policy",
   "authorized_destructive_reconciliation_workflow",
   "aggregate_receipt_and_duplicate_health_correlation",
 ]);
-for (const item of contract.remaining_work ?? []) requiredNonClaims.delete(item);
-if (requiredNonClaims.size > 0) {
-  fail(`external DLQ duplicate scan remaining work drift: ${[...requiredNonClaims].join(", ")}`);
+for (const item of contract.remaining_work ?? []) requiredRemaining.delete(item);
+if (requiredRemaining.size > 0) {
+  fail(`external DLQ duplicate scan remaining work drift: ${[...requiredRemaining].join(", ")}`);
 }
 
 if (failures.length > 0) {
@@ -245,5 +297,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy external DLQ duplicate scan source verified: borrowed client lifecycle, standalone explicit-offset polling, auto_commit=false, bounded partitions/messages/batches, strict response progress, count-only projection, stable identifier-free errors, and no offset-store or destructive API are locked; external runtime evidence remains pending.",
+  "Iggy external DLQ duplicate scan source verified: borrowed client lifecycle, standalone explicit-offset polling, auto_commit=false, bounded partitions/messages/batches, strict response progress, count-only projection, stable identifier-free errors, no offset-store or destructive API, and the source-complete dedup-disabled external runtime harness with repeated scans and absent-offset checks are locked; runtime execution remains pending.",
 );

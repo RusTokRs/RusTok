@@ -97,13 +97,21 @@
     "bounded_request_rejects_unbounded_counts",
     "stable_errors_do_not_expose_broker_coordinates"
   ],
+  "runtime_harness": {
+    "status": "source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json",
+    "test": "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
+    "case": "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
+    "reviewed_dedup_disabled_broker_required": true,
+    "two_identical_scans": true,
+    "three_absent_offset_checks": true
+  },
   "source_files": [
     "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
     "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
     "crates/rustok-iggy/src/lib.rs"
   ],
   "remaining_work": [
-    "disposable_external_iggy_runtime_scan_harness",
     "retained_external_iggy_duplicate_scan_evidence",
     "operator_alert_threshold_policy",
     "authorized_destructive_reconciliation_workflow",

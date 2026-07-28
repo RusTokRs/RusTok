@@ -1,6 +1,6 @@
 # Bounded external-Iggy DLQ duplicate scan
 
-Status: **source complete; disposable-broker runtime evidence pending**.
+Status: **scanner and disposable-broker harness source-complete; runtime execution pending**.
 
 ## Purpose
 
@@ -121,6 +121,32 @@ The adapter contains no call to:
 
 Polling uses `auto_commit = false`. The fixed consumer identifier is therefore only the request identity supplied to Iggy; the adapter does not persist progress for later `next` polling.
 
+## Source-complete runtime harness
+
+The opt-in `dlq_duplicate_external_scan` test target now defines one exact case against a reviewed disposable external broker with message-ID deduplication disabled.
+
+It publishes through production `IggyTransport::move_to_dlq`:
+
+```text
+A, A: same header UUID and same exact bytes
+B1, B2: same header UUID and different exact bytes
+```
+
+The same `[partition 1, offset 0, max 4, batch 4]` scan is executed twice. Both summaries must equal:
+
+```text
+total_messages = 4
+unique_message_ids = 2
+duplicate_messages = 2
+duplicate_groups = 2
+conflicting_payload_groups = 1
+max_copies_per_message_id = 2
+```
+
+Read-only `get_consumer_offset` must return `None` before publication, after the first scan, and after the second scan. The test contains no direct SDK producer or offset mutation.
+
+See `dlq-duplicate-external-scan-runtime-evidence.md` for prerequisites and the exact command.
+
 ## Suggested caller flow
 
 ```text
@@ -137,27 +163,28 @@ Do not present this scanner as a complete historical inventory unless the select
 
 ## Source verification
 
-Machine contract:
+Machine contracts:
 
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json
 ```
 
-Static source guard:
+Static source guards:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
 ```
 
-Focused source tests are embedded in `dlq_duplicate_external_scan.rs` for request bounds and stable error projection.
+Focused source tests are embedded in `dlq_duplicate_external_scan.rs` for request bounds and stable error projection. The opt-in integration target defines the physical duplicate/conflict and absent-offset case.
 
-No test, Cargo command, formatter, verifier, external Iggy connection, or runtime scan was executed while defining this slice.
+No test, Cargo command, formatter, verifier, external Iggy connection, or runtime scan was executed while defining these slices.
 
 ## Remaining work
 
-1. add a disposable external-Iggy harness that writes controlled duplicate and conflicting fixtures;
-2. prove explicit-offset polling reads the physical header UUID and exact bytes without storing offsets;
-3. prove count-only projection for ordinary duplicates and identity conflicts;
-4. retain a privacy-safe runtime packet without addresses, credentials, identifiers, payloads, offsets, or raw logs;
-5. define alert thresholds outside the scanner;
-6. keep acknowledgement/delete/replay reconciliation in a separately authorized workflow.
+1. execute the exact runtime case against a reviewed dedup-disabled disposable broker;
+2. retain a privacy-safe runtime packet without addresses, credentials, identifiers, payloads, offsets, or raw logs;
+3. define alert thresholds outside the scanner;
+4. keep acknowledgement/delete/replay reconciliation in a separately authorized workflow;
+5. preserve identifier-free aggregate correlation with poison receipt health.
