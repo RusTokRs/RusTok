@@ -53,13 +53,13 @@ shipping, or hash facts rather than fabricating attribution. The metadata bridge
 and old JSON indexes must be removed after all completion/result consumers use
 typed identity exclusively.
 
-Complete order detail and filtered-list projection reads are now published through
-`OrderReadPort`. `InProcessOrderReadPort` owns concrete `OrderService`
-construction, requires read policy, parses tenant identity from `PortContext`,
-preserves requested and tenant-default locale fallback, list ordering, filters,
-and pagination total, and maps every current `OrderError` to stable `PortError`
-policy without owner-message control flow. Commerce runtime composition and
-consumer cutover remain open and unvalidated.
+Complete order detail and filtered-list projection reads are published through
+`OrderReadPort`. `CommerceOrderReadRuntime` now carries one host-selected owner
+port through the default server, `HostRuntimeContext`, Commerce HTTP, and Commerce
+GraphQL schema data. Mounted admin REST list/detail reads use the port with locale,
+channel, deadline, filters, ordering, pagination total, public error envelopes,
+and payment/fulfillment detail aggregation preserved. GraphQL resolvers and
+storefront order reads remain open and unvalidated.
 
 ## FFA/FBA boundary
 
@@ -85,6 +85,7 @@ consumer cutover remain open and unvalidated.
 - `scripts/verify/verify-order-admin-boundary.mjs`,
   `scripts/verify/verify-order-storefront-boundary.mjs`,
   `scripts/verify/verify-order-read-port.mjs`,
+  `scripts/verify/verify-commerce-admin-order-route-error-context.mjs`,
   `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`,
   `scripts/verify/verify-commerce-order-identity-boundary.mjs`,
   `scripts/verify/verify-commerce-checkout-completion-cutover.mjs`,
@@ -94,8 +95,8 @@ consumer cutover remain open and unvalidated.
   UI, transport, projection, identity, staged-consumer, lifecycle, compensation,
   and payment settlement split.
 - No status promotion is allowed from source inspection. Clean/upgraded
-  migrations, compile/tests, contention, restart, mounted consumers, and
-  remote-profile evidence remain missing.
+  migrations, compile/tests, contention, restart, remaining mounted consumers,
+  and remote-profile evidence remain missing.
 
 ## Checkout identity, completion, compensation, and settlement workstream
 
@@ -157,14 +158,16 @@ consumer cutover remain open and unvalidated.
 - [x] Map every current `OrderError` variant to stable `PortError` policy without
   owner-message control flow.
 - [x] Export the canonical `in_process_order_read_port` factory.
-- [x] Retain source evidence and a focused guard without claiming Commerce
-  consumer cutover or runtime parity.
-- [ ] Publish and host-compose `CommerceOrderReadRuntime`.
-- [ ] Require the host-selected runtime in Commerce HTTP and GraphQL composition.
-- [ ] Cut admin REST order list/detail over to the owner port while preserving
-  locale, filters, pagination total, detail aggregation, and public envelopes.
-- [ ] Cut GraphQL order list/detail and storefront order detail/ownership reads
-  over in separate atomic changes.
+- [x] Retain source evidence and a focused guard without claiming runtime parity.
+- [x] Publish and host-compose `CommerceOrderReadRuntime` while preserving an
+  externally installed runtime.
+- [x] Require the host-selected runtime in Commerce HTTP and GraphQL schema-data
+  composition.
+- [x] Cut admin REST order list/detail over to the owner port while preserving
+  locale, channel, deadline, filters, pagination total, detail aggregation, and
+  public envelopes.
+- [ ] Cut GraphQL order list/detail over to the host-selected runtime.
+- [ ] Cut storefront order detail/ownership reads over in a separate atomic change.
 - [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
   evidence before status promotion.
 
@@ -219,15 +222,15 @@ consumer cutover remain open and unvalidated.
    **Done when:** the contract-test matrix has executable remote evidence and
    fallback behavior supports a justified status promotion.
 
-7. **Cut mounted order projection reads to the owner port.** Compose one
-   host-selected `CommerceOrderReadRuntime`, cut admin REST first, then GraphQL and
-   storefront reads without changing order mutations or payment/fulfillment detail
+7. **Finish mounted order projection read cutover.** Admin REST list/detail now use
+   the host-selected `CommerceOrderReadRuntime`; cut GraphQL next and storefront
+   reads separately without changing order mutations or payment/fulfillment detail
    ownership.
-   **Depends on:** the published `OrderReadPort` and current public transport
-   envelope inventory.
-   **Done when:** mounted detail/list/ownership projection reads no longer construct
-   `OrderService`, retain locale/filter/pagination/authorization behavior, and have
-   bounded parity evidence.
+   **Depends on:** the published runtime and current public transport envelope
+   inventory.
+   **Done when:** every mounted detail/list/ownership projection read no longer
+   constructs `OrderService`, retains locale/filter/pagination/authorization
+   behavior, and has bounded parity evidence.
 
 8. **Keep order and commerce documentation synchronized.** Update local docs,
    manifests, registries, central status, and the umbrella commerce plan whenever
@@ -239,6 +242,7 @@ consumer cutover remain open and unvalidated.
 
 - `npm run verify:ecommerce:fba`
 - `node scripts/verify/verify-order-read-port.mjs`
+- `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 - `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
 - `node scripts/verify/verify-commerce-checkout-completion-cutover.mjs`
@@ -253,11 +257,12 @@ consumer cutover remain open and unvalidated.
 - `cargo xtask module test order`
 - `cargo check -p rustok-order --all-features`
 - `cargo check -p rustok-commerce --lib`
+- `cargo check -p rustok-server --features mod-commerce`
 - `cargo test -p rustok-order --test order_checkout_identity`
 - `cargo test -p rustok-order --test checkout_order_identity_port`
 - `cargo test -p rustok-order --test checkout_completion_port`
-- Targeted order read-port detail/list, locale fallback, context, and error-policy
-  tests.
+- Targeted order read-port detail/list, locale fallback, context, error-policy,
+  host-composition, and admin transport tests.
 - Targeted staged checkout completion/adoption/replay, unknown lifecycle,
   compensation, and payment settlement tests.
 - Clean/upgraded/down/reapply identity migrations on SQLite/PostgreSQL/MySQL.

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-28",
-  "status": "owner_port_published_unvalidated",
-  "source_base_revision": "b573adbf9a8397f5676dd617464060b878ce88a1",
+  "status": "admin_rest_cutover_unvalidated",
+  "source_base_revision": "4ec8abcff51f30d3c949cf49705f8e0d402dff9f",
   "scope": "order detail and filtered list projections for mounted Commerce query consumers",
   "owner": {
     "crate": "rustok-order",
@@ -42,7 +42,17 @@
     "channel_retained": true,
     "locale_retained": true,
     "correlation_retained": true,
-    "deadline_required": true
+    "deadline_required": true,
+    "admin_deadline_seconds": 2
+  },
+  "runtime_composition": {
+    "type": "CommerceOrderReadRuntime",
+    "server_runtime_reuse": true,
+    "in_process_default_composed_once": true,
+    "host_runtime_attachment": true,
+    "commerce_http_required": true,
+    "commerce_graphql_schema_data_required": true,
+    "graphql_resolver_scope_published": false
   },
   "errors": {
     "type": "PortError",
@@ -54,18 +64,25 @@
     "database_kind": "Unavailable",
     "core_kind": "InvariantViolation",
     "database_retryable": true,
-    "core_retryable": false
+    "core_retryable": false,
+    "admin_public_envelopes_preserved": true
   },
   "consumer_inventory": {
-    "commerce_admin_rest_list_detail": "concrete_order_service",
+    "commerce_admin_rest_list_detail": "order_read_port",
+    "commerce_admin_rest_cutover_completed": true,
     "commerce_storefront_detail_and_ownership": "concrete_order_service",
     "commerce_graphql_order_list_detail": "concrete_order_service",
-    "runtime_composition_published": false,
-    "consumer_cutover_completed": false,
+    "runtime_composition_published": true,
+    "all_consumer_cutover_completed": false,
     "cutover_required": true
   },
+  "unchanged_scope": {
+    "admin_order_mutations": "concrete_order_service",
+    "admin_detail_payment_lookup": "concrete_payment_service",
+    "admin_detail_fulfillment_lookup": "concrete_fulfillment_service"
+  },
   "decision": {
-    "next_slice": "publish and host-compose CommerceOrderReadRuntime, then cut mounted admin REST order list/detail to OrderReadPort before GraphQL and storefront consumers",
+    "next_slice": "cut mounted GraphQL order list/detail to the host-selected CommerceOrderReadRuntime, then cut storefront detail and ownership reads separately",
     "mutation_scope": "unchanged",
     "status_promotion": false
   },
