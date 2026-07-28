@@ -302,10 +302,12 @@ async fn receive_decode_failure(
 async fn receive_cursor_message(
     cursor: &mut Box<dyn ConsumerCursor>,
 ) -> TestResult<SubscriberMessage> {
-    timeout(RECEIVE_TIMEOUT, cursor.receive())
+    let message = timeout(RECEIVE_TIMEOUT, cursor.receive())
         .await
-        .map_err(|_| invalid_data("timed out waiting for a raw poison DLQ message"))??
-        .ok_or_else(|| invalid_data("raw poison DLQ cursor ended before a message").into())
+        .map_err(|_| invalid_data("timed out waiting for a raw poison DLQ message"))??;
+    message.ok_or_else(|| Box::<dyn Error + Send + Sync>::from(invalid_data(
+        "raw poison DLQ cursor ended before a message",
+    )))
 }
 
 async fn acknowledge_cursor_message(
