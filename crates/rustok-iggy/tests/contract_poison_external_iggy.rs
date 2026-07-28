@@ -71,7 +71,7 @@ async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_by
 
     transport.move_to_dlq(first_failure.to_dlq_entry(1)).await?;
     let first_dlq = receive_cursor_message(&mut dlq_cursor).await?;
-    assert_eq!(first_dlq.payload, first_payload);
+    assert_eq!(first_dlq.payload.as_slice(), first_payload.as_slice());
     acknowledge_cursor_message(&mut dlq_cursor, &first_dlq).await?;
 
     drop(first_source_cursor);
@@ -95,7 +95,7 @@ async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_by
 
     transport.move_to_dlq(second_failure.to_dlq_entry(1)).await?;
     let second_dlq = receive_cursor_message(&mut dlq_cursor).await?;
-    assert_eq!(second_dlq.payload, second_payload);
+    assert_eq!(second_dlq.payload.as_slice(), second_payload.as_slice());
     acknowledge_cursor_message(&mut dlq_cursor, &second_dlq).await?;
     reopened_source_cursor
         .acknowledge_decode_failure(&second_failure)
@@ -143,10 +143,11 @@ async fn receive_decode_failure(
 async fn receive_cursor_message(
     cursor: &mut Box<dyn ConsumerCursor>,
 ) -> TestResult<rustok_iggy_connector::SubscriberMessage> {
-    timeout(RECEIVE_TIMEOUT, cursor.receive())
+    let message = timeout(RECEIVE_TIMEOUT, cursor.receive())
         .await
         .map_err(|_| invalid_data("timed out waiting for an external Iggy DLQ delivery"))??
-        .ok_or_else(|| invalid_data("external Iggy DLQ cursor ended before a delivery").into())
+        .ok_or_else(|| invalid_data("external Iggy DLQ cursor ended before a delivery"))?;
+    Ok(message)
 }
 
 async fn acknowledge_cursor_message(
