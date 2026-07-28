@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::native_server_adapter::ApiError;
+use crate::catalog_controls::CatalogListInput;
 use crate::core::{FetchRequest, build_pricing_context};
 use crate::model::{
     ProductCatalogSearchOptions, ProductDetail, ProductList, ProductPricingDetail,
@@ -144,7 +145,10 @@ where
     .map_err(ApiError::from)
 }
 
-pub async fn fetch_products(request: FetchRequest) -> Result<StorefrontProductsData, ApiError> {
+pub async fn fetch_products(
+    request: FetchRequest,
+    controls: CatalogListInput,
+) -> Result<StorefrontProductsData, ApiError> {
     fetch_storefront_products(
         request.selected_handle,
         request.locale,
@@ -154,6 +158,7 @@ pub async fn fetch_products(request: FetchRequest) -> Result<StorefrontProductsD
         request.channel_id,
         request.channel_slug,
         request.quantity,
+        controls,
     )
     .await
 }
@@ -178,6 +183,7 @@ async fn fetch_storefront_products(
     channel_id: Option<String>,
     channel_slug: Option<String>,
     quantity: Option<i32>,
+    controls: CatalogListInput,
 ) -> Result<StorefrontProductsData, ApiError> {
     let products_response: StorefrontProductsResponse = request(
         STOREFRONT_PRODUCTS_QUERY,
@@ -186,7 +192,7 @@ async fn fetch_storefront_products(
             filter: StorefrontProductsFilter {
                 vendor: None,
                 product_type: None,
-                search: None,
+                search: controls.search,
                 page: Some(1),
                 per_page: Some(12),
             },
