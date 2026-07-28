@@ -43,8 +43,12 @@ const plan = read(contract.canonical_plan ?? "");
 if (contract.schema_version !== 1) {
   failures.push("forum audience group facts host contract must use schema_version=1");
 }
-if (contract.task !== "FORUM-20Q" || contract.upstream_task !== "FORUM-20P") {
-  failures.push("forum audience group facts host contract must connect FORUM-20P/Q");
+if (
+  contract.task !== "FORUM-20Q" ||
+  contract.upstream_task !== "FORUM-20P" ||
+  contract.downstream_trust_task !== "FORUM-26B"
+) {
+  failures.push("forum audience group facts host contract must connect FORUM-20P/Q and downstream FORUM-26B");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("group facts publication must not claim unexecuted evidence");
@@ -59,6 +63,7 @@ for (const delivered of [
   "active_memberships_only",
   "positive_union_short_circuit",
   "unsupported_dimension_retryability",
+  "downstream_authoritative_trust_wrapper",
   "runtime_extension_publication",
   "publication_before_notification_source_materialization",
   "notification_source_factory_consumption",
@@ -68,9 +73,10 @@ for (const delivered of [
     failures.push(`forum audience group facts contract must record ${delivered} as delivered`);
   }
 }
+if (contract.not_delivered?.includes("host trust facts adapter")) {
+  failures.push("FORUM-20Q metadata must not keep the delivered trust adapter open after FORUM-26B");
+}
 for (const residual of [
-  "host trust facts adapter",
-  "host channel membership facts adapter",
   "profile privacy and blocking policy",
   "final notification creation and delivery authorization",
   "initially non-public topic-created descriptor materialization",
@@ -185,6 +191,9 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  "#[cfg(feature = \"mod-forum\")]\npub mod forum_audience_facts {",
+  "membership::ServerForumAudienceFactsPort::shared(db.clone(), groups)",
+  "ForumUserTrustAudienceFactsPort::shared(db, membership_facts)",
   "#[cfg(all(feature = \"mod-forum\", feature = \"mod-groups\"))]",
   "pub mod forum_audience_group_facts;",
 ]) {
@@ -270,4 +279,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Historical FORUM-20Q Groups facts contract remains valid through FORUM-20AU.");
+console.log("Historical FORUM-20Q Groups facts contract remains valid through FORUM-26B.");
