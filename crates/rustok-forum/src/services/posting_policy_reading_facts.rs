@@ -157,6 +157,10 @@ mod tests {
                 tenant_id TEXT NOT NULL, \
                 topic_id TEXT NOT NULL, \
                 user_id TEXT NOT NULL, \
+                last_read_position INTEGER NOT NULL, \
+                last_read_revision INTEGER NOT NULL, \
+                created_at TEXT NOT NULL, \
+                updated_at TEXT NOT NULL, \
                 PRIMARY KEY (tenant_id, topic_id, user_id)\
             )"
             .to_string(),
@@ -174,7 +178,10 @@ mod tests {
     ) {
         db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO forum_topic_read_states (tenant_id, topic_id, user_id) VALUES (?1, ?2, ?3)",
+            "INSERT INTO forum_topic_read_states (\
+                tenant_id, topic_id, user_id, last_read_position, \
+                last_read_revision, created_at, updated_at\
+            ) VALUES (?1, ?2, ?3, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             vec![tenant_id.into(), topic_id.into(), user_id.into()],
         ))
         .await
