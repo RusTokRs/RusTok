@@ -19,14 +19,20 @@ persistent Iggy consumption, typed exact-byte decode failures, connector-owned n
 poison receipts, one shared EventRuntime Iggy transport, default-off server lifecycle,
 bounded projection/DLQ/receipt/ack retry, decoded-event and raw-delivery durable DLQ
 recovery, deterministic UUIDv8 broker message IDs, graceful shutdown, enabled-worker
-readiness, bounded per-consumer Prometheus telemetry, and a read-only
-partition-qualified consumer-position observer with completeness-gated total/max lag.
+readiness, bounded per-consumer Prometheus telemetry, a read-only partition-qualified
+consumer-position observer with completeness-gated total/max lag, and a count-only
+neutral poison-receipt observer with stale-snapshot clearing.
 
-Compilation, source-verifier execution, append-only migration-tail reconciliation,
-PostgreSQL receipt/concurrency evidence, real-broker deterministic-ID/deduplication and
-publish-confirmation behavior, observer reconnect/TLS/auth, multi-replica
-position/receipt semantics, and retained runtime evidence remain maintainer-run or
-pending.
+The append-only migration tail now contains both decoded and neutral receipt
+migrations. An opt-in PostgreSQL harness defines isolated-schema evidence for
+concurrent neutral claim ownership, lease reclaim/fencing, collision rollback,
+first-diagnostic retention, empty payloads, terminal recognition, and aggregate
+inspection.
+
+Compilation, source-verifier execution, PostgreSQL runtime execution, real-broker
+deterministic-ID/deduplication and publish-confirmation behavior, observer reconnect/
+TLS/auth, multi-replica position/receipt semantics, retention policy, and retained
+runtime evidence remain maintainer-run or pending.
 
 ## Delivered owner relation contract
 
@@ -91,82 +97,41 @@ pending.
 
 - Migration `m20260727_000004_create_index_dlq_receipts` owns immutable source identity
   and exact payload bytes for poison deliveries that already have trusted tenant and
-  event identity. The key is tenant, consumer group, and event ID; stored source
-  coordinates must match on every retry.
+  event identity.
 - States are `reserved`, leased `publishing`, terminal `published`, and post-source-ack
   `acknowledged`. Publisher leases are bounded and reclaimable after process loss.
 - `project_consumed` checks receipts before Index projection. Published receipts enter
-  acknowledgement-only recovery; unfinished receipts remain retryable DLQ work and do
-  not cross back into mutation apply.
-- A versioned SHA-256 construction derives one RFC 9562 UUIDv8 from tenant, consumer
-  group, event ID, source stream/topic/partition/offset, and exact retained payload.
-  Every variable-length field is length-framed.
-- Retry count, time, publisher/lease identity, and random state are excluded, so retries
-  for one immutable receipt retain the same broker message ID.
-- `publish_consumed_to_dlq` returns success only after exact-byte broker publication and
-  the durable `published` transition. Repeated calls recognize a terminal receipt and
-  skip broker publication.
-- The UUIDv8 is attached separately from the source event ID. `IggyTransport` lazily
-  opens one SDK publisher connection to the same configured endpoint and existing
-  `dlq` topic, then maps the UUID to Iggy's `u128` message header.
-- Publisher connection/configuration failures leave the source unacknowledged, clear the
-  cached client, and are retried through the existing bounded DLQ retry path.
-- Ack failure after successful publication leaves the terminal receipt intact. On
-  redelivery the consumer skips projection and DLQ publication and retries source ack.
-- A previously created unfinished receipt continues to completion even if policy for
-  creating new DLQ decisions is later disabled.
-- Source-ack success is the transport boundary. Updating the receipt to `acknowledged`
-  afterward is best-effort bookkeeping and cannot convert a committed source offset
-  back into failure.
-- Broker success followed by process/DB failure before the `published` transition is a
-  separate explicit confirmation ambiguity. A retry carries the same UUIDv8, but Iggy
-  duplicate suppression applies only when the deployment enables it and the relevant
-  per-partition cache/expiry still covers the recovery interval.
-- Durable receipt state remains authoritative. Physical broker exactly-once is not
-  claimed from a deterministic ID or bounded optional deduplication; production must
-  retain evidence for its configured window or select a stronger transaction/outbox
-  mechanism.
-- Historical rows are intentionally not fabricated; the migration backfill contract is
-  `none`.
+  acknowledgement-only recovery; unfinished receipts remain retryable DLQ work.
+- A versioned length-framed SHA-256 construction derives one RFC 9562 UUIDv8 from the
+  immutable trusted receipt identity and exact payload.
+- Retry count, time, publisher/lease identity, and random state are excluded.
+- Exact-byte publication and durable `published` precede source acknowledgement.
+- Ack failure after publication leaves a terminal receipt; redelivery retries ack only.
+- Broker success followed by process/DB failure before `published` remains explicit
+  confirmation ambiguity. A deterministic ID does not establish physical exactly-once.
+- Historical rows are not fabricated; the migration backfill contract is `none`.
 
 ## Delivered typed raw poison terminalization boundary
 
 - `PersistentContractConsumerGroup::receive_delivery` returns either a validated
-  `ConsumedContractEvent` or `ConsumedContractDecodeFailure`; neither receive branch
-  commits the cursor.
-- `SocialGraphIndexConsumer::receive_delivery` exposes that typed transport result to
-  the owner worker. `receive_next` remains a compatibility event-only path, and
-  `acknowledge_decode_failure` is an isolated exact-cursor commit adapter with no
-  projection or publication behavior.
+  `ConsumedContractEvent` or `ConsumedContractDecodeFailure`; neither branch commits.
+- `SocialGraphIndexConsumer::receive_delivery` exposes that typed result to the owner
+  worker; raw acknowledgement is an isolated exact-cursor adapter.
 - Decode/schema failures retain exact bytes, stream, topic, partition, offset, opaque
   acknowledgement metadata, bounded classification, and a deterministic connector
-  delivery UUID. They do not create or infer tenant, actor, relation, or domain event
-  identity.
+  delivery UUID without inventing tenant, actor, relation, or event identity.
 - Connector migration `m20260728_000001_create_consumer_poison_receipts` owns the neutral
-  result store. One deterministic delivery UUID and one consumer-group/stream/topic/
-  partition/offset coordinate set bind the exact payload; collisions fail closed.
-- Empty payload is valid exact broker input. Error classification and observed retry
-  count are retained as first diagnostics but do not alter immutable delivery identity.
+  result store. Delivery UUID/source-coordinate/payload collisions fail closed.
+- Empty payload is valid. Error classification and observed attempt are retained as one
+  first-observed diagnostic pair but are not immutable identity.
 - Receipt states are `reserved`, leased `publishing`, `published`, and `acknowledged`.
-  The store performs no broker publish, source ack, authorization, or policy choice.
-- The server worker checks for an existing receipt before applying current DLQ policy.
-  A previously chosen raw-poison result continues publish/ack recovery even if creating
-  new DLQ decisions is later disabled; a new undecodable delivery remains uncommitted
-  while DLQ is disabled.
-- For a claimed receipt, the worker publishes `ConsumedContractDecodeFailure::to_dlq_entry`
-  with exact bytes and deterministic broker message ID, then retries only the durable
-  `mark_published` transition. Source acknowledgement is attempted only after published
-  is durable or already recognized.
-- After source commit, `mark_acknowledged` is best-effort bookkeeping. Failure cannot
-  make the committed offset uncommitted.
-- If source acknowledgement fails, the durable published receipt remains and redelivery
-  enters acknowledgement-only recovery without projection or another selected terminal
-  result.
-- Broker success followed by loss before `mark_published` remains an explicit duplicate
-  ambiguity; retry uses the same deterministic broker message ID and makes no exactly-once
-  claim without broker deduplication evidence.
-- Profiles privacy never reads or authorizes from this neutral receipt or any raw broker
-  state.
+- The worker checks an existing receipt before current DLQ policy. Existing selected
+  work remains recoverable if creation of new DLQ decisions is later disabled.
+- New undecodable deliveries remain uncommitted while no terminal policy is enabled.
+- Exact-byte DLQ publication and durable `mark_published` precede source ack.
+- Published redelivery is acknowledgement-only; post-ack `mark_acknowledged` is
+  best-effort bookkeeping.
+- Profiles privacy never reads or authorizes from this neutral receipt or broker state.
 
 ## Delivered persistent consumer, host lifecycle, and readiness
 
@@ -177,96 +142,92 @@ pending.
 - `receive_delivery`, `project_consumed`, `acknowledge_consumed`, and
   `acknowledge_decode_failure` retain one outstanding cursor delivery and expose
   result-first decoded and raw paths.
-- `process_next` remains the direct serialized validated-event register/apply/ack
-  compatibility path. The server worker owns typed raw-poison composition.
 - Execution is default-off until
   `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED=true` and then requires a worker host
   plus effective `outbox_iggy` delivery.
-- `EventRuntime` publishes the exact configured `Arc<IggyTransport>` into shared
-  context; relay and consumer reuse it, and the worker never starts or stops a second
-  bundled broker process.
-- Identified DLQ publication may open one additional lazy SDK client owned by that same
-  transport. It connects to the existing endpoint and does not create another transport
-  or bundled process.
-- `SocialGraphIndexWorkerHandle` exposes task state and observes shared `StopHandle`.
+- `EventRuntime` publishes the configured shared `Arc<IggyTransport>`; relay and
+  consumer reuse it and never start a second bundled broker process.
 - Projection, decoded DLQ, neutral receipt, raw DLQ, and source acknowledgement use
   bounded exponential backoff from reviewed event settings.
-- New permanent/exhausted failures may choose DLQ only while policy is enabled. Existing
-  decoded or raw durable receipts continue regardless of later policy changes.
-- After any durable Index or DLQ result, only acknowledgement is retried; projection and
-  terminal publication selection are not repeated in-process.
-- Missing/stopped/invalid enabled worker state is critical in `runtime_guardrails`,
-  reaches `/health/ready`, and changes aggregate guardrail metrics. Disabled execution
-  is not degraded.
+- After a durable Index or DLQ result, only acknowledgement is retried.
+- Missing/stopped/invalid enabled worker state is critical in `runtime_guardrails` and
+  reaches `/health/ready`. Disabled execution is not degraded.
+- A missing/stopped count-only poison observer is degraded, not critical, and does not
+  stop projection or source acknowledgement.
 
 ## Delivered durable-consumer observability
 
 - `rustok-telemetry::runtime_consumer_metrics` registers one bounded shared collector
   in the process Prometheus registry rendered by `/metrics`.
-- Delivery metrics cover received/terminal outcomes, projection/DLQ/receipt/ack retries,
-  bounded stage/error failures, DLQ `published`, `already_published`, and `failure`
-  results, receive-to-ack duration, worker lifecycle, in-flight state/timestamp, and
-  last success.
+- Delivery metrics cover terminal outcomes, bounded retries/failures, DLQ results,
+  receive-to-ack duration, lifecycle, in-flight state, last success, and complete lag.
 - Raw outcomes are bounded to `decode_dead_lettered` and
-  `decode_dead_letter_recovered`; payload, delivery UUID, coordinates, and ack token are
-  not metric labels.
-- A separate `SocialGraphIndexPositionObserver` starts only when the durable consumer
-  is explicitly enabled. It uses the shared transport configuration to open a read-only
-  SDK client to the already-running endpoint; it never starts/stops a broker or mutates
-  offsets.
-- Every poll reads all `domain` topic partitions and persistent group checkpoints.
-  Empty partitions contribute zero; missing or incoherent checkpoints make the
-  snapshot incomplete.
-- Metrics expose snapshot timestamp, partition count, completeness, and exact
-  `rustok_runtime_consumer_lag{aggregation="total|max"}` only from complete snapshots.
-  Incomplete snapshots clear lag gauges and set completeness to zero.
-- Labels remain bounded to consumer, stage, outcome, result, reason, aggregation, and
-  stable error code. Tenant, event, relation, partition, offset, payload, broker ID,
-  ack token, credentials, and raw error text are not labels.
-- Observer configuration/connection/snapshot failures are recorded by stable code,
-  retried independently, and do not stop projection or enter readiness guardrails.
-- Lag is never inferred from event age, processing duration, a delivered offset, or a
-  local cursor counter.
+  `decode_dead_letter_recovered`; delivery-level facts are not labels.
+- `SocialGraphIndexPositionObserver` reads all topic partitions and persistent group
+  checkpoints without mutating offsets. Incomplete snapshots clear lag gauges.
+- `SocialGraphIndexPoisonObserver` reads only
+  `ConsumerPoisonReceiptInspector::summarize` for the fixed consumer group.
+- Poison metrics expose fixed `total`, `reserved`, `publishing`,
+  `expired_publishing`, `published`, and `acknowledged` states plus availability and
+  snapshot time. Unavailable inspection and shutdown clear stale values.
+- Failure logs contain bounded stable codes and omit storage error text.
+- Tenant, event, relation, partition, offset, payload, broker ID, publisher identity,
+  acknowledgement token, credentials, and raw error text are not metric labels.
+- Metrics and observers never authorize, acknowledge, reclaim, repair, retain, or
+  delete receipt state.
 
-## Migration-order reconciliation blocker
+## Migration-order reconciliation
 
-The platform migrator already discovers both receipt migrations, and their backfill
-contracts are `none`. The explicit append-only release-order tail still ends at
-`m20260726_000003_create_command_receipts`. Before compatibility validation and merge,
-append these entries without rewriting the published prefix:
+The platform migrator discovers both receipt migrations, their truthful backfill
+contracts remain `none`, and the explicit append-only release-order tail now ends with:
 
 1. `m20260727_000004_create_index_dlq_receipts`
 2. `m20260728_000001_create_consumer_poison_receipts`
 
-This branch also requires reconciliation with current `main` and a Cargo-managed
-`Cargo.lock` refresh.
+This preserves the previously published migration prefix. The reconciliation was
+merged separately before the later health/evidence slices.
+
+## PostgreSQL poison receipt evidence
+
+The opt-in `consumer_poison_receipt_postgres` target:
+
+- selects `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL` with `DATABASE_URL` fallback;
+- skips without a PostgreSQL URL and contains no default credentials;
+- creates and drops one unique schema per scenario;
+- uses one connection per pool so session-local `search_path` is deterministic;
+- uses independent pools for concurrent claim ownership;
+- verifies one `Claimed` and one `Busy` result;
+- verifies lease reclaim fences the previous publisher with `ClaimLost`;
+- verifies UUID/source/payload conflicts roll back without rewriting the original row;
+- verifies the winning reservation retains one atomic first-observed diagnostic pair;
+- verifies reserved/published/acknowledged aggregate consistency and terminal redelivery.
+
+Direct test SQL is limited to deterministic lease expiry and read-only diagnostics.
+The harness and source guard are source-complete; no PostgreSQL run has been executed.
 
 ## Remaining Social Graph scope
 
-1. Reconcile the append-only migration tail, current `main`, and `Cargo.lock`.
-2. Execute PostgreSQL concurrent schema-registration, decoded/raw receipt claim,
-   publish/mark/ack, collision, lease expiry, rollback, and retention evidence.
+1. Execute and retain the PostgreSQL neutral receipt harness, including server version,
+   command/environment evidence, repeated concurrent ownership, and schema cleanup.
+2. Execute decoded receipt and schema-registration concurrency/rollback/retention
+   scenarios against PostgreSQL.
 3. Prove real-Iggy validated and undecodable receive, deterministic UUID header
    publication, same-partition retry, connection loss/reconnect, ack failure, restart,
-   graceful shutdown, observer snapshot/reconnect, and multi-replica cursor/receipt
-   ownership.
+   graceful shutdown, observer snapshot/reconnect, and multi-replica ownership.
 4. Exercise broker success followed by receipt-mark loss with deduplication disabled,
-   enabled, capacity-evicted, and expired. Verify the configured window covers the
-   maximum lease/restart/recovery horizon before relying on duplicate suppression.
-5. Decide whether production requires an enforced and monitored Iggy deduplication
-   contract, a broker transaction, or a DB-owned DLQ/outbox relay before claiming any
-   stronger physical duplicate guarantee.
-6. Validate lag under concurrent publication, empty/missing checkpoints, TLS/auth
-   failures, rebalancing, and multiple worker replicas before defining alerts.
+   enabled, capacity-evicted, and expired.
+5. Decide whether production requires monitored Iggy deduplication, a broker
+   transaction, or a DB-owned DLQ/outbox relay before stronger duplicate guarantees.
+6. Validate lag and poison aggregates under concurrent publication, missing checkpoints,
+   expired claims, TLS/auth failures, rebalancing, and multiple replicas before alerts.
 7. Corrupt/delete projection state and prove bounded owner replay/rescan repair while
    Profiles privacy remains on authoritative owner ports.
-8. Define decoded and raw DLQ receipt retention/reconciliation before permitting
-   deletion; configure command-receipt retention cadence and retain cleanup CLI
-   dry-run/live evidence.
+8. Define decoded/raw receipt retention and reconciliation before deletion; retain
+   cleanup CLI dry-run/live evidence.
 9. Retain receipt/event concurrency, replay-window, rollback, telemetry, storefront,
    privacy, and operational packets.
-10. Continue friendship lifecycle, broader directory/follow UX, lists, block/mute
-    management, and moderation/admin repair.
+10. Continue friendship lifecycle, directory/follow UX, lists, block/mute management,
+    and moderation/admin repair.
 
 ## Verification
 
@@ -284,7 +245,11 @@ cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture
 node scripts/verify/verify-iggy-contract-decode-failure.mjs
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets
 cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture
+cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture
+RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' cargo test -p rustok-iggy-connector --features migrations --test consumer_poison_receipt_postgres -- --nocapture
 node scripts/verify/verify-iggy-consumer-poison-receipts.mjs
+node scripts/verify/verify-iggy-consumer-poison-inspection.mjs
+node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs
 node scripts/verify/verify-iggy-consumer-position.mjs
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets
 cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture
@@ -297,6 +262,7 @@ node scripts/verify/verify-social-graph-index-consumer.mjs
 node scripts/verify/verify-social-graph-index-runtime-consumer.mjs
 node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs
 node scripts/verify/verify-social-graph-index-dlq-receipts.mjs
+node scripts/verify/verify-social-graph-index-poison-observer.mjs
 node scripts/verify/verify-runtime-consumer-metrics.mjs
 node scripts/verify/verify-social-graph-command-receipts.mjs
 node scripts/verify/verify-social-graph-receipt-cleanup.mjs
@@ -308,4 +274,4 @@ rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 -
 ```
 
 These commands remain maintainer-run and were not executed manually while publishing
-this slice. `Cargo.lock` must be refreshed after synchronization with `main`.
+this slice.
