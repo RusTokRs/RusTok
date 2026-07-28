@@ -86,6 +86,7 @@ if (
   contract.activation?.memory_requires_iggy !== false ||
   contract.activation?.outbox_local_requires_iggy !== false ||
   contract.activation?.outbox_iggy_requires_shared_transport !== true ||
+  contract.activation?.outbox_iggy_missing_active_mode_fails_closed !== true ||
   contract.activation?.non_iggy_profiles_are_errors !== false
 ) {
   fail("DLQ duplicate observer activation boundary drift");
@@ -187,9 +188,12 @@ for (const marker of [
   "IggyExternal",
   "pub async fn start_event_dlq_duplicate_alert_observer(",
   "let enabled = optional_bool_env(ENABLE_ENV, false)?;",
+  "let mode = observer_mode(runtime.delivery_profile, runtime.iggy_mode.as_ref())?;",
   "EventDeliveryProfile::Memory",
   "EventDeliveryProfile::OutboxLocal",
   "EventDeliveryProfile::OutboxIggy",
+  '"outbox_iggy runtime is missing its active Iggy mode"',
+  "observer_mode(EventDeliveryProfile::OutboxIggy, None).is_err()",
   "ctx.shared_get::<Arc<IggyTransport>>()",
   "DlqDuplicateAlertRuntimePublisher::new(config.policy)",
   "IggyDlqDuplicateAlertObserver::connect(",
@@ -307,5 +311,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, OutboxIggy bundled/external observation, bounded auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
+  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, fail-closed OutboxIggy active-mode selection, bundled/external observation, bounded auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
 );
