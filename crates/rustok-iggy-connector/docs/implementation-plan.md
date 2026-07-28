@@ -15,19 +15,26 @@ validates configured addresses in order, providing initial connection failover w
 claiming runtime high availability. Topology setup uses the same SDK connection before
 the transport becomes ready.
 
-Feature `migrations` now registers `m20260728_000001_create_consumer_poison_receipts`
-and exposes `ConsumerPoisonReceiptStore`. The receipt is neutral because malformed
-bytes have no trusted tenant or domain event identity. Its immutable identity binds one
+Feature `migrations` registers `m20260728_000001_create_consumer_poison_receipts` and
+exposes `ConsumerPoisonReceiptStore`. The receipt is neutral because malformed bytes
+have no trusted tenant or domain event identity. Its immutable identity binds one
 deterministic connector delivery UUID to consumer group, stream, topic, partition,
-offset, and exact payload. Source coordinates are unique; another UUID or payload for
-the same coordinates fails closed. The first bounded error code and observed delivery
-attempt are retained as diagnostics, but later classification/retry drift does not
-redefine connector identity.
+offset, and exact payload, including an empty payload. Source coordinates are unique;
+another UUID, coordinate set, or payload fails closed. The first bounded error code and
+observed delivery attempt are retained as diagnostics, but later classification/retry
+drift does not redefine connector identity.
 
 Receipt states are `reserved`, leased `publishing`, terminal `published`, and
 post-source-commit `acknowledged`. The store performs no broker publication, DLQ routing,
-or acknowledgement. An approved worker must persist/recognize the terminal result and
-complete any required publication before it calls the cursor acknowledgement API.
+source acknowledgement, authorization, or policy selection.
+
+The first approved consumer is now wired at the owner/server layer. The Social Graph
+Index worker constructs `ConsumerPoisonIdentity`, recognizes an existing receipt before
+applying current DLQ policy, reserves/claims new work, publishes exact bytes through
+`rustok-iggy`, persists `published`, commits the source cursor, and then records
+`acknowledged` as best-effort bookkeeping. This composition remains outside the
+connector store. Existing durable work continues recovery if new DLQ decisions are
+later disabled.
 
 ## FFA/FBA boundary
 
@@ -55,32 +62,39 @@ complete any required publication before it calls the cursor acknowledgement API
 - The receipt contains no tenant, decoded event, actor, claims, locale, credentials,
   acknowledgement token, or authorization state.
 - Profiles and Social Graph must never authorize from this receipt or any broker state.
+- The server enables feature `migrations` explicitly when it composes the neutral store;
+  runtime availability does not rely on transitive feature unification.
 - Existing source guard: `node scripts/verify/verify-iggy-connector-source.mjs`.
-- Receipt guard: `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`.
+- Receipt/first-consumer guard:
+  `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`.
 
 ## Delivered results
 
 1. **Exact connector cursor ownership.** One cursor owns receive and exact scoped commit.
 2. **Neutral durable poison result boundary.** PostgreSQL/SQLite DDL, private immutable
-   source identity, exact-byte conflict validation, first-diagnostic retention, leased
-   publication claims, terminal recognition, and bounded stable errors are source-complete.
+   source identity, empty/exact-byte retention, UUID/source collision validation,
+   first-diagnostic retention, leased publication claims, terminal recognition, and
+   bounded stable errors are source-complete.
 3. **No invented domain ownership.** The receipt does not require or synthesize tenant
    or event identity and has no authorization side effect.
+4. **First approved receipt consumer.** The Social Graph Index worker composes typed
+   decode failure, receipt recovery/claim, exact-byte publication, durable
+   published-before-ack ordering, and best-effort acknowledgement bookkeeping without
+   adding broker or domain policy to this crate.
 
 ## Next results
 
-1. **Wire the first approved sealed-family worker.** Adapt the Social Graph Index worker
-   to `receive_delivery`, construct `ConsumerPoisonIdentity` from the decode-failure
-   contract, publish exact bytes before `mark_published`, acknowledge only afterward,
-   and mark `acknowledged` as best-effort bookkeeping. Redelivery must skip duplicate
-   publication after a terminal receipt.
-2. **Reconcile the append-only migration tail.** Add the already-present Social Graph
+1. **Reconcile the append-only migration tail.** Add the already-present Social Graph
    Index DLQ migration and this connector poison migration to the explicit platform
    release-order tail before migration compatibility validation. Do not rewrite the
-   previously published prefix.
-3. **Verify real Iggy SDK receive and commit.** Prove validated and malformed delivery,
-   reconnect, exact commit, publication failure, restart, and multi-replica behavior in
-   bundled and external environments.
+   previously published prefix; reconcile current `main` and refresh `Cargo.lock`.
+2. **Verify real Iggy SDK receive and commit.** Prove validated and malformed delivery,
+   exact publish-before-ack ordering, acknowledgement-only redelivery, reconnect, exact
+   commit, publication failure, restart, and multi-replica behavior in bundled and
+   external environments.
+3. **Verify PostgreSQL receipt concurrency.** Prove claim ownership, lease expiry and
+   reclaim, UUID/source collisions, first-diagnostic retention, rollback, and terminal
+   recognition under multiple workers.
 4. **Harden lifecycle failure behavior.** Define reconnect/backoff, authentication, TLS,
    existing-topology validation, batching, and shutdown semantics without simulated
    fallback.
@@ -94,8 +108,11 @@ complete any required publication before it calls the cursor acknowledgement API
 
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
+- `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
+- `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
 - Bundled/external Iggy integration evidence for receive, scoped ack, reconnect,
   TLS/auth failure, poison publication/recovery, and shutdown.
 
