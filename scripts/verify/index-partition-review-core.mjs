@@ -217,6 +217,7 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
   return {
     contract: REVIEW_CONTRACT,
     rootIdentity: rootSnapshot.identity,
+    rootFingerprint: rootSnapshot.fingerprint,
     rootCanonical: rootSnapshot.canonical,
     packet,
     admission: recalculatedAdmission,

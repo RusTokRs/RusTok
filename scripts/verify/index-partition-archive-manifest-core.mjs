@@ -144,6 +144,7 @@ const readRootSnapshot = (resolvedRoot) => {
 const assertRootUnchanged = ({ resolvedRoot, expected }) => {
   const current = readRootSnapshot(resolvedRoot);
   if (current.identity !== expected.identity
+      || current.fingerprint !== expected.fingerprint
       || current.canonical !== expected.canonical) {
     throw new Error('retained bundle root changed after inspection');
   }
@@ -269,6 +270,7 @@ export const verifySavedRetainedPartitionArchiveManifest = ({
   const inspectedFiles = normalizeFiles(inspection.files, { requireInspectionSnapshot: true });
   const inspectedRoot = {
     identity: requireIdentity(inspection.rootIdentity, 'inspection.rootIdentity'),
+    fingerprint: requireFingerprint(inspection.rootFingerprint, 'inspection.rootFingerprint'),
     canonical: requireNonEmptyString(inspection.rootCanonical, 'inspection.rootCanonical'),
   };
   const resolvedRoot = path.resolve(requireNonEmptyString(root, 'root'));

@@ -50,6 +50,7 @@ try {
     'identity: file.identity',
     'fingerprint: file.fingerprint',
     'rootIdentity: rootSnapshot.identity',
+    'rootFingerprint: rootSnapshot.fingerprint',
     'rootCanonical: rootSnapshot.canonical',
   ], 'retained partition review core');
 
@@ -65,6 +66,9 @@ try {
     'requireInspectionSnapshot',
     'must be a decimal device:inode identity',
     'must be a decimal device:inode:size:mtimeNs:ctimeNs fingerprint',
+    'inspection.rootFingerprint',
+    'current.identity !== expected.identity',
+    'current.fingerprint !== expected.fingerprint',
     'current.identity !== file.identity',
     'current.fingerprint !== file.fingerprint',
     'identity changed after inspection',
@@ -94,6 +98,7 @@ try {
     "Object.hasOwn(savedManifest.files[0], 'identity')",
     "Object.hasOwn(savedManifest.files[0], 'fingerprint')",
     "Object.hasOwn(savedManifest, 'rootIdentity')",
+    "Object.hasOwn(savedManifest, 'rootFingerprint')",
     'fails closed when a retained file changes after inspection',
     'retained bundle file query changed after inspection',
     'fails closed on a same-byte retained file identity replacement after inspection',
@@ -102,8 +107,9 @@ try {
     'fails closed when retained metadata changes with the same inode and bytes',
     'assert.notEqual(fingerprintOf(after), fingerprintBefore)',
     'retained bundle file query metadata changed after inspection',
-    'fails closed when the retained bundle root is replaced after inspection',
+    'fails closed when retained bundle root metadata changes with the same inode',
     'retained bundle root changed after inspection',
+    'fails closed when the retained bundle root is replaced after inspection',
   ], 'post-inspection drift fixture');
 
   requireMarkers(runbook, [
@@ -112,6 +118,7 @@ try {
     'rereads all nine retained files',
     'same-byte filesystem identity replacement',
     'same-inode metadata drift',
+    'retained bundle root metadata drift',
     'retained bundle root replacement',
     'rereads the saved archive manifest',
     'post-inspection exact-byte drift',
