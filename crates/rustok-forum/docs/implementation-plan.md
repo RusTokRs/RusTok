@@ -216,13 +216,13 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-AU provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors; FORUM-20AQ adds normalized inherited category topic-create audience persistence; FORUM-20AR enforces that policy in every topic-create owner path; FORUM-20AS composes exact GraphQL/REST caller context and the host-published Groups facts provider into both create transports; FORUM-20AT publishes an exact active current-Channel fact ahead of optional Groups fallback; FORUM-20AU adds normalized inherited category reply-create audience persistence without changing reply creation. Reply-create enforcement and topic-local narrowing, moderation audiences, Forum trust owner state and facts, search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
+| `FORUM-20` | `in_progress` | FORUM-20A-AU provide inherited and richer category/topic visibility, recipient-aware Forum notification authorization, the Notifications inbox/group owner plane, authenticated storefront ports, native and GraphQL read/open/write transport parity, grouped UI and navigation. FORUM-20AM synchronizes the ledgers; FORUM-20AN adds GraphQL group-state commands; FORUM-20AO adds auth-reactive grouped bootstrap refresh; FORUM-20AP materializes initially non-public topic-created descriptors; FORUM-20AQ adds normalized inherited category topic-create audience persistence; FORUM-20AR enforces that policy in every topic-create owner path; FORUM-20AS composes exact GraphQL/REST caller context and the host-published Groups facts provider into both create transports; FORUM-20AT publishes an exact active current-Channel fact ahead of optional Groups fallback; FORUM-20AU adds normalized inherited category reply-create audience persistence without changing reply creation. Reply-create enforcement and topic-local narrowing, moderation audiences, remaining read/search/index/SEO/deep-link migration, scheduled reconciliation/redaction, delivery transports and PostgreSQL cross-consumer evidence remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
 | `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
-| `FORUM-26` | `in_progress` | FORUM-26A-I provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read and approved-post facts, plus pre-enforcement author-index and query-plan hardening. Active flags/moderation history, reputation, usage windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
+| `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Member directory, forum profile, badges and activity views. |
 | `FORUM-28` | `planned` | Editor, safe renderer and renderer-version rebuilds. |
 | `FORUM-29` | `planned` | Realtime acceleration with cursor/revision reconciliation. |
@@ -1395,8 +1395,9 @@ typed retryable unavailable unless an exact Channel match already decides the un
 FORUM-20AU adds only empty-by-default reply-create policy tables and managed owner
 commands; categories without a configured layer preserve existing reply behavior, and
 no optional facts capability is consulted until the separate enforcement slice.
-Forum trust remains unavailable because `forum_user_stats` stores activity counters,
-not authoritative trust state; trust ownership remains under `FORUM-26`.
+Forum trust is authoritative and host-composed through `ForumUserTrustAudienceFactsPort`;
+missing Channel or Groups membership capabilities remain typed and retryable only when
+the exact audience decision still requires them.
 
 Forum producer commands remain independent from Notifications availability. The
 Notifications module stays default-off, derives storefront tenant and recipient identity
@@ -1412,8 +1413,8 @@ supply write deadline and idempotency semantics.
   compose exact request context, and add topic-local reply narrowing only as a separate bounded
   owner policy that cannot broaden category layers;
 - add moderation audience policy persistence and enforcement plus owner write commands;
-- implement Forum trust owner state under `FORUM-26`, then publish a trust facts adapter while
-  keeping the delivered Channel and Groups adapters exact, bounded and tenant-scoped;
+- continue consuming the delivered Forum trust fact through the exact bounded audience
+  composition while keeping Channel and Groups adapters exact, bounded and tenant-scoped;
 - migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the
   same exact richer audience decision;
 - add visibility-scoped category/all-read commands over an exact bounded policy scope;
@@ -1603,7 +1604,7 @@ scoring.
 External/AI scoring is optional and cannot be a synchronous correctness
 dependency. Forum owns policy; shared rate limiting owns distributed execution.
 
-### Delivered in `FORUM-26A` through `FORUM-26I`
+### Delivered in `FORUM-26A` through `FORUM-26J`
 
 - Forum-owned tenant/user trust state, typed trust levels, managed writes and an
   authoritative exact-user trust facts adapter replace activity-counter or role
@@ -1621,27 +1622,37 @@ dependency. Forum owns policy; shared rate limiting owns distributed execution.
   approved-post query, source-ready `EXPLAIN` proofs, index-definition guards and
   the minimal platform-user fixture required by the isolated PostgreSQL Forum
   migration bootstrap;
+- `FORUM-26J` publishes authoritative exact-user topic/reply create-window facts
+  over all persisted owner rows, keeps soft-deleted and moderated attempts in the
+  observed budget, composes both providers in the host, and adds PostgreSQL/
+  SQLite author-time indexes plus source-ready `EXPLAIN` proof;
 - none of these slices invokes the composer from topic/reply/edit/bump commands,
   reserves shared rate-limit capacity, hashes duplicate content, calls external
   scoring or automatically changes trust state.
 
 ### Compatibility and degraded mode
 
-Trust rows and approved-post indexes are additive. Existing users without a
-trust row retain the documented compatibility level; existing topic/reply rows
-are indexed automatically with no backfill or owner-state rewrite. The approved-
-post query and fact value remain unchanged by the index migration. Missing fact
-owners continue to return explicit unavailable results, and optional external or
-AI scoring can never become a synchronous correctness dependency. Rolling back
-`FORUM-26I` drops only the two indexes and returns the query to its prior
-performance profile without changing results.
+Trust rows, approved-post indexes and create-window indexes are additive.
+Existing users without a trust row retain the documented compatibility level;
+existing topic/reply rows are indexed automatically with no backfill or owner-
+state rewrite. The approved-post query and fact value remain unchanged by its
+index migration. Create-window facts count every persisted owner create inside
+the exact inclusive observation window, including rows later soft-deleted and
+replies in any moderation state, so ordinary deletion or moderation cannot reset
+the budget. A hard retention purge removes historical rows and must remain later
+than any configured production window unless a durable usage ledger replaces the
+snapshot. Missing fact owners continue to return explicit unavailable results,
+and optional external or AI scoring can never become a synchronous correctness
+dependency. These facts are not a concurrency-safe reservation; rolling back the
+index migrations changes only query performance, not fact semantics.
 
 ### Remaining scope
 
 - publish authoritative active-flag and moderation-history facts from the
   moderation/report owner without inferring them from reply-status totals;
-- publish authoritative reputation, topic/reply/edit usage-window and bump-age
-  facts from their named owners;
+- publish authoritative reputation facts from the reputation owner and ledger;
+- publish edit-window and topic-target bump-age facts only after exact editing
+  actor and target identity are represented in the owner history and fact request;
 - persist and administer bounded policy configuration with versioned audit;
 - enforce the composed decision in topic, reply, edit and bump owner commands;
 - reserve, commit and release distributed rate-limit capacity through the shared
@@ -1665,17 +1676,21 @@ change and posting denial is explainable and auditable.
 ```bash
 cargo test -p rustok-forum posting_policy
 cargo test -p rustok-forum posting_policy_approved_facts -- --nocapture
+cargo test -p rustok-forum posting_policy_create_window_facts -- --nocapture
 cargo test -p rustok-forum --test approved_posts_index_sqlite -- --nocapture
 cargo test -p rustok-forum --test approved_posts_index_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test create_window_facts_index_sqlite -- --nocapture
+cargo test -p rustok-forum --test create_window_facts_index_postgres -- --nocapture --test-threads=1
 node scripts/verify/verify-forum-posting-policy-facts.mjs
 node scripts/verify/verify-forum-topic-reading-posting-facts.mjs
 node scripts/verify/verify-forum-approved-posts-posting-facts.mjs
 node scripts/verify/verify-forum-approved-posts-index-debt.mjs
 node scripts/verify/verify-forum-approved-posts-index-hardening.mjs
+node scripts/verify/verify-forum-create-window-posting-facts.mjs
 cargo xtask module validate forum
 ```
 
-The FORUM-26I source and contract records do not claim successful runtime
+The FORUM-26J source and contract records do not claim successful runtime
 verification until the maintainer runs the commands above.
 
 ## `FORUM-27` — member directory and forum profile
@@ -1997,7 +2012,6 @@ cargo xtask module validate notifications
 Resolve mandatory policy, per-type override, source/category override, tenant
 default and platform default in a documented order. Support off/instant/digest,
 recipient timezone, quiet hours and hourly/daily/weekly digest windows.
-
 Digest rendering rechecks target visibility and deduplicates source items.
 
 ## `NOTIFY-03` — durable source consumption and fan-out
@@ -2260,6 +2274,8 @@ cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test approved_posts_index_sqlite -- --nocapture
 cargo test -p rustok-forum --test approved_posts_index_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test create_window_facts_index_sqlite -- --nocapture
+cargo test -p rustok-forum --test create_window_facts_index_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_visibility_policy_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_authenticated_visibility_sqlite -- --nocapture
@@ -2287,6 +2303,7 @@ node scripts/verify/verify-forum-quote-commands.mjs
 node scripts/verify/verify-forum-mention-runtime-proof.mjs
 node scripts/verify/verify-forum-read-state-runtime-proof.mjs
 node scripts/verify/verify-forum-approved-posts-index-hardening.mjs
+node scripts/verify/verify-forum-create-window-posting-facts.mjs
 node scripts/verify/verify-forum-topic-visibility-scope.mjs
 node scripts/verify/verify-forum-category-visibility-policy.mjs
 node scripts/verify/verify-forum-owner-read-visibility.mjs
