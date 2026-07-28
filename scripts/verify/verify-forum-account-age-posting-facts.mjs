@@ -147,7 +147,7 @@ for (const marker of [
   "ForumPostingPolicyOwnerFactValue::AccountAgeSeconds(age_seconds)",
   "pub(crate) struct ServerForumPostingPolicyFactsComposer",
   "ForumPostingTrustFactPort::shared(audience_facts)",
-  "ServerForumAccountAgeFactPort::shared(db)",
+  "ServerForumAccountAgeFactPort::shared(db",
   "ForumPostingPolicyFactsComposer::new(vec![",
 ]) {
   requireText(production, marker, `account-age production source is missing ${marker}`);
