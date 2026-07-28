@@ -30,6 +30,7 @@ mod mention_relation_tests {
 pub mod moderation;
 mod moderation_audience_authorization;
 mod posting_policy;
+mod posting_policy_approved_facts;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
@@ -115,6 +116,7 @@ pub use posting_policy::{
     ForumPostingWindowCount, MAX_FORUM_POSTING_POLICY_FACTS,
     MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
 };
+pub use posting_policy_approved_facts::ForumApprovedPostsFactPort;
 pub use posting_policy_evaluator::{
     ForumPostingPolicyEvaluator, ForumPostingPolicyRules, ForumPostingWindowLimit,
     FORUM_POSTING_POLICY_PRECEDENCE,
