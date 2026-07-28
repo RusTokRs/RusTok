@@ -14,8 +14,8 @@ restricted or unavailable rows as absent.
 
 `followers_only` visibility resolves through authoritative Social Graph owner
 ports. Profiles never reads relation tables and never authorizes from an event,
-Index projection, decoded/raw DLQ receipt, broker identifier, consumer offset, or
-lag metric.
+Index projection, decoded/raw DLQ receipt, neutral receipt aggregate, broker
+identifier, consumer offset, lag metric, or poison-receipt health signal.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and
 MIME constraints and exposes only Media-selected descriptors. Profiles does not
@@ -62,6 +62,15 @@ mutation retry.
 - A read-only observer reads every `domain` partition plus the persistent group
   checkpoint. Complete total/max lag is published only when every partition is
   coherent; missing/inconsistent checkpoints clear lag gauges.
+- A separate count-only poison observer publishes fixed receipt-state aggregates,
+  snapshot availability, and snapshot time. Unavailable inspection clears stale
+  values; a missing/stopped observer is degraded health and never blocks projection.
+- The explicit append-only migration tail contains both receipt migrations, so the
+  previously published migration prefix is preserved.
+- An opt-in PostgreSQL receipt harness now defines isolated-schema evidence for
+  concurrent ownership, lease reclaim/fencing, collision rollback,
+  first-diagnostic retention, empty payloads, terminal recognition, and aggregate
+  inspection. It has not been executed.
 - Main also contains generic Index partition snapshot/query/mutation evidence.
   That strengthens the shared Index substrate but does not validate this Social
   Graph consumer, its schema registration, or Profiles presentation policy.
@@ -105,9 +114,11 @@ owner worker, and the offset remained uncommitted.
 - states are `reserved`, leased `publishing`, `published`, and `acknowledged`;
 - expired publication leases may be reclaimed, while terminal states are
   recognized idempotently;
-- the store performs no publish, DLQ routing, source commit, or authorization.
+- the store performs no publish, DLQ routing, source commit, or authorization;
+- read-only inspection exposes only fixed consumer-group counts and performs no
+  receipt transition, repair, retention, or deletion action.
 
-The Social Graph Index worker is now wired to the typed result:
+The Social Graph Index worker is wired to the typed result:
 
 - `SocialGraphIndexConsumer::receive_delivery` exposes events and decode failures
   without committing either;
@@ -122,9 +133,10 @@ The Social Graph Index worker is now wired to the typed result:
 - source ack precedes best-effort `mark_acknowledged` bookkeeping;
 - the raw path never invokes Index projection and never creates tenant/event facts.
 
-The remaining blocker is migration-order reconciliation: both the existing Social
-Graph Index DLQ migration and the connector poison migration must be appended to
-the explicit platform release-order tail without rewriting its published prefix.
+Migration-order reconciliation is complete. The remaining work is execution and
+retained proof: compile the current mainline, run PostgreSQL claim/lease/collision/
+inspection scenarios, run real-Iggy publication/ack/restart scenarios, and retain
+multi-replica/operator evidence without weakening privacy or exactly-once language.
 
 ## FFA/FBA boundary
 
@@ -152,7 +164,8 @@ the explicit platform release-order tail without rewriting its published prefix.
    transactional events, cleanup CLI, bounded replay, schema registration,
    result-first Index apply/ack, durable decoded-event and raw-delivery DLQ receipt
    recovery, deterministic broker identity, shared-transport lifecycle, readiness,
-   delivery telemetry, and broker-backed complete lag observation.
+   delivery telemetry, broker-backed complete lag observation, and count-only
+   neutral receipt health.
    **Remaining:** prove bounded replay/rescan repair and retain compiled/runtime
    evidence for privacy, receipts, cleanup, event relay/replay, schema concurrency,
    broker restart/redelivery/DLQ receipt/header/dedup/position observation,
@@ -180,20 +193,20 @@ the explicit platform release-order tail without rewriting its published prefix.
    telemetry, durable command/decoded-event/raw-delivery DLQ receipts,
    deterministic DLQ broker identity, maintenance, events, replay, cleanup CLI,
    persisted schema registration, durable terminal recognition, default-off shared
-   transport lifecycle, retries, shutdown, readiness, bounded metrics, and complete
-   lag.
-   **Remaining:** deployment retention approval, PostgreSQL concurrency/retention/
-   replay/rollback, real broker observer/reconnect/TLS/rebalance, deterministic
-   header and dedup disabled/enabled/expiry/capacity evidence, confirmation-policy
-   decision, multi-replica evidence, and retained operator packets.
+   transport lifecycle, retries, shutdown, readiness, bounded metrics, complete
+   lag, count-only poison health, and a PostgreSQL receipt evidence harness.
+   **Remaining:** execute PostgreSQL concurrency/retention/replay/rollback evidence,
+   approve deployment retention, prove real broker observer/reconnect/TLS/rebalance,
+   deterministic header and dedup disabled/enabled/expiry/capacity behavior,
+   confirmation policy, multi-replica behavior, and retained operator packets.
 
 6. **Handle undecodable sealed contract deliveries without invented ownership.**
    **Status:** source-complete for typed receive, immutable connector identity,
    neutral durable receipt, exact-byte DLQ publication, durable published-before-ack,
-   existing-result recovery, and best-effort post-ack bookkeeping.
-   **Next:** append both pending receipt migrations to the platform release-order
-   tail, reconcile with current `main`, refresh `Cargo.lock`, and execute PostgreSQL
-   plus real-Iggy failure/restart/multi-replica evidence.
+   existing-result recovery, best-effort post-ack bookkeeping, append-only migration
+   placement, count-only health, and opt-in PostgreSQL evidence scenarios.
+   **Next:** execute the PostgreSQL harness, retain database/server/cleanup evidence,
+   then execute real-Iggy failure/restart/dedup/multi-replica scenarios.
    **Done when:** malformed bytes are retained, classified, durably terminalized,
    published/recovered, and acknowledged without fabricated tenant/event identity,
    implicit commits, duplicate authorization effects, or exactly-once claims, and
@@ -202,13 +215,14 @@ the explicit platform release-order tail without rewriting its published prefix.
 ## Recheck checkpoint — 2026-07-28
 
 - Rechecked the canonical Profiles plan, superseded PR #2237, draft PR #2317,
-  replacement PR #2338, current `main`, and generic Index partition evidence.
+  replacement PR #2338, and current `main` while using short merge/new-branch cycles
+  to reduce conflicts with parallel agents.
 - Preserved receipts, cleanup, sealed events, replay, schema registration,
   persistent worker, durable decoded-event DLQ receipts, deterministic broker
   identity, readiness, telemetry, and position observation from PR #2317.
 - Reconfirmed privacy-before-presentation, bounded follower reads, owner-scoped
   writes, Media-owned descriptors, no automatic mutation retry, and the rule that
-  Index/broker state never authorizes profile presentation.
+  Index/broker/receipt/metric state never authorizes profile presentation.
 - Added the typed exact-byte decode-failure contract with explicit acknowledgement.
 - Added connector-owned neutral receipt DDL/store with private immutable source
   identity, empty exact-byte support, collision detection, first-diagnostic
@@ -221,11 +235,13 @@ the explicit platform release-order tail without rewriting its published prefix.
 - Enabled connector migration/storage API explicitly in the server dependency rather
   than relying on transitive feature unification.
 - Registered the connector migration in the truthful `mode: none` backfill ledger.
-- Found that `m20260727_000004_create_index_dlq_receipts` is absent from the current
-  explicit append-only migration tail; the connector receipt migration must be
-  appended with it before compatibility validation.
-- The replacement branch still descends from PR #2317 and must be synchronized with
-  current `main`; `Cargo.lock` must be refreshed by Cargo afterward.
+- Appended both receipt migrations to the explicit platform release-order tail
+  without rewriting its published prefix.
+- Added count-only receipt inspection, Prometheus metrics, stale-snapshot clearing,
+  bounded failure logging, degraded observer-task health, and an operator runbook.
+- Added an opt-in isolated-schema PostgreSQL harness for claim ownership, lease
+  reclaim/fencing, collision rollback, atomic first-diagnostic retention, terminal
+  recognition, and aggregate consistency.
 - Tests, Cargo commands, formatters, source verifiers, PostgreSQL, real-broker, and
   multi-replica scenarios were not run, per maintainer instruction.
 
@@ -241,7 +257,11 @@ the explicit platform release-order tail without rewriting its published prefix.
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
+- `cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture`
+- `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' cargo test -p rustok-iggy-connector --features migrations --test consumer_poison_receipt_postgres -- --nocapture`
 - `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
+- `node scripts/verify/verify-iggy-consumer-poison-inspection.mjs`
+- `node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
@@ -252,6 +272,7 @@ the explicit platform release-order tail without rewriting its published prefix.
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `node scripts/verify/verify-social-graph-index-dlq-receipts.mjs`
+- `node scripts/verify/verify-social-graph-index-poison-observer.mjs`
 - `node scripts/verify/verify-runtime-consumer-metrics.mjs`
 - `node scripts/verify/verify-social-graph-command-receipts.mjs`
 - `node scripts/verify/verify-social-graph-receipt-cleanup.mjs`
@@ -288,4 +309,6 @@ the explicit platform release-order tail without rewriting its published prefix.
     connector poison contract and acknowledge only after its terminal result exists.
 16. Existing durable poison choices remain recoverable across later policy disablement;
     new undecodable deliveries remain uncommitted without an enabled terminal policy.
-17. Update Profiles and affected owner docs with every boundary change.
+17. Count-only receipt health and PostgreSQL evidence never authorize, acknowledge,
+    reclaim, repair, retain, or delete production delivery state.
+18. Update Profiles and affected owner docs with every boundary change.
