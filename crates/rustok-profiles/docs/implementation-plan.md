@@ -7,91 +7,93 @@ visibility policy, owner reads, audience-bound presentation, summary batching,
 GraphQL self-service, `profile.updated`, owner-local backfill, Media-backed image
 presentation, and the first module-owned storefront profile surface.
 
-Profiles is not an auth, customer, seller, staff, Social Graph, Index, or search
-aggregate. Public GraphQL, Customer Admin enrichment, Blog/Forum author cards, and
-storefront reads share privacy-before-presentation ordering and hide restricted or
-unavailable rows as absent.
+Profiles is not an auth, customer, seller, staff, Social Graph, Index, search, or
+broker aggregate. Public GraphQL, Customer Admin enrichment, Blog/Forum author
+cards, and storefront reads share privacy-before-presentation ordering and hide
+restricted or unavailable rows as absent.
 
-`followers_only` visibility resolves through authoritative Social Graph owner ports.
-Profiles never reads relation tables and never authorizes from an event or Index
-projection. The Social Graph → Index worker, its DLQ receipts and deterministic broker
-IDs, broker position observer, deduplication state, and lag metrics are optional
-operations only.
+`followers_only` visibility resolves through authoritative Social Graph owner
+ports. Profiles never reads relation tables and never authorizes from an event,
+Index projection, DLQ receipt, broker identifier, consumer offset, or lag metric.
 
-Media descriptors remain Media-owned. Profiles validates tenant, uploader, and MIME
-constraints and exposes only Media-selected descriptors. Profiles does not know
-storage keys, provider endpoints, or ingress construction.
+Media descriptors remain Media-owned. Profiles validates tenant, uploader, and
+MIME constraints and exposes only Media-selected descriptors. Profiles does not
+know storage keys, provider endpoints, or ingress construction.
 
 The module-owned storefront mounts `/modules/profiles?handle=<handle>`, supports
 SSR-first native and explicit GraphQL transports, renders approved avatar/banner
-descriptors, and exposes authenticated follow/unfollow with unique idempotency keys,
-optimistic revisions, and one read-only conflict refresh without automatic mutation
-retry.
+descriptors, and exposes authenticated follow/unfollow with unique idempotency
+keys, optimistic revisions, and one read-only conflict refresh without automatic
+mutation retry.
 
-## Social Graph and Index status
+## Social Graph, Index, and broker status
 
-- Durable Social Graph command receipts bind a tenant-scoped normalized idempotency key
-  to one complete command identity and share a transaction with relation mutation,
-  optional event append, response snapshot, and completion.
-- `social_graph.relation.state_changed` is a sealed persisted-revision fact; no-op and
-  receipt replay emit nothing, and event failure rolls owner state back.
+- Durable Social Graph command receipts bind a tenant-scoped normalized
+  idempotency key to one complete command identity and share a transaction with
+  relation mutation, optional event append, response snapshot, and completion.
+- `social_graph.relation.state_changed` is a sealed persisted-revision fact; no-op
+  and receipt replay emit nothing, and event failure rolls owner state back.
 - Historical replay is service/system-only, bounded, page-atomic, and remains the
   authoritative drift-repair source.
-- The generic Index adapter maps active revisions to non-localized upserts, inactive
-  revisions to tombstones, relation id to entity id, and revision to monotonic
-  `source_version`.
+- The generic Index adapter maps active revisions to non-localized upserts,
+  inactive revisions to tombstones, relation id to entity id, and revision to
+  monotonic `source_version`.
 - `SocialGraphIndexProjector` registers the tenant schema through Index-owned
-  `PostgresSchemaRegistrationStore` before Index inbox apply.
+  persistence before Index inbox apply.
 - `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable results.
-- The persistent consumer retains one outstanding delivery and acknowledges only after
-  schema/mutation or durable DLQ results exist.
+- The persistent consumer retains one outstanding delivery and acknowledges only
+  after schema/mutation or durable DLQ results exist.
 - Runtime execution is default-off through
-  `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED`; explicit enablement requires a worker
-  host and `outbox_iggy`.
+  `RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED`; explicit enablement requires a
+  worker host and `outbox_iggy`.
 - Relay and consumer reuse the single `Arc<IggyTransport>` owned by `EventRuntime`.
 - Projection, DLQ publication, and acknowledgement failures use bounded retry.
-- Migration `m20260727_000004_create_index_dlq_receipts` stores immutable poison source
-  coordinates and exact broker bytes under tenant/consumer-group/event identity.
-- Receipt states reserve and lease publication, then persist `published` before source
-  acknowledgement. Existing `published`/`acknowledged` receipts are recognized before
-  projection and enter acknowledgement-only recovery.
-- Ack failure after successful DLQ publication no longer causes redelivery to republish:
-  the durable `published` receipt skips both Index projection and DLQ publication.
-- A versioned length-framed SHA-256 construction derives one UUIDv8 from the immutable
-  receipt identity and exact payload. Retry count, time, publisher identity, and random
-  values are excluded.
-- The UUIDv8 is attached separately from the source event ID. `IggyTransport` lazily
-  maps it to Iggy's `u128` message header through a client connection to the same
-  configured endpoint and existing `dlq` topic.
-- A previously reserved receipt continues toward its chosen terminal result even when
-  policy for new DLQ decisions is later disabled.
-- Broker success followed by failure before the receipt reaches `published` remains a
-  separate confirmation ambiguity. A retry carries the same broker ID, but physical
-  suppression requires deployment-owned Iggy deduplication to be enabled and its
-  per-partition cache/expiry to still contain that ID.
-- Durable receipt state remains authoritative. A broker ID or optional bounded cache
-  does not establish exactly-once and never participates in profile authorization.
-- Shared `StopHandle` controls shutdown and `SocialGraphIndexWorkerHandle` participates
-  in `runtime_guardrails`, `/health/ready`, and aggregate guardrail metrics only when
-  explicitly enabled.
-- Shared Prometheus delivery telemetry covers received/terminal outcomes,
-  projection/DLQ/ack retries, bounded failures, DLQ `published`, `already_published`, and
-  `failure` results, processing duration, starts/terminations, in-flight state, and last
-  success.
-- A separate read-only observer connects to the already-running configured Iggy endpoint
-  and reads every `domain` partition plus the persistent group checkpoint. It never
-  starts/stops a broker and never mutates offsets.
-- Position metrics expose snapshot timestamp, partition count, completeness, and exact
-  `total`/`max` offset lag only when every partition is coherent. Empty partitions
-  contribute zero; missing/inconsistent checkpoints make the snapshot incomplete and
-  clear lag gauges.
-- Metrics use bounded labels and expose no tenant, event, relation, partition, offset,
-  payload, broker-ID, ack-token, credential, or raw error-message values.
-- Observer failures are operationally visible but do not stop projection, change worker
-  readiness, or affect profile presentation.
-- PostgreSQL concurrency/receipt evidence, real-Iggy recovery/position/deterministic-ID/
-  deduplication evidence, and multi-replica behavior remain pending.
-- None of this moves privacy policy or relation authority out of Social Graph.
+- Migration `m20260727_000004_create_index_dlq_receipts` stores immutable poison
+  source coordinates and exact broker bytes under trusted tenant/consumer/event
+  identity.
+- Receipt states reserve and lease publication, then persist `published` before
+  source acknowledgement. Existing `published`/`acknowledged` receipts are
+  recognized before projection and enter acknowledgement-only recovery.
+- A versioned length-framed SHA-256 construction derives one UUIDv8 from the
+  immutable trusted receipt identity and exact payload. Retry count, time,
+  publisher identity, and random values are excluded.
+- A read-only observer reads every `domain` partition plus the persistent group
+  checkpoint. Complete total/max lag is published only when every partition is
+  coherent; missing/inconsistent checkpoints clear lag gauges.
+- Main now also contains generic Index partition snapshot/query/mutation evidence.
+  That strengthens the shared Index substrate but does not validate this Social
+  Graph consumer, its schema registration, or Profiles presentation policy.
+
+## Raw contract decode-failure checkpoint
+
+The previous consumer path deserialized before returning a delivery. Malformed
+JSON/MessagePack or a registered-schema failure therefore surfaced only as a
+receive error: exact bytes and connector coordinates were not available to the
+owner worker, and the offset remained uncommitted.
+
+`rustok-iggy` now defines a connector-level source contract:
+
+- `PersistentContractConsumerGroup::receive_delivery()` returns either a
+  validated event or `ConsumedContractDecodeFailure`;
+- stream/topic metadata is checked before decoding;
+- decode/schema failures retain exact bytes, partition, offset, and opaque ack
+  token without inventing tenant or domain event identity;
+- stable codes are limited to `iggy.contract.decode_invalid` and
+  `iggy.contract.schema_invalid`;
+- a versioned UUIDv8 is derived from stream/topic/partition/offset/exact payload;
+  error kind, retry count, time, process identity, connector message identity,
+  acknowledgement token, credentials, and randomness are excluded;
+- the UUID may be used as a connector delivery and broker message identity, but
+  it is not a decoded event id and does not create a tenant-scoped durable receipt;
+- acknowledgement remains a separate explicit call after an approved terminal
+  poison result exists;
+- compatibility `receive()` still returns a bounded error and performs no
+  implicit acknowledgement.
+
+The Social Graph Index worker is not wired to this new result yet. That is
+intentional: undecodable bytes cannot safely reuse the existing tenant/event DLQ
+receipt by fabricating trusted facts. The next runtime slice must select a neutral
+durable connector poison receipt/outbox/transaction boundary before acknowledging.
 
 ## FFA/FBA boundary
 
@@ -99,10 +101,11 @@ retry.
 - FBA status: `not_started`
 - Structural shape: `core_transport_ui`
 - The module has a module-owned Leptos storefront package with native/GraphQL
-  transports, package i18n, fail-closed transport selection, optimistic recovery, and
-  Media/Social Graph owner composition.
-- FBA remains `not_started` until compiled/live transport, Media isolation, provider
-  identity, public ingress, storage delivery, and retained runtime evidence exist.
+  transports, package i18n, fail-closed transport selection, optimistic recovery,
+  and Media/Social Graph owner composition.
+- FBA remains `not_started` until compiled/live transport, Media isolation,
+  provider identity, public ingress, storage delivery, and retained runtime
+  evidence exist.
 
 ## Results and next work
 
@@ -113,71 +116,74 @@ retry.
    projection is necessary.
 
 2. **Finish followers-only and downstream presentation policy.**
-   **Status:** source-complete for owner privacy ports, public GraphQL lookups, author
-   cards, storefront, Customer Admin enrichment, receipt-aware commands,
+   **Status:** source-complete for owner privacy ports, public GraphQL lookups,
+   author cards, storefront, Customer Admin enrichment, receipt-aware commands,
    transactional events, cleanup CLI, bounded replay, schema registration,
-   result-first Index apply/ack, durable DLQ receipt recovery, deterministic broker-ID
-   construction, shared-transport lifecycle, readiness, delivery telemetry, and
-   broker-backed complete lag observation.
+   result-first Index apply/ack, durable decoded-event DLQ receipt recovery,
+   deterministic broker identity, shared-transport lifecycle, readiness, delivery
+   telemetry, and broker-backed complete lag observation.
    **Remaining:** prove bounded replay/rescan repair and retain compiled/runtime
    evidence for privacy, receipts, cleanup, event relay/replay, schema concurrency,
-   broker restart/redelivery/DLQ receipt/header/dedup/position observation, storefront,
-   Customer Admin, Blog/Forum, and Media.
-   **Done when:** every presentation consumer exposes one policy with retained
-   evidence and no direct foreign-domain reads or projection-based authorization.
+   broker restart/redelivery/DLQ receipt/header/dedup/position observation,
+   storefront, Customer Admin, Blog/Forum, and Media.
 
 3. **Publish module-owned profile storefront UI.**
    **Status:** source-complete for the first Leptos slice, native/GraphQL transport
-   selection, Media presentation, authenticated follow control, and read-only conflict
-   recovery.
+   selection, Media presentation, authenticated follow control, and read-only
+   conflict recovery.
    **Directory/search decision:** directory/search must use Profiles-owned public
    profile records plus generic Index query contracts. Social Graph relation
-   projection may support discovery/ranking inputs but must not replace audience-bound
-   profile authorization. Runtime UI/query work waits for the Index query port and a
-   Profiles-owned public-profile source schema.
+   projection may support discovery/ranking inputs but must not replace
+   audience-bound profile authorization.
    **Remaining:** execute SSR/hydrate/GraphQL route, auth, i18n, Media
    direct/proxy/fallback, mutation conflict, durable receipt, relation-event, and
    accessibility evidence.
 
 4. **Keep profile backfill owner-local.**
    **Status:** source-complete; compiled/runtime verification pending. The CLI uses
-   owner auth/tenant/customer reads and optional Outbox publication while preserving
-   dry-run semantics and aggregate telemetry.
+   owner auth/tenant/customer reads and optional Outbox publication while
+   preserving dry-run semantics and aggregate telemetry.
 
 5. **Complete audit and operational evidence.**
-   **Status:** source-complete for Profiles operations, Social Graph command telemetry,
-   durable command/DLQ receipts, deterministic DLQ broker identity, maintenance,
-   events, replay, cleanup CLI, sealed conversion, persisted schema registration,
-   durable terminal recognition, default-off shared transport lifecycle, retries,
-   staged DLQ ordering, shutdown, readiness, bounded consumer metrics, and
-   partition-qualified complete lag observation.
+   **Status:** source-complete for Profiles operations, Social Graph command
+   telemetry, durable command/decoded-event DLQ receipts, deterministic DLQ broker
+   identity, maintenance, events, replay, cleanup CLI, persisted schema
+   registration, durable terminal recognition, default-off shared transport
+   lifecycle, retries, shutdown, readiness, bounded metrics, and complete lag.
    **Remaining:** deployment retention approval, PostgreSQL concurrency/retention/
-   replay/rollback, real broker observer/reconnect/TLS/rebalance, deterministic header
-   and dedup disabled/enabled/expiry/capacity evidence, confirmation-mechanism decision,
-   multi-replica evidence, and retained operator packets.
+   replay/rollback, real broker observer/reconnect/TLS/rebalance, deterministic
+   header and dedup disabled/enabled/expiry/capacity evidence, confirmation-policy
+   decision, multi-replica evidence, and retained operator packets.
 
-## Recheck checkpoint — 2026-07-27
+6. **Handle undecodable sealed contract deliveries without invented ownership.**
+   **Status:** connector source contract complete; worker integration not started.
+   **Next:** add a neutral durable poison receipt/outbox/transaction contract keyed
+   by immutable broker coordinates plus exact payload, wire the Social Graph Index
+   worker to `receive_delivery`, persist/publish before ack, recover redelivery
+   idempotently, and keep this path operationally independent from Profiles privacy.
+   **Done when:** malformed bytes can be retained, classified, durably terminalized,
+   published/recovered, and acknowledged without fabricated tenant/event identity,
+   implicit commits, duplicate authorization effects, or exactly-once claims.
 
-- Preserved receipts, cleanup, event, replay, CLI, migration, topology, and guard work
-  from superseded draft PR #2237 in PR #2317.
-- Rechecked privacy-before-presentation, bounded follower reads, owner-scoped writes,
-  Media-owned descriptors, and no automatic mutation retry.
-- Approved Index as the first relation-event consumer while rejecting foreign
-  relation-table reads and projection-based authorization.
-- Added Index-owned schema registration, staged persistent consumption, default-off
-  lifecycle, strict `outbox_iggy` gating, one shared Iggy transport, shutdown, bounded
-  retry, exact-byte DLQ-before-ack, and acknowledgement-only recovery.
-- Added durable DLQ receipt identity/bytes, leased publication, terminal recognition
-  before projection, and ack-only recovery across process restart.
-- Added a versioned deterministic UUIDv8 and an explicit Iggy `u128` message header as
-  an optional duplicate-suppression input while keeping the receipt authoritative.
-- Added enabled-worker readiness and shared bounded Prometheus consumer telemetry.
-- Added a read-only every-partition broker snapshot and completeness-gated total/max
-  lag while retaining partition/offset values outside metric labels.
-- Kept DLQ receipt/header/dedup and position operations independent from Profiles
-  privacy and presentation.
-- Tests, formatters, Cargo commands, source verifiers, PostgreSQL, real-broker, and
-  multi-replica scenarios remain maintainer-run or pending.
+## Recheck checkpoint — 2026-07-28
+
+- Rechecked the canonical Profiles plan, superseded PR #2237, draft PR #2317,
+  current `main`, and the latest generic Index partition evidence.
+- Preserved the receipts, cleanup, sealed event, replay, schema registration,
+  persistent worker, durable DLQ receipt, deterministic broker identity, readiness,
+  telemetry, and position-observer work from PR #2317 in the replacement branch.
+- Reconfirmed privacy-before-presentation, bounded follower reads, owner-scoped
+  writes, Media-owned descriptors, no automatic mutation retry, and the rule that
+  Index/broker state never authorizes profile presentation.
+- Identified the raw decode gap before owner processing and added a typed
+  connector-level exact-byte failure contract with explicit acknowledgement.
+- Did not wire malformed bytes into the Social Graph tenant-scoped DLQ receipt,
+  because tenant/event facts are unavailable and must not be synthesized.
+- Current replacement branch still descends from PR #2317 head and therefore must
+  be synchronized with current `main` before final merge; `Cargo.lock` must be
+  refreshed by Cargo after that synchronization.
+- Tests, Cargo commands, formatters, source verifiers, PostgreSQL, real-broker, and
+  multi-replica scenarios were not run, per maintainer instruction.
 
 ## Verification
 
@@ -186,18 +192,13 @@ retry.
 - `cargo xtask module test profiles`
 - `cargo check -p rustok-profiles-storefront --all-targets`
 - `cargo test -p rustok-profiles-storefront`
-- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
-- `cargo test -p rustok-telemetry`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
+- `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
+- `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
-- `cargo test -p rustok-index schema_registration --lib -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
-- `cargo test -p rustok-social-graph --features index-consumer index_consumer::tests -- --nocapture`
-- `cargo test -p rustok-social-graph --features index-consumer index_dlq_receipt::tests -- --nocapture`
-- `cargo test -p rustok-social-graph --features index-consumer index_dlq_message_id::tests -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
-- `cargo test -p rustok-server social_graph_index_worker --lib -- --nocapture`
-- `cargo test -p rustok-server runtime_guardrails --lib -- --nocapture`
 - `node scripts/verify/verify-index-schema-registration.mjs`
 - `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-index-consumer.mjs`
@@ -228,14 +229,14 @@ retry.
    idempotency keys, cursors, payloads, broker IDs, claims, roles, and channels.
 10. Index/search projections may use sealed owner events, generic Index contracts,
     monotonic source versions, and bounded replay, but never authorize visibility.
-11. Durable workers persist/recognize the owner result before ack; exact-byte broker DLQ
-    publication and terminal receipt persistence precede source ack.
-12. Deterministic DLQ IDs bind immutable receipt identity and exact payload but never
+11. Durable workers persist/recognize the owner result before ack; exact-byte broker
+    DLQ publication and terminal receipt persistence precede source ack.
+12. Deterministic IDs bind immutable source identity and exact payload but never
     authorize presentation or imply exactly-once without retained broker evidence.
 13. Optional enabled workers participate in readiness and bounded telemetry; disabled
     workers do not degrade presentation availability.
 14. Publish lag only from a complete partition-qualified broker snapshot; never use
     partition or offset as metric labels.
-15. DLQ receipts, broker IDs/deduplication, position observation, and lag remain
-    operational only and cannot authorize Profiles reads.
+15. Undecodable bytes must not invent tenant or domain event identity. Use a neutral
+    connector poison contract and acknowledge only after its terminal result exists.
 16. Update Profiles and affected owner docs with every boundary change.
