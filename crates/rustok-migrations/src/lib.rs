@@ -69,6 +69,8 @@ const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
     "m20260723_000001_create_social_graph_relations",
     "m20260725_000002_add_follow_relation_kind",
     "m20260726_000003_create_command_receipts",
+    "m20260727_000004_create_index_dlq_receipts",
+    "m20260728_000001_create_consumer_poison_receipts",
 ];
 
 struct ModuleMigrationSource {
