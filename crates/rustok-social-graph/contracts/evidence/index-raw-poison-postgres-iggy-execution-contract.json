@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "module": "social-graph",
+  "packet": "index-raw-poison-postgres-iggy-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "source_contract": "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json",
+  "runner": "scripts/evidence/capture-social-graph-index-raw-poison-postgres-iggy.mjs",
+  "verifier": "scripts/verify/verify-social-graph-index-raw-poison-postgres-iggy-retained.mjs",
+  "evidence_path": "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json",
+  "evidence_status": "runtime_execution_pending",
+  "test_target": "index_raw_poison_postgres_iggy",
+  "required_environment": [
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_DATABASE_URL",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_IGGY_ADDRESS",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_POSTGRES_ARTIFACT",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_IGGY_SERVER_ARTIFACT"
+  ],
+  "optional_environment": [
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_IGGY_USERNAME",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_IGGY_PASSWORD"
+  ],
+  "command_template": {
+    "program": "cargo",
+    "args_before_case": [
+      "test",
+      "-p",
+      "rustok-social-graph",
+      "--features",
+      "index-consumer",
+      "--test",
+      "index_raw_poison_postgres_iggy",
+      "--"
+    ],
+    "args_after_case": [
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
+  "required_cases": [
+    {
+      "case": "raw_poison_persists_published_before_source_acknowledgement",
+      "assertions": [
+        "receipt_publishing_after_claim",
+        "exact_dlq_bytes_observed",
+        "receipt_publishing_after_broker_success",
+        "receipt_published_before_source_ack",
+        "receipt_published_after_source_ack_before_bookkeeping",
+        "receipt_acknowledged_after_bookkeeping",
+        "next_source_offset_visible"
+      ]
+    },
+    {
+      "case": "published_redelivery_is_acknowledgement_only_without_republication",
+      "assertions": [
+        "published_receipt_survives_transport_shutdown",
+        "same_offset_bytes_and_uuid_redelivered",
+        "claim_returns_already_published",
+        "no_second_dlq_publication_after_reopen",
+        "receipt_acknowledged_after_source_ack",
+        "next_source_offset_visible"
+      ]
+    }
+  ],
+  "source_files": [
+    "crates/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs",
+    "apps/server/src/services/social_graph_index_worker.rs",
+    "crates/rustok-social-graph/src/index_consumer.rs",
+    "crates/rustok-iggy/src/contract_consumer.rs",
+    "crates/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/rustok-iggy/src/dlq_publisher.rs",
+    "crates/rustok-iggy/src/transport.rs",
+    "crates/rustok-iggy-connector/src/migrations.rs"
+  ],
+  "retained_metadata": [
+    "git_commit",
+    "started_at",
+    "completed_at",
+    "cargo_version",
+    "rustc_version",
+    "postgres_artifact",
+    "iggy_server_artifact",
+    "source_sha256",
+    "combined_test_output_sha256",
+    "test_output_sha256",
+    "test_output_bytes",
+    "executed_cases"
+  ],
+  "privacy_boundary": {
+    "forbidden_persisted_values": [
+      "database_url",
+      "iggy_address",
+      "username",
+      "password",
+      "connection_string",
+      "raw_test_output",
+      "payload",
+      "delivery_uuid",
+      "source_offset",
+      "ack_token",
+      "schema_name",
+      "stream_name"
+    ]
+  },
+  "promotion_gate": "clean_commit_all_exact_cases_pass_current_source_hashes",
+  "forbidden_claims": [
+    "physical_exactly_once_proved",
+    "database_broker_transaction_proved",
+    "deduplication_window_sufficiency_proved",
+    "bundled_mode_proved",
+    "tls_or_auth_failure_proved",
+    "multi_replica_claim_ownership_proved",
+    "profiles_authorization_proved"
+  ]
+}
