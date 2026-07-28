@@ -6,6 +6,8 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_web::HttpError;
 use sea_orm::DatabaseConnection;
 
+use crate::SharedForumAudienceFactsPort;
+
 pub mod categories;
 pub mod category_commands;
 pub mod category_lifecycle;
@@ -25,7 +27,7 @@ pub mod widgets;
 pub struct ForumHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
-    audience_facts: Option<crate::SharedForumAudienceFactsPort>,
+    audience_facts: Option<SharedForumAudienceFactsPort>,
 }
 
 impl ForumHttpRuntime {
@@ -79,7 +81,7 @@ impl ForumHttpRuntime {
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
-            audience_facts: runtime.shared_get::<crate::SharedForumAudienceFactsPort>(),
+            audience_facts: runtime.shared_get::<SharedForumAudienceFactsPort>(),
         })
     }
 }
