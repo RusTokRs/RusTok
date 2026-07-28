@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { readCommerceSafeQuerySource } from './lib/commerce-safe-query-source.mjs';
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -14,7 +16,7 @@ const shipping = read('crates/rustok-commerce/src/storefront_shipping.rs');
 const helper = read('crates/rustok-commerce/src/graphql/mutations/helpers.rs');
 const helperFacade = read('crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
 const query = read('crates/rustok-commerce/src/graphql/query.rs');
-const queryFacade = read('crates/rustok-commerce/src/graphql/safe_query.rs');
+const queryFacade = readCommerceSafeQuerySource(read);
 const failures = [];
 
 const requireText = (source, value, label) => {

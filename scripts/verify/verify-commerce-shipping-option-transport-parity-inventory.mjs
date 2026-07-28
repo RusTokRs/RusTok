@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { readCommerceSafeQuerySource } from './lib/commerce-safe-query-source.mjs';
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -15,7 +17,7 @@ const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
 const adminRest = read('crates/rustok-commerce/src/controllers/admin/shipping.rs');
 const storefrontRest = read('crates/rustok-commerce/src/controllers/store/products.rs');
 const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
-const safeQuery = read('crates/rustok-commerce/src/graphql/safe_query.rs');
+const safeQuery = readCommerceSafeQuerySource(read);
 const commerceStorefrontTransport = read('crates/rustok-commerce/storefront/src/transport/mod.rs');
 const commerceNativeAdapter = read(
   'crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs',
@@ -68,7 +70,7 @@ for (const [source, value, label] of [
   [safeQuery, 'shipping_option_runtime.shipping_option_read_port()', 'GraphQL storefront port'],
   [
     safeQuery,
-    'shipping_option_runtime\n                        .shipping_option_admin_read_port()',
+    'shipping_option_runtime\n                .shipping_option_admin_read_port()',
     'GraphQL admin port',
   ],
   [httpRuntime, 'shipping_option_read_runtime: crate::graphql_runtime::CommerceShippingOptionReadRuntime', 'HTTP runtime field'],
