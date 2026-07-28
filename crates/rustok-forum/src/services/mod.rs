@@ -31,6 +31,7 @@ pub mod moderation;
 mod moderation_audience_authorization;
 mod posting_policy;
 mod posting_policy_approved_facts;
+mod posting_policy_create_window_facts;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
@@ -117,6 +118,9 @@ pub use posting_policy::{
     MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
 };
 pub use posting_policy_approved_facts::ForumApprovedPostsFactPort;
+pub use posting_policy_create_window_facts::{
+    ForumReplyCreatesWindowFactPort, ForumTopicCreatesWindowFactPort,
+};
 pub use posting_policy_evaluator::{
     ForumPostingPolicyEvaluator, ForumPostingPolicyRules, ForumPostingWindowLimit,
     FORUM_POSTING_POLICY_PRECEDENCE,
