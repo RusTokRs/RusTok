@@ -218,3 +218,8 @@ url = "2.5"
 
 [build-dependencies]
 serde.workspace = true
+toml.workspace = true
+
+[package.metadata.cargo-udeps.ignore]
+development = ["serial_test"]
+normal = ["rustok-rbac", "rustok-tenant", "password-hash"]
