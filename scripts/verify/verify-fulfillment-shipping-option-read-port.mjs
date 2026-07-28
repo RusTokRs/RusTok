@@ -33,21 +33,36 @@ const forbidText = (source, value, label) => {
 
 for (const [source, value, label] of [
   [ownerRoot, 'mod shipping_option_read;', 'private owner module'],
-  [ownerRoot, 'InProcessShippingOptionReadPort,', 'wrapper export'],
+  [ownerRoot, 'InProcessShippingOptionReadPort,', 'storefront wrapper export'],
+  [ownerRoot, 'InProcessShippingOptionAdminReadPort,', 'admin wrapper export'],
   [
     ownerRoot,
     'ListAllShippingOptionProjectionsRequest,',
     'administrative list request export',
   ],
-  [ownerRoot, 'ShippingOptionReadPort,', 'trait export'],
-  [ownerRoot, 'in_process_shipping_option_read_port,', 'root factory export'],
-  [ownerSource, 'pub trait ShippingOptionReadPort: Send + Sync {', 'read port trait'],
-  [ownerSource, 'pub struct InProcessShippingOptionReadPort {', 'in-process wrapper'],
-  [ownerSource, 'impl ShippingOptionReadPort for InProcessShippingOptionReadPort', 'wrapper implementation'],
+  [ownerRoot, 'ShippingOptionReadPort,', 'storefront trait export'],
+  [ownerRoot, 'ShippingOptionAdminReadPort,', 'admin trait export'],
+  [ownerRoot, 'in_process_shipping_option_read_port,', 'storefront factory export'],
+  [
+    ownerRoot,
+    'in_process_shipping_option_admin_read_port,',
+    'admin factory export',
+  ],
+  [ownerSource, 'pub trait ShippingOptionReadPort: Send + Sync {', 'storefront read port trait'],
+  [ownerSource, 'pub trait ShippingOptionAdminReadPort: Send + Sync {', 'admin read port trait'],
+  [ownerSource, 'pub struct InProcessShippingOptionReadPort {', 'storefront wrapper'],
+  [ownerSource, 'pub struct InProcessShippingOptionAdminReadPort {', 'admin wrapper'],
+  [ownerSource, 'impl ShippingOptionReadPort for InProcessShippingOptionReadPort', 'storefront wrapper implementation'],
+  [ownerSource, 'impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort', 'admin wrapper implementation'],
   [
     ownerSource,
     'pub fn in_process_shipping_option_read_port(',
-    'canonical factory',
+    'storefront canonical factory',
+  ],
+  [
+    ownerSource,
+    'pub fn in_process_shipping_option_admin_read_port(',
+    'admin canonical factory',
   ],
 ]) {
   requireText(source, value, label);
@@ -195,5 +210,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ fulfillment owns active, administrative list-all, and lookup shipping-option projections behind one canonical read port while mounted storefront commerce retains owner context',
+  '✔ fulfillment owns storefront active/list lookup and administrative list-all projections behind separate canonical read ports while mounted storefront commerce retains owner context',
 );
