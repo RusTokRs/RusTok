@@ -57,6 +57,10 @@ path = "src/bin/index_partition_mutation_evidence.rs"
 name = "index-partition-maintenance-evidence"
 path = "src/bin/index_partition_maintenance_evidence.rs"
 
+[[bin]]
+name = "index-partition-cutover-evidence"
+path = "src/bin/index_partition_cutover_evidence.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false
