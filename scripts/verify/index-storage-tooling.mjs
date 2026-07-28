@@ -69,6 +69,7 @@ const runContract = (args) => {
     'verify-index-partition-query-evidence.mjs',
     'verify-index-partition-mutation-evidence.mjs',
     'verify-index-partition-maintenance-evidence.mjs',
+    'verify-index-partition-cutover-evidence.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-standalone-tools.mjs',
