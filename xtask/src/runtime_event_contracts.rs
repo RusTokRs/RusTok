@@ -4,13 +4,36 @@ pub(crate) fn validate_module_event_listener_contract(
     slug: &str,
     module_root: &Path,
 ) -> Result<()> {
-    let expected_fragments: &[&str] = match slug {
-        "index" => &[
+    let lib_rs_path = module_root.join("src").join("lib.rs");
+    let content = fs::read_to_string(&lib_rs_path)
+        .with_context(|| format!("Failed to read {}", lib_rs_path.display()))?;
+
+    if slug == "index" {
+        let legacy_listener_path = module_root.join("src").join("listener.rs");
+        if legacy_listener_path.exists() {
+            anyhow::bail!(
+                "Module '{slug}' event listener contract drift: legacy file {} must remain removed",
+                legacy_listener_path.display()
+            );
+        }
+        for forbidden in [
             "fn register_event_listeners(",
             "IndexerRuntimeConfig",
             "ContentIndexer::with_runtime",
             "ProductIndexer::with_runtime",
-        ],
+        ] {
+            if content.contains(forbidden) {
+                anyhow::bail!(
+                    "Module '{slug}' event listener contract drift: {} must not contain legacy fragment '{}'",
+                    lib_rs_path.display(),
+                    forbidden
+                );
+            }
+        }
+        return Ok(());
+    }
+
+    let expected_fragments: &[&str] = match slug {
         "search" => &[
             "fn register_event_listeners(",
             "SearchIngestionHandler::new",
@@ -21,20 +44,6 @@ pub(crate) fn validate_module_event_listener_contract(
         ],
         _ => return Ok(()),
     };
-
-    let lib_rs_path = module_root.join("src").join("lib.rs");
-    let content = fs::read_to_string(&lib_rs_path)
-        .with_context(|| format!("Failed to read {}", lib_rs_path.display()))?;
-
-    if slug == "index" {
-        let legacy_listener_path = module_root.join("src").join("listener.rs");
-        if legacy_listener_path.exists() {
-            anyhow::bail!(
-                "Module '{slug}' event listener contract drift: legacy file {} must be removed after registry-driven migration",
-                legacy_listener_path.display()
-            );
-        }
-    }
 
     for fragment in expected_fragments {
         if !content.contains(fragment) {

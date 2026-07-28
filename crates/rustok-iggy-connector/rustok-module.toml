@@ -7,7 +7,7 @@ ownership = "first_party"
 trust_level = "verified"
 runtime = "extension"
 ui_classification = "admin_only"
-recommended_admin_surfaces = ["leptos-admin", "next-admin"]
+recommended_admin_surfaces = ["leptos-admin"]
 showcase_admin_surfaces = ["next-admin"]
 
 [provides.admin_ui]

@@ -14,10 +14,9 @@ pub(crate) fn validate_module_index_search_boundary_contract(
                 .with_context(|| format!("Failed to read {}", readme_path.display()))?;
 
             for fragment in [
-                "IndexerRuntimeConfig",
-                "ContentIndexer::with_runtime",
-                "ProductIndexer::with_runtime",
-                "read-model substrate",
+                "PostgresMutationStore",
+                "PostgresSchemaRegistrationStore",
+                "PostgresSecondaryIndexManager",
             ] {
                 if !(lib_rs.contains(fragment) || readme.contains(fragment)) {
                     anyhow::bail!(
@@ -33,6 +32,9 @@ pub(crate) fn validate_module_index_search_boundary_contract(
                 "SearchEngineKind",
                 "PgSearchEngine",
                 "SearchIngestionHandler",
+                "IndexerRuntimeConfig",
+                "ContentIndexer::with_runtime",
+                "ProductIndexer::with_runtime",
             ] {
                 if lib_rs.contains(forbidden) {
                     anyhow::bail!(

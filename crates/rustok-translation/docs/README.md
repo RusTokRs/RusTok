@@ -16,7 +16,8 @@ The first implemented slice owns:
 - `translation_inventory_resources`;
 - `translation_provider_checkpoints`;
 - bounded provider change-cursor synchronization with optimistic checkpoint
-  revision protection.
+  revision protection, provider-identity isolation, and cursor-progress
+  validation.
 
 It does not copy source or translated field values into inventory rows.
 

@@ -10,6 +10,14 @@ pub enum TranslationError {
     },
     #[error("translation provider does not expose a change cursor")]
     ChangeCursorUnavailable,
+    #[error("translation provider returned a change outside its registered identity")]
+    ProviderIdentityMismatch,
+    #[error("translation provider returned changes without a checkpoint cursor")]
+    MissingCheckpointCursor,
+    #[error("translation provider change cursor did not advance")]
+    CursorDidNotAdvance,
+    #[error("invalid translation inventory request: {0}")]
+    InvalidRequest(String),
     #[error("translation inventory permission denied")]
     Forbidden,
     #[error("invalid translation tenant id")]

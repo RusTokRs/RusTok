@@ -143,14 +143,8 @@ impl ConsumedEvent {
         error: impl Into<String>,
         retry_count: u32,
     ) -> crate::dlq::DlqEntry {
-        crate::dlq::DlqEntry {
-            event_id: self.envelope.id,
-            original_topic: self.topic,
-            payload,
-            error: error.into(),
-            retry_count,
-            connector_metadata: Some(self.connector_metadata),
-        }
+        crate::dlq::DlqEntry::new(self.envelope.id, self.topic, payload, error, retry_count)
+            .with_connector_metadata(self.connector_metadata)
     }
 }
 

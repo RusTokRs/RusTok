@@ -1,0 +1,17 @@
+[module]
+slug = "moderation"
+name = "Moderation"
+version = "0.1.0"
+description = "Cross-domain moderation owner for reports, cases, decisions, and auditable enforcement"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "future_ui"
+
+[crate]
+entry_type = "ModerationModule"
+
+[marketplace]
+category = "content"
+publisher = "rustok"
+tags = ["moderation", "review", "enforcement"]
+description = "Cross-domain moderation workflow and auditable owner-enforcement orchestration."

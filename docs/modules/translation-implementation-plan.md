@@ -36,11 +36,15 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is a cross-cutting pre-implementation plan. As of 2026-07-27:
+This is the active cross-cutting implementation plan. As of 2026-07-28:
 
 - the optional `translation` slug and `rustok-translation` crate now exist with
   module metadata, RBAC resources, a module-owned migration source, and the first
-  rebuildable inventory/checkpoint service;
+  rebuildable inventory/checkpoint service. Inventory synchronization rejects
+  provider identity leakage, missing and non-advancing cursors, validates
+  bounded requests, batches existing-row lookup, and has integration evidence
+  for tenant isolation, cursor replay, invalid bounds, and provider outage
+  without partial persistence;
 - `rustok-translation-targets` now defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;

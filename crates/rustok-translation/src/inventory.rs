@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use chrono::Utc;
 use rustok_api::{Action, PortContext, Resource};
@@ -78,31 +78,67 @@ impl TranslationInventoryService {
             .map(OpaqueCursor::new)
             .transpose()
             .map_err(|_| TranslationError::CheckpointConflict)?;
-        let page = provider
-            .read_changes(context, TranslationTargetChangesRequest { after, limit })
-            .await?;
+        let request = TranslationTargetChangesRequest {
+            after: after.clone(),
+            limit,
+        };
+        request
+            .validate()
+            .map_err(|error| TranslationError::InvalidRequest(error.to_string()))?;
+        let page = provider.read_changes(context, request).await?;
+        if !page.changes.is_empty() && page.next_cursor.is_none() {
+            return Err(TranslationError::MissingCheckpointCursor);
+        }
+        if !page.changes.is_empty()
+            && page.next_cursor.as_ref().map(OpaqueCursor::as_str)
+                == after.as_ref().map(OpaqueCursor::as_str)
+        {
+            return Err(TranslationError::CursorDidNotAdvance);
+        }
+        let mut latest_changes = BTreeMap::new();
+        for change in page.changes {
+            if change.identity.owner_slug != owner_slug
+                || change.identity.resource_kind != resource_kind
+            {
+                return Err(TranslationError::ProviderIdentityMismatch);
+            }
+            let key = (
+                change.identity.resource_id.as_str().to_string(),
+                change
+                    .identity
+                    .subresource_id
+                    .as_ref()
+                    .map(|value| value.as_str().to_string())
+                    .unwrap_or_default(),
+            );
+            latest_changes.insert(key, change);
+        }
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
-
-        for change in &page.changes {
-            let identity = &change.identity;
-            let subresource_key = identity
-                .subresource_id
-                .as_ref()
-                .map(|value| value.as_str())
-                .unwrap_or_default();
-            let existing = inventory_resource::Entity::find()
+        let resource_ids = latest_changes
+            .keys()
+            .map(|(resource_id, _)| resource_id.clone())
+            .collect::<Vec<_>>();
+        let existing_rows = if resource_ids.is_empty() {
+            Vec::new()
+        } else {
+            inventory_resource::Entity::find()
                 .filter(inventory_resource::Column::TenantId.eq(tenant_id))
-                .filter(inventory_resource::Column::OwnerSlug.eq(identity.owner_slug.as_str()))
-                .filter(
-                    inventory_resource::Column::ResourceKind.eq(identity.resource_kind.as_str()),
-                )
-                .filter(inventory_resource::Column::ResourceId.eq(identity.resource_id.as_str()))
-                .filter(inventory_resource::Column::SubresourceKey.eq(subresource_key))
-                .one(&transaction)
-                .await?;
+                .filter(inventory_resource::Column::OwnerSlug.eq(owner_slug.as_str()))
+                .filter(inventory_resource::Column::ResourceKind.eq(resource_kind.as_str()))
+                .filter(inventory_resource::Column::ResourceId.is_in(resource_ids))
+                .all(&transaction)
+                .await?
+        };
+        let mut existing_by_identity = existing_rows
+            .into_iter()
+            .map(|row| ((row.resource_id.clone(), row.subresource_key.clone()), row))
+            .collect::<BTreeMap<_, _>>();
+
+        for (identity_key, change) in &latest_changes {
+            let identity = &change.identity;
             let lifecycle = lifecycle_name(change.lifecycle).to_string();
-            if let Some(existing) = existing {
+            if let Some(existing) = existing_by_identity.remove(identity_key) {
                 let mut active: inventory_resource::ActiveModel = existing.into();
                 active.resource_revision = Set(change.resource_revision.as_str().to_string());
                 active.lifecycle = Set(lifecycle);
@@ -115,7 +151,7 @@ impl TranslationInventoryService {
                     owner_slug: Set(identity.owner_slug.as_str().to_string()),
                     resource_kind: Set(identity.resource_kind.as_str().to_string()),
                     resource_id: Set(identity.resource_id.as_str().to_string()),
-                    subresource_key: Set(subresource_key.to_string()),
+                    subresource_key: Set(identity_key.1.clone()),
                     resource_revision: Set(change.resource_revision.as_str().to_string()),
                     lifecycle: Set(lifecycle),
                     observed_at: Set(now),
@@ -177,7 +213,7 @@ impl TranslationInventoryService {
         transaction.commit().await?;
 
         Ok(TranslationInventorySyncResult {
-            observed_resources: page.changes.len() as u64,
+            observed_resources: latest_changes.len() as u64,
             checkpoint: cursor,
             checkpoint_revision,
         })

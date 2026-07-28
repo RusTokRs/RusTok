@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-28
 ---
 
 # Translation implementation plan
@@ -22,7 +22,12 @@ selection.
   checkpoints without storing source or translated text.
 - `TranslationInventoryService` consumes only the neutral provider registry,
   checks Translation workflow permission, delegates owner authorization to the
-  provider, and advances checkpoints with optimistic revision protection.
+  provider, validates bounded requests, rejects cross-provider identities and
+  non-advancing or missing cursors, collapses duplicate identities, and
+  advances checkpoints with optimistic revision protection.
+- Integration evidence covers cursor replay, tenant-isolated inventory and
+  checkpoints, invalid bounds, provider outage, missing cursors, and
+  cross-provider identity rejection without partial persistence.
 - Media is the first owner provider with durable change-cursor repair.
 - Jobs, proposals, review, memory, glossaries, interchange, transports, UI, and
   AI integration are not implemented yet.
@@ -36,7 +41,7 @@ selection.
   - module-owned core and neutral provider dependency are separated;
   - no transport or UI has been published;
   - admin UI is planned for Leptos and Next with native/GraphQL parity.
-- Last verified at (UTC): 2026-07-27
+- Last verified at (UTC): 2026-07-28
 - Owner: Translation module maintainers
 
 ## Milestones

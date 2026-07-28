@@ -2417,7 +2417,7 @@ fn validate_module_event_listener_contract_rejects_missing_registration_hook() {
 }
 
 #[test]
-fn validate_module_event_listener_contract_accepts_index_runtime_registration() {
+fn validate_module_event_listener_contract_rejects_legacy_index_runtime_registration() {
     let base = env::temp_dir().join(format!("xtask-event-listener-ok-{}", std::process::id()));
     let src_dir = base.join("src");
     std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
@@ -2437,8 +2437,28 @@ fn validate_module_event_listener_contract_accepts_index_runtime_registration() 
     )
     .expect("temporary lib.rs should be writable");
 
+    let error = validate_module_event_listener_contract("index", &base)
+        .expect_err("legacy index event listener fragments must fail");
+    assert!(error.to_string().contains("legacy fragment"));
+
+    let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+    let _ = std::fs::remove_dir(&src_dir);
+    let _ = std::fs::remove_dir(&base);
+}
+
+#[test]
+fn validate_module_event_listener_contract_accepts_index_without_legacy_listeners() {
+    let base = env::temp_dir().join(format!(
+        "xtask-event-listener-current-{}",
+        std::process::id()
+    ));
+    let src_dir = base.join("src");
+    std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+    std::fs::write(src_dir.join("lib.rs"), "pub struct IndexModule;\n")
+        .expect("temporary lib.rs should be writable");
+
     validate_module_event_listener_contract("index", &base)
-        .expect("index event listener fragments should validate");
+        .expect("current index boundary has no legacy listeners");
 
     let _ = std::fs::remove_file(src_dir.join("lib.rs"));
     let _ = std::fs::remove_dir(&src_dir);
@@ -2551,13 +2571,10 @@ fn validate_module_index_search_boundary_contract_rejects_index_exposing_search_
     std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
     std::fs::write(
             src_dir.join("lib.rs"),
-            "pub use crate::search::PgSearchEngine;\npub struct IndexModule; pub struct ContentIndexer; pub struct ProductIndexer; pub struct IndexerRuntimeConfig;",
+            "pub use crate::search::PgSearchEngine;\npub struct PostgresMutationStore; pub struct PostgresSchemaRegistrationStore; pub struct PostgresSecondaryIndexManager;",
         )
         .expect("temporary lib.rs should be writable");
-    std::fs::write(
-            base.join("README.md"),
-            "read-model substrate\nContentIndexer::with_runtime\nProductIndexer::with_runtime\nIndexerRuntimeConfig\n",
-        )
+    std::fs::write(base.join("README.md"), "Generic relational index engine.\n")
         .expect("temporary README.md should be writable");
 
     let error = validate_module_index_search_boundary_contract("index", &base)

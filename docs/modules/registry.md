@@ -344,8 +344,8 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 | `cart` | `rustok-cart` | вЂ” | Cart lifecycle, line items, snapshot storefront context, canonical `seller_id` delivery-group ownership, typed cart adjustments, cart-owned storefront inspection UI |
 | `customer` | `rustok-customer` | вЂ” | Storefront customer profile boundary and customer-owned admin operations UI |
 | `product` | `rustok-product` | `taxonomy` | Product catalog, variants, native catalog categories, category-bound attribute schemas, typed product/variant attribute values, tags, shipping profile bindings, nullable `seller_id` ownership contract, product-owned admin catalog UI and storefront catalog UI |
-| `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer over `users`, author/member summary |
-| `social_graph` | `rustok-social-graph` | — | Social-relationship graph and owner-owned follow/block lifecycle |
+| `profiles` | `rustok-profiles` | `media`, `social_graph`, `taxonomy` | Public profile layer over `users`, author/member summary |
+| `social_graph` | `rustok-social-graph` | `outbox` | Social-relationship graph and owner-owned follow/block lifecycle |
 | `groups` | `rustok-groups` | — | Groups, memberships, invitations, applications, and membership policy enforcement |
 | `region` | `rustok-region` | вЂ” | Region, country, currency, tax baseline, region-owned admin CRUD UI and storefront discovery UI |
 | `pricing` | `rustok-pricing` | `product` | Pricing domain baseline, pricing-owned admin visibility UI and storefront pricing atlas UI |
