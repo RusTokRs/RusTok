@@ -19,6 +19,10 @@
 - `pub struct graphql::ForumGraphqlRuntimeData`; `graphql::attach_schema_data(GraphqlRuntimeInputs)`
 - `TopicService::update_command(tenant_id, topic_id, security, UpdateTopicCommandInput) -> TopicResponse`
 - `ReplyService::create_command(tenant_id, security, topic_id, CreateReplyCommandInput) -> ReplyResponse`
+- `ReplyService::create_with_audience_context(tenant_id, security, topic_id, PortContext, CreateReplyInput) -> ReplyResponse`
+- `ReplyService::create_command_with_audience_context(tenant_id, security, topic_id, PortContext, CreateReplyCommandInput) -> ReplyResponse`
+- `ReplyService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> ReplyService`
+- `pub struct ForumReplyCreateAudienceAuthorizationService`, `ForumReplyCreateAudienceAuthorization`
 - `ReplyService::update_command(tenant_id, reply_id, security, UpdateReplyCommandInput) -> ReplyResponse`
 - `CategoryService::tree(tenant_id, security, CategoryTreeQuery) -> CategoryTreeResponse`
 - `CategoryService::move_category(tenant_id, category_id, security, MoveCategoryInput) -> MoveCategoryResponse`
@@ -108,8 +112,14 @@
 - Effective reply-create audience is the root-to-category conjunction of every non-empty local layer.
 - Managed `get` and atomic replacement `set` require `forum_categories:manage`; empty constraints restore inheritance.
 - PostgreSQL and SQLite enforce tenant/category ownership, typed roles/trust/effects, immutable rows, and bounded direct channel/group/allow/deny inserts.
-- `FORUM-20AU` publishes owner persistence only and does not yet change `ReplyService::create`, GraphQL, REST, or transport DTOs.
-- Run `node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs` after changing this boundary.
+- `FORUM-20AU` publishes normalized owner persistence; `FORUM-20AV` composes the inherited policy into every public reply-create owner method before any raw owner write.
+- Categories without a reply-create layer retain historical behavior; local role and explicit-user decisions require no owner facts.
+- Unresolved trust, Channel, or Groups selectors require an exact caller `PortContext` and an injected `SharedForumAudienceFactsPort`; missing composition fails closed.
+- Authorization resolves the tenant-scoped topic/category identity and runs before reply, body, relation, counter, user-stat, and domain-event writes with one generic public denial.
+- `FORUM-20AW` composes GraphQL and REST reply-create calls through exact authenticated `PortContext` values and reuses the host-published optional facts port without adding identity to DTOs.
+- Both legacy and inline-quote GraphQL and REST reply-create transports preserve the owner gate before writes; locally decidable policies remain compatible when the provider is absent.
+- `ForumGraphqlRuntimeData` and `ForumHttpRuntime` create `ReplyService` from the same optional `SharedForumAudienceFactsPort` already used by topic creation.
+- Run `node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs`, `node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs` after changing this boundary.
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
@@ -260,7 +270,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Returns a quote command response through a post-commit read that can fail after the write committed.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Treats `forum_user_stats` activity counters as Forum trust state.
-- Applies reply-create audience persistence directly inside `ReplyService` before the separate authorization slice.
+- Builds reply-create audience identity from DTO fields or bypasses the exact transport context and host-composed `ReplyService`.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -279,6 +289,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
 - Category topic-create and reply-create audience layers are normalized, independently inherited, bounded, immutable on direct update and separate from content visibility.
+- Topic/reply create transports derive exact tenant, actor, claims, locale, deadline, and route channel only from authenticated runtime contexts and use the same host-published optional audience facts port.
 - Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
 - Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
 - Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
