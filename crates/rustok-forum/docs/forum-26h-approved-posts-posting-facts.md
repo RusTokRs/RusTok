@@ -68,7 +68,8 @@ The server posting-fact facade now registers four unique owner providers:
 4. authoritative Forum approved posts.
 
 The published runtime extension remains `Arc<ForumPostingPolicyFactsComposer>`.
-The existing audience-facts capability remains separate and unchanged.
+The existing audience-facts capability remains separate and unchanged. There is
+no shared distributed rate-limit reservation or execution in this composition.
 
 Rules requiring active flags, moderation history, reputation, usage windows, or
 bump age remain explicit unavailable facts until their named owners are
