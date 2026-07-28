@@ -7,7 +7,7 @@ pub mod types;
 
 pub use types::{
     ProductTagState, StorefrontProductList, StorefrontProductListItem,
-    StorefrontProductListQuery,
+    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 
 use chrono::Utc;
