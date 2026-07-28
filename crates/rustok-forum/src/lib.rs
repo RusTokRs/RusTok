@@ -67,13 +67,16 @@ pub use services::{
     ForumTopicCreateAudienceAuthorizationService, ForumTopicReadState, ForumTopicReadStateService,
     ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
     ForumTopicUnreadSummary, ForumTopicVisibilityScope, ForumTopicVisibilityService,
-    ForumWidgetContractService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput,
-    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
-    RevisionService, SetForumCategoryAudiencePolicyInput,
-    SetForumCategoryModerationAudiencePolicyInput, SetForumCategoryReplyCreateAudiencePolicyInput,
-    SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
-    SetForumTopicAudiencePolicyInput, SetForumTopicReplyCreateAudiencePolicyInput,
-    SubscriptionService, TopicService, UserStatsService, VoteService,
+    ForumUserTrustChange, ForumUserTrustRevision, ForumUserTrustRevisionPage,
+    ForumUserTrustService, ForumUserTrustState, ForumWidgetContractService,
+    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MAX_FORUM_USER_TRUST_HISTORY_PAGE,
+    MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
+    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
+    SetForumCategoryAudiencePolicyInput, SetForumCategoryModerationAudiencePolicyInput,
+    SetForumCategoryReplyCreateAudiencePolicyInput, SetForumCategoryTopicCreateAudiencePolicyInput,
+    SetForumCategoryVisibilityPolicyInput, SetForumTopicAudiencePolicyInput,
+    SetForumTopicReplyCreateAudiencePolicyInput, SetForumUserTrustInput, SubscriptionService,
+    TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
