@@ -200,6 +200,7 @@ for (const marker of [
   ".require_reply(tenant_id, reply_id, topic_id, &security, context)",
   ".require_topic(tenant_id, topic_id, &security, context)",
   "if !uses_topic_owner_scope(&security, topic.author_id)",
+  "security.user_id == topic_author_id",
 ]) {
   requireText(moderation, marker, `ModerationService is missing ${marker}`);
 }
