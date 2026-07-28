@@ -121,7 +121,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION forum_validate_topic_reply_create_audience_channel_insert()
 RETURNS trigger AS $$
 BEGIN
-    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.topic_id::text, 5));
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.topic_id::text || ':reply-create', 5));
     IF (
         SELECT count(*)
         FROM forum_topic_reply_create_audience_channels item
@@ -137,7 +137,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION forum_validate_topic_reply_create_audience_group_insert()
 RETURNS trigger AS $$
 BEGIN
-    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.topic_id::text, 5));
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.topic_id::text || ':reply-create', 5));
     IF (
         SELECT count(*)
         FROM forum_topic_reply_create_audience_groups item
@@ -153,7 +153,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION forum_validate_topic_reply_create_audience_user_insert()
 RETURNS trigger AS $$
 BEGIN
-    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.topic_id::text, 5));
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.topic_id::text || ':reply-create', 5));
     IF (
         SELECT count(*)
         FROM forum_topic_reply_create_audience_users item
