@@ -21,10 +21,10 @@ const STORAGE_UNAVAILABLE_CODE: &str = "forum.reading_facts.storage_unavailable"
 
 /// Forum-owned exact-user adapter over the authoritative topic read-state ledger.
 ///
-/// `TopicsRead` is the number of distinct live topic rows for which the exact
-/// tenant/user pair has an explicit read high-water. The read-state primary key
-/// already guarantees one row per topic. An empty ledger is authoritative zero,
-/// not an unavailable capability or a value derived from `forum_user_stats`.
+/// `TopicsRead` is the number of distinct topic identities for which the exact
+/// tenant/user pair retains an explicit read high-water. The read-state primary
+/// key guarantees one row per topic. An empty ledger is authoritative zero, not
+/// an unavailable capability or a value derived from `forum_user_stats`.
 #[derive(Clone)]
 pub struct ForumTopicReadPostingFactPort {
     db: DatabaseConnection,
