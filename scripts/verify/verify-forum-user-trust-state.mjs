@@ -212,6 +212,7 @@ for (const marker of [
   "DELETE FROM forum_user_trust_revisions",
   "UPDATE forum_user_trust_states SET trust_level = 50, revision = 2",
   "DELETE FROM forum_user_trust_states",
+  "m20260728_000004_add_forum_user_trust_state",
   "trust_owner_requires_manage_scope_and_exact_idempotent_payload",
 ]) {
   requireText(sqliteProof, marker, `SQLite trust proof is missing ${marker}`);
@@ -232,13 +233,13 @@ for (const marker of [
 ]) {
   requireText(entityMod, marker, `entity registry is missing ${marker}`);
 }
+requireText(serviceMod, "mod user_trust;", "service registry must own the private trust module");
 for (const marker of [
-  "mod user_trust;",
   "ForumUserTrustService",
   "SetForumUserTrustInput",
   "MAX_FORUM_USER_TRUST_LEVEL",
 ]) {
-  requireText(serviceMod, marker, `service registry is missing ${marker}`);
+  requireText(serviceMod, marker, `service registry is missing public trust API ${marker}`);
   requireText(crateRoot, marker, `crate root is missing public trust API ${marker}`);
 }
 requireText(
