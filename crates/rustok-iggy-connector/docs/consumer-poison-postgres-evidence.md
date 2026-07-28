@@ -21,11 +21,11 @@ Set one of:
 1. `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL`;
 2. `DATABASE_URL` as a fallback.
 
-The value must begin with `postgres://` or `postgresql://`. Without a PostgreSQL URL, every test reports a skip and returns successfully. The repository contains no default PostgreSQL credentials or localhost fallback.
+The value must begin with `postgres://` or `postgresql://`. Without a PostgreSQL URL, the direct test harness reports a skip and returns successfully. The retained-evidence runner rejects a missing or non-PostgreSQL URL and writes no packet. The repository contains no default PostgreSQL credentials or localhost fallback.
 
 ## Isolation
 
-Each test:
+Each scenario:
 
 1. creates a unique schema named `rustok_iggy_poison_<scenario>_<uuid>`;
 2. opens an isolated one-connection pool;
@@ -40,7 +40,7 @@ The concurrent claim test opens two additional one-connection pools and sets the
 
 ### Claim ownership
 
-Two publishers call `reserve_and_claim` concurrently for the same exact delivery. Exactly one result must be `Claimed`; the other must be `Busy`. The durable row remains `publishing` and retains whichever bounded diagnostic was observed first.
+Two publishers call `reserve_and_claim` concurrently for the same exact delivery. Exactly one result must be `Claimed`; the other must be `Busy`. The durable row remains `publishing` and retains one atomic first-observed error-code/attempt pair.
 
 ### Lease reclaim and fencing
 
@@ -61,18 +61,56 @@ Both fail as `IdentityConflict`. The original receipt remains unchanged and the 
 
 The harness creates one reserved, one published, and one acknowledged receipt. `ConsumerPoisonReceiptInspector` must report total `3` with exact per-state counts and no expired publishing claims. Redelivery must return `AlreadyPublished` or `AlreadyAcknowledged` without reopening publication.
 
+## Retained execution contract
+
+`contracts/evidence/consumer-poison-postgres-execution-contract.json` locks:
+
+- the two exact Cargo commands;
+- the four required scenario names and assertions;
+- the source files whose SHA-256 values bind an executed packet;
+- required Git, toolchain, PostgreSQL, timestamp, and output-digest metadata;
+- the output path for retained evidence.
+
+`capture-iggy-consumer-poison-postgres.mjs` requires a clean working tree and a full Git commit SHA. It executes a small PostgreSQL environment test followed by the receipt scenarios with one test thread. The environment test reads `server_version` and `server_version_num` through the same SeaORM/PostgreSQL path; no `psql` installation is required.
+
+The runner writes `consumer-poison-postgres-execution.json` atomically only when both Cargo commands succeed, every required test reports `ok`, the Git commit remains unchanged, and source hashes remain stable throughout execution.
+
+The retained packet contains no database URL, host, database name, credentials, raw test log, delivery UUID, source coordinate, or payload. It stores only:
+
+- the environment variable name that supplied the URL;
+- bounded PostgreSQL and Rust toolchain versions;
+- start/end timestamps and Git commit;
+- exact command arrays;
+- source and combined-output SHA-256 values;
+- aggregate per-case `pass` results.
+
 ## Maintainer commands
+
+Diagnostic harness only:
 
 ```bash
 RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' \
   cargo test -p rustok-iggy-connector --features migrations \
   --test consumer_poison_receipt_postgres -- --nocapture
+```
 
+Create the retained packet from a clean commit:
+
+```bash
+RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' \
+  node scripts/evidence/capture-iggy-consumer-poison-postgres.mjs
+
+node scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs
+```
+
+The existing source harness guard remains available:
+
+```bash
 node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs
 ```
 
-For stronger concurrency evidence, run the test target repeatedly against the same PostgreSQL server while allowing each invocation to create its own schemas. Do not reuse a schema or replace the unique-schema setup with shared-table truncation.
+For stronger concurrency evidence, execute the retained runner repeatedly against the same PostgreSQL server on separate clean commits or retain separately reviewed packets outside the canonical repository path. Do not reuse a schema or replace the unique-schema setup with shared-table truncation.
 
 ## Evidence status
 
-The harness and source guard are source-complete. No PostgreSQL command, Cargo command, formatter, or source verifier was executed when this slice was authored. A successful maintainer run remains required before claiming runtime proof.
+The harness, execution contract, metadata test, runner, and source verifiers are source-complete. `consumer-poison-postgres-execution.json` is intentionally absent until a maintainer performs a successful PostgreSQL run. No PostgreSQL command, Cargo command, formatter, or source verifier was executed when this slice was authored.

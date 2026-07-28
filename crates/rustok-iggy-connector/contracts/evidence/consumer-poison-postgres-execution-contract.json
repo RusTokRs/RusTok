@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "module": "iggy-connector",
+  "packet": "consumer-poison-postgres-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "runner": "scripts/evidence/capture-iggy-consumer-poison-postgres.mjs",
+  "verifier": "scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs",
+  "evidence_path": "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution.json",
+  "execution_scope": "opt_in_postgresql_runtime_execution_pending",
+  "promotion_gate": "requires_clean_commit_and_all_required_cases_passed",
+  "database_url_env": "RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL",
+  "database_url_fallback_env": "DATABASE_URL",
+  "commands": [
+    {
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-iggy-connector",
+        "--features",
+        "migrations",
+        "--test",
+        "consumer_poison_receipt_postgres_environment",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ]
+    },
+    {
+      "program": "cargo",
+      "args": [
+        "test",
+        "-p",
+        "rustok-iggy-connector",
+        "--features",
+        "migrations",
+        "--test",
+        "consumer_poison_receipt_postgres",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ]
+    }
+  ],
+  "source_files": [
+    "crates/rustok-iggy-connector/tests/consumer_poison_receipt_postgres_environment.rs",
+    "crates/rustok-iggy-connector/tests/consumer_poison_receipt_postgres.rs",
+    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+    "crates/rustok-iggy-connector/src/consumer_poison_inspection.rs",
+    "crates/rustok-iggy-connector/src/migrations.rs"
+  ],
+  "required_metadata": [
+    "git_commit",
+    "started_at",
+    "completed_at",
+    "postgres_server_version",
+    "postgres_server_version_num",
+    "cargo_version",
+    "rustc_version",
+    "test_output_sha256",
+    "source_sha256"
+  ],
+  "required_cases": [
+    {
+      "case": "concurrent_publishers_have_one_claim_owner",
+      "assertions": [
+        "exactly_one_publisher_claimed",
+        "other_publisher_busy",
+        "first_error_code_and_attempt_retained_as_one_atomic_pair"
+      ]
+    },
+    {
+      "case": "expired_lease_is_reclaimed_and_fences_the_previous_publisher",
+      "assertions": [
+        "empty_exact_payload_accepted",
+        "expired_publication_lease_reclaimed",
+        "previous_publisher_fenced_with_claim_lost",
+        "first_diagnostics_unchanged_after_reclaim"
+      ]
+    },
+    {
+      "case": "conflicts_roll_back_without_overwriting_original_identity",
+      "assertions": [
+        "delivery_uuid_source_collision_rejected",
+        "source_coordinate_payload_collision_rejected",
+        "original_receipt_unchanged",
+        "failed_conflicts_leave_one_receipt"
+      ]
+    },
+    {
+      "case": "terminal_states_and_aggregate_inspection_remain_consistent",
+      "assertions": [
+        "reserved_published_acknowledged_counts_consistent",
+        "expired_publishing_subset_consistent",
+        "published_redelivery_does_not_reopen_publication",
+        "acknowledged_redelivery_does_not_reopen_publication"
+      ]
+    }
+  ],
+  "evidence_status": "runtime_execution_pending"
+}
