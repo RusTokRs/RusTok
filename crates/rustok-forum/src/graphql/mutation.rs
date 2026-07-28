@@ -17,6 +17,9 @@ use uuid::Uuid;
 use crate::{
     CategoryResponse, CategoryService, ReplyService, SubscriptionService, TopicService, VoteService,
 };
+use crate::moderation_transport::{
+    ForumModerationTransport, moderation_audience_port_context,
+};
 use crate::reply_create_transport::{
     ForumReplyCreateTransport, reply_create_audience_port_context,
 };
@@ -713,20 +716,28 @@ impl ForumMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_forum_permission(
-            ctx,
-            &[
-                Permission::FORUM_TOPICS_UPDATE,
-                Permission::FORUM_TOPICS_MODERATE,
-            ],
-            "Permission denied: forum_topics:update or forum_topics:moderate required",
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+            .clone();
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
         )?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let moderation = crate::ModerationService::new(db.clone(), event_bus.clone());
-        moderation
-            .mark_solution(
+        runtime
+            .moderation_service(db.clone(), event_bus.clone())
+            .mark_solution_with_audience_context(
                 tenant_id,
                 topic_id,
                 reply_id,
@@ -734,6 +745,7 @@ impl ForumMutation {
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                audience_context,
             )
             .await?;
 
@@ -771,26 +783,35 @@ impl ForumMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_forum_permission(
-            ctx,
-            &[
-                Permission::FORUM_TOPICS_UPDATE,
-                Permission::FORUM_TOPICS_MODERATE,
-            ],
-            "Permission denied: forum_topics:update or forum_topics:moderate required",
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+            .clone();
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
         )?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let moderation = crate::ModerationService::new(db.clone(), event_bus.clone());
-        moderation
-            .clear_solution(
+        runtime
+            .moderation_service(db.clone(), event_bus.clone())
+            .clear_solution_with_audience_context(
                 tenant_id,
                 topic_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                audience_context,
             )
             .await?;
 

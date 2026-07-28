@@ -18,6 +18,7 @@ pub mod locale;
 #[allow(clippy::collapsible_if, clippy::redundant_closure)]
 pub mod mentions;
 pub mod migrations;
+mod moderation_transport;
 pub mod notification_recipient;
 mod notification_source;
 pub mod openapi;

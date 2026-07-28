@@ -6,12 +6,15 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_web::HttpError;
 use sea_orm::DatabaseConnection;
 
+use crate::SharedForumAudienceFactsPort;
+
 pub mod categories;
 pub mod category_commands;
 pub mod category_lifecycle;
 pub mod category_policy;
 pub mod category_tree;
 pub mod content_commands;
+pub mod moderation;
 pub mod quote_commands;
 pub mod read_state;
 pub mod replies;
@@ -24,7 +27,7 @@ pub mod widgets;
 pub struct ForumHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
-    audience_facts: Option<crate::SharedForumAudienceFactsPort>,
+    audience_facts: Option<SharedForumAudienceFactsPort>,
 }
 
 impl ForumHttpRuntime {
@@ -57,6 +60,17 @@ impl ForumHttpRuntime {
             None => crate::ReplyService::new(self.db_clone(), self.event_bus()),
         }
     }
+
+    fn moderation_service(&self) -> crate::ModerationService {
+        match self.audience_facts.clone() {
+            Some(facts) => crate::ModerationService::with_audience_facts(
+                self.db_clone(),
+                self.event_bus(),
+                facts,
+            ),
+            None => crate::ModerationService::new(self.db_clone(), self.event_bus()),
+        }
+    }
 }
 
 impl ForumHttpRuntime {
@@ -67,7 +81,7 @@ impl ForumHttpRuntime {
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
-            audience_facts: runtime.shared_get::<crate::SharedForumAudienceFactsPort>(),
+            audience_facts: runtime.shared_get::<SharedForumAudienceFactsPort>(),
         })
     }
 }
@@ -195,11 +209,11 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         )
         .route(
             "/api/forum/topics/{topic_id}/solution/{reply_id}",
-            axum::routing::post(topics::mark_topic_solution),
+            axum::routing::post(moderation::mark_topic_solution),
         )
         .route(
             "/api/forum/topics/{topic_id}/solution",
-            axum::routing::delete(topics::clear_topic_solution),
+            axum::routing::delete(moderation::clear_topic_solution),
         )
         .route(
             "/api/forum/topics/{topic_id}/vote/{value}",
