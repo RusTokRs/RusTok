@@ -32,6 +32,7 @@ mod moderation_audience_authorization;
 mod posting_policy;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
+mod posting_policy_reading_facts;
 mod quote_command;
 mod rbac;
 pub mod read_model;
@@ -126,6 +127,7 @@ pub use posting_policy_facts::{
     FORUM_POSTING_POLICY_FACTS_CAPABILITY,
     FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE,
 };
+pub use posting_policy_reading_facts::ForumTopicReadPostingFactPort;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use read_tracking::{
