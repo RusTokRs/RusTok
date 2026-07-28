@@ -177,25 +177,27 @@ async fn observer_loop(
             }
         }
 
-        if let Some(connected) = observer.as_ref() {
+        if let Some(connected) = observer.take() {
             match connected.summarize().await {
-                Ok(summary) => match publisher.publish(&summary) {
-                    Ok(snapshot) => record_snapshot(snapshot),
-                    Err(error) => {
-                        tracing::warn!(
-                            error_code = error.stable_code(),
-                            "Physical DLQ duplicate alert runtime stopped publishing"
-                        );
-                        return;
+                Ok(summary) => {
+                    match publisher.publish(&summary) {
+                        Ok(snapshot) => record_snapshot(snapshot),
+                        Err(error) => {
+                            tracing::warn!(
+                                error_code = error.stable_code(),
+                                "Physical DLQ duplicate alert runtime stopped publishing"
+                            );
+                            return;
+                        }
                     }
-                },
+                    observer = Some(connected);
+                }
                 Err(error) => {
                     let _ = publisher.mark_unavailable();
                     tracing::warn!(
                         error_code = error.stable_code(),
                         "Physical DLQ duplicate scan failed; reconnecting without affecting event delivery"
                     );
-                    observer = None;
                 }
             }
         }
