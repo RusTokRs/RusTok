@@ -153,7 +153,7 @@ rustok-ai = { workspace = true, features = ["graphql"] }
 rustok-runtime.workspace = true
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
-rustok-iggy-connector.workspace = true
+rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 rustok-outbox.workspace = true
 rustok-installer = { path = "../../crates/rustok-installer" }
 rustok-installer-persistence.workspace = true
@@ -218,8 +218,3 @@ url = "2.5"
 
 [build-dependencies]
 serde.workspace = true
-toml.workspace = true
-
-[package.metadata.cargo-udeps.ignore]
-development = ["serial_test"]
-normal = ["rustok-rbac", "rustok-tenant", "password-hash"]
