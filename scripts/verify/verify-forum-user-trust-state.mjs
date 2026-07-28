@@ -243,8 +243,8 @@ for (const marker of [
 }
 requireText(
   crateRoot,
-  "ForumUserTrustChangeKind",
-  "crate root must expose the public trust change kind",
+  "pub use entities::*;",
+  "crate root must re-export the public trust change kind through entities",
 );
 
 for (const marker of [
