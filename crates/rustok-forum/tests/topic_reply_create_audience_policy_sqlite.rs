@@ -197,16 +197,15 @@ async fn topic_reply_create_layer_narrows_categories_and_clears_locally() {
         vec![allowed_admin_id]
     );
 
-    let authorization = ForumReplyCreateAudienceAuthorizationService::without_facts_provider(
-        db.clone(),
-    );
+    let authorization =
+        ForumReplyCreateAudienceAuthorizationService::without_facts_provider(db.clone());
     let topic_denial = authorization
         .evaluate(tenant_id, topic, &other_admin, None)
         .await
         .expect("topic-local denial should evaluate");
     assert!(!topic_denial.allowed);
+    assert_eq!(topic_denial.topic_id, topic);
     assert_eq!(topic_denial.denied_by_category_id, None);
-    assert_eq!(topic_denial.denied_by_topic_id, Some(topic));
     assert_eq!(topic_denial.evaluated_layers, 2);
 
     let category_denial = authorization
@@ -214,8 +213,8 @@ async fn topic_reply_create_layer_narrows_categories_and_clears_locally() {
         .await
         .expect("category denial should evaluate");
     assert!(!category_denial.allowed);
+    assert_eq!(category_denial.topic_id, topic);
     assert_eq!(category_denial.denied_by_category_id, Some(category));
-    assert_eq!(category_denial.denied_by_topic_id, None);
     assert_eq!(category_denial.evaluated_layers, 1);
 
     let replies = ReplyService::new(db.clone(), event_bus.clone());
@@ -349,11 +348,12 @@ async fn topic_reply_create_policy_is_separate_and_database_bounded() {
         vec![UserRole::Manager]
     );
 
-    let extra_channel = rustok_forum::entities::forum_topic_reply_create_audience_channel::ActiveModel {
-        tenant_id: Set(tenant_id),
-        topic_id: Set(topic),
-        channel_slug: Set("reply-channel-overflow".to_string()),
-    };
+    let extra_channel =
+        rustok_forum::entities::forum_topic_reply_create_audience_channel::ActiveModel {
+            tenant_id: Set(tenant_id),
+            topic_id: Set(topic),
+            channel_slug: Set("reply-channel-overflow".to_string()),
+        };
     assert!(
         extra_channel.insert(&db).await.is_err(),
         "database must reject a thirty-third topic reply-create channel"
@@ -371,12 +371,13 @@ async fn topic_reply_create_policy_is_separate_and_database_bounded() {
         "database must reject mutable topic reply-create policy updates"
     );
 
-    let foreign_policy = rustok_forum::entities::forum_topic_reply_create_audience_policy::ActiveModel {
-        tenant_id: Set(Uuid::new_v4()),
-        topic_id: Set(topic),
-        minimum_trust_level: Set(None),
-        updated_at: Set(chrono::Utc::now().into()),
-    };
+    let foreign_policy =
+        rustok_forum::entities::forum_topic_reply_create_audience_policy::ActiveModel {
+            tenant_id: Set(Uuid::new_v4()),
+            topic_id: Set(topic),
+            minimum_trust_level: Set(None),
+            updated_at: Set(chrono::Utc::now().into()),
+        };
     assert!(
         foreign_policy.insert(&db).await.is_err(),
         "database must reject a cross-tenant topic reply-create policy"
