@@ -107,12 +107,12 @@ if (planSync.status === "pending") {
   }
   const downstreamSynchronizationRecorded =
     plan.includes("### Delivered in `FORUM-20AM`") &&
-    plan.includes("### Delivered in `FORUM-20AT`");
+    plan.includes("### Delivered in `FORUM-20AU`");
   if (downstreamSynchronizationRecorded) {
     requireText(
       plan,
-      "FORUM-20A-AT provide",
-      "downstream canonical plan must advance the FORUM-20 ledger through AT",
+      "FORUM-20A-AU provide",
+      "downstream canonical plan must advance the FORUM-20 ledger through AU",
     );
     requireText(
       plan,
@@ -270,4 +270,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Historical FORUM-20Q Groups facts contract remains valid through FORUM-20AT.");
+console.log("Historical FORUM-20Q Groups facts contract remains valid through FORUM-20AU.");
