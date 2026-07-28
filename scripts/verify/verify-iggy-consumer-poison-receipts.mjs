@@ -53,6 +53,16 @@ for (const marker of [
 
 for (const marker of [
   "pub struct ConsumerPoisonIdentity",
+  "delivery_id: Uuid",
+  "consumer_group: String",
+  "source_stream: String",
+  "source_topic: String",
+  "source_partition: u32",
+  "source_offset: u64",
+  "payload: Vec<u8>",
+  "pub const fn delivery_id(&self) -> Uuid",
+  "pub const fn source_offset(&self) -> u64",
+  "pub fn payload(&self) -> &[u8]",
   "pub struct ConsumerPoisonReceiptStore",
   "pub async fn reserve_and_claim",
   "pub async fn release_claim",
@@ -61,14 +71,25 @@ for (const marker of [
   "ConsumerPoisonPublishClaim::AlreadyPublished",
   "ConsumerPoisonPublishClaim::AlreadyAcknowledged",
   '"iggy.connector.poison_identity_conflict"',
+  "first_delivery_attempt_count",
   "source_offset_i64",
   "stored_payload != identity.payload",
   "lease_expires_at <= CURRENT_TIMESTAMP",
+  "retained.stable_error_code",
+  "retained.first_delivery_attempt_count",
 ]) {
   requireText("Iggy consumer poison receipt store", files.receipts, marker);
 }
 
+const productionReceipts = files.receipts.split("#[cfg(test)]")[0];
 for (const forbidden of [
+  "pub delivery_id:",
+  "pub consumer_group:",
+  "pub source_stream:",
+  "pub source_topic:",
+  "pub source_partition:",
+  "pub source_offset:",
+  "pub payload:",
   "tenant_id",
   "event_id",
   "DomainEvent",
@@ -76,8 +97,11 @@ for (const forbidden of [
   "acknowledge(",
   "move_to_dlq(",
   "Uuid::new_v4()",
+  "receipt.stable_error_code != stable_error_code",
+  "receipt.delivery_attempt_count !=",
+  "observed_delivery_attempt_count == receipt",
 ]) {
-  forbidText("neutral poison receipt production code", files.receipts.split("#[cfg(test)]")[0], forbidden);
+  forbidText("neutral poison receipt production code", productionReceipts, forbidden);
 }
 
 for (const marker of [
@@ -107,5 +131,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy consumer poison receipt verification passed: connector-owned migration registration, immutable source-coordinate uniqueness, exact-byte conflict validation, leased reserve/publish/ack states, bounded stable errors, and no tenant/event/authorization or implicit broker side effects are locked.",
+  "Iggy consumer poison receipt verification passed: connector-owned migration registration, immutable private source identity, exact-byte conflict validation, retry/error classification independence, retained first diagnostics, leased reserve/publish/ack states, bounded stable errors, and no tenant/event/authorization or implicit broker side effects are locked.",
 );
