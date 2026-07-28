@@ -62,6 +62,7 @@ const buildContext = () => {
   const inspection = {
     contract: REVIEW_CONTRACT,
     rootIdentity: identityOf(rootStat),
+    rootFingerprint: fingerprintOf(rootStat),
     rootCanonical: root,
     packet: {
       database: {
@@ -121,6 +122,7 @@ test('rechecks the complete filesystem snapshot before publishing an archive ver
     assert.equal(Object.hasOwn(savedManifest.files[0], 'identity'), false);
     assert.equal(Object.hasOwn(savedManifest.files[0], 'fingerprint'), false);
     assert.equal(Object.hasOwn(savedManifest, 'rootIdentity'), false);
+    assert.equal(Object.hasOwn(savedManifest, 'rootFingerprint'), false);
     assert.deepEqual(readFileSync(context.manifestPath), manifestBefore);
   } finally {
     cleanup(context);
@@ -189,6 +191,31 @@ test('fails closed when retained metadata changes with the same inode and bytes'
         manifestPath: context.manifestPath,
       }),
       /retained bundle file query metadata changed after inspection/u,
+    );
+  } finally {
+    cleanup(context);
+  }
+});
+
+test('fails closed when retained bundle root metadata changes with the same inode', () => {
+  const context = buildContext();
+  try {
+    const before = lstatSync(context.root, { bigint: true });
+    const identityBefore = identityOf(before);
+    const fingerprintBefore = fingerprintOf(before);
+    const atime = new Date(Number(before.atimeMs));
+    const mtime = new Date(Number(before.mtimeMs) + 2_000);
+    utimesSync(context.root, atime, mtime);
+    const after = lstatSync(context.root, { bigint: true });
+    assert.equal(identityOf(after), identityBefore);
+    assert.notEqual(fingerprintOf(after), fingerprintBefore);
+    assert.throws(
+      () => verifySavedRetainedPartitionArchiveManifest({
+        inspection: context.inspection,
+        root: context.root,
+        manifestPath: context.manifestPath,
+      }),
+      /retained bundle root changed after inspection/u,
     );
   } finally {
     cleanup(context);
