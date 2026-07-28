@@ -16,6 +16,18 @@ const files = {
     "crates/rustok-iggy/src/contract_decode_failure.rs",
     "utf8",
   ),
+  contractCursor: readFileSync(
+    "crates/rustok-iggy/src/contract_consumer.rs",
+    "utf8",
+  ),
+  consumer: readFileSync(
+    "crates/rustok-social-graph/src/index_consumer.rs",
+    "utf8",
+  ),
+  worker: readFileSync(
+    "apps/server/src/services/social_graph_index_worker.rs",
+    "utf8",
+  ),
 };
 
 const failures = [];
@@ -70,6 +82,7 @@ for (const marker of [
   "pub const fn source_offset(&self) -> u64",
   "pub fn payload(&self) -> &[u8]",
   "pub struct ConsumerPoisonReceiptStore",
+  "pub async fn find(",
   "pub async fn reserve_and_claim",
   "pub async fn release_claim",
   "pub async fn mark_published",
@@ -119,8 +132,48 @@ for (const marker of [
   "pub fn raw_payload(&self) -> &[u8]",
   "pub const fn offset(&self) -> u64",
   "pub const fn stable_error_code(&self) -> &'static str",
+  "pub fn to_dlq_entry(&self, retry_count: u32)",
 ]) {
   requireText("raw decode-failure bridge facts", files.decodeFailure, marker);
+}
+
+for (const marker of [
+  "pub enum PersistentContractDelivery",
+  "PersistentContractDelivery::DecodeFailure",
+  "pub async fn receive_delivery",
+  "pub async fn acknowledge_decode_failure",
+]) {
+  requireText("typed contract cursor", files.contractCursor, marker);
+}
+
+for (const marker of [
+  "pub async fn receive_delivery(",
+  "self.group",
+  ".receive_delivery()",
+  "PersistentContractDelivery::DecodeFailure",
+  "pub async fn acknowledge_decode_failure(",
+  ".acknowledge_decode_failure(consumed)",
+]) {
+  requireText("Social Graph typed delivery adapter", files.consumer, marker);
+}
+
+for (const marker of [
+  "PersistentContractDelivery::DecodeFailure(failure)",
+  "ConsumerPoisonReceiptStore::new(ctx.db_clone())",
+  "ConsumerPoisonIdentity::new(",
+  "poison_receipts.find(&identity).await",
+  "!config.dlq_enabled && !continuing_durable_receipt",
+  ".reserve_and_claim(",
+  "transport.move_to_dlq(failure.to_dlq_entry(1)).await",
+  "mark_raw_poison_published(",
+  ".mark_published(identity, poison_publisher_id)",
+  "acknowledge_raw_poison_result(",
+  "consumer.acknowledge_decode_failure(failure).await",
+  "poison_receipts.mark_acknowledged(identity).await",
+  "retrying acknowledgement only",
+  "undecodable broker offset uncommitted",
+]) {
+  requireText("Social Graph raw poison worker", files.worker, marker);
 }
 
 const deliveryLookup = files.receipts.indexOf(
@@ -143,6 +196,92 @@ if (
   );
 }
 
+const rawStart = files.worker.indexOf("async fn process_decode_failure(");
+const rawEnd = files.worker.indexOf("async fn acknowledge_terminal_result(", rawStart);
+const rawFlow =
+  rawStart >= 0 && rawEnd > rawStart
+    ? files.worker.slice(rawStart, rawEnd)
+    : "";
+const existingLookup = rawFlow.indexOf("poison_receipts.find(&identity).await");
+const disabledGate = rawFlow.indexOf(
+  "!config.dlq_enabled && !continuing_durable_receipt",
+);
+const rawReserve = rawFlow.indexOf(".reserve_and_claim(");
+const rawPublish = rawFlow.indexOf(
+  "transport.move_to_dlq(failure.to_dlq_entry(1)).await",
+);
+const rawMarkCall = rawFlow.indexOf("mark_raw_poison_published(", rawPublish);
+const rawAcknowledgeCall = rawFlow.indexOf(
+  "acknowledge_raw_poison_result(",
+  rawMarkCall,
+);
+if (
+  existingLookup < 0 ||
+  disabledGate <= existingLookup ||
+  rawReserve <= disabledGate ||
+  rawPublish <= rawReserve ||
+  rawMarkCall <= rawPublish ||
+  rawAcknowledgeCall <= rawMarkCall
+) {
+  failures.push(
+    "raw poison flow must recognize an existing durable choice, reject only new disabled-DLQ work, reserve, publish exact bytes, persist published, and only then enter acknowledgement",
+  );
+}
+
+const markStart = files.worker.indexOf("async fn mark_raw_poison_published(");
+const ackStart = files.worker.indexOf("async fn acknowledge_raw_poison_result(");
+const markBody =
+  markStart >= 0 && ackStart > markStart
+    ? files.worker.slice(markStart, ackStart)
+    : "";
+requireText(
+  "raw poison durable publication marker",
+  markBody,
+  ".mark_published(identity, poison_publisher_id)",
+);
+for (const forbidden of [
+  "move_to_dlq(",
+  "acknowledge_decode_failure",
+  "mark_acknowledged",
+]) {
+  forbidText("raw poison published-only retry", markBody, forbidden);
+}
+
+const decodedAckStart = files.worker.indexOf("async fn acknowledge_terminal_result(");
+const rawAckBody =
+  ackStart >= 0 && decodedAckStart > ackStart
+    ? files.worker.slice(ackStart, decodedAckStart)
+    : "";
+const sourceAck = rawAckBody.indexOf(
+  "consumer.acknowledge_decode_failure(failure).await",
+);
+const receiptAck = rawAckBody.indexOf(
+  "poison_receipts.mark_acknowledged(identity).await",
+);
+if (sourceAck < 0 || receiptAck <= sourceAck) {
+  failures.push(
+    "raw poison source acknowledgement must precede best-effort acknowledged bookkeeping",
+  );
+}
+for (const forbidden of [
+  "move_to_dlq(",
+  "reserve_and_claim",
+  "mark_published",
+  "project_consumed",
+]) {
+  forbidText("raw poison acknowledgement-only path", rawAckBody, forbidden);
+}
+
+for (const forbidden of [
+  "tenant_id",
+  "event_id",
+  "ProfilePresentationService",
+  "SocialGraphPrivacyReadPort",
+  "project_consumed",
+]) {
+  forbidText("raw poison worker slice", rawFlow, forbidden);
+}
+
 if (failures.length > 0) {
   console.error("Iggy consumer poison receipt verification failed:");
   for (const failure of failures) {
@@ -152,5 +291,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy consumer poison receipt verification passed: connector-owned migration registration, immutable private source identity, empty exact payload retention, source and UUID collision validation, retry/error classification independence, retained first diagnostics, leased reserve/publish/ack states, bounded stable errors, and no tenant/event/authorization or implicit broker side effects are locked.",
+  "Iggy consumer poison receipt verification passed: connector-owned migration registration, immutable private source identity, empty exact payload retention, source and UUID collision validation, retry/error classification independence, typed owner delivery, existing-result recovery with DLQ disabled, leased reserve, exact-byte publish, durable published-before-ack ordering, acknowledgement-only recovery, and no fabricated tenant/event/authorization state are locked.",
 );
