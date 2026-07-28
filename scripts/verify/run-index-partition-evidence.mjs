@@ -162,6 +162,16 @@ const runCommand = (command, args, label, environment = process.env) => {
 
 const scriptPath = (filename) => path.join(scriptDirectory, filename);
 
+const baseEnvironmentOverrides = [
+  'INDEX_PARTITION_MANIFEST',
+  'INDEX_PARTITION_EVIDENCE_ROOT',
+  'INDEX_PARTITION_QUERY_OUTPUT',
+  'INDEX_PARTITION_MUTATION_OUTPUT',
+  'INDEX_PARTITION_MAINTENANCE_OUTPUT',
+  'INDEX_PARTITION_CUTOVER_OUTPUT',
+  'INDEX_PARTITION_CAPTURE_OUTPUT',
+];
+
 const buildBaseEnvironment = (options) => ({
   ...process.env,
   INDEX_PARTITION_MANIFEST: options.manifest,
@@ -223,7 +233,7 @@ const buildStages = (options) => {
     command: cargoCommand,
     args: ['run', '-p', 'rustok-benchmarks', '--bin', stage.identifier, '--release'],
     environment: { ...baseEnvironment, ...stage.environment },
-    environmentOverrides: Object.keys(stage.environment),
+    environmentOverrides: [...baseEnvironmentOverrides, ...Object.keys(stage.environment)],
     outputs: stage.outputs.map((filename) => path.join(options.root, filename)),
   }));
 
