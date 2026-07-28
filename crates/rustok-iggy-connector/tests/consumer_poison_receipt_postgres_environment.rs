@@ -1,6 +1,7 @@
 #![cfg(feature = "migrations")]
 
 use std::error::Error;
+use std::io::{Error as IoError, ErrorKind};
 
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -53,16 +54,25 @@ async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
     Ok(Database::connect(options).await?)
 }
 
-fn bounded_metadata<'a>(field: &'static str, value: &'a str) -> TestResult<&'a str> {
+fn bounded_metadata<'a>(field: &'static str, value: &'a str) -> Result<&'a str, IoError> {
     let value = value.trim();
     if value.is_empty() {
-        return Err(format!("{field} must not be empty").into());
+        return Err(IoError::new(
+            ErrorKind::InvalidData,
+            format!("{field} must not be empty"),
+        ));
     }
     if value.len() > 128 {
-        return Err(format!("{field} exceeds retained evidence limit").into());
+        return Err(IoError::new(
+            ErrorKind::InvalidData,
+            format!("{field} exceeds retained evidence limit"),
+        ));
     }
     if value.chars().any(char::is_control) {
-        return Err(format!("{field} contains control characters").into());
+        return Err(IoError::new(
+            ErrorKind::InvalidData,
+            format!("{field} contains control characters"),
+        ));
     }
     Ok(value)
 }
