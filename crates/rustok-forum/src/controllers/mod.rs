@@ -12,6 +12,7 @@ pub mod category_lifecycle;
 pub mod category_policy;
 pub mod category_tree;
 pub mod content_commands;
+pub mod moderation;
 pub mod quote_commands;
 pub mod read_state;
 pub mod replies;
@@ -55,6 +56,17 @@ impl ForumHttpRuntime {
                 facts,
             ),
             None => crate::ReplyService::new(self.db_clone(), self.event_bus()),
+        }
+    }
+
+    fn moderation_service(&self) -> crate::ModerationService {
+        match self.audience_facts.clone() {
+            Some(facts) => crate::ModerationService::with_audience_facts(
+                self.db_clone(),
+                self.event_bus(),
+                facts,
+            ),
+            None => crate::ModerationService::new(self.db_clone(), self.event_bus()),
         }
     }
 }
@@ -195,11 +207,11 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         )
         .route(
             "/api/forum/topics/{topic_id}/solution/{reply_id}",
-            axum::routing::post(topics::mark_topic_solution),
+            axum::routing::post(moderation::mark_topic_solution),
         )
         .route(
             "/api/forum/topics/{topic_id}/solution",
-            axum::routing::delete(topics::clear_topic_solution),
+            axum::routing::delete(moderation::clear_topic_solution),
         )
         .route(
             "/api/forum/topics/{topic_id}/vote/{value}",
