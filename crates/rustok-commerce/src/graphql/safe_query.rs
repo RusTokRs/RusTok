@@ -411,10 +411,12 @@ mod source {
 
         use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
         use ::rustok_fulfillment::{
-            FulfillmentError, FulfillmentResponse, FulfillmentResult,
-            ListAllShippingOptionProjectionsRequest, ListFulfillmentsInput,
-            ListShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest,
-            ShippingOptionAdminReadPort, ShippingOptionReadPort, ShippingOptionResponse,
+            FindLatestFulfillmentByOrderProjectionRequest, FulfillmentError, FulfillmentReadPort,
+            FulfillmentResponse, FulfillmentResult, ListAllShippingOptionProjectionsRequest,
+            ListFulfillmentProjectionsRequest, ListFulfillmentsInput,
+            ListShippingOptionProjectionsRequest, ReadFulfillmentProjectionRequest,
+            ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort,
+            ShippingOptionReadPort, ShippingOptionResponse,
         };
         use ::sea_orm::{DatabaseConnection, DbErr};
         use ::uuid::Uuid;
@@ -438,9 +440,9 @@ mod source {
         }
 
         pub struct FulfillmentService {
-            inner: ::rustok_fulfillment::FulfillmentService,
             shipping_option_reads: Arc<dyn ShippingOptionReadPort>,
             shipping_option_admin_reads: Arc<dyn ShippingOptionAdminReadPort>,
+            fulfillment_reads: Arc<dyn FulfillmentReadPort>,
         }
 
         impl FulfillmentService {
@@ -449,11 +451,13 @@ mod source {
                     crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
                         db.clone(),
                     );
+                let fulfillment_lifecycle_runtime = crate::graphql_runtime::
+                    fulfillment_lifecycle_read_runtime_for_current_graphql_scope(db);
                 Self {
-                    inner: ::rustok_fulfillment::FulfillmentService::new(db),
                     shipping_option_reads: shipping_option_runtime.shipping_option_read_port(),
                     shipping_option_admin_reads: shipping_option_runtime
                         .shipping_option_admin_read_port(),
+                    fulfillment_reads: fulfillment_lifecycle_runtime.fulfillment_read_port(),
                 }
             }
 
@@ -569,20 +573,28 @@ mod source {
                 tenant_id: Uuid,
                 id: Uuid,
             ) -> FulfillmentResult<FulfillmentResponse> {
-                self.inner
-                    .get_fulfillment(tenant_id, id)
+                let context = fulfillment_query_context(
+                    tenant_id,
+                    "fulfillment",
+                    "read_fulfillment_projection",
+                    Some(id),
+                    None,
+                );
+                self.fulfillment_reads
+                    .read_fulfillment_projection(
+                        context.clone(),
+                        ReadFulfillmentProjectionRequest { fulfillment_id: id },
+                    )
                     .await
                     .map_err(|error| {
-                        log_fulfillment_query_error(
-                            &error,
-                            tenant_id,
+                        map_fulfillment_port_error(
+                            error,
+                            &context,
                             "fulfillment",
-                            "get_fulfillment",
+                            "read_fulfillment_projection",
+                            Some(id),
                             None,
-                            None,
-                            None,
-                        );
-                        error
+                        )
                     })
             }
 
@@ -591,21 +603,44 @@ mod source {
                 tenant_id: Uuid,
                 input: ListFulfillmentsInput,
             ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
-                self.inner
-                    .list_fulfillments(tenant_id, input)
+                let ListFulfillmentsInput {
+                    page,
+                    per_page,
+                    status,
+                    order_id,
+                    customer_id,
+                } = input;
+                let context = fulfillment_query_context(
+                    tenant_id,
+                    "fulfillments",
+                    "list_fulfillment_projections",
+                    None,
+                    order_id,
+                );
+                let page_result = self
+                    .fulfillment_reads
+                    .list_fulfillment_projections(
+                        context.clone(),
+                        ListFulfillmentProjectionsRequest {
+                            page,
+                            per_page,
+                            status,
+                            order_id,
+                            customer_id,
+                        },
+                    )
                     .await
                     .map_err(|error| {
-                        log_fulfillment_query_error(
-                            &error,
-                            tenant_id,
+                        map_fulfillment_port_error(
+                            error,
+                            &context,
                             "fulfillments",
-                            "list_fulfillments",
+                            "list_fulfillment_projections",
                             None,
-                            None,
-                            None,
-                        );
-                        error
-                    })
+                            order_id,
+                        )
+                    })?;
+                Ok((page_result.items, page_result.total))
             }
 
             pub async fn find_by_order(
@@ -613,20 +648,28 @@ mod source {
                 tenant_id: Uuid,
                 order_id: Uuid,
             ) -> FulfillmentResult<Option<FulfillmentResponse>> {
-                self.inner
-                    .find_by_order(tenant_id, order_id)
+                let context = fulfillment_query_context(
+                    tenant_id,
+                    "order",
+                    "find_latest_fulfillment_by_order_projection",
+                    None,
+                    Some(order_id),
+                );
+                self.fulfillment_reads
+                    .find_latest_fulfillment_by_order_projection(
+                        context.clone(),
+                        FindLatestFulfillmentByOrderProjectionRequest { order_id },
+                    )
                     .await
                     .map_err(|error| {
-                        log_fulfillment_query_error(
-                            &error,
-                            tenant_id,
+                        map_fulfillment_port_error(
+                            error,
+                            &context,
                             "order",
-                            "find_by_order",
+                            "find_latest_fulfillment_by_order_projection",
+                            None,
                             Some(order_id),
-                            None,
-                            None,
-                        );
-                        error
+                        )
                     })
             }
         }
@@ -647,6 +690,25 @@ mod source {
                 PortActor::service("rustok-commerce.graphql-query-shipping-options"),
                 locale,
                 format!("graphql-fulfillment:{query_field}:{resource}"),
+            )
+            .with_deadline(std::time::Duration::from_secs(2))
+        }
+
+        fn fulfillment_query_context(
+            tenant_id: Uuid,
+            query_field: &'static str,
+            operation: &'static str,
+            fulfillment_id: Option<Uuid>,
+            order_id: Option<Uuid>,
+        ) -> PortContext {
+            let resource = fulfillment_id
+                .or(order_id)
+                .unwrap_or(tenant_id);
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::service("rustok-commerce.graphql-query-fulfillments"),
+                "en",
+                format!("graphql-fulfillment-lifecycle:{query_field}:{operation}:{resource}"),
             )
             .with_deadline(std::time::Duration::from_secs(2))
         }
@@ -692,12 +754,12 @@ mod source {
                 PortErrorKind::Unavailable | PortErrorKind::Timeout => FulfillmentError::Database(
                     DbErr::Custom("fulfillment storage is temporarily unavailable".to_string()),
                 ),
-                PortErrorKind::Validation => FulfillmentError::Validation(
-                    "fulfillment request is invalid".to_string(),
-                ),
-                PortErrorKind::Forbidden => FulfillmentError::Validation(
-                    "fulfillment query is not permitted".to_string(),
-                ),
+                PortErrorKind::Validation => {
+                    FulfillmentError::Validation("fulfillment request is invalid".to_string())
+                }
+                PortErrorKind::Forbidden => {
+                    FulfillmentError::Validation("fulfillment query is not permitted".to_string())
+                }
                 PortErrorKind::InvariantViolation => FulfillmentError::Validation(
                     "fulfillment query could not be completed safely".to_string(),
                 ),
@@ -714,7 +776,79 @@ mod source {
             requested_locale: Option<&str>,
             tenant_default_locale: Option<&str>,
         ) -> BoundaryError {
-            let (message, code, retryable) = match &error.kind {
+            let (message, code, retryable) = public_fulfillment_port_policy(&error.kind);
+            let error_kind = port_error_kind_name(&error.kind);
+            let technical = is_technical_port_error(&error.kind);
+            log_shipping_option_port_error(
+                &error,
+                context,
+                query_field,
+                operation,
+                shipping_option_id,
+                requested_locale,
+                tenant_default_locale,
+                error_kind,
+                code,
+                retryable,
+                technical,
+            );
+
+            BoundaryError::Public {
+                message,
+                code,
+                retryable,
+            }
+        }
+
+        fn map_fulfillment_port_error(
+            error: PortError,
+            context: &PortContext,
+            query_field: &'static str,
+            operation: &'static str,
+            fulfillment_id: Option<Uuid>,
+            order_id: Option<Uuid>,
+        ) -> FulfillmentError {
+            let (public_message, public_code, public_retryable) =
+                public_fulfillment_port_policy(&error.kind);
+            log_fulfillment_port_error(
+                &error,
+                context,
+                query_field,
+                operation,
+                fulfillment_id,
+                order_id,
+                public_message,
+                public_code,
+                public_retryable,
+            );
+
+            match error.kind {
+                PortErrorKind::NotFound => FulfillmentError::FulfillmentNotFound(
+                    fulfillment_id.or(order_id).unwrap_or_else(Uuid::nil),
+                ),
+                PortErrorKind::Conflict => FulfillmentError::InvalidTransition {
+                    from: "current".to_string(),
+                    to: "query".to_string(),
+                },
+                PortErrorKind::Unavailable | PortErrorKind::Timeout => FulfillmentError::Database(
+                    DbErr::Custom("fulfillment storage is temporarily unavailable".to_string()),
+                ),
+                PortErrorKind::Validation => {
+                    FulfillmentError::Validation("fulfillment request is invalid".to_string())
+                }
+                PortErrorKind::Forbidden => {
+                    FulfillmentError::Validation("fulfillment query is not permitted".to_string())
+                }
+                PortErrorKind::InvariantViolation => FulfillmentError::Validation(
+                    "fulfillment query could not be completed safely".to_string(),
+                ),
+            }
+        }
+
+        fn public_fulfillment_port_policy(
+            kind: &PortErrorKind,
+        ) -> (&'static str, &'static str, bool) {
+            match kind {
                 PortErrorKind::Validation => (
                     "Fulfillment query is invalid",
                     "FULFILLMENT_REQUEST_INVALID",
@@ -745,27 +879,6 @@ mod source {
                     "FULFILLMENT_OPERATION_FAILED",
                     false,
                 ),
-            };
-            let error_kind = port_error_kind_name(&error.kind);
-            let technical = is_technical_port_error(&error.kind);
-            log_shipping_option_port_error(
-                &error,
-                context,
-                query_field,
-                operation,
-                shipping_option_id,
-                requested_locale,
-                tenant_default_locale,
-                error_kind,
-                code,
-                retryable,
-                technical,
-            );
-
-            BoundaryError::Public {
-                message,
-                code,
-                retryable,
             }
         }
 
@@ -852,71 +965,63 @@ mod source {
         }
 
         #[allow(clippy::too_many_arguments)]
-        fn log_fulfillment_query_error(
-            error: &FulfillmentError,
-            tenant_id: Uuid,
+        fn log_fulfillment_port_error(
+            error: &PortError,
+            context: &PortContext,
             query_field: &'static str,
             operation: &'static str,
+            fulfillment_id: Option<Uuid>,
             order_id: Option<Uuid>,
-            requested_locale: Option<&str>,
-            tenant_default_locale: Option<&str>,
+            public_message: &'static str,
+            public_code: &'static str,
+            public_retryable: bool,
         ) {
-            let (owner_code, owner_kind, owner_retryable) = match error {
-                FulfillmentError::Validation(_) =>
-                    ("fulfillment.validation", "validation", false),
-                FulfillmentError::ShippingOptionNotFound(_) => (
-                    "fulfillment.shipping_option_not_found",
-                    "not_found",
-                    false,
-                ),
-                FulfillmentError::FulfillmentNotFound(_) => (
-                    "fulfillment.fulfillment_not_found",
-                    "not_found",
-                    false,
-                ),
-                FulfillmentError::InvalidTransition { .. } => (
-                    "fulfillment.invalid_transition",
-                    "conflict",
-                    false,
-                ),
-                FulfillmentError::Database(_) => (
-                    "fulfillment.database_unavailable",
-                    "unavailable",
-                    true,
-                ),
-            };
-
-            match error {
-                FulfillmentError::Database(_) => tracing::error!(
+            let error_kind = port_error_kind_name(&error.kind);
+            if is_technical_port_error(&error.kind) {
+                tracing::error!(
                     error = ?error,
                     owner = "rustok_fulfillment",
-                    tenant_id = %tenant_id,
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    actor = ?context.actor,
+                    context_locale_length = context.locale.len(),
+                    deadline_ms = ?context.deadline_ms,
                     query_field,
                     operation,
+                    fulfillment_id = ?fulfillment_id,
                     order_id = ?order_id,
-                    requested_locale = ?requested_locale,
-                    tenant_default_locale = ?tenant_default_locale,
-                    owner_code,
-                    owner_kind,
-                    owner_retryable,
+                    error_kind,
+                    owner_code = %error.code,
+                    owner_kind = ?error.kind,
+                    owner_retryable = error.retryable,
+                    public_message,
+                    public_code,
+                    public_retryable,
                     boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
                     "commerce GraphQL query fulfillment owner read failed"
-                ),
-                _ => tracing::warn!(
-                    error = ?error,
+                );
+            } else {
+                tracing::warn!(
                     owner = "rustok_fulfillment",
-                    tenant_id = %tenant_id,
+                    correlation_id = %context.correlation_id,
+                    tenant_id = %context.tenant_id,
+                    actor = ?context.actor,
+                    context_locale_length = context.locale.len(),
+                    deadline_ms = ?context.deadline_ms,
                     query_field,
                     operation,
+                    fulfillment_id = ?fulfillment_id,
                     order_id = ?order_id,
-                    requested_locale = ?requested_locale,
-                    tenant_default_locale = ?tenant_default_locale,
-                    owner_code,
-                    owner_kind,
-                    owner_retryable,
+                    error_kind,
+                    owner_code = %error.code,
+                    owner_kind = ?error.kind,
+                    owner_retryable = error.retryable,
+                    public_message,
+                    public_code,
+                    public_retryable,
                     boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
                     "commerce GraphQL query fulfillment owner read was rejected"
-                ),
+                );
             }
         }
     }

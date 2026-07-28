@@ -115,6 +115,22 @@ for (const [value, label] of [
     'CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone())',
     'GraphQL in-process compatibility fallback',
   ],
+  [
+    'CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME',
+    'GraphQL lifecycle task-local identity',
+  ],
+  [
+    'runtime_data.fulfillment_lifecycle_read_runtime()',
+    'GraphQL lifecycle resolver scope value',
+  ],
+  [
+    'pub(crate) fn fulfillment_lifecycle_read_runtime_for_current_graphql_scope(',
+    'GraphQL lifecycle facade resolver',
+  ],
+  [
+    'CommerceFulfillmentLifecycleReadRuntime::in_process(db)',
+    'GraphQL lifecycle standalone fallback',
+  ],
 ]) requireText(commerceRuntime, value, label);
 
 for (const [value, label] of [
@@ -147,25 +163,93 @@ for (const [value, label] of [
   ['fulfillment_lifecycle_read_runtime,', 'Commerce HTTP runtime initialization'],
 ]) requireText(commerceHttp, value, label);
 
+const facadeConstructor = between(
+  compatibilityFacade,
+  'pub fn new(db: DatabaseConnection) -> Self {',
+  'pub async fn get_shipping_option(',
+  'GraphQL fulfillment facade constructor',
+);
+const facadeLookup = between(
+  compatibilityFacade,
+  'pub async fn get_fulfillment(',
+  'pub async fn list_fulfillments(',
+  'GraphQL fulfillment lookup',
+);
+const facadeList = between(
+  compatibilityFacade,
+  'pub async fn list_fulfillments(',
+  'pub async fn find_by_order(',
+  'GraphQL fulfillment list',
+);
+const facadeLatest = between(
+  compatibilityFacade,
+  'pub async fn find_by_order(',
+  'fn shipping_option_query_context(',
+  'GraphQL latest fulfillment by order',
+);
+
+for (const [source, value, label] of [
+  [compatibilityFacade, 'fulfillment_reads: Arc<dyn FulfillmentReadPort>', 'facade lifecycle port'],
+  [
+    facadeConstructor,
+    'fulfillment_lifecycle_read_runtime_for_current_graphql_scope(db)',
+    'facade scoped lifecycle runtime',
+  ],
+  [
+    facadeConstructor,
+    'fulfillment_reads: fulfillment_lifecycle_runtime.fulfillment_read_port()',
+    'facade injected lifecycle port',
+  ],
+  [facadeLookup, '.read_fulfillment_projection(', 'GraphQL owner lookup'],
+  [facadeLookup, 'ReadFulfillmentProjectionRequest { fulfillment_id: id }', 'typed lookup request'],
+  [facadeLookup, 'map_fulfillment_port_error(', 'lookup compatibility error mapping'],
+  [facadeList, '.list_fulfillment_projections(', 'GraphQL owner list'],
+  [facadeList, 'ListFulfillmentProjectionsRequest {', 'typed list request'],
+  [facadeList, 'status,', 'status filter forwarding'],
+  [facadeList, 'order_id,', 'order filter forwarding'],
+  [facadeList, 'customer_id,', 'customer filter forwarding'],
+  [facadeList, 'Ok((page_result.items, page_result.total))', 'list envelope compatibility'],
+  [
+    facadeLatest,
+    '.find_latest_fulfillment_by_order_projection(',
+    'GraphQL owner latest-by-order',
+  ],
+  [
+    facadeLatest,
+    'FindLatestFulfillmentByOrderProjectionRequest { order_id }',
+    'typed latest-by-order request',
+  ],
+]) requireText(source, value, label);
+
 for (const [value, label] of [
-  ['inner: ::rustok_fulfillment::FulfillmentService,', 'retained concrete facade field'],
+  ['fn fulfillment_query_context(', 'GraphQL lifecycle context builder'],
   [
-    'inner: ::rustok_fulfillment::FulfillmentService::new(db)',
-    'retained concrete facade construction',
+    'PortActor::service("rustok-commerce.graphql-query-fulfillments")',
+    'GraphQL lifecycle service actor',
   ],
   [
-    'self.inner\n                    .get_fulfillment(',
-    'retained GraphQL single-read consumer',
+    'graphql-fulfillment-lifecycle:{query_field}:{operation}:{resource}',
+    'GraphQL lifecycle correlation',
   ],
-  [
-    'self.inner\n                    .list_fulfillments(',
-    'retained GraphQL list consumer',
-  ],
-  [
-    'self.inner\n                    .find_by_order(',
-    'retained GraphQL latest-by-order consumer',
-  ],
+  ['with_deadline(std::time::Duration::from_secs(2))', 'GraphQL lifecycle deadline'],
+  ['fn map_fulfillment_port_error(', 'GraphQL lifecycle port mapper'],
+  ['PortErrorKind::Forbidden', 'GraphQL forbidden mapping'],
+  ['PortErrorKind::Timeout', 'GraphQL timeout mapping'],
+  ['PortErrorKind::InvariantViolation', 'GraphQL invariant mapping'],
+  ['"FULFILLMENT_REQUEST_INVALID"', 'GraphQL validation code'],
+  ['"FULFILLMENT_RESOURCE_NOT_FOUND"', 'GraphQL not-found code'],
+  ['"FULFILLMENT_STATE_CONFLICT"', 'GraphQL conflict code'],
+  ['"FULFILLMENT_TEMPORARILY_UNAVAILABLE"', 'GraphQL unavailable code'],
+  ['"FULFILLMENT_ACCESS_DENIED"', 'GraphQL forbidden code'],
+  ['"FULFILLMENT_OPERATION_FAILED"', 'GraphQL invariant code'],
+  ['owner_code = %error.code', 'GraphQL stable owner code logging'],
 ]) requireText(compatibilityFacade, value, label);
+
+for (const value of [
+  'inner: ::rustok_fulfillment::FulfillmentService',
+  '::rustok_fulfillment::FulfillmentService::new(db)',
+  'self.inner',
+]) forbidText(compatibilityFacade, value, 'GraphQL concrete lifecycle delegate');
 
 const adminList = between(
   adminRest,
@@ -202,34 +286,13 @@ for (const [source, value, label] of [
   [adminShow, '.get_fulfillment(', 'admin show concrete operation'],
 ]) forbidText(source, value, label);
 
-for (const [value, label] of [
-  ['fn admin_fulfillment_read_port_context(', 'admin read context builder'],
-  ['PortActor::user(auth.user_id.to_string())', 'admin user actor'],
-  ['request_context.locale.as_str()', 'admin locale propagation'],
-  ['request_context.channel_slug.as_deref()', 'admin channel propagation'],
-  ['commerce-admin-fulfillment:{operation}:{resource_id}', 'admin correlation id'],
-  ['with_deadline(std::time::Duration::from_secs(2))', 'admin read deadline'],
-  ['fn map_admin_fulfillment_port_error(', 'admin typed error mapper'],
-  ['PortErrorKind::Forbidden', 'admin forbidden mapping'],
-  ['PortErrorKind::Timeout', 'admin timeout mapping'],
-  ['PortErrorKind::InvariantViolation', 'admin invariant mapping'],
-  ['"commerce_admin_fulfillment_invalid"', 'admin validation public code'],
-  ['"commerce_admin_not_found"', 'admin not-found public code'],
-  ['"commerce_admin_fulfillment_state_conflict"', 'admin conflict public code'],
-  ['"commerce_admin_fulfillment_storage_unavailable"', 'admin unavailable public code'],
-  ['"commerce_admin_fulfillment_failed"', 'admin invariant public code'],
-  ['internal_code = %error.code', 'admin stable owner code logging'],
-]) requireText(adminRest, value, label);
+for (const value of ['error = %message', 'message = %', 'error.message']) {
+  forbidText(ownerSource, value, 'owner message exposure');
+}
 
-for (const value of [
-  'error = %message',
-  'message = %',
-  'error.message',
-]) forbidText(ownerSource, value, 'owner message exposure');
-
-if (evidence.status !== 'source_rest_cutover_unvalidated') {
+if (evidence.status !== 'source_cutover_unvalidated') {
   failures.push(
-    `evidence status: expected source_rest_cutover_unvalidated, found ${evidence.status}`,
+    `evidence status: expected source_cutover_unvalidated, found ${evidence.status}`,
   );
 }
 if (evidence.owner?.port !== 'FulfillmentReadPort') {
@@ -238,47 +301,39 @@ if (evidence.owner?.port !== 'FulfillmentReadPort') {
 if (evidence.runtime_publication?.runtime !== 'CommerceFulfillmentLifecycleReadRuntime') {
   failures.push('evidence runtime publication mismatch');
 }
-if (evidence.runtime_publication?.graphql_host_override_supported !== true) {
-  failures.push('evidence must record GraphQL host override support');
+for (const [value, label] of [
+  [evidence.runtime_publication?.graphql_host_override_supported, 'GraphQL host override'],
+  [evidence.runtime_publication?.server_cache_composed, 'server cache composition'],
+  [evidence.runtime_publication?.default_server_attachment, 'default server attachment'],
+  [evidence.runtime_publication?.commerce_http_runtime_required, 'Commerce HTTP injection'],
+  [evidence.runtime_publication?.external_adapter_preserved, 'external adapter preservation'],
+  [evidence.runtime_publication?.graphql_task_local_scoped, 'GraphQL task-local scope'],
+  [evidence.admin_rest?.pagination_total_preserved, 'admin pagination total'],
+  [evidence.admin_rest?.filters_preserved, 'admin filters'],
+  [evidence.admin_rest?.public_error_policy_preserved, 'admin public error policy'],
+  [evidence.admin_rest?.mutation_service_construction_unchanged, 'mutation service preservation'],
+  [evidence.graphql?.existing_query_source_unchanged, 'unchanged query source'],
+  [evidence.graphql?.optional_lookup_not_found_preserved, 'optional lookup not-found'],
+  [evidence.graphql?.optional_latest_by_order_preserved, 'optional latest-by-order'],
+  [evidence.graphql?.pagination_total_and_filters_preserved, 'GraphQL pagination and filters'],
+  [evidence.graphql?.public_error_policy_preserved, 'GraphQL public error policy'],
+  [evidence.consumer_cutover?.graphql_compatibility_facade, 'GraphQL facade cutover'],
+  [evidence.consumer_cutover?.admin_rest_list_show, 'admin REST cutover'],
+  [evidence.consumer_cutover?.concrete_delegate_removed, 'concrete delegate removal'],
+]) {
+  if (value !== true) failures.push(`evidence must record ${label}`);
 }
 if (evidence.runtime_publication?.graphql_manifest_fallback !== 'in_process') {
   failures.push('evidence must record the GraphQL in-process fallback');
 }
-if (evidence.runtime_publication?.server_cache_composed !== true) {
-  failures.push('evidence must record default server cache composition');
-}
-if (evidence.runtime_publication?.default_server_attachment !== true) {
-  failures.push('evidence must record default server attachment');
-}
-if (evidence.runtime_publication?.commerce_http_runtime_required !== true) {
-  failures.push('evidence must record mandatory Commerce HTTP runtime injection');
-}
-if (evidence.runtime_publication?.external_adapter_preserved !== true) {
-  failures.push('evidence must record preservation of external adapters');
-}
-if (evidence.admin_rest?.pagination_total_preserved !== true) {
-  failures.push('evidence must record preserved admin pagination total');
-}
-if (evidence.admin_rest?.filters_preserved !== true) {
-  failures.push('evidence must record preserved admin list filters');
-}
-if (evidence.admin_rest?.public_error_policy_preserved !== true) {
-  failures.push('evidence must record preserved admin public error policy');
-}
 if (evidence.admin_rest?.concrete_service_read_construction !== false) {
   failures.push('evidence must forbid concrete admin REST read construction');
 }
-if (evidence.admin_rest?.mutation_service_construction_unchanged !== true) {
-  failures.push('evidence must retain lifecycle mutation service construction');
+if (evidence.graphql?.concrete_service_read_construction !== false) {
+  failures.push('evidence must forbid concrete GraphQL read construction');
 }
-if (evidence.consumer_cutover?.graphql_compatibility_facade !== false) {
-  failures.push('evidence must retain GraphQL facade cutover as false');
-}
-if (evidence.consumer_cutover?.admin_rest_list_show !== true) {
-  failures.push('evidence must record admin REST list/show cutover');
-}
-if (evidence.consumer_cutover?.concrete_delegate_removed !== false) {
-  failures.push('evidence must retain concrete delegate removal as false');
+if (evidence.validation?.runtime_parity_proven !== false) {
+  failures.push('evidence must retain runtime parity as unproven');
 }
 for (const key of [
   'tests_run',
@@ -300,5 +355,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ fulfillment lifecycle reads are owner-published and host-composed; admin REST list/show consume the typed port while GraphQL cutover remains explicitly open',
+  '✔ fulfillment lifecycle reads are owner-published, host-composed, and consumed through typed GraphQL and admin REST boundaries without concrete Commerce read delegates',
 );
