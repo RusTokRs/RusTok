@@ -142,7 +142,7 @@ for (const marker of [
 
 for (const marker of [
   '- [x] Add canonical schema/entity/link/inbox/job/checkpoint/consistency migrations.',
-  '- [ ] Add tenant/schema/entity/locale keys and source-version guards.',
+  '- [x] Add tenant/schema/entity/locale keys and source-version guards.',
   'M3 storage-schema foundation: `complete`',
 ]) {
   if (!plan.includes(marker)) fail(`implementation plan marker missing ${marker}`);
