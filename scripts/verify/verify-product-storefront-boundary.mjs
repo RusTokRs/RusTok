@@ -160,7 +160,7 @@ assertNotContains(transport, "crate::api", `${transportPath}: transport facade m
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: GraphQL adapter must expose GraphQL request path`);
 assertContains(graphqlAdapter, "search: controls.search", `${graphqlAdapterPath}: GraphQL storefront list must carry typed search state`);
 assertContains(catalogListNative, 'endpoint = "product/storefront/catalog-list"', `${catalogListNativePath}: native catalog list must use an owner endpoint`);
-assertContains(catalogListNative, "StorefrontProductListQuery { search }", `${catalogListNativePath}: native catalog list must map typed search into the owner query`);
+assertContains(catalogListNative, "StorefrontProductListQuery::try_from_transport", `${catalogListNativePath}: native catalog list must validate typed controls through the Product owner query`);
 assertContains(catalogListNative, ".list_published_products_with_query(", `${catalogListNativePath}: native catalog list must execute the owner service query`);
 assertNotContains(catalogListNative, "GraphqlRequest", `${catalogListNativePath}: native catalog list must not execute GraphQL`);
 assertContains(catalogQueries, "pub async fn list_published_products_with_query", `${catalogQueriesPath}: Product owner service must expose the typed list query`);

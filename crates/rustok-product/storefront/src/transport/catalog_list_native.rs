@@ -10,9 +10,15 @@ pub async fn fetch_products(
     mut request: FetchRequest,
     controls: CatalogListInput,
 ) -> Result<StorefrontProductsData, ApiError> {
-    let products = storefront_catalog_list_native(request.locale.clone(), controls.search)
-        .await
-        .map_err(ApiError::from)?;
+    let products = storefront_catalog_list_native(
+        request.locale.clone(),
+        controls.search,
+        controls.category_id,
+        controls.sort_by,
+        controls.sort_direction,
+    )
+    .await
+    .map_err(ApiError::from)?;
     let resolved_handle = request
         .selected_handle
         .as_deref()
@@ -94,6 +100,9 @@ fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
 async fn storefront_catalog_list_native(
     locale: Option<String>,
     search: Option<String>,
+    category_id: Option<String>,
+    sort_by: Option<String>,
+    sort_direction: Option<String>,
 ) -> Result<ProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -124,13 +133,20 @@ async fn storefront_catalog_list_native(
         let public_channel_slug = request_context
             .as_ref()
             .and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref()));
+        let list_query = StorefrontProductListQuery::try_from_transport(
+            search,
+            category_id,
+            sort_by,
+            sort_direction,
+        )
+        .map_err(|error| map_product_service_error(error, "storefront_catalog_list_input"))?;
         let products = CatalogService::new(runtime_ctx.db_clone(), event_bus)
             .list_published_products_with_query(
                 tenant.id,
                 requested_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
                 public_channel_slug.as_deref(),
-                StorefrontProductListQuery { search },
+                list_query,
                 1,
                 12,
             )
@@ -141,7 +157,7 @@ async fn storefront_catalog_list_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (locale, search);
+        let _ = (locale, search, category_id, sort_by, sort_direction);
         Err(ServerFnError::new(
             "product/storefront/catalog-list requires the `ssr` feature",
         ))

@@ -50,6 +50,9 @@ impl CatalogService {
                 self.db.get_database_backend(),
                 public_channel_slug,
             ));
+        if let Some(category_id) = list_query.category_id {
+            query = query.filter(entities::product::Column::PrimaryCategoryId.eq(category_id));
+        }
         if let Some(search) = list_query
             .search
             .as_deref()
@@ -62,9 +65,37 @@ impl CatalogService {
             ));
         }
         let total = query.clone().count(&self.db).await?;
+        let query = match (list_query.sort_by, list_query.sort_direction) {
+            (
+                StorefrontProductSortBy::PublishedAt,
+                StorefrontProductSortDirection::Asc,
+            ) => query
+                .order_by_asc(entities::product::Column::PublishedAt)
+                .order_by_asc(entities::product::Column::CreatedAt)
+                .order_by_asc(entities::product::Column::Id),
+            (
+                StorefrontProductSortBy::PublishedAt,
+                StorefrontProductSortDirection::Desc,
+            ) => query
+                .order_by_desc(entities::product::Column::PublishedAt)
+                .order_by_desc(entities::product::Column::CreatedAt)
+                .order_by_desc(entities::product::Column::Id),
+            (
+                StorefrontProductSortBy::CreatedAt,
+                StorefrontProductSortDirection::Asc,
+            ) => query
+                .order_by_asc(entities::product::Column::CreatedAt)
+                .order_by_asc(entities::product::Column::PublishedAt)
+                .order_by_asc(entities::product::Column::Id),
+            (
+                StorefrontProductSortBy::CreatedAt,
+                StorefrontProductSortDirection::Desc,
+            ) => query
+                .order_by_desc(entities::product::Column::CreatedAt)
+                .order_by_desc(entities::product::Column::PublishedAt)
+                .order_by_desc(entities::product::Column::Id),
+        };
         let products = query
-            .order_by_desc(entities::product::Column::PublishedAt)
-            .order_by_desc(entities::product::Column::CreatedAt)
             .offset(offset)
             .limit(per_page)
             .all(&self.db)

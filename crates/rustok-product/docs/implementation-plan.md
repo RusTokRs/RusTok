@@ -26,12 +26,13 @@ The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
 The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, catalog
 search-option discovery, detached-value marker contract, and no-compile schema
-guardrail are source-locked. Storefront title search now uses typed
-`CatalogListInput`, a Product-owned `StorefrontProductListQuery`, server-side
-translation-title filtering, the native owner endpoint, the existing GraphQL
-search filter, and a snake_case `search` UI control. The broader
-storefront/admin catalog filter and sort result remains open until category,
-sort, attribute-filter, and admin parity are connected end to end.
+guardrail are source-locked. Storefront title search, exact primary-category
+filtering, and deterministic publication/creation-date sorting use typed
+`CatalogListInput`, a Product-owned `StorefrontProductListQuery`, owner-side
+validation and SQL, the native owner endpoint, a merged GraphQL resolver backed
+by the same service, and snake_case UI controls. The broader storefront/admin
+catalog result remains open until typed attribute filters and matching admin
+controls are connected end to end.
 Product write GraphQL derives tenant and actor exclusively from authenticated
 contexts. Product-owned `map_product_public_error` is shared by GraphQL and
 native admin/storefront transports; it keeps internal errors in structured logs
@@ -103,6 +104,7 @@ rustok-pricing` dependency cycle.
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-storefront-boundary.mjs`,
+  `scripts/verify/verify-product-storefront-category-sort.mjs`,
   `scripts/verify/verify-product-catalog-controls-plan-sync.mjs`, and
   `scripts/verify/verify-ai-product-fba.mjs` for the AI consumer contract.
 
@@ -120,19 +122,23 @@ rustok-pricing` dependency cycle.
    shared [Richtext plan](../../../docs/modules/rich-text-implementation-plan.md),
    assign an owner profile, migrate both transports, and keep short/meta
    descriptions plain text.
-3. Complete the product-owned catalog controls contract. The first 2026-07-28
-   execution slice closes storefront title search through typed UI state, both
-   selected transports, and Product-owned server-side filtering. The task stays
-   open for storefront category/sort/attribute filters and matching admin
-   controls. The completed marker must not return until the full snake_case
-   query contract (`search`, `category_id`, `sort_by`, `sort_direction`,
-   `attribute_filters`) is carried through core request models, native and
-   GraphQL adapters, server-side semantics, and both UI surfaces.
+3. Complete the product-owned catalog controls contract. The 2026-07-28
+   storefront slices close title search, exact primary-category filtering, and
+   deterministic `published_at` / `created_at` sorting through typed UI state,
+   both selected transports, and Product-owned server-side execution. The task
+   stays open for typed attribute filters and matching admin controls. The
+   completed marker must not return until the full snake_case query contract
+   (`search`, `category_id`, `sort_by`, `sort_direction`, `attribute_filters`)
+   is carried through core request models, native and GraphQL adapters,
+   server-side semantics, and both UI surfaces.
 
 ## Verification
 
 - [ ] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
+- [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
+- `node scripts/verify/verify-product-storefront-category-sort.mjs`
+- `node scripts/verify/verify-product-storefront-category-sort.test.mjs`
 - `node scripts/verify/verify-product-catalog-controls-plan-sync.mjs`
 - `node scripts/verify/verify-product-catalog-controls-plan-sync.test.mjs`
 - `npm run verify:product:runtime-fallback-smoke`

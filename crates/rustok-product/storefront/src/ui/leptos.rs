@@ -5,8 +5,8 @@ use crate::core::{
     build_shell_view_model, build_transport_error_dom_evidence, resolve_route_segment,
 };
 use crate::model::{
-    ProductDetail, ProductListItem, ProductPricingContext, ProductPricingDetail,
-    StorefrontProductsData,
+    ProductCatalogSearchOptions, ProductDetail, ProductListItem, ProductPricingContext,
+    ProductPricingDetail, StorefrontProductsData,
 };
 use crate::transport;
 use leptos::prelude::*;
@@ -26,9 +26,47 @@ pub fn ProductView() -> impl IntoView {
         read_route_query_value(&route_context, "channel_slug"),
         read_route_query_value(&route_context, "quantity"),
     );
-    let catalog_input = build_catalog_list_input(read_route_query_value(&route_context, "search"));
-    let search_labels = build_catalog_search_labels(route_input.locale.as_deref());
+    let catalog_input = build_catalog_list_input(
+        read_route_query_value(&route_context, "search"),
+        read_route_query_value(&route_context, "category_id"),
+        read_route_query_value(&route_context, "sort_by"),
+        read_route_query_value(&route_context, "sort_direction"),
+    );
+    let control_labels = build_catalog_search_labels(route_input.locale.as_deref());
     let current_search = catalog_input.search.clone().unwrap_or_default();
+    let current_category_id = catalog_input.category_id.clone().unwrap_or_default();
+    let current_sort_by = catalog_input
+        .sort_by
+        .clone()
+        .unwrap_or_else(|| "published_at".to_string());
+    let current_sort_direction = catalog_input
+        .sort_direction
+        .clone()
+        .unwrap_or_else(|| "desc".to_string());
+    let options_locale = route_input.locale.clone().unwrap_or_default();
+    let options_resource = Resource::new_blocking(
+        move || options_locale.clone(),
+        move |locale| async move {
+            transport::fetch_catalog_search_options(locale)
+                .await
+                .unwrap_or_else(|_| ProductCatalogSearchOptions::default())
+        },
+    );
+    let search_label = control_labels.search_label;
+    let search_placeholder = control_labels.search_placeholder;
+    let category_label = control_labels.category_label;
+    let all_categories = control_labels.all_categories;
+    let sort_by_label = control_labels.sort_by_label;
+    let sort_by_published_at = control_labels.sort_by_published_at;
+    let sort_by_created_at = control_labels.sort_by_created_at;
+    let sort_direction_label = control_labels.sort_direction_label;
+    let sort_direction_desc = control_labels.sort_direction_desc;
+    let sort_direction_asc = control_labels.sort_direction_asc;
+    let submit_label = control_labels.submit;
+    let category_fallback_value = current_category_id.clone();
+    let category_fallback_label = all_categories.clone();
+    let category_options_selected = current_category_id.clone();
+    let category_options_all_label = all_categories.clone();
     let currency = route_input.currency_code.clone();
     let region_id = route_input.region_id.clone();
     let price_list_id = route_input.price_list_id.clone();
@@ -52,19 +90,83 @@ pub fn ProductView() -> impl IntoView {
                 <h2 class="text-3xl font-semibold text-card-foreground">{shell.title}</h2>
                 <p class="text-sm text-muted-foreground">{shell.subtitle}</p>
             </div>
-            <form method="get" class="mt-6 flex flex-col gap-3 rounded-2xl border border-border bg-background p-4 sm:flex-row sm:items-end">
-                <div class="min-w-0 flex-1 space-y-2">
+            <form method="get" class="mt-6 grid gap-3 rounded-2xl border border-border bg-background p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] xl:items-end">
+                <div class="min-w-0 space-y-2">
                     <label for="product-catalog-search" class="text-sm font-medium text-foreground">
-                        {search_labels.label}
+                        {search_label}
                     </label>
                     <input
                         id="product-catalog-search"
                         name="search"
                         type="search"
                         value=current_search
-                        placeholder=search_labels.placeholder
+                        placeholder=search_placeholder
                         class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
                     />
+                </div>
+                <div class="min-w-0 space-y-2">
+                    <label for="product-catalog-category" class="text-sm font-medium text-foreground">
+                        {category_label}
+                    </label>
+                    <Suspense fallback=move || view! {
+                        <select
+                            id="product-catalog-category"
+                            name="category_id"
+                            class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+                        >
+                            <option value=category_fallback_value.clone()>{category_fallback_label.clone()}</option>
+                        </select>
+                    }>
+                        {move || {
+                            let options_resource = options_resource;
+                            let selected_category_id = category_options_selected.clone();
+                            let all_categories = category_options_all_label.clone();
+                            Suspend::new(async move {
+                                let options = options_resource.await;
+                                view! {
+                                    <select
+                                        id="product-catalog-category"
+                                        name="category_id"
+                                        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+                                    >
+                                        <option value="" selected=selected_category_id.is_empty()>{all_categories}</option>
+                                        {options.category_options.into_iter().map(|option| {
+                                            let selected = option.value == selected_category_id;
+                                            view! {
+                                                <option value=option.value selected=selected>{option.label}</option>
+                                            }
+                                        }).collect_view()}
+                                    </select>
+                                }
+                            })
+                        }}
+                    </Suspense>
+                </div>
+                <div class="min-w-0 space-y-2">
+                    <label for="product-catalog-sort-by" class="text-sm font-medium text-foreground">
+                        {sort_by_label}
+                    </label>
+                    <select
+                        id="product-catalog-sort-by"
+                        name="sort_by"
+                        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    >
+                        <option value="published_at" selected=current_sort_by == "published_at">{sort_by_published_at}</option>
+                        <option value="created_at" selected=current_sort_by == "created_at">{sort_by_created_at}</option>
+                    </select>
+                </div>
+                <div class="min-w-0 space-y-2">
+                    <label for="product-catalog-sort-direction" class="text-sm font-medium text-foreground">
+                        {sort_direction_label}
+                    </label>
+                    <select
+                        id="product-catalog-sort-direction"
+                        name="sort_direction"
+                        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    >
+                        <option value="desc" selected=current_sort_direction == "desc">{sort_direction_desc}</option>
+                        <option value="asc" selected=current_sort_direction == "asc">{sort_direction_asc}</option>
+                    </select>
                 </div>
                 {currency.map(|value| view! { <input type="hidden" name="currency" value=value /> })}
                 {region_id.map(|value| view! { <input type="hidden" name="region_id" value=value /> })}
@@ -76,7 +178,7 @@ pub fn ProductView() -> impl IntoView {
                     type="submit"
                     class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
                 >
-                    {search_labels.submit}
+                    {submit_label}
                 </button>
             </form>
             <div class="mt-8">
