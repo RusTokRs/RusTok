@@ -12,6 +12,8 @@
   "owner_note": "crates/rustok-forum/docs/forum-26f-account-age-posting-facts.md",
   "source_proof": "apps/server/src/services/forum_posting_policy_facts.rs#tests",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "downstream_reading_task": "FORUM-26G",
+  "downstream_reading_contract": "crates/rustok-forum/contracts/forum-topic-reading-posting-facts.json",
   "composition": {
     "users_created_at_is_authority": true,
     "forum_crate_imports_server_user_entity": false,
