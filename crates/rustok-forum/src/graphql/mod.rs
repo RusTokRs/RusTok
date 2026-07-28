@@ -9,6 +9,7 @@ mod mutation;
 mod query;
 mod quote_commands;
 mod read_state;
+mod runtime_data;
 mod storefront_read_state;
 mod types;
 
@@ -34,6 +35,7 @@ pub use quote_commands::{
     GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
 };
 pub use read_state::*;
+pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
 pub use types::*;
 

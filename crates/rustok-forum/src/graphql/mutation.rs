@@ -17,6 +17,11 @@ use uuid::Uuid;
 use crate::{
     CategoryResponse, CategoryService, ReplyService, SubscriptionService, TopicService, VoteService,
 };
+use crate::topic_create_transport::{
+    ForumTopicCreateTransport, topic_create_audience_port_context,
+};
+
+use super::ForumGraphqlRuntimeData;
 
 use super::types::*;
 
@@ -44,14 +49,26 @@ impl ForumMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let service = TopicService::new(db.clone(), event_bus.clone());
-        let topic = service
-            .create(
+        let audience_context = topic_create_audience_port_context(
+            ForumTopicCreateTransport::Graphql,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+        let topic = runtime
+            .topic_service(db.clone(), event_bus.clone())
+            .create_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                audience_context,
                 crate::CreateTopicInput {
                     locale: input.locale,
                     category_id: input.category_id,

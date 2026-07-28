@@ -148,7 +148,7 @@ for (const marker of [
   requireText(note, marker, `owner note is missing ${marker}`);
 }
 for (const marker of [
-  "FORUM-20A-AR provide",
+  "FORUM-20A-AS provide",
   "### Delivered in `FORUM-20AP`",
   "Forum trust and Channel membership facts adapters",
 ]) {
