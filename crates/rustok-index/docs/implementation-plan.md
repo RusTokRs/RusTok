@@ -46,12 +46,16 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - M3 partition maintenance evidence runner: `complete`
 - M3 partition cutover rehearsal evidence runner: `complete`
 - M3 retained packet owner orchestration: `complete`
+- M3 retained bundle review/report: `complete`
+- M3 admitted archive manifest: `complete`
+- M3 retained archive verification and filesystem snapshot: `complete`
 - Real retained PostgreSQL packet execution: `open`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
   partition admission, snapshot/query/mutation/maintenance/cutover evidence tooling,
-  full-capture orchestration, exact-byte packet assembly, and validation are
-  implemented; one retained admitted packet, query adapter, and production partition
-  lifecycle remain open
+  full-capture orchestration, exact-byte packet assembly, retained bundle review,
+  admitted archive manifest generation, saved-manifest verification, and recursive
+  filesystem integrity checks are implemented; one retained admitted packet, query
+  adapter, and production partition lifecycle remain open
 
 The production crate contains the generic domain/application core, seven canonical
 M3 tables, an atomic mutation adapter, durable schema leases, secondary-index
@@ -182,6 +186,10 @@ unpartitioned until separate shadow evidence is retained and admitted.
 - [x] Add owner-operated PostgreSQL baseline/shadow ordinary-VACUUM maintenance evidence capture.
 - [x] Add owner-operated PostgreSQL cutover/rollback rehearsal evidence capture.
 - [x] Add owner-operated full retained packet orchestration and capture finalization.
+- [x] Add read-only retained bundle review with recalculated assembly and admission.
+- [x] Add admitted archive manifest and saved-manifest verification receipt.
+- [x] Bind retained verification to stable descriptors, filesystem identity and
+      fingerprints, and an exact recursive directory inventory.
 - [ ] Execute one fresh full PostgreSQL capture and retain all six raw artifacts,
       `capture.json`, `partition-packet.json`, and `admission.json`.
 - [ ] Review and archive one complete admitted real packet before production lifecycle
@@ -204,6 +212,10 @@ slices and still-open owner evidence to these exact architectural boundaries:
       owner-operated runbook.
 - [x] Add exact-byte raw-artifact capture assembly with bundle confinement and
       no-clobber packet publication.
+- [x] Add read-only retained bundle review, admitted archive manifest, and
+      saved-manifest verification receipt.
+- [x] Bind retained verification to an exact recursive filesystem snapshot and refuse
+      post-inspection drift.
 - [ ] Execute retained PostgreSQL partition baseline/shadow evidence.
 - [ ] Execute retained PostgreSQL query, mutation, maintenance, and cutover evidence.
 - [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.
@@ -256,6 +268,17 @@ relations.
     runs all five evidence commands, finalizes `capture.json` with PostgreSQL identity
     and run provenance, assembles exact retained bytes into `partition-packet.json`,
     validates `admission.json`, and refuses partial-output reuse or resume.
+14. The retained bundle review inspects exactly nine authoritative files, recalculates
+    exact-byte packet assembly and admission, rejects aliases or drift, and renders a
+    deterministic read-only owner report without editing the bundle.
+15. The archive tooling emits a deterministic admitted-only manifest outside the
+    immutable bundle and verifies a saved manifest into a read-only receipt with
+    `production_lifecycle_authorized: false`.
+16. Retained verification binds every authoritative file and required directory to
+    stable-descriptor bytes, filesystem identity, metadata fingerprints, canonical
+    paths, and an exact recursive inventory. It rereads the saved manifest and fails
+    closed on replacement, metadata, inventory, alias, or post-inspection byte drift
+    while keeping public manifest and receipt schemas unchanged.
 
 ### M4 - Query engine v1
 
@@ -369,6 +392,7 @@ node scripts/verify/verify-index-partition-mutation-evidence.mjs
 node scripts/verify/verify-index-partition-maintenance-evidence.mjs
 node scripts/verify/verify-index-partition-cutover-evidence.mjs
 node scripts/verify/verify-index-partition-full-capture.mjs
+node scripts/verify/verify-index-partition-post-inspection-drift.mjs
 ```
 
 ## Progress log
@@ -381,7 +405,10 @@ node scripts/verify/verify-index-partition-full-capture.mjs
   tooling, exact-byte assembly, baseline/shadow snapshot capture, query evidence
   capture, rollback-only mutation/WAL evidence capture, and isolated ordinary-VACUUM
   maintenance evidence capture.
-- 2026-07-28: completed rollback-only cutover rehearsal evidence and full retained
-  packet owner orchestration with PostgreSQL identity-bound capture finalization.
-- Repository tests, verifiers, and one real full PostgreSQL partition packet remain for
-  the owner to execute and admit before production partition lifecycle work begins.
+- 2026-07-28: completed rollback-only cutover rehearsal evidence, full retained packet
+  owner orchestration with PostgreSQL identity-bound capture finalization, read-only
+  retained bundle review, admitted archive manifest generation, saved-manifest
+  verification receipts, and exact recursive filesystem snapshot enforcement.
+- Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
+  packet remain for the owner to execute and admit before production partition
+  lifecycle work begins.
