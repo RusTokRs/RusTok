@@ -28,9 +28,10 @@ pub use entities::*;
 pub use ports::*;
 pub use providers::*;
 pub use shipping_option_read::{
-    InProcessShippingOptionReadPort, ListAllShippingOptionProjectionsRequest,
-    ListShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest,
-    ShippingOptionReadPort, in_process_shipping_option_read_port,
+    InProcessShippingOptionAdminReadPort, InProcessShippingOptionReadPort,
+    ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,
+    ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort, ShippingOptionReadPort,
+    in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
 };
 pub use status::*;
 
