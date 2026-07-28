@@ -68,21 +68,82 @@ for (const delivered of [
     failures.push(`forum audience group facts contract must record ${delivered} as delivered`);
   }
 }
-for (const historicalResidual of [
+for (const residual of [
   "host trust facts adapter",
   "host channel membership facts adapter",
+  "profile privacy and blocking policy",
+  "final notification creation and delivery authorization",
+  "initially non-public topic-created descriptor materialization",
+  "search index SEO and deep-link migration",
+  "PostgreSQL and cross-consumer runtime evidence",
 ]) {
-  if (!contract.not_delivered?.includes(historicalResidual)) {
-    failures.push(`FORUM-20Q must retain its historical residual ${historicalResidual}`);
+  if (!contract.not_delivered?.includes(residual)) {
+    failures.push(`forum audience group facts contract must keep ${residual} explicitly open`);
   }
 }
 
-for (const marker of [
-  "FORUM-20A-AT provide",
-  "### Delivered in `FORUM-20H` through `FORUM-20Q`",
-  "### Delivered in `FORUM-20AT`",
-]) {
-  requireText(plan, marker, `canonical plan is missing downstream history marker ${marker}`);
+const deliveredSlices = [
+  "FORUM-20H",
+  "FORUM-20I",
+  "FORUM-20J",
+  "FORUM-20K",
+  "FORUM-20L",
+  "FORUM-20M",
+  "FORUM-20N",
+  "FORUM-20O",
+  "FORUM-20P",
+  "FORUM-20Q",
+];
+const planSync = contract.canonical_plan_sync ?? {};
+if (planSync.required_ledger_through !== "FORUM-20Q") {
+  failures.push("forum audience group facts contract must require the canonical ledger through FORUM-20Q");
+}
+if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
+  failures.push("forum audience group facts contract must require FORUM-20H through FORUM-20Q delivered sections");
+}
+if (planSync.status === "pending") {
+  if (planSync.current_plan_through !== "FORUM-20G") {
+    failures.push("pending canonical plan synchronization must identify FORUM-20G as the historical plan boundary");
+  }
+  const downstreamSynchronizationRecorded =
+    plan.includes("### Delivered in `FORUM-20AM`") &&
+    plan.includes("### Delivered in `FORUM-20AT`");
+  if (downstreamSynchronizationRecorded) {
+    requireText(
+      plan,
+      "FORUM-20A-AT provide",
+      "downstream canonical plan must advance the FORUM-20 ledger through AT",
+    );
+    requireText(
+      plan,
+      "### Delivered in `FORUM-20H` through `FORUM-20Q`",
+      "downstream canonical plan must retain the consolidated FORUM-20H through FORUM-20Q history",
+    );
+  } else {
+    requireText(
+      plan,
+      "FORUM-20A-G provide",
+      "pending canonical plan synchronization must remain grounded in the historical FORUM-20A-G ledger row",
+    );
+    for (const slice of deliveredSlices) {
+      rejectText(
+        plan,
+        `### Delivered in \`${slice}\``,
+        `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
+      );
+    }
+  }
+} else if (planSync.status === "synchronized") {
+  requireText(plan, "FORUM-20A-Q provide", "synchronized canonical plan must advance the FORUM-20 ledger through Q");
+  for (const slice of deliveredSlices) {
+    requireText(
+      plan,
+      `### Delivered in \`${slice}\``,
+      `synchronized canonical plan is missing the delivered ${slice} section`,
+    );
+  }
+} else {
+  failures.push("canonical_plan_sync.status must be pending or synchronized");
 }
 
 for (const marker of [
