@@ -4,7 +4,7 @@ Status: **server and Iggy source complete; runtime execution pending**.
 
 ## Purpose
 
-The server can now compose the bounded physical DLQ scanner, the explicit count-only alert policy, and the latest-value runtime without assuming every event-delivery profile uses Iggy.
+The server composes the bounded physical DLQ scanner, explicit count-only alert policy, and latest-value runtime without assuming every event-delivery profile uses Iggy.
 
 The observer is global event-delivery infrastructure. It is not owned by Social Graph, Profiles, or any one module because the physical `dlq` topic is transport-wide.
 
@@ -17,9 +17,9 @@ The observer is global event-delivery infrastructure. It is not owned by Social 
 | `outbox_iggy` + bundled | `IggyBundled` | yes |
 | `outbox_iggy` + external | `IggyExternal` | yes |
 
-`Memory` and `OutboxLocal` are not failures. The server records an intentional not-applicable mode and never asks the runtime context for `Arc<IggyTransport>`.
+`Memory` and `OutboxLocal` are not failures. The server records an intentional not-applicable mode and exits before asking for `Arc<IggyTransport>`.
 
-Only `OutboxIggy` resolves the shared transport created by `build_event_runtime`.
+Only `OutboxIggy` resolves the shared transport created by `build_event_runtime`. A missing active Iggy mode is an internally inconsistent runtime and fails closed rather than defaulting to external.
 
 ## Activation
 
@@ -39,22 +39,17 @@ When enabled in a non-Iggy delivery profile, the server stores the corresponding
 
 ### Bundled
 
-The observer does not start another broker process. It connects to the already-running loopback endpoint through the exact external credentials paired with the bundled connector.
+The observer does not start another broker process. It connects to the already-running loopback endpoint through the credentials paired with the bundled connector.
 
-The configured external address must:
-
-- contain exactly one address;
-- be loopback (`127.0.0.1`, `localhost`, or `::1`);
-- use the configured bundled TCP port;
-- use plaintext TCP, matching the bundled connector contract.
+The configured address must be one loopback address using the configured bundled TCP port and plaintext TCP, matching the bundled connector contract.
 
 ### External
 
-The observer tries the reviewed external addresses in configured order. Credentials and TLS options are used to construct SDK connection strings but are never retained in the alert runtime snapshot or logs.
+The observer tries the reviewed external addresses in configured order. Credentials and TLS options are used to construct SDK connection strings but are never retained in the runtime snapshot or logs.
 
 ## Scan configuration
 
-Optional bounded scan controls:
+Optional bounded controls:
 
 ```text
 RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_POLL_MS          default 30000, max 300000
@@ -63,18 +58,21 @@ RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES     default 1000
 RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE       default 100
 ```
 
-The Iggy adapter scans every configured domain partition exactly once per request using:
+The Iggy adapter builds a one-based allowlist containing every configured domain partition and passes it to the existing scanner:
 
 ```text
 topic = dlq
 standalone consumer
 explicit start offset
-bounded global message count
+configured partition allowlist
+one bounded global message count
 bounded batch size
 auto_commit = false
 ```
 
-The scanner remains responsible for the hard limits: no more than 128 partitions, 10,000 messages, or 1,000 messages per batch.
+The global message budget applies across the ordered partition allowlist. A busy earlier partition may exhaust the budget before later partitions are polled. This source slice therefore makes no partition-fairness or complete-history claim.
+
+The scanner remains responsible for the hard limits: no more than 128 partition identifiers, 10,000 messages globally, or 1,000 messages per batch.
 
 ## Explicit alert thresholds
 
@@ -95,31 +93,15 @@ There are no production threshold defaults. Validation is delegated to `DlqDupli
 
 The server creates one `DlqDuplicateAlertRuntimePublisher` and exposes its read-only subscriber through `EventDlqDuplicateAlertObserverHandle`.
 
-On a successful scan:
+A successful scan publishes an identifier-free available snapshot. Connection failure, scan failure, or shutdown advances generation, marks the snapshot unavailable, and clears the prior evaluation. Event delivery and module projection continue.
 
-1. the count-only summary is evaluated;
-2. generation advances;
-3. an identifier-free available snapshot replaces the latest value.
-
-On connection failure, scan failure, or shutdown:
-
-1. generation advances;
-2. the snapshot becomes unavailable;
-3. the prior evaluation is cleared;
-4. event delivery and module projection continue.
-
-After a connection or scan failure, the observer retries after the configured poll interval.
+After connection or scan failure, the observer retries after the configured poll interval.
 
 ## Privacy boundary
 
-The shared snapshot and logs contain only:
+The shared snapshot and logs contain only generation, availability, alert-level stable code, and aggregate boolean reasons.
 
-- generation;
-- availability;
-- alert level stable code;
-- aggregate boolean reasons.
-
-They exclude broker addresses, stream/topic/partition/offset, UUIDs, payloads, payload digests, receipt identities, credentials, raw client errors, raw threshold values, and source counts.
+They exclude broker addresses, stream/topic/partition/offset, UUIDs, payloads/digests, receipt identities, credentials, raw client errors, raw thresholds, and source counts.
 
 ## Lifecycle and mutation boundary
 
@@ -144,8 +126,9 @@ Tests, Cargo commands, formatters, source verifiers, server startup, Iggy connec
 
 ## Remaining work
 
-1. project the shared snapshot into telemetry without exporting identifiers;
-2. expose optional operational health without readiness coupling;
-3. define alert routing, cooldown, and suppression separately;
-4. retain server-observer execution evidence for each applicable mode;
-5. keep destructive reconciliation in a separately authorized workflow.
+1. define partition fairness or an explicit per-partition budget policy;
+2. project the shared snapshot into telemetry without exporting identifiers;
+3. expose optional operational health without readiness coupling;
+4. define alert routing, cooldown, and suppression separately;
+5. retain server-observer execution evidence for each applicable mode;
+6. keep destructive reconciliation in a separately authorized workflow.
