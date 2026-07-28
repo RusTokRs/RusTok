@@ -35,6 +35,10 @@ const files = {
     "crates/rustok-social-graph/src/index_dlq_receipt.rs",
     "utf8",
   ),
+  poisonReceipt: readFileSync(
+    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+    "utf8",
+  ),
   contractCursor: readFileSync(
     "crates/rustok-iggy/src/contract_consumer.rs",
     "utf8",
@@ -91,17 +95,28 @@ for (const marker of [
   "SocialGraphIndexWorkerHandle",
   "pub fn is_ready(&self) -> bool",
   "StopHandle",
-  "receive_next()",
+  "receive_delivery()",
+  "PersistentContractDelivery::Event",
+  "PersistentContractDelivery::DecodeFailure",
   "project_consumed(consumed)",
   "publish_consumed_to_dlq",
   "publish_dead_lettered_result",
   "acknowledge_consumed(consumed)",
   "acknowledge_terminal_result",
+  "ConsumerPoisonReceiptStore::new(ctx.db_clone())",
+  "ConsumerPoisonIdentity::new(",
+  "poison_receipts.find(&identity).await",
+  "!config.dlq_enabled && !continuing_durable_receipt",
+  "transport.move_to_dlq(failure.to_dlq_entry(1)).await",
+  "mark_raw_poison_published",
+  "acknowledge_raw_poison_result",
+  "acknowledge_decode_failure(failure)",
   "retry_delay",
   "settings.events.dlq.enabled",
   "config.dlq_enabled || continuing_durable_receipt",
   "retrying acknowledgement only",
   "durable DLQ receipt remains published",
+  "durable neutral receipt remains published",
   "broker offset uncommitted",
   "runtime_consumer_metrics::ensure_registered()",
   "runtime_consumer_metrics::begin_delivery",
@@ -172,9 +187,11 @@ for (const forbiddenMetric of [
 for (const marker of [
   "pub const fn stable_code(&self)",
   "pub fn is_retryable(&self)",
+  "pub async fn receive_delivery(",
   "pub async fn receive_next(",
   "pub async fn project_consumed(",
   "pub async fn acknowledge_consumed(",
+  "pub async fn acknowledge_decode_failure(",
   "pub async fn publish_consumed_to_dlq(",
   "pub async fn move_to_dlq_and_acknowledge(",
   "self.consumed_dlq_receipt(consumed).await?",
@@ -201,9 +218,24 @@ for (const marker of [
 }
 
 for (const marker of [
+  "pub struct ConsumerPoisonReceiptStore",
+  "pub async fn find(",
+  "pub async fn reserve_and_claim(",
+  "pub async fn mark_published(",
+  "pub async fn mark_acknowledged(",
+  "ConsumerPoisonPublishClaim::AlreadyPublished",
+  "ConsumerPoisonPublishClaim::AlreadyAcknowledged",
+]) {
+  requireText("neutral poison receipt", files.poisonReceipt, marker);
+}
+
+for (const marker of [
   "pub raw_payload: Vec<u8>",
   "let raw_payload = message.payload;",
+  "pub enum PersistentContractDelivery",
+  "PersistentContractDelivery::DecodeFailure",
   "pub fn raw_payload(&self) -> &[u8]",
+  "pub async fn acknowledge_decode_failure",
 ]) {
   requireText("Iggy contract cursor", files.contractCursor, marker);
 }
@@ -214,7 +246,7 @@ const durableApply = files.worker.indexOf(
 const durableAck = files.worker.indexOf("acknowledge_terminal_result(");
 if (durableApply < 0 || durableAck <= durableApply) {
   failures.push(
-    "worker must enter terminal acknowledgement-only handling only after projection or durable receipt recognition succeeds",
+    "worker must enter decoded terminal acknowledgement-only handling only after projection or durable receipt recognition succeeds",
   );
 }
 
@@ -225,7 +257,36 @@ const workerDlqAck = files.worker.indexOf(
 );
 if (workerDlqPublish < 0 || workerDlqAck <= workerDlqPublish) {
   failures.push(
-    "worker must publish or recognize a durable DLQ receipt before source acknowledgement-only handling",
+    "worker must publish or recognize a decoded-event durable DLQ receipt before source acknowledgement-only handling",
+  );
+}
+
+const rawStart = files.worker.indexOf("async fn process_decode_failure(");
+const rawEnd = files.worker.indexOf("async fn acknowledge_terminal_result(", rawStart);
+const rawFlow =
+  rawStart >= 0 && rawEnd > rawStart
+    ? files.worker.slice(rawStart, rawEnd)
+    : "";
+const rawLookup = rawFlow.indexOf("poison_receipts.find(&identity).await");
+const rawDisabledGate = rawFlow.indexOf(
+  "!config.dlq_enabled && !continuing_durable_receipt",
+);
+const rawReserve = rawFlow.indexOf(".reserve_and_claim(");
+const rawPublish = rawFlow.indexOf(
+  "transport.move_to_dlq(failure.to_dlq_entry(1)).await",
+);
+const rawPublished = rawFlow.indexOf("mark_raw_poison_published(", rawPublish);
+const rawAck = rawFlow.indexOf("acknowledge_raw_poison_result(", rawPublished);
+if (
+  rawLookup < 0 ||
+  rawDisabledGate <= rawLookup ||
+  rawReserve <= rawDisabledGate ||
+  rawPublish <= rawReserve ||
+  rawPublished <= rawPublish ||
+  rawAck <= rawPublished
+) {
+  failures.push(
+    "raw worker path must recognize durable recovery, reject only new disabled-DLQ work, reserve, publish exact bytes, persist published, and only then acknowledge",
   );
 }
 
@@ -238,21 +299,52 @@ const consumerDlqAck = files.consumer.indexOf(
 );
 if (consumerDlqPublish < 0 || consumerDlqAck <= consumerDlqPublish) {
   failures.push(
-    "convenience DLQ operation must publish or recognize the durable receipt before source acknowledgement",
+    "convenience decoded DLQ operation must publish or recognize the durable receipt before source acknowledgement",
   );
 }
 
-const acknowledgeOnlyStart = files.worker.indexOf(
+const decodedAcknowledgeOnlyStart = files.worker.indexOf(
   "async fn acknowledge_terminal_result(",
 );
-const acknowledgeOnlyBody =
-  acknowledgeOnlyStart >= 0 ? files.worker.slice(acknowledgeOnlyStart) : "";
+const decodedAcknowledgeOnlyBody =
+  decodedAcknowledgeOnlyStart >= 0
+    ? files.worker.slice(decodedAcknowledgeOnlyStart)
+    : "";
 for (const forbidden of [
   "publish_consumed_to_dlq",
   "move_to_dlq_and_acknowledge",
   "project_consumed(consumed)",
 ]) {
-  forbidText("terminal acknowledgement-only path", acknowledgeOnlyBody, forbidden);
+  forbidText(
+    "decoded terminal acknowledgement-only path",
+    decodedAcknowledgeOnlyBody,
+    forbidden,
+  );
+}
+
+const rawAckStart = files.worker.indexOf("async fn acknowledge_raw_poison_result(");
+const rawAckBody =
+  rawAckStart >= 0 && decodedAcknowledgeOnlyStart > rawAckStart
+    ? files.worker.slice(rawAckStart, decodedAcknowledgeOnlyStart)
+    : "";
+const rawSourceAck = rawAckBody.indexOf(
+  "consumer.acknowledge_decode_failure(failure).await",
+);
+const rawReceiptAck = rawAckBody.indexOf(
+  "poison_receipts.mark_acknowledged(identity).await",
+);
+if (rawSourceAck < 0 || rawReceiptAck <= rawSourceAck) {
+  failures.push(
+    "raw acknowledgement-only path must commit the source before best-effort receipt bookkeeping",
+  );
+}
+for (const forbidden of [
+  "move_to_dlq(",
+  "reserve_and_claim",
+  "mark_published",
+  "project_consumed",
+]) {
+  forbidText("raw acknowledgement-only path", rawAckBody, forbidden);
 }
 
 const productionConsumer = files.consumer.split("#[cfg(test)]")[0];
@@ -273,6 +365,14 @@ for (const [name, source] of [
     forbidText(name, source, forbidden);
   }
 }
+for (const forbidden of [
+  "tenant_id",
+  "event_id",
+  "ProfilePresentationService",
+  "SocialGraphPrivacyReadPort",
+]) {
+  forbidText("raw poison worker flow", rawFlow, forbidden);
+}
 
 if (failures.length > 0) {
   console.error("Social Graph Index worker lifecycle verification failed:");
@@ -283,5 +383,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness, bounded Prometheus telemetry with complete broker lag, bounded projection/DLQ/ack retries, durable receipt recovery, staged exact-byte DLQ-before-ack, and owner-table isolation are locked.",
+  "Social Graph Index worker lifecycle verification passed: default-off host composition, one shared EventRuntime Iggy connector, outbox_iggy gating, StopHandle shutdown, enabled-worker readiness, bounded telemetry, decoded projection/DLQ/ack retries, typed raw delivery, neutral receipt recovery, exact-byte durable publish-before-ack, acknowledgement-only recovery, and owner-table/privacy isolation are locked.",
 );
