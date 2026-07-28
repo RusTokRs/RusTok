@@ -6,6 +6,7 @@ mod category {
     include!("category_visibility_list.rs");
 }
 mod category_audience;
+mod category_moderation_audience;
 mod category_reply_create_audience;
 mod category_topic_create_audience;
 #[allow(clippy::collapsible_if)]
@@ -27,6 +28,7 @@ mod mention_relation_tests {
     include!("relation_quote_input_tests.rs");
 }
 pub mod moderation;
+mod moderation_audience_authorization;
 mod quote_command;
 mod rbac;
 pub mod read_model;
@@ -73,6 +75,10 @@ pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
 };
+pub use category_moderation_audience::{
+    ForumCategoryModerationAudiencePolicy, ForumCategoryModerationAudiencePolicyLayer,
+    ForumCategoryModerationAudiencePolicyService, SetForumCategoryModerationAudiencePolicyInput,
+};
 pub use category_reply_create_audience::{
     ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
     ForumCategoryReplyCreateAudiencePolicyService,
@@ -92,6 +98,9 @@ pub use event::ForumEventService;
 #[allow(unused_imports)]
 pub(crate) use mention_relation::MentionRelationService;
 pub use moderation::ModerationService;
+pub use moderation_audience_authorization::{
+    ForumModerationAudienceAuthorization, ForumModerationAudienceAuthorizationService,
+};
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use read_tracking::{
