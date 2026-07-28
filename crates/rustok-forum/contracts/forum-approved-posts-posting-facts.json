@@ -12,6 +12,7 @@
   "topic_soft_delete_service": "crates/rustok-forum/src/services/topic_owner.rs",
   "reply_soft_delete_service": "crates/rustok-forum/src/services/reply_owner.rs",
   "soft_delete_owner": "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
+  "initial_schema_owner": "crates/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs",
   "adapter_file": "crates/rustok-forum/src/services/posting_policy_approved_facts.rs",
   "service_registry": "crates/rustok-forum/src/services/mod.rs",
   "crate_root": "crates/rustok-forum/src/lib.rs",
@@ -50,6 +51,8 @@
     "revision_history_read": false,
     "solution_count_read": false,
     "topic_or_reply_write_added": false,
+    "author_count_index_added": false,
+    "query_plan_evidence_added": false,
     "trust_provider_preserved": true,
     "account_age_provider_preserved": true,
     "reading_provider_preserved": true,
@@ -77,6 +80,7 @@
     "undelivered_required_facts_remain_explicit": true
   },
   "not_delivered": [
+    "author-count index hardening and query-plan evidence before posting enforcement",
     "authoritative active-flag and moderation-history owner fact adapters",
     "authoritative reputation owner fact adapter and ledger",
     "shared topic reply and edit usage-window owner adapters",
