@@ -55,6 +55,8 @@ pub mod forum_topic_translation;
 pub mod forum_topic_vote;
 pub mod forum_user_mention;
 pub mod forum_user_stat;
+pub mod forum_user_trust_revision;
+pub mod forum_user_trust_state;
 
 pub use forum_category::Entity as ForumCategory;
 pub use forum_category_audience_policy::Entity as ForumCategoryAudiencePolicyEntity;
@@ -72,3 +74,5 @@ pub use forum_topic_audience_policy::Entity as ForumTopicAudiencePolicyEntity;
 pub use forum_topic_read_state::Entity as ForumTopicReadStateEntity;
 pub use forum_topic_reply_create_audience_policy::Entity as ForumTopicReplyCreateAudiencePolicyEntity;
 pub use forum_topic_revision::Entity as ForumTopicRevision;
+pub use forum_user_trust_revision::Entity as ForumUserTrustRevisionEntity;
+pub use forum_user_trust_state::Entity as ForumUserTrustStateEntity;
