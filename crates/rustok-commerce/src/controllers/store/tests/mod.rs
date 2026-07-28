@@ -235,6 +235,8 @@ pub(crate) fn test_app_context(
     db: sea_orm::DatabaseConnection,
 ) -> crate::controllers::CommerceHttpRuntime {
     let marketplace_financial_runtime = crate::MarketplaceFinancialRuntime::in_process(db.clone());
+    let shipping_option_read_runtime =
+        crate::graphql_runtime::CommerceShippingOptionReadRuntime::in_process(db.clone());
     crate::controllers::CommerceHttpRuntime {
         db,
         event_bus: mock_transactional_event_bus(),
@@ -242,6 +244,7 @@ pub(crate) fn test_app_context(
             rustok_payment::providers::PaymentProviderRegistry::with_manual_provider(),
         fulfillment_provider_registry:
             rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider(),
+        shipping_option_read_runtime,
         marketplace_financial_runtime,
     }
 }

@@ -547,7 +547,8 @@ async fn apply_churn_side(
             "FROM targets WHERE entity.tenant_id = targets.tenant_id AND entity.module_name = targets.module_name ",
             "AND entity.entity_name = targets.entity_name AND entity.schema_version = targets.schema_version ",
             "AND entity.entity_id = targets.entity_id AND entity.locale_key = targets.locale_key"
-        )
+        ),
+        entities = entities
     );
     let entity_result = transaction
         .execute(Statement::from_sql_and_values(
@@ -578,7 +579,8 @@ async fn apply_churn_side(
             "SELECT tenant_id, source_module, source_entity, source_schema_version, source_entity_id, ",
             "source_locale_key, source_version, link_name, ordinal, target_module, target_entity, ",
             "target_schema_version, target_entity_id, target_locale_key, created_at FROM deleted"
-        )
+        ),
+        links = links
     );
     let link_result = transaction
         .execute(Statement::from_sql_and_values(
@@ -1335,7 +1337,13 @@ fn canonical_json(value: &JsonValue) -> JsonValue {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write;
+        let _ = write!(out, "{:02x}", byte);
+    }
+    out
 }
 
 fn is_lower_hex(value: &str, length: usize) -> bool {

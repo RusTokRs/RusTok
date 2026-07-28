@@ -676,7 +676,9 @@ async fn orphan_link_count(db: &DatabaseConnection, manifest: &PreparedManifest)
             "e.entity_name = l.source_entity AND e.schema_version = l.source_schema_version AND ",
             "e.entity_id = l.source_entity_id AND e.locale_key = l.source_locale_key AND ",
             "e.source_version = l.source_version WHERE e.tenant_id IS NULL"
-        )
+        ),
+        links = links,
+        entities = entities
     );
     let row = db
         .query_one(Statement::from_string(DbBackend::Postgres, sql))
@@ -811,7 +813,13 @@ fn is_lower_hex(value: &str, length: usize) -> bool {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write;
+        let _ = write!(out, "{:02x}", byte);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -840,6 +848,8 @@ mod tests {
                 parent,
             }
         };
+        let entities = plan("index_entities");
+        let links = plan("index_links");
         PreparedManifest {
             contract: MANIFEST_CONTRACT.to_owned(),
             repository: "RusTokRs/RusTok".to_owned(),
@@ -853,8 +863,8 @@ mod tests {
             shadow_plan_version: SHADOW_PLAN_VERSION.to_owned(),
             shadow_relations: ShadowRelations {
                 definition_hash,
-                entities: plan("index_entities"),
-                links: plan("index_links"),
+                entities,
+                links,
             },
         }
     }

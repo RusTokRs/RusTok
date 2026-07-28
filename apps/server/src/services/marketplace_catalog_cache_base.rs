@@ -694,6 +694,9 @@ fn compare_registry_semver_desc(left: &str, right: &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::marketplace_catalog::{
+        RegistryCatalogArtifactRelease, RegistryCatalogEvidenceReference,
+    };
     use axum::routing::get;
     use axum::{Json, Router};
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
