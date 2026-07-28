@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20AU",
+  "upstream_task": "FORUM-20AT",
+  "scope": "Normalized inherited category audience policy for reply-creation eligibility",
+  "migration_file": "crates/rustok-forum/src/migrations/m20260728_000001_add_forum_category_reply_create_audience.rs",
+  "service_file": "crates/rustok-forum/src/services/category_reply_create_audience.rs",
+  "entities_module": "crates/rustok-forum/src/entities/mod.rs",
+  "services_module": "crates/rustok-forum/src/services/mod.rs",
+  "crate_root": "crates/rustok-forum/src/lib.rs",
+  "runtime_test_file": "crates/rustok-forum/tests/category_reply_create_audience_policy_sqlite.rs",
+  "crate_api": "crates/rustok-forum/CRATE_API.md",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "source_verifier": "scripts/verify/verify-forum-category-reply-create-audience-policy.mjs",
+  "composition": {
+    "separate_from_visibility_policy": true,
+    "separate_from_topic_create_policy": true,
+    "normalized_policy_table": true,
+    "normalized_role_relations": true,
+    "normalized_channel_relations": true,
+    "normalized_group_relations": true,
+    "normalized_explicit_user_relations": true,
+    "root_to_category_conjunction": true,
+    "managed_get_command": true,
+    "managed_replace_command": true,
+    "empty_constraints_restore_inheritance": true,
+    "tenant_category_composite_fk": true,
+    "raw_channel_bound": true,
+    "raw_group_bound": true,
+    "raw_allow_deny_user_bounds": true,
+    "immutable_relation_rows": true,
+    "postgres_and_sqlite_migration": true,
+    "reply_create_enforcement_changed": false,
+    "transport_changed": false,
+    "dependency_changed": false
+  },
+  "not_delivered": [
+    "reply-create command-time audience enforcement",
+    "reply-create REST and GraphQL policy transports",
+    "topic-local reply audience narrowing",
+    "moderation audience policy persistence and enforcement",
+    "Forum trust owner state and facts adapter",
+    "remaining Forum read search index SEO and deep-link audience migration",
+    "visibility-scoped category and all-read commands",
+    "tenant-wide scheduled reconciliation and payload redaction",
+    "channel delivery enqueue and delivery-time authorization",
+    "PostgreSQL concurrency and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-forum --test category_reply_create_audience_policy_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs",
+      "node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
