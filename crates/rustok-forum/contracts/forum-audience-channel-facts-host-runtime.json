@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20AT",
+  "upstream_task": "FORUM-20AS",
+  "downstream_task": "FORUM-20AU",
+  "scope": "Host-owned exact current Channel audience fact composition with optional exact Groups fallback",
+  "adapter_file": "apps/server/src/services/forum_audience_facts.rs",
+  "historical_group_adapter_file": "apps/server/src/services/forum_audience_group_facts.rs",
+  "services_file": "apps/server/src/services/mod.rs",
+  "runtime_composition_file": "apps/server/src/services/module_event_dispatcher.rs",
+  "forum_audience_owner_file": "crates/rustok-forum/src/audience.rs",
+  "channel_owner_port_file": "crates/rustok-channel/src/ports.rs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "source_verifier": "scripts/verify/verify-forum-audience-channel-facts-host-runtime.mjs",
+  "policy": {
+    "request": "exact normalized tenant and user plus bounded requested channel slugs and group IDs",
+    "caller_channel": "trusted middleware-resolved PortContext.channel only",
+    "channel_owner": "ChannelReadPort exact slug lookup with inactive channels hidden",
+    "channel_truth": "the current caller channel is requested and resolves active in the same tenant",
+    "no_discovery": "unrequested channels are never listed or probed",
+    "positive_union": "an exact active current channel decides before optional Groups or unavailable trust facts",
+    "groups": "the historical FORUM-20Q adapter remains exact and is called only after a channel miss",
+    "trust": "unimplemented trust facts remain typed retryable unavailable when no delivered selector decides",
+    "storage_access": "the host adapter uses owner ports and performs no direct Channel or Groups entity access"
+  },
+  "composition": {
+    "forum_build_publication": true,
+    "channel_owner_port_reuse": true,
+    "exact_requested_current_channel": true,
+    "tenant_active_channel_validation": true,
+    "no_channel_discovery": true,
+    "channel_first_positive_union": true,
+    "channel_only_without_groups": true,
+    "optional_historical_groups_fallback": true,
+    "trust_fail_closed": true,
+    "runtime_extension_publication": true,
+    "inline_contract_tests": true,
+    "migration_changed": false,
+    "public_dto_changed": false,
+    "forum_to_channel_dependency_added": false
+  },
+  "not_delivered": [
+    "Forum trust facts adapter",
+    "reply and moderation audience policies",
+    "remaining Forum read search index SEO and deep-link audience migration",
+    "visibility-scoped category and all-read commands",
+    "scheduled notification reconciliation redaction transports and delivery-time authorization",
+    "PostgreSQL concurrency and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-server --features mod-forum forum_audience_facts -- --nocapture",
+      "cargo test -p rustok-server --features mod-forum,mod-groups forum_audience_facts -- --nocapture",
+      "cargo test -p rustok-server --features mod-forum host_runtime_extensions_register_admin_mutation_providers -- --nocapture",
+      "node scripts/verify/verify-forum-audience-channel-facts-host-runtime.mjs",
+      "node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs",
+      "node scripts/verify/verify-forum-notification-plan-sync.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
