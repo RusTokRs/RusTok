@@ -80,7 +80,10 @@ fn facts_for(
             ForumPostingPolicyFactKind::EditsWindow => {
                 facts.edits_window = Some(ForumPostingWindowCount {
                     count: 0,
-                    window_seconds: rules.edit_limit.expect("edit limit should exist").window_seconds,
+                    window_seconds: rules
+                        .edit_limit
+                        .expect("edit limit should exist")
+                        .window_seconds,
                 })
             }
             ForumPostingPolicyFactKind::SecondsSinceLastBump => {
@@ -284,6 +287,20 @@ fn passing_snapshot_is_allowed_and_body_size_is_not_invented_as_a_rule() {
 }
 
 #[test]
+fn empty_rules_allow_without_owner_facts() {
+    let rules = ForumPostingPolicyRules::default();
+    let decision = ForumPostingPolicyEvaluator::decide(
+        &rules,
+        input(
+            ForumPostingAction::CreateTopic,
+            ForumPostingPolicyFacts::default(),
+        ),
+    )
+    .expect("empty rules should require no owner facts");
+    assert_eq!(decision, rustok_forum::ForumPostingPolicyDecision::allowed());
+}
+
+#[test]
 fn invalid_noop_or_unbounded_rules_fail_closed() {
     let error = ForumPostingPolicyRules {
         minimum_trust_level: Some(0),
@@ -302,6 +319,14 @@ fn invalid_noop_or_unbounded_rules_fail_closed() {
     }
     .normalize()
     .expect_err("zero-count windows are not rate-limit rules");
+    assert_eq!(error.stable_code(), "FORUM_VALIDATION_FAILED");
+
+    let error = ForumPostingPolicyRules {
+        minimum_account_age_seconds: Some(i64::MAX as u64 + 1),
+        ..ForumPostingPolicyRules::default()
+    }
+    .normalize()
+    .expect_err("unsigned thresholds must fit typed signed evidence");
     assert_eq!(error.stable_code(), "FORUM_VALIDATION_FAILED");
 }
 
