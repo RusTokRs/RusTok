@@ -4,10 +4,11 @@ use axum::{
     http::StatusCode,
 };
 use rustok_api::{
-    OptionalAuthContext, PortActor, PortContext, PortError, RequestContext, TenantContext,
+    OptionalAuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    TenantContext,
 };
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
-use rustok_fulfillment::{FulfillmentService, error::FulfillmentError};
+use rustok_fulfillment::ListShippingOptionProjectionsRequest;
 use rustok_product::{
     CatalogService, CommerceError as ProductError,
     entities::{product, product_translation},
@@ -208,49 +209,96 @@ fn map_storefront_shipping_context_error(
     )
 }
 
-fn map_storefront_fulfillment_error(
-    error: FulfillmentError,
+fn storefront_shipping_option_port_context(
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    auth: Option<&rustok_api::AuthContext>,
+    public_channel_slug: Option<&str>,
+    requested_cart_id: Option<Uuid>,
+) -> PortContext {
+    let actor = auth
+        .map(|value| PortActor::user(value.user_id.to_string()))
+        .unwrap_or_else(|| PortActor::service("rustok-commerce.storefront-shipping-options"));
+    let resource_id = requested_cart_id.unwrap_or(tenant_id);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        request_context.locale.as_str(),
+        format!("commerce-store-shipping-options:list:{resource_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match public_channel_slug {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_storefront_shipping_port_error(
+    error: PortError,
+    context: &PortContext,
     operation: &'static str,
     tenant_id: Uuid,
     cart_id: Option<Uuid>,
 ) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        FulfillmentError::Validation(_) => (
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "commerce_store_shipping_invalid",
             "Shipping request is invalid",
             "validation",
         ),
-        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
+        PortErrorKind::NotFound => (
             StatusCode::NOT_FOUND,
             "commerce_store_not_found",
             "Commerce resource not found",
             "not_found",
         ),
-        FulfillmentError::InvalidTransition { .. } => (
+        PortErrorKind::Conflict => (
             StatusCode::CONFLICT,
             "commerce_store_shipping_state_conflict",
             "Shipping operation conflicts with the current state",
             "state_conflict",
         ),
-        FulfillmentError::Database(_) => (
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_store_denied",
+            "Store access is denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_store_shipping_unavailable",
             "Shipping service is temporarily unavailable",
-            "database",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_shipping_failed",
+            "Shipping operation could not be completed safely",
+            "invariant_violation",
         ),
     };
-    storefront_auxiliary_public_error(
-        &error,
-        "rustok_fulfillment",
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_fulfillment",
+        owner_operation = "list_shipping_option_projections",
         operation,
-        tenant_id,
-        cart_id,
-        status,
-        code,
-        message,
+        correlation_id = %context.correlation_id,
+        tenant_id = %tenant_id,
+        cart_id = ?cart_id,
+        actor = ?context.actor,
+        channel = ?context.channel,
+        locale = %context.locale,
+        deadline_ms = ?context.deadline_ms,
+        internal_code = %error.code,
+        retryable = error.retryable,
         error_kind,
-    )
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_auxiliary_http",
+        "storefront shipping-option owner read failed"
+    );
+    HttpError::new(status, code, message)
 }
 
 /// List published storefront products
@@ -596,17 +644,27 @@ pub async fn list_shipping_options(
             )
         };
 
-    let service = FulfillmentService::new(runtime.db_clone());
-    let mut options = service
-        .list_shipping_options(
-            tenant.id,
-            Some(request_context.locale.as_str()),
-            Some(tenant.default_locale.as_str()),
+    let read_context = storefront_shipping_option_port_context(
+        tenant.id,
+        &request_context,
+        auth.0.as_ref(),
+        public_channel_slug.as_deref(),
+        requested_cart_id,
+    );
+    let mut options = runtime
+        .shipping_option_read_port()
+        .list_shipping_option_projections(
+            read_context.clone(),
+            ListShippingOptionProjectionsRequest {
+                requested_locale: Some(request_context.locale.clone()),
+                tenant_default_locale: Some(tenant.default_locale.clone()),
+            },
         )
         .await
         .map_err(|error| {
-            map_storefront_fulfillment_error(
+            map_storefront_shipping_port_error(
                 error,
+                &read_context,
                 "list_shipping_options",
                 tenant.id,
                 requested_cart_id,

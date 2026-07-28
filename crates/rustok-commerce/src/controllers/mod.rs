@@ -21,6 +21,7 @@ pub struct CommerceHttpRuntime {
     event_bus: TransactionalEventBus,
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
+    shipping_option_read_runtime: crate::graphql_runtime::CommerceShippingOptionReadRuntime,
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
 }
 
@@ -45,6 +46,19 @@ impl CommerceHttpRuntime {
         self.fulfillment_provider_registry.clone()
     }
 
+    fn shipping_option_read_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_fulfillment::ShippingOptionReadPort> {
+        self.shipping_option_read_runtime.shipping_option_read_port()
+    }
+
+    fn shipping_option_admin_read_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_fulfillment::ShippingOptionAdminReadPort> {
+        self.shipping_option_read_runtime
+            .shipping_option_admin_read_port()
+    }
+
     fn marketplace_financial_operator_service(&self) -> crate::MarketplaceFinancialOperatorService {
         self.marketplace_financial_runtime
             .operator_service(self.db_clone(), self.event_bus())
@@ -65,6 +79,13 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require TransactionalEventBus in HostRuntimeContext"
                 )
             })?;
+        let shipping_option_read_runtime = runtime
+            .shared_get::<crate::graphql_runtime::CommerceShippingOptionReadRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require CommerceShippingOptionReadRuntime in HostRuntimeContext"
+                )
+            })?;
         let marketplace_financial_runtime = runtime
             .shared_get::<crate::MarketplaceFinancialRuntime>()
             .ok_or_else(|| {
@@ -81,6 +102,7 @@ impl CommerceHttpRuntime {
             fulfillment_provider_registry: runtime
                 .shared_get::<FulfillmentProviderRegistry>()
                 .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
+            shipping_option_read_runtime,
             marketplace_financial_runtime,
         })
     }

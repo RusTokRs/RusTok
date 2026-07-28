@@ -1,209 +1,162 @@
 # GraphQL query fulfillment owner context
 
-Status: `source_ready_unvalidated`
+Status: `source_cutover_ready_unvalidated`
 
-## Shipping-option read cutover
+## Shipping-option owner reads
 
-The safe Commerce GraphQL query facade routes all mounted shipping-option reads
-through fulfillment-owned read ports:
+Mounted Commerce GraphQL and REST projection reads now consume the same
+application-host-composed fulfillment boundaries:
 
-- `storefront_shipping_options` delegates
+- storefront active list uses
   `ShippingOptionReadPort::list_shipping_option_projections`;
-- single shipping-option lookup delegates
+- single shipping-option lookup uses
   `ShippingOptionReadPort::read_shipping_option_projection`;
-- administrative `shipping_options` delegates
+- administrative list-all uses
   `ShippingOptionAdminReadPort::list_all_shipping_option_projections`.
 
-The unchanged `query.rs` source still imports and constructs the private
-`rustok_fulfillment::FulfillmentService` facade. Inside that facade, storefront
-and administrative shipping-option methods use separate owner read-port fields.
-The facade keeps one concrete `FulfillmentService` delegate only for fulfillment
-lifecycle reads not covered by this slice:
+The ports return fulfillment-owned `ShippingOptionResponse` projections. Commerce
+continues to apply transport-specific filtering and public error policy after the
+owner projection returns.
 
-- fulfillment lookup/list;
-- order-to-fulfillment lookup.
-
-This is a partial topology result. It closes concrete service and provider
-construction for mounted shipping-option GraphQL reads, but it does not claim
-that every fulfillment query method is owner-port composed.
+This remains a partial fulfillment-query topology result. The private GraphQL
+compatibility facade still retains one concrete `FulfillmentService` delegate for
+fulfillment lifecycle list/lookup and order-to-fulfillment reads that do not yet
+have published owner query ports.
 
 ## Application-host composition
 
-The server's commerce runtime bootstrap constructs one
-`CommerceShippingOptionReadRuntime` from the storefront and administrative root
-factories, caches it in `ServerRuntimeContext`, and attaches it to
-`HostRuntimeContext`. The manifest GraphQL data factory requires that typed
-runtime and stores it in `CommerceGraphqlRuntimeData`.
+The server bootstrap constructs one `CommerceShippingOptionReadRuntime` from the
+storefront and administrative root factories, caches it in
+`ServerRuntimeContext`, and attaches it to `HostRuntimeContext`.
 
-`CommerceShippingOptionReadScope` is mounted as an async-graphql extension. For
-each resolver it copies the typed runtime into a Tokio task-local scope. The
-private fulfillment facade resolves that scoped runtime and clones both owner
-ports; it no longer imports or calls either root in-process factory.
+GraphQL consumes that runtime through manifest data and
+`CommerceShippingOptionReadScope`. The private query facade clones the scoped
+owner ports and does not construct read providers.
 
-Directly embedded schemas that do not mount the server extension retain an
-explicit `CommerceShippingOptionReadRuntime::in_process` compatibility fallback
-in the public Commerce GraphQL runtime module. The fallback preserves existing
-standalone schema tests and embeddings without turning the private facade back
-into a provider constructor.
+Commerce HTTP router construction consumes the same typed runtime from
+`HostRuntimeContext` and stores it in `CommerceHttpRuntime`. HTTP startup fails
+closed when the runtime is absent. The REST handlers clone the owner ports from
+that state; they do not construct `FulfillmentService` or root in-process read
+providers for shipping-option projection reads.
 
-## Transport parity source inventory
+Directly embedded GraphQL schemas that do not mount the server extension retain
+an explicit `CommerceShippingOptionReadRuntime::in_process` compatibility
+fallback in the public GraphQL runtime module. This fallback is outside the
+private facade and is not mounted transport parity evidence.
+
+## REST source cutover
 
 The source inventory at
 `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`
-compares the mounted GraphQL projection reads with the current Commerce REST and
-FFA/native surfaces. It is explicitly marked `source_audit_only_unvalidated` and
-is not runtime parity evidence.
+has status `source_cutover_ready_unvalidated`.
 
-The inventory records:
+It records the following source topology:
 
-- mounted GraphQL active list, administrative list-all, and single lookup use the
-  host-composed owner ports;
-- storefront REST still creates `FulfillmentService` directly for the active
-  list, then applies the same currency, public-channel, and shipping-profile
-  filters as GraphQL;
-- admin REST still creates `FulfillmentService` directly for list-all and single
-  lookup, while preserving inactive-before-filter semantics and the existing
+- mounted GraphQL and Commerce REST obtain both read ports from the same
+  `CommerceShippingOptionReadRuntime`;
+- storefront REST delegates active-list loading to
+  `list_shipping_option_projections`, then retains its currency,
+  public-channel-visibility, and shipping-profile compatibility filters;
+- admin REST delegates complete list loading to
+  `list_all_shipping_option_projections`, preserving inactive options before
   active, currency, provider, search, and pagination filters;
-- the native FFA surface does not publish complete shipping-option projection
-  list or lookup operations; it owns seller/cart selection through
-  `ShippingSelectionPort` over native-server and GraphQL transports;
-- projection parity therefore does not justify adding projection reads to the
-  native selection contract without a concrete consumer contract.
+- admin REST single lookup delegates to `read_shipping_option_projection`;
+- admin shipping-option create, update, deactivate, and reactivate remain
+  lifecycle mutations over the concrete owner service and are outside this read
+  cutover;
+- the native fulfillment storefront surface remains seller/cart selection through
+  `ShippingSelectionPort`; it does not publish complete projection list/lookup
+  operations without a consumer contract.
 
-The decision retained by the inventory is to migrate the existing REST
-projection reads to `CommerceShippingOptionReadRuntime` next, preserving their
-successful response filtering and HTTP public envelopes. The focused guard
-`scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
-locks this audited topology until that cutover deliberately updates the evidence.
+The inventory is source evidence only. It does not claim compiled handlers,
+mounted request execution, GraphQL/REST result parity, or any FFA/FBA promotion.
 
 ## Retained read context
 
-Each port-backed shipping-option query constructs `PortContext` with:
+GraphQL shipping-option reads construct `PortContext` with:
 
 - tenant identity;
 - service actor `rustok-commerce.graphql-query-shipping-options`;
-- requested locale, falling back to tenant default locale and then `en`;
+- requested locale with tenant/default fallback data retained separately;
 - query-field and resource-scoped correlation id;
 - two-second deadline.
 
-Requested and tenant-default locale values are also retained as explicit owner
-request fields. Single lookup retains the shipping-option UUID. The current
-query source does not pass public channel into the facade method, so channel
-propagation remains open for a later source/query signature change.
+The current GraphQL query signature does not carry public channel into every
+shipping-option read context, so that propagation remains open.
 
-## Typed owner mapping
+REST shipping-option reads construct `PortContext` with:
 
-Storefront and administrative list facades map `PortErrorKind` without using
-owner message text:
+- tenant identity;
+- authenticated user actor for admin reads;
+- authenticated user actor or storefront service actor for public reads;
+- request locale;
+- effective public channel when available, including cart-derived channel for
+  storefront list requests;
+- resource-scoped correlation id;
+- two-second deadline.
 
-| Port kind | Public message | Public code | Retryable |
-| --- | --- | --- | --- |
-| Validation | `Fulfillment query is invalid` | `FULFILLMENT_REQUEST_INVALID` | false |
-| NotFound | `Fulfillment resource was not found` | `FULFILLMENT_RESOURCE_NOT_FOUND` | false |
-| Conflict | `Fulfillment state conflicts with this query` | `FULFILLMENT_STATE_CONFLICT` | false |
-| Unavailable / Timeout | `Fulfillment data is temporarily unavailable` | `FULFILLMENT_TEMPORARILY_UNAVAILABLE` | true |
-| Forbidden | `Fulfillment query is not permitted` | `FULFILLMENT_ACCESS_DENIED` | false |
-| InvariantViolation | `Fulfillment query could not be completed safely` | `FULFILLMENT_OPERATION_FAILED` | false |
+Requested and tenant-default locale values remain explicit owner request fields.
+Single lookup retains the shipping-option UUID.
 
-The validation, not-found, conflict, and unavailable envelopes preserve the
-existing fulfillment public policy. Forbidden and invariant outcomes are
-fail-closed coverage for the complete port kind set and are not status
-promotions.
+## Typed public mapping
 
-The administrative resolver source still contains its existing
-`async_graphql::Error::new(err.to_string())` call. The private facade returns
-`ShippingOptionAdminQueryError`, whose inherent `to_string` method consumes the
-adapter and returns the already-typed `BoundaryError`. Rust resolves that
-inherent method before the standard `ToString` trait, so no string is created,
-parsed, matched, or used as a control-flow protocol. The same public
-`FULFILLMENT_*` message, code, and retryability values reach GraphQL extensions.
+GraphQL retains its existing typed `FULFILLMENT_*` boundary policy and optional
+single-lookup not-found behavior. No `PortError.message` is parsed or matched as
+control flow.
 
-Single lookup preserves the existing optional-result source contract rather than
-changing `query.rs`:
+REST maps `PortErrorKind` directly to the existing static Commerce HTTP policy:
 
-- owner `NotFound` becomes the stable compatibility variant
-  `ShippingOptionNotFound`, so the resolver still returns `Ok(None)`;
-- validation, conflict, unavailable, timeout, forbidden, and invariant outcomes
-  become stable compatibility `FulfillmentError` values;
-- the unchanged resolver converts those stable values through its existing
-  generic `COMMERCE_QUERY_OPERATION_FAILED` redaction path.
+| Port kind | Storefront policy | Admin policy |
+| --- | --- | --- |
+| Validation | `400 commerce_store_shipping_invalid` | `400 commerce_admin_fulfillment_invalid` |
+| NotFound | `404 commerce_store_not_found` | `404 commerce_admin_not_found` |
+| Conflict | `409 commerce_store_shipping_state_conflict` | `409 commerce_admin_fulfillment_state_conflict` |
+| Forbidden | `401 commerce_store_denied` | `401 commerce_permission_denied` |
+| Unavailable / Timeout | `503 commerce_store_shipping_unavailable` | `503 commerce_admin_fulfillment_storage_unavailable` |
+| InvariantViolation | `500 commerce_store_shipping_failed` | `500 commerce_admin_fulfillment_failed` |
 
-No `PortError.message` or original fulfillment message is copied into the
-compatibility values or administrative GraphQL boundary.
-
-## Diagnostics
-
-The port-backed query boundary records:
-
-- truthful owner `rustok_fulfillment`;
-- correlation id;
-- tenant and service actor;
-- context locale length;
-- deadline;
-- GraphQL query field;
-- exact owner port operation;
-- optional shipping-option id;
-- requested/default locale lengths;
-- stable port error kind name;
-- owner code, kind, and retryability;
-- public or optional-result policy;
-- boundary `commerce_graphql_query_fulfillment_facade`.
-
-Unavailable, timeout, and invariant outcomes use error severity and retain the
-stable typed `PortError`. Ordinary outcomes use warning severity without an
-owner message field. The fulfillment owner ports independently retain their
-owner-local diagnostics and technical database cause.
+These mappings use fixed transport-owned messages. Owner error code, kind,
+retryability, correlation, actor, locale, channel, resource identity, and deadline
+are retained in diagnostics without exposing the owner message.
 
 ## Preserved contracts
 
-- `query.rs` is unchanged and remains facade-routed.
-- Existing source-level `FulfillmentService::new(db.clone())` calls still resolve
-  through the private safe facade.
-- Single shipping-option not-found still returns `None` rather than a GraphQL
-  error.
-- Storefront active-only semantics, currency, channel-visibility, and
-  shipping-profile filtering remain unchanged after owner projections return.
+- GraphQL `query.rs` remains facade-routed and successful GraphQL DTOs are
+  unchanged.
+- Single GraphQL shipping-option not-found still returns `None`.
+- Storefront owner list remains active-only.
+- Storefront REST currency, channel visibility, and shipping-profile filters are
+  unchanged after owner projections return.
 - Administrative list-all still includes inactive options before local active,
   currency, provider, search, and pagination filtering.
-- Shipping-option GraphQL DTOs and successful results are unchanged.
-- Fulfillment lifecycle and order lookup remain on the isolated concrete
-  delegate.
-- Directly embedded schemas keep an explicit compatibility fallback without
-  changing the mounted server composition path.
-- Current REST success filtering is retained by the source inventory but REST is
-  not yet owner-port composed.
-- Native seller/cart selection remains a separate contract and is not treated as
-  a complete projection-read transport.
-- Admin order lookup and non-not-found single shipping-option failures keep their
-  existing generic `COMMERCE_QUERY_OPERATION_FAILED` fail-closed envelope after
-  stable compatibility conversion.
-- The fulfillment FFA/FBA status and `ShippingSelectionPort` contract are
-  unchanged.
+- REST successful DTOs and route shapes are unchanged.
+- Admin shipping-option mutations retain their existing concrete lifecycle
+  service and typed `FulfillmentError` HTTP mapper.
+- Fulfillment lifecycle GraphQL reads remain on the isolated concrete delegate.
+- Native seller/cart selection remains a separate contract.
+- Fulfillment FFA/FBA status is unchanged.
 
 ## Still open
 
-- Migrate storefront REST active-list plus admin REST list-all and single lookup
-  to the host-composed shipping-option read runtime.
-- Preserve existing HTTP status/code/message policy while mapping typed
-  `PortErrorKind` without owner-message control flow.
-- Add public-channel propagation to the shipping-option query `PortContext`.
-- Publish owner ports for fulfillment lifecycle query reads, then remove the
-  remaining concrete `FulfillmentService` field.
-- Add mounted GraphQL/REST execution evidence; no native projection evidence is
-  required until a native projection consumer contract exists.
-- Continue reviewing order, payment, customer, inventory, region, channel,
-  catalog, and remaining Commerce query conversions that still pass through
-  dynamic strings.
-- Add compile, mounted transport, deadline, REST parity, and remote evidence
-  before promoting any FBA/FFA status.
+- Execute mounted GraphQL/REST active-list, list-all, and lookup parity fixtures.
+- Prove locale, effective channel, deadline, optional not-found, and typed failure
+  behavior through mounted requests.
+- Add public-channel propagation to every GraphQL shipping-option query context.
+- Publish owner ports for fulfillment lifecycle query reads and remove the
+  remaining concrete GraphQL facade delegate.
+- Continue converting remaining Commerce query boundaries that still use dynamic
+  strings.
+- Add compile and remote-profile evidence before promoting any FFA/FBA status.
 
 ## Intended checks
 
 ```bash
 node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs
 node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs
+node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs
+node scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs
+node scripts/verify/verify-commerce-storefront-auxiliary-http-error-safety.mjs
 node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs
-node scripts/verify/verify-commerce-graphql-query-error-boundary.mjs
 cargo check -p rustok-commerce --lib
 cargo check -p rustok-server --features mod-commerce
 ```

@@ -4,11 +4,11 @@ Last reviewed: 2026-07-28
 
 ## Current state
 
-`rustok-fulfillment` owns shipping options, fulfillments, typed fulfillment
-items, shipping-selection policy, and provider SPI policy. The commerce module
-composes delivery groups, checkout, and multi-fulfillment orchestration; it
-must not duplicate fulfillment transport, selection materialization, carrier
-lifecycle persistence, or fulfillment recovery queries.
+`rustok-fulfillment` owns shipping options, fulfillments, typed fulfillment items,
+shipping-selection policy, and provider SPI policy. Commerce composes delivery
+groups, checkout, and multi-fulfillment orchestration; it must not duplicate
+fulfillment transport, selection materialization, carrier lifecycle persistence,
+or fulfillment recovery queries.
 
 The owner storefront handles seller-aware shipping selection through native and
 GraphQL transports. Selection identity is exactly `shipping_profile_slug +
@@ -17,45 +17,50 @@ capability, health, unavailable mode, and degraded fallback before an adapter
 call, while `FulfillmentService` remains the lifecycle owner.
 
 Checkout fulfillment create/adopt/read enters through
-`CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands
-derived from the immutable checkout plan and receives normalized fulfillment
-projections. Fulfillment owner uses `FulfillmentService::list_by_order` and
-`create_fulfillment`; mounted commerce checkout no longer queries the
-`fulfillments` table or constructs `FulfillmentService`.
+`CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands from
+the immutable checkout plan and receives normalized owner projections. The owner
+uses `FulfillmentService::list_by_order` and `create_fulfillment`; mounted Commerce
+checkout no longer queries fulfillment persistence or constructs the service.
 
-The root in-process checkout factory now mounts
+The root in-process checkout factory mounts
 `TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
-`Pending`, `Shipped`, and `Delivered` owner states. `Cancelled` and unknown
-lifecycle values fail closed with a typed manual-reconciliation outcome instead
-of being adopted as a successful checkout fulfillment set. The underlying
-execution adapter remains the persistence/idempotency delegate, so transport
-contracts and request DTOs are unchanged.
+`Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
+fail closed with typed manual reconciliation. Durable typed checkout fulfillment
+identity and a concurrency-safe uniqueness constraint remain open.
 
-Complete shipping-option active list and lookup use `ShippingOptionReadPort`,
-while administrative list-all uses the separate `ShippingOptionAdminReadPort`.
-The root in-process factories own `FulfillmentService` construction, require read
-policy, preserve requested and default locale values, and map owner failures to
-stable `PortError` envelopes. The application host now composes both read ports
-once in `HostRuntimeContext`; manifest GraphQL runtime data carries them into a
-resolver-scoped async task, and the private Commerce facade only consumes those
-scoped owner ports. Mounted shipping enrichment, storefront listing, single
-lookup, and administrative list-all therefore no longer construct their
-in-process providers inside the Commerce seam. The facade retains one concrete
-`FulfillmentService` only for fulfillment lifecycle and order-to-fulfillment
-compatibility reads. Directly embedded standalone schemas retain an explicit
-in-process compatibility fallback outside the facade. The seller/cart
-`ShippingSelectionPort` contract is unchanged.
+Complete shipping-option active list and lookup use `ShippingOptionReadPort`;
+administrative list-all uses the separate `ShippingOptionAdminReadPort`. Root
+in-process adapters own `FulfillmentService` construction, require read policy,
+preserve requested/default locale, and map owner failures to stable `PortError`.
 
-A source-only transport inventory now records that Commerce REST still constructs
-`FulfillmentService` for storefront active-list and admin list-all/lookup, even
-though it preserves the same successful filtering semantics. The native FFA
-surface owns seller/cart selection and does not publish complete projection list
-or lookup operations. The retained next implementation decision is REST cutover
-to the host-composed owner ports without expanding `ShippingSelectionPort`.
+The application host composes one `CommerceShippingOptionReadRuntime` in
+`HostRuntimeContext`. Mounted GraphQL consumes it through manifest runtime data
+and resolver scope. Mounted Commerce REST consumes the same runtime through
+`CommerceHttpRuntime`.
 
-Stable fulfillment keys and metadata identity remain owner-local compatibility
-mechanisms. Duplicate keys fail closed. A typed durable checkout fulfillment
-identity and database uniqueness migration remain open.
+The following mounted projection reads no longer construct a concrete fulfillment
+service or in-process read provider inside Commerce:
+
+- GraphQL validation, enrichment, storefront listing, single lookup, and admin
+  list-all;
+- REST storefront active-list;
+- REST admin list-all and single lookup.
+
+The GraphQL facade retains one concrete `FulfillmentService` only for fulfillment
+lifecycle and order-to-fulfillment compatibility reads. Admin REST
+shipping-option mutations continue to use the concrete lifecycle owner and are
+outside the projection-read cutover. Directly embedded GraphQL schemas retain an
+explicit in-process compatibility fallback outside the private facade.
+
+The source transport inventory now has status
+`source_cutover_ready_unvalidated`. It records host-composed GraphQL/REST source
+topology, retained filters and HTTP envelopes, context/deadline propagation, and
+the absence of concrete read construction. It explicitly records
+`runtime_parity_proven: false`.
+
+The native FFA surface remains seller/cart selection through
+`ShippingSelectionPort`; it does not publish complete projection list or lookup
+operations. No projection API should be added without a concrete consumer.
 
 ## FFA/FBA boundary
 
@@ -67,31 +72,19 @@ identity and database uniqueness migration remain open.
 - Additional workflow contract: `fulfillment.checkout_execution.v1` in
   `crates/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json`.
 - Published checkout execution port: `CheckoutFulfillmentExecutionPort`.
-- Mounted in-process provider: `TypedCheckoutFulfillmentExecutionPort` over the
-  existing owner execution adapter.
+- Mounted checkout provider: `TypedCheckoutFulfillmentExecutionPort` over the
+  owner execution adapter.
 - Source-ready internal read boundaries: `ShippingOptionReadPort` and
-  `ShippingOptionAdminReadPort`; these are not new FBA provider contracts and do
-  not change registry status.
-- Contract and provider evidence:
-  `crates/rustok-fulfillment/contracts/evidence/fulfillment-contract-test-static-matrix.json`,
-  `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`,
-  `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json`,
-  and `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-evidence.json`.
-- Source-only shipping-option transport inventory:
+  `ShippingOptionAdminReadPort`; these are not new FBA provider contracts.
+- Contract/provider evidence remains in the existing fulfillment evidence
+  matrices and live-adapter files.
+- Shipping-option source evidence:
   `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`.
-  It is unvalidated source evidence and does not promote any status.
-- `scripts/verify/verify-fulfillment-admin-boundary.mjs`,
-  `scripts/verify/verify-fulfillment-storefront-boundary.mjs`,
-  `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`, and
-  `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` lock the
-  owner-admin/storefront, checkout execution, and typed lifecycle split.
-- `scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`,
-  `scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs`, and
-  `scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
-  guard the internal read boundaries, mounted GraphQL host composition, and the
-  explicit REST/native source inventory.
-- No status promotion is claimed from source. Compile, upgraded database,
-  contention, restart, mounted transport, and remote evidence remain missing.
+  It is unvalidated source evidence and does not promote status.
+- Focused guards cover owner boundaries, GraphQL host composition, REST host
+  composition, typed HTTP envelopes, and the separate native selection surface.
+- Compile, migrated database, mounted transport, restart, contention, and remote
+  evidence remain missing.
 
 ## Checkout execution source checklist
 
@@ -101,10 +94,9 @@ identity and database uniqueness migration remain open.
   owner module.
 - [x] Mount the root in-process factory through typed lifecycle validation.
 - [x] Accept pending, shipped, and delivered replay projections.
-- [x] Route cancelled and unknown checkout fulfillment lifecycle states to
-  manual reconciliation.
-- [x] Guard the mounted commerce path against direct construction of the legacy
-  in-process execution adapter.
+- [x] Route cancelled and unknown lifecycle states to manual reconciliation.
+- [x] Guard mounted Commerce against direct construction of the legacy execution
+  adapter.
 - [ ] Replace metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
@@ -113,82 +105,84 @@ identity and database uniqueness migration remain open.
 ## Shipping-option read source checklist
 
 - [x] Publish active list and lookup through `ShippingOptionReadPort`.
-- [x] Publish administrative list-all through the separate
+- [x] Publish administrative list-all through
   `ShippingOptionAdminReadPort`.
-- [x] Keep active storefront listing and complete administrative listing as
-  separate traits rather than an overloaded request flag or a growing storefront
-  interface.
+- [x] Keep storefront active listing and complete admin listing as separate traits.
 - [x] Preserve requested and tenant-default locale arguments.
 - [x] Require read policy and parse tenant identity from `PortContext`.
 - [x] Map all current `FulfillmentError` variants to stable `PortError` values.
 - [x] Export canonical root in-process factories.
-- [x] Remove direct `FulfillmentService` construction from mounted commerce
-  GraphQL shipping-option validation, enrichment, and storefront listing.
-- [x] Cut mounted GraphQL single lookup and administrative `shipping_options`
-  list-all over to owner read ports while preserving optional-not-found and
-  `FULFILLMENT_*` public envelopes.
-- [x] Inject both read ports from application-host composition through typed
-  runtime data and resolver-scoped async context; keep standalone fallback outside
-  the private facade.
-- [x] Retain a source-only GraphQL/REST/native inventory that distinguishes
-  complete projection reads from seller/cart selection and records the REST
-  cutover decision without claiming runtime parity.
-- [ ] Cut Commerce REST storefront active-list and admin list-all/lookup over to
-  the same host-composed owner runtime while preserving HTTP envelopes and local
-  success filters.
-- [ ] Execute compile, mounted GraphQL/REST parity, deadline, locale, channel,
-  failure, and remote-profile evidence.
+- [x] Remove direct service construction from mounted GraphQL shipping-option
+  validation, enrichment, listing, lookup, and admin list-all.
+- [x] Inject both owner ports through application-host composition and resolver
+  scope; keep standalone fallback outside the private facade.
+- [x] Retain a source inventory that distinguishes complete projection reads from
+  seller/cart selection without claiming runtime parity.
+- [x] Add the shared runtime to `CommerceHttpRuntime` and cut REST storefront
+  active-list plus admin list-all/lookup over to owner ports.
+- [x] Preserve storefront currency/channel/profile filters and admin
+  inactive-before-filter plus active/currency/provider/search/pagination behavior.
+- [x] Preserve existing REST status/code/message policy through typed
+  `PortErrorKind` mapping without owner-message control flow.
+- [x] Propagate REST tenant, actor, locale, effective channel, correlation, and
+  two-second deadline context.
+- [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
+  deadline, locale, channel, optional-not-found, failure, and remote evidence.
 
 ## Open results
 
 1. **Prove checkout fulfillment identity and replay.** Execute create/adopt/read,
    duplicate key, partial set, concurrent create, process-exit, restart, and
-   upgraded metadata scenarios through the mounted commerce stage.
-   **Depends on:** compiled commerce/fulfillment crates and migrated databases.
+   upgraded metadata scenarios through mounted Commerce.
+   **Depends on:** compiled crates and migrated databases.
    **Done when:** one immutable plan produces one exact fulfillment set and every
    conflicting, cancelled, unknown, or duplicate identity fails closed.
 
-2. **Replace metadata identity with typed persistence.** Add an owner-owned
-   checkout fulfillment identity and uniqueness constraint without adding a
-   foreign key to commerce-owned checkout tables.
-   **Depends on:** retained upgraded compatibility evidence for current keys.
+2. **Replace metadata identity with typed persistence.** Add owner-owned checkout
+   fulfillment identity and uniqueness without a foreign key to Commerce checkout
+   tables.
+   **Depends on:** upgraded compatibility evidence for current keys.
    **Done when:** recovery no longer scans metadata and concurrent creation cannot
-   commit two rows for one checkout fulfillment index.
+   commit duplicate fulfillment indices.
 
 3. **Prove mixed-cart and multi-fulfillment edge cases.** Cover seller-aware
    selection, partial shipment/delivery, reopen/reship recovery, remaining
-   quantity, and grouped checkout interactions without moving order or payment
-   transitions into this module.
-   **Depends on:** order-line and commerce delivery-group contracts.
-   **Done when:** targeted tests cover valid and rejected transitions for a
-   mixed cart and multiple fulfillment records.
+   quantity, and grouped checkout interactions.
+   **Depends on:** order-line and Commerce delivery-group contracts.
+   **Done when:** targeted tests cover valid and rejected transitions for mixed
+   carts and multiple fulfillment records.
 
 4. **Wire production carrier adapters through the provider registry.** Add
-   concrete carrier configuration, quote, label, cancellation, and replay-safe
-   tracking-webhook execution only through guarded provider seams.
-   **Depends on:** approved carrier credentials, webhook ingress, and
-   deployment-owned secret management.
-   **Done when:** production-like execution proves degraded fallback and typed
-   adapter errors while `FulfillmentService` remains the sole lifecycle owner.
+   production-like quote, label, cancellation, tracking-webhook, and replay-safe
+   behavior through guarded provider seams.
+   **Depends on:** approved credentials, webhook ingress, and deployment secret
+   management.
+   **Done when:** execution proves degraded fallback and typed adapter errors while
+   `FulfillmentService` remains the lifecycle owner.
 
-5. **Cut REST projection reads over and prove transport parity.** Replace the
-   existing Commerce REST storefront active-list and admin list-all/lookup
-   concrete service construction with `CommerceShippingOptionReadRuntime`, then
-   execute mounted GraphQL/REST comparisons against the same owner projections.
-   Native seller/cart selection remains a separate contract and needs no complete
-   projection surface without a consumer.
-   **Depends on:** host runtime wiring for Commerce HTTP plus compiled
-   fulfillment/commerce crates and mounted transport fixtures.
+5. **Prove mounted shipping-option transport parity.** Execute active list,
+   administrative list-all, and lookup through mounted GraphQL and REST consumers
+   against the same owner projections. Native seller/cart selection remains a
+   separate contract and needs no complete projection surface without a consumer.
+   **Depends on:** compiled fulfillment/Commerce/server crates and mounted
+   transport fixtures.
    **Done when:** GraphQL and REST retain locale/channel/deadline context, expose
-   identical owner projections with correct active/inactive semantics, preserve
-   their public envelopes, and no mounted projection transport constructs a
-   concrete fulfillment service or in-process read provider.
+   equivalent projections with correct active/inactive semantics, preserve public
+   envelopes, and no mounted projection transport constructs a concrete read
+   service or provider.
 
-6. **Execute remote contracts.** Turn shipping-selection and checkout-execution
+6. **Publish remaining fulfillment query read ports.** Add owner boundaries for
+   fulfillment lifecycle list/lookup and order-to-fulfillment reads, then remove
+   the remaining concrete delegate from the GraphQL compatibility facade.
+   **Depends on:** stable projection and optional-not-found contracts.
+   **Done when:** all mounted fulfillment query reads consume host-composed owner
+   ports and lifecycle ownership remains in fulfillment.
+
+7. **Execute remote contracts.** Turn shipping-selection and checkout-execution
    matrices into provider execution before promoting beyond `boundary_ready`.
-   **Depends on:** a remote adapter environment and a commerce consumer.
-   **Done when:** deadline, idempotency, typed-error, identity, and fallback
-   parity are proven.
+   **Depends on:** a remote adapter environment and a Commerce consumer.
+   **Done when:** deadline, idempotency, typed-error, identity, and fallback parity
+   are proven.
 
 ## Verification
 
@@ -199,6 +193,9 @@ identity and database uniqueness migration remain open.
 - `node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`
 - `node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs`
 - `node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
+- `node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
+- `node scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs`
+- `node scripts/verify/verify-commerce-storefront-auxiliary-http-error-safety.mjs`
 - `node scripts/verify/verify-commerce-graphql-shipping-option-typed-error.mjs`
 - `node scripts/verify/verify-commerce-graphql-shipping-enrichment-typed-error.mjs`
 - `npm run verify:ecommerce:fba`
@@ -207,18 +204,16 @@ identity and database uniqueness migration remain open.
 - `cargo xtask module test fulfillment`
 - `cargo check -p rustok-fulfillment --all-features`
 - `cargo check -p rustok-commerce --all-features`
-- Targeted checkout fulfillment create/adopt/read, cancelled/unknown lifecycle,
-  duplicate identity, process-exit, restart, and multi-fulfillment tests.
-- Targeted shipping-option active list, administrative list-all, lookup locale,
-  context, owner-error, GraphQL/REST parity, and remote-profile tests.
+- Targeted checkout fulfillment identity/lifecycle/restart/contention tests.
+- Targeted shipping-option GraphQL/REST parity, context, error, and remote tests.
 
 No verification command was executed in this source wave.
 
 ## Change rules
 
 1. Keep shipping selection, shipping-option projections, fulfillment lifecycle,
-   checkout fulfillment identity, and carrier policy here.
+   checkout fulfillment identity, and carrier policy in this module.
 2. Update local documentation, contracts, `rustok-module.toml`, and the umbrella
-   commerce plan with a delivery or provider contract change.
-3. Update this status block and `docs/modules/registry.md` only with proven
-   FFA/FBA boundary changes.
+   Commerce plan with a delivery/provider contract change.
+3. Update status blocks and `docs/modules/registry.md` only with proven FFA/FBA
+   boundary changes.
