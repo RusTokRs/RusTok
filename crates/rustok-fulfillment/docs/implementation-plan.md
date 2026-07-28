@@ -83,6 +83,15 @@ identity, stable service actor, resource correlation, and a two-second deadline.
 Lifecycle mutations remain on their existing concrete or orchestration owner
 paths.
 
+A locked mounted projection-parity execution contract and fail-closed capture
+runner are now published. The maintainer-owned runner compares GraphQL
+lookup/list/latest-by-order with admin REST list/detail, hashes normalized
+projections and source files, preserves transport-specific optional-not-found
+policy, and excludes credentials, raw bodies, and fulfillment metadata. No capture
+has run; `transport_projection_parity_proven` and `runtime_parity_proven` remain
+false. Deadline/failure injection, restart, external-adapter identity, and remote
+adapter execution are separate evidence gates.
+
 The native FFA surface remains seller/cart selection through
 `ShippingSelectionPort`; it does not publish complete projection list or lookup
 operations. No projection API should be added without a concrete consumer.
@@ -108,11 +117,15 @@ operations. No projection API should be added without a concrete consumer.
   `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`.
 - Fulfillment lifecycle read source evidence:
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`.
-- Both files are unvalidated source evidence and do not promote status.
+- Fulfillment lifecycle mounted capture contract:
+  `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`.
+- Source evidence and the capture contract are unvalidated and do not promote
+  status.
 - Focused guards cover owner boundaries, application-host runtime composition,
   shared GraphQL resolver scope, GraphQL/admin REST lifecycle consumer cutover,
-  typed public envelopes, and the separate native selection surface.
-- Compile, migrated database, mounted transport, restart, contention, and remote
+  typed public envelopes, the projection-parity capture boundary, and the separate
+  native selection surface.
+- Compile, migrated database, mounted capture, restart, contention, and remote
   evidence remain missing.
 
 ## Checkout execution source checklist
@@ -196,8 +209,11 @@ operations. No projection API should be added without a concrete consumer.
   from the private GraphQL compatibility facade.
 - [x] Retain source evidence and focused guards that record complete source cutover
   without claiming mounted runtime parity.
-- [ ] Execute compile, mounted GraphQL/REST lifecycle query, deadline, tenant,
-  filter, optional-not-found, failure, restart, and remote evidence.
+- [x] Publish the mounted lifecycle projection-parity execution contract and capture runner.
+- [ ] Execute the mounted GraphQL/REST projection-parity capture and retain its immutable packet.
+- [ ] Prove deadline/failure injection, process restart, and remote-adapter behavior separately.
+- [ ] Execute compile and remaining tenant/context/runtime evidence before any
+  status promotion.
 
 ## Open results
 
@@ -241,14 +257,16 @@ operations. No projection API should be added without a concrete consumer.
    envelopes, and no mounted projection transport constructs a concrete read
    service or provider.
 
-6. **Prove mounted lifecycle read parity.** Execute GraphQL lookup/list/latest-by-
-   order and admin REST list/detail through the host-selected
-   `CommerceFulfillmentLifecycleReadRuntime` against the same owner projections.
-   **Depends on:** compiled fulfillment/Commerce/server crates and mounted
-   transport fixtures.
-   **Done when:** GraphQL and REST preserve tenant, filters, pagination, optional
-   not-found, public error policy, deadline behavior, restart behavior, and remote
-   adapter selection with no concrete Commerce read construction.
+6. **Prove mounted lifecycle read parity.** Run the locked capture contract against
+   GraphQL lookup/list/latest-by-order and admin REST list/detail through the
+   host-selected `CommerceFulfillmentLifecycleReadRuntime`. Retain the immutable
+   projection-parity packet, then execute deadline/failure, restart, external-
+   adapter identity, and remote-adapter evidence as separate packets.
+   **Depends on:** compiled fulfillment/Commerce/server crates, mounted fixtures,
+   and tokens with `fulfillments:read` plus `orders:read`.
+   **Done when:** projection parity, tenant/filter/pagination and optional-not-found
+   policy are retained first, then wider runtime behavior is proven without
+   concrete Commerce read construction or secret/raw-payload retention.
 
 7. **Execute remote contracts.** Turn shipping-selection and checkout-execution
    matrices into provider execution before promoting beyond `boundary_ready`.
@@ -265,6 +283,8 @@ operations. No projection API should be added without a concrete consumer.
 - `node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`
 - `node scripts/verify/verify-fulfillment-lifecycle-read-port.mjs`
 - `node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs`
+- `node scripts/verify/verify-fulfillment-lifecycle-transport-parity-capture.mjs`
+- `node scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs`
 - `node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs`
@@ -281,7 +301,7 @@ operations. No projection API should be added without a concrete consumer.
 - Targeted shipping-option GraphQL/REST parity, context, error, and remote tests.
 - Targeted fulfillment lifecycle owner-port and mounted GraphQL/REST query tests.
 
-No verification command was executed in this source wave.
+No verification or capture command was executed in this source wave.
 
 ## Change rules
 
