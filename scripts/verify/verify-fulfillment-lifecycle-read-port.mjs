@@ -14,6 +14,7 @@ const ownerRoot = read('crates/rustok-fulfillment/src/lib.rs');
 const ownerSource = read('crates/rustok-fulfillment/src/fulfillment_read.rs');
 const commerceRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
 const hostRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
+const commerceHttp = read('crates/rustok-commerce/src/controllers/mod.rs');
 const compatibilityFacade = read('crates/rustok-commerce/src/graphql/safe_query.rs');
 const adminRest = read('crates/rustok-commerce/src/controllers/admin/fulfillments.rs');
 const evidence = JSON.parse(
@@ -116,11 +117,35 @@ for (const [value, label] of [
   ],
 ]) requireText(commerceRuntime, value, label);
 
-forbidText(
-  hostRuntime,
-  'CommerceFulfillmentLifecycleReadRuntime',
-  'default server lifecycle runtime composition before consumer cutover',
-);
+for (const [value, label] of [
+  [
+    '.shared_get::<rustok_commerce::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime>()',
+    'default server lifecycle runtime reuse',
+  ],
+  [
+    'rustok_commerce::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(',
+    'default server in-process composition',
+  ],
+  ['server.shared_insert(runtime.clone());', 'default server runtime cache'],
+  ['host.with_shared_value(runtime)', 'default host runtime attachment'],
+]) requireText(hostRuntime, value, label);
+
+for (const [value, label] of [
+  [
+    'fulfillment_lifecycle_read_runtime:\n        crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime',
+    'Commerce HTTP runtime field',
+  ],
+  ['fn fulfillment_read_port(', 'Commerce HTTP port getter'],
+  [
+    '.shared_get::<crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime>()',
+    'Commerce HTTP host lookup',
+  ],
+  [
+    'Commerce HTTP routes require CommerceFulfillmentLifecycleReadRuntime in HostRuntimeContext',
+    'Commerce HTTP fail-closed message',
+  ],
+  ['fulfillment_lifecycle_read_runtime,', 'Commerce HTTP runtime initialization'],
+]) requireText(commerceHttp, value, label);
 
 for (const [value, label] of [
   ['inner: ::rustok_fulfillment::FulfillmentService,', 'retained concrete facade field'],
@@ -167,8 +192,10 @@ for (const value of [
   'error.message',
 ]) forbidText(ownerSource, value, 'owner message exposure');
 
-if (evidence.status !== 'source_ready_unvalidated') {
-  failures.push(`evidence status: expected source_ready_unvalidated, found ${evidence.status}`);
+if (evidence.status !== 'source_composed_unvalidated') {
+  failures.push(
+    `evidence status: expected source_composed_unvalidated, found ${evidence.status}`,
+  );
 }
 if (evidence.owner?.port !== 'FulfillmentReadPort') {
   failures.push('evidence owner port must be FulfillmentReadPort');
@@ -182,11 +209,17 @@ if (evidence.runtime_publication?.graphql_host_override_supported !== true) {
 if (evidence.runtime_publication?.graphql_manifest_fallback !== 'in_process') {
   failures.push('evidence must record the GraphQL in-process fallback');
 }
-if (evidence.runtime_publication?.server_cache_composed !== false) {
-  failures.push('evidence must retain default server cache composition as false');
+if (evidence.runtime_publication?.server_cache_composed !== true) {
+  failures.push('evidence must record default server cache composition');
 }
-if (evidence.runtime_publication?.default_server_attachment !== false) {
-  failures.push('evidence must retain default server attachment as false');
+if (evidence.runtime_publication?.default_server_attachment !== true) {
+  failures.push('evidence must record default server attachment');
+}
+if (evidence.runtime_publication?.commerce_http_runtime_required !== true) {
+  failures.push('evidence must record mandatory Commerce HTTP runtime injection');
+}
+if (evidence.runtime_publication?.external_adapter_preserved !== true) {
+  failures.push('evidence must record preservation of external adapters');
 }
 if (evidence.consumer_cutover?.graphql_compatibility_facade !== false) {
   failures.push('evidence must retain GraphQL facade cutover as false');
@@ -217,5 +250,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ fulfillment lifecycle reads are owner-published with a host-selectable Commerce runtime while default server and consumer cutovers remain explicitly open',
+  '✔ fulfillment lifecycle reads are owner-published, default-host composed, and injected into Commerce HTTP while GraphQL/admin consumer cutovers remain explicitly open',
 );

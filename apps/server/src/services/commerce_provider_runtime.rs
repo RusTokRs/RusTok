@@ -59,6 +59,20 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-fulfillment"))]
+    let host = {
+        let runtime = server
+            .shared_get::<rustok_commerce::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime>()
+            .unwrap_or_else(|| {
+                let runtime = rustok_commerce::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(
+                    server.db_clone(),
+                );
+                server.shared_insert(runtime.clone());
+                runtime
+            });
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(feature = "mod-commerce")]
     let host = {
         let runtime = server
