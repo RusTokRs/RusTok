@@ -305,7 +305,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         extensions.insert(policy);
     }
 
-    #[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
+    #[cfg(feature = "mod-forum")]
     {
         let audience_facts =
             crate::services::forum_audience_group_facts::ServerForumAudienceGroupFactsPort::shared(
@@ -443,7 +443,7 @@ mod tests {
         );
         #[cfg(feature = "mod-forum")]
         assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
-        #[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
+        #[cfg(feature = "mod-forum")]
         assert!(extensions.contains::<rustok_forum::SharedForumAudienceFactsPort>());
         #[cfg(feature = "mod-notifications")]
         assert!(
