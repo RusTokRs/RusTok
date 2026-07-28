@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "iggy",
   "packet": "dlq-duplicate-alert-runtime-source",
-  "status": "source_complete_server_integration_pending",
+  "status": "source_complete_server_observer_execution_pending",
   "owner": "rustok-iggy",
   "source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
   "policy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
@@ -100,6 +100,20 @@
     "change_broker_configuration": false,
     "change_profile_state": false
   },
+  "server_observer": {
+    "status": "source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
+    "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+    "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
+    "delivery_profiles": [
+      "memory_not_applicable",
+      "outbox_local_not_applicable",
+      "outbox_iggy_bundled",
+      "outbox_iggy_external"
+    ],
+    "readiness_dependency": false,
+    "profiles_authorization": false
+  },
   "required_source_tests": [
     "initial_snapshot_is_unavailable_without_evaluation",
     "publish_replaces_latest_identifier_free_evaluation",
@@ -108,7 +122,6 @@
     "closed_publisher_has_a_stable_identifier_free_error"
   ],
   "remaining_work": [
-    "server_observer_integration",
     "telemetry_and_health_projection",
     "retained_runtime_integration_evidence",
     "notification_delivery_and_suppression_outside_runtime",
