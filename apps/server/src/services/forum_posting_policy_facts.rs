@@ -105,11 +105,17 @@ impl ForumPostingPolicyOwnerFactPort for ServerForumAccountAgeFactPort {
 
         let observed_at = (self.now)();
         let created_at = user.created_at.with_timezone(&Utc);
+        if created_at > observed_at {
+            return Err(PortError::invariant_violation(
+                STORAGE_INVARIANT_CODE,
+                "Forum account-age owner timestamp is later than the observation time",
+            ));
+        }
         let age_seconds = observed_at.signed_duration_since(created_at).num_seconds();
         let age_seconds = u64::try_from(age_seconds).map_err(|_| {
             PortError::invariant_violation(
                 STORAGE_INVARIANT_CODE,
-                "Forum account-age owner timestamp is later than the observation time",
+                "Forum account-age owner timestamp could not be represented safely",
             )
         })?;
 
@@ -377,7 +383,7 @@ mod tests {
             &db,
             tenant_id,
             user_id,
-            observed_at + ChronoDuration::seconds(1),
+            observed_at + ChronoDuration::milliseconds(1),
         )
         .await;
         let provider = ServerForumAccountAgeFactPort::with_clock(db, fixed_clock(observed_at));
