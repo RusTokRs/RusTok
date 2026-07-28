@@ -11,7 +11,8 @@ Status: source-ready / unvalidated.
 - `set` currently publishes only `manual_override`. The stored enum reserves `policy_evaluation`, `reconciliation`, and `migration` for later owner workflows without claiming those workflows are implemented.
 - Identical idempotency replay returns the original revision result without adding history. Reusing the same tenant key with a different user, level, actor, or explanation fails closed.
 - PostgreSQL owner writes and insert triggers share the exact advisory-lock identity `{tenant_id}:{user_id}:trust` and salt `26`.
-- PostgreSQL and SQLite require every revision to advance exactly once, require its previous level to match current state, and require the materialized state update to match the newly inserted immutable revision.
+- The owner writes one immutable revision only. PostgreSQL and SQLite `AFTER INSERT` triggers materialize its matching current state in the same transaction, so a valid direct revision insert cannot leave history and state divergent.
+- PostgreSQL and SQLite require every revision to advance exactly once, require its previous level to match current state, and require every materialized state insert/update to match the newly inserted immutable revision.
 - Direct revision update/delete and current-state delete are rejected. Target trust rows use tenant/user composite ownership and restrict target deletion so audit history cannot disappear through a cascade.
 
 ## Ownership boundary
@@ -28,7 +29,7 @@ The change actor is retained as an audit snapshot rather than a hard foreign key
 - no automatic posting-policy evaluator, trust promotion/demotion job, reputation formula, flag model, moderation-history model, rate-limit change, duplicate-content hashing, or external/AI scoring;
 - no dependency or host/server source change.
 
-The next bounded slice should publish a read-only trust facts adapter over `ForumUserTrustService` state. Automatic explainable evaluation should remain a later slice because several required facts are not yet authoritative Forum inputs.
+The next bounded slice should publish a read-only trust facts adapter over the authoritative `forum_user_trust_states` owner projection. Automatic explainable evaluation should remain a later slice because several required facts are not yet authoritative Forum inputs.
 
 ## Canonical plan debt
 
