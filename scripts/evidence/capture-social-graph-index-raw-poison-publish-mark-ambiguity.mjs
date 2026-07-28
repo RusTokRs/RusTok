@@ -72,16 +72,16 @@ function runChecked(program, args, env = process.env) {
 }
 
 function oneLine(value, field, maximumLength = 256) {
-  const normalized = value.trim();
   if (
-    normalized.length === 0 ||
-    normalized.length > maximumLength ||
-    /[\r\n]/u.test(normalized) ||
-    /[\u0000-\u001f\u007f]/u.test(normalized)
+    value.trim() !== value ||
+    value.length === 0 ||
+    value.length > maximumLength ||
+    /[\r\n]/u.test(value) ||
+    /[\u0000-\u001f\u007f]/u.test(value)
   ) {
-    fail(`${field} is missing, multiline, or outside the retained evidence boundary`);
+    fail(`${field} is missing, padded, multiline, or outside the retained evidence boundary`);
   }
-  return normalized;
+  return value;
 }
 
 function sha256(value) {
@@ -139,8 +139,11 @@ function validateContract() {
 }
 
 function validateDatabaseUrl() {
-  const value = process.env[contract.database_environment];
-  if (!value) fail(`${contract.database_environment} is required`);
+  const value = oneLine(
+    process.env[contract.database_environment] ?? "",
+    contract.database_environment,
+    4096,
+  );
   let parsed;
   try {
     parsed = new URL(value);
@@ -397,7 +400,7 @@ function workingTreeStatus() {
 
 function ensureCleanCommit() {
   if (workingTreeStatus().trim()) fail("working tree must be clean before retained execution");
-  const commit = oneLine(runChecked("git", ["rev-parse", "HEAD"]).stdout, "git_commit");
+  const commit = oneLine(runChecked("git", ["rev-parse", "HEAD"]).stdout.trim(), "git_commit");
   if (!/^[0-9a-f]{40}$/u.test(commit)) fail("git commit must be a full lowercase SHA-1");
   return commit;
 }
@@ -455,8 +458,8 @@ try {
 
   const gitCommit = ensureCleanCommit();
   const initialSourceSha256 = sourceHashes();
-  const cargoVersion = oneLine(runChecked("cargo", ["--version"]).stdout, "cargo_version");
-  const rustcVersion = oneLine(runChecked("rustc", ["--version"]).stdout, "rustc_version");
+  const cargoVersion = oneLine(runChecked("cargo", ["--version"]).stdout.trim(), "cargo_version");
+  const rustcVersion = oneLine(runChecked("rustc", ["--version"]).stdout.trim(), "rustc_version");
   const startedAt = new Date().toISOString();
   const executedScenarios = [];
   const combinedOutputs = [];
@@ -483,7 +486,7 @@ try {
   }
 
   const finalCommit = oneLine(
-    runChecked("git", ["rev-parse", "HEAD"]).stdout,
+    runChecked("git", ["rev-parse", "HEAD"]).stdout.trim(),
     "final_git_commit",
   );
   if (finalCommit !== gitCommit) fail("git commit changed during retained execution");
