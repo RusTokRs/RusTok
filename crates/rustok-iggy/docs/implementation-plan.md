@@ -63,15 +63,62 @@ consumer-group checkpoint for that partition. Aggregate lag is published only wh
 every partition is empty or has a coherent stored offset not ahead of the observed
 high-watermark. Missing checkpoints and inconsistent observations fail closed.
 
+The External raw-poison lifecycle harness uses one unique stream and one partition to
+exercise the production cursor path. It injects two malformed fixtures, receives the
+first through `PersistentContractConsumerGroup`, publishes exact bytes through
+`IggyTransport::move_to_dlq`, shuts down the transport without source acknowledgement,
+requires same-offset/bytes/UUID redelivery through a new transport and the same group,
+acknowledges it explicitly, and then requires the second offset to become visible. An
+independent real DLQ cursor verifies both payloads byte-for-byte. The harness is
+source-complete and has not been executed.
+
+A separate physical-header harness covers the publisher wire contract without repeating
+the lifecycle scenario. It creates a production `ConsumedContractDecodeFailure`, derives
+one `DlqEntry`, publishes exactly once through `IggyTransport::move_to_dlq`, and uses a
+probe-only SDK consumer on `dlq` to require:
+
+- physical `message.header.id == broker_message_id.as_u128()`;
+- physical partition equals `(uuid_as_u128 mod partitions) + 1` and remains one-based;
+- physical payload is exact;
+- only the probe message's physical header offset is committed.
+
+The physical-header SDK probe cannot publish, create source fixtures, acknowledge
+source cursors, modify receipts, delete streams, or change deduplication. The harness is
+source-complete and runtime-pending.
+
+A third external harness now defines observed server deduplication behavior against four
+separately configured disposable brokers. Every scenario creates a unique one-partition
+stream, publishes only through production `IggyTransport::move_to_dlq`, and uses a
+read-only SDK `get_topic` observer for partition `messages_count`:
+
+- disabled: repeated `A` produces `0 -> 1 -> 2`;
+- enabled: immediate repeated `A` produces `0 -> 1 -> 1`;
+- `max_entries = 1`: `A, A, B, A` produces `0 -> 1 -> 1 -> 2 -> 3`;
+- expiry: `A, A, wait, A` produces `0 -> 1 -> 1 -> 2`.
+
+The capacity sequence first proves immediate suppression, then introduces distinct `B`,
+then observes `A` accepted again. The expiry sequence also proves immediate suppression
+before one bounded operator-configured wait. The observer cannot publish, consume
+payloads, store offsets, modify configuration, delete streams, or mutate receipts.
+
+The dedup harness does not read back server configuration. A retained execution must
+pair each address with a reviewed configuration artifact for `enabled`, `max_entries`,
+and `expiry`, require every named test to execute rather than skip, and retain
+source/output/configuration digests without credentials. Source coverage exists; runtime
+execution and production-window sufficiency remain open.
+
+The lifecycle, physical-header, dedup behavior, PostgreSQL ordering, and production
+confirmation policy remain distinct evidence boundaries. None of the source harnesses
+claims a database/broker transaction or physical exactly-once.
+
 Replay remains intentionally unavailable. A production replay API requires bounded
 broker reads, republish, durable progress/idempotency evidence, and a real broker
 integration test. DLQ retry requires a complete `DlqEntry`; there is no ID-only API
 that can claim success without the original payload.
 
-Compilation, source-verifier execution, migration-tail reconciliation, real-Iggy
-deterministic-ID/deduplication, raw decode-failure publication/acknowledgement,
-snapshot/reconnect, persisted-offset, TLS/auth, and multi-replica evidence remain
-maintainer-run or pending.
+Compilation, source-verifier execution, external-Iggy cursor/header/dedup execution,
+receipt-plus-broker ordering, position/reconnect, persisted-offset, TLS/auth,
+bundled-mode, and multi-replica evidence remain maintainer-run or pending.
 
 ## Boundary and dependencies
 
@@ -91,6 +138,18 @@ maintainer-run or pending.
 - Consumer workers compose typed receive, connector receipt recognition/claim,
   exact-byte DLQ publication, durable `published`, source acknowledgement, and
   best-effort `acknowledged` in that order.
+- The lifecycle fixture connector may publish arbitrary malformed bytes only.
+  Production receive, classification, DLQ publication, reconnect, and source ack remain
+  on `IggyTransport`/`PersistentContractConsumerGroup` APIs.
+- The physical-header SDK client is observation-only: connect, open a unique DLQ group,
+  receive one message, inspect header/partition/payload, commit that probe offset, and
+  shut down.
+- The dedup SDK client is count-only: connect, read `dlq` partition `1` through
+  `get_topic`, return `messages_count`, and shut down. It cannot consume or mutate.
+- External evidence creates unique streams but does not use an unreviewed deletion API.
+  It requires disposable brokers or operator-approved cleanup.
+- Dedup addresses are configuration claims supplied by the operator; the source test
+  observes behavior and never presents those claims as server readback.
 - Consumers such as Outbox and Social Graph use public transport contracts rather than
   connector cursor internals.
 - Transport positions, tenant/event identities, broker IDs, credentials, raw payloads,
@@ -98,8 +157,8 @@ maintainer-run or pending.
 
 ## Delivered results
 
-1. **Persistent result-first consumer groups.** Root and sealed-family cursors retain
-   one remote cursor across receive and exact scoped acknowledgement.
+1. **Persistent result-first consumer groups.** Root and sealed-family cursors retain one
+   remote cursor across receive and exact scoped acknowledgement.
 2. **Exact-byte contract delivery.** Successfully decoded contract deliveries retain
    original broker bytes for lossless owner-directed DLQ publication.
 3. **Typed raw decode-failure delivery.** Deserialization and canonical-schema failures
@@ -128,46 +187,63 @@ maintainer-run or pending.
 10. **Shared-endpoint composition.** Bundled publisher/observation clients connect to the
     reviewed loopback endpoint already managed by `IggyTransport`; external clients reuse
     reviewed address/auth/TLS configuration.
+11. **External raw-poison lifecycle harness.** A versioned source contract, opt-in real
+    external broker test, bounded timeouts, exact-byte DLQ cursor, no-ack transport
+    reconnect/redelivery, explicit source advancement, and static guard define the first
+    broker-backed raw cursor evidence without claiming execution.
+12. **Physical header/partition harness.** A separate source contract and static guard
+    define one production DLQ publication plus a probe-only SDK read that checks exact
+    UUID/u128 header mapping, one-based UUID partition routing, exact payload, explicit
+    probe shutdown, and no deduplication claims.
+13. **Deduplication behavior harness.** Four source scenarios and a static guard define
+    disabled, immediate suppression, capacity eviction, and expiry count sequences using
+    production publication and a read-only partition-count observer. Server configuration
+    review and runtime execution remain external retained evidence requirements.
 
 ## Next results
 
-1. **Reconcile migration release order.** Append the existing decoded-event DLQ receipt
-   migration and the connector raw-poison migration to the explicit platform tail
-   without rewriting the published prefix; then reconcile current `main` and refresh
-   `Cargo.lock`.
-2. **Verify real consumption and acknowledgement.** Prove validated and raw-failure
-   receive, no implicit commit, exact-byte publish, durable published-before-ack,
-   acknowledgement-only recovery, and reconnect in bundled and external modes.
-3. **Verify deterministic DLQ behavior.** Prove the outgoing header ID, same-partition
-   retry, publish failure reconnect, broker-success/result-mark crash, and duplicate
-   behavior with deduplication disabled, enabled, capacity-evicted, and expired.
-4. **Verify connector receipt concurrency.** Prove PostgreSQL claim ownership, lease
-   expiry/reclaim, UUID/source collision handling, rollback, first-diagnostic retention,
-   and multi-replica redelivery.
-5. **Verify consumer-position observation.** Prove every-partition topic/offset reads,
+1. **Execute external lifecycle, header, and dedup evidence.** Run the three harnesses on
+   disposable external Iggy instances and retain separate packets with broker version,
+   reviewed configuration digests, source/output hashes, and every required test result.
+2. **Compose receipt-plus-broker ordering evidence.** Add PostgreSQL receipt storage to a
+   broker-backed scenario and prove reserve/claim -> exact publish -> durable `published`
+   -> source ack -> best-effort `acknowledged`, including acknowledgement-only recovery.
+3. **Prove recovery-window sufficiency.** Compare reviewed dedup `max_entries`/`expiry`
+   against maximum publication lease, process restart, reconnect, and operator recovery
+   horizons. Do not infer sufficiency from the four short behavior sequences.
+4. **Verify bundled raw lifecycle.** Repeat the external scenarios through the packaged
+   bundled server and prove start, readiness, restart, durable data reuse, and shutdown.
+5. **Verify connector receipt concurrency.** Execute and retain the existing PostgreSQL
+   claim ownership, lease expiry/reclaim, UUID/source collision, rollback,
+   first-diagnostic, and aggregate inspection packet.
+6. **Verify consumer-position observation.** Prove every-partition topic/offset reads,
    empty/missing checkpoint behavior, concurrent publication during a snapshot,
    reconnect, TLS/auth failure, and multi-replica consumer-group semantics.
-6. **Choose production confirmation policy.** Require and verify a dedup window covering
+7. **Choose production confirmation policy.** Require and verify a dedup window covering
    the maximum recovery horizon, or move DLQ publication behind a database-owned outbox
    relay/broker transaction before claiming stronger duplicate suppression.
-7. **Execute broker-backed replay.** Prove real DLQ retry, then design bounded replay
+8. **Execute broker-backed replay.** Prove real DLQ retry, then design bounded replay
    with durable progress and idempotency.
-8. **Harden production operation.** Retain reconnect, backpressure, topology, health,
-   lag alert, decode-failure, receipt, dedup configuration, and recovery evidence with
-   operator runbooks.
+9. **Harden production operation.** Retain reconnect, backpressure, topology, health,
+   lag alert, decode-failure, receipt, dedup configuration, cleanup, and recovery evidence
+   with operator runbooks.
 
 ## Verification
 
 - `cargo test -p rustok-iggy --lib`
 - `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
 - `cargo test -p rustok-iggy --test integration`
+- `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy -- --nocapture --test-threads=1`
+- `RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS='host:8090' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy_header -- --nocapture --test-threads=1`
+- `RUSTOK_IGGY_DEDUP_DISABLED_ADDRESS='host:8090' RUSTOK_IGGY_DEDUP_ENABLED_ADDRESS='host:8091' RUSTOK_IGGY_DEDUP_CAPACITY_ADDRESS='host:8092' RUSTOK_IGGY_DEDUP_EXPIRY_ADDRESS='host:8093' RUSTOK_IGGY_DEDUP_EXPIRY_WAIT_MS='1500' cargo test -p rustok-iggy --features iggy --test contract_poison_external_iggy_dedup -- --nocapture --test-threads=1`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
-- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
-- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
+- `node scripts/verify/verify-iggy-contract-poison-external-evidence.mjs`
+- `node scripts/verify/verify-iggy-contract-poison-external-header-evidence.mjs`
+- `node scripts/verify/verify-iggy-contract-poison-external-dedup-evidence.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
 - `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
@@ -179,11 +255,14 @@ maintainer-run or pending.
   behavior.
 
 These commands and scenarios remain maintainer-run and were not executed manually in
-this slice. `Cargo.lock` requires refresh after synchronization with `main`.
+this slice.
 
 ## References
 
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
 - [Connector plan](../../rustok-iggy-connector/docs/implementation-plan.md)
+- [External raw poison evidence guide](./contract-poison-external-evidence.md)
+- [External physical header evidence guide](./contract-poison-external-header-evidence.md)
+- [External dedup behavior evidence guide](./contract-poison-external-dedup-evidence.md)
 - [Iggy integration reference](../../../docs/references/iggy/README.md)

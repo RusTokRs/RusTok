@@ -3,7 +3,8 @@
   "task": "FORUM-20AT",
   "upstream_task": "FORUM-20AS",
   "downstream_task": "FORUM-20AU",
-  "scope": "Host-owned exact current Channel audience fact composition with optional exact Groups fallback",
+  "downstream_trust_task": "FORUM-26B",
+  "scope": "Host-owned exact current Channel audience fact composition with optional exact Groups fallback, wrapped downstream by authoritative Forum trust facts",
   "adapter_file": "apps/server/src/services/forum_audience_facts.rs",
   "historical_group_adapter_file": "apps/server/src/services/forum_audience_group_facts.rs",
   "services_file": "apps/server/src/services/mod.rs",
@@ -18,10 +19,10 @@
     "channel_owner": "ChannelReadPort exact slug lookup with inactive channels hidden",
     "channel_truth": "the current caller channel is requested and resolves active in the same tenant",
     "no_discovery": "unrequested channels are never listed or probed",
-    "positive_union": "an exact active current channel decides before optional Groups or unavailable trust facts",
+    "positive_union": "an exact active current channel decides before optional Groups; FORUM-26B resolves authoritative trust only after a confirmed membership miss",
     "groups": "the historical FORUM-20Q adapter remains exact and is called only after a channel miss",
-    "trust": "unimplemented trust facts remain typed retryable unavailable when no delivered selector decides",
-    "storage_access": "the host adapter uses owner ports and performs no direct Channel or Groups entity access"
+    "trust": "FORUM-26B wraps this membership adapter with exact-actor authoritative forum_user_trust_states facts",
+    "storage_access": "the host membership adapter uses owner ports and performs no direct Channel or Groups entity access"
   },
   "composition": {
     "forum_build_publication": true,
@@ -33,6 +34,7 @@
     "channel_only_without_groups": true,
     "optional_historical_groups_fallback": true,
     "trust_fail_closed": true,
+    "downstream_authoritative_trust_wrapper": true,
     "runtime_extension_publication": true,
     "inline_contract_tests": true,
     "migration_changed": false,
@@ -40,7 +42,6 @@
     "forum_to_channel_dependency_added": false
   },
   "not_delivered": [
-    "Forum trust facts adapter",
     "reply and moderation audience policies",
     "remaining Forum read search index SEO and deep-link audience migration",
     "visibility-scoped category and all-read commands",
@@ -52,8 +53,10 @@
       "cargo test -p rustok-server --features mod-forum forum_audience_facts -- --nocapture",
       "cargo test -p rustok-server --features mod-forum,mod-groups forum_audience_facts -- --nocapture",
       "cargo test -p rustok-server --features mod-forum host_runtime_extensions_register_admin_mutation_providers -- --nocapture",
+      "cargo test -p rustok-forum --test user_trust_audience_facts_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-audience-channel-facts-host-runtime.mjs",
       "node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs",
+      "node scripts/verify/verify-forum-user-trust-audience-facts.mjs",
       "node scripts/verify/verify-forum-notification-plan-sync.mjs",
       "cargo xtask module validate forum"
     ],

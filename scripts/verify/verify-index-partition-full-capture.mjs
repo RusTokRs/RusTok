@@ -28,7 +28,12 @@ try {
   const planTest = read('scripts/verify/index-partition-full-capture-plan.test.mjs');
   const reviewCore = read('scripts/verify/index-partition-review-core.mjs');
   const reviewCli = read('scripts/verify/render-index-partition-review.mjs');
+  const archiveCore = read('scripts/verify/index-partition-archive-manifest-core.mjs');
+  const archiveCli = read('scripts/verify/render-index-partition-archive-manifest.mjs');
+  const archiveVerifyCli = read('scripts/verify/verify-index-partition-archive-manifest.mjs');
   const reviewTest = read('scripts/verify/index-partition-review.test.mjs');
+  const postInspectionGuard = read('scripts/verify/verify-index-partition-post-inspection-drift.mjs');
+  const postInspectionTest = read('scripts/verify/index-partition-post-inspection-drift.test.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
   const plan = read('crates/rustok-index/docs/implementation-plan.md');
@@ -131,7 +136,45 @@ try {
     'process.stdout.write',
     'It writes no files.',
   ], 'retained partition review CLI');
-  forbidMarkers(`${reviewCore}\n${reviewCli}`, [
+  requireMarkers(archiveCore, [
+    'index_partition_retained_archive_manifest_v1',
+    'canonical_json_without_manifest_digest_v1',
+    'index_partition_retained_archive_verification_v1',
+    'REVIEW_CONTRACT',
+    "admission.outcome !== 'admitted'",
+    'must contain exactly nine retained files',
+    'total_bytes: totalBytes',
+    "sha256Hex(Buffer.from(canonicalJson(payload), 'utf8'))",
+    'must stay outside the retained bundle root',
+    'saved archive manifest aliases a retained bundle file',
+    'saved archive manifest digest does not match canonical payload',
+    'saved archive manifest does not match recalculated retained bundle manifest',
+    'retained_files_rechecked: true',
+    'production_lifecycle_authorized: false',
+  ], 'retained partition archive manifest core');
+  requireMarkers(archiveCli, [
+    "'--root'",
+    "'--packet'",
+    "'--admission'",
+    'inspectRetainedPartitionBundle',
+    'buildRetainedPartitionArchiveManifest',
+    'JSON.stringify(manifest, null, 2)',
+    'process.stdout.write',
+    'It writes no files.',
+  ], 'retained partition archive manifest CLI');
+  requireMarkers(archiveVerifyCli, [
+    "'--root'",
+    "'--manifest'",
+    "'--packet'",
+    "'--admission'",
+    'inspectRetainedPartitionBundle',
+    'verifySavedRetainedPartitionArchiveManifest',
+    'JSON.stringify(receipt, null, 2)',
+    'process.stdout.write',
+    'outside the retained bundle',
+    'The command writes no files.',
+  ], 'retained partition archive verifier CLI');
+  forbidMarkers(`${reviewCore}\n${reviewCli}\n${archiveCore}\n${archiveCli}\n${archiveVerifyCli}`, [
     'writeFileSync',
     'mkdirSync',
     'renameSync',
@@ -139,22 +182,52 @@ try {
     'spawnSync',
     'DATABASE_URL',
     'INDEX_PARTITION_ALLOW',
-  ], 'retained partition review tooling');
+  ], 'retained partition review and archive tooling');
   requireMarkers(reviewTest, [
     'renders a deterministic read-only nine-file retained bundle review',
     'Retained file count: `9`',
+    'prints a deterministic read-only admitted archive manifest',
+    'index_partition_retained_archive_manifest_v1',
+    'canonical_json_without_manifest_digest_v1',
+    "createHash('sha256').update(canonicalJson(payload)).digest('hex')",
+    'verifies a saved admitted archive manifest without changing either input',
+    'index_partition_retained_archive_verification_v1',
+    'production_lifecycle_authorized',
+    'rejects saved archive manifest digest drift',
+    'rejects saved archive manifest semantic drift with a recalculated digest',
+    'requires the saved archive manifest to stay outside the retained bundle',
+    'refuses an archive manifest for a non-admitted retained bundle',
     'assert.deepEqual(snapshot(context.root), before)',
     'saved admission that does not match recalculated packet admission',
     'rejects raw artifact drift from the retained packet',
   ], 'retained partition review fixture');
+  requireMarkers(postInspectionGuard, [
+    '[verify-index-partition-post-inspection-drift]',
+    'readStableRegularFile',
+    'assertRetainedFilesUnchanged',
+    'changed after inspection',
+    'retained_files_rechecked: true',
+    'production_lifecycle_authorized: false',
+  ], 'post-inspection drift guard');
+  requireMarkers(postInspectionTest, [
+    'rechecks all retained files before publishing an archive verification receipt',
+    'fails closed when a retained file changes after inspection',
+    'retained bundle file query changed after inspection',
+  ], 'post-inspection drift fixture');
   requireMarkers(tooling, [
     'partition-capture',
     'run-index-partition-evidence.mjs',
     'index-partition-full-capture-plan.test.mjs',
     'partition-report',
     'render-index-partition-review.mjs',
+    'partition-archive-manifest',
+    'render-index-partition-archive-manifest.mjs',
+    'partition-archive-verify',
+    'verify-index-partition-archive-manifest.mjs',
     'index-partition-review.test.mjs',
     'verify-index-partition-full-capture.mjs',
+    'verify-index-partition-post-inspection-drift.mjs',
+    'index-partition-post-inspection-drift.test.mjs',
   ], 'index storage tooling router');
   requireMarkers(runbook, [
     'M3 partition cutover rehearsal evidence runner: `complete`',
@@ -170,6 +243,13 @@ try {
     'partition-report',
     'all nine retained files',
     'recalculates packet assembly and admission',
+    'partition-archive-manifest',
+    'refuses any outcome other than `admitted`',
+    'canonical_json_without_manifest_digest_v1',
+    'partition-archive-verify',
+    'outside the immutable bundle',
+    'index_partition_retained_archive_verification_v1',
+    'production_lifecycle_authorized',
     'writes no files',
     'forbidden before one retained admitted packet',
   ], 'full partition capture runbook');

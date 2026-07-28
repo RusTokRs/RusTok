@@ -29,6 +29,7 @@ mod mention_relation_tests {
 }
 pub mod moderation;
 mod moderation_audience_authorization;
+mod posting_policy;
 mod quote_command;
 mod rbac;
 pub mod read_model;
@@ -68,6 +69,8 @@ mod topic_owner {
 mod topic_reply_create_audience;
 pub mod topic_visibility;
 pub mod user_stats;
+mod user_trust;
+mod user_trust_audience_facts;
 pub mod vote;
 pub mod widget_contract;
 
@@ -100,6 +103,14 @@ pub(crate) use mention_relation::MentionRelationService;
 pub use moderation::ModerationService;
 pub use moderation_audience_authorization::{
     ForumModerationAudienceAuthorization, ForumModerationAudienceAuthorizationService,
+};
+pub use posting_policy::{
+    ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyDecision,
+    ForumPostingPolicyDecisionReason, ForumPostingPolicyEvaluationInput,
+    ForumPostingPolicyEvidence, ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
+    ForumPostingPolicyMeasureUnit, ForumPostingPolicyOutcome, ForumPostingPolicyUnavailableFact,
+    ForumPostingWindowCount, MAX_FORUM_POSTING_POLICY_FACTS,
+    MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
 };
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
@@ -134,5 +145,11 @@ pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
 };
 pub use user_stats::UserStatsService;
+pub use user_trust::{
+    ForumUserTrustChange, ForumUserTrustRevision, ForumUserTrustRevisionPage,
+    ForumUserTrustService, ForumUserTrustState, MAX_FORUM_USER_TRUST_HISTORY_PAGE,
+    MAX_FORUM_USER_TRUST_LEVEL, SetForumUserTrustInput,
+};
+pub use user_trust_audience_facts::ForumUserTrustAudienceFactsPort;
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;

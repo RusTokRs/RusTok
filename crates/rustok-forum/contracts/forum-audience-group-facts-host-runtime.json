@@ -3,7 +3,8 @@
   "task": "FORUM-20Q",
   "upstream_task": "FORUM-20P",
   "downstream_task": "FORUM-20R",
-  "scope": "Server-owned exact requested group membership facts adapter for authenticated Forum audience evaluation",
+  "downstream_trust_task": "FORUM-26B",
+  "scope": "Server-owned exact requested group membership facts adapter for authenticated Forum audience evaluation, wrapped downstream by authoritative Forum trust facts",
   "adapter_file": "apps/server/src/services/forum_audience_group_facts.rs",
   "services_file": "apps/server/src/services/mod.rs",
   "runtime_composition_file": "apps/server/src/services/module_event_dispatcher.rs",
@@ -37,9 +38,10 @@
     "caller": "tenant-matching exact user PortContext with read deadline semantics",
     "owner": "Groups-owned effective membership enforcement read port",
     "membership_truth": "active_member from the Groups owner-clock effective state",
-    "positive_union": "an active requested group may decide the positive-selector union even when unsupported trust or channel selectors are also requested",
-    "partial_provider": "when requested groups do not decide and trust or channel facts are required, return typed retryable unavailable instead of a false deny",
+    "positive_union": "an active requested group may decide the positive-selector union even when trust or channel selectors are also requested",
+    "partial_provider": "when requested groups do not decide and another membership dimension is unavailable, return typed retryable unavailable instead of a false deny",
     "identity_validation": "validate exact tenant, user and group identity on every Groups owner response",
+    "trust": "FORUM-26B wraps the host membership provider and resolves authoritative Forum trust after a confirmed membership miss",
     "storage_access": "no direct Groups entity or table access from the server adapter or Forum"
   },
   "composition": {
@@ -51,14 +53,13 @@
     "active_memberships_only": true,
     "positive_union_short_circuit": true,
     "unsupported_dimension_retryability": true,
+    "downstream_authoritative_trust_wrapper": true,
     "runtime_extension_publication": true,
     "publication_before_notification_source_materialization": true,
     "notification_source_factory_consumption": true,
     "inline_contract_tests": true
   },
   "not_delivered": [
-    "host trust facts adapter",
-    "host channel membership facts adapter",
     "profile privacy and blocking policy",
     "final notification creation and delivery authorization",
     "initially non-public topic-created descriptor materialization",
@@ -69,9 +70,11 @@
     "commands": [
       "cargo test -p rustok-server --features mod-forum,mod-groups,mod-notifications forum_audience_group_facts -- --nocapture",
       "cargo test -p rustok-server --features mod-forum,mod-groups,mod-notifications host_runtime_extensions_register_admin_mutation_providers -- --nocapture",
+      "cargo test -p rustok-forum --test user_trust_audience_facts_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test topic_audience_visibility_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test notification_recipient_topic_subscription_audience_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs",
+      "node scripts/verify/verify-forum-user-trust-audience-facts.mjs",
       "cargo xtask module validate forum"
     ],
     "execution_status": "not_run_by_implementation_agent"

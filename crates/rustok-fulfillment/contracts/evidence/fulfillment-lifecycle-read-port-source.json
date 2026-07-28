@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-28",
-  "status": "source_ready_unvalidated",
-  "source_base_revision": "41b24915663848a77467a00e99ebbc92acecaf73",
+  "status": "source_cutover_unvalidated",
+  "source_base_revision": "184ae1a7b413958bd06f2ea3fb66c2c266812991",
   "scope": "fulfillment lifecycle projection reads for mounted Commerce queries",
   "owner": {
     "crate": "rustok-fulfillment",
@@ -53,14 +53,43 @@
     "runtime": "CommerceFulfillmentLifecycleReadRuntime",
     "graphql_host_override_supported": true,
     "graphql_manifest_fallback": "in_process",
-    "server_cache_composed": false,
-    "default_server_attachment": false
+    "server_cache_composed": true,
+    "default_server_attachment": true,
+    "commerce_http_runtime_required": true,
+    "external_adapter_preserved": true,
+    "graphql_task_local_scoped": true,
+    "shared_scope_extension": "CommerceShippingOptionReadScope"
+  },
+  "admin_rest": {
+    "list_consumer": "list_fulfillment_projections",
+    "detail_consumer": "read_fulfillment_projection",
+    "pagination_total_preserved": true,
+    "filters_preserved": true,
+    "public_error_policy_preserved": true,
+    "tenant_actor_locale_channel_correlation_propagated": true,
+    "deadline_seconds": 2,
+    "concrete_service_read_construction": false,
+    "mutation_service_construction_unchanged": true
+  },
+  "graphql": {
+    "lookup_consumer": "read_fulfillment_projection",
+    "list_consumer": "list_fulfillment_projections",
+    "latest_by_order_consumer": "find_latest_fulfillment_by_order_projection",
+    "existing_query_source_unchanged": true,
+    "optional_lookup_not_found_preserved": true,
+    "optional_latest_by_order_preserved": true,
+    "pagination_total_and_filters_preserved": true,
+    "public_error_policy_preserved": true,
+    "service_actor_propagated": true,
+    "correlation_propagated": true,
+    "deadline_seconds": 2,
+    "concrete_service_read_construction": false
   },
   "consumer_cutover": {
-    "graphql_compatibility_facade": false,
-    "admin_rest_list_show": false,
-    "concrete_delegate_removed": false,
-    "next_slice": "compose the lifecycle runtime in ServerRuntimeContext and HostRuntimeContext, inject it into GraphQL and Commerce HTTP, and route GraphQL lookup/list/latest-by-order plus admin REST list/show through FulfillmentReadPort while preserving transport-specific optional-not-found and public error policy"
+    "graphql_compatibility_facade": true,
+    "admin_rest_list_show": true,
+    "concrete_delegate_removed": true,
+    "next_slice": "execute mounted GraphQL and REST lifecycle read parity, deadline, tenant, filter, optional-not-found, failure, restart, and remote-adapter evidence"
   },
   "validation": {
     "tests_run": false,
@@ -68,6 +97,7 @@
     "format_run": false,
     "verifiers_run": false,
     "workflow_checks_run": false,
-    "ci_run": false
+    "ci_run": false,
+    "runtime_parity_proven": false
   }
 }

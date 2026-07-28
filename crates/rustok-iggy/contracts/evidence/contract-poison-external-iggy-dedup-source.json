@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "contract-poison-external-iggy-dedup-source",
+  "status": "source_complete_runtime_pending",
+  "scope": "external_real_iggy_message_id_deduplication_behavior",
+  "test_target": "contract_poison_external_iggy_dedup",
+  "source_path": "crates/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
+  "verifier": "scripts/verify/verify-iggy-contract-poison-external-dedup-evidence.mjs",
+  "shared_optional_environment": [
+    "RUSTOK_IGGY_DEDUP_TEST_USERNAME",
+    "RUSTOK_IGGY_DEDUP_TEST_PASSWORD"
+  ],
+  "scenarios": [
+    {
+      "case": "disabled_deduplication_persists_repeated_uuid_twice",
+      "address_env": "RUSTOK_IGGY_DEDUP_DISABLED_ADDRESS",
+      "required_reviewed_server_config": {
+        "system.message_deduplication.enabled": false
+      },
+      "publication_sequence": [
+        "A",
+        "A"
+      ],
+      "expected_partition_message_counts": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "case": "enabled_deduplication_suppresses_immediate_repeated_uuid",
+      "address_env": "RUSTOK_IGGY_DEDUP_ENABLED_ADDRESS",
+      "required_reviewed_server_config": {
+        "system.message_deduplication.enabled": true,
+        "system.message_deduplication.max_entries": "at_least_1",
+        "system.message_deduplication.expiry": "longer_than_scenario_horizon"
+      },
+      "publication_sequence": [
+        "A",
+        "A"
+      ],
+      "expected_partition_message_counts": [
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "bounded_deduplication_capacity_eviction_accepts_old_uuid_again",
+      "address_env": "RUSTOK_IGGY_DEDUP_CAPACITY_ADDRESS",
+      "required_reviewed_server_config": {
+        "system.message_deduplication.enabled": true,
+        "system.message_deduplication.max_entries": 1,
+        "system.message_deduplication.expiry": "longer_than_scenario_horizon"
+      },
+      "publication_sequence": [
+        "A",
+        "A",
+        "B",
+        "A"
+      ],
+      "expected_partition_message_counts": [
+        0,
+        1,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "case": "expired_deduplication_entry_accepts_same_uuid_after_bounded_wait",
+      "address_env": "RUSTOK_IGGY_DEDUP_EXPIRY_ADDRESS",
+      "additional_env": "RUSTOK_IGGY_DEDUP_EXPIRY_WAIT_MS",
+      "required_reviewed_server_config": {
+        "system.message_deduplication.enabled": true,
+        "system.message_deduplication.max_entries": "at_least_1",
+        "system.message_deduplication.expiry": "shorter_than_RUSTOK_IGGY_DEDUP_EXPIRY_WAIT_MS"
+      },
+      "publication_sequence": [
+        "A",
+        "A",
+        "wait",
+        "A"
+      ],
+      "expected_partition_message_counts": [
+        0,
+        1,
+        1,
+        2
+      ]
+    }
+  ],
+  "topology": {
+    "mode": "external",
+    "protocol": "tcp",
+    "unique_stream_per_scenario": true,
+    "domain_partitions": 1,
+    "replication_factor": 1,
+    "observed_topic": "dlq",
+    "observed_partition": 1,
+    "broker_requirement": "four_separately_configured_disposable_or_operator_cleaned_external_iggy_instances"
+  },
+  "production_paths": [
+    "ConsumedContractDecodeFailure::new",
+    "ConsumedContractDecodeFailure::to_dlq_entry",
+    "IggyTransport::new",
+    "IggyTransport::move_to_dlq",
+    "IggyTransport::shutdown"
+  ],
+  "observer_boundary": {
+    "purpose": "read_partition_message_count_only",
+    "allowed_operations": [
+      "connect",
+      "get_dlq_topic",
+      "read_partition_1_messages_count",
+      "shutdown"
+    ],
+    "forbidden_operations": [
+      "publish",
+      "consume_payload",
+      "store_offset",
+      "modify_server_configuration",
+      "delete_stream",
+      "mutate_production_receipt"
+    ]
+  },
+  "forbidden_claims": [
+    "server_configuration_read_back_by_test",
+    "physical_exactly_once_proved",
+    "receipt_and_broker_transaction_proved",
+    "deduplication_window_sufficient_for_production_recovery_proved",
+    "bundled_mode_proved",
+    "tls_or_auth_failure_proved",
+    "multi_replica_proved"
+  ],
+  "execution_status": "not_run"
+}

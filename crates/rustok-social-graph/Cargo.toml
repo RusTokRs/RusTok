@@ -31,4 +31,5 @@ index = ["dep:rustok-index"]
 index-consumer = ["index", "dep:rustok-iggy"]
 
 [dev-dependencies]
+rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 tokio.workspace = true

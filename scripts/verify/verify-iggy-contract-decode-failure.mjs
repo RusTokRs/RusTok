@@ -109,8 +109,9 @@ for (const forbidden of [
 
 for (const marker of [
   "does not invent a tenant or domain event id",
-  "No Social Graph or other runtime worker is wired",
-  "Choose durable connector poison confirmation",
+  "The first approved owner worker is wired",
+  "Choose production confirmation policy",
+  "External raw-poison lifecycle harness",
 ]) {
   requireText("Iggy decode-failure plan", files.plan, marker);
 }
@@ -131,5 +132,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy contract decode-failure verification passed: metadata-before-decode, immutable exact raw bytes and source coordinates, bounded failure codes, stable UUIDv8 connector identity, explicit post-result acknowledgement, compatibility no-ack behavior, and no invented tenant/event identity are locked.",
+  "Iggy contract decode-failure verification passed: metadata-before-decode, immutable exact raw bytes and source coordinates, bounded failure codes, stable UUIDv8 connector identity, explicit post-result acknowledgement, compatibility no-ack behavior, current owner-worker composition, and no invented tenant/event identity are locked.",
 );
