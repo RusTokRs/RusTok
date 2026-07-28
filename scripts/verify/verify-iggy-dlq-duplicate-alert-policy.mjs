@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json";
+const runtimeContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json";
 const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
+const runtimeSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
 const summaryPath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
 const expectedVerifier = "scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs";
@@ -44,7 +47,11 @@ const expectedTests = [
 ];
 
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));
+const runtimeContract = JSON.parse(
+  readFileSync(resolve(repoRoot, runtimeContractPath), "utf8"),
+);
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
+const runtimeSource = readFileSync(resolve(repoRoot, runtimeSourcePath), "utf8");
 const summary = readFileSync(resolve(repoRoot, summaryPath), "utf8");
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
 const failures = [];
@@ -73,7 +80,7 @@ if (
   contract.schema_version !== 1 ||
   contract.module !== "iggy" ||
   contract.packet !== "dlq-duplicate-alert-policy-source" ||
-  contract.status !== "source_complete_runtime_integration_pending" ||
+  contract.status !== "source_complete_runtime_composition_pending_server_integration" ||
   contract.owner !== "rustok-iggy" ||
   contract.source !== sourcePath ||
   contract.summary_source !== summaryPath ||
@@ -146,6 +153,24 @@ for (const [operation, allowed] of Object.entries(contract.policy_boundary ?? {}
 }
 for (const [operation, allowed] of Object.entries(contract.mutation_boundary ?? {})) {
   if (allowed !== false) fail(`DLQ duplicate alert mutation became allowed: ${operation}`);
+}
+
+if (
+  contract.runtime_composition?.status !== "source_complete_server_integration_pending" ||
+  contract.runtime_composition?.contract !== runtimeContractPath ||
+  contract.runtime_composition?.source !== runtimeSourcePath ||
+  contract.runtime_composition?.input !== "DlqDuplicateSummary" ||
+  contract.runtime_composition?.output !== "DlqDuplicateAlertRuntimeSnapshot" ||
+  contract.runtime_composition?.latest_value !== true ||
+  contract.runtime_composition?.single_writer !== true ||
+  contract.runtime_composition?.unavailable_clears_evaluation !== true ||
+  runtimeContract.packet !== "dlq-duplicate-alert-runtime-source" ||
+  runtimeContract.status !== "source_complete_server_integration_pending" ||
+  runtimeContract.source !== runtimeSourcePath ||
+  runtimeContract.policy_source !== sourcePath ||
+  runtimeContract.summary_source !== summaryPath
+) {
+  fail("DLQ duplicate alert runtime composition relationship drift");
 }
 
 const requiredExcludedFields = new Set([
@@ -240,6 +265,7 @@ for (const marker of [
   "pub critical_max_copies_per_message_id:",
   "Serialize",
   "Deserialize",
+  "tokio::sync::watch",
   "IggyClient",
   "IggyTransport",
   "ConsumerPoisonReceipt",
@@ -271,6 +297,17 @@ for (const marker of [
 ]) {
   requireText("count-only DLQ duplicate summary", summary, marker);
 }
+for (const marker of [
+  "pub struct DlqDuplicateAlertRuntimePublisher",
+  "pub struct DlqDuplicateAlertRuntimeSnapshot",
+  "watch::channel(DlqDuplicateAlertRuntimeSnapshot::unavailable(0))",
+  "pub fn publish(\n        &mut self,",
+  "self.policy.evaluate(summary)",
+  "pub fn mark_unavailable(\n        &mut self,",
+  "evaluation: None",
+]) {
+  requireText("DLQ duplicate alert runtime source", runtimeSource, marker);
+}
 
 requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_alert_policy;");
 for (const exportName of expectedExports) {
@@ -278,7 +315,8 @@ for (const exportName of expectedExports) {
 }
 
 const requiredRemainingWork = new Set([
-  "runtime_alert_integration",
+  "server_observer_integration",
+  "telemetry_and_health_projection",
   "alert_delivery_and_suppression_outside_policy",
   "retained_policy_integration_evidence",
   "authorized_destructive_reconciliation_workflow",
@@ -296,5 +334,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate alert policy source verified: explicit monotonic thresholds, clear/notice/warning/critical precedence, conflict-critical manual escalation, count-only boolean projection, stable codes, no production defaults, no broker/receipt access, no notification dispatch, and no destructive action are locked; runtime integration remains pending.",
+  "Iggy DLQ duplicate alert policy source verified: explicit monotonic thresholds, clear/notice/warning/critical precedence, conflict-critical manual escalation, count-only boolean projection, stable codes, no production defaults, no broker/receipt access, no notification dispatch, no destructive action, and the single-writer stale-clearing latest-value runtime composition are locked; server integration remains pending.",
 );

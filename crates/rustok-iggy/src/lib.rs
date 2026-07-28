@@ -63,6 +63,7 @@ pub mod contract_consumer;
 pub mod contract_decode_failure;
 pub mod dlq;
 pub mod dlq_duplicate_alert_policy;
+pub mod dlq_duplicate_alert_runtime;
 #[cfg(feature = "iggy")]
 pub mod dlq_duplicate_external_scan;
 pub mod dlq_duplicate_inspection;
@@ -92,6 +93,10 @@ pub use dlq::{DlqEntry, DlqManager};
 pub use dlq_duplicate_alert_policy::{
     DlqDuplicateAlertEvaluation, DlqDuplicateAlertLevel, DlqDuplicateAlertPolicy,
     DlqDuplicateAlertPolicyError,
+};
+pub use dlq_duplicate_alert_runtime::{
+    DlqDuplicateAlertRuntimeError, DlqDuplicateAlertRuntimePublisher,
+    DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeSubscriber,
 };
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_external_scan::{

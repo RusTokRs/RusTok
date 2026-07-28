@@ -1,6 +1,6 @@
 # Count-only physical DLQ duplicate inspection
 
-Status: **classifier, bounded external-Iggy adapter, runtime harness, retained tooling, and alert policy source-complete; runtime execution and integration pending**.
+Status: **classifier, bounded external-Iggy adapter, runtime harness, retained tooling, alert policy, and latest-value alert runtime source-complete; runtime execution and server integration pending**.
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Physical copies can exceed one when:
 - capacity pressure evicted the ID;
 - a failover or unsupported broker path did not preserve the expected dedup state.
 
-`dlq_duplicate_inspection.rs` provides a transport-neutral, read-only reduction for a bounded set of physical observations. `dlq_duplicate_external_scan.rs` provides the bounded external-Iggy polling adapter. `dlq_duplicate_alert_policy.rs` separately evaluates the count-only summary against explicit operator thresholds.
+`dlq_duplicate_inspection.rs` provides a transport-neutral, read-only reduction for bounded physical observations. `dlq_duplicate_external_scan.rs` provides the bounded external-Iggy adapter. `dlq_duplicate_alert_policy.rs` evaluates the count-only summary against explicit thresholds. `dlq_duplicate_alert_runtime.rs` publishes the latest identifier-free evaluation state for read-only consumers.
 
 ## Input boundary
 
@@ -105,9 +105,9 @@ The classifier and external scanner cannot:
 - mark a receipt published or acknowledged;
 - choose alert thresholds or operator policy.
 
-The separate alert policy accepts explicit caller thresholds, but it cannot scan, send notifications, choose routing/cooldown, persist policy, or perform any mutation.
+The separate alert policy accepts explicit caller thresholds but cannot scan, send notifications, choose routing/cooldown, persist policy, or mutate state. The alert runtime only replaces one in-memory latest-value snapshot and cannot start a worker, register telemetry/health, deliver notifications, or mutate broker/receipt/Profile state.
 
-This separation is deliberate. Observation and evaluation must not accidentally become destructive reconciliation.
+This separation is deliberate. Observation, evaluation, runtime publication, delivery, and reconciliation must remain distinct.
 
 ## Relationship to deterministic raw poison identity
 
@@ -129,13 +129,7 @@ published
 acknowledged
 ```
 
-Neither summary contains identifiers, so they cannot be joined message-by-message. An operator may compare aggregate trends, for example:
-
-- rising `expired_publishing` with rising physical duplicates suggests lease recovery outside the effective dedup window;
-- zero receipt recovery work with growing duplicates suggests historic or downstream DLQ duplication;
-- `conflicting_payload_groups > 0` always requires direct forensic escalation.
-
-These are operator interpretations, not storage-layer decisions.
+Neither summary contains identifiers, so they cannot be joined message by message. Operators may compare aggregate trends, but those interpretations are not storage or Profiles authorization decisions.
 
 ## Bounded external-Iggy adapter
 
@@ -151,7 +145,7 @@ auto_commit = false
 
 One request permits at most 128 partitions, 10,000 messages globally, and batches of 1,000. It validates returned partition, count, monotonic offsets, and header identity before returning only `DlqDuplicateSummary`.
 
-The adapter does not own credentials or connection lifecycle, query topology metadata, join a consumer group, persist progress, or call shutdown. See `dlq-duplicate-external-scan.md` for the complete contract.
+The adapter does not own credentials or connection lifecycle, query topology metadata, join a consumer group, persist progress, or call shutdown.
 
 ## Count-only alert policy
 
@@ -167,19 +161,42 @@ physical duplicate below warning -> Notice
 no duplicate -> Clear
 ```
 
-The evaluation exposes only level and boolean reason flags. It does not expose source counts, raw threshold values, identifiers, or broker coordinates. See `dlq-duplicate-alert-policy.md`.
+The evaluation exposes only level and boolean reason flags. It does not expose source counts, raw threshold values, identifiers, or broker coordinates.
+
+## Latest-value alert runtime
+
+`DlqDuplicateAlertRuntimePublisher` accepts an already-observed `DlqDuplicateSummary` and a prevalidated policy.
+
+```text
+summary -> policy evaluate -> latest runtime snapshot -> read-only subscribers
+```
+
+The publisher is single-writer. The initial snapshot is unavailable at generation `0` with no evaluation. Every successful or unavailable transition increments generation through checked arithmetic.
+
+`mark_unavailable()` clears the previous evaluation, preventing a stale `Warning` or `Critical` value from appearing current after observer failure or shutdown.
+
+The snapshot exposes only:
+
+```text
+generation
+available
+evaluation
+```
+
+The runtime is a latest-value channel, not an event log. It does not promise delivery of every intermediate generation and adds no serialization or persistence.
 
 ## Safe operational sequence
 
 1. select an external service, stream, explicit partition allowlist, offset, and message cap;
 2. connect and authenticate an `IggyClient` outside the scanner;
-3. call the bounded scanner using explicit-offset polling with `auto_commit=false`;
-4. pass the count-only summary to an explicitly configured alert policy when evaluation is required;
-5. publish only the identifier-free summary/evaluation through a separately owned delivery layer;
-6. close the client through the caller-owned lifecycle;
-7. treat the result as a bounded window, not automatically as complete history.
+3. call the bounded scanner with explicit-offset polling and `auto_commit=false`;
+4. pass the count-only summary to an explicitly configured alert policy;
+5. publish the evaluation through the single-writer runtime;
+6. expose only read-only runtime subscribers to separately reviewed telemetry/health adapters;
+7. close the client through the caller-owned lifecycle;
+8. treat the result as a bounded window, not automatically as complete history.
 
-Any destructive action must be a separate, explicitly authorized workflow with its own preview, selection, audit, and retained evidence.
+Notification delivery, cooldown/suppression, and destructive actions require separate owner contracts.
 
 ## Runtime and retained evidence status
 
@@ -187,7 +204,7 @@ The opt-in external harness is source-complete. It uses production `move_to_dlq`
 
 The clean-commit retained contract, runner, verifier, reviewed dedup-disabled configuration boundary, source hashes, exact-case execution, and privacy-safe packet projection are also source-complete.
 
-The canonical execution JSON remains absent until a maintainer runs the reviewed external-Iggy scenario successfully.
+The canonical execution JSON remains absent until a maintainer runs the reviewed external-Iggy scenario successfully. Server observer and telemetry/health integration for the alert runtime remain pending.
 
 ## Source tests and guards
 
@@ -199,15 +216,17 @@ node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
 cargo test -p rustok-iggy dlq_duplicate -- --nocapture
 ```
 
-No tests, Cargo commands, formatters, verifiers, external-Iggy scans, alert dispatch, or retained capture were run while defining these source slices.
+No tests, Cargo commands, formatters, verifiers, external-Iggy scans, server observers, telemetry registration, alert dispatch, or retained capture were run while defining these source slices.
 
 ## Remaining work
 
 1. execute and retain the reviewed external-Iggy duplicate scan packet;
-2. integrate the pure alert policy into an explicitly owned runtime observer;
-3. define alert routing, cooldown, and suppression outside the classifier and policy;
-4. design acknowledgement/delete/replay as a separate authorized operation;
-5. correlate aggregate receipt and duplicate health without exporting message identities.
+2. integrate an explicitly owned server alert observer;
+3. define identifier-free telemetry and health projection;
+4. define alert routing, cooldown, and suppression outside the classifier/policy/runtime;
+5. design acknowledgement/delete/replay as a separate authorized operation;
+6. correlate aggregate receipt and duplicate health without exporting message identities.

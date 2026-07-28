@@ -1,6 +1,6 @@
 # Count-only physical DLQ duplicate alert policy
 
-Status: **source complete; runtime integration and retained policy evidence pending**.
+Status: **policy and latest-value runtime composition source-complete; server integration and retained evidence pending**.
 
 ## Purpose
 
@@ -154,42 +154,61 @@ Those concerns require separate owner contracts and operational review.
 
 `IggyDlqDuplicateScanner` returns `DlqDuplicateSummary`. A caller may pass that summary to this policy, but the scanner does not own thresholds and the policy does not own the scanner.
 
-This separation keeps:
+## Latest-value runtime composition
+
+`DlqDuplicateAlertRuntimePublisher` now provides the next transport-neutral composition boundary:
 
 ```text
-observation -> count-only summary -> policy evaluation -> external delivery
+DlqDuplicateSummary
+  -> DlqDuplicateAlertPolicy::evaluate
+  -> DlqDuplicateAlertRuntimeSnapshot
+  -> read-only subscribers
 ```
 
-as four distinct boundaries.
+The runtime is defined in `dlq_duplicate_alert_runtime.rs` and documented in `dlq-duplicate-alert-runtime.md`.
+
+It is deliberately separate from the pure policy:
+
+- one single-writer publisher owns generation and the validated policy;
+- the initial snapshot is unavailable with no evaluation;
+- successful publication evaluates a summary and replaces the latest value;
+- unavailable publication clears the prior evaluation;
+- subscribers can only read or await changes;
+- no server worker, metric, health check, notification route, or persistence is selected.
+
+The watch channel is latest-value state, not an event log. Slow subscribers are not promised every intermediate generation.
 
 ## Relationship to Profiles
 
-No alert level, threshold flag, duplicate count, identity-conflict signal, scan result, or retained evidence may authorize profile visibility, follower access, block/mute behavior, or presentation.
+No alert level, threshold flag, runtime availability, generation, duplicate count, identity-conflict signal, scan result, or retained evidence may authorize profile visibility, follower access, block/mute behavior, or presentation.
 
-Profiles continues to consume authoritative owner-port results. This policy is operational observability only.
+Profiles continues to consume authoritative owner-port results. This policy and runtime composition are operational observability only.
 
 ## Source verification
 
-Machine contract:
+Machine contracts:
 
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
 ```
 
-Static verifier:
+Static verifiers:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
 ```
 
-Focused tests define invalid configuration, clear/notice behavior, warning dimensions, critical numeric precedence, and conflict-critical manual escalation.
+Focused policy tests define invalid configuration, clear/notice behavior, warning dimensions, critical numeric precedence, and conflict-critical manual escalation. Runtime tests define initial unavailability, latest-value publication, stale-evaluation clearing, independent subscribers, and bounded publisher closure.
 
-No tests, Cargo commands, formatters, source verifiers, external Iggy connections, or retained capture were run while authoring this slice.
+No tests, Cargo commands, formatters, source verifiers, external Iggy connections, server observers, telemetry registration, alert delivery, or retained capture were run while authoring these slices.
 
 ## Remaining work
 
-1. integrate the pure policy into an explicitly owned runtime observer;
-2. define alert delivery, cooldown, and suppression outside this module;
-3. retain privacy-safe runtime policy evidence;
-4. define destructive reconciliation as a separate authorized workflow;
-5. compare aggregate receipt and duplicate trends without exporting identifiers.
+1. integrate an explicitly owned server observer;
+2. project the runtime snapshot into reviewed telemetry and health contracts;
+3. define alert delivery, cooldown, and suppression outside the policy/runtime;
+4. retain privacy-safe policy/runtime integration evidence;
+5. define destructive reconciliation as a separate authorized workflow;
+6. compare aggregate receipt and duplicate trends without exporting identifiers.

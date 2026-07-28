@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "iggy",
   "packet": "dlq-duplicate-alert-policy-source",
-  "status": "source_complete_runtime_integration_pending",
+  "status": "source_complete_runtime_composition_pending_server_integration",
   "owner": "rustok-iggy",
   "source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
   "summary_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
@@ -102,6 +102,16 @@
     "claim_or_mark_receipt": false,
     "change_broker_configuration": false
   },
+  "runtime_composition": {
+    "status": "source_complete_server_integration_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json",
+    "source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+    "input": "DlqDuplicateSummary",
+    "output": "DlqDuplicateAlertRuntimeSnapshot",
+    "latest_value": true,
+    "single_writer": true,
+    "unavailable_clears_evaluation": true
+  },
   "required_source_tests": [
     "invalid_threshold_ordering_fails_closed",
     "clear_and_notice_remain_below_operator_thresholds",
@@ -110,7 +120,8 @@
     "identity_conflict_is_always_critical_and_manual"
   ],
   "remaining_work": [
-    "runtime_alert_integration",
+    "server_observer_integration",
+    "telemetry_and_health_projection",
     "alert_delivery_and_suppression_outside_policy",
     "retained_policy_integration_evidence",
     "authorized_destructive_reconciliation_workflow",
