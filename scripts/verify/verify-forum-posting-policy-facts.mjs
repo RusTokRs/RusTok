@@ -157,7 +157,7 @@ for (const marker of [
   "retryable: false",
   "capability_error(&error.kind)",
   "unavailable_from_error",
-  "response.validate_for_request(&owner_request)",
+  ".validate_for_request(&owner_request)",
   "ForumPostingPolicyEvaluationInput",
   ".normalize()",
   "pub struct ForumPostingTrustFactPort",
@@ -286,6 +286,8 @@ if (
   upstream.schema_version !== 1 ||
   upstream.task !== "FORUM-26D" ||
   upstream.upstream_task !== "FORUM-26C" ||
+  upstream.downstream_fact_composition_task !== "FORUM-26E" ||
+  upstream.downstream_contract !== contractPath ||
   upstream.composition?.pure_evaluator !== true ||
   upstream.composition?.owner_fact_ports_added !== false ||
   upstream.composition?.forum_user_stats_read !== false
