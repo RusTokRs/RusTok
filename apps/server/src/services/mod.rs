@@ -27,6 +27,8 @@ pub mod event_bus;
 pub mod event_delivery_control_adapter;
 pub mod event_delivery_settings_service;
 #[cfg(feature = "mod-forum")]
+pub mod forum_audience_facts;
+#[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
 pub mod forum_audience_group_facts;
 #[cfg(feature = "mod-forum")]
 pub mod forum_notification_recipient_context;
