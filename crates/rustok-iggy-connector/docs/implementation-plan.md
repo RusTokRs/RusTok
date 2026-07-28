@@ -28,7 +28,7 @@ Receipt states are `reserved`, leased `publishing`, terminal `published`, and
 post-source-commit `acknowledged`. The store performs no broker publication, DLQ routing,
 source acknowledgement, authorization, or policy selection.
 
-`ConsumerPoisonReceiptInspector` now provides one read-only aggregate snapshot for a
+`ConsumerPoisonReceiptInspector` provides one read-only aggregate snapshot for a
 validated consumer group. It exposes only total, reserved, publishing, expired-
 publishing, published, and acknowledged counts. Unknown/corrupt states fail closed when
 the known-state sum differs from total, and an expired-publishing count cannot exceed
@@ -36,13 +36,18 @@ publishing. The inspector never returns delivery identifiers, source coordinates
 payloads, classifications, publisher identities, or timestamps and performs no claim,
 repair, retention, deletion, publication, or acknowledgement action.
 
-The first approved consumer is now wired at the owner/server layer. The Social Graph
-Index worker constructs `ConsumerPoisonIdentity`, recognizes an existing receipt before
-applying current DLQ policy, reserves/claims new work, publishes exact bytes through
-`rustok-iggy`, persists `published`, commits the source cursor, and then records
-`acknowledged` as best-effort bookkeeping. This composition remains outside the
-connector store. Existing durable work continues recovery if new DLQ decisions are
-later disabled.
+The Social Graph Index owner/server path now composes both durable recovery and
+read-only observation. The worker constructs `ConsumerPoisonIdentity`, recognizes an
+existing receipt before applying current DLQ policy, reserves/claims new work, publishes
+exact bytes through `rustok-iggy`, persists `published`, commits the source cursor, and
+then records `acknowledged` as best-effort bookkeeping. A separate observer polls only
+the inspector aggregate and exports bounded Prometheus counts. Observer failure clears
+stale metrics and never stops projection.
+
+The explicit platform append-only migration tail now includes both
+`m20260727_000004_create_index_dlq_receipts` and
+`m20260728_000001_create_consumer_poison_receipts`, preserving the previously published
+migration prefix.
 
 ## FFA/FBA boundary
 
@@ -72,8 +77,10 @@ later disabled.
 - Aggregate inspection is consumer-group scoped, count-only, and read-only. Alert
   thresholds, reclaim decisions, repair, and retention remain operator policy outside
   this crate.
+- Telemetry consumes aggregate values only. It cannot call receipt transition methods or
+  derive labels from delivery-level facts.
 - Profiles and Social Graph must never authorize from this receipt, its aggregate
-  inspection, or any broker state.
+  inspection, metrics, or any broker state.
 - The server enables feature `migrations` explicitly when it composes the neutral store;
   runtime availability does not rely on transitive feature unification.
 - Existing source guard: `node scripts/verify/verify-iggy-connector-source.mjs`.
@@ -81,6 +88,8 @@ later disabled.
   `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`.
 - Aggregate inspection guard:
   `node scripts/verify/verify-iggy-consumer-poison-inspection.mjs`.
+- Owner observer/metrics guard:
+  `node scripts/verify/verify-social-graph-index-poison-observer.mjs`.
 
 ## Delivered results
 
@@ -98,29 +107,30 @@ later disabled.
 5. **Read-only operational inspection.** One bounded consumer-group query reports
    known-state and expired-lease counts, rejects corrupt aggregate state, and exposes no
    delivery-level facts or mutation side effects.
+6. **Append-only release order.** Both receipt migrations extend the explicit platform
+   tail without rewriting the previously published prefix.
+7. **Count-only owner observability.** A separate server observer exports fixed receipt
+   states, snapshot availability, and snapshot time; unavailable inspection clears stale
+   gauges and leaves recovery behavior unchanged.
 
 ## Next results
 
-1. **Reconcile the append-only migration tail.** Add the already-present Social Graph
-   Index DLQ migration and this connector poison migration to the explicit platform
-   release-order tail before migration compatibility validation. Do not rewrite the
-   previously published prefix; reconcile current `main` and refresh `Cargo.lock`.
-2. **Verify real Iggy SDK receive and commit.** Prove validated and malformed delivery,
+1. **Verify real Iggy SDK receive and commit.** Prove validated and malformed delivery,
    exact publish-before-ack ordering, acknowledgement-only redelivery, reconnect, exact
    commit, publication failure, restart, and multi-replica behavior in bundled and
    external environments.
-3. **Verify PostgreSQL receipt concurrency and inspection.** Prove claim ownership,
+2. **Verify PostgreSQL receipt concurrency and inspection.** Prove claim ownership,
    lease expiry and reclaim, UUID/source collisions, first-diagnostic retention,
-   rollback, terminal recognition, aggregate consistency, and read-only inspection under
-   multiple workers.
-4. **Harden lifecycle failure behavior.** Define reconnect/backoff, authentication, TLS,
+   rollback, terminal recognition, aggregate consistency, read-only inspection, and
+   observer behavior under multiple workers.
+3. **Harden lifecycle failure behavior.** Define reconnect/backoff, authentication, TLS,
    existing-topology validation, batching, and shutdown semantics without simulated
    fallback.
-5. **Publish operational guarantees.** Compose count-only health/metrics and an operator
-   runbook for disconnected/stalled subscribers, poison receipt claims, publication
-   ambiguity, and recovery. Keep alert thresholds, reclaim, repair, and retention as
-   explicit reviewed policy rather than storage side effects.
-6. **Complete packaging evidence.** Prove bundled distributions install the pinned
+4. **Retain operational evidence.** Exercise count-only metrics, unavailable snapshot
+   clearing, expired-lease diagnosis, publication ambiguity, and acknowledgement-only
+   recovery. Keep alert thresholds, reclaim, repair, and retention as explicit reviewed
+   policy rather than storage side effects.
+5. **Complete packaging evidence.** Prove bundled distributions install the pinned
    server artifact and external-only distributions omit it.
 
 ## Verification
@@ -130,20 +140,22 @@ later disabled.
 - `node scripts/verify/verify-iggy-consumer-poison-inspection.mjs`
 - `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
+- `node scripts/verify/verify-social-graph-index-poison-observer.mjs`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
 - Bundled/external Iggy integration evidence for receive, scoped ack, reconnect,
-  TLS/auth failure, poison publication/recovery, inspection, and shutdown.
+  TLS/auth failure, poison publication/recovery, inspection, metrics, and shutdown.
 
 Tests, Cargo commands, formatting, verifiers, database scenarios, and real-broker
-scenarios remain maintainer-run and were not executed in this slice. `Cargo.lock` must
-be refreshed after reconciliation with current `main`.
+scenarios remain maintainer-run and were not executed in this slice.
 
 ## References
 
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
 - [Iggy transport plan](../../rustok-iggy/docs/implementation-plan.md)
+- [Poison observer runbook](../../rustok-social-graph/docs/index-poison-receipt-observer.md)
 - [Iggy integration reference](../../../docs/references/iggy/README.md)
