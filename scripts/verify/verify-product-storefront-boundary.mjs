@@ -39,12 +39,15 @@ function assertNotContains(text, pattern, description) {
 }
 
 const libPath = "crates/rustok-product/storefront/src/lib.rs";
+const catalogControlsPath = "crates/rustok-product/storefront/src/catalog_controls.rs";
 const corePath = "crates/rustok-product/storefront/src/core.rs";
 const uiPath = "crates/rustok-product/storefront/src/ui/leptos.rs";
 const transportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
+const catalogListNativePath = "crates/rustok-product/storefront/src/transport/catalog_list_native.rs";
 const legacyApiPath = "crates/rustok-product/storefront/src/api.rs";
 const graphqlAdapterPath = "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
 const nativeServerAdapterPath = "crates/rustok-product/storefront/src/transport/native_server_adapter.rs";
+const catalogQueriesPath = "crates/rustok-product/src/services/catalog/queries.rs";
 const cargoPath = "crates/rustok-product/storefront/Cargo.toml";
 const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
@@ -52,11 +55,14 @@ const packagePath = "package.json";
 
 for (const filePath of [
   libPath,
+  catalogControlsPath,
   corePath,
   uiPath,
   transportPath,
+  catalogListNativePath,
   graphqlAdapterPath,
   nativeServerAdapterPath,
+  catalogQueriesPath,
   cargoPath,
   implementationPlanPath,
   registryPath,
@@ -69,21 +75,30 @@ if (existsSync(repoPath(legacyApiPath))) {
 }
 
 const lib = readRepo(libPath);
+const catalogControls = readRepo(catalogControlsPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
+const catalogListNative = readRepo(catalogListNativePath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const nativeServerAdapter = readRepo(nativeServerAdapterPath);
+const catalogQueries = readRepo(catalogQueriesPath);
 const cargo = readRepo(cargoPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
 
+assertContains(lib, "mod catalog_controls;", `${libPath}: crate root must wire typed catalog controls`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(lib, "pub use ui::leptos::ProductView;", `${libPath}: crate root must re-export ProductView`);
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
+
+assertContains(catalogControls, "pub struct CatalogListInput", `${catalogControlsPath}: storefront controls must use a typed catalog input`);
+assertContains(catalogControls, "pub search: Option<String>", `${catalogControlsPath}: typed catalog input must carry optional search`);
+assertContains(catalogControls, "normalize_optional_ui_text", `${catalogControlsPath}: catalog search must normalize optional UI text`);
+assertContains(catalogControls, "build_catalog_search_labels", `${catalogControlsPath}: catalog search copy must stay outside the Leptos adapter`);
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "Resource<", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
@@ -108,6 +123,10 @@ assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import 
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
 assertContains(ui, "build_product_catalog_rail_labels", `${uiPath}: UI must consume core-owned catalog rail labels`);
 assertContains(ui, "build_catalog_rail_view_model", `${uiPath}: UI must consume core-owned catalog rail view-model`);
+assertContains(ui, "build_catalog_list_input", `${uiPath}: UI must build typed catalog control state`);
+assertContains(ui, 'read_route_query_value(&route_context, "search")', `${uiPath}: UI must read the snake_case search query key`);
+assertContains(ui, 'name="search"', `${uiPath}: UI must expose the search query control`);
+assertContains(ui, "transport::fetch_products(request, controls)", `${uiPath}: UI must pass typed controls to the transport facade`);
 for (const marker of [
   "crate::i18n::t",
   "ProductCatalogRailLabels {",
@@ -132,10 +151,20 @@ for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "Produ
 }
 
 assertContains(transport, "fetch_products", `${transportPath}: transport facade must expose fetch_products`);
+assertContains(transport, "CatalogListInput", `${transportPath}: transport facade must accept typed catalog controls`);
+assertContains(transport, "mod catalog_list_native;", `${transportPath}: transport facade must wire the owner-native catalog list path`);
+assertContains(transport, "catalog_list_native::fetch_products", `${transportPath}: selected native path must execute the owner-native catalog list`);
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
 assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must wire native server adapter`);
 assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not import legacy api module`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: GraphQL adapter must expose GraphQL request path`);
+assertContains(graphqlAdapter, "search: controls.search", `${graphqlAdapterPath}: GraphQL storefront list must carry typed search state`);
+assertContains(catalogListNative, 'endpoint = "product/storefront/catalog-list"', `${catalogListNativePath}: native catalog list must use an owner endpoint`);
+assertContains(catalogListNative, "StorefrontProductListQuery { search }", `${catalogListNativePath}: native catalog list must map typed search into the owner query`);
+assertContains(catalogListNative, ".list_published_products_with_query(", `${catalogListNativePath}: native catalog list must execute the owner service query`);
+assertNotContains(catalogListNative, "GraphqlRequest", `${catalogListNativePath}: native catalog list must not execute GraphQL`);
+assertContains(catalogQueries, "pub async fn list_published_products_with_query", `${catalogQueriesPath}: Product owner service must expose the typed list query`);
+assertContains(catalogQueries, "product_title_search_condition", `${catalogQueriesPath}: Product owner service must execute title search server-side`);
 assertContains(nativeServerAdapter, "#[server", `${nativeServerAdapterPath}: native server adapter must keep native server-function endpoint`);
 assertNotContains(nativeServerAdapter, "GraphqlRequest", `${nativeServerAdapterPath}: native adapter must not execute the parallel GraphQL contract`);
 assertContains(nativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${nativeServerAdapterPath}: native server adapter must use host runtime context`);

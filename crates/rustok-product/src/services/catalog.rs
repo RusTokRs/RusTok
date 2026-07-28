@@ -5,7 +5,10 @@ mod queries;
 mod tags;
 pub mod types;
 
-pub use types::{ProductTagState, StorefrontProductList, StorefrontProductListItem};
+pub use types::{
+    ProductTagState, StorefrontProductList, StorefrontProductListItem,
+    StorefrontProductListQuery,
+};
 
 use chrono::Utc;
 use sea_orm::{

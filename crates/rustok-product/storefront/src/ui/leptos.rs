@@ -1,3 +1,4 @@
+use crate::catalog_controls::{build_catalog_list_input, build_catalog_search_labels};
 use crate::core::{
     build_catalog_rail_view_model, build_fetch_request, build_product_catalog_rail_labels,
     build_route_input, build_selected_product_empty_view_model, build_selected_product_view_model,
@@ -25,12 +26,23 @@ pub fn ProductView() -> impl IntoView {
         read_route_query_value(&route_context, "channel_slug"),
         read_route_query_value(&route_context, "quantity"),
     );
+    let catalog_input = build_catalog_list_input(read_route_query_value(&route_context, "search"));
+    let search_labels = build_catalog_search_labels(route_input.locale.as_deref());
+    let current_search = catalog_input.search.clone().unwrap_or_default();
+    let currency = route_input.currency_code.clone();
+    let region_id = route_input.region_id.clone();
+    let price_list_id = route_input.price_list_id.clone();
+    let channel_id = route_input.channel_id.clone();
+    let channel_slug = route_input.channel_slug.clone();
+    let quantity = route_input.quantity.map(|value| value.to_string());
     let shell = build_shell_view_model(route_input.locale.as_deref());
     let fetch_request = build_fetch_request(&route_input);
 
     let resource = Resource::new_blocking(
-        move || fetch_request.clone(),
-        move |request| async move { transport::fetch_products(request).await },
+        move || (fetch_request.clone(), catalog_input.clone()),
+        move |(request, controls)| async move {
+            transport::fetch_products(request, controls).await
+        },
     );
 
     view! {
@@ -40,6 +52,33 @@ pub fn ProductView() -> impl IntoView {
                 <h2 class="text-3xl font-semibold text-card-foreground">{shell.title}</h2>
                 <p class="text-sm text-muted-foreground">{shell.subtitle}</p>
             </div>
+            <form method="get" class="mt-6 flex flex-col gap-3 rounded-2xl border border-border bg-background p-4 sm:flex-row sm:items-end">
+                <div class="min-w-0 flex-1 space-y-2">
+                    <label for="product-catalog-search" class="text-sm font-medium text-foreground">
+                        {search_labels.label}
+                    </label>
+                    <input
+                        id="product-catalog-search"
+                        name="search"
+                        type="search"
+                        value=current_search
+                        placeholder=search_labels.placeholder
+                        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    />
+                </div>
+                {currency.map(|value| view! { <input type="hidden" name="currency" value=value /> })}
+                {region_id.map(|value| view! { <input type="hidden" name="region_id" value=value /> })}
+                {price_list_id.map(|value| view! { <input type="hidden" name="price_list_id" value=value /> })}
+                {channel_id.map(|value| view! { <input type="hidden" name="channel_id" value=value /> })}
+                {channel_slug.map(|value| view! { <input type="hidden" name="channel_slug" value=value /> })}
+                {quantity.map(|value| view! { <input type="hidden" name="quantity" value=value /> })}
+                <button
+                    type="submit"
+                    class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                >
+                    {search_labels.submit}
+                </button>
+            </form>
             <div class="mt-8">
                 <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-48 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-3"><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
                     {move || {
