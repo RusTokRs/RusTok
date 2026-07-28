@@ -28,22 +28,23 @@ replace or duplicate its backlog.
 ## Compatibility
 
 Categories without a configured reply-create layer retain historical behavior.
-No migration, DTO, GraphQL, REST, OpenAPI, or dependency change is introduced in
-this slice. GraphQL and REST still call the context-free methods; policies that
-need trust, Channel, or Groups facts remain fail closed until the separate
-transport-composition slice supplies exact authenticated context.
+No migration, DTO, GraphQL, REST, OpenAPI, or dependency change was introduced
+in this owner slice. At the original FORUM-20AV boundary GraphQL and REST still
+called context-free methods; `FORUM-20AW` subsequently composed exact
+authenticated transport context without changing DTOs.
 
-Forum trust remains unavailable. `forum_user_stats` activity counters are not
-an authoritative trust model and are not used by this boundary.
+Authoritative Forum trust is now published by the Forum owner and host-composed
+through `ForumUserTrustAudienceFactsPort`. This slice did not create that trust
+state and never derives trust from `forum_user_stats` activity counters.
+
+## Canonical plan synchronization
+
+Resolved by `FORUM-20BA`. The canonical ledger records this owner enforcement,
+its `FORUM-20AW` transport composition, topic-local narrowing, moderation policy,
+and existing moderation transport composition through `FORUM-20AZ`.
 
 ## Verification status
 
 The implementation agent did not run tests, Cargo commands, formatting,
 verifiers, workflow checks, or CI. Maintainer commands are recorded in
 `forum-reply-create-audience-enforcement.json`.
-
-The canonical plan was not rewritten in this slice because the available GitHub
-connector supports only complete-file replacement and the plan exceeds two
-thousand lines; risking unrelated roadmap loss was rejected. A later safe
-repository-local edit should advance the ledger from `FORUM-20AU` to
-`FORUM-20AV` and record transport composition as the next bounded slice.
