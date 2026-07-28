@@ -155,6 +155,12 @@ pub async fn bootstrap_application_router(
     )
     .await?;
 
+    #[cfg(feature = "mod-social_graph")]
+    crate::services::social_graph_index_poison_observer::start_social_graph_index_poison_observer_if_enabled(
+        &runtime_ctx,
+    )
+    .await?;
+
     connect_runtime_workers_with_runtime(runtime_ctx.clone()).await?;
     tracing::info!("RusTok runtime workers connected");
 
