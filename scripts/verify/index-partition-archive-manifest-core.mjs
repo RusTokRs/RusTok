@@ -1,4 +1,11 @@
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+} from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -13,6 +20,12 @@ export const ARCHIVE_VERIFICATION_CONTRACT = 'index_partition_retained_archive_v
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const identityOf = (stat) => `${stat.dev}:${stat.ino}`;
+const fingerprintOf = (stat) => [
+  identityOf(stat),
+  stat.size,
+  stat.mtimeNs,
+  stat.ctimeNs,
+].join(':');
 
 const requireObject = (value, label) => {
   if (!isObject(value)) throw new Error(`${label} must be an object`);
@@ -49,11 +62,54 @@ const parseJsonBytes = (bytes, label) => {
   }
 };
 
+const ensureInsideRoot = (root, filename, label) => {
+  const relative = path.relative(root, filename);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`${label} must stay inside the retained bundle root`);
+  }
+};
+
 const ensureOutsideRoot = (root, filename, label) => {
   const relative = path.relative(root, filename);
   const inside = relative === ''
     || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
   if (inside) throw new Error(`${label} must stay outside the retained bundle root`);
+};
+
+const readStableRegularFile = (filename, label) => {
+  const pathStatBefore = lstatSync(filename, { bigint: true });
+  if (pathStatBefore.isSymbolicLink() || !pathStatBefore.isFile()) {
+    throw new Error(`${label} must be a regular non-symlink file`);
+  }
+
+  const descriptor = openSync(filename, 'r');
+  try {
+    const descriptorStatBefore = fstatSync(descriptor, { bigint: true });
+    if (!descriptorStatBefore.isFile()
+        || identityOf(descriptorStatBefore) !== identityOf(pathStatBefore)) {
+      throw new Error(`${label} changed before it could be read`);
+    }
+
+    const bytes = readFileSync(descriptor);
+    const descriptorStatAfter = fstatSync(descriptor, { bigint: true });
+    const pathStatAfter = lstatSync(filename, { bigint: true });
+    if (pathStatAfter.isSymbolicLink()
+        || !pathStatAfter.isFile()
+        || identityOf(pathStatAfter) !== identityOf(descriptorStatAfter)
+        || fingerprintOf(descriptorStatBefore) !== fingerprintOf(descriptorStatAfter)
+        || fingerprintOf(descriptorStatAfter) !== fingerprintOf(pathStatAfter)) {
+      throw new Error(`${label} changed while it was being read`);
+    }
+    if (bytes.length === 0) throw new Error(`${label} must not be empty`);
+
+    return {
+      bytes,
+      identity: identityOf(descriptorStatAfter),
+      canonical: realpathSync.native(filename),
+    };
+  } finally {
+    closeSync(descriptor);
+  }
 };
 
 const normalizeFiles = (files) => {
@@ -74,6 +130,31 @@ const normalizeFiles = (files) => {
     paths.add(retainedPath);
     return { role, path: retainedPath, bytes, sha256 };
   });
+};
+
+const assertRetainedFilesUnchanged = ({
+  files,
+  resolvedRoot,
+  canonicalRoot,
+  manifestIdentity,
+}) => {
+  const retainedIdentities = new Set();
+  for (const file of files) {
+    const filename = path.resolve(resolvedRoot, file.path);
+    ensureInsideRoot(resolvedRoot, filename, `retained bundle file ${file.role}`);
+    const current = readStableRegularFile(filename, `retained bundle file ${file.role}`);
+    ensureInsideRoot(canonicalRoot, current.canonical, `retained bundle file ${file.role}`);
+    if (current.identity === manifestIdentity) {
+      throw new Error('saved archive manifest aliases a retained bundle file');
+    }
+    if (retainedIdentities.has(current.identity)) {
+      throw new Error(`retained bundle file ${file.role} aliases another retained bundle file after inspection`);
+    }
+    retainedIdentities.add(current.identity);
+    if (current.bytes.length !== file.bytes || sha256Hex(current.bytes) !== file.sha256) {
+      throw new Error(`retained bundle file ${file.role} changed after inspection`);
+    }
+  }
 };
 
 export const buildRetainedPartitionArchiveManifest = (inspection) => {
@@ -119,27 +200,12 @@ export const verifySavedRetainedPartitionArchiveManifest = ({
   const resolvedManifestPath = path.resolve(requireNonEmptyString(manifestPath, 'manifestPath'));
   ensureOutsideRoot(resolvedRoot, resolvedManifestPath, 'saved archive manifest');
 
-  const manifestStat = lstatSync(resolvedManifestPath);
-  if (manifestStat.isSymbolicLink() || !manifestStat.isFile()) {
-    throw new Error('saved archive manifest must be a regular non-symlink file');
-  }
-  const manifestBytes = readFileSync(resolvedManifestPath);
-  if (manifestBytes.length === 0) throw new Error('saved archive manifest must not be empty');
-
+  const manifestFile = readStableRegularFile(resolvedManifestPath, 'saved archive manifest');
   const canonicalRoot = realpathSync.native(resolvedRoot);
-  const canonicalManifestPath = realpathSync.native(resolvedManifestPath);
-  ensureOutsideRoot(canonicalRoot, canonicalManifestPath, 'saved archive manifest');
-
-  const manifestIdentity = identityOf(manifestStat);
-  for (const file of inspection.files) {
-    const retainedStat = lstatSync(path.resolve(resolvedRoot, file.path));
-    if (identityOf(retainedStat) === manifestIdentity) {
-      throw new Error('saved archive manifest aliases a retained bundle file');
-    }
-  }
+  ensureOutsideRoot(canonicalRoot, manifestFile.canonical, 'saved archive manifest');
 
   const saved = requireObject(
-    parseJsonBytes(manifestBytes, 'saved archive manifest'),
+    parseJsonBytes(manifestFile.bytes, 'saved archive manifest'),
     'saved archive manifest',
   );
   const savedDigest = requireDigest(saved.manifest_digest, 'saved archive manifest.manifest_digest');
@@ -153,15 +219,23 @@ export const verifySavedRetainedPartitionArchiveManifest = ({
     throw new Error('saved archive manifest does not match recalculated retained bundle manifest');
   }
 
+  assertRetainedFilesUnchanged({
+    files: expected.files,
+    resolvedRoot,
+    canonicalRoot,
+    manifestIdentity: manifestFile.identity,
+  });
+
   return {
     contract: ARCHIVE_VERIFICATION_CONTRACT,
     verified: true,
+    retained_files_rechecked: true,
     source_manifest_contract: ARCHIVE_MANIFEST_CONTRACT,
     source_digest_contract: ARCHIVE_MANIFEST_DIGEST_CONTRACT,
     evidence_id: expected.evidence_id,
     packet_digest: expected.packet_digest,
     manifest_digest: expected.manifest_digest,
-    saved_manifest_sha256: sha256Hex(manifestBytes),
+    saved_manifest_sha256: sha256Hex(manifestFile.bytes),
     file_count: expected.file_count,
     total_bytes: expected.total_bytes,
     production_lifecycle_authorized: false,

@@ -89,9 +89,11 @@ node scripts/verify/index-storage-tooling.mjs partition-archive-verify \
   --manifest evidence/index-partition/retained-run.archive-manifest.json
 ```
 
-`partition-archive-verify` requires the saved manifest to be a non-empty regular non-symlink file outside the immutable bundle. It rejects lexical or canonical paths inside the bundle and rejects a hard-link alias to any of the nine retained files. It verifies the saved `manifest_digest`, reruns the full retained-bundle inspection, rebuilds the admitted archive manifest, and canonical-compares the complete saved manifest to the recalculated result.
+`partition-archive-verify` requires the saved manifest to be a non-empty regular non-symlink file outside the immutable bundle. It rejects lexical or canonical paths inside the bundle and rejects a hard-link alias to any of the nine retained files. It reads the saved manifest through one stable file descriptor, verifies the saved `manifest_digest`, reruns the full retained-bundle inspection, rebuilds the admitted archive manifest, and canonical-compares the complete saved manifest to the recalculated result.
 
-A successful verification prints a deterministic `index_partition_retained_archive_verification_v1` receipt with the evidence ID, packet and manifest digests, exact-byte SHA-256 of the saved manifest file, retained file count, total retained bytes, and `production_lifecycle_authorized: false`. The verifier writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. The receipt is derived metadata, not a tenth authoritative evidence input and not production authorization.
+Before publishing success, the verifier rereads all nine retained files through stable file descriptors and compares their current byte counts and exact-byte SHA-256 digests to the completed inspection. It fails closed on post-inspection exact-byte drift, current retained-file aliasing, or identity/content drift while a file is being read. This closes the gap where a bundle could change between inspection and receipt publication.
+
+A successful verification prints a deterministic `index_partition_retained_archive_verification_v1` receipt with `retained_files_rechecked: true`, the evidence ID, packet and manifest digests, exact-byte SHA-256 of the saved manifest file, retained file count, total retained bytes, and `production_lifecycle_authorized: false`. The verifier writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. The receipt is derived metadata, not a tenth authoritative evidence input and not production authorization.
 
 A failed attempt may leave evidence schemas or raw artifacts for inspection. Do not edit or reuse them. Prepare a fresh manifest run key and a new empty directory.
 
