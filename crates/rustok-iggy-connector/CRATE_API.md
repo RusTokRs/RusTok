@@ -31,6 +31,7 @@
 - Confuses `Bundled` and `External` configs during initialization.
 - Considers the connector as a full EventBus rather than a connection/IO layer.
 - Adds tenant or domain event identity to a receipt for bytes that have not decoded successfully.
+- Rejects an empty payload even though zero bytes are a valid exact broker delivery that can fail decoding.
 - Treats error classification or observed retry count as part of immutable poison identity.
 - Publishes a DLQ entry or acknowledges an offset from `ConsumerPoisonReceiptStore`; the store owns durable result states only.
 - Treats `published` as proof of source acknowledgement or as broker exactly-once.
@@ -39,7 +40,7 @@
 
 ### Input DTOs/Commands
 - Connector DTO changes remain breaking changes and require synchronized transport adapters.
-- `ConsumerPoisonIdentity` requires a non-nil deterministic delivery UUID, bounded consumer group/stream/topic, positive partition, representable offset, and non-empty exact payload. Its fields are private after construction and exposed read-only.
+- `ConsumerPoisonIdentity` requires a non-nil deterministic delivery UUID, bounded consumer group/stream/topic, positive partition, representable offset, and exact payload bytes; an empty payload is valid. Its fields are private after construction and exposed read-only.
 - `reserve_and_claim` requires one stable bounded error code, positive observed delivery-attempt count, non-nil publisher identity, and a whole-second lease between 1 and 86400 seconds.
 
 ### Domain Invariants
@@ -47,7 +48,7 @@
 - `Bundled` is unavailable on Windows because upstream `iggy-server` does not support that operating system; Windows deployments use `External`.
 - Persistent consumer groups require TCP. `External` supports SDK TLS options; `Bundled` keeps broker/client loopback-only and rejects TLS bootstrap.
 - Persisted external credentials are resolver/key references; plaintext passwords are resolved only inside server runtime.
-- Poison receipt source coordinates are unique. Reuse with another deterministic delivery UUID or exact payload fails closed as an identity conflict.
+- Poison receipt source coordinates are unique. Reuse with another deterministic delivery UUID or exact payload fails closed as an identity conflict. The UUID itself is also globally bound to one set of source coordinates and bytes.
 - Stable error code and delivery-attempt count are first-observed diagnostics retained on initial reservation. Later decoder classification or retry-count changes do not redefine the connector delivery identity.
 - Receipt transitions are `reserved -> publishing -> published -> acknowledged`; expired publication leases may be reclaimed.
 - The receipt stores no tenant, decoded event, actor, claims, locale, credential, acknowledgement token, or authorization fact.
