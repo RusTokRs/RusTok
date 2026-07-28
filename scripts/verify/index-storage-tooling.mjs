@@ -79,6 +79,7 @@ const runContract = (args) => {
     'verify-index-partition-maintenance-evidence.mjs',
     'verify-index-partition-cutover-evidence.mjs',
     'verify-index-partition-full-capture.mjs',
+    'verify-index-partition-post-inspection-drift.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-standalone-tools.mjs',
@@ -120,6 +121,7 @@ const runFixtures = (args) => {
     scriptPath('index-partition-evidence-assembly.test.mjs'),
     scriptPath('index-partition-full-capture-plan.test.mjs'),
     scriptPath('index-partition-review.test.mjs'),
+    scriptPath('index-partition-post-inspection-drift.test.mjs'),
   ], 'Index storage fixture suites');
 };
 
