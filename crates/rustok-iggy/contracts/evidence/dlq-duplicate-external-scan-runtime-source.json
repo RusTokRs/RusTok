@@ -124,6 +124,14 @@
       "payload"
     ]
   },
+  "retained_execution": {
+    "status": "source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json",
+    "runner": "scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs",
+    "verifier": "scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs",
+    "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json",
+    "canonical_packet_present": false
+  },
   "source_files": [
     "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
     "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
