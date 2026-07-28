@@ -23,15 +23,15 @@ projections. Fulfillment owner uses `FulfillmentService::list_by_order` and
 `create_fulfillment`; mounted commerce checkout no longer queries the
 `fulfillments` table or constructs `FulfillmentService`.
 
-Complete shipping-option active list, administrative list-all, and lookup now
-have a separate read-only owner boundary, `ShippingOptionReadPort`. The root
-in-process factory owns `FulfillmentService` construction, requires read policy,
-preserves requested and default locale values, and maps owner failures to stable
-`PortError` envelopes. Mounted commerce GraphQL shipping-option validation,
-shipping enrichment, and storefront listing use this port instead of
-constructing `FulfillmentService` directly. The administrative list-all owner
-contract is source-ready for the remaining mounted GraphQL cutover. The
-seller/cart `ShippingSelectionPort` contract is unchanged.
+Complete shipping-option active list and lookup use `ShippingOptionReadPort`,
+while administrative list-all uses the separate `ShippingOptionAdminReadPort`.
+The root in-process factories own `FulfillmentService` construction, require read
+policy, preserve requested and default locale values, and map owner failures to
+stable `PortError` envelopes. Mounted commerce GraphQL shipping-option
+validation, shipping enrichment, and storefront listing use the storefront port
+instead of constructing `FulfillmentService` directly. The administrative
+list-all owner contract is source-ready for the remaining mounted GraphQL
+cutover. The seller/cart `ShippingSelectionPort` contract is unchanged.
 
 Stable fulfillment keys and metadata identity remain owner-local compatibility
 mechanisms. Duplicate keys fail closed. A typed durable checkout fulfillment
@@ -49,8 +49,9 @@ identity and database uniqueness migration remain open.
 - Published checkout execution port: `CheckoutFulfillmentExecutionPort`.
 - Mounted in-process provider: `TypedCheckoutFulfillmentExecutionPort` over the
   existing owner execution adapter.
-- Source-ready internal read boundary: `ShippingOptionReadPort`; this is not a
-  new FBA provider contract and does not change registry status.
+- Source-ready internal read boundaries: `ShippingOptionReadPort` and
+  `ShippingOptionAdminReadPort`; these are not new FBA provider contracts and do
+  not change registry status.
 - Contract and provider evidence:
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-contract-test-static-matrix.json`,
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`,
@@ -62,7 +63,7 @@ identity and database uniqueness migration remain open.
   `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` lock the
   owner-admin/storefront, checkout execution, and typed lifecycle split.
 - `scripts/verify/verify-fulfillment-shipping-option-read-port.mjs` guards the
-  internal shipping-option read boundary and mounted storefront commerce
+  internal shipping-option read boundaries and mounted storefront commerce
   cutover.
 - No status promotion is claimed from source. Compile, upgraded database,
   contention, restart, mounted transport, and remote evidence remain missing.
@@ -86,20 +87,22 @@ identity and database uniqueness migration remain open.
 
 ## Shipping-option read source checklist
 
-- [x] Publish active list, administrative list-all, and lookup operations through
-  `ShippingOptionReadPort`.
+- [x] Publish active list and lookup through `ShippingOptionReadPort`.
+- [x] Publish administrative list-all through the separate
+  `ShippingOptionAdminReadPort`.
 - [x] Keep active storefront listing and complete administrative listing as
-  explicit operations rather than an overloaded request flag.
+  separate traits rather than an overloaded request flag or a growing storefront
+  interface.
 - [x] Preserve requested and tenant-default locale arguments.
 - [x] Require read policy and parse tenant identity from `PortContext`.
 - [x] Map all current `FulfillmentError` variants to stable `PortError` values.
-- [x] Export a canonical root in-process factory.
+- [x] Export canonical root in-process factories.
 - [x] Remove direct `FulfillmentService` construction from mounted commerce
   GraphQL shipping-option validation, enrichment, and storefront listing.
 - [ ] Cut the mounted administrative GraphQL `shipping_options` query over to
   `list_all_shipping_option_projections`.
-- [ ] Inject the read port from the application host rather than constructing the
-  root in-process provider inside the commerce seam.
+- [ ] Inject the read ports from the application host rather than constructing
+  root in-process providers inside the commerce seam.
 - [ ] Execute compile, mounted GraphQL, REST/native parity, deadline, failure,
   and remote-profile evidence.
 
@@ -136,8 +139,8 @@ identity and database uniqueness migration remain open.
    adapter errors while `FulfillmentService` remains the sole lifecycle owner.
 
 5. **Prove and host-compose shipping-option reads.** Cut the mounted
-   administrative list-all query over to the owner port, execute active list,
-   administrative list-all, and lookup through mounted GraphQL consumers,
+   administrative list-all query over to the admin owner port, execute active
+   list, administrative list-all, and lookup through mounted GraphQL consumers,
    compare REST/native behavior, and move provider construction to the
    application host.
    **Depends on:** compiled fulfillment/commerce crates and mounted transport
