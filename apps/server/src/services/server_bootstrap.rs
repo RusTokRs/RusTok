@@ -128,6 +128,11 @@ pub async fn bootstrap_application_router(
         bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
 
+    crate::services::event_dlq_duplicate_alert_observer::start_event_dlq_duplicate_alert_observer(
+        &runtime_ctx,
+    )
+    .await?;
+
     #[cfg(feature = "mod-notifications")]
     crate::services::notification_outbox_intake_worker::start_notification_outbox_intake_if_enabled(
         &runtime_ctx,
