@@ -415,7 +415,6 @@ mod source {
             ListAllShippingOptionProjectionsRequest, ListFulfillmentsInput,
             ListShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest,
             ShippingOptionAdminReadPort, ShippingOptionReadPort, ShippingOptionResponse,
-            in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
         };
         use ::sea_orm::{DatabaseConnection, DbErr};
         use ::uuid::Uuid;
@@ -446,10 +445,15 @@ mod source {
 
         impl FulfillmentService {
             pub fn new(db: DatabaseConnection) -> Self {
+                let shipping_option_runtime =
+                    crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
+                        db.clone(),
+                    );
                 Self {
-                    inner: ::rustok_fulfillment::FulfillmentService::new(db.clone()),
-                    shipping_option_reads: in_process_shipping_option_read_port(db.clone()),
-                    shipping_option_admin_reads: in_process_shipping_option_admin_read_port(db),
+                    inner: ::rustok_fulfillment::FulfillmentService::new(db),
+                    shipping_option_reads: shipping_option_runtime.shipping_option_read_port(),
+                    shipping_option_admin_reads: shipping_option_runtime
+                        .shipping_option_admin_read_port(),
                 }
             }
 

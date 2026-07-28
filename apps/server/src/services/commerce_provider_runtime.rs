@@ -4,12 +4,12 @@ use rustok_api::HostRuntimeContext;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Attach the host-composed commerce provider registries to a capability runtime.
+/// Attach the host-composed commerce provider registries and owner read runtimes to a capability
+/// runtime.
 ///
-/// A registry already installed in `ServerRuntimeContext` is always preserved so
-/// external adapters registered by the host remain visible to every transport.
-/// When no payment registry exists, the process-owned provider runtime composes
-/// the manual baseline and any deployment-configured external adapters once.
+/// Values already installed in `ServerRuntimeContext` are always preserved so external adapters
+/// registered by the host remain visible to every transport. When no provider runtime exists, the
+/// process composes the deterministic built-in baseline once.
 pub fn attach_commerce_provider_registries(
     host: HostRuntimeContext,
     server: &ServerRuntimeContext,
@@ -42,6 +42,21 @@ pub fn attach_commerce_provider_registries(
                 registry
             });
         host.with_shared_value(registry)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-fulfillment"))]
+    let host = {
+        let runtime = server
+            .shared_get::<rustok_commerce::graphql_runtime::CommerceShippingOptionReadRuntime>()
+            .unwrap_or_else(|| {
+                let runtime =
+                    rustok_commerce::graphql_runtime::CommerceShippingOptionReadRuntime::in_process(
+                        server.db_clone(),
+                    );
+                server.shared_insert(runtime.clone());
+                runtime
+            });
+        host.with_shared_value(runtime)
     };
 
     #[cfg(feature = "mod-commerce")]

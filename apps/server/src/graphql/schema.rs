@@ -42,6 +42,8 @@ use flex::graphql::FlexGraphqlRuntime;
 use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
 #[cfg(feature = "mod-blog")]
 use rustok_blog::graphql::{BlogGraphqlRateLimitPolicy, BlogGraphqlRateLimiterHandle};
+#[cfg(feature = "mod-commerce")]
+use rustok_commerce::graphql_runtime::CommerceShippingOptionReadScope;
 #[cfg(feature = "mod-content")]
 use rustok_content::graphql::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
 #[cfg(feature = "mod-forum")]
@@ -189,6 +191,9 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         TenantNameLoader::new(db.clone()),
         tokio::spawn,
     ));
+
+    #[cfg(feature = "mod-commerce")]
+    let builder = builder.extension(CommerceShippingOptionReadScope);
 
     #[cfg(feature = "mod-forum")]
     let builder = builder.extension(ForumGraphqlErrorExtension);
