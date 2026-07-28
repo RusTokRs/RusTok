@@ -5,9 +5,7 @@ use std::sync::{
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_api::{
-    PortActor, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_forum::{
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
     ForumPostingAction, ForumPostingCandidateMetrics,
@@ -63,10 +61,7 @@ impl ForumAudienceFactsPort for RecordingAudienceFactsPort {
         _context: PortContext,
         request: ForumAudienceFactsRequest,
     ) -> Result<ForumAudienceFacts, PortError> {
-        self.requests
-            .lock()
-            .expect("audience request lock")
-            .push(request.clone());
+        self.requests.lock().expect("audience request lock").push(request.clone());
         Ok(ForumAudienceFacts {
             tenant_id: request.tenant_id,
             user_id: request.user_id,
@@ -81,7 +76,7 @@ impl ForumAudienceFactsPort for RecordingAudienceFactsPort {
 struct ValueFactPort {
     fact: ForumPostingPolicyFactKind,
     value: ForumPostingPolicyOwnerFactValue,
-    calls: Arc<Mutex<Vec<ForumPostingPolicyOwnerFactRequest>>>,
+    requests: Arc<Mutex<Vec<ForumPostingPolicyOwnerFactRequest>>>,
 }
 
 #[async_trait]
@@ -95,10 +90,7 @@ impl ForumPostingPolicyOwnerFactPort for ValueFactPort {
         _context: PortContext,
         request: ForumPostingPolicyOwnerFactRequest,
     ) -> Result<ForumPostingPolicyOwnerFactResponse, PortError> {
-        self.calls
-            .lock()
-            .expect("fact request lock")
-            .push(request);
+        self.requests.lock().expect("fact request lock").push(request);
         Ok(ForumPostingPolicyOwnerFactResponse {
             tenant_id: request.tenant_id,
             user_id: request.user_id,
@@ -156,21 +148,21 @@ impl ForumPostingPolicyOwnerFactPort for WrongIdentityFactPort {
     }
 }
 
-fn shared_value_port(
+fn value_provider(
     fact: ForumPostingPolicyFactKind,
     value: ForumPostingPolicyOwnerFactValue,
 ) -> (
     SharedForumPostingPolicyOwnerFactPort,
     Arc<Mutex<Vec<ForumPostingPolicyOwnerFactRequest>>>,
 ) {
-    let calls = Arc::new(Mutex::new(Vec::new()));
+    let requests = Arc::new(Mutex::new(Vec::new()));
     (
         Arc::new(ValueFactPort {
             fact,
             value,
-            calls: calls.clone(),
+            requests: requests.clone(),
         }),
-        calls,
+        requests,
     )
 }
 
@@ -199,10 +191,7 @@ async fn authoritative_trust_bridge_composes_exact_fact_and_evaluates() {
         .await
         .expect("authoritative trust should compose");
 
-    assert_eq!(
-        input.facts.required_facts,
-        vec![ForumPostingPolicyFactKind::TrustLevel]
-    );
+    assert_eq!(input.facts.required_facts, vec![ForumPostingPolicyFactKind::TrustLevel]);
     assert_eq!(input.facts.trust_level, Some(25));
     assert!(input.facts.unavailable_facts.is_empty());
     let recorded = audience_requests.lock().expect("audience request lock");
@@ -210,6 +199,7 @@ async fn authoritative_trust_bridge_composes_exact_fact_and_evaluates() {
     assert!(recorded[0].include_trust_level);
     assert!(recorded[0].channel_slugs.is_empty());
     assert!(recorded[0].group_ids.is_empty());
+    drop(recorded);
 
     let decision = ForumPostingPolicyEvaluator::decide(&rules, input)
         .expect("composed input should evaluate");
@@ -220,36 +210,30 @@ async fn authoritative_trust_bridge_composes_exact_fact_and_evaluates() {
 async fn missing_provider_is_explicit_and_never_synthesizes_zero() {
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    let composer = ForumPostingPolicyFactsComposer::default();
     let rules = ForumPostingPolicyRules {
         minimum_account_age_seconds: Some(86_400),
         ..ForumPostingPolicyRules::default()
     };
-
-    let input = composer
+    let input = ForumPostingPolicyFactsComposer::default()
         .compose(
             context(tenant_id, user_id),
             &rules,
             request(tenant_id, user_id, ForumPostingAction::CreateTopic),
         )
         .await
-        .expect("missing owner should remain an explicit fact state");
+        .expect("missing owner should remain explicit");
 
     assert_eq!(input.facts.account_age_seconds, None);
     assert_eq!(input.facts.unavailable_facts.len(), 1);
-    assert_eq!(
-        input.facts.unavailable_facts[0].fact,
-        ForumPostingPolicyFactKind::AccountAgeSeconds
-    );
-    assert_eq!(
-        input.facts.unavailable_facts[0].reason_code,
-        "forum.posting_fact.provider_missing"
-    );
+    assert_eq!(input.facts.unavailable_facts[0].fact, ForumPostingPolicyFactKind::AccountAgeSeconds);
+    assert_eq!(input.facts.unavailable_facts[0].reason_code, "forum.posting_fact.provider_missing");
     assert!(!input.facts.unavailable_facts[0].retryable);
-
-    let decision = ForumPostingPolicyEvaluator::decide(&rules, input)
-        .expect("explicit unavailable facts should evaluate as incomplete");
-    assert_eq!(decision.outcome, ForumPostingPolicyOutcome::Indeterminate);
+    assert_eq!(
+        ForumPostingPolicyEvaluator::decide(&rules, input)
+            .expect("unavailable facts should evaluate")
+            .outcome,
+        ForumPostingPolicyOutcome::Indeterminate
+    );
 }
 
 #[tokio::test]
@@ -259,10 +243,7 @@ async fn retryable_capability_error_becomes_explicit_unavailable_fact() {
     let calls = Arc::new(AtomicUsize::new(0));
     let provider: SharedForumPostingPolicyOwnerFactPort = Arc::new(ErrorFactPort {
         fact: ForumPostingPolicyFactKind::AccountAgeSeconds,
-        error: PortError::unavailable(
-            "profiles.account_age.unavailable",
-            "profile age is unavailable",
-        ),
+        error: PortError::unavailable("profiles.account_age.unavailable", "unavailable"),
         calls: calls.clone(),
     });
     let composer = ForumPostingPolicyFactsComposer::new(vec![provider])
@@ -271,7 +252,6 @@ async fn retryable_capability_error_becomes_explicit_unavailable_fact() {
         minimum_account_age_seconds: Some(86_400),
         ..ForumPostingPolicyRules::default()
     };
-
     let input = composer
         .compose(
             context(tenant_id, user_id),
@@ -279,14 +259,10 @@ async fn retryable_capability_error_becomes_explicit_unavailable_fact() {
             request(tenant_id, user_id, ForumPostingAction::CreateReply),
         )
         .await
-        .expect("retryable capability errors should remain fact state");
+        .expect("capability errors should remain fact state");
 
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert_eq!(input.facts.unavailable_facts.len(), 1);
-    assert_eq!(
-        input.facts.unavailable_facts[0].reason_code,
-        "profiles.account_age.unavailable"
-    );
+    assert_eq!(input.facts.unavailable_facts[0].reason_code, "profiles.account_age.unavailable");
     assert!(input.facts.unavailable_facts[0].retryable);
 }
 
@@ -296,10 +272,7 @@ async fn forbidden_provider_error_is_not_hidden_as_unavailable() {
     let user_id = Uuid::new_v4();
     let provider: SharedForumPostingPolicyOwnerFactPort = Arc::new(ErrorFactPort {
         fact: ForumPostingPolicyFactKind::AccountAgeSeconds,
-        error: PortError::forbidden(
-            "profiles.account_age.forbidden",
-            "profile age access is forbidden",
-        ),
+        error: PortError::forbidden("profiles.account_age.forbidden", "forbidden"),
         calls: Arc::new(AtomicUsize::new(0)),
     });
     let composer = ForumPostingPolicyFactsComposer::new(vec![provider])
@@ -308,7 +281,6 @@ async fn forbidden_provider_error_is_not_hidden_as_unavailable() {
         minimum_account_age_seconds: Some(86_400),
         ..ForumPostingPolicyRules::default()
     };
-
     let error = composer
         .compose(
             context(tenant_id, user_id),
@@ -325,14 +297,12 @@ async fn forbidden_provider_error_is_not_hidden_as_unavailable() {
 async fn invalid_provider_response_fails_as_invariant_violation() {
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    let provider: SharedForumPostingPolicyOwnerFactPort = Arc::new(WrongIdentityFactPort);
-    let composer = ForumPostingPolicyFactsComposer::new(vec![provider])
+    let composer = ForumPostingPolicyFactsComposer::new(vec![Arc::new(WrongIdentityFactPort)])
         .expect("one provider should register");
     let rules = ForumPostingPolicyRules {
         minimum_account_age_seconds: Some(86_400),
         ..ForumPostingPolicyRules::default()
     };
-
     let error = composer
         .compose(
             context(tenant_id, user_id),
@@ -355,9 +325,10 @@ fn duplicate_fact_providers_are_rejected() {
         trust_level: 20,
         requests: Arc::new(Mutex::new(Vec::new())),
     }));
-
-    let error = ForumPostingPolicyFactsComposer::new(vec![first, second])
-        .expect_err("one owner fact kind cannot have two providers");
+    let error = match ForumPostingPolicyFactsComposer::new(vec![first, second]) {
+        Ok(_) => panic!("duplicate providers must be rejected"),
+        Err(error) => error,
+    };
     assert_eq!(error.kind, PortErrorKind::Conflict);
     assert_eq!(error.code, "forum.posting_facts.duplicate_provider");
 }
@@ -378,7 +349,6 @@ async fn exact_actor_context_is_checked_before_provider_access() {
         minimum_account_age_seconds: Some(60),
         ..ForumPostingPolicyRules::default()
     };
-
     let error = composer
         .compose(
             context(tenant_id, Uuid::new_v4()),
@@ -395,14 +365,12 @@ async fn exact_actor_context_is_checked_before_provider_access() {
 async fn action_window_request_uses_exact_configured_window() {
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    let (provider, calls) = shared_value_port(
+    let (provider, requests) = value_provider(
         ForumPostingPolicyFactKind::ReplyCreatesWindow,
-        ForumPostingPolicyOwnerFactValue::ReplyCreatesWindow(
-            ForumPostingWindowCount {
-                count: 2,
-                window_seconds: 60,
-            },
-        ),
+        ForumPostingPolicyOwnerFactValue::ReplyCreatesWindow(ForumPostingWindowCount {
+            count: 2,
+            window_seconds: 60,
+        }),
     );
     let composer = ForumPostingPolicyFactsComposer::new(vec![provider])
         .expect("one provider should register");
@@ -413,7 +381,6 @@ async fn action_window_request_uses_exact_configured_window() {
         }),
         ..ForumPostingPolicyRules::default()
     };
-
     let input = composer
         .compose(
             context(tenant_id, user_id),
@@ -423,33 +390,29 @@ async fn action_window_request_uses_exact_configured_window() {
         .await
         .expect("matching window fact should compose");
 
-    let calls = calls.lock().expect("fact request lock");
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].window_seconds, Some(60));
+    assert_eq!(requests.lock().expect("fact request lock")[0].window_seconds, Some(60));
+    assert_eq!(input.facts.reply_creates_window, Some(ForumPostingWindowCount {
+        count: 2,
+        window_seconds: 60,
+    }));
     assert_eq!(
-        input.facts.reply_creates_window,
-        Some(ForumPostingWindowCount {
-            count: 2,
-            window_seconds: 60,
-        })
+        ForumPostingPolicyEvaluator::decide(&rules, input)
+            .expect("window should evaluate")
+            .reason,
+        ForumPostingPolicyDecisionReason::Allowed
     );
-    let decision = ForumPostingPolicyEvaluator::decide(&rules, input)
-        .expect("available window should evaluate");
-    assert_eq!(decision.reason, ForumPostingPolicyDecisionReason::Allowed);
 }
 
 #[tokio::test]
 async fn mismatched_window_response_is_an_invariant_violation() {
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    let (provider, _) = shared_value_port(
+    let (provider, _) = value_provider(
         ForumPostingPolicyFactKind::ReplyCreatesWindow,
-        ForumPostingPolicyOwnerFactValue::ReplyCreatesWindow(
-            ForumPostingWindowCount {
-                count: 2,
-                window_seconds: 61,
-            },
-        ),
+        ForumPostingPolicyOwnerFactValue::ReplyCreatesWindow(ForumPostingWindowCount {
+            count: 2,
+            window_seconds: 61,
+        }),
     );
     let composer = ForumPostingPolicyFactsComposer::new(vec![provider])
         .expect("one provider should register");
@@ -460,7 +423,6 @@ async fn mismatched_window_response_is_an_invariant_violation() {
         }),
         ..ForumPostingPolicyRules::default()
     };
-
     let error = composer
         .compose(
             context(tenant_id, user_id),
