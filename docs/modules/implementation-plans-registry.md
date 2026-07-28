@@ -50,8 +50,8 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `forum` | [plan](../../crates/rustok-forum/docs/implementation-plan.md) | `in_progress` | Replace the synthetic Wave packet with observed forum consumer evidence after the `pages` reference gate. |
 | `fulfillment` | [plan](../../crates/rustok-fulfillment/docs/implementation-plan.md) | `in_progress` | Continue production carrier adapter wiring separately; keep seller-aware shipping-selection parity locked by the owner storefront guardrail and commerce handoff guardrail. |
 | `graphql` | [plan](../../crates/rustok-graphql/docs/implementation-plan.md) | `not_started` | Keep the shared client neutral; add a Dioxus adapter only for an approved concrete host. |
-| `iggy` | [plan](../../crates/rustok-iggy/docs/implementation-plan.md) | `in_progress` | Prove explicit `u128` DLQ headers, dedup disabled/enabled/expiry/capacity behavior, publish reconnect, consume/commit, and every-partition position observation before broker-backed replay. |
-| `iggy-connector` | [plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md) | `in_progress` | Wire SDK receive/commit, then harden lifecycle failure behavior and publish operating guarantees. |
+| `iggy` | [plan](../../crates/rustok-iggy/docs/implementation-plan.md) | `in_progress` | Reconcile receipt migration order, wire raw decode failures through the connector receipt and exact-byte DLQ-before-ack path, then prove deterministic headers, dedup and broker recovery. |
+| `iggy-connector` | [plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md) | `in_progress` | Reconcile the connector poison migration tail, wire the first approved consumer, and prove receive/publish/commit recovery against bundled and external Iggy. |
 | `index` | [plan](../../crates/rustok-index/docs/implementation-plan.md) | `in_progress` | Design partition management from measured evidence, then execute PostgreSQL Testcontainers and concurrency, rollback, stale/redelivery, schema/index ownership, and tenant/locale evidence. |
 | `inventory` | [plan](../../crates/rustok-inventory/docs/implementation-plan.md) | `boundary_ready` | Retain remote/fallback execution and mounted admin evidence for `InventoryReservationPort`; keep Product bootstrap as an explicitly audited transaction-sharing exception until owner-port extraction. |
 | `installer` | [plan](../../crates/rustok-installer/docs/implementation-plan.md) | `in_progress` | Versioned topology, capability-aware shared apply sequencing, server build/release deployment adapter, and per-role receipts are implemented; next is standalone CLI adapter parity and CI topology retry evidence. |
@@ -68,7 +68,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `payment` | [plan](../../crates/rustok-payment/docs/implementation-plan.md) | `in_progress` | Continue production provider adapter wiring separately; owner storefront guardrail must maintain collection/refund read and create/reuse parity as a single boundary. |
 | `pricing` | [plan](../../crates/rustok-pricing/docs/implementation-plan.md) | `in_progress` | Execute the pricing provider, complete the owner transport handoff, then finish the remaining Pricing 2.0 rule semantics. |
 | `product` | [plan](../../crates/rustok-product/docs/implementation-plan.md) | `boundary_ready` | Execute the catalog read provider and its declared consumer fallback profiles before promotion to `transport_verified`. |
-| `profiles` | [plan](../../crates/rustok-profiles/docs/implementation-plan.md) | `in_progress` | Prove replay repair, PostgreSQL receipt/concurrency, real-Iggy deterministic-header/dedup and consumer/lag recovery, choose confirmation policy, and retain storefront/privacy/Media/CLI evidence. |
+| `profiles` | [plan](../../crates/rustok-profiles/docs/implementation-plan.md) | `in_progress` | Append both receipt migrations to the release-order tail, wire raw decode failures through connector receipt and publish-before-ack recovery, then retain PostgreSQL/Iggy/storefront/privacy/Media/CLI evidence. |
 | `rbac` | [plan](../../crates/rustok-rbac/docs/implementation-plan.md) | `in_progress` | Execute the compiled RBAC/server/CLI verification gate, then prove PostgreSQL concurrency and multi-replica durable-generation recovery before adding observability and operator mutation flows. |
 | `region` | [plan](../../crates/rustok-region/docs/implementation-plan.md) | `in_progress` | Execute live `RegionReadPort` and storefront transport evidence before any FBA promotion. |
 | `runtime` | [plan](../../crates/rustok-runtime/docs/implementation-plan.md) | `not_started` | Use RuntimeComposition in the first DB-backed module CLI provider. |
@@ -96,4 +96,4 @@ This index contains one entry for each live local plan. Local plans own the curr
 
 ## Evidence references
 
-- `rustok-iggy-connector`: `ConnectorAckToken`; `node scripts/verify/verify-iggy-connector-source.mjs`.
+- `rustok-iggy-connector`: `ConnectorAckToken`, `ConsumerPoisonReceiptStore`; `node scripts/verify/verify-iggy-connector-source.mjs`; `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`.
