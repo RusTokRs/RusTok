@@ -5,7 +5,6 @@ mod category_tree_query;
 mod connection;
 mod content_commands;
 mod error_extension;
-mod moderation_transport_extension;
 mod mutation;
 mod query;
 mod quote_commands;
@@ -30,7 +29,7 @@ pub use content_commands::{
     CreateForumReplyWithQuotesInput, CreateForumTopicWithQuotesInput,
     UpdateForumReplyWithQuotesInput, UpdateForumTopicWithQuotesInput,
 };
-pub use moderation_transport_extension::ForumGraphqlErrorExtension;
+pub use error_extension::ForumGraphqlErrorExtension;
 pub use quote_commands::{
     GqlForumQuoteReferenceInput, GqlForumQuoteTargetKind, GqlForumRelationQuote,
     GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
