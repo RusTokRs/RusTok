@@ -61,21 +61,27 @@ Commerce publishes a separate
 `CommerceFulfillmentLifecycleReadRuntime`. The default application host reuses an
 externally installed runtime or constructs the in-process baseline once, caches it
 in `ServerRuntimeContext`, and attaches the same typed value to
-`HostRuntimeContext`. `CommerceHttpRuntime` requires that runtime. Admin REST
-fulfillment list/detail consume its cloned owner port and no longer construct a
-concrete read service.
+`HostRuntimeContext`. `CommerceHttpRuntime` requires that runtime.
 
-The admin REST cutover preserves page/per-page, status/order/customer filters,
-owner pagination total, detail not-found behavior, public HTTP status/code/message
-policy, authenticated user actor, request locale/channel, resource correlation,
-and a two-second deadline. Lifecycle mutations remain on their existing concrete
-or orchestration owner paths.
+The mounted `CommerceShippingOptionReadScope` now carries both shipping-option and
+fulfillment-lifecycle runtimes for each GraphQL resolver task. The private
+compatibility facade resolves `Arc<dyn FulfillmentReadPort>` from that shared
+scope. Fulfillment lookup, filtered list, and latest-by-order now call the three
+owner operations while leaving `query.rs` signatures and optional-not-found
+behavior unchanged. The previous private concrete `FulfillmentService` field and
+constructor are removed.
 
-The private GraphQL compatibility facade still retains one concrete
-`FulfillmentService` for fulfillment lookup, list, and latest-by-order. GraphQL
-runtime-data construction consumes the host value and retains an explicit
-in-process fallback only for directly embedded compatibility schemas. Request-safe
-GraphQL lifecycle scope and consumer cutover remain open.
+Admin REST fulfillment list/detail consume the same host-selected owner port. The
+cutover preserves page/per-page, status/order/customer filters, owner pagination
+total, detail not-found behavior, public HTTP status/code/message policy,
+authenticated user actor, request locale/channel, resource correlation, and a
+two-second deadline.
+
+GraphQL lifecycle reads preserve the existing lookup `None`, list pagination and
+filters, optional latest-by-order projection, compatibility error classes, tenant
+identity, stable service actor, resource correlation, and a two-second deadline.
+Lifecycle mutations remain on their existing concrete or orchestration owner
+paths.
 
 The native FFA surface remains seller/cart selection through
 `ShippingSelectionPort`; it does not publish complete projection list or lookup
@@ -104,9 +110,8 @@ operations. No projection API should be added without a concrete consumer.
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`.
 - Both files are unvalidated source evidence and do not promote status.
 - Focused guards cover owner boundaries, application-host runtime composition,
-  Commerce HTTP injection, admin REST lifecycle consumer cutover, typed public
-  envelopes, current GraphQL compatibility consumers, and the separate native
-  selection surface.
+  shared GraphQL resolver scope, GraphQL/admin REST lifecycle consumer cutover,
+  typed public envelopes, and the separate native selection surface.
 - Compile, migrated database, mounted transport, restart, contention, and remote
   evidence remain missing.
 
@@ -180,16 +185,19 @@ operations. No projection API should be added without a concrete consumer.
   resource correlation, and two-second deadline context.
 - [x] Keep lifecycle mutation concrete/orchestration service construction
   unchanged.
-- [x] Retain source evidence and a focused guard that record completed runtime and
-  admin REST cutover without claiming GraphQL consumer cutover.
-- [ ] Add resolver scope or equivalent request-safe injection for GraphQL.
-- [ ] Cut GraphQL fulfillment lookup, filtered list, and latest-by-order reads over
-  to `FulfillmentReadPort` while preserving optional-not-found and public error
-  behavior.
-- [ ] Remove the remaining concrete `FulfillmentService` field from the private
-  GraphQL compatibility facade; lifecycle mutation services remain unchanged.
+- [x] Scope the host-selected lifecycle runtime through the existing mounted
+  Commerce GraphQL resolver extension.
+- [x] Cut GraphQL fulfillment lookup, filtered list, and latest-by-order reads over
+  to `FulfillmentReadPort` while preserving lookup `None`, list metadata, and
+  optional latest-by-order behavior.
+- [x] Preserve GraphQL compatibility error classes through typed `PortErrorKind`
+  mapping without owner-message control flow.
+- [x] Remove the remaining concrete `FulfillmentService` read field and constructor
+  from the private GraphQL compatibility facade.
+- [x] Retain source evidence and focused guards that record complete source cutover
+  without claiming mounted runtime parity.
 - [ ] Execute compile, mounted GraphQL/REST lifecycle query, deadline, tenant,
-  filter, optional-not-found, failure, and remote evidence.
+  filter, optional-not-found, failure, restart, and remote evidence.
 
 ## Open results
 
@@ -233,15 +241,14 @@ operations. No projection API should be added without a concrete consumer.
    envelopes, and no mounted projection transport constructs a concrete read
    service or provider.
 
-6. **Complete mounted lifecycle GraphQL read cutover.** Use the already
-   host-composed `CommerceFulfillmentLifecycleReadRuntime`, add request-safe
-   GraphQL injection, route GraphQL lookup/list/latest-by-order through
-   `FulfillmentReadPort`, and remove the private GraphQL concrete delegate. Admin
-   REST list/detail already consume the owner port.
-   **Depends on:** stable GraphQL optional-not-found and public error contracts.
-   **Done when:** mounted GraphQL lifecycle reads consume the host-selected owner
-   port, preserve existing response policy, and no mounted lifecycle read
-   constructs `FulfillmentService` inside the private Commerce query facade.
+6. **Prove mounted lifecycle read parity.** Execute GraphQL lookup/list/latest-by-
+   order and admin REST list/detail through the host-selected
+   `CommerceFulfillmentLifecycleReadRuntime` against the same owner projections.
+   **Depends on:** compiled fulfillment/Commerce/server crates and mounted
+   transport fixtures.
+   **Done when:** GraphQL and REST preserve tenant, filters, pagination, optional
+   not-found, public error policy, deadline behavior, restart behavior, and remote
+   adapter selection with no concrete Commerce read construction.
 
 7. **Execute remote contracts.** Turn shipping-selection and checkout-execution
    matrices into provider execution before promoting beyond `boundary_ready`.

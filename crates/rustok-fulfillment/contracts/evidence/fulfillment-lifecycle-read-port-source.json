@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-28",
-  "status": "source_rest_cutover_unvalidated",
-  "source_base_revision": "8a5e251eec95d7fcda54e0ba5c7df4560ef70935",
+  "status": "source_cutover_unvalidated",
+  "source_base_revision": "184ae1a7b413958bd06f2ea3fb66c2c266812991",
   "scope": "fulfillment lifecycle projection reads for mounted Commerce queries",
   "owner": {
     "crate": "rustok-fulfillment",
@@ -56,7 +56,9 @@
     "server_cache_composed": true,
     "default_server_attachment": true,
     "commerce_http_runtime_required": true,
-    "external_adapter_preserved": true
+    "external_adapter_preserved": true,
+    "graphql_task_local_scoped": true,
+    "shared_scope_extension": "CommerceShippingOptionReadScope"
   },
   "admin_rest": {
     "list_consumer": "list_fulfillment_projections",
@@ -69,11 +71,25 @@
     "concrete_service_read_construction": false,
     "mutation_service_construction_unchanged": true
   },
+  "graphql": {
+    "lookup_consumer": "read_fulfillment_projection",
+    "list_consumer": "list_fulfillment_projections",
+    "latest_by_order_consumer": "find_latest_fulfillment_by_order_projection",
+    "existing_query_source_unchanged": true,
+    "optional_lookup_not_found_preserved": true,
+    "optional_latest_by_order_preserved": true,
+    "pagination_total_and_filters_preserved": true,
+    "public_error_policy_preserved": true,
+    "service_actor_propagated": true,
+    "correlation_propagated": true,
+    "deadline_seconds": 2,
+    "concrete_service_read_construction": false
+  },
   "consumer_cutover": {
-    "graphql_compatibility_facade": false,
+    "graphql_compatibility_facade": true,
     "admin_rest_list_show": true,
-    "concrete_delegate_removed": false,
-    "next_slice": "add request-safe GraphQL lifecycle runtime scope and route fulfillment lookup/list/latest-by-order through FulfillmentReadPort while preserving optional-not-found and public error policy"
+    "concrete_delegate_removed": true,
+    "next_slice": "execute mounted GraphQL and REST lifecycle read parity, deadline, tenant, filter, optional-not-found, failure, restart, and remote-adapter evidence"
   },
   "validation": {
     "tests_run": false,
@@ -81,6 +97,7 @@
     "format_run": false,
     "verifiers_run": false,
     "workflow_checks_run": false,
-    "ci_run": false
+    "ci_run": false,
+    "runtime_parity_proven": false
   }
 }
