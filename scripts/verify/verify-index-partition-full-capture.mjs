@@ -72,6 +72,9 @@ try {
     'preflight_completed: true',
     'database_connection_attempted: false',
     'writes_performed: false',
+    'baseEnvironmentOverrides',
+    'INDEX_PARTITION_MANIFEST',
+    'environment_overrides',
     'No Cargo or Node evidence stage is started.',
     'if (options.plan)',
     'JSON.stringify(plan, null, 2)',
@@ -99,6 +102,8 @@ try {
     'database_connection_attempted',
     'writes_performed',
     'secret-value-must-not-be-printed',
+    'plan.stages[0].environment_overrides',
+    'INDEX_PARTITION_QUERY_AUDIT',
     'plan refuses partial output reuse without starting Cargo',
   ], 'full capture plan fixture');
   requireMarkers(tooling, [
