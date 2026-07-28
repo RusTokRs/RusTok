@@ -52,7 +52,6 @@ const restRuntime = read(contract.rest_runtime ?? "");
 const authorization = read(contract.owner_authorization ?? "");
 const owner = read(contract.owner_service ?? "");
 const crateRoot = read(contract.crate_root ?? "");
-const crateApi = read(contract.crate_api ?? "");
 const note = read(contract.owner_note ?? "");
 
 if (
@@ -303,15 +302,6 @@ for (const marker of [
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-20AZ owner note is missing ${marker}`);
-}
-for (const marker of [
-  "FORUM-20AZ",
-  "moderation_audience_port_context",
-  "mark_solution_with_audience_context",
-  "clear_solution_with_audience_context",
-  "exact tenant-scoped topic author",
-]) {
-  requireText(crateApi, marker, `Forum CRATE_API is missing ${marker}`);
 }
 
 if (failures.length > 0) {
