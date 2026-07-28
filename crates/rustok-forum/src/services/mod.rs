@@ -38,6 +38,7 @@ mod reply {
     include!("reply.rs");
     include!("reply_inline.rs");
 }
+mod reply_create_audience_authorization;
 mod reply_facade;
 mod reply_owner {
     include!("reply_owner.rs");
@@ -97,6 +98,9 @@ pub use read_tracking::{
     MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
 };
 pub use relation_read::ForumRelationReadService;
+pub use reply_create_audience_authorization::{
+    ForumReplyCreateAudienceAuthorization, ForumReplyCreateAudienceAuthorizationService,
+};
 pub use reply_facade::ReplyService;
 pub use revision::RevisionService;
 pub use storefront_read_state::{
