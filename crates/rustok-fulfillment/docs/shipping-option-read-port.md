@@ -4,31 +4,36 @@ Status: source-ready, unvalidated.
 
 ## Scope
 
-`ShippingOptionReadPort` is the fulfillment-owned read boundary for complete
-shipping-option projections needed by mounted ecommerce transports.
+`ShippingOptionReadPort` and `ShippingOptionAdminReadPort` are fulfillment-owned
+read boundaries for complete shipping-option projections needed by mounted
+ecommerce transports.
 
 It is separate from `ShippingSelectionPort`:
 
 - `ShippingSelectionPort` owns seller/cart selection workflow;
-- `ShippingOptionReadPort` owns complete read projections for list and lookup;
+- `ShippingOptionReadPort` owns storefront active-list and single-option reads;
+- `ShippingOptionAdminReadPort` owns the complete administrative list-all read;
 - the selection contract and its provider registry are unchanged;
 - no new FBA provider contract or status promotion is claimed.
 
 ## Operations
 
-The port publishes two read-only operations:
+The two ports publish three read-only operations:
 
-- `list_shipping_option_projections`;
-- `read_shipping_option_projection`.
+- `list_shipping_option_projections` for the storefront-visible active list;
+- `list_all_shipping_option_projections` for the complete administrative list,
+  including inactive options;
+- `read_shipping_option_projection` for one complete owner projection.
 
-Both return the existing fulfillment-owned `ShippingOptionResponse`. This keeps
-metadata, allowed shipping-profile slugs, active state, localization facts, and
-provider identity inside the owner projection without defining a second partial
-commerce copy.
+All operations return the existing fulfillment-owned `ShippingOptionResponse`.
+This keeps metadata, allowed shipping-profile slugs, active state, localization
+facts, and provider identity inside the owner projection without defining a
+second partial commerce copy.
 
 ## Requests
 
-`ListShippingOptionProjectionsRequest` carries:
+`ListShippingOptionProjectionsRequest` and
+`ListAllShippingOptionProjectionsRequest` carry:
 
 - requested locale;
 - tenant default locale.
@@ -43,21 +48,29 @@ locale, correlation, causation, trace, and deadline facts.
 
 ## In-process adapter
 
-`InProcessShippingOptionReadPort` owns `FulfillmentService` construction and is
-exported through the root factory:
+`InProcessShippingOptionReadPort` and
+`InProcessShippingOptionAdminReadPort` own `FulfillmentService` construction and
+are exported through separate root factories:
 
 ```rust
 in_process_shipping_option_read_port(db)
+in_process_shipping_option_admin_read_port(db)
 ```
 
-The adapter:
+The adapters:
 
-1. requires read policy;
-2. parses tenant identity from `PortContext`;
-3. delegates list or lookup to `FulfillmentService`;
-4. preserves requested/default locale arguments;
-5. maps every `FulfillmentError` variant to a stable `PortError`;
-6. returns the owner projection unchanged on success.
+1. require read policy;
+2. parse tenant identity from `PortContext`;
+3. delegate active list, administrative list-all, or lookup to
+   `FulfillmentService`;
+4. preserve requested/default locale arguments;
+5. map every `FulfillmentError` variant to a stable `PortError`;
+6. return the owner projection unchanged on success.
+
+The two list contracts remain separate traits rather than one overloaded request
+or one growing storefront interface. That keeps storefront active-only semantics
+separate from the admin requirement to inspect inactive shipping options and
+avoids breaking existing `ShippingOptionReadPort` implementors.
 
 ## Stable owner errors
 
@@ -96,16 +109,23 @@ validation, not-found, and conflict events do not add raw owner message fields.
 
 ## Mounted commerce cutover
 
-The mounted storefront GraphQL helpers now use the root read-port factory:
+The mounted storefront GraphQL helpers use the root read-port factory:
 
 - shipping-option validation calls `read_shipping_option_projection`;
-- cart shipping enrichment calls `list_shipping_option_projections`.
+- cart shipping enrichment and storefront query listing call
+  `list_shipping_option_projections`.
 
-Commerce builds a read `PortContext` with a service actor, cart-scoped
-correlation id, request locale, optional public channel, and a two-second
-deadline. The existing GraphQL public envelopes remain unchanged.
+The separate admin owner port now publishes
+`list_all_shipping_option_projections` for the mounted administrative GraphQL
+`shipping_options` query. This source slice publishes and verifies that owner
+contract; the transport cutover remains a separate bounded change so the
+existing public envelope can be preserved and reviewed independently.
 
-Delivery-group projection is now a pure commerce function receiving owner
+Commerce builds a read `PortContext` with a service actor, resource-scoped
+correlation id, request locale, optional public channel where applicable, and a
+two-second deadline. Existing GraphQL public envelopes remain unchanged.
+
+Delivery-group projection is a pure commerce function receiving owner
 projections. The existing compatibility service adapter delegates to the same
 pure function, so legacy REST/native behavior is not changed by this slice.
 
@@ -127,8 +147,10 @@ No command was executed locally in this source wave.
 
 This slice does not:
 
-- inject the read port from the application host rather than the root in-process
-  factory;
+- cut the mounted administrative GraphQL `shipping_options` query over to
+  `list_all_shipping_option_projections`;
+- inject the read ports from the application host rather than root in-process
+  factories;
 - migrate REST/native storefront shipping reads;
 - retire `FulfillmentService` from fulfillment-owned compatibility adapters;
 - modify `ShippingSelectionPort`;

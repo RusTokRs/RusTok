@@ -33,33 +33,60 @@ const forbidText = (source, value, label) => {
 
 for (const [source, value, label] of [
   [ownerRoot, 'mod shipping_option_read;', 'private owner module'],
-  [ownerRoot, 'InProcessShippingOptionReadPort,', 'wrapper export'],
-  [ownerRoot, 'ShippingOptionReadPort,', 'trait export'],
-  [ownerRoot, 'in_process_shipping_option_read_port,', 'root factory export'],
-  [ownerSource, 'pub trait ShippingOptionReadPort: Send + Sync {', 'read port trait'],
-  [ownerSource, 'pub struct InProcessShippingOptionReadPort {', 'in-process wrapper'],
-  [ownerSource, 'impl ShippingOptionReadPort for InProcessShippingOptionReadPort', 'wrapper implementation'],
+  [ownerRoot, 'InProcessShippingOptionReadPort,', 'storefront wrapper export'],
+  [ownerRoot, 'InProcessShippingOptionAdminReadPort,', 'admin wrapper export'],
+  [
+    ownerRoot,
+    'ListAllShippingOptionProjectionsRequest,',
+    'administrative list request export',
+  ],
+  [ownerRoot, 'ShippingOptionReadPort,', 'storefront trait export'],
+  [ownerRoot, 'ShippingOptionAdminReadPort,', 'admin trait export'],
+  [ownerRoot, 'in_process_shipping_option_read_port,', 'storefront factory export'],
+  [
+    ownerRoot,
+    'in_process_shipping_option_admin_read_port,',
+    'admin factory export',
+  ],
+  [ownerSource, 'pub trait ShippingOptionReadPort: Send + Sync {', 'storefront read port trait'],
+  [ownerSource, 'pub trait ShippingOptionAdminReadPort: Send + Sync {', 'admin read port trait'],
+  [ownerSource, 'pub struct InProcessShippingOptionReadPort {', 'storefront wrapper'],
+  [ownerSource, 'pub struct InProcessShippingOptionAdminReadPort {', 'admin wrapper'],
+  [ownerSource, 'impl ShippingOptionReadPort for InProcessShippingOptionReadPort', 'storefront wrapper implementation'],
+  [ownerSource, 'impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort', 'admin wrapper implementation'],
   [
     ownerSource,
     'pub fn in_process_shipping_option_read_port(',
-    'canonical factory',
+    'storefront canonical factory',
+  ],
+  [
+    ownerSource,
+    'pub fn in_process_shipping_option_admin_read_port(',
+    'admin canonical factory',
   ],
 ]) {
   requireText(source, value, label);
 }
 
 for (const [value, label] of [
-  ['async fn list_shipping_option_projections(', 'list operation'],
+  ['async fn list_shipping_option_projections(', 'active list operation'],
+  ['async fn list_all_shipping_option_projections(', 'administrative list operation'],
   ['async fn read_shipping_option_projection(', 'read operation'],
-  ['ListShippingOptionProjectionsRequest', 'list request'],
+  ['ListShippingOptionProjectionsRequest', 'active list request'],
+  ['ListAllShippingOptionProjectionsRequest', 'administrative list request'],
   ['ReadShippingOptionProjectionRequest', 'read request'],
   ['pub requested_locale: Option<String>', 'requested locale'],
   ['pub tenant_default_locale: Option<String>', 'default locale'],
   ['pub shipping_option_id: Uuid', 'option identity'],
   ['context.require_policy(PortCallPolicy::read())?', 'read admission policy'],
-  ['parse_tenant_id(&context, "list_shipping_option_projections")?', 'list tenant parse'],
+  ['parse_tenant_id(&context, "list_shipping_option_projections")?', 'active list tenant parse'],
+  [
+    'parse_tenant_id(&context, "list_all_shipping_option_projections")?',
+    'administrative list tenant parse',
+  ],
   ['parse_tenant_id(&context, "read_shipping_option_projection")?', 'read tenant parse'],
-  ['.list_shipping_options(', 'owner list delegation'],
+  ['.list_shipping_options(', 'owner active list delegation'],
+  ['.list_all_shipping_options(', 'owner administrative list delegation'],
   ['.get_shipping_option(', 'owner read delegation'],
   ['request.requested_locale.as_deref()', 'requested locale delegation'],
   ['request.tenant_default_locale.as_deref()', 'default locale delegation'],
@@ -69,7 +96,13 @@ for (const [value, label] of [
 
 const listDelegations = ownerSource.match(/\.list_shipping_options\(/g) ?? [];
 if (listDelegations.length !== 1) {
-  failures.push(`expected one owner list delegation, found ${listDelegations.length}`);
+  failures.push(`expected one owner active list delegation, found ${listDelegations.length}`);
+}
+const listAllDelegations = ownerSource.match(/\.list_all_shipping_options\(/g) ?? [];
+if (listAllDelegations.length !== 1) {
+  failures.push(
+    `expected one owner administrative list delegation, found ${listAllDelegations.length}`,
+  );
 }
 const readDelegations = ownerSource.match(/\.get_shipping_option\(/g) ?? [];
 if (readDelegations.length !== 1) {
@@ -177,5 +210,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ fulfillment owns complete shipping-option reads behind a canonical read port and mounted commerce uses retained read context without concrete service construction',
+  '✔ fulfillment owns storefront active/list lookup and administrative list-all projections behind separate canonical read ports while mounted storefront commerce retains owner context',
 );
