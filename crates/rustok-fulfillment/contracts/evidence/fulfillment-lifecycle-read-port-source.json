@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-28",
-  "status": "source_ready_unvalidated",
-  "source_base_revision": "41b24915663848a77467a00e99ebbc92acecaf73",
+  "status": "source_composed_unvalidated",
+  "source_base_revision": "765b12129b500292c05d5f8a17f0e3902d345fb2",
   "scope": "fulfillment lifecycle projection reads for mounted Commerce queries",
   "owner": {
     "crate": "rustok-fulfillment",
@@ -53,14 +53,16 @@
     "runtime": "CommerceFulfillmentLifecycleReadRuntime",
     "graphql_host_override_supported": true,
     "graphql_manifest_fallback": "in_process",
-    "server_cache_composed": false,
-    "default_server_attachment": false
+    "server_cache_composed": true,
+    "default_server_attachment": true,
+    "commerce_http_runtime_required": true,
+    "external_adapter_preserved": true
   },
   "consumer_cutover": {
     "graphql_compatibility_facade": false,
     "admin_rest_list_show": false,
     "concrete_delegate_removed": false,
-    "next_slice": "compose the lifecycle runtime in ServerRuntimeContext and HostRuntimeContext, inject it into GraphQL and Commerce HTTP, and route GraphQL lookup/list/latest-by-order plus admin REST list/show through FulfillmentReadPort while preserving transport-specific optional-not-found and public error policy"
+    "next_slice": "route admin REST list/show and GraphQL lookup/list/latest-by-order through the host-composed FulfillmentReadPort while preserving transport-specific optional-not-found and public error policy"
   },
   "validation": {
     "tests_run": false,

@@ -1,6 +1,6 @@
 # Fulfillment lifecycle read port
 
-Status: source-ready, unvalidated.
+Status: source-composed, unvalidated.
 
 ## Scope
 
@@ -13,9 +13,9 @@ projection reads used by Commerce query consumers. It is separate from:
 - `ShippingSelectionPort`, which owns seller/cart shipping selection;
 - fulfillment lifecycle mutation methods, which remain on `FulfillmentService`.
 
-This slice publishes the owner read boundary and a host-selectable Commerce
-runtime container. It does not yet compose that runtime in the default server or
-cut GraphQL/admin REST consumers over to the port.
+The owner read boundary and Commerce runtime container are published. The default
+application host now composes and attaches that runtime, and `CommerceHttpRuntime`
+requires it. GraphQL/admin REST handlers have not yet been cut over to the port.
 
 ## Operations
 
@@ -52,7 +52,7 @@ The adapter does not parse, match, or expose owner error messages as control
 flow. Database failures are retryable `Unavailable`; validation, not-found, and
 conflict outcomes retain stable owner codes.
 
-## Commerce runtime publication
+## Commerce runtime composition
 
 `CommerceFulfillmentLifecycleReadRuntime` holds an
 `Arc<dyn FulfillmentReadPort>` and exposes:
@@ -64,14 +64,24 @@ conflict outcomes retain stable owner codes.
 It remains separate from `CommerceShippingOptionReadRuntime`, allowing different
 adapters for lifecycle and shipping-option projections.
 
-Commerce GraphQL runtime-data construction consumes a host-provided lifecycle
-runtime when one is already present in `HostRuntimeContext`. Until the default
-server and mounted consumers are cut over, it retains an explicit in-process
-fallback from `GraphqlRuntimeInputs::db_clone()`.
+The application server now:
 
-This fallback is compatibility source, not evidence that the default server has
-cached or attached the runtime. `ServerRuntimeContext` composition and
-`CommerceHttpRuntime` injection remain open.
+1. reuses a lifecycle runtime already installed in `ServerRuntimeContext`;
+2. otherwise constructs the deterministic in-process runtime once;
+3. caches that runtime in `ServerRuntimeContext`;
+4. attaches the same typed value to `HostRuntimeContext`.
+
+This preserves external adapter selection and gives GraphQL and HTTP composition
+the same owner-port instance.
+
+Commerce GraphQL runtime-data construction consumes the host-provided runtime.
+Its explicit in-process fallback remains for directly embedded compatibility
+schemas until the GraphQL facade cutover is complete.
+
+`CommerceHttpRuntime::from_host` now fails closed when
+`CommerceFulfillmentLifecycleReadRuntime` is absent and exposes the cloned
+`FulfillmentReadPort` for route handlers. No HTTP handler consumes it yet in this
+slice.
 
 ## Consumer boundary
 
@@ -89,11 +99,11 @@ Admin REST also still constructs `FulfillmentService` for:
 
 Lifecycle mutations remain intentionally outside this read boundary.
 
-The next cutover slice must compose/cache the runtime in the default application
-host, inject it into GraphQL and `CommerceHttpRuntime`, route the GraphQL and REST
-read consumers through `FulfillmentReadPort`, preserve each transport's
-optional-not-found and public error policy, and remove only the private GraphQL
-concrete delegate. No mounted consumer is claimed in this slice.
+The next cutover slice must route the GraphQL and REST read consumers through the
+already host-composed `FulfillmentReadPort`, preserve each transport's
+optional-not-found and public error policy, add request-safe GraphQL scope, and
+remove only the private GraphQL concrete delegate. No mounted consumer is claimed
+in this slice.
 
 ## Diagnostics
 
@@ -108,9 +118,9 @@ Source evidence is retained at:
 
 `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`
 
-Its status is `source_ready_unvalidated`. It explicitly records that default
-server composition, GraphQL/admin REST consumer cutover, and private concrete
-delegate removal remain incomplete.
+Its status is `source_composed_unvalidated`. It records completed default server
+cache/attachment and mandatory Commerce HTTP runtime injection while keeping
+GraphQL/admin REST consumer cutover and private concrete delegate removal false.
 
 ## Intended checks
 
@@ -118,6 +128,7 @@ delegate removal remain incomplete.
 node scripts/verify/verify-fulfillment-lifecycle-read-port.mjs
 cargo check -p rustok-fulfillment --lib
 cargo check -p rustok-commerce --lib
+cargo check -p rustok-server --features mod-commerce
 ```
 
 Tests, Cargo commands, formatting, verifiers, workflows, and CI were not run by
