@@ -3,7 +3,9 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use bytes::Bytes;
 use object_store::{ObjectStoreExt, signer::Signer};
-use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
+use rustok_api::{
+    Action, Permission, PortActor, PortContext, PortErrorKind, Resource, TenantLocale,
+};
 use rustok_media::{
     ApplyExactMediaTranslationInput, AssetState, BlobState, CreateRenditionInput, ImageBackground,
     ImageOutputFormat, ImageRecipe, MediaError, MediaService, MediaTranslationTargetProvider,
@@ -708,6 +710,21 @@ async fn translation_target_provider_applies_and_replays_one_exact_locale_patch(
         .await
         .expect("same idempotency request should replay");
     assert_eq!(replay_receipt, first_receipt);
+    let recovery_context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(Uuid::new_v4().to_string()),
+        "en-US",
+        "translation-apply-recovery",
+    )
+    .with_claim(Permission::new(Resource::Media, Action::Update).to_string())
+    .with_role("manager")
+    .with_idempotency_key("media-translation-apply-1")
+    .with_deadline(Duration::from_secs(5));
+    let recovered_receipt = provider
+        .apply_patch(recovery_context, patch.clone())
+        .await
+        .expect("authorized recovery actor should reconcile the same owner mutation");
+    assert_eq!(recovered_receipt, first_receipt);
     let mut conflicting_patch = patch;
     conflicting_patch.proposal_id = "proposal-media-2".to_string();
     let conflict = provider

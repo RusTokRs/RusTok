@@ -255,16 +255,18 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let media_id = parse_identity(&request.identity)?;
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
-        let admission_request = serde_json::json!({
-            "actor": &context.actor,
-            "request": &request,
-        });
+        // The patch, tenant, operation kind, and idempotency key define the
+        // durable owner mutation. Authorization is re-evaluated above for
+        // every caller, while actor-neutral request hashing lets an explicitly
+        // authorized Translation recovery operator reconcile an unknown
+        // outcome without issuing a second mutation identity.
+        let admission_request = &request;
         let lease = match idempotency::admit(
             self.service.database(),
             tenant_id,
             idempotency_key,
             OPERATION_APPLY_PATCH,
-            &admission_request,
+            admission_request,
         )
         .await?
         {

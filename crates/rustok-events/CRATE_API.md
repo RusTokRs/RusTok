@@ -12,6 +12,7 @@
 - `pub use crate::{MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS}`
 - `pub use crate::{SocialGraphRelationEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS}`
+- `pub use crate::{TranslationWorkflowEvent, TRANSLATION_WORKFLOW_EVENT_SCHEMAS}`
 - `ContractEventEnvelope::{payload, into_payload}` return only semantically validated typed payloads
 - `pub fn event_schema(event_type: &str) -> Option<&'static EventSchema>`
 - `pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema>`
@@ -38,6 +39,10 @@
 - `DomainEvent::UserAccountRegistered` defines v1
   `user.account_registered` with only `user_id`; contact data remains private
   to the auth/user owner.
+- `TranslationWorkflowEvent` defines content-free v1 job, assignment, blocked
+  retry, proposal, apply, and recovery lifecycle facts. Translation
+  source/target values, operator reasons, owner receipts, claims, and roles
+  remain owner-private.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-telemetry`
@@ -81,6 +86,9 @@
 - User-account registration events expose identity only; email addresses and
   every other contact attribute must not enter the shared event stream.
 - Marketplace listing events expose only stable identity/scope/version fields; moderation prose and arbitrary metadata remain owner-private.
+- Translation workflow events expose only stable identities, revisions,
+  bounded technical status/error codes, retryability, counts, and assignment
+  actor identity.
 
 ### Events / Outbox Side Effects
 - Owner modules publish sealed contracts through `TransactionalEventBus::publish_contract_in_tx` inside the owner transaction.

@@ -11,6 +11,9 @@ recommended_admin_surfaces = ["leptos-admin", "next-admin"]
 [crate]
 entry_type = "EventsModule"
 
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
 [provides.admin_ui]
 leptos_crate = "rustok-events-admin"
 route_segment = "events"

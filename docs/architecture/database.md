@@ -145,13 +145,30 @@ the captured change cursor for subsequent replay.
 
 Durable authoring state lives in `translation_jobs`,
 `translation_job_items`, `translation_proposals`, and
-`translation_apply_receipts`. Job items may retain typed source snapshots for
-review under explicit workflow retention policy, but inventory rows never store
-source or translated text. All workflow rows are tenant-scoped, use logical
-owner identities rather than cross-module foreign keys, and treat owner tables
-as canonical. Proposal creation, review submission, and approval persist
-separate idempotency/request-hash bindings; item state changes use revision CAS,
-and approval stores both the reviewer identity and stable approval receipt.
+`translation_apply_operations`; successful owner outcomes live in
+`translation_apply_receipts`, while privileged recovery commands are audited
+in `translation_apply_recoveries`. Append-only assignment and cancellation
+commands live in `translation_item_assignments` and
+`translation_job_cancellations`; active assignment remains on the job item.
+Explicit blocked-item retry commands live in `translation_item_retries`.
+`translation_job_progress` is a content-free derived projection of workflow
+states, assignments, required/optional units, approved/applied units, completed
+resources, and character workload. Workflow mutations refresh it in their
+transaction, and an authorized rebuild verifies source/proposal digests and
+owner receipt evidence before repairing drift.
+Job items may retain typed source snapshots for review under explicit workflow
+retention policy, but inventory rows never store source or translated text. All
+workflow rows are tenant-scoped, use logical owner identities rather than
+cross-module foreign keys, and treat owner tables as canonical. Proposal
+creation, review submission, approval, assignment, cancellation, retry, apply,
+and recovery persist separate idempotency/request-hash bindings. Apply operations
+retain the exact approved patch and an expiring owner-execution lease before
+owner invocation. Recovery and cancellation records retain their operator
+reason privately; shared workflow events remain content-free. Item state
+changes use revision CAS, and `applied` is committed only with a validated
+stable owner receipt. A non-empty job becomes `completed` only when every item
+is `applied`, `excluded`, or `cancelled`; conflicts, stale items, and blocked
+items remain unfinished.
 
 ## Content-family Storage
 

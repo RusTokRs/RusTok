@@ -2,6 +2,7 @@ pub mod entities;
 mod error;
 mod inventory;
 pub mod migrations;
+mod progress;
 mod workflow;
 
 use async_trait::async_trait;
@@ -13,10 +14,12 @@ pub use error::{TranslationError, TranslationResult};
 pub use inventory::{
     TranslationInventoryRebuildResult, TranslationInventoryService, TranslationInventorySyncResult,
 };
+pub use progress::{JobProgressRecord, TranslationProgressService};
 pub use workflow::{
-    AddItemInput, ApproveProposalInput, CreateJobInput, JobItemRecord, JobRecord, ProposalOrigin,
-    ProposalRecord, ProposalValue, SaveProposalInput, SubmitProposalInput,
-    TranslationWorkflowService,
+    AddItemInput, ApplyProposalInput, ApplyRecord, ApproveProposalInput, AssignItemInput,
+    AssignmentRecord, CancelJobInput, CancellationRecord, CreateJobInput, JobItemRecord, JobRecord,
+    ProposalOrigin, ProposalRecord, ProposalValue, RecoverApplyInput, RetryItemInput, RetryRecord,
+    SaveProposalInput, SubmitProposalInput, TranslationWorkflowService, UnassignItemInput,
 };
 
 pub struct TranslationModule;

@@ -15,6 +15,15 @@ Apply calls carry expected resource, source, and target revisions.
 identity. An owner must validate and write through its normal service,
 transaction, audit, and outbox path. Cross-module SQL is forbidden.
 
+Owners re-authorize the current actor on every apply call, including replay.
+The idempotency request binding is tenant + operation kind + exact
+`TranslationPatchRequest`; it must not include the actor identity. This permits
+an explicitly authorized control-plane recovery operator to reconcile an
+unknown outcome under the original mutation identity without impersonating the
+original actor or creating a second write key. The owner records the actor that
+actually commits a first execution; a replay returns the already committed
+receipt after current-actor authorization.
+
 Provider registration is keyed by `(owner_slug, resource_kind)` and duplicate
 keys fail startup. Owners declare only implemented capabilities; consumers must
 not emulate a missing capability.

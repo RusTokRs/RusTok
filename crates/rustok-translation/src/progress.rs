@@ -1,0 +1,693 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+use chrono::{DateTime, FixedOffset, Utc};
+use rustok_api::{Action, PortCallPolicy, PortContext, Resource};
+use rustok_core::{PermissionScope, SecurityContext, generate_id};
+use rustok_translation_targets::{FieldKey, TranslationFieldPatch, TranslationResourceSnapshot};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
+    sea_query::{Expr, OnConflict},
+};
+use serde::Serialize;
+use uuid::Uuid;
+
+use crate::{
+    TranslationError, TranslationResult,
+    entities::{apply_receipt, job, job_item, job_progress, proposal},
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobProgressRecord {
+    pub job_id: Uuid,
+    pub source_digest: String,
+    pub total_items: u64,
+    pub assigned_items: u64,
+    pub terminal_items: u64,
+    pub missing_items: u64,
+    pub draft_items: u64,
+    pub in_review_items: u64,
+    pub approved_items: u64,
+    pub applying_items: u64,
+    pub applied_items: u64,
+    pub stale_items: u64,
+    pub conflict_items: u64,
+    pub blocked_items: u64,
+    pub excluded_items: u64,
+    pub cancelled_items: u64,
+    pub required_units: u64,
+    pub optional_units: u64,
+    pub applied_required_units: u64,
+    pub applied_optional_units: u64,
+    pub approved_required_units: u64,
+    pub approved_optional_units: u64,
+    pub complete_resources: u64,
+    pub source_characters: u64,
+    pub translated_characters: u64,
+    pub revision: i64,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+pub struct TranslationProgressService {
+    database: DatabaseConnection,
+}
+
+impl TranslationProgressService {
+    pub fn new(database: DatabaseConnection) -> Self {
+        Self { database }
+    }
+
+    pub async fn read_job_progress(
+        &self,
+        context: PortContext,
+        job_id: Uuid,
+    ) -> TranslationResult<JobProgressRecord> {
+        let tenant_id = authorize_progress(&context, PortCallPolicy::read(), Action::Read)?;
+        ensure_job(&self.database, tenant_id, job_id).await?;
+        let model = job_progress::Entity::find()
+            .filter(job_progress::Column::TenantId.eq(tenant_id))
+            .filter(job_progress::Column::JobId.eq(job_id))
+            .one(&self.database)
+            .await?
+            .ok_or(TranslationError::JobProgressNotFound)?;
+        progress_record(model)
+    }
+
+    pub async fn rebuild_job_progress(
+        &self,
+        context: PortContext,
+        job_id: Uuid,
+    ) -> TranslationResult<JobProgressRecord> {
+        let tenant_id = authorize_progress(&context, PortCallPolicy::write(), Action::Manage)?;
+        let transaction = self.database.begin().await?;
+        let progress = refresh_job_progress(&transaction, tenant_id, job_id).await?;
+        transaction.commit().await?;
+        Ok(progress)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ProgressCounts {
+    total_items: i64,
+    assigned_items: i64,
+    terminal_items: i64,
+    missing_items: i64,
+    draft_items: i64,
+    in_review_items: i64,
+    approved_items: i64,
+    applying_items: i64,
+    applied_items: i64,
+    stale_items: i64,
+    conflict_items: i64,
+    blocked_items: i64,
+    excluded_items: i64,
+    cancelled_items: i64,
+    required_units: i64,
+    optional_units: i64,
+    applied_required_units: i64,
+    applied_optional_units: i64,
+    approved_required_units: i64,
+    approved_optional_units: i64,
+    complete_resources: i64,
+    source_characters: i64,
+    translated_characters: i64,
+}
+
+#[derive(Serialize)]
+struct ProgressSource<'a> {
+    job_id: Uuid,
+    job_status: &'a str,
+    job_revision: i64,
+    items: Vec<ProgressItemSource<'a>>,
+}
+
+#[derive(Serialize)]
+struct ProgressItemSource<'a> {
+    id: Uuid,
+    revision: i64,
+    status: &'a str,
+    source_digest: &'a str,
+    current_proposal_id: Option<Uuid>,
+    proposal_values_digest: Option<&'a str>,
+    receipt_id: Option<Uuid>,
+    receipt_target_revision: Option<&'a str>,
+    receipt_applied_field_keys: Option<&'a serde_json::Value>,
+    assigned_actor_kind: Option<&'a str>,
+    assigned_actor_id: Option<&'a str>,
+}
+
+pub(crate) async fn refresh_job_progress<C>(
+    database: &C,
+    tenant_id: Uuid,
+    job_id: Uuid,
+) -> TranslationResult<JobProgressRecord>
+where
+    C: ConnectionTrait,
+{
+    let job_model = ensure_job(database, tenant_id, job_id).await?;
+    let items = job_item::Entity::find()
+        .filter(job_item::Column::TenantId.eq(tenant_id))
+        .filter(job_item::Column::JobId.eq(job_id))
+        .order_by_asc(job_item::Column::Id)
+        .all(database)
+        .await?;
+    let proposal_ids = items
+        .iter()
+        .filter_map(|item| item.current_proposal_id)
+        .collect::<Vec<_>>();
+    let proposals = if proposal_ids.is_empty() {
+        Vec::new()
+    } else {
+        proposal::Entity::find()
+            .filter(proposal::Column::TenantId.eq(tenant_id))
+            .filter(proposal::Column::Id.is_in(proposal_ids))
+            .all(database)
+            .await?
+    };
+    let proposals = proposals
+        .into_iter()
+        .map(|proposal| (proposal.id, proposal))
+        .collect::<BTreeMap<_, _>>();
+    let item_ids = items.iter().map(|item| item.id).collect::<Vec<_>>();
+    let receipts = if item_ids.is_empty() {
+        Vec::new()
+    } else {
+        apply_receipt::Entity::find()
+            .filter(apply_receipt::Column::TenantId.eq(tenant_id))
+            .filter(apply_receipt::Column::ItemId.is_in(item_ids))
+            .order_by_asc(apply_receipt::Column::CreatedAt)
+            .all(database)
+            .await?
+    };
+    let receipts = receipts
+        .into_iter()
+        .map(|receipt| (receipt.item_id, receipt))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut counts = ProgressCounts::default();
+    let mut source_items = Vec::with_capacity(items.len());
+    for item in &items {
+        let snapshot: TranslationResourceSnapshot =
+            serde_json::from_value(item.source_snapshot.clone())?;
+        snapshot
+            .validate()
+            .map_err(|error| TranslationError::InvalidProgressSource(error.to_string()))?;
+        if rustok_api::manifest_hash::hash_manifest(&snapshot)? != item.source_digest {
+            return Err(TranslationError::InvalidProgressSource(
+                "job item source snapshot digest does not match".to_string(),
+            ));
+        }
+        let current_proposal = item
+            .current_proposal_id
+            .and_then(|proposal_id| proposals.get(&proposal_id));
+        let receipt = receipts.get(&item.id);
+        count_item(&mut counts, item, &snapshot, current_proposal, receipt)?;
+        source_items.push(ProgressItemSource {
+            id: item.id,
+            revision: item.revision,
+            status: &item.status,
+            source_digest: &item.source_digest,
+            current_proposal_id: item.current_proposal_id,
+            proposal_values_digest: current_proposal
+                .map(|proposal| proposal.values_digest.as_str()),
+            receipt_id: receipt.map(|receipt| receipt.id),
+            receipt_target_revision: receipt.map(|receipt| receipt.target_revision.as_str()),
+            receipt_applied_field_keys: receipt.map(|receipt| &receipt.applied_field_keys),
+            assigned_actor_kind: item.assigned_actor_kind.as_deref(),
+            assigned_actor_id: item.assigned_actor_id.as_deref(),
+        });
+    }
+    let source_digest = rustok_api::manifest_hash::hash_manifest(&ProgressSource {
+        job_id,
+        job_status: &job_model.status,
+        job_revision: job_model.revision,
+        items: source_items,
+    })?;
+    persist_progress(database, tenant_id, job_id, source_digest, counts).await
+}
+
+fn count_item(
+    counts: &mut ProgressCounts,
+    item: &job_item::Model,
+    snapshot: &TranslationResourceSnapshot,
+    proposal: Option<&proposal::Model>,
+    receipt: Option<&apply_receipt::Model>,
+) -> TranslationResult<()> {
+    add(&mut counts.total_items, 1)?;
+    match (&item.assigned_actor_kind, &item.assigned_actor_id) {
+        (None, None) => {}
+        (Some(_), Some(_)) => add(&mut counts.assigned_items, 1)?,
+        _ => {
+            return Err(TranslationError::InvalidProgressSource(
+                "job item assignment is incomplete".to_string(),
+            ));
+        }
+    }
+    match item.status.as_str() {
+        "missing" => add(&mut counts.missing_items, 1)?,
+        "draft" => add(&mut counts.draft_items, 1)?,
+        "in_review" => add(&mut counts.in_review_items, 1)?,
+        "approved" => add(&mut counts.approved_items, 1)?,
+        "applying" => add(&mut counts.applying_items, 1)?,
+        "applied" => add(&mut counts.applied_items, 1)?,
+        "stale" => add(&mut counts.stale_items, 1)?,
+        "conflict" => add(&mut counts.conflict_items, 1)?,
+        "blocked" => add(&mut counts.blocked_items, 1)?,
+        "excluded" => add(&mut counts.excluded_items, 1)?,
+        "cancelled" => add(&mut counts.cancelled_items, 1)?,
+        status => {
+            return Err(TranslationError::InvalidProgressSource(format!(
+                "unknown job item status `{status}`"
+            )));
+        }
+    }
+    if matches!(item.status.as_str(), "applied" | "excluded" | "cancelled") {
+        add(&mut counts.terminal_items, 1)?;
+    }
+
+    let applied_keys = match (item.status.as_str(), receipt) {
+        ("applied", Some(receipt)) => {
+            serde_json::from_value::<Vec<FieldKey>>(receipt.applied_field_keys.clone())?
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+        }
+        ("applied", None) => {
+            return Err(TranslationError::InvalidProgressSource(
+                "applied job item has no owner receipt".to_string(),
+            ));
+        }
+        (_, _) => BTreeSet::new(),
+    };
+    let proposal_values = proposal
+        .map(|proposal| {
+            serde_json::from_value::<Vec<TranslationFieldPatch>>(proposal.values.clone())
+        })
+        .transpose()?
+        .unwrap_or_default();
+    if let Some(proposal) = proposal
+        && rustok_api::manifest_hash::hash_manifest(&proposal_values)? != proposal.values_digest
+    {
+        return Err(TranslationError::InvalidProgressSource(
+            "current proposal values digest does not match".to_string(),
+        ));
+    }
+    if matches!(
+        item.status.as_str(),
+        "draft" | "in_review" | "approved" | "applying" | "applied" | "conflict" | "blocked"
+    ) && proposal.is_none()
+    {
+        return Err(TranslationError::InvalidProgressSource(
+            "workflow item state requires a current proposal".to_string(),
+        ));
+    }
+    let proposal_by_key = proposal_values
+        .iter()
+        .map(|field| (&field.key, field))
+        .collect::<BTreeMap<_, _>>();
+    let approved_keys = if matches!(item.status.as_str(), "approved" | "applying") {
+        proposal_by_key.keys().copied().collect::<BTreeSet<_>>()
+    } else {
+        BTreeSet::new()
+    };
+
+    let known_keys = snapshot
+        .fields
+        .iter()
+        .map(|field| field.descriptor.key.clone())
+        .collect::<BTreeSet<_>>();
+    if !applied_keys.is_subset(&known_keys)
+        || !approved_keys.iter().all(|key| known_keys.contains(*key))
+    {
+        return Err(TranslationError::InvalidProgressSource(
+            "progress evidence contains an unknown field key".to_string(),
+        ));
+    }
+    let mut required_complete = true;
+    for field in &snapshot.fields {
+        let source_characters = i64::try_from(field.source_value.chars().count())
+            .map_err(|_| TranslationError::ProgressOverflow)?;
+        add(&mut counts.source_characters, source_characters)?;
+        let (total, applied, approved) = if field.descriptor.required {
+            (
+                &mut counts.required_units,
+                &mut counts.applied_required_units,
+                &mut counts.approved_required_units,
+            )
+        } else {
+            (
+                &mut counts.optional_units,
+                &mut counts.applied_optional_units,
+                &mut counts.approved_optional_units,
+            )
+        };
+        add(total, 1)?;
+        if applied_keys.contains(&field.descriptor.key) {
+            add(applied, 1)?;
+            let translated = proposal_by_key
+                .get(&field.descriptor.key)
+                .ok_or_else(|| {
+                    TranslationError::InvalidProgressSource(
+                        "owner receipt field is absent from the current proposal".to_string(),
+                    )
+                })?
+                .value
+                .chars()
+                .count();
+            add(
+                &mut counts.translated_characters,
+                i64::try_from(translated).map_err(|_| TranslationError::ProgressOverflow)?,
+            )?;
+        } else if field.descriptor.required {
+            required_complete = false;
+        }
+        if approved_keys.contains(&field.descriptor.key) {
+            add(approved, 1)?;
+        }
+    }
+    if item.status == "applied" && required_complete {
+        add(&mut counts.complete_resources, 1)?;
+    }
+    Ok(())
+}
+
+async fn persist_progress<C>(
+    database: &C,
+    tenant_id: Uuid,
+    job_id: Uuid,
+    source_digest: String,
+    counts: ProgressCounts,
+) -> TranslationResult<JobProgressRecord>
+where
+    C: ConnectionTrait,
+{
+    let existing = job_progress::Entity::find()
+        .filter(job_progress::Column::TenantId.eq(tenant_id))
+        .filter(job_progress::Column::JobId.eq(job_id))
+        .one(database)
+        .await?;
+    let now = Utc::now().fixed_offset();
+    let Some(existing) = existing else {
+        let model = job_progress::Model {
+            id: generate_id(),
+            tenant_id,
+            job_id,
+            source_digest,
+            total_items: counts.total_items,
+            assigned_items: counts.assigned_items,
+            terminal_items: counts.terminal_items,
+            missing_items: counts.missing_items,
+            draft_items: counts.draft_items,
+            in_review_items: counts.in_review_items,
+            approved_items: counts.approved_items,
+            applying_items: counts.applying_items,
+            applied_items: counts.applied_items,
+            stale_items: counts.stale_items,
+            conflict_items: counts.conflict_items,
+            blocked_items: counts.blocked_items,
+            excluded_items: counts.excluded_items,
+            cancelled_items: counts.cancelled_items,
+            required_units: counts.required_units,
+            optional_units: counts.optional_units,
+            applied_required_units: counts.applied_required_units,
+            applied_optional_units: counts.applied_optional_units,
+            approved_required_units: counts.approved_required_units,
+            approved_optional_units: counts.approved_optional_units,
+            complete_resources: counts.complete_resources,
+            source_characters: counts.source_characters,
+            translated_characters: counts.translated_characters,
+            revision: 0,
+            updated_at: now,
+        };
+        job_progress::Entity::insert(job_progress::ActiveModel {
+            id: Set(model.id),
+            tenant_id: Set(model.tenant_id),
+            job_id: Set(model.job_id),
+            source_digest: Set(model.source_digest.clone()),
+            total_items: Set(model.total_items),
+            assigned_items: Set(model.assigned_items),
+            terminal_items: Set(model.terminal_items),
+            missing_items: Set(model.missing_items),
+            draft_items: Set(model.draft_items),
+            in_review_items: Set(model.in_review_items),
+            approved_items: Set(model.approved_items),
+            applying_items: Set(model.applying_items),
+            applied_items: Set(model.applied_items),
+            stale_items: Set(model.stale_items),
+            conflict_items: Set(model.conflict_items),
+            blocked_items: Set(model.blocked_items),
+            excluded_items: Set(model.excluded_items),
+            cancelled_items: Set(model.cancelled_items),
+            required_units: Set(model.required_units),
+            optional_units: Set(model.optional_units),
+            applied_required_units: Set(model.applied_required_units),
+            applied_optional_units: Set(model.applied_optional_units),
+            approved_required_units: Set(model.approved_required_units),
+            approved_optional_units: Set(model.approved_optional_units),
+            complete_resources: Set(model.complete_resources),
+            source_characters: Set(model.source_characters),
+            translated_characters: Set(model.translated_characters),
+            revision: Set(model.revision),
+            updated_at: Set(model.updated_at),
+        })
+        .on_conflict(
+            OnConflict::columns([job_progress::Column::TenantId, job_progress::Column::JobId])
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(database)
+        .await?;
+        let persisted = job_progress::Entity::find()
+            .filter(job_progress::Column::TenantId.eq(tenant_id))
+            .filter(job_progress::Column::JobId.eq(job_id))
+            .one(database)
+            .await?
+            .ok_or(TranslationError::ProgressRevisionConflict)?;
+        if persisted.id != model.id
+            && !projection_matches(&persisted, &model.source_digest, &counts)
+        {
+            return Err(TranslationError::ProgressRevisionConflict);
+        }
+        return progress_record(persisted);
+    };
+
+    if projection_matches(&existing, &source_digest, &counts) {
+        return progress_record(existing);
+    }
+    let revision = existing
+        .revision
+        .checked_add(1)
+        .ok_or(TranslationError::ProgressOverflow)?;
+    let update = job_progress::Entity::update_many()
+        .col_expr(
+            job_progress::Column::SourceDigest,
+            Expr::value(source_digest),
+        )
+        .col_expr(
+            job_progress::Column::TotalItems,
+            Expr::value(counts.total_items),
+        )
+        .col_expr(
+            job_progress::Column::AssignedItems,
+            Expr::value(counts.assigned_items),
+        )
+        .col_expr(
+            job_progress::Column::TerminalItems,
+            Expr::value(counts.terminal_items),
+        )
+        .col_expr(
+            job_progress::Column::MissingItems,
+            Expr::value(counts.missing_items),
+        )
+        .col_expr(
+            job_progress::Column::DraftItems,
+            Expr::value(counts.draft_items),
+        )
+        .col_expr(
+            job_progress::Column::InReviewItems,
+            Expr::value(counts.in_review_items),
+        )
+        .col_expr(
+            job_progress::Column::ApprovedItems,
+            Expr::value(counts.approved_items),
+        )
+        .col_expr(
+            job_progress::Column::ApplyingItems,
+            Expr::value(counts.applying_items),
+        )
+        .col_expr(
+            job_progress::Column::AppliedItems,
+            Expr::value(counts.applied_items),
+        )
+        .col_expr(
+            job_progress::Column::StaleItems,
+            Expr::value(counts.stale_items),
+        )
+        .col_expr(
+            job_progress::Column::ConflictItems,
+            Expr::value(counts.conflict_items),
+        )
+        .col_expr(
+            job_progress::Column::BlockedItems,
+            Expr::value(counts.blocked_items),
+        )
+        .col_expr(
+            job_progress::Column::ExcludedItems,
+            Expr::value(counts.excluded_items),
+        )
+        .col_expr(
+            job_progress::Column::CancelledItems,
+            Expr::value(counts.cancelled_items),
+        )
+        .col_expr(
+            job_progress::Column::RequiredUnits,
+            Expr::value(counts.required_units),
+        )
+        .col_expr(
+            job_progress::Column::OptionalUnits,
+            Expr::value(counts.optional_units),
+        )
+        .col_expr(
+            job_progress::Column::AppliedRequiredUnits,
+            Expr::value(counts.applied_required_units),
+        )
+        .col_expr(
+            job_progress::Column::AppliedOptionalUnits,
+            Expr::value(counts.applied_optional_units),
+        )
+        .col_expr(
+            job_progress::Column::ApprovedRequiredUnits,
+            Expr::value(counts.approved_required_units),
+        )
+        .col_expr(
+            job_progress::Column::ApprovedOptionalUnits,
+            Expr::value(counts.approved_optional_units),
+        )
+        .col_expr(
+            job_progress::Column::CompleteResources,
+            Expr::value(counts.complete_resources),
+        )
+        .col_expr(
+            job_progress::Column::SourceCharacters,
+            Expr::value(counts.source_characters),
+        )
+        .col_expr(
+            job_progress::Column::TranslatedCharacters,
+            Expr::value(counts.translated_characters),
+        )
+        .col_expr(job_progress::Column::Revision, Expr::value(revision))
+        .col_expr(job_progress::Column::UpdatedAt, Expr::value(now))
+        .filter(job_progress::Column::Id.eq(existing.id))
+        .filter(job_progress::Column::TenantId.eq(tenant_id))
+        .filter(job_progress::Column::Revision.eq(existing.revision))
+        .exec(database)
+        .await?;
+    if update.rows_affected != 1 {
+        return Err(TranslationError::ProgressRevisionConflict);
+    }
+    let persisted = job_progress::Entity::find_by_id(existing.id)
+        .filter(job_progress::Column::TenantId.eq(tenant_id))
+        .one(database)
+        .await?
+        .ok_or(TranslationError::JobProgressNotFound)?;
+    progress_record(persisted)
+}
+
+fn projection_matches(
+    model: &job_progress::Model,
+    source_digest: &str,
+    counts: &ProgressCounts,
+) -> bool {
+    model.source_digest == source_digest
+        && model.total_items == counts.total_items
+        && model.assigned_items == counts.assigned_items
+        && model.terminal_items == counts.terminal_items
+        && model.missing_items == counts.missing_items
+        && model.draft_items == counts.draft_items
+        && model.in_review_items == counts.in_review_items
+        && model.approved_items == counts.approved_items
+        && model.applying_items == counts.applying_items
+        && model.applied_items == counts.applied_items
+        && model.stale_items == counts.stale_items
+        && model.conflict_items == counts.conflict_items
+        && model.blocked_items == counts.blocked_items
+        && model.excluded_items == counts.excluded_items
+        && model.cancelled_items == counts.cancelled_items
+        && model.required_units == counts.required_units
+        && model.optional_units == counts.optional_units
+        && model.applied_required_units == counts.applied_required_units
+        && model.applied_optional_units == counts.applied_optional_units
+        && model.approved_required_units == counts.approved_required_units
+        && model.approved_optional_units == counts.approved_optional_units
+        && model.complete_resources == counts.complete_resources
+        && model.source_characters == counts.source_characters
+        && model.translated_characters == counts.translated_characters
+}
+
+fn progress_record(model: job_progress::Model) -> TranslationResult<JobProgressRecord> {
+    Ok(JobProgressRecord {
+        job_id: model.job_id,
+        source_digest: model.source_digest,
+        total_items: unsigned(model.total_items)?,
+        assigned_items: unsigned(model.assigned_items)?,
+        terminal_items: unsigned(model.terminal_items)?,
+        missing_items: unsigned(model.missing_items)?,
+        draft_items: unsigned(model.draft_items)?,
+        in_review_items: unsigned(model.in_review_items)?,
+        approved_items: unsigned(model.approved_items)?,
+        applying_items: unsigned(model.applying_items)?,
+        applied_items: unsigned(model.applied_items)?,
+        stale_items: unsigned(model.stale_items)?,
+        conflict_items: unsigned(model.conflict_items)?,
+        blocked_items: unsigned(model.blocked_items)?,
+        excluded_items: unsigned(model.excluded_items)?,
+        cancelled_items: unsigned(model.cancelled_items)?,
+        required_units: unsigned(model.required_units)?,
+        optional_units: unsigned(model.optional_units)?,
+        applied_required_units: unsigned(model.applied_required_units)?,
+        applied_optional_units: unsigned(model.applied_optional_units)?,
+        approved_required_units: unsigned(model.approved_required_units)?,
+        approved_optional_units: unsigned(model.approved_optional_units)?,
+        complete_resources: unsigned(model.complete_resources)?,
+        source_characters: unsigned(model.source_characters)?,
+        translated_characters: unsigned(model.translated_characters)?,
+        revision: model.revision,
+        updated_at: model.updated_at,
+    })
+}
+
+async fn ensure_job<C>(database: &C, tenant_id: Uuid, job_id: Uuid) -> TranslationResult<job::Model>
+where
+    C: ConnectionTrait,
+{
+    job::Entity::find_by_id(job_id)
+        .filter(job::Column::TenantId.eq(tenant_id))
+        .one(database)
+        .await?
+        .ok_or(TranslationError::JobNotFound)
+}
+
+fn authorize_progress(
+    context: &PortContext,
+    policy: PortCallPolicy,
+    action: Action,
+) -> TranslationResult<Uuid> {
+    context.require_policy(policy)?;
+    let security = SecurityContext::try_from_port_context(context)?;
+    if security.get_scope(Resource::Translations, action) == PermissionScope::None {
+        return Err(TranslationError::Forbidden);
+    }
+    Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)
+}
+
+fn add(value: &mut i64, increment: i64) -> TranslationResult<()> {
+    *value = value
+        .checked_add(increment)
+        .ok_or(TranslationError::ProgressOverflow)?;
+    Ok(())
+}
+
+fn unsigned(value: i64) -> TranslationResult<u64> {
+    u64::try_from(value).map_err(|_| {
+        TranslationError::InvalidProgressSource("persisted progress count is negative".to_string())
+    })
+}

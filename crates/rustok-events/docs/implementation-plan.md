@@ -6,7 +6,7 @@ This file is the live plan for shared event contracts and guarantees remote cons
 may rely on. Transport execution remains owned by Outbox, Iggy, the server runtime,
 or the consuming owner module.
 
-Last reconciled with `main`: 2026-07-27.
+Last reconciled with `main`: 2026-07-28.
 
 ## Current state
 
@@ -29,6 +29,15 @@ source/target user ids, canonical relation kind, active state, and revision only
 Tenant and actor remain envelope metadata. The Social Graph owner publishes the fact
 transactionally and provides bounded service/system-only replay over authoritative
 relation state.
+
+The typed-family implementation also includes
+`TranslationWorkflowEvent` v1 for job creation/cancellation/completion,
+assignment, explicit blocked-item retry, proposal, apply, and recovery
+lifecycle evidence. Translation publishes these contracts transactionally with
+its workflow state. Payloads exclude source/target copy, proposal values,
+operator reasons, claims, roles, and owner receipt data.
+
+Contract tests cover public event-contract use cases.
 
 ## Delivered Social Graph → Index consumer contract
 

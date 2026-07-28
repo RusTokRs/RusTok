@@ -56,6 +56,15 @@ identity, seller/product references, market/channel scope, and terms version.
 Moderation prose and arbitrary owner metadata remain private to the listing
 timeline and are not part of the external contract.
 
+`TranslationWorkflowEvent` is the Translation control-plane family. Its v1
+variants cover job creation/cancellation/completion, item assignment changes,
+explicit blocked-item retry, proposal submission/approval, apply
+request/completion/failure, and privileged recovery requests. Payloads contain
+only stable workflow identities, revisions, bounded technical status/error
+codes, retryability, and actor assignment identity. Source text, proposal
+values, cancellation/retry/recovery reasons, claims, and owner receipts remain
+in their owning persistence records.
+
 ## Schema release discipline
 
 `contracts/event-contract-digests.json` is the committed release artifact for

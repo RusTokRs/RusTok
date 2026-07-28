@@ -23,6 +23,11 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
   append-only change record, and content-free `translation.target.changed`
   outbox event in the same transaction. Replay returns the original receipt
   without another write, cursor record, or event.
+- Provider authorization is evaluated on every apply call. Its durable
+  idempotency request hash is actor-neutral and binds the tenant, operation
+  kind, exact patch, and mutation key, so a separately authorized Translation
+  recovery operator can reconcile the original mutation identity without
+  duplicating the owner write.
 - Non-provider Media translation writes commit the same append-only change
   record and owner event atomically with the locale row, so REST, GraphQL,
   native, AI-originated, embedded-port, and provider paths cannot silently

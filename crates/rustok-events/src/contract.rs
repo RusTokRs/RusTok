@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent, MarketplaceListingEvent,
-    MarketplaceSellerEvent, SocialGraphRelationEvent, ValidateEvent,
+    MarketplaceSellerEvent, SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -44,6 +44,8 @@ pub enum ContractEventPayload {
     MarketplaceSeller(MarketplaceSellerEvent),
     #[serde(rename = "social_graph_relation")]
     SocialGraphRelation(SocialGraphRelationEvent),
+    #[serde(rename = "translation_workflow")]
+    TranslationWorkflow(TranslationWorkflowEvent),
 }
 
 impl ContractEventPayload {
@@ -54,6 +56,7 @@ impl ContractEventPayload {
             Self::MarketplaceListing(event) => event.event_type(),
             Self::MarketplaceSeller(event) => event.event_type(),
             Self::SocialGraphRelation(event) => event.event_type(),
+            Self::TranslationWorkflow(event) => event.event_type(),
         }
     }
 
@@ -64,6 +67,7 @@ impl ContractEventPayload {
             Self::MarketplaceListing(event) => event.schema_version(),
             Self::MarketplaceSeller(event) => event.schema_version(),
             Self::SocialGraphRelation(event) => event.schema_version(),
+            Self::TranslationWorkflow(event) => event.schema_version(),
         }
     }
 }
@@ -76,6 +80,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::MarketplaceListing(event) => event.validate(),
             Self::MarketplaceSeller(event) => event.validate(),
             Self::SocialGraphRelation(event) => event.validate(),
+            Self::TranslationWorkflow(event) => event.validate(),
         }
     }
 }

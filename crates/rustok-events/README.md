@@ -15,6 +15,8 @@
 - Define the content-free `translation.target.changed` owner fact used to
   invalidate and repair translation inventory without exposing translated
   values.
+- Define sealed `TranslationWorkflowEvent` contracts for content-free
+  Translation control-plane lifecycle evidence.
 
 ## Entry points
 
@@ -28,6 +30,8 @@
 - `EVENT_SCHEMAS`
 - `ValidateEvent`
 - `EventValidationError`
+- `TranslationWorkflowEvent`
+- `TRANSLATION_WORKFLOW_EVENT_SCHEMAS`
 
 ## Interactions
 

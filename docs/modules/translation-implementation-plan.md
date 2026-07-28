@@ -52,9 +52,28 @@ This is the active cross-cutting implementation plan. As of 2026-07-28:
   admission advances the job with revision CAS. Owner-validated proposal save,
   review submission, and approval transitions persist QA evidence, bind each
   operation to its idempotency key and request hash, advance item state with
-  revision CAS, and prevent the proposal creator from approving it. Durable
-  owner-apply intent and unknown-outcome reconciliation remain the next
-  workflow slice;
+  revision CAS, and prevent the proposal creator from approving it. Owner apply
+  now persists the exact approved patch before invocation, binds replay to the
+  original actor and request, retains retryable unknown outcomes for same-key
+  reconciliation, records terminal owner conflicts, validates stable receipts,
+  and commits `applied` plus the receipt under item revision CAS. Apply attempts
+  use expiring owner-execution leases. A separately idempotent, actor-bound
+  recovery command requires Translation Manage and Publish, persists its actor,
+  reason, and observed attempt before owner invocation, rejects an unexpired
+  lease, and reconciles through the original owner mutation key. Assignment
+  and unassignment are actor-bound, idempotent, expected-revision commands with
+  append-only audit and assignee enforcement for draft/submit. Job cancellation
+  preserves applied/excluded items, cancels remaining mutable items under CAS,
+  stores a mandatory private reason, and rejects unresolved owner apply
+  outcomes. Sealed content-free workflow events are transactional with job,
+  assignment, proposal, apply, and recovery state. Non-empty jobs now complete
+  automatically only when all items are applied, excluded, or cancelled.
+  Blocked items have an actor-bound audited retry to their current approved
+  proposal, while conflict/stale work remains rebase-required. A content-free
+  per-job workflow progress projection is updated transactionally and can be
+  deterministically rebuilt with source/proposal digest and receipt checks.
+  Provider-level exact-locale coverage/lag and
+  recovery/assignment/cancellation/retry transport/UI remain open;
 - `rustok-translation-targets` now defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;
@@ -522,6 +541,12 @@ logical ownership is:
 | `translation_jobs` | Bounded batch identity, filters, source/target locale policy, lifecycle, counters |
 | `translation_job_items` | Resource/field identity, source snapshot/hash, revisions, status, assignment |
 | `translation_proposals` | Versioned manual/import/memory/AI working copy and QA result |
+| `translation_item_assignments` | Append-only assign/unassign command, requested actor, request binding, assignee, and resulting item revision |
+| `translation_job_cancellations` | Actor-bound cancellation request, private reason, resulting job revision, and cancelled-item count |
+| `translation_job_progress` | Rebuildable content-free workflow-state, assignment, unit, resource-completion, and character-workload projection |
+| `translation_item_retries` | Actor-bound blocked-item retry request, private reason, request binding, and resulting item revision |
+| `translation_apply_operations` | Durable approved patch intent, original actor/request binding, attempts, expiring execution lease, and recoverable or terminal outcome state |
+| `translation_apply_recoveries` | Actor-bound recovery command, mandatory reason, observed attempt, and independent idempotency evidence |
 | `translation_apply_receipts` | Idempotency binding, approval identity, owner receipt, resulting revision |
 | `translation_inventory` | Derived exact-locale/freshness projection; safe to rebuild |
 | `translation_memories` | Tenant-scoped memory definitions and policy |
@@ -1098,16 +1123,18 @@ the new module's ownership.
 
 Deliverables:
 
-- extend `rustok-translation-targets` with executable reference-provider and
-  owner-adapter conformance fixtures;
-- scaffold the optional `rustok-translation` module with local docs, manifest,
+- [x] extend `rustok-translation-targets` with executable reference-provider
+  conformance fixtures and the first production owner adapter;
+- [x] scaffold the optional `rustok-translation` module with local docs, manifest,
   migrations, permissions, workers, FBA evidence, and `not_started` FFA/FBA
   status;
-- implement policies, jobs, items, proposals, assignments, QA, receipts, and a
-  rebuildable inventory projection;
-- implement GraphQL and native server-function service adapters;
-- implement module-owned Leptos and Next admin shells;
-- verify module disablement leaves owner reads and locale fallback unchanged.
+- [ ] complete policies, QA, and provider-level exact-locale coverage/lag;
+  job completion, safe blocked-item retry, rebuildable job workflow progress,
+  jobs, items, proposals, assignments, cancellation, receipts, durable apply
+  recovery, and rebuildable inventory are implemented;
+- [ ] implement GraphQL and native server-function service adapters;
+- [ ] implement module-owned Leptos and Next admin shells;
+- [ ] verify module disablement leaves owner reads and locale fallback unchanged.
 
 Done when a fake reference provider supports a complete manual
 discover-to-owner-receipt flow with conflicts, replay, and recovery.
@@ -1140,7 +1167,7 @@ Deliverables:
 
 - tenant-scoped exact/fuzzy memory with approved-only ingestion;
 - glossary scopes, preferred/forbidden terms, conflicts, and revision snapshots;
-- assignments, comments/notes, reviewer queues, and workload views;
+- assignment UI, comments/notes, reviewer queues, and workload views;
 - bounded import/export with validation, object-storage expiry, and conflict
   reports;
 - progress dashboards and projection rebuild/repair operations;

@@ -19,6 +19,7 @@ pub struct Model {
     pub source_digest: String,
     pub status: String,
     pub current_proposal_id: Option<Uuid>,
+    pub active_apply_operation_id: Option<Uuid>,
     pub assigned_actor_kind: Option<String>,
     pub assigned_actor_id: Option<String>,
     pub idempotency_key: String,

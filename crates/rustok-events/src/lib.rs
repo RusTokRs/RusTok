@@ -6,6 +6,7 @@ mod marketplace_listing;
 mod marketplace_seller;
 mod schema;
 mod social_graph;
+mod translation_workflow;
 mod types;
 pub mod validation;
 
@@ -30,6 +31,9 @@ pub use social_graph::{
     SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS, SocialGraphRelationEvent,
     social_graph_relation_event_schema,
 };
+pub use translation_workflow::{
+    TRANSLATION_WORKFLOW_EVENT_SCHEMAS, TranslationWorkflowEvent, translation_workflow_event_schema,
+};
 pub use types::{DomainEvent, EventEnvelope, EventEnvelopeError};
 pub use validation::{EventValidationError, ValidateEvent};
 
@@ -42,6 +46,7 @@ pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
         .or_else(|| marketplace_listing_event_schema(event_type))
         .or_else(|| marketplace_seller_event_schema(event_type))
         .or_else(|| social_graph_relation_event_schema(event_type))
+        .or_else(|| translation_workflow_event_schema(event_type))
 }
 
 pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
@@ -51,6 +56,7 @@ pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
         .chain(MARKETPLACE_LISTING_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_SELLER_EVENT_SCHEMAS.iter())
         .chain(SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS.iter())
+        .chain(TRANSLATION_WORKFLOW_EVENT_SCHEMAS.iter())
 }
 
 #[cfg(test)]

@@ -11,6 +11,8 @@ plane.
 - Define stable owner/resource/field identities and opaque revisions.
 - Keep exact-locale state separate from rendered fallback.
 - Define bounded list, read, validate, and idempotent apply operations.
+- Require actor-neutral apply request hashing with per-call actor
+  re-authorization so unknown outcomes can be recovered safely.
 - Declare field value profiles, translation strategy, data classification, and
   AI-export eligibility.
 - Register owner-contributed providers through `ModuleRuntimeExtensions`.

@@ -1,6 +1,12 @@
+pub mod apply_operation;
 pub mod apply_receipt;
+pub mod apply_recovery;
+pub mod assignment;
+pub mod cancellation;
 pub mod inventory_resource;
 pub mod job;
 pub mod job_item;
+pub mod job_progress;
 pub mod proposal;
 pub mod provider_checkpoint;
+pub mod retry;

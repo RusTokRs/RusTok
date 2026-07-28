@@ -48,6 +48,48 @@ pub enum TranslationError {
     ProposalValidationFailed,
     #[error("translation proposal creator cannot approve their own proposal")]
     ReviewerSeparationRequired,
+    #[error("translation workflow idempotency key belongs to another actor")]
+    IdempotencyActorMismatch,
+    #[error("translation apply operation ended in state `{status}` with owner error `{code}`")]
+    ApplyOperationTerminal { status: String, code: String },
+    #[error("translation owner returned an invalid application receipt: {0}")]
+    InvalidProviderReceipt(String),
+    #[error("translation owner returned a different receipt for the same apply operation")]
+    ProviderReceiptMismatch,
+    #[error("translation apply operation is currently leased by another executor")]
+    ApplyInProgress,
+    #[error("translation apply recovery observed a different attempt count")]
+    ApplyRecoveryAttemptMismatch,
+    #[error("invalid translation apply recovery reason")]
+    InvalidRecoveryReason,
+    #[error("translation item assignment is unchanged")]
+    AssignmentUnchanged,
+    #[error("translation job item is assigned to another actor")]
+    ItemAssignedToAnotherActor,
+    #[error("translation job cannot be cancelled while an owner apply is in progress")]
+    JobCancellationInProgress,
+    #[error("translation job does not accept cancellation in state `{0}`")]
+    JobNotCancellable(String),
+    #[error("invalid translation workflow actor")]
+    InvalidWorkflowActor,
+    #[error("invalid translation job cancellation reason")]
+    InvalidCancellationReason,
+    #[error("translation item does not accept retry in state `{0}`")]
+    ItemNotRetryable(String),
+    #[error("translation item retry requires a current approved proposal")]
+    RetryProposalNotApproved,
+    #[error("invalid translation item retry reason")]
+    InvalidRetryReason,
+    #[error("translation job progress was not found")]
+    JobProgressNotFound,
+    #[error("translation job progress source is invalid: {0}")]
+    InvalidProgressSource(String),
+    #[error("translation job progress count overflow")]
+    ProgressOverflow,
+    #[error("translation job progress changed concurrently")]
+    ProgressRevisionConflict,
+    #[error("translation workflow event error: {0}")]
+    Event(#[from] rustok_core::Error),
     #[error("translation workflow serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
     #[error("translation inventory permission denied")]

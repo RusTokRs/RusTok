@@ -52,6 +52,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [`rustok-static-distribution-worker` documentation](../crates/rustok-static-distribution-worker/docs/README.md)
 - [`rustok-registry-validation-worker` documentation](../crates/rustok-registry-validation-worker/README.md)
 - [`rustok-module-build-dispatcher` documentation](../crates/rustok-module-build-dispatcher/docs/README.md)
+- [`rustok-events-module` runtime adapter documentation](../crates/rustok-events-module/docs/README.md)
 - [`rustok-worker-transport` mTLS foundation](../crates/rustok-worker-transport/docs/README.md)
 - [`rustok-sandbox` execution foundation documentation](../crates/rustok-sandbox/docs/README.md)
 - [`rustok-page-builder` Runtime Contract](../crates/rustok-page-builder/docs/README.md)

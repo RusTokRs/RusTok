@@ -114,6 +114,16 @@ A distinction must be made between:
 New scenarios should rely on typed storage-owner or orchestration events,
 rather than endlessly extending the shared helper surface.
 
+Translation workflow lifecycle uses the sealed
+`TranslationWorkflowEvent` family. Job creation/cancellation/completion,
+assignment changes, explicit blocked-item retry, proposal submission/approval,
+apply request/completion/failure, and privileged recovery are written to the
+outbox in the same transaction as the Translation control-plane mutation.
+Payloads contain stable workflow identity, revisions, counts, assignment actor
+identity, and bounded technical outcome codes only. Source/target text,
+proposal values, operator reasons, claims, roles, and owner receipts remain in
+their owning records.
+
 ## Commerce Events
 
 For the commerce family, the same principle applies:
