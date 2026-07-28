@@ -171,6 +171,12 @@ for (const marker of [
   "tracing::",
   "println!(",
   "eprintln!(",
+  "ServerRuntimeContext",
+  "consumer_poison_metrics",
+  "runtime_consumer_metrics",
+  "IggyClient",
+  "IggyTransport",
+  "ConsumerPoisonReceiptInspector",
   ".poll_messages(",
   ".get_consumer_offset(",
   ".summarize(",
@@ -184,11 +190,8 @@ for (const marker of [
   ".reserve_and_claim(",
   ".mark_published(",
   ".mark_acknowledged(",
-  "Profile",
-  "readiness",
-  "notification",
-  "cooldown",
-  "suppression",
+  ".notify(",
+  ".page(",
 ]) {
   forbidText("DLQ duplicate alert runtime source", source, marker);
 }
@@ -267,5 +270,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate alert runtime source verified: single-writer monotonic latest-value publication, initial/unavailable stale-clearing semantics, read-only independent subscribers, identifier-free stable errors, no broker/receipt/Profile mutation, and no notification/readiness policy are locked; server integration remains pending.",
+  "Iggy DLQ duplicate alert runtime source verified: single-writer monotonic latest-value publication, initial/unavailable stale-clearing semantics, read-only independent subscribers, identifier-free stable errors, no broker/receipt/Profile mutation, and no notification/readiness implementation are locked; server integration remains pending.",
 );
