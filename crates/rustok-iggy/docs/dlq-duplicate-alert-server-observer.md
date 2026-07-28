@@ -12,6 +12,8 @@ The observer is global event-delivery infrastructure. It is not owned by Social 
 
 | Active profile | Observer mode | Iggy required |
 |---|---|---|
+| disabled | `Disabled` | no |
+| startup/config unavailable | `Unavailable` | no task |
 | `memory` | `NotApplicableMemory` | no |
 | `outbox_local` | `NotApplicableOutboxLocal` | no |
 | `outbox_iggy` + bundled | `IggyBundled` | yes |
@@ -19,9 +21,9 @@ The observer is global event-delivery infrastructure. It is not owned by Social 
 
 `Memory` and `OutboxLocal` are not failures. The server records an intentional not-applicable mode and exits before asking for `Arc<IggyTransport>`.
 
-Only `OutboxIggy` resolves the shared transport created by `build_event_runtime`. A missing active Iggy mode is an internally inconsistent runtime and fails closed rather than defaulting to external.
+Only `OutboxIggy` resolves the shared transport created by `build_event_runtime`. A missing active Iggy mode is internally inconsistent and fails closed rather than defaulting to external.
 
-## Activation
+## Activation and startup isolation
 
 The observer is default-off:
 
@@ -31,9 +33,18 @@ RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED=false
 
 It also requires a runtime profile that runs background workers.
 
-When disabled, the server stores `Disabled` state and starts no task or broker client.
+When disabled, the server stores `Disabled` and starts no task or broker client. When enabled in a non-Iggy delivery profile, it stores the corresponding `NotApplicable` state and requires no thresholds.
 
-When enabled in a non-Iggy delivery profile, the server stores the corresponding `NotApplicable` state. Threshold variables are not required because no Iggy scan or policy evaluation can run.
+Observer-specific startup failures do **not** fail application bootstrap. Invalid enable/configuration values, a missing active Iggy mode, or a missing shared observer dependency produce `Unavailable` with no task or snapshot and return `Ok(())` to the bootstrap caller.
+
+Stable startup codes:
+
+```text
+iggy.dlq_duplicate.alert_server_observer_configuration_invalid
+iggy.dlq_duplicate.alert_server_observer_runtime_unavailable
+```
+
+Raw configuration values and raw dependency errors are not logged by this path. Event delivery and module projection continue.
 
 ## Iggy deployment modes
 
@@ -87,7 +98,7 @@ RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_WARNING_MAX_COPIES
 RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_CRITICAL_MAX_COPIES
 ```
 
-There are no production threshold defaults. Validation is delegated to `DlqDuplicateAlertPolicy` and fails closed.
+There are no production threshold defaults. Validation is delegated to `DlqDuplicateAlertPolicy` and fails closed into non-fatal `Unavailable` startup state.
 
 ## Runtime lifecycle
 
@@ -109,7 +120,7 @@ The observer does not:
 
 - create or stop an `IggyTransport`;
 - start or stop a bundled broker process;
-- change readiness or liveness;
+- become a server-bootstrap, readiness, or liveness dependency;
 - stop event delivery or module projection;
 - register notification routing, paging, cooldown, or suppression;
 - publish, acknowledge, commit offsets, delete, purge, replay, or retry broker messages;
@@ -130,5 +141,5 @@ Tests, Cargo commands, formatters, source verifiers, server startup, Iggy connec
 2. project the shared snapshot into telemetry without exporting identifiers;
 3. expose optional operational health without readiness coupling;
 4. define alert routing, cooldown, and suppression separately;
-5. retain server-observer execution evidence for each applicable mode;
+5. retain server-observer execution evidence for each applicable mode and unavailable startup state;
 6. keep destructive reconciliation in a separately authorized workflow.
