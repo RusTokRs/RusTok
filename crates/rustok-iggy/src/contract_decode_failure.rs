@@ -157,13 +157,9 @@ mod tests {
     use super::*;
 
     fn metadata(offset: u64) -> SubscriberMessageMetadata {
-        SubscriberMessageMetadata {
-            stream: "rustok".to_string(),
-            topic: "domain".to_string(),
-            partition: 2,
-            offset: Some(offset),
-            ack_token: Some(format!("ack-{offset}")),
-        }
+        SubscriberMessageMetadata::new("rustok", "domain", 2)
+            .with_offset(offset)
+            .with_ack_token(format!("ack-{offset}"))
     }
 
     fn failure(payload: Vec<u8>, offset: u64) -> ConsumedContractDecodeFailure {
@@ -206,7 +202,7 @@ mod tests {
         let entry = failure.to_dlq_entry(3);
 
         assert_eq!(entry.event_id, failure.delivery_id());
-        assert_eq!(entry.broker_message_id, Some(failure.delivery_id()));
+        assert_eq!(entry.broker_message_id(), Some(failure.delivery_id()));
         assert_eq!(entry.payload, failure.raw_payload);
         assert_eq!(entry.error, "iggy.contract.decode_invalid");
         assert_eq!(entry.retry_count, 3);
