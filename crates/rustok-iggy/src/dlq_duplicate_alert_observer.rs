@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn all_configured_partitions_are_scanned_once() {
+    fn all_configured_partitions_are_included_in_request() {
         let mut config = IggyConfig::default();
         config.topology.domain_partitions = 3;
         assert_eq!(configured_partitions(&config).unwrap(), vec![1, 2, 3]);
