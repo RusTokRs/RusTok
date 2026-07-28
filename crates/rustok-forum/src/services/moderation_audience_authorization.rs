@@ -12,9 +12,6 @@ use crate::audience::{
 };
 use crate::entities::{forum_reply, forum_topic};
 use crate::error::{ForumError, ForumResult};
-use crate::moderation_transport::{
-    current_moderation_audience_context, current_moderation_audience_facts,
-};
 
 use super::category_moderation_audience::load_category_moderation_audience_policy;
 use super::rbac::enforce_scope;
@@ -48,7 +45,7 @@ impl ForumModerationAudienceAuthorizationService {
     }
 
     pub fn without_facts_provider(db: sea_orm::DatabaseConnection) -> Self {
-        Self::new(db, current_moderation_audience_facts())
+        Self::new(db, None)
     }
 
     pub async fn evaluate_topic(
@@ -227,7 +224,7 @@ fn exact_transport_context(
     security: &SecurityContext,
     context: Option<PortContext>,
 ) -> ForumResult<Option<PortContext>> {
-    let Some(context) = context.or_else(current_moderation_audience_context) else {
+    let Some(context) = context else {
         return Ok(None);
     };
 
