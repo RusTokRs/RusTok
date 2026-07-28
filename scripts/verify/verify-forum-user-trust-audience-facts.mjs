@@ -166,8 +166,8 @@ for (const marker of [
 }
 for (const marker of [
   "pub struct ForumUserTrustService",
+  "pub fn new(db: DatabaseConnection) -> Self",
   "ForumUserTrustChangeKind::ManualOverride",
-  "ForumUserTrustService::new",
 ]) {
   requireText(ownerService, marker, `FORUM-26A owner service is missing ${marker}`);
 }
