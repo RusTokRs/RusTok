@@ -30,6 +30,9 @@
 - `pub struct ForumCategoryTopicCreateAudiencePolicyService`
 - `ForumCategoryTopicCreateAudiencePolicyService::get(tenant_id, category_id, security) -> ForumCategoryTopicCreateAudiencePolicy`
 - `ForumCategoryTopicCreateAudiencePolicyService::set(tenant_id, category_id, security, SetForumCategoryTopicCreateAudiencePolicyInput) -> ForumCategoryTopicCreateAudiencePolicy`
+- `pub struct ForumCategoryReplyCreateAudiencePolicyService`
+- `ForumCategoryReplyCreateAudiencePolicyService::get(tenant_id, category_id, security) -> ForumCategoryReplyCreateAudiencePolicy`
+- `ForumCategoryReplyCreateAudiencePolicyService::set(tenant_id, category_id, security, SetForumCategoryReplyCreateAudiencePolicyInput) -> ForumCategoryReplyCreateAudiencePolicy`
 - `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
 - `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
 - `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
@@ -100,6 +103,13 @@
 - Both legacy and inline-quote topic-create transports preserve the owner gate before writes; categories with local decisions remain compatible when the provider is absent.
 - The Forum manifest publishes `graphql::attach_schema_data`, while the HTTP router consumes the same `SharedForumAudienceFactsPort` from `HostRuntimeContext`.
 - Run `node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs`, `node scripts/verify/verify-forum-topic-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-topic-create-audience-transport-composition.mjs` after changing this boundary.
+### Category reply-create audience policy
+- `ForumCategoryReplyCreateAudiencePolicyService` stores a separate normalized reply-create audience policy; it does not mutate category/topic visibility or the topic-create policy.
+- Effective reply-create audience is the root-to-category conjunction of every non-empty local layer.
+- Managed `get` and atomic replacement `set` require `forum_categories:manage`; empty constraints restore inheritance.
+- PostgreSQL and SQLite enforce tenant/category ownership, typed roles/trust/effects, immutable rows, and bounded direct channel/group/allow/deny inserts.
+- `FORUM-20AU` publishes owner persistence only and does not yet change `ReplyService::create`, GraphQL, REST, or transport DTOs.
+- Run `node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs` after changing this boundary.
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
@@ -249,6 +259,8 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Preserves an out-of-date quote snapshot without expected-revision CAS.
 - Returns a quote command response through a post-commit read that can fail after the write committed.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
+- Treats `forum_user_stats` activity counters as Forum trust state.
+- Applies reply-create audience persistence directly inside `ReplyService` before the separate authorization slice.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -266,6 +278,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
 - Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
+- Category topic-create and reply-create audience layers are normalized, independently inherited, bounded, immutable on direct update and separate from content visibility.
 - Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
 - Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
 - Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
