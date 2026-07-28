@@ -73,20 +73,18 @@ struct EventDlqDuplicateAlertObserverConfig {
     policy: DlqDuplicateAlertPolicy,
 }
 
-pub async fn start_event_dlq_duplicate_alert_observer(
-    ctx: &ServerRuntimeContext,
-) -> Result<()> {
+pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext) {
     if !ctx.settings().runtime.runs_background_workers()
         || ctx.shared_contains::<EventDlqDuplicateAlertObserverHandle>()
     {
-        return Ok(());
+        return;
     }
 
     let enabled = match optional_bool_env(ENABLE_ENV, false) {
         Ok(enabled) => enabled,
         Err(_) => {
             record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);
-            return Ok(());
+            return;
         }
     };
     if !enabled {
@@ -95,18 +93,18 @@ pub async fn start_event_dlq_duplicate_alert_observer(
             subscriber: None,
             handle: None,
         });
-        return Ok(());
+        return;
     }
 
     let Some(runtime) = ctx.shared_get::<Arc<EventRuntime>>() else {
         record_startup_unavailable(ctx, STARTUP_RUNTIME_UNAVAILABLE);
-        return Ok(());
+        return;
     };
     let mode = match observer_mode(runtime.delivery_profile, runtime.iggy_mode.as_ref()) {
         Ok(mode) => mode,
         Err(_) => {
             record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);
-            return Ok(());
+            return;
         }
     };
     if matches!(
@@ -123,19 +121,19 @@ pub async fn start_event_dlq_duplicate_alert_observer(
             subscriber: None,
             handle: None,
         });
-        return Ok(());
+        return;
     }
 
     let Some(transport) = ctx.shared_get::<Arc<IggyTransport>>() else {
         record_startup_unavailable(ctx, STARTUP_RUNTIME_UNAVAILABLE);
-        return Ok(());
+        return;
     };
     let iggy_config = transport.config().clone();
     let config = match EventDlqDuplicateAlertObserverConfig::from_env() {
         Ok(config) => config,
         Err(_) => {
             record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);
-            return Ok(());
+            return;
         }
     };
 
@@ -164,7 +162,6 @@ pub async fn start_event_dlq_duplicate_alert_observer(
         mode = ?mode,
         "Starting mode-aware physical DLQ duplicate alert observer"
     );
-    Ok(())
 }
 
 fn record_startup_unavailable(ctx: &ServerRuntimeContext, error_code: &'static str) {
