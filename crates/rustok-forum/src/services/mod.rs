@@ -69,6 +69,7 @@ mod topic_reply_create_audience;
 pub mod topic_visibility;
 pub mod user_stats;
 mod user_trust;
+mod user_trust_audience_facts;
 pub mod vote;
 pub mod widget_contract;
 
@@ -140,5 +141,6 @@ pub use user_trust::{
     ForumUserTrustService, ForumUserTrustState, MAX_FORUM_USER_TRUST_HISTORY_PAGE,
     MAX_FORUM_USER_TRUST_LEVEL, SetForumUserTrustInput,
 };
+pub use user_trust_audience_facts::ForumUserTrustAudienceFactsPort;
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;
