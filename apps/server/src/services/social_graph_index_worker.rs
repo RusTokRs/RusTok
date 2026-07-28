@@ -38,6 +38,7 @@ const STAGE_DLQ_PUBLISH: &str = "dlq_publish";
 const STAGE_POISON_RECEIPT: &str = "poison_receipt";
 const STAGE_ACKNOWLEDGEMENT: &str = "acknowledgement";
 const DLQ_RECEIPT_IN_PROGRESS_CODE: &str = "social_graph.index.dlq_publish_in_progress";
+const POISON_CLAIM_BUSY_CODE: &str = "iggy.connector.poison_claim_busy";
 static SOCIAL_GRAPH_INDEX_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
@@ -590,18 +591,6 @@ async fn process_decode_failure(
     stop_rx: &mut tokio::sync::watch::Receiver<bool>,
     failure: &ConsumedContractDecodeFailure,
 ) -> std::result::Result<RawPoisonCompletion, String> {
-    if !config.dlq_enabled {
-        runtime_consumer_metrics::record_failure(
-            METRICS_CONSUMER,
-            STAGE_DLQ_PUBLISH,
-            failure.stable_error_code(),
-        );
-        return Err(format!(
-            "undecodable contract delivery [{}] cannot be acknowledged while DLQ is disabled",
-            failure.stable_error_code()
-        ));
-    }
-
     let identity = ConsumerPoisonIdentity::new(
         failure.delivery_id(),
         SOCIAL_GRAPH_INDEX_CONSUMER_GROUP,
@@ -612,6 +601,56 @@ async fn process_decode_failure(
         failure.raw_payload().to_vec(),
     )
     .map_err(|error| format!("neutral poison identity rejected [{}]", error.stable_code()))?;
+
+    let mut lookup_attempt = 1;
+    let continuing_durable_receipt = loop {
+        match poison_receipts.find(&identity).await {
+            Ok(existing) => break existing.is_some(),
+            Err(error) if error.is_retryable() && lookup_attempt < config.max_attempts => {
+                let delay = retry_delay(config, lookup_attempt);
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    error.stable_code(),
+                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_POISON_RECEIPT);
+                tracing::warn!(
+                    worker = METRICS_CONSUMER,
+                    error_code = error.stable_code(),
+                    attempt = lookup_attempt,
+                    retry_delay_ms = duration_millis(delay),
+                    "Neutral poison receipt lookup failed; retaining source offset"
+                );
+                if wait_or_stop(delay, stop_rx).await {
+                    return Ok(RawPoisonCompletion::Stopped);
+                }
+                lookup_attempt += 1;
+            }
+            Err(error) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    error.stable_code(),
+                );
+                return Err(format!(
+                    "neutral poison receipt lookup failed after {lookup_attempt} attempt(s) [{}]",
+                    error.stable_code()
+                ));
+            }
+        }
+    };
+
+    if !config.dlq_enabled && !continuing_durable_receipt {
+        runtime_consumer_metrics::record_failure(
+            METRICS_CONSUMER,
+            STAGE_DLQ_PUBLISH,
+            failure.stable_error_code(),
+        );
+        return Err(format!(
+            "undecodable contract delivery [{}] cannot choose a new terminal result while DLQ is disabled",
+            failure.stable_error_code()
+        ));
+    }
 
     let mut attempt = 1;
     let recovered = loop {
@@ -635,7 +674,7 @@ async fn process_decode_failure(
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
                     STAGE_POISON_RECEIPT,
-                    "iggy.connector.poison_claim_busy",
+                    POISON_CLAIM_BUSY_CODE,
                 );
                 runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_POISON_RECEIPT);
                 tracing::warn!(
