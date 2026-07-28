@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "contract-poison-external-iggy-dedup-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "runner": "scripts/evidence/capture-iggy-contract-poison-external-dedup.mjs",
+  "verifier": "scripts/verify/verify-iggy-contract-poison-external-dedup-retained-evidence.mjs",
+  "evidence_path": "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json",
+  "execution_scope": "four_external_iggy_dedup_modes_runtime_pending",
+  "promotion_gate": "requires_clean_commit_distinct_brokers_reviewed_configs_and_all_cases_passed",
+  "test_target": "contract_poison_external_iggy_dedup",
+  "shared_optional_environment": [
+    "RUSTOK_IGGY_DEDUP_TEST_USERNAME",
+    "RUSTOK_IGGY_DEDUP_TEST_PASSWORD"
+  ],
+  "scenarios": [
+    {
+      "case": "disabled_deduplication_persists_repeated_uuid_twice",
+      "address_env": "RUSTOK_IGGY_DEDUP_DISABLED_ADDRESS",
+      "config_path_env": "RUSTOK_IGGY_DEDUP_DISABLED_CONFIG_PATH",
+      "server_artifact_env": "RUSTOK_IGGY_DEDUP_DISABLED_SERVER_ARTIFACT",
+      "expected_configuration": {
+        "enabled": false,
+        "max_entries": "optional",
+        "expiry": "optional"
+      },
+      "expected_partition_message_counts": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "case": "enabled_deduplication_suppresses_immediate_repeated_uuid",
+      "address_env": "RUSTOK_IGGY_DEDUP_ENABLED_ADDRESS",
+      "config_path_env": "RUSTOK_IGGY_DEDUP_ENABLED_CONFIG_PATH",
+      "server_artifact_env": "RUSTOK_IGGY_DEDUP_ENABLED_SERVER_ARTIFACT",
+      "expected_configuration": {
+        "enabled": true,
+        "max_entries": "at_least_1",
+        "expiry": "positive_duration"
+      },
+      "expected_partition_message_counts": [
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "bounded_deduplication_capacity_eviction_accepts_old_uuid_again",
+      "address_env": "RUSTOK_IGGY_DEDUP_CAPACITY_ADDRESS",
+      "config_path_env": "RUSTOK_IGGY_DEDUP_CAPACITY_CONFIG_PATH",
+      "server_artifact_env": "RUSTOK_IGGY_DEDUP_CAPACITY_SERVER_ARTIFACT",
+      "expected_configuration": {
+        "enabled": true,
+        "max_entries": 1,
+        "expiry": "positive_duration"
+      },
+      "expected_partition_message_counts": [
+        0,
+        1,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "case": "expired_deduplication_entry_accepts_same_uuid_after_bounded_wait",
+      "address_env": "RUSTOK_IGGY_DEDUP_EXPIRY_ADDRESS",
+      "config_path_env": "RUSTOK_IGGY_DEDUP_EXPIRY_CONFIG_PATH",
+      "server_artifact_env": "RUSTOK_IGGY_DEDUP_EXPIRY_SERVER_ARTIFACT",
+      "additional_env": "RUSTOK_IGGY_DEDUP_EXPIRY_WAIT_MS",
+      "expected_configuration": {
+        "enabled": true,
+        "max_entries": "at_least_1",
+        "expiry": "positive_duration_shorter_than_wait"
+      },
+      "expected_partition_message_counts": [
+        0,
+        1,
+        1,
+        2
+      ]
+    }
+  ],
+  "command_template": {
+    "program": "cargo",
+    "args_before_case": [
+      "test",
+      "-p",
+      "rustok-iggy",
+      "--features",
+      "iggy",
+      "--test",
+      "contract_poison_external_iggy_dedup",
+      "--"
+    ],
+    "args_after_case": [
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
+  "reviewed_configuration": {
+    "section": "system.message_deduplication",
+    "persisted_fields": [
+      "enabled",
+      "max_entries",
+      "expiry",
+      "expiry_milliseconds",
+      "canonical_sha256"
+    ],
+    "full_config_path_persisted": false,
+    "full_config_sha256_persisted": false,
+    "full_config_content_persisted": false
+  },
+  "source_files": [
+    "crates/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
+    "crates/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/rustok-iggy/src/dlq.rs",
+    "crates/rustok-iggy/src/dlq_publisher.rs",
+    "crates/rustok-iggy/src/partitioning.rs",
+    "crates/rustok-iggy/src/transport.rs"
+  ],
+  "required_metadata": [
+    "git_commit",
+    "started_at",
+    "completed_at",
+    "cargo_version",
+    "rustc_version",
+    "source_sha256",
+    "combined_test_output_sha256",
+    "server_artifact",
+    "reviewed_configuration",
+    "test_output_sha256",
+    "test_output_bytes"
+  ],
+  "privacy_boundary": {
+    "forbidden_persisted_values": [
+      "broker_address",
+      "config_path",
+      "username",
+      "password",
+      "connection_string",
+      "raw_test_output",
+      "delivery_uuid",
+      "payload",
+      "source_coordinates"
+    ]
+  },
+  "evidence_status": "runtime_execution_pending"
+}
