@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod consumer_poison_receipt;
 pub mod entity;
 pub mod migration;
 pub mod ports;
@@ -9,6 +10,10 @@ pub mod relay;
 pub mod transactional;
 pub mod transport;
 
+pub use consumer_poison_receipt::{
+    ConsumerPoisonIdentity, ConsumerPoisonPublishClaim, ConsumerPoisonReceipt,
+    ConsumerPoisonReceiptError, ConsumerPoisonReceiptState, ConsumerPoisonReceiptStore,
+};
 pub use entity::{Entity as SysEvents, Model as SysEvent};
 pub use migration::SysEventsMigration;
 pub use ports::*;
@@ -36,7 +41,7 @@ impl RusToKModule for OutboxModule {
     }
 
     fn description(&self) -> &'static str {
-        "Transactional event persistence, relay, retry, and DLQ lifecycle."
+        "Transactional event persistence, relay, retry, DLQ, and neutral consumer poison receipt lifecycle."
     }
 
     fn version(&self) -> &'static str {
