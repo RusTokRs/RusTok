@@ -11,6 +11,9 @@ const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
 const adapterContractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json";
 const adapterSourcePath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
+const alertContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json";
+const alertSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
 const decodeFailurePath = "crates/rustok-iggy/src/contract_decode_failure.rs";
 const transportPath = "crates/rustok-iggy/src/transport.rs";
@@ -45,8 +48,12 @@ const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"
 const adapterContract = JSON.parse(
   readFileSync(resolve(repoRoot, adapterContractPath), "utf8"),
 );
+const alertContract = JSON.parse(
+  readFileSync(resolve(repoRoot, alertContractPath), "utf8"),
+);
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
 const adapterSource = readFileSync(resolve(repoRoot, adapterSourcePath), "utf8");
+const alertSource = readFileSync(resolve(repoRoot, alertSourcePath), "utf8");
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
 const decodeFailure = readFileSync(resolve(repoRoot, decodeFailurePath), "utf8");
 const transport = readFileSync(resolve(repoRoot, transportPath), "utf8");
@@ -113,6 +120,24 @@ if (
   adapterContract.classifier_source !== sourcePath
 ) {
   fail("DLQ duplicate inspection runtime adapter relationship drift");
+}
+
+if (
+  contract.alert_policy?.status !== "source_complete_runtime_integration_pending" ||
+  contract.alert_policy?.contract !== alertContractPath ||
+  contract.alert_policy?.source !== alertSourcePath ||
+  contract.alert_policy?.input !== "DlqDuplicateSummary" ||
+  contract.alert_policy?.result !== "DlqDuplicateAlertEvaluation" ||
+  contract.alert_policy?.identity_conflict_always_critical !== true ||
+  contract.alert_policy?.production_defaults !== false ||
+  contract.alert_policy?.notification_dispatch !== false ||
+  contract.alert_policy?.destructive_action !== false ||
+  alertContract.packet !== "dlq-duplicate-alert-policy-source" ||
+  alertContract.status !== "source_complete_runtime_integration_pending" ||
+  alertContract.source !== alertSourcePath ||
+  alertContract.summary_source !== sourcePath
+) {
+  fail("DLQ duplicate inspection alert policy relationship drift");
 }
 
 if (
@@ -244,9 +269,42 @@ for (const marker of [
   forbidText("bounded external duplicate scan adapter", adapterSource, marker);
 }
 
+for (const marker of [
+  "pub struct DlqDuplicateAlertPolicy",
+  "pub const fn evaluate(",
+  "summary: &DlqDuplicateSummary",
+  "pub enum DlqDuplicateAlertLevel",
+  "DlqDuplicateAlertLevel::Critical",
+  "DlqDuplicateAlertLevel::Warning",
+  "DlqDuplicateAlertLevel::Notice",
+  "DlqDuplicateAlertLevel::Clear",
+  "pub struct DlqDuplicateAlertEvaluation",
+  "pub const fn requires_manual_review(&self) -> bool",
+  '"iggy.dlq_duplicate.alert_policy_invalid"',
+]) {
+  requireText("count-only duplicate alert policy", alertSource, marker);
+}
+for (const marker of [
+  "IggyClient",
+  "IggyTransport",
+  "ConsumerPoisonReceipt",
+  ".acknowledge(",
+  ".delete(",
+  ".replay(",
+  ".send(",
+  ".notify(",
+  ".page(",
+]) {
+  forbidText("count-only duplicate alert policy", alertSource, marker);
+}
+
 requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_inspection;");
+requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_alert_policy;");
 for (const exportName of expectedExports) {
   requireText("rustok-iggy public exports", lib, exportName);
+}
+for (const exportName of alertContract.public_exports ?? []) {
+  requireText("rustok-iggy alert exports", lib, exportName);
 }
 
 for (const marker of [
@@ -291,7 +349,8 @@ if (
 
 const requiredRemaining = new Set([
   "retained_external_iggy_duplicate_scan_evidence",
-  "operator_alert_threshold_policy",
+  "runtime_alert_integration",
+  "alert_delivery_and_suppression_outside_policy",
   "operator_ack_delete_replay_workflow_outside_inspector",
   "correlation_with_count_only_receipt_health_without_identifier_export",
 ]);
@@ -307,5 +366,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate inspection source verified: deterministic header identity, in-memory exact-byte digest comparison, count-only privacy boundary, conflict escalation, stable errors, no broker/receipt mutation, focused tests, independent receipt-health semantics, and the bounded auto_commit=false external scan adapter are locked; external runtime evidence remains pending.",
+  "Iggy DLQ duplicate inspection source verified: deterministic header identity, in-memory exact-byte digest comparison, count-only privacy boundary, conflict escalation, stable errors, no broker/receipt mutation, focused tests, independent receipt-health semantics, bounded auto_commit=false external scan, and explicit no-default count-only alert policy are locked; retained runtime and alert integration evidence remain pending.",
 );

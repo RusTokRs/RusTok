@@ -15,7 +15,7 @@
 //!
 //! # Features
 //!
-//! - **EventTransport implementation**: Seamless integration with RusToK event system
+//! - **EventTransport implementation**: Seamless integration for RusToK platform
 //! - **Multiple serialization formats**: JSON (default) and MessagePack
 //! - **Automatic topology management**: Streams and topics created automatically
 //! - **Tenant-based partitioning**: Events from the same tenant maintain order
@@ -62,6 +62,7 @@ pub mod consumer;
 pub mod contract_consumer;
 pub mod contract_decode_failure;
 pub mod dlq;
+pub mod dlq_duplicate_alert_policy;
 #[cfg(feature = "iggy")]
 pub mod dlq_duplicate_external_scan;
 pub mod dlq_duplicate_inspection;
@@ -88,6 +89,10 @@ pub use contract_decode_failure::{
     ConsumedContractDecodeFailure, ContractDecodeFailureKind,
 };
 pub use dlq::{DlqEntry, DlqManager};
+pub use dlq_duplicate_alert_policy::{
+    DlqDuplicateAlertEvaluation, DlqDuplicateAlertLevel, DlqDuplicateAlertPolicy,
+    DlqDuplicateAlertPolicyError,
+};
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_external_scan::{
     IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest, IggyDlqDuplicateScanner,
