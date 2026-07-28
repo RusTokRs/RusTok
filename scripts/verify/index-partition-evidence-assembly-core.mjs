@@ -97,6 +97,7 @@ const readStableRegularFile = (filename, label) => {
     return {
       bytes,
       identity: identityOf(descriptorStatAfter),
+      fingerprint: fingerprintOf(descriptorStatAfter),
       canonical: realpathSync.native(filename),
     };
   } finally {
@@ -151,6 +152,7 @@ export const readCaptureArtifacts = ({ capturePath, capture }) => {
   const canonicalBundleRoot = realpathSync.native(bundleRoot);
   const resolvedPaths = new Map();
   const identities = new Map();
+  const fingerprints = new Map();
   const byteLengths = new Map();
   const seenIdentities = new Set();
   const rawArtifacts = {};
@@ -174,6 +176,7 @@ export const readCaptureArtifacts = ({ capturePath, capture }) => {
     seenIdentities.add(file.identity);
     resolvedPaths.set(role, file.canonical);
     identities.set(role, file.identity);
+    fingerprints.set(role, file.fingerprint);
     byteLengths.set(role, file.bytes.length);
     rawArtifacts[role] = sha256Hex(file.bytes);
     parsed[role] = parseJsonBytes(file.bytes, label);
@@ -191,6 +194,7 @@ export const readCaptureArtifacts = ({ capturePath, capture }) => {
     parsed,
     resolvedPaths,
     identities,
+    fingerprints,
     byteLengths,
   };
 };
@@ -202,6 +206,7 @@ export const assemblePartitionPacket = ({ manifest, capturePath, capture }) => {
     parsed,
     resolvedPaths,
     identities,
+    fingerprints,
     byteLengths,
   } = readCaptureArtifacts({
     capturePath,
@@ -226,6 +231,7 @@ export const assemblePartitionPacket = ({ manifest, capturePath, capture }) => {
     packet,
     resolvedPaths,
     identities,
+    fingerprints,
     byteLengths,
   };
 };
