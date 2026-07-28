@@ -1,10 +1,10 @@
 # Profiles checkpoint: mode-aware physical DLQ duplicate alert observer
 
-Status: **server composition source complete; runtime execution pending**.
+Status: **global and fair-window server composition source complete; runtime execution pending**.
 
 ## What changed
 
-The host now has one global event-delivery observer composition for the physical DLQ duplicate alert path:
+The host has one global event-delivery observer composition for the physical DLQ duplicate alert path:
 
 ```text
 bounded physical DLQ scan
@@ -51,11 +51,22 @@ The observer never starts or owns the bundled process and never shuts down the s
 
 ## Bounded scan semantics
 
-The observer builds an allowlist containing every configured domain partition and delegates it to the explicit-offset scanner with `auto_commit=false`.
+The observer builds an allowlist containing every configured domain partition and uses explicit-offset, `auto_commit=false` polling.
 
-The scanner uses one **global** message budget across the ordered allowlist. An earlier busy partition can exhaust that budget before later partitions are polled. This checkpoint therefore makes no partition-fairness or complete-history claim.
+Two scan modes are available:
 
-A future per-partition budget or fairness policy must remain operational and must not become a Profiles input.
+```text
+global_budget  -> one compatibility budget across the ordered allowlist
+fair_window    -> one equal budget for every configured partition
+```
+
+`global_budget` remains the default, so existing deployments do not silently change semantics.
+
+`fair_window` requires an explicit `RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES`. The scanner checks the total budget against 10,000 messages and combines all partition observations before classification. A successful fair-window scan therefore attempts every configured partition under the same cap and preserves cross-partition duplicate or identity-conflict groups.
+
+The fair mode is one fixed snapshot only. Every poll reuses the same configured start offset. It does not provide a moving cursor, stored offsets, cross-cycle duplicate accumulation, current-tail coverage, or complete-history proof.
+
+No scan mode may become a Profiles input.
 
 ## Activation and policy
 
@@ -63,6 +74,13 @@ The observer is default-off:
 
 ```text
 RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED=false
+```
+
+The scan mode is explicit:
+
+```text
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=global_budget
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=fair_window
 ```
 
 When active on `outbox_iggy`, all warning and critical thresholds must be supplied explicitly. Invalid values enter non-fatal `Unavailable` state; the library and server do not invent production tolerance defaults.
@@ -86,7 +104,8 @@ No profile visibility, ownership, follower access, relationship, block, mute, au
 - event delivery profile;
 - observer startup, applicability, availability, or generation;
 - Iggy bundled/external mode;
-- partition ordering, fairness, or budget exhaustion;
+- global or fair scan selection;
+- partition ordering, fairness, budget exhaustion, or fixed-window coverage;
 - duplicate alert level or threshold booleans;
 - scanner connection state;
 - retained observer evidence.
@@ -114,11 +133,12 @@ scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 
 ## Remaining work
 
-1. define partition fairness or an explicit per-partition budget policy;
-2. add identifier-free telemetry projection;
-3. add optional operational health without readiness coupling;
-4. define notification routing, cooldown, and suppression separately;
-5. retain execution evidence for applicable Iggy and unavailable startup modes;
-6. keep destructive reconciliation separately authorized.
+1. execute and retain fair-window external-Iggy evidence;
+2. design moving windows plus bounded cross-cycle duplicate state, or keep fixed windows;
+3. add identifier-free telemetry projection;
+4. add optional operational health without readiness coupling;
+5. define notification routing, cooldown, and suppression separately;
+6. retain execution evidence for applicable Iggy and unavailable startup modes;
+7. keep destructive reconciliation separately authorized.
 
 Tests, Cargo commands, formatters, verifiers, server startup, broker connections, alert delivery, and retained capture were not run by the implementation agent.
