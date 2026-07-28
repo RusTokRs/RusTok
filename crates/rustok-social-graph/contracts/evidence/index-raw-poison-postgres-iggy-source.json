@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "module": "social-graph",
+  "packet": "index-raw-poison-postgres-iggy-source",
+  "status": "source_complete_runtime_pending",
+  "scope": "social_graph_index_raw_poison_postgres_iggy_ordering",
+  "test_target": "index_raw_poison_postgres_iggy",
+  "source_path": "crates/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs",
+  "worker_path": "apps/server/src/services/social_graph_index_worker.rs",
+  "verifier": "scripts/verify/verify-social-graph-index-raw-poison-postgres-iggy.mjs",
+  "required_environment": [
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_DATABASE_URL",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_IGGY_ADDRESS"
+  ],
+  "optional_environment": [
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_IGGY_USERNAME",
+    "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_TEST_IGGY_PASSWORD"
+  ],
+  "database": {
+    "backend": "postgresql",
+    "unique_schema_per_case": true,
+    "connector_migrations_only": true,
+    "max_connections_per_pool": 1,
+    "cleanup": "drop_unique_schema_only"
+  },
+  "broker": {
+    "mode": "external",
+    "protocol": "tcp",
+    "unique_stream_per_case": true,
+    "domain_partitions": 1,
+    "replication_factor": 1,
+    "topics": [
+      "domain",
+      "dlq"
+    ],
+    "cleanup": "disposable_broker_or_operator_cleanup"
+  },
+  "cases": [
+    {
+      "case": "raw_poison_persists_published_before_source_acknowledgement",
+      "required_sequence": [
+        "open_source_and_dlq_groups_before_fixture_publication",
+        "publish_two_distinct_malformed_source_payloads",
+        "receive_first_decode_failure_without_source_ack",
+        "reserve_and_claim_neutral_receipt",
+        "assert_receipt_publishing",
+        "publish_exact_bytes_through_iggy_transport",
+        "observe_and_ack_physical_dlq_payload",
+        "assert_receipt_still_publishing_after_broker_publish",
+        "mark_receipt_published",
+        "assert_receipt_published_before_source_ack",
+        "acknowledge_source_decode_failure",
+        "assert_receipt_still_published_after_source_ack",
+        "mark_receipt_acknowledged",
+        "receive_second_source_offset"
+      ]
+    },
+    {
+      "case": "published_redelivery_is_acknowledgement_only_without_republication",
+      "required_sequence": [
+        "reserve_claim_publish_and_mark_published",
+        "shutdown_first_transport_without_source_ack",
+        "reopen_same_stream_and_consumer_group",
+        "receive_same_offset_bytes_and_delivery_uuid",
+        "reserve_and_claim_returns_already_published",
+        "acknowledge_redelivered_source_without_dlq_republish",
+        "mark_receipt_acknowledged",
+        "observe_no_second_dlq_message",
+        "receive_next_source_offset"
+      ]
+    }
+  ],
+  "production_paths": [
+    "SocialGraphIndexConsumer::open",
+    "SocialGraphIndexConsumer::receive_delivery",
+    "ConsumerPoisonReceiptStore::reserve_and_claim",
+    "ConsumedContractDecodeFailure::to_dlq_entry",
+    "IggyTransport::move_to_dlq",
+    "ConsumerPoisonReceiptStore::mark_published",
+    "SocialGraphIndexConsumer::acknowledge_decode_failure",
+    "ConsumerPoisonReceiptStore::mark_acknowledged"
+  ],
+  "worker_order": [
+    "reserve_and_claim",
+    "transport.move_to_dlq",
+    "mark_raw_poison_published",
+    "acknowledge_decode_failure",
+    "mark_acknowledged"
+  ],
+  "privacy_boundary": {
+    "forbidden_retained_values": [
+      "database_url",
+      "broker_address",
+      "username",
+      "password",
+      "connection_string",
+      "raw_payload",
+      "delivery_uuid",
+      "source_offset",
+      "ack_token"
+    ]
+  },
+  "forbidden_claims": [
+    "physical_exactly_once_proved",
+    "database_broker_transaction_proved",
+    "deduplication_window_sufficiency_proved",
+    "bundled_mode_proved",
+    "tls_or_auth_failure_proved",
+    "multi_replica_claim_ownership_proved",
+    "profiles_authorization_proved"
+  ],
+  "execution_status": "not_run"
+}
