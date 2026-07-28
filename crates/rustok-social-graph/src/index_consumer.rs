@@ -2,7 +2,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustok_events::{ContractEventEnvelope, ContractEventEnvelopeError, ContractEventPayload};
-use rustok_iggy::{ConsumedContractEvent, DlqEntry, IggyTransport, PersistentContractConsumerGroup};
+use rustok_iggy::{
+    ConsumedContractDecodeFailure, ConsumedContractEvent, DlqEntry, IggyTransport,
+    PersistentContractConsumerGroup, PersistentContractDelivery,
+};
 use rustok_index::{
     IndexSchema, MutationApplyOutcome, MutationDelivery, MutationStorageError,
     PostgresMutationStore, PostgresSchemaRegistrationStore, SchemaRegistrationError,
@@ -203,13 +206,31 @@ impl SocialGraphIndexConsumer {
         &self.projector
     }
 
-    pub async fn receive_next(
-        &mut self,
-    ) -> Result<Option<ConsumedContractEvent>, SocialGraphIndexConsumerError> {
+    /// Receives either a validated contract event or an exact-byte decode failure.
+    /// Neither variant is acknowledged by this operation.
+    pub async fn receive_delivery(
+        &self,
+    ) -> Result<Option<PersistentContractDelivery>, SocialGraphIndexConsumerError> {
         self.group
-            .receive()
+            .receive_delivery()
             .await
             .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
+    }
+
+    /// Compatibility path retained for callers that only accept validated events.
+    pub async fn receive_next(
+        &self,
+    ) -> Result<Option<ConsumedContractEvent>, SocialGraphIndexConsumerError> {
+        match self.receive_delivery().await? {
+            Some(PersistentContractDelivery::Event(consumed)) => Ok(Some(consumed)),
+            Some(PersistentContractDelivery::DecodeFailure(failure)) => {
+                Err(SocialGraphIndexConsumerError::Transport(format!(
+                    "contract delivery requires raw poison handling [{}]",
+                    failure.stable_error_code()
+                )))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Persists or recognizes the terminal owner result without acknowledging.
@@ -238,7 +259,7 @@ impl SocialGraphIndexConsumer {
         self.projector.apply_envelope(&consumed.envelope).await
     }
 
-    /// Commits the exact broker offset after a durable result exists.
+    /// Commits the exact broker offset after a durable decoded-event result exists.
     ///
     /// Receipt acknowledgement is best-effort bookkeeping after the broker commit.
     /// Failure to update it cannot turn a committed source offset back into a failure.
@@ -266,6 +287,18 @@ impl SocialGraphIndexConsumer {
             );
         }
         Ok(())
+    }
+
+    /// Commits the exact broker offset for an undecodable delivery only after the
+    /// worker has durably established its neutral poison result.
+    pub async fn acknowledge_decode_failure(
+        &self,
+        consumed: &ConsumedContractDecodeFailure,
+    ) -> Result<(), SocialGraphIndexConsumerError> {
+        self.group
+            .acknowledge_decode_failure(consumed)
+            .await
+            .map_err(|error| SocialGraphIndexConsumerError::Transport(error.to_string()))
     }
 
     pub async fn consumed_dlq_receipt(
@@ -365,7 +398,7 @@ impl SocialGraphIndexConsumer {
     }
 
     pub async fn process_next(
-        &mut self,
+        &self,
     ) -> Result<Option<SocialGraphIndexProcessOutcome>, SocialGraphIndexConsumerError> {
         let Some(consumed) = self.receive_next().await? else {
             return Ok(None);
@@ -527,20 +560,20 @@ mod tests {
         assert_eq!(
             projector.apply_envelope(&first).await.unwrap(),
             SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Applied {
-                source_version: 1,
+                source_version: 1
             })
         );
         assert_eq!(
             projector.apply_envelope(&first).await.unwrap(),
             SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Duplicate {
-                source_version: 1,
+                source_version: 1
             })
         );
         let second = relation_event(tenant_id, relation_id, false, 2);
         assert_eq!(
             projector.apply_envelope(&second).await.unwrap(),
             SocialGraphIndexProcessOutcome::Projected(MutationApplyOutcome::Applied {
-                source_version: 2,
+                source_version: 2
             })
         );
         assert_eq!(
