@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-inspection-source",
+  "status": "source_complete_runtime_adapter_pending",
+  "owner": "rustok-iggy",
+  "source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "public_exports": [
+    "DlqDuplicateObservation",
+    "DlqDuplicateSummary",
+    "DlqDuplicateInspectionError",
+    "summarize_dlq_duplicates"
+  ],
+  "identity": {
+    "input": "non_nil_deterministic_iggy_message_header_uuid",
+    "payload_comparison": "domain_separated_sha256_in_memory_only",
+    "empty_payload_valid": true,
+    "nil_uuid_rejected": true
+  },
+  "summary_fields": [
+    "total_messages",
+    "unique_message_ids",
+    "duplicate_messages",
+    "duplicate_groups",
+    "conflicting_payload_groups",
+    "max_copies_per_message_id"
+  ],
+  "semantics": {
+    "duplicate_message_formula": "total_messages_minus_unique_message_ids",
+    "ordinary_duplicate": "same_non_nil_message_id_and_same_exact_payload_digest",
+    "identity_conflict": "same_non_nil_message_id_with_more_than_one_exact_payload_digest",
+    "manual_review_required_for_identity_conflict": true,
+    "empty_scan_returns_zero_summary": true
+  },
+  "privacy_boundary": {
+    "summary_excludes": [
+      "broker_address",
+      "stream",
+      "topic",
+      "partition",
+      "offset",
+      "broker_message_id",
+      "payload",
+      "payload_sha256",
+      "receipt_identity",
+      "error_code",
+      "publisher_identity",
+      "timestamp",
+      "credential"
+    ],
+    "observation_exposes_digest": false,
+    "summary_exposes_identifiers": false
+  },
+  "mutation_boundary": {
+    "acknowledge": false,
+    "delete": false,
+    "replay": false,
+    "repair": false,
+    "claim_receipt": false,
+    "release_receipt": false,
+    "mark_receipt": false,
+    "choose_operator_policy": false
+  },
+  "stable_errors": {
+    "invalid_broker_message_id": "iggy.dlq_duplicate.identity_invalid",
+    "count_overflow": "iggy.dlq_duplicate.count_overflow"
+  },
+  "required_source_tests": [
+    "repeated_id_and_exact_bytes_are_counted_as_physical_duplicates",
+    "one_id_with_distinct_exact_bytes_requires_manual_review",
+    "empty_scan_and_empty_payload_are_valid",
+    "nil_message_id_is_rejected_with_stable_code"
+  ],
+  "production_relationship": {
+    "raw_poison_delivery_id": "ConsumedContractDecodeFailure::delivery_id",
+    "dlq_broker_message_id": "ConsumedContractDecodeFailure::to_dlq_entry",
+    "physical_publisher": "IggyTransport::move_to_dlq",
+    "receipt_summary": "ConsumerPoisonReceiptInspector",
+    "receipt_and_physical_duplicate_summaries_are_independent": true
+  },
+  "remaining_work": [
+    "bounded_read_only_iggy_dlq_scan_adapter",
+    "retained_external_iggy_duplicate_scan_evidence",
+    "operator_alert_threshold_policy",
+    "operator_ack_delete_replay_workflow_outside_inspector",
+    "correlation_with_count_only_receipt_health_without_identifier_export"
+  ],
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-inspection.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-dlq-operations-checkpoint.md",
+  "execution_status": "source_not_run"
+}
