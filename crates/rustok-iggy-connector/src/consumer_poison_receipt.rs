@@ -36,13 +36,13 @@ impl ConsumerPoisonReceiptState {
 /// decoded domain event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsumerPoisonIdentity {
-    pub delivery_id: Uuid,
-    pub consumer_group: String,
-    pub source_stream: String,
-    pub source_topic: String,
-    pub source_partition: u32,
-    pub source_offset: u64,
-    pub payload: Vec<u8>,
+    delivery_id: Uuid,
+    consumer_group: String,
+    source_stream: String,
+    source_topic: String,
+    source_partition: u32,
+    source_offset: u64,
+    payload: Vec<u8>,
 }
 
 impl ConsumerPoisonIdentity {
@@ -92,13 +92,41 @@ impl ConsumerPoisonIdentity {
             payload,
         })
     }
+
+    pub const fn delivery_id(&self) -> Uuid {
+        self.delivery_id
+    }
+
+    pub fn consumer_group(&self) -> &str {
+        &self.consumer_group
+    }
+
+    pub fn source_stream(&self) -> &str {
+        &self.source_stream
+    }
+
+    pub fn source_topic(&self) -> &str {
+        &self.source_topic
+    }
+
+    pub const fn source_partition(&self) -> u32 {
+        self.source_partition
+    }
+
+    pub const fn source_offset(&self) -> u64 {
+        self.source_offset
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsumerPoisonReceipt {
     pub state: ConsumerPoisonReceiptState,
     pub stable_error_code: String,
-    pub delivery_attempt_count: u32,
+    pub first_delivery_attempt_count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,14 +207,14 @@ impl ConsumerPoisonReceiptStore {
         &self,
         identity: &ConsumerPoisonIdentity,
         stable_error_code: &str,
-        delivery_attempt_count: u32,
+        observed_delivery_attempt_count: u32,
         publisher_id: Uuid,
         lease_duration: Duration,
     ) -> Result<ConsumerPoisonPublishClaim, ConsumerPoisonReceiptError> {
         validate_identity_part("stable_error_code", stable_error_code)?;
-        if delivery_attempt_count == 0 {
+        if observed_delivery_attempt_count == 0 {
             return Err(ConsumerPoisonReceiptError::InvalidIdentity {
-                field: "delivery_attempt_count",
+                field: "observed_delivery_attempt_count",
                 reason: "must be positive",
             });
         }
@@ -204,7 +232,7 @@ impl ConsumerPoisonReceiptStore {
                 &transaction,
                 identity,
                 stable_error_code,
-                delivery_attempt_count,
+                observed_delivery_attempt_count,
                 publisher_id,
                 lease_seconds,
             )
@@ -226,7 +254,7 @@ impl ConsumerPoisonReceiptStore {
         transaction: &DatabaseTransaction,
         identity: &ConsumerPoisonIdentity,
         stable_error_code: &str,
-        delivery_attempt_count: u32,
+        observed_delivery_attempt_count: u32,
         publisher_id: Uuid,
         lease_seconds: u64,
     ) -> Result<ConsumerPoisonPublishClaim, ConsumerPoisonReceiptError> {
@@ -245,7 +273,7 @@ impl ConsumerPoisonReceiptStore {
                     source_offset_value(identity.source_offset)?,
                     identity.payload.clone().into(),
                     stable_error_code.to_owned().into(),
-                    i64::from(delivery_attempt_count).into(),
+                    i64::from(observed_delivery_attempt_count).into(),
                 ],
             ))
             .await
@@ -265,11 +293,6 @@ impl ConsumerPoisonReceiptStore {
                 )
             })?;
         let receipt = decode_and_validate_receipt(&row, identity, backend)?;
-        if receipt.stable_error_code != stable_error_code
-            || receipt.delivery_attempt_count != delivery_attempt_count
-        {
-            return Err(ConsumerPoisonReceiptError::IdentityConflict);
-        }
         match receipt.state {
             ConsumerPoisonReceiptState::Published => {
                 return Ok(ConsumerPoisonPublishClaim::AlreadyPublished);
@@ -431,10 +454,10 @@ fn decode_and_validate_receipt(
     let stable_error_code: String = row
         .try_get("", "stable_error_code")
         .map_err(storage_error)?;
-    let delivery_attempt_count: i64 = row
+    let first_delivery_attempt_count: i64 = row
         .try_get("", "delivery_attempt_count")
         .map_err(storage_error)?;
-    let delivery_attempt_count = u32::try_from(delivery_attempt_count).map_err(|_| {
+    let first_delivery_attempt_count = u32::try_from(first_delivery_attempt_count).map_err(|_| {
         ConsumerPoisonReceiptError::Storage(
             "stored consumer poison delivery attempt count is invalid".to_owned(),
         )
@@ -442,7 +465,7 @@ fn decode_and_validate_receipt(
     Ok(ConsumerPoisonReceipt {
         state: ConsumerPoisonReceiptState::parse(&state)?,
         stable_error_code,
-        delivery_attempt_count,
+        first_delivery_attempt_count,
     })
 }
 
@@ -675,7 +698,11 @@ mod tests {
     }
 
     #[test]
-    fn identity_rejects_nil_delivery_and_missing_payload() {
+    fn identity_is_immutable_and_rejects_missing_facts() {
+        let identity = identity(Uuid::from_u128(7), vec![1, 2, 3]);
+        assert_eq!(identity.delivery_id(), Uuid::from_u128(7));
+        assert_eq!(identity.source_offset(), 42);
+        assert_eq!(identity.payload(), &[1, 2, 3]);
         assert!(
             ConsumerPoisonIdentity::new(
                 Uuid::nil(),
@@ -685,18 +712,6 @@ mod tests {
                 1,
                 1,
                 vec![1],
-            )
-            .is_err()
-        );
-        assert!(
-            ConsumerPoisonIdentity::new(
-                Uuid::new_v4(),
-                "group",
-                "stream",
-                "topic",
-                1,
-                1,
-                Vec::new(),
             )
             .is_err()
         );
@@ -725,8 +740,8 @@ mod tests {
             store
                 .reserve_and_claim(
                     &identity,
-                    "iggy.contract.decode_invalid",
-                    1,
+                    "iggy.contract.schema_invalid",
+                    2,
                     second_publisher,
                     Duration::from_secs(30),
                 )
@@ -734,6 +749,9 @@ mod tests {
                 .unwrap(),
             ConsumerPoisonPublishClaim::Busy
         );
+        let retained = store.find(&identity).await.unwrap().unwrap();
+        assert_eq!(retained.stable_error_code, "iggy.contract.decode_invalid");
+        assert_eq!(retained.first_delivery_attempt_count, 1);
         store
             .mark_published(&identity, first_publisher)
             .await
@@ -742,8 +760,8 @@ mod tests {
             store
                 .reserve_and_claim(
                     &identity,
-                    "iggy.contract.decode_invalid",
-                    1,
+                    "iggy.contract.schema_invalid",
+                    3,
                     second_publisher,
                     Duration::from_secs(30),
                 )
@@ -757,7 +775,7 @@ mod tests {
                 .reserve_and_claim(
                     &identity,
                     "iggy.contract.decode_invalid",
-                    1,
+                    4,
                     second_publisher,
                     Duration::from_secs(30),
                 )
