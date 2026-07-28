@@ -7,9 +7,9 @@ registry, and neutral instrumentation helpers. `apps/server` composes process-wi
 bootstrap; modules and runtime workers own metric meaning, bounded label values,
 alert thresholds, and runbooks.
 
-The shared runtime-consumer collector now covers throughput, terminal outcomes,
-retries, bounded failures, DLQ publication, processing duration, lifecycle,
-in-flight state/timestamps, last success, and broker-backed consumer lag.
+The shared runtime-consumer collector covers throughput, terminal outcomes, retries,
+bounded failures, DLQ publication, processing duration, lifecycle, in-flight
+state/timestamps, last success, and broker-backed consumer lag.
 
 Consumer lag is accepted only from a partition-qualified snapshot that reads every
 topic partition and its persistent group checkpoint. The collector publishes snapshot
@@ -17,9 +17,16 @@ time, partition count, completeness, and bounded `total`/`max` lag aggregations.
 Incomplete snapshots clear lag values and set completeness to zero so stale lag cannot
 be mistaken for a current observation.
 
-No runtime-consumer metric uses tenant, event, relation, partition, offset, payload,
-ack-token, credential, or raw error-message values as labels. Lag is never inferred
-from event age, processing duration, one delivered offset, or a local cursor counter.
+The separate `consumer_poison_metrics` collector now exposes one count-only neutral
+receipt snapshot for a bounded durable consumer. It publishes fixed states `total`,
+`reserved`, `publishing`, `expired_publishing`, `published`, and `acknowledged`, plus
+snapshot availability and timestamp. Inspection failure or observer shutdown clears
+all counts and timestamp so stale values cannot appear current.
+
+No runtime-consumer or poison-receipt metric uses tenant, event, relation, partition,
+offset, payload, delivery UUID, publisher identity, acknowledgement token, credential,
+or raw error-message values as labels. Lag is never inferred from event age,
+processing duration, one delivered offset, or a local cursor counter.
 
 ## Boundary
 
@@ -32,8 +39,10 @@ from event age, processing duration, one delivered offset, or a local cursor cou
   thresholds, and operational response.
 - Runtime collectors register through `register_runtime_collector`; a second global
   registry is forbidden.
-- Dynamic identities, raw positions, payloads, claims, credentials, and storage causes
-  are forbidden as metric labels.
+- Dynamic identities, raw positions, payloads, claims, credentials, storage causes,
+  and unbounded error values are forbidden as metric labels.
+- Metrics provide observations only. They never acknowledge, reclaim, repair, delete,
+  retain, authorize, or select delivery policy.
 
 ## Delivered result: bounded runtime consumer metrics
 
@@ -57,17 +66,37 @@ from event age, processing duration, one delivered offset, or a local cursor cou
 - Static verification guards names, label sets, completeness clearing, broker-backed
   snapshot origin, DLQ ordering, and acknowledgement-only recovery.
 
+## Delivered result: count-only poison receipt metrics
+
+- `consumer_poison_metrics::ensure_registered` installs a separate bounded collector in
+  the same process registry.
+- `rustok_runtime_consumer_poison_receipts{consumer,state}` reports only six fixed
+  aggregate states.
+- `rustok_runtime_consumer_poison_snapshot_available` distinguishes a real all-zero
+  snapshot from unavailable storage inspection.
+- `rustok_runtime_consumer_poison_snapshot_timestamp_seconds` identifies the latest
+  successful snapshot and resets to zero when unavailable.
+- Counts saturate at the Prometheus signed gauge range instead of wrapping.
+- The Social Graph Index owner observer supplies only connector-validated aggregates,
+  uses one fixed consumer label, logs bounded stable failure codes, and leaves
+  projection active on inspection failure.
+- Alert thresholds and any reclaim, repair, or retention response remain external
+  reviewed operator policy.
+
 ## Next results
 
 1. **Prove bootstrap and shutdown behavior in every host mode.** Cover native server,
    CLI compatibility, OTel enabled/disabled, metrics disabled, repeated initialization,
-   dynamic collector registration, and graceful exporter shutdown.
+   dynamic collector registration, poison observer shutdown, and graceful exporter
+   shutdown.
 2. **Harden the shared metrics contract.** Add focused coverage for duplicate/concurrent
    registration, disabled telemetry, collector rendering, bounded labels, incomplete
-   snapshot clearing, and worker termination with an unacknowledged delivery.
-3. **Retain live lag evidence.** Verify every-partition Iggy snapshots, concurrent broker
-   movement during capture, missing checkpoints, observer reconnect, TLS/auth failure,
-   and multi-replica group semantics before defining alerts.
+   snapshot clearing, poison snapshot unavailability, and worker termination with an
+   unacknowledged delivery.
+3. **Retain live lag and receipt evidence.** Verify every-partition Iggy snapshots,
+   concurrent broker movement, missing checkpoints, observer reconnect, PostgreSQL
+   aggregate consistency, expired leases, TLS/auth failure, and multi-replica semantics
+   before selecting alerts.
 4. **Align module instrumentation with operations.** Validate representative modules and
    `/metrics` against a small correlation/service-health convention without moving
    domain semantics or runbooks into this crate.
@@ -79,6 +108,7 @@ from event age, processing duration, one delivered offset, or a local cursor cou
 - `node scripts/verify/verify-runtime-consumer-metrics.mjs`
 - `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
+- `node scripts/verify/verify-social-graph-index-poison-observer.mjs`
 - `scripts/verify/verify-architecture.sh`
 - Targeted `/metrics`, bootstrap, registration, snapshot, and shutdown tests.
 

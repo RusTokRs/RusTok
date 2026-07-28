@@ -1,3 +1,4 @@
+pub mod consumer_poison_metrics;
 pub mod metrics;
 pub mod otel;
 pub mod runtime_consumer_metrics;
