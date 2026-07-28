@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-order`
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-28
 
 ## Current state
 
@@ -53,6 +53,14 @@ shipping, or hash facts rather than fabricating attribution. The metadata bridge
 and old JSON indexes must be removed after all completion/result consumers use
 typed identity exclusively.
 
+Complete order detail and filtered-list projection reads are now published through
+`OrderReadPort`. `InProcessOrderReadPort` owns concrete `OrderService`
+construction, requires read policy, parses tenant identity from `PortContext`,
+preserves requested and tenant-default locale fallback, list ordering, filters,
+and pagination total, and maps every current `OrderError` to stable `PortError`
+policy without owner-message control flow. Commerce runtime composition and
+consumer cutover remain open and unvalidated.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -68,18 +76,23 @@ typed identity exclusively.
 - Published provider ports: `CheckoutCompletionPort`,
   `CheckoutOrderIdentityPort`, `CheckoutOrderCompensationPort`, and
   `CheckoutOrderPaymentSettlementPort`.
+- Source-ready internal projection boundary: `OrderReadPort`; it is not a new FBA
+  provider contract.
+- Order read source evidence:
+  `crates/rustok-order/contracts/evidence/order-read-port-source.json`.
 - Static contract evidence:
   `crates/rustok-order/contracts/evidence/order-contract-test-static-matrix.json`.
 - `scripts/verify/verify-order-admin-boundary.mjs`,
   `scripts/verify/verify-order-storefront-boundary.mjs`,
+  `scripts/verify/verify-order-read-port.mjs`,
   `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`,
   `scripts/verify/verify-commerce-order-identity-boundary.mjs`,
   `scripts/verify/verify-commerce-checkout-completion-cutover.mjs`,
   `scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`,
   `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`, and
   `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` lock the current
-  UI, transport, identity, staged-consumer, lifecycle, compensation, and payment
-  settlement split.
+  UI, transport, projection, identity, staged-consumer, lifecycle, compensation,
+  and payment settlement split.
 - No status promotion is allowed from source inspection. Clean/upgraded
   migrations, compile/tests, contention, restart, mounted consumers, and
   remote-profile evidence remain missing.
@@ -130,6 +143,30 @@ typed identity exclusively.
 - [ ] Remove old JSON expression indexes, generated columns, metadata identity
   writes, old creation/confirmation/compensation/pipeline source, and
   `adopt_legacy` after every production consumer is cut over.
+
+## Order projection read source checklist
+
+- [x] Publish one owner `OrderReadPort` for complete detail and filtered list
+  projections.
+- [x] Preserve `OrderResponse`, descending creation ordering, status/customer
+  filters, page/per-page handling, and owner pagination total.
+- [x] Use `PortContext.locale` as requested locale and retain an explicit optional
+  tenant-default fallback locale in typed requests.
+- [x] Require `PortCallPolicy::read()` and parse tenant identity from
+  `PortContext`.
+- [x] Map every current `OrderError` variant to stable `PortError` policy without
+  owner-message control flow.
+- [x] Export the canonical `in_process_order_read_port` factory.
+- [x] Retain source evidence and a focused guard without claiming Commerce
+  consumer cutover or runtime parity.
+- [ ] Publish and host-compose `CommerceOrderReadRuntime`.
+- [ ] Require the host-selected runtime in Commerce HTTP and GraphQL composition.
+- [ ] Cut admin REST order list/detail over to the owner port while preserving
+  locale, filters, pagination total, detail aggregation, and public envelopes.
+- [ ] Cut GraphQL order list/detail and storefront order detail/ownership reads
+  over in separate atomic changes.
+- [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
+  evidence before status promotion.
 
 ## Open results
 
@@ -182,14 +219,26 @@ typed identity exclusively.
    **Done when:** the contract-test matrix has executable remote evidence and
    fallback behavior supports a justified status promotion.
 
-7. **Keep order and commerce documentation synchronized.** Update local docs,
+7. **Cut mounted order projection reads to the owner port.** Compose one
+   host-selected `CommerceOrderReadRuntime`, cut admin REST first, then GraphQL and
+   storefront reads without changing order mutations or payment/fulfillment detail
+   ownership.
+   **Depends on:** the published `OrderReadPort` and current public transport
+   envelope inventory.
+   **Done when:** mounted detail/list/ownership projection reads no longer construct
+   `OrderService`, retain locale/filter/pagination/authorization behavior, and have
+   bounded parity evidence.
+
+8. **Keep order and commerce documentation synchronized.** Update local docs,
    manifests, registries, central status, and the umbrella commerce plan whenever
-   order lifecycle, checkout snapshots, or identity ownership changes.
+   order lifecycle, checkout snapshots, identity ownership, or projection read
+   ownership changes.
    **Done when:** no stale cross-module responsibility or evidence claim remains.
 
 ## Verification
 
 - `npm run verify:ecommerce:fba`
+- `node scripts/verify/verify-order-read-port.mjs`
 - `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
 - `node scripts/verify/verify-commerce-checkout-completion-cutover.mjs`
@@ -207,6 +256,8 @@ typed identity exclusively.
 - `cargo test -p rustok-order --test order_checkout_identity`
 - `cargo test -p rustok-order --test checkout_order_identity_port`
 - `cargo test -p rustok-order --test checkout_completion_port`
+- Targeted order read-port detail/list, locale fallback, context, and error-policy
+  tests.
 - Targeted staged checkout completion/adoption/replay, unknown lifecycle,
   compensation, and payment settlement tests.
 - Clean/upgraded/down/reapply identity migrations on SQLite/PostgreSQL/MySQL.

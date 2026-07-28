@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-28",
+  "status": "owner_port_published_unvalidated",
+  "source_base_revision": "b573adbf9a8397f5676dd617464060b878ce88a1",
+  "scope": "order detail and filtered list projections for mounted Commerce query consumers",
+  "owner": {
+    "crate": "rustok-order",
+    "port": "OrderReadPort",
+    "adapter": "InProcessOrderReadPort",
+    "factory": "in_process_order_read_port",
+    "concrete_service_owner": "OrderService"
+  },
+  "operations": [
+    {
+      "name": "read_order_projection",
+      "request": "ReadOrderProjectionRequest",
+      "result": "OrderResponse",
+      "optional_not_found": false,
+      "locale_source": "PortContext.locale",
+      "tenant_default_locale_fallback": true
+    },
+    {
+      "name": "list_order_projections",
+      "request": "ListOrderProjectionsRequest",
+      "result": "OrderProjectionPage",
+      "filters": [
+        "page",
+        "per_page",
+        "status",
+        "customer_id"
+      ],
+      "ordering": "created_at_desc",
+      "locale_source": "PortContext.locale",
+      "tenant_default_locale_fallback": true
+    }
+  ],
+  "context": {
+    "read_policy_required": true,
+    "tenant_parsed_from_port_context": true,
+    "actor_retained": true,
+    "channel_retained": true,
+    "locale_retained": true,
+    "correlation_retained": true,
+    "deadline_required": true
+  },
+  "errors": {
+    "type": "PortError",
+    "owner_message_control_flow": false,
+    "all_current_order_error_variants_mapped": true,
+    "validation_kind": "Validation",
+    "not_found_kind": "NotFound",
+    "transition_kind": "Conflict",
+    "database_kind": "Unavailable",
+    "core_kind": "InvariantViolation",
+    "database_retryable": true,
+    "core_retryable": false
+  },
+  "consumer_inventory": {
+    "commerce_admin_rest_list_detail": "concrete_order_service",
+    "commerce_storefront_detail_and_ownership": "concrete_order_service",
+    "commerce_graphql_order_list_detail": "concrete_order_service",
+    "runtime_composition_published": false,
+    "consumer_cutover_completed": false,
+    "cutover_required": true
+  },
+  "decision": {
+    "next_slice": "publish and host-compose CommerceOrderReadRuntime, then cut mounted admin REST order list/detail to OrderReadPort before GraphQL and storefront consumers",
+    "mutation_scope": "unchanged",
+    "status_promotion": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_parity_proven": false
+  }
+}

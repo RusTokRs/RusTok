@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-27
+Last reviewed: 2026-07-28
 
 ## Source of truth
 
@@ -194,6 +194,10 @@ These are source-contract defects, not verification-only tasks.
   compiled/migration evidence only when the validation policy allows it.
 - [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,
   Payment, and Fulfillment concrete services behind host-composed owner ports.
+- [x] Publish the order-owned `OrderReadPort` for complete detail/list projections with
+  locale fallback, canonical read context/deadline policy, stable typed errors, and
+  explicit unvalidated source evidence; host composition and Commerce consumer cutover
+  remain open.
 - [ ] Correct Product's declared dependency contract or extract its direct
   inventory/pricing persistence operations behind owner ports; the current manifest
   declares only Taxonomy while production code uses Inventory and Pricing persistence.
@@ -550,6 +554,7 @@ Source inspection is not execution evidence.
 - [x] `node scripts/verify/verify-marketplace-seller-events.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
+- [ ] `node scripts/verify/verify-order-read-port.mjs`
 - [ ] `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - [ ] `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
 - [ ] `node scripts/verify/verify-commerce-checkout-completion-cutover.mjs`
@@ -593,6 +598,7 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-commerce --lib`
 - [ ] `cargo test -p rustok-commerce --test checkout_marketplace_economics_checkpoint`
 - [ ] `cargo check -p rustok-order --all-features`
+- [ ] Targeted `OrderReadPort` detail/list, locale fallback, context, and typed-error tests.
 - [ ] `cargo test -p rustok-order --test order_checkout_identity`
 - [ ] `cargo test -p rustok-order --test checkout_order_identity_port`
 - [ ] `cargo test -p rustok-order --test checkout_completion_port`
@@ -730,6 +736,8 @@ Source inspection is not execution evidence.
   one staged recovery runtime with explicit idempotency and host provider composition.
 - [x] Harden pricing and payment collection owner-port errors with stable public
   messages plus correlation-aware internal logging.
+- [x] Publish `OrderReadPort` for complete order detail/list projections while retaining
+  host composition and Commerce consumer cutover as explicit unvalidated follow-up work.
 
 ## Change rules
 
@@ -750,6 +758,7 @@ Source inspection is not execution evidence.
 - [Checkout compensation owner cutover](./checkout-compensation-owner-cutover.md)
 - [Checkout owner stage cutover](./checkout-owner-stage-cutover.md)
 - [Public ecommerce port error safety](./public-port-error-safety.md)
+- [Order read port](../../rustok-order/docs/order-read-port.md)
 - [Order checkout compensation contract](../../rustok-order/contracts/order-checkout-compensation-v1.json)
 - [Order checkout payment settlement contract](../../rustok-order/contracts/order-checkout-payment-settlement-v1.json)
 - [Payment FBA registry](../../rustok-payment/contracts/payment-fba-registry.json)
