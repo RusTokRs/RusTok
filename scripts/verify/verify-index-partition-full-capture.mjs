@@ -37,6 +37,7 @@ try {
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
   const plan = read('crates/rustok-index/docs/implementation-plan.md');
+  const readme = read('crates/rustok-index/README.md');
   const m3Start = plan.indexOf('### M3 - PostgreSQL storage engine');
   const retainedStart = plan.indexOf('#### Retained repository contract wording');
   if (m3Start < 0 || retainedStart <= m3Start) {
@@ -276,15 +277,33 @@ try {
     'writes no files',
     'forbidden before one retained admitted packet',
   ], 'full partition capture runbook');
+  requireMarkers(readme, [
+    'M3 partition evidence capture and packet assembly: complete',
+    'M3 retained packet owner orchestration: complete',
+    'M3 retained bundle review and archive verification: complete',
+    'Real retained PostgreSQL packet execution: open',
+    'exact recursive filesystem snapshot',
+    '`production_lifecycle_authorized: false`',
+    '[M3 retained partition capture runbook](./docs/partition-full-capture.md)',
+  ], 'Index README');
   requireMarkers(plan, [
     'M3 partition cutover rehearsal evidence runner: `complete`',
     'M3 retained packet owner orchestration: `complete`',
+    'M3 retained bundle review/report: `complete`',
+    'M3 admitted archive manifest: `complete`',
+    'M3 retained archive verification and filesystem snapshot: `complete`',
     'Real retained PostgreSQL packet execution: `open`',
     '- [x] Add owner-operated PostgreSQL cutover/rollback rehearsal evidence capture.',
     '- [x] Add owner-operated full retained packet orchestration and capture finalization.',
+    '- [x] Add read-only retained bundle review with recalculated assembly and admission.',
+    '- [x] Add admitted archive manifest and saved-manifest verification receipt.',
     '12. The cutover rehearsal runner validates production and retained shadow identities,',
     '13. The full-capture orchestrator requires one explicit owner opt-in, one immutable',
-    'one retained admitted packet, query adapter, and production partition',
+    '14. The retained bundle review inspects exactly nine authoritative files,',
+    '15. The archive tooling emits a deterministic admitted-only manifest outside the',
+    '16. Retained verification binds every authoritative file and required directory',
+    'node scripts/verify/verify-index-partition-post-inspection-drift.mjs',
+    'one retained admitted packet, query',
   ], 'Index implementation plan');
   requireExactlyOnce(
     primaryM3Checklist,
