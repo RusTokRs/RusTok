@@ -1,6 +1,6 @@
 # Count-only DLQ duplicate alert runtime
 
-Status: **latest-value runtime composition source-complete; server observer integration pending**.
+Status: **latest-value runtime and mode-aware server observer source-complete; runtime execution pending**.
 
 ## Purpose
 
@@ -13,7 +13,7 @@ DlqDuplicateAlertPolicy
 
 It evaluates an already-observed count-only summary and publishes one identifier-free latest-value snapshot for telemetry or health consumers.
 
-The runtime does not scan Iggy, read poison receipts, choose thresholds, dispatch notifications, or perform reconciliation.
+The reusable runtime does not scan Iggy, read poison receipts, choose thresholds, dispatch notifications, or perform reconciliation.
 
 ## Public API
 
@@ -117,7 +117,7 @@ max_copies_threshold_reached
 
 The snapshot does not expose source counts or threshold values. It also excludes broker endpoints, stream/topic/partition/offset, UUIDs, payloads or digests, receipt identities, error classifications, credentials, timestamps, publisher identity, and raw client errors.
 
-No serialization or persistence is added. A future telemetry or health adapter must preserve this projection.
+No serialization or persistence is added. A telemetry or health adapter must preserve this projection.
 
 ## Stable errors
 
@@ -130,7 +130,7 @@ Generation overflow fails before replacing the current snapshot. Publisher closu
 
 ## Runtime boundaries
 
-This module does not:
+This reusable module does not:
 
 - start a server worker;
 - choose scan cadence or partitions;
@@ -147,42 +147,63 @@ This module does not:
 
 Observation, policy evaluation, latest-value publication, telemetry projection, notification delivery, and destructive workflows remain separate owner boundaries.
 
-## Suggested server composition
+## Mode-aware server composition
 
-A future server-owned observer should:
+The server now owns a separate integration:
 
 ```text
-1. obtain a bounded DlqDuplicateSummary from an approved observer;
-2. call publisher.publish(summary) after successful observation;
-3. call publisher.mark_unavailable() after observation failure or shutdown;
-4. expose a subscriber only to count-free telemetry/health adapters;
-5. keep projection/readiness and Profiles authorization independent;
-6. leave paging, cooldown, suppression, and destructive actions outside this runtime.
+apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 ```
 
-The server integration must decide configuration ownership and lifecycle separately. This source slice intentionally provides no production defaults or environment variables.
+It handles every active delivery profile explicitly:
 
-## Source contract
+```text
+memory        -> not applicable, no Iggy access
+outbox_local  -> not applicable, no Iggy access
+outbox_iggy   -> bundled or external read-only Iggy observer
+```
+
+The observer is default-off. When active on `outbox_iggy`, it obtains bounded summaries from `IggyDlqDuplicateAlertObserver`, calls `publish` after successful scans, and calls `mark_unavailable` after connection failure, scan failure, or shutdown.
+
+For bundled Iggy it connects to the already-running loopback broker. For external Iggy it uses the reviewed configured address list. It never creates another `IggyTransport` or starts another bundled process.
+
+The server stores a read-only subscriber in `EventDlqDuplicateAlertObserverHandle`. Event delivery and module projection continue when observation is unavailable.
+
+Complete mode, environment, privacy, and lifecycle rules are documented in:
+
+```text
+crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md
+```
+
+## Source contracts
+
+Reusable runtime:
 
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
 ```
 
-Static guard:
+Server observer:
+
+```text
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
+```
+
+Static guards:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
+node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 ```
 
-Focused source tests cover initial unavailability, successful publication, stale-evaluation clearing, independent subscribers, and bounded publisher closure.
+Focused runtime tests cover initial unavailability, successful publication, stale-evaluation clearing, independent subscribers, and bounded publisher closure. Server and observer tests cover all delivery profiles, both Iggy modes, partition bounds, and identifier-free stable errors.
 
-No tests, Cargo commands, formatters, source verifiers, server observers, external-Iggy scans, telemetry registration, or alert dispatch were run while defining this source slice.
+No tests, Cargo commands, formatters, source verifiers, server observers, external-Iggy scans, telemetry registration, or alert dispatch were run while defining these source slices.
 
 ## Remaining work
 
-1. integrate one explicit server-owned observer lifecycle;
-2. project the identifier-free snapshot into reviewed telemetry and health contracts;
-3. retain runtime integration evidence;
-4. define notification delivery, cooldown, and suppression outside this module;
-5. define destructive reconciliation as a separately authorized workflow;
-6. correlate receipt and duplicate aggregate health without exporting identifiers.
+1. project the identifier-free snapshot into reviewed telemetry and optional operational health;
+2. retain runtime integration evidence for applicable Iggy modes;
+3. define notification delivery, cooldown, and suppression outside this module;
+4. define destructive reconciliation as a separately authorized workflow;
+5. correlate receipt and duplicate aggregate health without exporting identifiers.
