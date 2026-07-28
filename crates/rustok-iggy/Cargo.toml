@@ -10,10 +10,12 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rmp-serde.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+iggy = { workspace = true, optional = true }
 
 rustok-core.workspace = true
 rustok-events.workspace = true
@@ -21,7 +23,7 @@ rustok-iggy-connector.workspace = true
 
 [features]
 default = ["iggy"]
-iggy = ["rustok-iggy-connector/iggy"]
+iggy = ["dep:iggy", "rustok-iggy-connector/iggy"]
 
 [dev-dependencies]
 tokio.workspace = true

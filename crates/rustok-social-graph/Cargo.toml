@@ -11,9 +11,15 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-iggy = { workspace = true, optional = true }
+rustok-index = { workspace = true, optional = true }
+rustok-outbox.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 uuid.workspace = true
@@ -21,6 +27,8 @@ uuid.workspace = true
 [features]
 default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
+index = ["dep:rustok-index"]
+index-consumer = ["index", "dep:rustok-iggy"]
 
 [dev-dependencies]
 tokio.workspace = true

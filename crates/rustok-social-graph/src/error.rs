@@ -13,6 +13,14 @@ pub enum SocialGraphError {
     RevisionConflict,
     #[error("social graph command actor does not own the relation source")]
     SourceActorMismatch,
+    #[error("social graph idempotency key is invalid")]
+    IdempotencyKeyInvalid,
+    #[error("social graph idempotency key is already bound to another command")]
+    IdempotencyConflict,
+    #[error("social graph command receipt is incomplete or corrupt")]
+    CommandReceiptCorrupt,
+    #[error("social graph relation event could not be persisted transactionally")]
+    EventPublicationUnavailable,
     #[error(transparent)]
     Database(#[from] DbErr),
 }

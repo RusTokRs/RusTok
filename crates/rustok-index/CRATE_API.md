@@ -8,11 +8,11 @@
 - `migrations`
 
 The domain/application contract remains database independent. M3 adds module-owned
-production migrations, an Index-owned PostgreSQL mutation adapter, durable
-schema-application leases, schema-derived secondary-index lifecycle, and a
-fail-closed measured partition-admission contract; source-specific Content,
-Product, Flex, search, legacy migration, runtime, and scheduler modules remain
-deleted.
+production migrations, an Index-owned PostgreSQL mutation adapter, tenant-scoped
+source schema persistence, durable schema-application leases, schema-derived
+secondary-index lifecycle, and a fail-closed measured partition-admission contract;
+source-specific Content, Product, Flex, search, legacy migration, runtime, and
+scheduler modules remain deleted.
 
 ## Primary Public Types
 
@@ -42,6 +42,9 @@ deleted.
 - `MutationDelivery`
 - `MutationApplyOutcome`
 - `MutationStorageError`
+- `PostgresSchemaRegistrationStore`
+- `PersistedSchemaRegistrationOutcome`
+- `SchemaRegistrationError`
 - `PostgresSchemaLeaseStore`
 - `SchemaApplicationLeaseRequest`
 - `SchemaApplicationLease`
@@ -77,22 +80,29 @@ and locales, stable schema fingerprints, atomic schema registration,
 deterministic link paths, record/query validation, bounded query complexity,
 and query-scoped keyset cursors.
 
-The accepted M2 ADR selects JSONB, and M3 now registers the canonical schema for
+The accepted M2 ADR selects JSONB, and M3 registers the canonical schema for
 `index_schemas`, `index_entities`, `index_links`, `index_inbox`, `index_jobs`,
-`index_checkpoints`, and `index_consistency_findings`. `PostgresMutationStore`
-atomically applies validated entity/link upserts and deletes through the durable
-inbox. `PostgresSchemaLeaseStore` serializes exact tenant/schema application,
-reclaims expired jobs with attempt fencing, and requires current ownership for
-heartbeat and terminal completion. `SecondaryIndexPlan` derives stable indexes
-from filterable/sortable schema fields, and `PostgresSecondaryIndexManager`
-coordinates concurrent ensure/reindex/retire execution through durable fenced
-jobs and PostgreSQL catalog readiness checks. Partition admission now requires an
-exact retained evidence identifier, complete query/mutation/maintenance/cutover
-measurement coverage, and an explicit policy before producing deterministic
-tenant-hash shadow relation names and bootstrap SQL. It does not execute copy,
-constraint/index attachment, dual-write/replay, cutover, or rollback. Source
-registries, batch ingestion, rebuild, query-port, partition cutover, and operator
-APIs remain later work.
+`index_checkpoints`, and `index_consistency_findings`.
+`PostgresSchemaRegistrationStore` is the generic Index-owned boundary for
+source-published tenant schemas. It validates the domain contract, serializes one
+tenant/schema identity under a PostgreSQL transaction advisory lock, inserts an
+active schema idempotently, rejects same-version contract reuse, lower-version
+insertion, retired reactivation, nil tenants, and unsupported backends. Source
+owners do not write `index_schemas` directly.
+
+`PostgresMutationStore` atomically applies validated entity/link upserts and
+deletes through the durable inbox. `PostgresSchemaLeaseStore` serializes exact
+tenant/schema application, reclaims expired jobs with attempt fencing, and
+requires current ownership for heartbeat and terminal completion.
+`SecondaryIndexPlan` derives stable indexes from filterable/sortable schema fields,
+and `PostgresSecondaryIndexManager` coordinates concurrent ensure/reindex/retire
+execution through durable fenced jobs and PostgreSQL catalog readiness checks.
+Partition admission requires an exact retained evidence identifier, complete
+query/mutation/maintenance/cutover measurement coverage, and an explicit policy
+before producing deterministic tenant-hash shadow relation names and bootstrap
+SQL. It does not execute copy, constraint/index attachment, dual-write/replay,
+cutover, or rollback. Multi-source catalog composition, batch ingestion, rebuild,
+query-port, partition cutover, and operator APIs remain later work.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -102,13 +112,20 @@ No compatibility contract exists for deleted behavior. `IndexDocument`,
 
 The generic engine core does not depend on source-domain crates. `rustok-core`
 is used only for module metadata and platform contracts. Source adapters belong
-to owner modules or explicit integration crates.
+to owner modules or explicit integration crates and register through Index-owned
+APIs.
 
 ## Common AI Mistakes
 
 - Adding Product, Content, Flex, Pricing, or Inventory fields to engine-core
   enums or structs.
 - Reading source-module tables from Index.
+- Writing `index_schemas` directly from a source module instead of calling
+  `PostgresSchemaRegistrationStore`.
+- Treating in-memory `SchemaRegistry` registration as persisted tenant schema
+  readiness for `PostgresMutationStore`.
+- Reactivating a retired schema or silently replacing a contract under the same
+  schema version.
 - Treating Index as a ranking/full-text search engine.
 - Reintroducing a catch-all JSON document as the public contract.
 - Implementing rebuild by collecting every source ID before processing.
@@ -137,6 +154,8 @@ to owner modules or explicit integration crates.
 - `IndexSchema`, `IndexRecord`, `IndexMutation`, and `IndexQuery` are the current
   input contracts.
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
+- `PostgresSchemaRegistrationStore::register(tenant_id, schema)` binds one non-nil
+  tenant to one validated exact schema contract and calculated fingerprint.
 - `SchemaApplicationLeaseRequest` binds one tenant, exact schema reference,
   computed fingerprint, worker identity, and bounded whole-second lease duration.
 - `SecondaryIndexPlan` binds one tenant and exact schema fingerprint to all
@@ -155,7 +174,7 @@ to owner modules or explicit integration crates.
 - Identifiers use bounded lowercase ASCII grammar; locales use ICU4X
   canonicalization.
 - Public field changes require a new `SchemaVersion`; incompatible content under
-  the same version is rejected by `SchemaRegistry`.
+  the same version is rejected by both in-memory and persisted registration.
 
 ### Domain Invariants
 
@@ -173,13 +192,26 @@ to owner modules or explicit integration crates.
 
 ### Schema Registry
 
-- Registration is atomic for a batch.
+- In-memory registration is atomic for a batch.
 - Re-registering an identical schema version is idempotent.
 - Changing a contract under the same version is an error.
 - Versions for a schema identity are monotonic.
 - Link paths resolve deterministically through the registered graph.
 - Schema fingerprints ignore declaration order but include all semantic field,
   link, locale, and version metadata.
+
+### Persisted Source Schema Registration
+
+- Registration is tenant scoped and supports PostgreSQL and SQLite only.
+- PostgreSQL serializes the tenant/module/entity identity with a transaction-scoped
+  advisory lock before exact/latest-version checks.
+- An exact active schema with matching fingerprint and semantic JSON is
+  `Unchanged`; a new greater version is `Inserted`.
+- Same-version contract drift, an unregistered lower version, retired state, nil
+  tenant, malformed persisted values, and storage failures fail closed.
+- Registration commits before an owner mutation may rely on the schema foreign key.
+- The store contains no source-domain types or table reads outside Index-owned
+  storage.
 
 ### Schema Application Lease
 
@@ -246,8 +278,9 @@ to owner modules or explicit integration crates.
 
 ### Events / Outbox Side Effects
 
-- Source events are converted to `IndexMutation` through owner-published
-  adapters.
+- Source events are converted to `IndexMutation` through owner-published adapters.
+- The source schema is persisted through the Index owner before a mutation relies
+  on it.
 - Delivery is replayable and idempotent.
 - `MutationDelivery` binds a source name and delivery ID to one exact serialized
   `IndexMutation` payload.
@@ -260,7 +293,9 @@ to owner modules or explicit integration crates.
 ### Errors / Failure Codes
 
 - `DomainError` defines identifier, schema-shape, and query-shape failures.
-- `SchemaRegistryError` defines registration and graph failures.
+- `SchemaRegistryError` defines in-memory registration and graph failures.
+- `SchemaRegistrationError` separates nil tenant, invalid schema, same-version
+  conflict, non-monotonic version, retired state, and generic storage failure.
 - `RecordValidationError` and `QueryValidationError` define registry-backed data
   and query failures.
 - `CursorCodecError` and `CursorValidationError` separate malformed cursors from
@@ -277,4 +312,4 @@ to owner modules or explicit integration crates.
 - `PartitionAdmissionError` separates invalid policy, invalid evidence, metric
   overflow, and unsupported hash modulus. Typed admission reasons explain every
   rejected evidence gate without exposing storage internals.
-- Later milestones add source, retry, cancellation, and rebuild errors.
+- Later milestones add source catalog, retry, cancellation, and rebuild errors.

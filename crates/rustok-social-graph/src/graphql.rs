@@ -6,6 +6,7 @@ use rustok_api::{
     graphql::{GraphQLError, require_module_enabled},
     request::RequestContext,
 };
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -87,7 +88,7 @@ async fn read_follow_state(ctx: &Context<'_>, user_id: Uuid) -> Result<SocialGra
         });
     }
 
-    let service = service(ctx)?;
+    let service = read_service(ctx)?;
     SocialGraphFollowReadPort::source_follow_state(
         &service,
         port_context(ctx, auth, None)?,
@@ -109,7 +110,7 @@ async fn set_follow_state(
 ) -> Result<FollowStateGql> {
     require_module_enabled(ctx, MODULE_SLUG).await?;
     let auth = require_human_user(ctx)?;
-    let service = service(ctx)?;
+    let service = write_service(ctx)?;
     let relation = SocialGraphCommandPort::set_relation(
         &service,
         port_context(ctx, auth, Some(idempotency_key))?,
@@ -131,13 +132,30 @@ async fn set_follow_state(
     })
 }
 
-fn service(ctx: &Context<'_>) -> Result<SocialGraphService> {
+fn read_service(ctx: &Context<'_>) -> Result<SocialGraphService> {
     let db = ctx.data::<DatabaseConnection>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error(
             "Social Graph database context is not registered",
         )
     })?;
     Ok(SocialGraphService::new(db.clone()))
+}
+
+fn write_service(ctx: &Context<'_>) -> Result<SocialGraphService> {
+    let db = ctx.data::<DatabaseConnection>().map_err(|_| {
+        <FieldError as GraphQLError>::internal_error(
+            "Social Graph database context is not registered",
+        )
+    })?;
+    let event_bus = ctx.data::<TransactionalEventBus>().map_err(|_| {
+        <FieldError as GraphQLError>::internal_error(
+            "Social Graph transactional event bus is not registered",
+        )
+    })?;
+    Ok(SocialGraphService::with_event_bus(
+        db.clone(),
+        event_bus.clone(),
+    ))
 }
 
 fn require_human_user<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {

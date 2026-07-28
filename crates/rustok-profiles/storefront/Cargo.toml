@@ -13,6 +13,7 @@ ssr = [
     "dep:leptos_axum",
     "dep:rustok-core",
     "dep:rustok-media",
+    "dep:rustok-outbox",
     "dep:rustok-profiles",
     "dep:rustok-social-graph",
     "dep:rustok-storage",
@@ -33,6 +34,7 @@ serde = { workspace = true, features = ["derive"] }
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
 rustok-profiles = { workspace = true, optional = true }
 rustok-social-graph = { path = "../../rustok-social-graph", optional = true }
 rustok-storage = { workspace = true, optional = true }

@@ -219,6 +219,7 @@ async fn profiles_storefront_follow_native(
             AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
             request::RequestContext,
         };
+        use rustok_outbox::TransactionalEventBus;
         use rustok_social_graph::{
             SetSocialRelationCommand, SocialGraphCommandPort, SocialGraphService,
             SocialRelationKind,
@@ -277,8 +278,13 @@ async fn profiles_storefront_follow_native(
         if let Some(channel) = request.channel_slug.as_deref() {
             context = context.with_channel(channel.to_string());
         }
+        let event_bus = runtime
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new("Social Graph transactional event bus is unavailable")
+            })?;
         let relation = SocialGraphCommandPort::set_relation(
-            &SocialGraphService::new(runtime.db_clone()),
+            &SocialGraphService::with_event_bus(runtime.db_clone(), event_bus),
             context,
             SetSocialRelationCommand {
                 source_user_id: auth.user_id,

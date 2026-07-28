@@ -7,9 +7,16 @@ ownership = "first_party"
 trust_level = "verified"
 ui_classification = "capability_only"
 
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
 [crate]
 entry_type = "SocialGraphModule"
 
 [provides.graphql]
 query = "graphql::SocialGraphQuery"
 mutation = "graphql::SocialGraphMutation"
+
+[provides.cli]
+namespace = "social_graph"
+factory = "rustok_social_graph_cli::command_provider"

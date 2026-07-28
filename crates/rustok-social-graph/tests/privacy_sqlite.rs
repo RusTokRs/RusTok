@@ -1,7 +1,10 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_core::MigrationSource;
+use rustok_core::events::EventTransport;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_social_graph::{
     SetSocialRelationCommand, SocialGraphCommandPort, SocialGraphModule, SocialGraphPairRequest,
     SocialGraphPrivacyReadPort, SocialGraphService, SocialRelationKind,
@@ -24,7 +27,7 @@ async fn block_and_mute_state_is_tenant_scoped_and_replay_safe() {
     insert_user(&db, tenant_id, recipient_id).await;
     insert_user(&db, other_tenant_id, foreign_user_id).await;
 
-    let service = SocialGraphService::new(db.clone());
+    let service = write_service(db.clone());
     let block = SocialGraphCommandPort::set_relation(
         &service,
         write_context(tenant_id, actor_id, "block-create"),
@@ -140,6 +143,11 @@ async fn block_and_mute_state_is_tenant_scoped_and_replay_safe() {
     assert_eq!(cross_tenant.kind, PortErrorKind::Unavailable);
 }
 
+fn write_service(db: DatabaseConnection) -> SocialGraphService {
+    let transport: Arc<dyn EventTransport> = Arc::new(OutboxTransport::new(db.clone()));
+    SocialGraphService::with_event_bus(db, TransactionalEventBus::new(transport))
+}
+
 async fn setup() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
         .await
@@ -158,9 +166,14 @@ async fn setup() -> DatabaseConnection {
     .await
     .expect("identity fixture should migrate");
 
-    let module = SocialGraphModule;
     let manager = SchemaManager::new(&db);
-    for migration in module.migrations() {
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+    }
+    for migration in SocialGraphModule.migrations() {
         migration
             .up(&manager)
             .await

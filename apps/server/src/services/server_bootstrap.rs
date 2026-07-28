@@ -77,7 +77,7 @@ pub(crate) fn known_dev_jwt_fragment(secret: &str) -> Option<&'static str> {
 
 #[cfg_attr(debug_assertions, allow(dead_code))]
 pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static str> {
-    const SAMPLE_PATTERNS: &[&str] = &["://postgres:postgres@", "://rustok:rustok@"];
+    const SAMPLE_PATTERNS: &[&str] = &["://postgres:postgres@", "://rustok:rustok@"]; 
     SAMPLE_PATTERNS
         .iter()
         .copied()
@@ -142,6 +142,18 @@ pub async fn bootstrap_application_router(
     crate::services::notification_candidate_worker::start_notification_candidate_worker_if_ready(
         &runtime_ctx,
     )?;
+
+    #[cfg(feature = "mod-social_graph")]
+    crate::services::social_graph_index_worker::start_social_graph_index_worker_if_enabled(
+        &runtime_ctx,
+    )
+    .await?;
+
+    #[cfg(feature = "mod-social_graph")]
+    crate::services::social_graph_index_position_observer::start_social_graph_index_position_observer_if_enabled(
+        &runtime_ctx,
+    )
+    .await?;
 
     connect_runtime_workers_with_runtime(runtime_ctx.clone()).await?;
     tracing::info!("RusTok runtime workers connected");

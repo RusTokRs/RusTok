@@ -60,9 +60,14 @@
 pub mod config;
 pub mod consumer;
 pub mod contract_consumer;
+pub mod contract_decode_failure;
 pub mod dlq;
+#[cfg(feature = "iggy")]
+mod dlq_publisher;
 pub mod health;
 pub mod partitioning;
+#[cfg(feature = "iggy")]
+pub mod position;
 pub mod producer;
 pub mod serialization;
 pub mod topology;
@@ -73,10 +78,20 @@ pub use config::{
     TopologyConfig,
 };
 pub use consumer::{ConsumedEvent, PersistentConsumerGroup};
-pub use contract_consumer::{ConsumedContractEvent, PersistentContractConsumerGroup};
+pub use contract_consumer::{
+    ConsumedContractEvent, PersistentContractConsumerGroup, PersistentContractDelivery,
+};
+pub use contract_decode_failure::{
+    ConsumedContractDecodeFailure, ContractDecodeFailureKind,
+};
 pub use dlq::{DlqEntry, DlqManager};
 pub use health::{HealthCheckResult, HealthStatus, health_check};
 pub use partitioning::{calculate_partition, partition_key};
+#[cfg(feature = "iggy")]
+pub use position::{
+    ConsumerPartitionPosition, ConsumerPositionError, ConsumerPositionSnapshot,
+    IggyConsumerPositionObserver,
+};
 pub use serialization::{EventSerializer, JsonSerializer, MessagePackSerializer};
 pub use topology::TopologyManager;
 pub use transport::IggyTransport;

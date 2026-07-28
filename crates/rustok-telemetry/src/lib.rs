@@ -1,5 +1,6 @@
 pub mod metrics;
 pub mod otel;
+pub mod runtime_consumer_metrics;
 
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
