@@ -146,7 +146,7 @@ rustok-media
   -> upload, storage, descriptors, quarantine and asset lifecycle
 
 rustok-forum
-  -> category tree, topics, replies, revisions, subscriptions, read state,
+  -> category tree, topics/replies, revisions, subscriptions, read state,
      drafts, bookmarks, reports, moderation, restrictions, forum trust,
      forum reactions/reputation, attachment relations and semantic events
 
@@ -222,7 +222,7 @@ at the end of this file remain authoritative.
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
 | `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |
 | `FORUM-25` | `planned` | Full content/UI multilingual contract and RTL support. |
-| `FORUM-26` | `planned` | Anti-spam, bounded posting policy and trust levels. |
+| `FORUM-26` | `in_progress` | FORUM-26A-I provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read and approved-post facts, plus pre-enforcement author-index and query-plan hardening. Active flags/moderation history, reputation, usage windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Member directory, forum profile, badges and activity views. |
 | `FORUM-28` | `planned` | Editor, safe renderer and renderer-version rebuilds. |
 | `FORUM-29` | `planned` | Realtime acceleration with cursor/revision reconciliation. |
@@ -1588,7 +1588,7 @@ nested quotes. Notification locale is selected from the recipient, not actor.
 
 ## `FORUM-26` — anti-spam, limits and trust levels
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P0  
 **Dependencies:** FORUM-19, shared rate-limit capability
 
@@ -1602,6 +1602,81 @@ scoring.
 
 External/AI scoring is optional and cannot be a synchronous correctness
 dependency. Forum owns policy; shared rate limiting owns distributed execution.
+
+### Delivered in `FORUM-26A` through `FORUM-26I`
+
+- Forum-owned tenant/user trust state, typed trust levels, managed writes and an
+  authoritative exact-user trust facts adapter replace activity-counter or role
+  inference;
+- bounded posting-action, candidate-metric, rule, outcome, evidence and decision
+  contracts define explainable local policy evaluation without executing owner
+  writes or distributed reservations;
+- the facts composer keeps missing owner capabilities explicit and preserves
+  exact tenant/user actor identity, deadlines, typed retryability and one unique
+  provider per fact kind;
+- authoritative server/users account age, Forum topic-reading activity and
+  current retained approved-post facts are published without copying owner data
+  into policy configuration;
+- `FORUM-26I` adds PostgreSQL/SQLite partial author indexes aligned to the exact
+  approved-post query, source-ready `EXPLAIN` proofs, index-definition guards and
+  the minimal platform-user fixture required by the isolated PostgreSQL Forum
+  migration bootstrap;
+- none of these slices invokes the composer from topic/reply/edit/bump commands,
+  reserves shared rate-limit capacity, hashes duplicate content, calls external
+  scoring or automatically changes trust state.
+
+### Compatibility and degraded mode
+
+Trust rows and approved-post indexes are additive. Existing users without a
+trust row retain the documented compatibility level; existing topic/reply rows
+are indexed automatically with no backfill or owner-state rewrite. The approved-
+post query and fact value remain unchanged by the index migration. Missing fact
+owners continue to return explicit unavailable results, and optional external or
+AI scoring can never become a synchronous correctness dependency. Rolling back
+`FORUM-26I` drops only the two indexes and returns the query to its prior
+performance profile without changing results.
+
+### Remaining scope
+
+- publish authoritative active-flag and moderation-history facts from the
+  moderation/report owner without inferring them from reply-status totals;
+- publish authoritative reputation, topic/reply/edit usage-window and bump-age
+  facts from their named owners;
+- persist and administer bounded policy configuration with versioned audit;
+- enforce the composed decision in topic, reply, edit and bump owner commands;
+- reserve, commit and release distributed rate-limit capacity through the shared
+  capability without making it Forum persistence;
+- add retained duplicate-content fingerprints and optional external/AI scoring;
+- add automatic trust promotion/demotion only through explicit explainable owner
+  commands and immutable evidence;
+- expose bounded admin/storefront/transport surfaces and capture maintainer-
+  executed PostgreSQL, SQLite and cross-consumer runtime evidence.
+
+### Definition of done
+
+All posting owner paths evaluate one versioned bounded policy before mutation,
+missing required facts fail closed with typed retryability, distributed limits
+cannot be bypassed through another transport, duplicate/replay behavior is
+idempotent, optional scoring failure does not break correctness, and every trust
+change and posting denial is explainable and auditable.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum posting_policy
+cargo test -p rustok-forum posting_policy_approved_facts -- --nocapture
+cargo test -p rustok-forum --test approved_posts_index_sqlite -- --nocapture
+cargo test -p rustok-forum --test approved_posts_index_postgres -- --nocapture --test-threads=1
+node scripts/verify/verify-forum-posting-policy-facts.mjs
+node scripts/verify/verify-forum-topic-reading-posting-facts.mjs
+node scripts/verify/verify-forum-approved-posts-posting-facts.mjs
+node scripts/verify/verify-forum-approved-posts-index-debt.mjs
+node scripts/verify/verify-forum-approved-posts-index-hardening.mjs
+cargo xtask module validate forum
+```
+
+The FORUM-26I source and contract records do not claim successful runtime
+verification until the maintainer runs the commands above.
 
 ## `FORUM-27` — member directory and forum profile
 
@@ -2183,6 +2258,8 @@ cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test approved_posts_index_sqlite -- --nocapture
+cargo test -p rustok-forum --test approved_posts_index_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_visibility_policy_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_authenticated_visibility_sqlite -- --nocapture
@@ -2209,6 +2286,7 @@ node scripts/verify/verify-forum-mention-events.mjs
 node scripts/verify/verify-forum-quote-commands.mjs
 node scripts/verify/verify-forum-mention-runtime-proof.mjs
 node scripts/verify/verify-forum-read-state-runtime-proof.mjs
+node scripts/verify/verify-forum-approved-posts-index-hardening.mjs
 node scripts/verify/verify-forum-topic-visibility-scope.mjs
 node scripts/verify/verify-forum-category-visibility-policy.mjs
 node scripts/verify/verify-forum-owner-read-visibility.mjs
@@ -2268,10 +2346,12 @@ Recommended next slices:
     exact category or tenant scope;
 11. `FORUM-19`: reports/moderation/restrictions;
 12. continue `FORUM-20` with reply-create command-time enforcement and optional
-    topic-local narrowing, then add moderation audiences; implement Forum trust
-    owner state under `FORUM-26` before publishing the trust facts adapter;
-13. `FORUM-23`: index projections;
-14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
+    topic-local narrowing, then add moderation audiences; consume the delivered
+    authoritative Forum trust facts only through the exact bounded facts port;
+13. continue `FORUM-26` with authoritative active-flag and moderation-history
+    fact adapters, keeping every missing owner capability explicitly unavailable;
+14. `FORUM-23`: index projections;
+15. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.
 
 # Decisions that must not be reopened without an ADR

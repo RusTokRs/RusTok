@@ -41,6 +41,18 @@ impl PostgresForumTestDb {
 
         let manager = SchemaManager::new(&db);
         let migration_result = async {
+            // Forum trust-state migrations reference the platform-owned users table.
+            // Keep the shared module regression bootstrap self-contained while
+            // preserving only the exact platform identity columns Forum consumes.
+            db.execute_unprepared(
+                r#"
+                CREATE TABLE users (
+                    id UUID NOT NULL PRIMARY KEY,
+                    tenant_id UUID NOT NULL
+                )
+                "#,
+            )
+            .await?;
             for migration in OutboxModule.migrations() {
                 migration.up(&manager).await?;
             }
