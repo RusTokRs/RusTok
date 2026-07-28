@@ -85,10 +85,32 @@ const readStableRegularFile = (filename, label) => {
     return {
       bytes,
       identity: identityOf(descriptorStatAfter),
+      fingerprint: fingerprintOf(descriptorStatAfter),
       canonical: realpathSync.native(filename),
     };
   } finally {
     closeSync(descriptor);
+  }
+};
+
+const readRootSnapshot = (resolvedRoot) => {
+  const stat = lstatSync(resolvedRoot, { bigint: true });
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error('retained bundle root must be a regular non-symlink directory');
+  }
+  return {
+    identity: identityOf(stat),
+    fingerprint: fingerprintOf(stat),
+    canonical: realpathSync.native(resolvedRoot),
+  };
+};
+
+const assertRootSnapshot = (resolvedRoot, expected) => {
+  const current = readRootSnapshot(resolvedRoot);
+  if (current.identity !== expected.identity
+      || current.fingerprint !== expected.fingerprint
+      || current.canonical !== expected.canonical) {
+    throw new Error('retained bundle root changed during inspection');
   }
 };
 
@@ -105,11 +127,8 @@ const assertCanonicalMatch = (actual, expected, label) => {
 
 export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath }) => {
   const resolvedRoot = path.resolve(root);
-  const rootStat = lstatSync(resolvedRoot);
-  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
-    throw new Error('retained bundle root must be a regular non-symlink directory');
-  }
-  const canonicalRoot = realpathSync.native(resolvedRoot);
+  const rootSnapshot = readRootSnapshot(resolvedRoot);
+  const canonicalRoot = rootSnapshot.canonical;
   const capturePath = path.join(resolvedRoot, descriptorNames.capture);
   const resolvedPacketPath = path.resolve(packetPath ?? path.join(resolvedRoot, descriptorNames.packet));
   const resolvedAdmissionPath = path.resolve(
@@ -163,8 +182,9 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
   for (const role of RAW_ARTIFACT_ROLES) {
     const canonical = assembled.resolvedPaths.get(role);
     const identity = assembled.identities.get(role);
+    const fingerprint = assembled.fingerprints.get(role);
     const stat = lstatSync(canonical, { bigint: true });
-    if (stat.isSymbolicLink() || !stat.isFile() || identityOf(stat) !== identity) {
+    if (stat.isSymbolicLink() || !stat.isFile() || fingerprintOf(stat) !== fingerprint) {
       throw new Error(`capture artifact ${role} changed after it was read`);
     }
     assertDistinctIdentity(seenIdentities, identity, `capture artifact ${role}`);
@@ -174,6 +194,7 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
       bytes: assembled.byteLengths.get(role),
       sha256: packet.raw_artifacts[role],
       identity,
+      fingerprint,
     });
   }
   for (const [role, filename, file] of [
@@ -187,11 +208,16 @@ export const inspectRetainedPartitionBundle = ({ root, packetPath, admissionPath
       bytes: file.bytes.length,
       sha256: sha256Hex(file.bytes),
       identity: file.identity,
+      fingerprint: file.fingerprint,
     });
   }
 
+  assertRootSnapshot(resolvedRoot, rootSnapshot);
+
   return {
     contract: REVIEW_CONTRACT,
+    rootIdentity: rootSnapshot.identity,
+    rootCanonical: rootSnapshot.canonical,
     packet,
     admission: recalculatedAdmission,
     files,
