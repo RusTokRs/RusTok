@@ -135,12 +135,14 @@ async fn concurrent_publishers_have_one_claim_owner() -> TestResult<()> {
     assert_eq!(retained.state, ConsumerPoisonReceiptState::Publishing);
     assert!(
         matches!(
-            retained.stable_error_code.as_str(),
-            "iggy.contract.decode_invalid" | "iggy.contract.schema_invalid"
+            (
+                retained.stable_error_code.as_str(),
+                retained.first_delivery_attempt_count,
+            ),
+            ("iggy.contract.decode_invalid", 1) | ("iggy.contract.schema_invalid", 2)
         ),
-        "one first-observed bounded diagnostic must be retained"
+        "the winning reservation must retain one atomic first-observed diagnostic pair"
     );
-    assert!(matches!(retained.first_delivery_attempt_count, 1 | 2));
 
     test_db.cleanup().await
 }
