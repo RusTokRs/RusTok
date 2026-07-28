@@ -55,6 +55,13 @@
     "current_tail_coverage_claimed": false,
     "complete_history_claimed": false
   },
+  "production_partition_invariant": {
+    "publisher": "IggyDlqPublisher",
+    "formula": "(broker_message_id_as_u128 mod partition_count) + 1",
+    "same_broker_message_id_colocated": true,
+    "production_fixture_can_split_same_id_across_partitions": false,
+    "scanner_still_combines_all_partition_observations": true
+  },
   "server_integration": {
     "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
     "default_mode": "global_budget",
@@ -137,6 +144,19 @@
     "two_identical_scans": true,
     "three_absent_offset_checks": true,
     "fair_window_execution_evidence": false
+  },
+  "fair_window_runtime_harness": {
+    "status": "source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json",
+    "test": "crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs",
+    "case": "fair_window_scans_each_partition_and_differs_from_global_budget",
+    "reviewed_dedup_disabled_broker_required": true,
+    "domain_partitions": 2,
+    "per_partition_messages": 2,
+    "physical_messages": 5,
+    "production_same_id_colocation_preserved": true,
+    "direct_sdk_producer": false,
+    "execution_status": "not_run"
   },
   "source_files": [
     "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
