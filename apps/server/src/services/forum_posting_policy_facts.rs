@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_forum::{
-    ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer,
+    ForumApprovedPostsFactPort, ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer,
     ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
     ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
     ForumPostingTrustFactPort, ForumTopicReadPostingFactPort, SharedForumAudienceFactsPort,
@@ -130,8 +130,8 @@ impl ForumPostingPolicyOwnerFactPort for ServerForumAccountAgeFactPort {
 }
 
 /// Stable host facade that publishes authoritative Forum trust, server-owned
-/// account age and Forum-owned topic reading activity. Other fact kinds remain
-/// explicitly unavailable in the Forum composer until their owners are added.
+/// account age, Forum-owned topic reading activity and current approved posts.
+/// Other fact kinds remain explicitly unavailable until their owners are added.
 pub(crate) struct ServerForumPostingPolicyFactsComposer;
 
 impl ServerForumPostingPolicyFactsComposer {
@@ -142,6 +142,7 @@ impl ServerForumPostingPolicyFactsComposer {
         let composer = ForumPostingPolicyFactsComposer::new(vec![
             ForumPostingTrustFactPort::shared(audience_facts),
             ServerForumAccountAgeFactPort::shared(db.clone()),
+            ForumApprovedPostsFactPort::shared(db.clone()),
             ForumTopicReadPostingFactPort::shared(db),
         ])?;
         Ok(Arc::new(composer))
