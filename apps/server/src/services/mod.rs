@@ -99,6 +99,8 @@ pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;
 #[cfg(feature = "mod-social_graph")]
+pub mod social_graph_index_poison_observer;
+#[cfg(feature = "mod-social_graph")]
 pub mod social_graph_index_position_observer;
 #[cfg(feature = "mod-social_graph")]
 pub mod social_graph_index_worker;
