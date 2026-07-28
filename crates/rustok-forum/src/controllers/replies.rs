@@ -14,6 +14,9 @@ use crate::{
     CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, ReplyService,
     UpdateReplyInput, VoteService,
 };
+use crate::reply_create_transport::{
+    ForumReplyCreateTransport, reply_create_audience_port_context,
+};
 
 fn clamp_per_page(per_page: u64) -> u64 {
     per_page.min(100)
@@ -165,6 +168,7 @@ pub async fn create_reply(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
     Json(input): Json<CreateReplyInput>,
 ) -> HttpResult<(StatusCode, Json<ReplyResponse>)> {
@@ -174,9 +178,23 @@ pub async fn create_reply(
         "Permission denied: forum_replies:create required",
     )?;
 
-    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
-    let reply = service
-        .create(tenant.id, forum_security(&auth), topic_id, input)
+    let audience_context = reply_create_audience_port_context(
+        ForumReplyCreateTransport::Rest,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        tenant.default_locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let reply = runtime
+        .reply_service()
+        .create_with_audience_context(
+            tenant.id,
+            forum_security(&auth),
+            topic_id,
+            audience_context,
+            input,
+        )
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok((StatusCode::CREATED, Json(reply)))
