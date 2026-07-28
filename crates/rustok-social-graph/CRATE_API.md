@@ -47,7 +47,7 @@
   and commit share one database transaction.
 - Exact receipt replay returns the committed response without publishing a new event.
 - Identity reuse fails as `social_graph.idempotency_conflict`.
-- Corrupt/incomplete/unsupported receipt state fails closed.
+- Corrupt, incomplete, or unsupported receipt state fails closed.
 
 ## Receipt cleanup and replay
 
@@ -98,24 +98,32 @@
   failure. Social Graph imports no Index entities and writes no `index_schemas` rows.
 - `SocialGraphIndexConsumer::open(Arc<IggyTransport>, DatabaseConnection)` opens
   persistent group `rustok-social-graph-index` on the shared `domain` topic.
-- `receive_next`, `project_consumed`, and `acknowledge_consumed` retain one outstanding
-  delivery across bounded retries.
-- The result-first contract checks any durable DLQ receipt before projection and commits
-  the source cursor only after a terminal owner result exists.
-- `process_next(&mut self)` is the direct serialized receive/register/apply/ack path.
-  It acknowledges only after schema persistence and the Index inbox result are durable;
-  that result is committed before broker acknowledgement.
+- `receive_delivery()` is the primary typed receive boundary and returns either a
+  validated `PersistentContractDelivery::Event` or an exact-byte
+  `PersistentContractDelivery::DecodeFailure`. It never acknowledges either result.
+- `receive_next()` remains the validated-event compatibility path.
+- `project_consumed` and `acknowledge_consumed` retain one outstanding decoded delivery
+  across bounded retries.
+- `acknowledge_decode_failure` commits only the exact retained raw-delivery cursor after
+  the server worker establishes a durable neutral poison result. It performs no
+  projection, publication, or identity inference.
+- The result-first decoded contract checks any durable DLQ receipt before projection and
+  commits the source cursor only after a terminal owner result exists.
+- `process_next()` is the direct serialized validated-event receive/register/apply/ack
+  compatibility path. It acknowledges only after schema persistence and the Index inbox
+  result are durable; that result is committed before broker acknowledgement.
 - `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable outcomes.
-- Unrelated sealed families are acknowledged without schema registration or mutation.
+- Unrelated validated sealed families are acknowledged without schema registration or
+  mutation.
 - `SocialGraphIndexConsumerError::{stable_code,is_retryable}` exposes bounded host
   classification without schema JSON, payload, identity, or storage causes.
 
-## Durable DLQ receipt and broker-identity contract
+## Decoded-event DLQ receipt and broker identity
 
 - Migration `m20260727_000004_create_index_dlq_receipts` owns one immutable poison
   identity per `(tenant_id, consumer_group, event_id)` with exact source
-  stream/topic/partition/offset, original broker bytes, stable error code, and projection
-  attempt count.
+  stream/topic/partition/offset, original broker bytes, stable error code, and
+  projection attempt count.
 - Receipt states are `reserved`, leased `publishing`, terminal `published`, and
   bookkeeping-complete `acknowledged`. Claim leases are bounded and reclaimable after a
   crashed publisher.
@@ -132,23 +140,53 @@
   reaches `published`.
 - `IggyTransport` maps the UUIDv8 to Iggy's `u128` message header through a lazy SDK
   publisher connection to the same configured endpoint and existing `dlq` topic.
-- Repeated calls recognize `published`/`acknowledged` and skip broker publication.
-- `acknowledge_consumed` commits the source cursor after a terminal Index or DLQ result.
-  Receipt transition to `acknowledged` is best-effort bookkeeping after broker commit and
-  cannot turn a committed source offset back into a failure.
+- Repeated calls recognize `published` or `acknowledged` and skip broker publication.
+- `acknowledge_consumed` commits the source cursor after a terminal Index or decoded DLQ
+  result. Receipt transition to `acknowledged` is best-effort bookkeeping after broker
+  commit and cannot turn a committed source offset back into a failure.
 - `move_to_dlq_and_acknowledge` remains a convenience method and preserves durable
   receipt/broker publication before source acknowledgement.
 - Ack failure after `publish_consumed_to_dlq` succeeds leaves a durable `published`
   receipt; redelivery skips both projection and DLQ publication and retries source ack.
-- Broker success followed by process/DB failure before the `published` transition still
-  has confirmation ambiguity. Republication carries the same UUIDv8; physical duplicate
+- Broker success followed by process/DB failure before the `published` transition has
+  confirmation ambiguity. Republication carries the same UUIDv8; physical duplicate
   suppression occurs only when Iggy deduplication is enabled and its per-partition
   cache/expiry still covers the recovery interval.
 - Durable receipt state, not broker deduplication, remains the terminal owner contract;
   physical broker exactly-once is not claimed without retained configuration/runtime
   evidence or a stronger transaction/outbox mechanism.
-- Malformed broker bytes that fail before `ConsumedContractEvent` construction remain
-  unacknowledged pending a connector-level poison-message contract.
+
+## Raw decode-failure poison contract
+
+- `ConsumedContractDecodeFailure` retains exact bytes, stream, topic, partition, offset,
+  opaque acknowledgement metadata, bounded decode/schema classification, and a
+  deterministic connector delivery UUID without inventing tenant or domain event facts.
+- Connector migration `m20260728_000001_create_consumer_poison_receipts` owns neutral
+  durable result storage for those raw deliveries.
+- `ConsumerPoisonIdentity` binds one deterministic delivery UUID and one
+  consumer-group/stream/topic/partition/offset coordinate set to the exact payload.
+  Empty payload is valid input; UUID/source reuse with different coordinates or bytes
+  fails closed.
+- Error classification and observed attempt count are retained as first diagnostics but
+  are excluded from immutable identity.
+- Neutral receipt states are `reserved`, leased `publishing`, `published`, and
+  `acknowledged`. The connector store does not publish, acknowledge, authorize, or choose
+  policy.
+- The server worker looks up the neutral receipt before applying current DLQ policy.
+  Existing raw poison work continues recovery even if creation of new DLQ decisions is
+  later disabled. A new undecodable delivery remains unacknowledged when DLQ is disabled.
+- For a claimed receipt, the worker publishes
+  `ConsumedContractDecodeFailure::to_dlq_entry` with exact bytes and its deterministic
+  broker message ID, then persists `published` before entering source acknowledgement.
+- A `published` or `acknowledged` receipt skips republication and enters
+  acknowledgement-only recovery.
+- Source acknowledgement precedes best-effort `mark_acknowledged` bookkeeping. A
+  bookkeeping failure cannot reverse a committed source offset.
+- Broker success followed by loss before durable `published` remains an explicit
+  duplicate ambiguity. Recovery reuses the same deterministic message ID but does not
+  claim exactly-once without retained broker deduplication evidence.
+- Raw poison state has no projection or presentation authority and must not authorize
+  Profiles privacy.
 
 ## Server-owned optional lifecycle
 
@@ -158,14 +196,19 @@
 - `EventRuntime` creates one configured `Arc<IggyTransport>` and shares that exact
   transport between outbound relay and inbound consumer. The worker never creates or
   stops a second bundled broker process.
-- Identified DLQ publication may lazily open one SDK client owned by that shared
-  `IggyTransport`; it connects to the same configured broker and is dropped on failure
-  for bounded retry-time reconnect.
+- The server enables the connector `migrations` feature explicitly for neutral receipt
+  storage; it does not rely on incidental transitive feature unification.
+- Identified decoded and raw DLQ publication may lazily open one SDK client owned by that
+  shared `IggyTransport`; it connects to the same configured broker and is dropped on
+  failure for bounded retry-time reconnect.
 - `SocialGraphIndexWorkerHandle` exposes task state and observes shared `StopHandle`.
-- Projection, durable DLQ publication, and source acknowledgement use bounded exponential
-  retry from reviewed event settings.
-- Existing `reserved`/`publishing` receipts continue toward their previously chosen DLQ
-  terminal result even if policy for new DLQ decisions is later disabled.
+- Projection, decoded/raw DLQ publication, neutral receipt transitions, and source
+  acknowledgement use bounded exponential retry from reviewed event settings.
+- Existing decoded or raw `reserved`/`publishing` receipts continue toward their
+  previously chosen terminal result even if policy for new DLQ decisions is later
+  disabled.
+- After a durable terminal result exists, retries are acknowledgement-only; projection
+  and terminal-result selection do not repeat.
 - When enabled, missing/stopped/invalid worker state is critical in
   `runtime_guardrails`, `/health/ready`, and aggregate guardrail metrics. Disabled
   execution contributes no failure.
@@ -180,10 +223,13 @@
 
 - `rustok_telemetry::runtime_consumer_metrics` registers a bounded shared Prometheus
   collector in the existing process registry rendered by `/metrics`.
-- Delivery metrics cover received deliveries, terminal outcome throughput, projection,
-  DLQ and ack retries, bounded stage/stable-code failures, DLQ `published`,
-  `already_published`, and `failure` results, receive-to-ack duration,
-  starts/terminations, in-flight state/timestamp, and last success.
+- Delivery metrics cover validated and raw received deliveries, terminal outcome
+  throughput, projection, DLQ, poison-receipt and ack retries, bounded stage/stable-code
+  failures, DLQ `published`, `already_published`, and `failure` results,
+  receive-to-ack duration, starts/terminations, in-flight state/timestamp, and last
+  success.
+- Raw terminal outcomes are bounded to `decode_dead_lettered` and
+  `decode_dead_letter_recovered`.
 - The position observer reads every topic partition plus the persistent group checkpoint
   and records snapshot timestamp, partition count, and completeness.
 - `rustok_runtime_consumer_lag{aggregation="total|max"}` is published only from a
@@ -193,16 +239,16 @@
   values from masquerading as current lag.
 - Labels are bounded to consumer, stage, outcome, result, reason, aggregation, and stable
   error code.
-- Tenant, event, relation, partition, offset, payload, broker ID, ack token, credentials,
-  and raw error text are not labels.
+- Tenant, event, relation, partition, offset, payload, delivery/broker ID, ack token,
+  credentials, and raw error text are not labels.
 - Event age, processing duration, one delivered offset, and local cursor counters are
   not valid lag inputs.
 
 ## Authority boundary
 
 - Social Graph owner ports and storage remain authoritative for block/mute/follow.
-- Profiles privacy must not authorize from Index state, DLQ receipts, broker IDs,
-  deduplication state, or consumer lag.
+- Profiles privacy must not authorize from Index state, decoded or raw DLQ receipts,
+  broker IDs, deduplication state, or consumer lag.
 - The adapter, projector, consumer, worker, position observer, and telemetry never read
   Social Graph relation tables for projection work.
 - Index and DLQ/lag operations are optional infrastructure and must not authorize
@@ -216,6 +262,8 @@
 - optional `rustok-index`: schema, conversion, registration, mutation persistence.
 - optional `rustok-iggy`: persistent typed cursor, exact payload retention, deterministic
   DLQ header publication, DLQ, ack, and read-only broker position observation.
+- server composition uses `rustok-iggy-connector` feature `migrations` for neutral raw
+  poison receipt storage.
 - `sha2`: versioned deterministic UUIDv8 derivation from immutable receipt identity.
 - `rustok-outbox`: transactional event bus.
 - sibling CLI uses `rustok-cli-core` and `rustok-runtime`.
@@ -232,19 +280,28 @@
 - Reading relation tables from Profiles, Index, or another consumer.
 - Registering only in memory and assuming the persisted schema foreign key exists.
 - Writing `index_schemas` directly from Social Graph.
-- Acknowledging before schema/Index result or durable DLQ publication is complete.
+- Calling the compatibility `receive_next` in a worker that must handle raw decode
+  failures.
+- Acknowledging before schema/Index result or durable decoded/raw DLQ publication is
+  complete.
+- Inventing tenant or event identity for undecodable bytes or placing raw receipt state
+  into Profiles authorization.
 - Creating or shutting down a second Iggy transport or bundled process in the worker,
   identified publisher, or position observer.
 - Generating a random broker message ID per retry or including retry count/time in it.
 - Assuming Iggy deduplication is enabled, durable, global, or unbounded.
 - DLQing after a durable Index result instead of retrying ack only.
 - Re-serializing a decoded envelope instead of using exact broker bytes.
-- Ignoring an existing DLQ receipt and re-entering Index projection on redelivery.
-- Treating `reserved`/`publishing` as safe source-ack states.
+- Ignoring an existing decoded or raw receipt and re-entering projection or selecting a
+  new terminal result on redelivery.
+- Treating `reserved` or `publishing` as safe source-ack states.
 - Returning DLQ success before the `published` receipt transition.
 - Republish-to-DLQ on every ack retry after a durable `published` receipt exists.
+- Blocking recovery of an existing receipt merely because new DLQ decisions were later
+  disabled.
 - Deleting receipt rows without an approved retention/reconciliation contract.
-- Using tenant/event/relation/partition/offset/payload/broker-ID/error text as metric labels.
+- Using tenant/event/relation/partition/offset/payload/broker-ID/error text as metric
+  labels.
 - Publishing lag from an incomplete snapshot, event age, or one global offset.
 - Making observer failure projection-critical or readiness-critical.
 - Authorizing Profiles visibility from projection state, DLQ receipts, or consumer lag.
@@ -264,7 +321,11 @@
 - `social_graph.storage_unavailable`
 - Index consumption maps typed schema/registry/mutation failures to bounded
   `social_graph.index.*` host codes without publishing private storage causes.
-- DLQ receipts add bounded `social_graph.index.dlq_receipt_*` and
+- Decoded DLQ receipts add bounded `social_graph.index.dlq_receipt_*` and
   `social_graph.index.dlq_publish_in_progress` codes.
+- Neutral raw receipts add bounded `iggy.connector.poison_*` families. The worker also
+  uses bounded `iggy.connector.poison_claim_busy` for live claim contention.
+- Raw transport classification remains `iggy.contract.decode_invalid` or
+  `iggy.contract.schema_invalid`.
 - Identified Iggy publication logs bounded `iggy.dlq_publisher.*` codes.
 - Position observation uses bounded `iggy.consumer_position.*` stable codes.
