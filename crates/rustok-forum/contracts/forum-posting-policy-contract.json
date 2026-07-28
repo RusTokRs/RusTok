@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-26C",
+  "upstream_task": "FORUM-26B",
+  "scope": "Public normalized explainable Forum posting-policy input and three-state decision contract without evaluation or enforcement",
+  "contract_file": "crates/rustok-forum/src/services/posting_policy.rs",
+  "service_registry": "crates/rustok-forum/src/services/mod.rs",
+  "crate_root": "crates/rustok-forum/src/lib.rs",
+  "source_proof": "crates/rustok-forum/tests/posting_policy_contract.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-26c-posting-policy-contract.md",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-user-trust-audience-facts.json",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "composition": {
+    "public_domain_contract": true,
+    "typed_posting_actions": true,
+    "exact_tenant_user_identity": true,
+    "candidate_metrics_without_content": true,
+    "bounded_required_fact_set": true,
+    "explicit_available_or_unavailable_partition": true,
+    "stable_bounded_unavailable_reason_codes": true,
+    "typed_usage_windows": true,
+    "three_state_outcome": true,
+    "allowed_shape_is_metadata_free": true,
+    "denied_reason_fact_mapping": true,
+    "typed_numeric_evidence": true,
+    "temporal_retry_delay": true,
+    "indeterminate_preserves_fact_retryability": true,
+    "trust_bound_reused": true,
+    "forum_user_stats_read": false,
+    "posting_policy_evaluator_added": false,
+    "owner_fact_ports_added": false,
+    "posting_owner_enforcement_added": false,
+    "trust_state_write_changed": false,
+    "rate_limit_execution_added": false,
+    "duplicate_hashing_added": false,
+    "external_ai_scoring_added": false,
+    "migration_changed": false,
+    "transport_changed": false,
+    "public_transport_dto_changed": false
+  },
+  "not_delivered": [
+    "deterministic posting-policy evaluator and rule precedence",
+    "policy configuration persistence and administration",
+    "account age reading approved-post flag reputation and moderation-history fact owners",
+    "topic reply edit and bump owner enforcement",
+    "shared distributed rate-limit execution",
+    "duplicate-content hashing and fingerprint retention",
+    "external or AI spam scoring",
+    "automatic trust promotion and demotion",
+    "PostgreSQL and cross-consumer runtime evidence"
+  ],
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-forum --test posting_policy_contract -- --nocapture",
+      "node scripts/verify/verify-forum-posting-policy-contract.mjs",
+      "node scripts/verify/verify-forum-user-trust-audience-facts.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
