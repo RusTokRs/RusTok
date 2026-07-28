@@ -50,14 +50,21 @@ a rewrite goal.
 - M3 schema-application leases: complete
 - M3 secondary-index lifecycle: complete
 - M3 partition admission and shadow planning: complete
+- M3 partition evidence capture and packet assembly: complete
+- M3 retained packet owner orchestration: complete
+- M3 retained bundle review and archive verification: complete
+- Real retained PostgreSQL packet execution: open
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted. M3
 registers the canonical production schema, publishes an Index-owned transactional
 mutation adapter, owns durable schema-application leases, manages deterministic
-schema-derived secondary indexes, and now rejects partition rollout until measured
-shadow evidence passes an explicit policy. Query execution and partition cutover
-remain absent.
+schema-derived secondary indexes, and rejects partition rollout until measured
+shadow evidence passes an explicit policy. Owner-operated tooling now captures and
+validates the nine-file retained bundle, renders a read-only review, emits an
+admitted-only archive manifest outside the bundle, and verifies the saved manifest
+against an exact recursive filesystem snapshot. Query execution and production
+partition cutover remain absent.
 
 The module-owned migration source creates:
 
@@ -114,6 +121,15 @@ constraint/index attachment, dual-write/replay, cutover, rollback, and durable
 global operation ownership remain later work and require retained PostgreSQL
 evidence.
 
+The retained evidence boundary is owner-operated and read-only after capture. Review
+recalculates packet assembly and admission from exactly nine authoritative files.
+Archive verification rereads files and the saved external manifest through stable
+descriptors, checks filesystem identity and metadata fingerprints, verifies the
+exact recursive directory inventory, and fails closed on aliases, replacement,
+metadata drift, inventory drift, or byte drift. Public manifest and receipt schemas
+remain stable, and every successful receipt keeps
+`production_lifecycle_authorized: false`.
+
 ## Current entry points
 
 - `IndexModule`
@@ -154,7 +170,10 @@ evidence.
   tagged-payload expressions, concurrent lifecycle, owner verification, catalog
   readiness checks, and operation fencing;
 - fail-closed partition admission, exact evidence identity, explicit regression
-  limits, deterministic tenant-hash shadow names, and no destructive cutover SQL.
+  limits, deterministic tenant-hash shadow names, and no destructive cutover SQL;
+- exact-byte retained review and admitted archive verification bound to stable file
+  and directory identities, metadata fingerprints, and recursive inventory without
+  production lifecycle authorization.
 
 ## M2 benchmark
 
@@ -175,6 +194,7 @@ DDL remains benchmark-only and must not be copied into production migrations.
 - [Live implementation plan](./docs/implementation-plan.md)
 - [M2 storage benchmark contract](./docs/storage-benchmark.md)
 - [M2 replacement evidence runbook](./docs/storage-evidence-runbook.md)
+- [M3 retained partition capture runbook](./docs/partition-full-capture.md)
 - [Index Engine rewrite ADR](../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Accepted storage ADR](../../DECISIONS/2026-07-24-index-storage-layout.md)
 - [Platform docs index](../../docs/index.md)
