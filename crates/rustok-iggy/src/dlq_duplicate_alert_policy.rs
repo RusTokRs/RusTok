@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::DlqDuplicateSummary;
+use crate::dlq_duplicate_inspection::DlqDuplicateSummary;
 
 /// Operator-selected count thresholds for a transport-neutral physical DLQ
 /// duplicate alert evaluation.
@@ -197,9 +197,7 @@ impl DlqDuplicateAlertPolicyError {
 mod tests {
     use uuid::Uuid;
 
-    use crate::{
-        DlqDuplicateObservation, summarize_dlq_duplicates,
-    };
+    use crate::{DlqDuplicateObservation, summarize_dlq_duplicates};
 
     use super::*;
 
