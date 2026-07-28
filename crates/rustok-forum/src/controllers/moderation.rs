@@ -1,29 +1,18 @@
-use axum::{Json, extract::{Path, State}};
-use rustok_api::{AuthContext, Permission, RequestContext, TenantContext, has_any_effective_permission};
-use rustok_web::{HttpError, HttpResult};
+use axum::{
+    Json,
+    extract::{Path, State},
+};
+use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use crate::{TopicResponse, TopicService};
 use crate::moderation_transport::{
     ForumModerationTransport, moderation_audience_port_context,
 };
+use crate::{TopicResponse, TopicService};
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
-}
-
-fn ensure_solution_permission(auth: &AuthContext) -> HttpResult<()> {
-    let permissions = [
-        Permission::FORUM_TOPICS_UPDATE,
-        Permission::FORUM_TOPICS_MODERATE,
-    ];
-    if !has_any_effective_permission(&auth.permissions, &permissions) {
-        return Err(HttpError::forbidden(
-            "FORBIDDEN",
-            "Permission denied: forum_topics:update or forum_topics:moderate required",
-        ));
-    }
-    Ok(())
 }
 
 #[utoipa::path(
@@ -47,7 +36,6 @@ pub async fn mark_topic_solution(
     request_context: RequestContext,
     Path((topic_id, reply_id)): Path<(Uuid, Uuid)>,
 ) -> HttpResult<Json<TopicResponse>> {
-    ensure_solution_permission(&auth)?;
     let audience_context = moderation_audience_port_context(
         ForumModerationTransport::Rest,
         tenant.id,
@@ -101,7 +89,6 @@ pub async fn clear_topic_solution(
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
 ) -> HttpResult<Json<TopicResponse>> {
-    ensure_solution_permission(&auth)?;
     let audience_context = moderation_audience_port_context(
         ForumModerationTransport::Rest,
         tenant.id,
