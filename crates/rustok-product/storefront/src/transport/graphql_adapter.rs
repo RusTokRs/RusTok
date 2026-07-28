@@ -10,7 +10,7 @@ use crate::model::{
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
-const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags createdAt publishedAt } } }";
+const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontProductCatalog($locale: String, $filter: StorefrontProductCatalogFilter) { storefrontProductCatalog(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags createdAt publishedAt } } }";
 const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status sellerId vendor productType tags publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const STOREFRONT_PRICING_PRODUCT_QUERY: &str = "query StorefrontProductPricing($locale: String, $handle: String!, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { storefrontPricingProduct(locale: $locale, handle: $handle, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { variants { id title sku prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 const STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY: &str = "query StorefrontCatalogSearchOptions($locale: String!) { storefrontCatalogSearchOptions(locale: $locale) { categoryOptions { value label } attributeOptions { value label } } }";
@@ -23,8 +23,8 @@ impl From<rustok_graphql::GraphqlHttpError> for ApiError {
 
 #[derive(Debug, Deserialize)]
 struct StorefrontProductsResponse {
-    #[serde(rename = "storefrontProducts")]
-    storefront_products: ProductList,
+    #[serde(rename = "storefrontProductCatalog")]
+    storefront_product_catalog: ProductList,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,10 +70,13 @@ struct StorefrontPricingProductVariables {
 
 #[derive(Debug, Serialize)]
 struct StorefrontProductsFilter {
-    vendor: Option<String>,
-    #[serde(rename = "productType")]
-    product_type: Option<String>,
     search: Option<String>,
+    #[serde(rename = "categoryId")]
+    category_id: Option<String>,
+    #[serde(rename = "sortBy")]
+    sort_by: Option<String>,
+    #[serde(rename = "sortDirection")]
+    sort_direction: Option<String>,
     page: Option<u64>,
     #[serde(rename = "perPage")]
     per_page: Option<u64>,
@@ -190,9 +193,10 @@ async fn fetch_storefront_products(
         StorefrontProductsVariables {
             locale: locale.clone(),
             filter: StorefrontProductsFilter {
-                vendor: None,
-                product_type: None,
                 search: controls.search,
+                category_id: controls.category_id,
+                sort_by: controls.sort_by,
+                sort_direction: controls.sort_direction,
                 page: Some(1),
                 per_page: Some(12),
             },
@@ -202,7 +206,7 @@ async fn fetch_storefront_products(
 
     let resolved_handle = selected_handle.or_else(|| {
         products_response
-            .storefront_products
+            .storefront_product_catalog
             .items
             .first()
             .map(|item| item.handle.clone())
@@ -263,7 +267,7 @@ async fn fetch_storefront_products(
     };
 
     Ok(StorefrontProductsData {
-        products: products_response.storefront_products,
+        products: products_response.storefront_product_catalog,
         selected_product,
         selected_pricing,
         selected_handle: resolved_handle,
