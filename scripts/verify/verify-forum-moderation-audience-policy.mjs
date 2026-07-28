@@ -267,7 +267,7 @@ for (const marker of [
 for (const marker of [
   "# FORUM-20AY moderation audience policy",
   "source-ready / unvalidated",
-  "The topic author's existing owned-update path remains independent",
+  "The exact tenant-scoped topic author remains independently authorized",
   "transport context composition remains `FORUM-20AZ`",
   "canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
   "were not run by the implementation agent",
