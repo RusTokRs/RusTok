@@ -27,7 +27,29 @@ pub mod event_bus;
 pub mod event_delivery_control_adapter;
 pub mod event_delivery_settings_service;
 #[cfg(feature = "mod-forum")]
-pub mod forum_audience_facts;
+pub mod forum_audience_facts {
+    mod membership {
+        include!("forum_audience_facts.rs");
+    }
+
+    use rustok_forum::{ForumUserTrustAudienceFactsPort, SharedForumAudienceFactsPort};
+    use sea_orm::DatabaseConnection;
+
+    /// Stable server composition facade: historical Channel/Groups facts remain
+    /// the membership provider and the Forum owner adds authoritative trust.
+    pub(crate) struct ServerForumAudienceFactsPort;
+
+    impl ServerForumAudienceFactsPort {
+        pub(crate) fn shared(
+            db: DatabaseConnection,
+            groups: Option<SharedForumAudienceFactsPort>,
+        ) -> SharedForumAudienceFactsPort {
+            let membership_facts =
+                membership::ServerForumAudienceFactsPort::shared(db.clone(), groups);
+            ForumUserTrustAudienceFactsPort::shared(db, membership_facts)
+        }
+    }
+}
 #[cfg(all(feature = "mod-forum", feature = "mod-groups"))]
 pub mod forum_audience_group_facts;
 #[cfg(feature = "mod-forum")]
