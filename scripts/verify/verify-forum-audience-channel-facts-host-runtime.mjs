@@ -41,9 +41,10 @@ const plan = read(contract.canonical_plan ?? "");
 if (
   contract.schema_version !== 1 ||
   contract.task !== "FORUM-20AT" ||
-  contract.upstream_task !== "FORUM-20AS"
+  contract.upstream_task !== "FORUM-20AS" ||
+  contract.downstream_trust_task !== "FORUM-26B"
 ) {
-  failures.push("channel facts contract must connect FORUM-20AS/20AT");
+  failures.push("channel facts contract must connect FORUM-20AS/20AT and downstream FORUM-26B");
 }
 if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
   failures.push("FORUM-20AT must not claim unexecuted verification evidence");
@@ -59,6 +60,7 @@ for (const key of [
   "channel_only_without_groups",
   "optional_historical_groups_fallback",
   "trust_fail_closed",
+  "downstream_authoritative_trust_wrapper",
   "runtime_extension_publication",
   "inline_contract_tests",
 ]) {
@@ -75,8 +77,10 @@ for (const key of [
     failures.push(`FORUM-20AT contract must keep ${key}=false`);
   }
 }
+if (contract.not_delivered?.includes("Forum trust facts adapter")) {
+  failures.push("FORUM-20AT metadata must not keep the delivered trust adapter open after FORUM-26B");
+}
 for (const residual of [
-  "Forum trust facts adapter",
   "reply and moderation audience policies",
   "remaining Forum read search index SEO and deep-link audience migration",
   "PostgreSQL concurrency and cross-consumer runtime evidence",
@@ -135,7 +139,9 @@ for (const marker of [
 }
 
 for (const marker of [
-  "#[cfg(feature = \"mod-forum\")]\npub mod forum_audience_facts;",
+  "#[cfg(feature = \"mod-forum\")]\npub mod forum_audience_facts {",
+  "membership::ServerForumAudienceFactsPort::shared(db.clone(), groups)",
+  "ForumUserTrustAudienceFactsPort::shared(db, membership_facts)",
   "#[cfg(all(feature = \"mod-forum\", feature = \"mod-groups\"))]\npub mod forum_audience_group_facts;",
 ]) {
   requireText(services, marker, `server services surface is missing ${marker}`);
@@ -187,7 +193,7 @@ for (const marker of [
   "FORUM-20A-AU provide",
   "### Delivered in `FORUM-20AT`",
   "### Delivered in `FORUM-20AU`",
-  "implement Forum trust owner state under `FORUM-26`",
+  "## `FORUM-26` — anti-spam, limits and trust levels",
   "verify-forum-audience-channel-facts-host-runtime.mjs",
 ]) {
   requireText(plan, marker, `canonical Forum plan is missing ${marker}`);
@@ -199,4 +205,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Historical FORUM-20AT Channel facts contract remains valid through FORUM-20AU.");
+console.log("Historical FORUM-20AT Channel facts contract remains valid through FORUM-26B.");
