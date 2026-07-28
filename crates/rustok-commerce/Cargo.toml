@@ -86,6 +86,10 @@ name = "contract_surface"
 path = "tests/contract_surface.rs"
 
 [[test]]
+name = "fulfillment_read_port_failure_contract"
+path = "tests/fulfillment_read_port_failure_contract.rs"
+
+[[test]]
 name = "graphql_runtime_parity_test"
 path = "tests/graphql_runtime_parity_test/main.rs"
 

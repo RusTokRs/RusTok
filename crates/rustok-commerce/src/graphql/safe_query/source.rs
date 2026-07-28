@@ -1,0 +1,78 @@
+mod async_graphql_shim {
+    pub use ::async_graphql::{Context, Object};
+
+    pub type Error = super::super::query_error_boundary::BoundaryError;
+    pub type FieldError = super::super::query_error_boundary::BoundaryError;
+    pub type Result<T> =
+        std::result::Result<T, super::super::query_error_boundary::BoundaryError>;
+}
+
+use self::async_graphql_shim as async_graphql;
+
+mod rustok_api_shim {
+    pub use ::rustok_api::{
+        AuthContext, Permission, PortActor, PortContext, PortErrorKind, RequestContext,
+        TenantContext, locale_tags_match,
+    };
+
+    pub mod graphql {
+        use super::super::super::query_error_boundary::BoundaryError;
+
+        #[allow(dead_code)]
+        pub trait GraphQLError {
+            fn unauthenticated() -> BoundaryError;
+            fn permission_denied(message: &str) -> BoundaryError;
+            fn internal_error(message: &str) -> BoundaryError;
+            fn bad_user_input(message: &str) -> BoundaryError;
+            fn not_found(message: &str) -> BoundaryError;
+        }
+
+        impl GraphQLError for BoundaryError {
+            fn unauthenticated() -> BoundaryError {
+                BoundaryError::from(
+                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::unauthenticated(),
+                )
+            }
+
+            fn permission_denied(message: &str) -> BoundaryError {
+                BoundaryError::from(
+                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::permission_denied(message),
+                )
+            }
+
+            fn internal_error(message: &str) -> BoundaryError {
+                BoundaryError::from(
+                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::internal_error(message),
+                )
+            }
+
+            fn bad_user_input(message: &str) -> BoundaryError {
+                BoundaryError::from(
+                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::bad_user_input(message),
+                )
+            }
+
+            fn not_found(message: &str) -> BoundaryError {
+                BoundaryError::from(
+                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::not_found(message),
+                )
+            }
+        }
+
+        pub async fn require_module_enabled(
+            ctx: &::async_graphql::Context<'_>,
+            module_slug: &str,
+        ) -> Result<(), BoundaryError> {
+            ::rustok_api::graphql::require_module_enabled(ctx, module_slug)
+                .await
+                .map_err(Into::into)
+        }
+    }
+}
+
+mod rustok_fulfillment_shim;
+
+use self::rustok_api_shim as rustok_api;
+use self::rustok_fulfillment_shim as rustok_fulfillment;
+
+include!("../query.rs");

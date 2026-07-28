@@ -2,7 +2,7 @@
   "schema_version": 1,
   "generated_at": "2026-07-28",
   "status": "source_cutover_unvalidated",
-  "source_base_revision": "75db491faebadac59440a705a4f201567466f3e9",
+  "source_base_revision": "606408363aceae770ffeb2af63a5c4644ee1e31e",
   "scope": "fulfillment lifecycle projection reads for mounted Commerce queries",
   "owner": {
     "crate": "rustok-fulfillment",
@@ -80,6 +80,7 @@
     "optional_latest_by_order_preserved": true,
     "pagination_total_and_filters_preserved": true,
     "public_error_policy_preserved": true,
+    "typed_port_error_extensions_preserved": true,
     "service_actor_propagated": true,
     "correlation_propagated": true,
     "deadline_seconds": 2,
@@ -93,6 +94,13 @@
     "contract_published": true,
     "capture_executed": false,
     "transport_projection_parity_proven": false,
+    "failure_contract": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json",
+    "failure_harness": "crates/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs",
+    "failure_verifier": "scripts/verify/verify-fulfillment-lifecycle-read-failure-contract.mjs",
+    "failure_runbook": "crates/rustok-fulfillment/docs/fulfillment-lifecycle-read-failure-contract.md",
+    "failure_contract_published": true,
+    "failure_harness_published": true,
+    "failure_harness_executed": false,
     "deadline_failure_proven": false,
     "restart_proven": false,
     "remote_adapter_proven": false
@@ -101,7 +109,7 @@
     "graphql_compatibility_facade": true,
     "admin_rest_list_show": true,
     "concrete_delegate_removed": true,
-    "next_slice": "run the mounted projection-parity capture, retain the immutable packet, then prove deadline/failure injection, process restart, and remote-adapter behavior separately"
+    "next_slice": "execute the mounted projection-parity capture and deterministic deadline/failure harness, retain immutable evidence, then prove process restart and remote-adapter behavior separately"
   },
   "validation": {
     "tests_run": false,

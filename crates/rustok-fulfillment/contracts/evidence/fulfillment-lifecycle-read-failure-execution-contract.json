@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-28",
+  "status": "source_ready_unexecuted",
+  "source_base_revision": "606408363aceae770ffeb2af63a5c4644ee1e31e",
+  "scope": "deterministic deadline and typed-failure contract for Commerce GraphQL and admin REST fulfillment lifecycle projection reads",
+  "owner_port": "FulfillmentReadPort",
+  "test_target": {
+    "crate": "rustok-commerce",
+    "name": "fulfillment_read_port_failure_contract",
+    "path": "crates/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs",
+    "command": "cargo test -p rustok-commerce --test fulfillment_read_port_failure_contract -- --nocapture"
+  },
+  "source_fix": {
+    "entry_file": "crates/rustok-commerce/src/graphql/safe_query.rs",
+    "shim_file": "crates/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs",
+    "boundary_file": "crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs",
+    "typed_shim_error": "rustok_fulfillment_shim::error::FulfillmentError",
+    "owner_message_control_flow": false,
+    "query_source_changed": false,
+    "optional_not_found_preserved": true
+  },
+  "deadline": {
+    "milliseconds": 2000,
+    "graphql_operations": [
+      "read_fulfillment_projection",
+      "list_fulfillment_projections",
+      "find_latest_fulfillment_by_order_projection"
+    ],
+    "admin_rest_operations": [
+      "read_fulfillment_projection"
+    ]
+  },
+  "graphql_error_matrix": [
+    {
+      "owner_kind": "Validation",
+      "code": "FULFILLMENT_REQUEST_INVALID",
+      "retryable": false
+    },
+    {
+      "owner_kind": "Conflict",
+      "code": "FULFILLMENT_STATE_CONFLICT",
+      "retryable": false
+    },
+    {
+      "owner_kind": "Forbidden",
+      "code": "FULFILLMENT_ACCESS_DENIED",
+      "retryable": false
+    },
+    {
+      "owner_kind": "Unavailable",
+      "code": "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
+      "retryable": true
+    },
+    {
+      "owner_kind": "Timeout",
+      "code": "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
+      "retryable": true
+    },
+    {
+      "owner_kind": "InvariantViolation",
+      "code": "FULFILLMENT_OPERATION_FAILED",
+      "retryable": false
+    }
+  ],
+  "graphql_optional_not_found": {
+    "owner_kind": "NotFound",
+    "errors": 0,
+    "data": null
+  },
+  "admin_rest_error_matrix": [
+    {
+      "owner_kind": "Validation",
+      "status": 400,
+      "code": "commerce_admin_fulfillment_invalid"
+    },
+    {
+      "owner_kind": "NotFound",
+      "status": 404,
+      "code": "commerce_admin_not_found"
+    },
+    {
+      "owner_kind": "Conflict",
+      "status": 409,
+      "code": "commerce_admin_fulfillment_state_conflict"
+    },
+    {
+      "owner_kind": "Forbidden",
+      "status": 401,
+      "code": "commerce_permission_denied"
+    },
+    {
+      "owner_kind": "Unavailable",
+      "status": 503,
+      "code": "commerce_admin_fulfillment_storage_unavailable"
+    },
+    {
+      "owner_kind": "Timeout",
+      "status": 503,
+      "code": "commerce_admin_fulfillment_storage_unavailable"
+    },
+    {
+      "owner_kind": "InvariantViolation",
+      "status": 500,
+      "code": "commerce_admin_fulfillment_failed"
+    }
+  ],
+  "context_assertions": {
+    "graphql_actor": "service:rustok-commerce.graphql-query-fulfillments",
+    "admin_rest_actor": "authenticated_user",
+    "tenant_identity": true,
+    "graphql_correlation": true,
+    "admin_rest_correlation": true,
+    "admin_rest_locale": "ru-RU",
+    "owner_message_redacted": true
+  },
+  "excluded": [
+    "mounted projection-parity capture execution",
+    "wall-clock timeout enforcement outside the owner port contract",
+    "process restart evidence",
+    "external adapter identity evidence",
+    "remote adapter transport evidence",
+    "lifecycle mutation changes"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "deadline_failure_proven": false
+  }
+}
