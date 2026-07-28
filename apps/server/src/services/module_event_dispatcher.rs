@@ -307,9 +307,19 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     #[cfg(feature = "mod-forum")]
     {
-        let audience_facts =
+        #[cfg(feature = "mod-groups")]
+        let groups = Some(
             crate::services::forum_audience_group_facts::ServerForumAudienceGroupFactsPort::shared(
                 db.clone(),
+            ),
+        );
+        #[cfg(not(feature = "mod-groups"))]
+        let groups = None;
+
+        let audience_facts =
+            crate::services::forum_audience_facts::ServerForumAudienceFactsPort::shared(
+                db.clone(),
+                groups,
             );
         extensions.insert(audience_facts);
     }
