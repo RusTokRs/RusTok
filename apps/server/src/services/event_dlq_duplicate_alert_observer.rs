@@ -90,7 +90,7 @@ pub async fn start_event_dlq_duplicate_alert_observer(
     let runtime = ctx
         .shared_get::<Arc<EventRuntime>>()
         .ok_or_else(|| Error::Message("EventRuntime is unavailable".to_string()))?;
-    let mode = observer_mode(runtime.delivery_profile, runtime.iggy_mode.as_ref());
+    let mode = observer_mode(runtime.delivery_profile, runtime.iggy_mode.as_ref())?;
     if matches!(
         mode,
         EventDlqDuplicateAlertObserverMode::NotApplicableMemory
@@ -258,16 +258,20 @@ impl EventDlqDuplicateAlertObserverConfig {
 fn observer_mode(
     profile: EventDeliveryProfile,
     iggy_mode: Option<&IggyMode>,
-) -> EventDlqDuplicateAlertObserverMode {
+) -> Result<EventDlqDuplicateAlertObserverMode> {
     match profile {
-        EventDeliveryProfile::Memory => EventDlqDuplicateAlertObserverMode::NotApplicableMemory,
+        EventDeliveryProfile::Memory => {
+            Ok(EventDlqDuplicateAlertObserverMode::NotApplicableMemory)
+        }
         EventDeliveryProfile::OutboxLocal => {
-            EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal
+            Ok(EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal)
         }
         EventDeliveryProfile::OutboxIggy => match iggy_mode {
-            Some(IggyMode::Bundled) => EventDlqDuplicateAlertObserverMode::IggyBundled,
-            Some(IggyMode::External) => EventDlqDuplicateAlertObserverMode::IggyExternal,
-            None => EventDlqDuplicateAlertObserverMode::IggyExternal,
+            Some(IggyMode::Bundled) => Ok(EventDlqDuplicateAlertObserverMode::IggyBundled),
+            Some(IggyMode::External) => Ok(EventDlqDuplicateAlertObserverMode::IggyExternal),
+            None => Err(Error::Message(
+                "outbox_iggy runtime is missing its active Iggy mode".to_string(),
+            )),
         },
     }
 }
@@ -332,21 +336,22 @@ mod tests {
     #[test]
     fn every_event_delivery_profile_has_an_explicit_observer_mode() {
         assert_eq!(
-            observer_mode(EventDeliveryProfile::Memory, None),
+            observer_mode(EventDeliveryProfile::Memory, None).unwrap(),
             EventDlqDuplicateAlertObserverMode::NotApplicableMemory
         );
         assert_eq!(
-            observer_mode(EventDeliveryProfile::OutboxLocal, None),
+            observer_mode(EventDeliveryProfile::OutboxLocal, None).unwrap(),
             EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal
         );
         assert_eq!(
-            observer_mode(EventDeliveryProfile::OutboxIggy, Some(&IggyMode::Bundled)),
+            observer_mode(EventDeliveryProfile::OutboxIggy, Some(&IggyMode::Bundled)).unwrap(),
             EventDlqDuplicateAlertObserverMode::IggyBundled
         );
         assert_eq!(
-            observer_mode(EventDeliveryProfile::OutboxIggy, Some(&IggyMode::External)),
+            observer_mode(EventDeliveryProfile::OutboxIggy, Some(&IggyMode::External)).unwrap(),
             EventDlqDuplicateAlertObserverMode::IggyExternal
         );
+        assert!(observer_mode(EventDeliveryProfile::OutboxIggy, None).is_err());
     }
 
     #[test]
