@@ -66,7 +66,7 @@ for (const key of ["runtime_behavior_changed", "migration_changed", "dependency_
 }
 
 for (const marker of [
-  "FORUM-20A-AT provide",
+  "FORUM-20A-AU provide",
   "### Delivered in `FORUM-20H` through `FORUM-20Q`",
   "### Delivered in `FORUM-20R` through `FORUM-20AF`",
   "### Delivered in `FORUM-20AG` through `FORUM-20AL`",
@@ -78,6 +78,7 @@ for (const marker of [
   "### Delivered in `FORUM-20AR`",
   "### Delivered in `FORUM-20AS`",
   "### Delivered in `FORUM-20AT`",
+  "### Delivered in `FORUM-20AU`",
   "PostgreSQL concurrency",
 ]) {
   requireText(canonical, marker, `canonical plan is missing ${marker}`);
@@ -163,4 +164,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Historical FORUM-20AM synchronization remains valid through downstream FORUM-20AT.");
+console.log("Historical FORUM-20AM synchronization remains valid through downstream FORUM-20AU.");
