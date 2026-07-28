@@ -6,7 +6,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, PortContext, Resource};
+use rustok_api::PortContext;
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -15,7 +15,6 @@ use crate::audience::SharedForumAudienceFactsPort;
 use crate::entities::forum_solution;
 use crate::error::{ForumError, ForumResult};
 use crate::services::moderation_audience_authorization::ForumModerationAudienceAuthorizationService;
-use crate::services::rbac::enforce_owned_scope;
 use crate::services::user_stats::UserStatsService;
 use crate::services::{CategoryService, ReplyService, TopicService};
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -499,7 +498,7 @@ impl ModerationService {
         let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
         let reply_service = ReplyService::new(self.db.clone(), self.event_bus.clone());
         let topic = topic_service.find_topic(tenant_id, topic_id).await?;
-        if !uses_topic_owner_scope(&security, topic.author_id) {
+        if !is_exact_topic_author(&security, topic.author_id) {
             self.audience
                 .require_topic(tenant_id, topic_id, &security, context)
                 .await?;
@@ -569,7 +568,7 @@ impl ModerationService {
     ) -> ForumResult<()> {
         let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
         let topic = topic_service.find_topic(tenant_id, topic_id).await?;
-        if !uses_topic_owner_scope(&security, topic.author_id) {
+        if !is_exact_topic_author(&security, topic.author_id) {
             self.audience
                 .require_topic(tenant_id, topic_id, &security, context)
                 .await?;
@@ -715,17 +714,9 @@ impl ModerationService {
     }
 }
 
-fn uses_topic_owner_scope(
+fn is_exact_topic_author(
     security: &SecurityContext,
     topic_author_id: Option<Uuid>,
 ) -> bool {
-    topic_author_id.is_some()
-        && security.user_id == topic_author_id
-        && enforce_owned_scope(
-            security,
-            Resource::ForumTopics,
-            Action::Update,
-            topic_author_id,
-        )
-        .is_ok()
+    topic_author_id.is_some() && security.user_id == topic_author_id
 }
