@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-alert-runtime-source",
+  "status": "source_complete_server_integration_pending",
+  "owner": "rustok-iggy",
+  "source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+  "policy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
+  "summary_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "public_exports": [
+    "DlqDuplicateAlertRuntimePublisher",
+    "DlqDuplicateAlertRuntimeSubscriber",
+    "DlqDuplicateAlertRuntimeSnapshot",
+    "DlqDuplicateAlertRuntimeError"
+  ],
+  "composition": {
+    "input": "already_observed_DlqDuplicateSummary",
+    "policy": "prevalidated_DlqDuplicateAlertPolicy",
+    "channel": "tokio_watch_latest_value",
+    "publisher_role": "single_writer",
+    "subscriber_role": "read_only",
+    "broker_scan": false,
+    "receipt_read": false
+  },
+  "snapshot": {
+    "fields": [
+      "generation",
+      "available",
+      "evaluation"
+    ],
+    "initial_generation": 0,
+    "initial_available": false,
+    "initial_evaluation": null,
+    "generation_monotonic": true,
+    "generation_overflow_fails_closed": true,
+    "available_snapshot_requires_evaluation": true,
+    "unavailable_snapshot_clears_evaluation": true,
+    "latest_value_replaces_prior_snapshot": true
+  },
+  "evaluation_projection": [
+    "level",
+    "physical_duplicates",
+    "identity_conflict",
+    "duplicate_messages_threshold_reached",
+    "duplicate_groups_threshold_reached",
+    "max_copies_threshold_reached"
+  ],
+  "subscriber": {
+    "current_snapshot": true,
+    "await_change": true,
+    "independent_subscriptions": true,
+    "publisher_closed_fails_bounded": true,
+    "write_access": false
+  },
+  "stable_errors": {
+    "generation_overflow": "iggy.dlq_duplicate.alert_runtime_generation_overflow",
+    "publisher_closed": "iggy.dlq_duplicate.alert_runtime_publisher_closed"
+  },
+  "privacy_boundary": {
+    "snapshot_excludes": [
+      "source_counts",
+      "threshold_values",
+      "broker_address",
+      "stream",
+      "topic",
+      "partition",
+      "offset",
+      "broker_message_id",
+      "payload",
+      "payload_sha256",
+      "receipt_identity",
+      "error_classification",
+      "publisher_identity",
+      "timestamp",
+      "credential",
+      "raw_client_error"
+    ],
+    "serialization_added": false,
+    "persistence_added": false
+  },
+  "runtime_boundary": {
+    "server_worker_startup": false,
+    "scan_scheduling": false,
+    "notification_delivery": false,
+    "delivery_channel_selection": false,
+    "suppression_or_cooldown": false,
+    "readiness_decision": false,
+    "profiles_authorization": false,
+    "telemetry_registration": false,
+    "health_registration": false
+  },
+  "mutation_boundary": {
+    "acknowledge": false,
+    "delete": false,
+    "purge": false,
+    "replay": false,
+    "retry": false,
+    "publish_broker_message": false,
+    "claim_or_mark_receipt": false,
+    "change_broker_configuration": false,
+    "change_profile_state": false
+  },
+  "required_source_tests": [
+    "initial_snapshot_is_unavailable_without_evaluation",
+    "publish_replaces_latest_identifier_free_evaluation",
+    "unavailable_transition_clears_stale_evaluation",
+    "independent_subscribers_receive_the_same_latest_snapshot",
+    "closed_publisher_has_a_stable_identifier_free_error"
+  ],
+  "remaining_work": [
+    "server_observer_integration",
+    "telemetry_and_health_projection",
+    "retained_runtime_integration_evidence",
+    "notification_delivery_and_suppression_outside_runtime",
+    "authorized_destructive_reconciliation_workflow",
+    "aggregate_receipt_and_duplicate_health_correlation"
+  ],
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-alert-runtime.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-runtime-checkpoint.md",
+  "execution_status": "source_not_run"
+}
