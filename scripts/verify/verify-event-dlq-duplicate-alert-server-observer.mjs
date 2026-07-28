@@ -93,7 +93,9 @@ if (
 }
 if (
   contract.scan?.topic !== "dlq" ||
-  contract.scan?.all_configured_domain_partitions !== true ||
+  contract.scan?.configured_domain_partition_allowlist !== true ||
+  contract.scan?.global_message_budget_may_stop_before_later_partitions !== true ||
+  contract.scan?.partition_fairness_claimed !== false ||
   contract.scan?.explicit_start_offset !== true ||
   contract.scan?.bounded_max_messages !== true ||
   contract.scan?.bounded_batch_size !== true ||
@@ -131,7 +133,7 @@ if (
 
 const expectedIggyTests = [
   "bundled_mode_requires_matching_loopback_address",
-  "all_configured_partitions_are_scanned_once",
+  "all_configured_partitions_are_included_in_request",
   "invalid_partition_count_fails_closed",
   "stable_errors_expose_no_connection_details",
 ];
@@ -246,6 +248,8 @@ for (const marker of [
 
 requireText("runtime composition", runtimeSource, "pub struct DlqDuplicateAlertRuntimePublisher");
 requireText("runtime composition", runtimeSource, "pub fn mark_unavailable(");
+requireText("bounded scanner", scannerSource, "let mut remaining = request.max_messages;");
+requireText("bounded scanner", scannerSource, "if remaining == 0");
 requireText("bounded scanner", scannerSource, "requested_count,\n                        false,");
 requireText("Iggy module registry", lib, "pub mod dlq_duplicate_alert_observer;");
 for (const exportName of contract.public_iggy_exports ?? []) {
@@ -304,6 +308,19 @@ if (
   fail("observer verifier or documentation path drift");
 }
 
+const requiredRemaining = new Set([
+  "partition_fairness_or_per_partition_budget_policy",
+  "telemetry_projection_outside_observer",
+  "health_projection_without_readiness_coupling",
+  "notification_delivery_and_suppression",
+  "retained_server_observer_execution_evidence",
+  "authorized_destructive_reconciliation",
+]);
+for (const item of contract.remaining_work ?? []) requiredRemaining.delete(item);
+if (requiredRemaining.size > 0) {
+  fail(`observer remaining work drift: ${[...requiredRemaining].join(", ")}`);
+}
+
 if (failures.length > 0) {
   console.error("Event DLQ duplicate alert server observer verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
@@ -311,5 +328,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, fail-closed OutboxIggy active-mode selection, bundled/external observation, bounded auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
+  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, fail-closed OutboxIggy active-mode selection, bundled/external observation, a configured partition allowlist under one bounded global message budget without a fairness claim, auto_commit=false scans, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
 );
