@@ -94,8 +94,10 @@ owner worker, and the offset remained uncommitted.
   through the existing connector migration hook;
 - source coordinates `(consumer_group, stream, topic, partition, offset)` are
   unique and bind one deterministic connector delivery UUID plus exact bytes;
-- reuse with another UUID, payload, stable code, or observed attempt count fails
-  closed as an identity conflict;
+- reuse with another UUID or exact payload fails closed as an identity conflict;
+- the first stable error code and observed delivery attempt are retained as
+  diagnostics, while later decoder classification or retry-count drift does not
+  redefine the connector delivery identity;
 - states are `reserved`, leased `publishing`, `published`, and `acknowledged`;
 - expired publication leases may be reclaimed, while terminal states are
   recognized idempotently;
@@ -190,11 +192,12 @@ be appended without rewriting the published prefix.
   writes, Media-owned descriptors, no automatic mutation retry, and the rule that
   Index/broker state never authorizes profile presentation.
 - Added the typed exact-byte decode-failure contract with explicit acknowledgement.
-- Added connector-owned neutral receipt DDL/store with source-coordinate uniqueness,
-  exact-byte conflict detection, leased publication, terminal recognition, and
-  bounded stable errors.
+- Added connector-owned neutral receipt DDL/store with private immutable source
+  identity, exact-byte conflict detection, first-diagnostic retention, leased
+  publication, terminal recognition, and bounded stable errors.
 - Kept malformed bytes outside the Social Graph tenant/event receipt because those
   trusted facts are unavailable and must not be synthesized.
+- Registered the connector migration in the truthful `mode: none` backfill ledger.
 - Found that `m20260727_000004_create_index_dlq_receipts` is absent from the current
   explicit append-only migration tail; the connector receipt migration must be
   appended with it before compatibility validation.
