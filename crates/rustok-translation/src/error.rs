@@ -16,8 +16,40 @@ pub enum TranslationError {
     MissingCheckpointCursor,
     #[error("translation provider change cursor did not advance")]
     CursorDidNotAdvance,
+    #[error("translation provider does not expose bounded resource listing")]
+    FullRescanUnavailable,
+    #[error("translation full-rescan change drain did not converge")]
+    FullRescanChangeDrainLimit,
+    #[error("translation full-rescan cursor did not advance")]
+    FullRescanCursorDidNotAdvance,
+    #[error("translation full-rescan provider page exceeded its requested bound")]
+    FullRescanPageOverflow,
+    #[error("translation full-rescan exceeded the resource safety bound")]
+    FullRescanResourceLimit,
     #[error("invalid translation inventory request: {0}")]
     InvalidRequest(String),
+    #[error("translation workflow idempotency key was reused with another request")]
+    IdempotencyConflict,
+    #[error("translation workflow revision changed concurrently")]
+    WorkflowRevisionConflict,
+    #[error("translation job was not found")]
+    JobNotFound,
+    #[error("translation job does not accept new items in state `{0}`")]
+    JobNotWritable(String),
+    #[error("translation job item was not found")]
+    ItemNotFound,
+    #[error("translation job item does not accept this transition in state `{0}`")]
+    ItemNotWritable(String),
+    #[error("translation proposal was not found")]
+    ProposalNotFound,
+    #[error("translation proposal is not the current item proposal")]
+    ProposalNotCurrent,
+    #[error("translation proposal failed owner validation")]
+    ProposalValidationFailed,
+    #[error("translation proposal creator cannot approve their own proposal")]
+    ReviewerSeparationRequired,
+    #[error("translation workflow serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
     #[error("translation inventory permission denied")]
     Forbidden,
     #[error("invalid translation tenant id")]

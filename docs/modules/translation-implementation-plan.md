@@ -44,7 +44,17 @@ This is the active cross-cutting implementation plan. As of 2026-07-28:
   provider identity leakage, missing and non-advancing cursors, validates
   bounded requests, batches existing-row lookup, and has integration evidence
   for tenant isolation, cursor replay, invalid bounds, and provider outage
-  without partial persistence;
+  without partial persistence. Bounded full-rescan drains the owner cursor and
+  replaces provider inventory only under an unchanged checkpoint;
+- tenant-scoped jobs, immutable owner-provider item snapshots, proposal and
+  approval persistence, and owner-application receipt persistence now exist.
+  Job creation and item admission are idempotent and request-hash bound; item
+  admission advances the job with revision CAS. Owner-validated proposal save,
+  review submission, and approval transitions persist QA evidence, bind each
+  operation to its idempotency key and request hash, advance item state with
+  revision CAS, and prevent the proposal creator from approving it. Durable
+  owner-apply intent and unknown-outcome reconciliation remain the next
+  workflow slice;
 - `rustok-translation-targets` now defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;

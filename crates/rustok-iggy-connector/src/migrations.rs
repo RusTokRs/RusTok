@@ -20,11 +20,37 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ]
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migration_names_are_stable_and_distinct() {
+        let names = migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            names,
+            [
+                "m20260723_000002_create_iggy_connector_settings",
+                "m20260728_000001_create_consumer_poison_receipts",
+            ]
+        );
+    }
+}
+
 mod m20260723_000002_create_iggy_connector_settings {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20260723_000002_create_iggy_connector_settings"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -132,8 +158,13 @@ mod m20260728_000001_create_consumer_poison_receipts {
     use sea_orm_migration::prelude::*;
     use sea_orm_migration::sea_orm::DatabaseBackend;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20260728_000001_create_consumer_poison_receipts"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {

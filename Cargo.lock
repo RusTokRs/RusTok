@@ -13266,6 +13266,7 @@ name = "rustok-iggy"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "iggy",
  "rmp-serde",
  "rustok-core",
@@ -15068,6 +15069,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-iggy",
+ "rustok-iggy-connector",
  "rustok-index",
  "rustok-outbox",
  "sea-orm",
@@ -15317,6 +15319,7 @@ dependencies = [
  "sea-orm",
  "sea-orm-migration",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "uuid",

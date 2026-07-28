@@ -11,15 +11,28 @@ The module owns inventory projections, provider checkpoints, translation jobs,
 proposals, review and approval state, assignments, quality evidence, translation
 memory, glossaries, interchange operations, and owner-application receipts.
 
-The first implemented slice owns:
+The implemented persistence foundation owns:
 
 - `translation_inventory_resources`;
 - `translation_provider_checkpoints`;
+- `translation_jobs`;
+- `translation_job_items`;
+- `translation_proposals`;
+- `translation_apply_receipts`;
 - bounded provider change-cursor synchronization with optimistic checkpoint
   revision protection, provider-identity isolation, and cursor-progress
-  validation.
+  validation;
+- bounded full-rescan recovery that atomically replaces one provider's
+  inventory only while its checkpoint remains unchanged;
+- idempotent job creation and owner-provider-backed immutable item snapshots
+  with request hashes and job revision CAS;
+- owner-validated proposal drafts, review submission, and approval transitions
+  with operation-specific idempotency bindings, item revision CAS, persisted QA
+  evidence, and translator/reviewer separation.
 
-It does not copy source or translated field values into inventory rows.
+Inventory rows never copy source or translated field values. Source text is
+stored only in workflow item snapshots with an explicit job/tenant boundary;
+owner tables remain canonical.
 
 ## Integration
 

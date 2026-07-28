@@ -9,8 +9,8 @@ machine-translation orchestration.
 ## Responsibilities
 
 - Maintain rebuildable tenant translation inventory and provider checkpoints.
-- Own jobs, proposals, review decisions, assignments, quality evidence, and
-  owner-application receipts as later milestones land.
+- Persist tenant-scoped jobs, immutable owner source snapshots, proposal and
+  approval records, and owner-application receipts.
 - Call owner modules only through `rustok-translation-targets`; never read or
   write owner translation tables directly.
 - Keep machine-translation output review-required and route AI execution
@@ -21,15 +21,22 @@ machine-translation orchestration.
 
 - `TranslationModule`
 - `TranslationInventoryService`
+- `TranslationInventoryRebuildResult`
 - `TranslationInventorySyncResult`
+- `TranslationWorkflowService`
+- `CreateJobInput`
+- `AddItemInput`
+- `SaveProposalInput`
+- `SubmitProposalInput`
+- `ApproveProposalInput`
 - `migrations::migrations`
 
 ## Interactions
 
 - Depends on `rustok-translation-targets` for the neutral owner-provider SPI.
 - Will add the Core `outbox` runtime dependency together with the first
-  transactional workflow event; the current projection slice has no event
-  publisher.
+  transactional workflow event; current workflow persistence has no event
+  publisher yet.
 - Uses owner-declared permissions and revisions in addition to Translation
   workflow permissions.
 - Does not own localized business data and has no dependency on Media, Product,

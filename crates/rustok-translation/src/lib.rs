@@ -2,6 +2,7 @@ pub mod entities;
 mod error;
 mod inventory;
 pub mod migrations;
+mod workflow;
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
@@ -9,7 +10,14 @@ use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use error::{TranslationError, TranslationResult};
-pub use inventory::{TranslationInventoryService, TranslationInventorySyncResult};
+pub use inventory::{
+    TranslationInventoryRebuildResult, TranslationInventoryService, TranslationInventorySyncResult,
+};
+pub use workflow::{
+    AddItemInput, ApproveProposalInput, CreateJobInput, JobItemRecord, JobRecord, ProposalOrigin,
+    ProposalRecord, ProposalValue, SaveProposalInput, SubmitProposalInput,
+    TranslationWorkflowService,
+};
 
 pub struct TranslationModule;
 

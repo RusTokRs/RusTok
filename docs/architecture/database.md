@@ -135,6 +135,24 @@ response data, so claim, completion, abandonment, replay, and recovery must run
 inside a transaction with `rustok.tenant_id` configured. A caller-supplied
 `tenant_id` predicate alone is not considered a sufficient isolation boundary.
 
+## Translation Control-Plane Storage
+
+`rustok-translation` keeps owner-localized data outside its schema. Its
+`translation_inventory_resources` and `translation_provider_checkpoints` tables
+form a rebuildable identity projection guarded by tenant/provider cursor CAS.
+Bounded full-rescan replaces one provider projection atomically and preserves
+the captured change cursor for subsequent replay.
+
+Durable authoring state lives in `translation_jobs`,
+`translation_job_items`, `translation_proposals`, and
+`translation_apply_receipts`. Job items may retain typed source snapshots for
+review under explicit workflow retention policy, but inventory rows never store
+source or translated text. All workflow rows are tenant-scoped, use logical
+owner identities rather than cross-module foreign keys, and treat owner tables
+as canonical. Proposal creation, review submission, and approval persist
+separate idempotency/request-hash bindings; item state changes use revision CAS,
+and approval stores both the reviewer identity and stable approval receipt.
+
 ## Content-family Storage
 
 The current content baseline is built around:

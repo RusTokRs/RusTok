@@ -27,10 +27,19 @@ selection.
   advances checkpoints with optimistic revision protection.
 - Integration evidence covers cursor replay, tenant-isolated inventory and
   checkpoints, invalid bounds, provider outage, missing cursors, and
-  cross-provider identity rejection without partial persistence.
+  cross-provider identity rejection without partial persistence. Bounded
+  full-rescan drains the owner cursor, replaces one provider projection
+  atomically, and rolls back if that checkpoint advances during listing.
+- The first manual-workflow persistence slice creates tenant-scoped jobs,
+  immutable owner-provider source snapshots, proposal/approval tables, and
+  application-receipt tables. `TranslationWorkflowService` exposes idempotent
+  job creation and item admission plus owner-validated proposal save, submit,
+  and approval transitions. Request hashes, item/job revision CAS, persisted QA
+  issues, current-proposal checks, and translator/reviewer separation guard the
+  implemented flow.
 - Media is the first owner provider with durable change-cursor repair.
-- Jobs, proposals, review, memory, glossaries, interchange, transports, UI, and
-  AI integration are not implemented yet.
+- Durable owner-apply intent/reconciliation, assignments, memory, glossaries,
+  interchange, transports, UI, and AI integration are not implemented yet.
 
 ## FFA/FBA status
 
@@ -46,10 +55,12 @@ selection.
 
 ## Milestones
 
-1. Verify inventory replay, tenant isolation, stale-checkpoint conflict, provider
-   outage, and full-rescan recovery with Media and reference providers.
-2. Add manual jobs, immutable source snapshots, proposals, assignments, review,
-   approval, quality issues, and transactional application receipts.
+1. Complete Media multi-replica evidence for the implemented inventory replay,
+   tenant isolation, stale-checkpoint conflict, provider outage, and
+   full-rescan recovery contracts.
+2. Extend the implemented manual job/snapshot/proposal/review foundation with
+   assignments and a durable owner-application state machine that reconciles
+   unknown outcomes before recording a terminal receipt.
 3. Add rebuildable progress projections and operator recovery.
 4. Add translation memory and versioned glossaries with separate permissions.
 5. Add bounded owner-aware import/export.

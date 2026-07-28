@@ -1,7 +1,8 @@
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use rustok_api::{PortActor, PortContext, PortError};
+use chrono::Utc;
+use rustok_api::{PortActor, PortContext, PortError, TenantLocale};
 use rustok_translation::{
     TranslationError, TranslationInventoryService,
     entities::{inventory_resource, provider_checkpoint},
@@ -12,15 +13,16 @@ use rustok_translation_targets::{
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
-    TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProvider,
+    TranslationResourceSummary, TranslationTargetCapability, TranslationTargetChange,
+    TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationTargetRegistry,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, PaginatorTrait, QueryFilter, Set, Statement,
 };
 use sea_orm_migration::SchemaManager;
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 #[derive(Clone, Copy)]
@@ -31,7 +33,17 @@ enum ChangePageFixture {
     ProviderOutage,
 }
 
-struct CursorProvider(ChangePageFixture);
+#[derive(Clone)]
+struct ProviderGate {
+    entered: Arc<Notify>,
+    resume: Arc<Notify>,
+}
+
+struct CursorProvider {
+    page: ChangePageFixture,
+    change_gate: Option<ProviderGate>,
+    list_gate: Option<ProviderGate>,
+}
 
 #[async_trait]
 impl TranslationTargetProvider for CursorProvider {
@@ -40,7 +52,10 @@ impl TranslationTargetProvider for CursorProvider {
             owner_slug: OwnerSlug::new("media").unwrap(),
             resource_kind: ResourceKind::new("asset").unwrap(),
             display_name: "Media asset metadata".to_string(),
-            capabilities: BTreeSet::from([TranslationTargetCapability::ChangeCursor]),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
             read_permission_floor: BTreeSet::from(["media:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
         }
@@ -49,9 +64,42 @@ impl TranslationTargetProvider for CursorProvider {
     async fn list_resources(
         &self,
         _context: PortContext,
-        _request: ListTranslationResourcesRequest,
+        request: ListTranslationResourcesRequest,
     ) -> Result<TranslationResourcePage, PortError> {
-        Err(unavailable())
+        if request.cursor.is_none()
+            && let Some(gate) = &self.list_gate
+        {
+            gate.entered.notify_one();
+            gate.resume.notified().await;
+        }
+        let (resource_id, next_cursor) = match request.cursor.as_ref().map(OpaqueCursor::as_str) {
+            None => (
+                "scan-asset-1",
+                Some(OpaqueCursor::new("scan-page-1").unwrap()),
+            ),
+            Some("scan-page-1") => ("scan-asset-2", None),
+            Some(_) => {
+                return Err(PortError::validation(
+                    "translation.test_scan_cursor_invalid",
+                    "unexpected scan cursor",
+                ));
+            }
+        };
+        Ok(TranslationResourcePage {
+            resources: vec![TranslationResourceSummary {
+                identity: TranslationResourceIdentity {
+                    owner_slug: OwnerSlug::new("media").unwrap(),
+                    resource_kind: ResourceKind::new("asset").unwrap(),
+                    resource_id: ResourceId::new(resource_id).unwrap(),
+                    subresource_id: None,
+                },
+                display_label: resource_id.to_string(),
+                lifecycle: TranslationResourceLifecycle::Active,
+                resource_revision: OpaqueRevision::new("scan-revision-1").unwrap(),
+                exact_locales: vec![request.source_locale],
+            }],
+            next_cursor,
+        })
     }
 
     async fn read_resource(
@@ -83,19 +131,23 @@ impl TranslationTargetProvider for CursorProvider {
         _context: PortContext,
         request: TranslationTargetChangesRequest,
     ) -> Result<TranslationTargetChangePage, PortError> {
-        if matches!(self.0, ChangePageFixture::ProviderOutage) {
+        if let Some(gate) = &self.change_gate {
+            gate.entered.notify_one();
+            gate.resume.notified().await;
+        }
+        if matches!(self.page, ChangePageFixture::ProviderOutage) {
             return Err(PortError::unavailable(
                 "media.translation_changes_unavailable",
                 "provider is unavailable",
             ));
         }
-        if matches!(self.0, ChangePageFixture::Valid) && request.after.is_some() {
+        if matches!(self.page, ChangePageFixture::Valid) && request.after.is_some() {
             return Ok(TranslationTargetChangePage {
                 changes: Vec::new(),
                 next_cursor: None,
             });
         }
-        let owner_slug = match self.0 {
+        let owner_slug = match self.page {
             ChangePageFixture::WrongOwner => OwnerSlug::new("product").unwrap(),
             ChangePageFixture::Valid
             | ChangePageFixture::MissingCursor
@@ -112,7 +164,7 @@ impl TranslationTargetProvider for CursorProvider {
                 resource_revision: OpaqueRevision::new("revision-7").unwrap(),
                 lifecycle: TranslationResourceLifecycle::Active,
             }],
-            next_cursor: match self.0 {
+            next_cursor: match self.page {
                 ChangePageFixture::MissingCursor => None,
                 ChangePageFixture::Valid
                 | ChangePageFixture::WrongOwner
@@ -128,6 +180,17 @@ fn unavailable() -> PortError {
 
 async fn fixture(
     page: ChangePageFixture,
+) -> (DatabaseConnection, TranslationInventoryService, PortContext) {
+    fixture_with_provider(CursorProvider {
+        page,
+        change_gate: None,
+        list_gate: None,
+    })
+    .await
+}
+
+async fn fixture_with_provider(
+    provider: CursorProvider,
 ) -> (DatabaseConnection, TranslationInventoryService, PortContext) {
     let database = Database::connect("sqlite::memory:").await.unwrap();
     database
@@ -148,7 +211,7 @@ async fn fixture(
         .await
         .unwrap();
     let mut registry = TranslationTargetRegistry::default();
-    registry.register(CursorProvider(page)).unwrap();
+    registry.register(provider).unwrap();
     let service = TranslationInventoryService::new(database.clone(), Arc::new(registry));
     let context = PortContext::new(
         tenant_id.to_string(),
@@ -379,4 +442,150 @@ async fn provider_inventory_and_checkpoints_are_tenant_isolated() {
             1
         );
     }
+}
+
+#[tokio::test]
+async fn stale_checkpoint_is_rejected_before_inventory_persistence() {
+    let gate = ProviderGate {
+        entered: Arc::new(Notify::new()),
+        resume: Arc::new(Notify::new()),
+    };
+    let (database, service, context) = fixture_with_provider(CursorProvider {
+        page: ChangePageFixture::Valid,
+        change_gate: Some(gate.clone()),
+        list_gate: None,
+    })
+    .await;
+    let tenant_id = Uuid::parse_str(&context.tenant_id).unwrap();
+    let sync = tokio::spawn(async move {
+        service
+            .sync_provider_changes(
+                context,
+                OwnerSlug::new("media").unwrap(),
+                ResourceKind::new("asset").unwrap(),
+                10,
+            )
+            .await
+    });
+
+    gate.entered.notified().await;
+    provider_checkpoint::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        owner_slug: Set("media".to_string()),
+        resource_kind: Set("asset".to_string()),
+        cursor: Set(Some("cursor-concurrent".to_string())),
+        revision: Set(7),
+        updated_at: Set(Utc::now().fixed_offset()),
+    }
+    .insert(&database)
+    .await
+    .unwrap();
+    gate.resume.notify_one();
+
+    let error = sync.await.unwrap().unwrap_err();
+    assert!(matches!(error, TranslationError::CheckpointConflict));
+    assert_eq!(
+        inventory_resource::Entity::find()
+            .count(&database)
+            .await
+            .unwrap(),
+        0
+    );
+    let checkpoint = provider_checkpoint::Entity::find()
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(checkpoint.cursor.as_deref(), Some("cursor-concurrent"));
+    assert_eq!(checkpoint.revision, 7);
+}
+
+#[tokio::test]
+async fn full_rescan_atomically_replaces_provider_inventory_after_cursor_drain() {
+    let (database, service, context) = fixture(ChangePageFixture::Valid).await;
+
+    let result = service
+        .rebuild_provider_inventory(
+            context,
+            OwnerSlug::new("media").unwrap(),
+            ResourceKind::new("asset").unwrap(),
+            TenantLocale::new("en").unwrap(),
+            TenantLocale::new("de").unwrap(),
+            1,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.observed_resources, 2);
+    assert_eq!(result.checkpoint.as_ref().unwrap().as_str(), "cursor-1");
+    assert_eq!(result.checkpoint_revision, 3);
+    let rows = inventory_resource::Entity::find()
+        .all(&database)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows.iter()
+            .map(|row| row.resource_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["scan-asset-1", "scan-asset-2"])
+    );
+}
+
+#[tokio::test]
+async fn full_rescan_rolls_back_when_checkpoint_advances_during_listing() {
+    let gate = ProviderGate {
+        entered: Arc::new(Notify::new()),
+        resume: Arc::new(Notify::new()),
+    };
+    let (database, service, context) = fixture_with_provider(CursorProvider {
+        page: ChangePageFixture::Valid,
+        change_gate: None,
+        list_gate: Some(gate.clone()),
+    })
+    .await;
+    let rebuild = tokio::spawn(async move {
+        service
+            .rebuild_provider_inventory(
+                context,
+                OwnerSlug::new("media").unwrap(),
+                ResourceKind::new("asset").unwrap(),
+                TenantLocale::new("en").unwrap(),
+                TenantLocale::new("de").unwrap(),
+                1,
+            )
+            .await
+    });
+
+    gate.entered.notified().await;
+    provider_checkpoint::Entity::update_many()
+        .col_expr(
+            provider_checkpoint::Column::Cursor,
+            sea_orm::sea_query::Expr::value("cursor-concurrent"),
+        )
+        .col_expr(
+            provider_checkpoint::Column::Revision,
+            sea_orm::sea_query::Expr::value(7_i64),
+        )
+        .exec(&database)
+        .await
+        .unwrap();
+    gate.resume.notify_one();
+
+    let error = rebuild.await.unwrap().unwrap_err();
+    assert!(matches!(error, TranslationError::CheckpointConflict));
+    let rows = inventory_resource::Entity::find()
+        .all(&database)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].resource_id, "asset-1");
+    let checkpoint = provider_checkpoint::Entity::find()
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(checkpoint.cursor.as_deref(), Some("cursor-concurrent"));
+    assert_eq!(checkpoint.revision, 7);
 }
