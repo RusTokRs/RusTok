@@ -39,6 +39,8 @@ for (const marker of [
   'ConsumerPoisonReceiptError::ClaimLost',
   'ConsumerPoisonReceiptError::IdentityConflict',
   'CURRENT_TIMESTAMP - INTERVAL \'1 second\'',
+  '("iggy.contract.decode_invalid", 1) | ("iggy.contract.schema_invalid", 2)',
+  'the winning reservation must retain one atomic first-observed diagnostic pair',
   'retained.stable_error_code, "iggy.contract.decode_invalid"',
   'retained.first_delivery_attempt_count, 1',
   'assert_eq!(count_receipts(&test_db.db).await?, 1)',
@@ -82,5 +84,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy consumer poison PostgreSQL evidence verification passed: opt-in isolated schemas, independent claim connections, ownership fencing, collision rollback, first-diagnostic retention, and aggregate terminal consistency are locked.",
+  "Iggy consumer poison PostgreSQL evidence verification passed: opt-in isolated schemas, independent claim connections, ownership fencing, collision rollback, atomic first-diagnostic retention, and aggregate terminal consistency are locked.",
 );
