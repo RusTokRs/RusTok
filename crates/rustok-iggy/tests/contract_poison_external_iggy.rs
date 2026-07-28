@@ -41,9 +41,8 @@ async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_by
 
     let transport = IggyTransport::new(config.clone()).await?;
     let fixture_connector = ExternalConnector::new();
-    fixture_connector
-        .connect(&ConnectorConfig::from(&config))
-        .await?;
+    let fixture_config = ConnectorConfig::from(&config);
+    fixture_connector.connect(&fixture_config).await?;
 
     let first_source_cursor = transport
         .open_persistent_contract_consumer_group(&source_group, "domain")
@@ -75,8 +74,10 @@ async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_by
     acknowledge_cursor_message(&mut dlq_cursor, &first_dlq).await?;
 
     drop(first_source_cursor);
+    transport.shutdown().await?;
 
-    let reopened_source_cursor = transport
+    let reopened_transport = IggyTransport::new(config.clone()).await?;
+    let reopened_source_cursor = reopened_transport
         .open_persistent_contract_consumer_group(&source_group, "domain")
         .await?;
     let redelivered = receive_decode_failure(&reopened_source_cursor).await?;
@@ -93,7 +94,9 @@ async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_by
     assert!(second_failure.offset() > first_offset);
     assert_ne!(second_failure.delivery_id(), first_delivery_id);
 
-    transport.move_to_dlq(second_failure.to_dlq_entry(1)).await?;
+    reopened_transport
+        .move_to_dlq(second_failure.to_dlq_entry(1))
+        .await?;
     let second_dlq = receive_cursor_message(&mut dlq_cursor).await?;
     assert_eq!(second_dlq.payload.as_slice(), second_payload.as_slice());
     acknowledge_cursor_message(&mut dlq_cursor, &second_dlq).await?;
@@ -102,7 +105,7 @@ async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_by
         .await?;
 
     fixture_connector.shutdown().await?;
-    transport.shutdown().await?;
+    reopened_transport.shutdown().await?;
     Ok(())
 }
 
