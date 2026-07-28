@@ -10,7 +10,6 @@
   "owner_authorization": "crates/rustok-forum/src/services/moderation_audience_authorization.rs",
   "owner_service": "crates/rustok-forum/src/services/moderation.rs",
   "crate_root": "crates/rustok-forum/src/lib.rs",
-  "crate_api": "crates/rustok-forum/CRATE_API.md",
   "owner_note": "crates/rustok-forum/docs/forum-20az-moderation-audience-transport-composition.md",
   "composition": {
     "existing_graphql_mark_solution_composed": true,
