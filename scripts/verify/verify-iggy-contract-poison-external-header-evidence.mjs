@@ -27,6 +27,7 @@ const expectedSequence = [
   "assert_received_partition_equals_expected_one_based_partition",
   "assert_physical_payload_is_exact",
   "commit_probe_header_offset_only",
+  "drop_probe_consumer_and_shutdown_probe_client",
   "shutdown_production_transport",
 ];
 const expectedProductionPaths = [
@@ -47,6 +48,7 @@ const expectedProbeBoundary = {
     "read_partition_id",
     "read_payload",
     "store_probe_offset",
+    "shutdown",
   ],
   forbidden_operations: [
     "publish",
@@ -205,6 +207,8 @@ for (const marker of [
   "received.message.payload.as_ref(), payload.as_slice()",
   "received.message.header.offset",
   "Some(received.partition_id)",
+  "drop(probe);",
+  "client.shutdown().await?;",
   "transport.shutdown().await?;",
   "(message_id.as_u128() % u128::from(partitions)) as u32 + 1",
   "(1..=partitions).contains(&partition)",
@@ -226,6 +230,8 @@ requireOrdered("physical header publication and observation", test, [
   "assert_eq!(received.partition_id, expected_partition);",
   "assert_eq!(received.message.payload.as_ref(), payload.as_slice());",
   ".store_offset(",
+  "drop(probe);",
+  "client.shutdown().await?;",
   "transport.shutdown().await?;",
 ]);
 
@@ -299,5 +305,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "External Iggy physical header source evidence verified: one production DLQ publication, exact UUID u128 header, one-based deterministic partition, exact payload, probe-only SDK access, and bounded unexecuted claims are locked.",
+  "External Iggy physical header source evidence verified: one production DLQ publication, exact UUID u128 header, one-based deterministic partition, exact payload, explicit probe shutdown, probe-only SDK access, and bounded unexecuted claims are locked.",
 );
