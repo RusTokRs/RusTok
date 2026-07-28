@@ -49,6 +49,16 @@ The `state` label is restricted to:
 
 Unix timestamp of the latest successful snapshot. It is reset to zero when inspection is unavailable or the observer stops.
 
+## Runtime health
+
+When the Social Graph Index consumer is enabled, runtime guardrails require the observer handle to exist and its task to remain active. A missing or stopped observer reports `Degraded`, not `Critical`:
+
+- projection and source acknowledgement continue independently;
+- receipt counts do not influence worker readiness;
+- the health signal exists only to prevent a dead observer from leaving stale metrics without an explicit operational symptom.
+
+Runtime rollout mode still controls whether an observed degraded condition is enforced or reported through observation mode.
+
 ## Cardinality and privacy boundary
 
 Metrics never expose or label by:
@@ -60,7 +70,7 @@ Metrics never expose or label by:
 - publisher identity or lease timestamp;
 - tenant, actor, relation, or event identity.
 
-Logs contain only the same aggregate counts plus a bounded stable error code when inspection fails.
+Successful logs contain only the same aggregate counts. Inspection failure logs contain a bounded stable error code and omit the underlying storage error text.
 
 ## Operator policy
 
