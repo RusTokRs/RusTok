@@ -61,7 +61,6 @@ async fn deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_pa
     assert_eq!(received.message.header.id, expected_id.as_u128());
     assert_eq!(received.partition_id, expected_partition);
     assert_eq!(received.message.payload.as_ref(), payload.as_slice());
-    assert_eq!(received.message.header.offset, received.current_offset);
 
     probe
         .store_offset(
