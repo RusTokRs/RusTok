@@ -10,6 +10,12 @@ const contractPath =
 const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
 const policyPath = "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
 const summaryPath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
+const observerContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+const observerIggySourcePath =
+  "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+const observerServerSourcePath =
+  "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
 const expectedVerifier = "scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs";
 const expectedDocumentation = "crates/rustok-iggy/docs/dlq-duplicate-alert-runtime.md";
@@ -30,9 +36,20 @@ const expectedTests = [
 ];
 
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));
+const observerContract = JSON.parse(
+  readFileSync(resolve(repoRoot, observerContractPath), "utf8"),
+);
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
 const policy = readFileSync(resolve(repoRoot, policyPath), "utf8");
 const summary = readFileSync(resolve(repoRoot, summaryPath), "utf8");
+const observerIggySource = readFileSync(
+  resolve(repoRoot, observerIggySourcePath),
+  "utf8",
+);
+const observerServerSource = readFileSync(
+  resolve(repoRoot, observerServerSourcePath),
+  "utf8",
+);
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
 const failures = [];
 
@@ -60,7 +77,7 @@ if (
   contract.schema_version !== 1 ||
   contract.module !== "iggy" ||
   contract.packet !== "dlq-duplicate-alert-runtime-source" ||
-  contract.status !== "source_complete_server_integration_pending" ||
+  contract.status !== "source_complete_server_observer_execution_pending" ||
   contract.owner !== "rustok-iggy" ||
   contract.source !== sourcePath ||
   contract.policy_source !== policyPath ||
@@ -122,6 +139,27 @@ for (const [operation, allowed] of Object.entries(contract.runtime_boundary ?? {
 }
 for (const [operation, allowed] of Object.entries(contract.mutation_boundary ?? {})) {
   if (allowed !== false) fail(`DLQ duplicate alert runtime mutation became enabled: ${operation}`);
+}
+
+if (
+  contract.server_observer?.status !== "source_complete_execution_pending" ||
+  contract.server_observer?.contract !== observerContractPath ||
+  contract.server_observer?.iggy_source !== observerIggySourcePath ||
+  contract.server_observer?.server_source !== observerServerSourcePath ||
+  !sameValue(contract.server_observer?.delivery_profiles, [
+    "memory_not_applicable",
+    "outbox_local_not_applicable",
+    "outbox_iggy_bundled",
+    "outbox_iggy_external",
+  ]) ||
+  contract.server_observer?.readiness_dependency !== false ||
+  contract.server_observer?.profiles_authorization !== false ||
+  observerContract.packet !== "dlq-duplicate-alert-server-observer-source" ||
+  observerContract.status !== "source_complete_runtime_execution_pending" ||
+  observerContract.iggy_source !== observerIggySourcePath ||
+  observerContract.server_source !== observerServerSourcePath
+) {
+  fail("DLQ duplicate alert server observer relationship drift");
 }
 
 for (const marker of [
@@ -211,6 +249,22 @@ for (const marker of [
 ]) {
   requireText("DLQ duplicate summary source", summary, marker);
 }
+for (const marker of [
+  "pub struct IggyDlqDuplicateAlertObserver",
+  "IggyDlqDuplicateScanner::new(&self.client, &self.stream_name)?",
+]) {
+  requireText("Iggy observer composition", observerIggySource, marker);
+}
+for (const marker of [
+  "NotApplicableMemory",
+  "NotApplicableOutboxLocal",
+  "IggyBundled",
+  "IggyExternal",
+  "DlqDuplicateAlertRuntimePublisher::new(config.policy)",
+  "publisher.mark_unavailable()",
+]) {
+  requireText("server observer composition", observerServerSource, marker);
+}
 
 requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_alert_runtime;");
 for (const exportName of expectedExports) {
@@ -251,7 +305,6 @@ if (
 }
 
 const requiredRemaining = new Set([
-  "server_observer_integration",
   "telemetry_and_health_projection",
   "retained_runtime_integration_evidence",
   "notification_delivery_and_suppression_outside_runtime",
@@ -270,5 +323,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate alert runtime source verified: single-writer monotonic latest-value publication, initial/unavailable stale-clearing semantics, read-only independent subscribers, identifier-free stable errors, no broker/receipt/Profile mutation, and no notification/readiness implementation are locked; server integration remains pending.",
+  "Iggy DLQ duplicate alert runtime source verified: single-writer monotonic latest-value publication, initial/unavailable stale-clearing semantics, read-only independent subscribers, identifier-free stable errors, no broker/receipt/Profile mutation, and the explicit Memory/OutboxLocal/OutboxIggy server observer relationship are locked; server execution and telemetry/health projection remain pending.",
 );
