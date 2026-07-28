@@ -13,6 +13,10 @@ const files = {
     "apps/server/src/services/server_bootstrap.rs",
     "utf8",
   ),
+  runtimeGuardrails: readFileSync(
+    "apps/server/src/services/runtime_guardrails.rs",
+    "utf8",
+  ),
   observer: readFileSync(
     "apps/server/src/services/social_graph_index_poison_observer.rs",
     "utf8",
@@ -63,6 +67,14 @@ for (const marker of [
   "start_social_graph_index_poison_observer_if_enabled",
 ]) {
   requireText("server composition", `${files.services}\n${files.bootstrap}`, marker);
+}
+
+for (const marker of [
+  "SocialGraphIndexPoisonObserverHandle",
+  '"Social Graph Index poison receipt observer"',
+  "RuntimeGuardrailStatus::Degraded",
+]) {
+  requireText("runtime guardrails", files.runtimeGuardrails, marker);
 }
 
 for (const marker of [
@@ -142,5 +154,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Social Graph Index poison observer verification passed: count-only bounded states, stale-value clearing, fixed consumer scope, read-only inspection, bounded failure logging, and delivery/privacy isolation are locked.",
+  "Social Graph Index poison observer verification passed: count-only bounded states, stale-value clearing, fixed consumer scope, read-only inspection, bounded failure logging, degraded task health, and delivery/privacy isolation are locked.",
 );
