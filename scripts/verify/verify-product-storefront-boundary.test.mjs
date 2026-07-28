@@ -96,7 +96,7 @@ function catalogListNativeSource({ omitNativeSearch = false } = {}) {
   return `
 #[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-list")]
 async fn storefront_catalog_list_native(search: Option<String>) {
-  ${omitNativeSearch ? "" : "let query = StorefrontProductListQuery { search };"}
+  ${omitNativeSearch ? "" : "let query = StorefrontProductListQuery::try_from_transport(search, category_id, sort_by, sort_direction);"}
   ${omitNativeSearch ? "" : "service.list_published_products_with_query(query);"}
 }
 `;
@@ -209,7 +209,7 @@ test("product storefront boundary verifier rejects missing GraphQL search mappin
 test("product storefront boundary verifier rejects missing native owner search", () => {
   assertFixtureFails(
     { omitNativeSearch: true },
-    /native catalog list must map typed search|execute the owner service query/,
+    /native catalog list must validate typed controls|execute the owner service query/,
     "Expected missing native owner search fixture to fail",
   );
 });
