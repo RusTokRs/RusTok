@@ -240,14 +240,13 @@ impl ConsumedContractEvent {
         error: impl Into<String>,
         retry_count: u32,
     ) -> crate::dlq::DlqEntry {
-        crate::dlq::DlqEntry {
-            event_id: self.envelope.id(),
-            original_topic: self.topic,
+        crate::dlq::DlqEntry::new(
+            self.envelope.id(),
+            self.topic,
             payload,
-            error: error.into(),
+            error,
             retry_count,
-            connector_metadata: Some(self.connector_metadata),
-            broker_message_id: None,
-        }
+        )
+        .with_connector_metadata(self.connector_metadata)
     }
 }
