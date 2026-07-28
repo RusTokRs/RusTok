@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "contract-poison-external-iggy-source",
+  "status": "source_complete_runtime_pending",
+  "scope": "external_real_iggy_raw_poison_cursor_lifecycle",
+  "test_target": "contract_poison_external_iggy",
+  "test_case": "malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_bytes",
+  "source_path": "crates/rustok-iggy/tests/contract_poison_external_iggy.rs",
+  "verifier": "scripts/verify/verify-iggy-contract-poison-external-evidence.mjs",
+  "required_environment": [
+    "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS"
+  ],
+  "optional_environment": [
+    "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME",
+    "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD"
+  ],
+  "topology": {
+    "mode": "external",
+    "protocol": "tcp",
+    "unique_stream_per_run": true,
+    "domain_partitions": 1,
+    "replication_factor": 1,
+    "topics": [
+      "domain",
+      "dlq"
+    ],
+    "broker_requirement": "disposable_or_operator_cleaned_external_iggy"
+  },
+  "required_sequence": [
+    "open_source_and_dlq_consumer_groups_before_fixture_publish",
+    "publish_two_distinct_nonempty_malformed_payloads_to_one_domain_partition",
+    "receive_first_payload_through_persistent_contract_consumer_without_ack",
+    "classify_first_payload_as_decode_invalid_and_retain_exact_bytes_offset_ack_token",
+    "publish_first_failure_through_iggy_transport_move_to_dlq",
+    "receive_and_ack_exact_first_dlq_payload",
+    "drop_source_cursor_without_ack",
+    "reopen_same_source_group_and_receive_same_offset_payload_and_delivery_uuid",
+    "explicitly_acknowledge_redelivered_failure",
+    "receive_second_payload_at_a_greater_offset",
+    "publish_and_verify_exact_second_dlq_payload",
+    "explicitly_acknowledge_second_failure",
+    "shutdown_fixture_connector_and_transport"
+  ],
+  "production_paths": [
+    "IggyTransport::new",
+    "IggyTransport::open_persistent_contract_consumer_group",
+    "PersistentContractConsumerGroup::receive_delivery",
+    "ConsumedContractDecodeFailure::to_dlq_entry",
+    "IggyTransport::move_to_dlq",
+    "PersistentContractConsumerGroup::acknowledge_decode_failure",
+    "ExternalConnector::open_consumer_group"
+  ],
+  "fixture_only_path": "ExternalConnector::publish(PublishRequest) injects arbitrary malformed broker bytes",
+  "forbidden_claims": [
+    "database_receipt_ordering_proved",
+    "deterministic_iggy_header_runtime_proved",
+    "broker_deduplication_runtime_proved",
+    "physical_exactly_once_proved",
+    "bundled_mode_proved",
+    "tls_or_auth_failure_proved",
+    "multi_replica_proved"
+  ],
+  "execution_status": "not_run"
+}
