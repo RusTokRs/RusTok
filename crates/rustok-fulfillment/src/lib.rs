@@ -8,6 +8,7 @@ mod checkout_execution_typed;
 pub mod dto;
 pub mod entities;
 pub mod error;
+mod fulfillment_read;
 pub mod migrations;
 pub mod ports;
 pub mod providers;
@@ -25,6 +26,11 @@ pub use checkout_execution_typed::{
 };
 pub use dto::*;
 pub use entities::*;
+pub use fulfillment_read::{
+    FindLatestFulfillmentByOrderProjectionRequest, FulfillmentProjectionPage, FulfillmentReadPort,
+    InProcessFulfillmentReadPort, ListFulfillmentProjectionsRequest,
+    ReadFulfillmentProjectionRequest, in_process_fulfillment_read_port,
+};
 pub use ports::*;
 pub use providers::*;
 pub use shipping_option_read::{
