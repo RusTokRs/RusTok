@@ -131,7 +131,7 @@ pub async fn bootstrap_application_router(
     crate::services::event_dlq_duplicate_alert_observer::start_event_dlq_duplicate_alert_observer(
         &runtime_ctx,
     )
-    .await?;
+    .await;
 
     #[cfg(feature = "mod-notifications")]
     crate::services::notification_outbox_intake_worker::start_notification_outbox_intake_if_enabled(
