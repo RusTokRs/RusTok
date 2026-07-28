@@ -184,9 +184,10 @@ for (const marker of [
 }
 
 for (const marker of [
-  "FORUM-20A-AT provide",
+  "FORUM-20A-AU provide",
   "### Delivered in `FORUM-20AT`",
-  "provide Forum trust facts adapter",
+  "### Delivered in `FORUM-20AU`",
+  "implement Forum trust owner state under `FORUM-26`",
   "verify-forum-audience-channel-facts-host-runtime.mjs",
 ]) {
   requireText(plan, marker, `canonical Forum plan is missing ${marker}`);
@@ -198,4 +199,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Forum audience Channel facts host runtime contract is source-ready.");
+console.log("Historical FORUM-20AT Channel facts contract remains valid through FORUM-20AU.");
