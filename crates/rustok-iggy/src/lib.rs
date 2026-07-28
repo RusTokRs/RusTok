@@ -15,9 +15,9 @@
 //!
 //! # Features
 //!
-//! - **EventTransport implementation**: Seamless integration with RusToK event system
+//! - **EventTransport implementation**: Seamless integration for RusToK platform
 //! - **Multiple serialization formats**: JSON (default) and MessagePack
-//! - **Automatic topology management**: Streams and topics created automatically
+//! - **Automatic topology management**: Streams, topics, partitions
 //! - **Tenant-based partitioning**: Events from the same tenant maintain order
 //! - **Consumer groups and DLQ**: Higher-level streaming primitives
 //!
@@ -63,6 +63,10 @@ pub mod contract_consumer;
 pub mod contract_decode_failure;
 pub mod dlq;
 #[cfg(feature = "iggy")]
+pub mod dlq_duplicate_alert_observer;
+pub mod dlq_duplicate_alert_policy;
+pub mod dlq_duplicate_alert_runtime;
+#[cfg(feature = "iggy")]
 pub mod dlq_duplicate_external_scan;
 pub mod dlq_duplicate_inspection;
 #[cfg(feature = "iggy")]
@@ -88,6 +92,18 @@ pub use contract_decode_failure::{
     ConsumedContractDecodeFailure, ContractDecodeFailureKind,
 };
 pub use dlq::{DlqEntry, DlqManager};
+#[cfg(feature = "iggy")]
+pub use dlq_duplicate_alert_observer::{
+    IggyDlqDuplicateAlertObserver, IggyDlqDuplicateAlertObserverError,
+};
+pub use dlq_duplicate_alert_policy::{
+    DlqDuplicateAlertEvaluation, DlqDuplicateAlertLevel, DlqDuplicateAlertPolicy,
+    DlqDuplicateAlertPolicyError,
+};
+pub use dlq_duplicate_alert_runtime::{
+    DlqDuplicateAlertRuntimeError, DlqDuplicateAlertRuntimePublisher,
+    DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeSubscriber,
+};
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_external_scan::{
     IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest, IggyDlqDuplicateScanner,

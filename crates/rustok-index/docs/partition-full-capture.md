@@ -67,26 +67,29 @@ The report command writes no files, opens no PostgreSQL connection, and starts n
 
 ## Machine-readable admitted archive manifest
 
-After the report is reviewed and the retained outcome is `admitted`, print a deterministic machine-readable archive manifest. Save the derived manifest outside the immutable bundle:
+After the report is reviewed and the retained outcome is `admitted`, create a deterministic machine-readable archive manifest outside the immutable bundle:
 
 ```bash
 node scripts/verify/index-storage-tooling.mjs partition-archive-manifest \
   --root evidence/index-partition/retained-run \
-  > evidence/index-partition/retained-run.archive-manifest.json
+  --output evidence/index-partition/retained-run.archive-manifest.json
 ```
 
-`partition-archive-manifest` runs the same retained-bundle inspection as `partition-report`, refuses any outcome other than `admitted`, and prints JSON containing the evidence identity, packet digest, provenance, PostgreSQL identity, all nine relative paths, exact-byte SHA-256 digests, byte counts, and total retained bytes. Its `manifest_digest` is the SHA-256 digest of canonical JSON for the manifest payload before the `manifest_digest` field is added, under `canonical_json_without_manifest_digest_v1`.
+`partition-archive-manifest` runs the same retained-bundle inspection as `partition-report`, refuses any outcome other than `admitted`, and renders JSON containing the evidence identity, packet digest, provenance, PostgreSQL identity, all nine relative paths, exact-byte SHA-256 digests, byte counts, and total retained bytes. Its `manifest_digest` is the SHA-256 digest of canonical JSON for the manifest payload before the `manifest_digest` field is added, under `canonical_json_without_manifest_digest_v1`.
 
-The archive-manifest command writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. Shell redirection may save this derived index outside the immutable bundle. The manifest does not replace or modify the nine authoritative retained files, does not expose the internal filesystem snapshot, does not change admission, and does not authorize production lifecycle work.
+With `--output`, the command writes and `fsync`s a private temporary file in the external destination directory, then publishes the completed bytes through a no-clobber hard link. It refuses to overwrite any existing target, rejects lexical or canonical destinations inside the retained bundle, and removes its temporary file on failure. Without `--output`, stdout mode remains available and writes no files; avoid shell redirection for retained archive metadata because the shell can truncate an existing target before Node validates the bundle.
+
+The manifest does not replace or modify the nine authoritative retained files, does not expose the internal filesystem snapshot, does not change admission, and does not authorize production lifecycle work.
 
 ## Verify a saved archive manifest
 
-Before moving or accepting an archived packet, verify the saved manifest against the current immutable bundle:
+Before moving or accepting an archived packet, verify the saved manifest against the current immutable bundle and save the receipt outside that bundle:
 
 ```bash
 node scripts/verify/index-storage-tooling.mjs partition-archive-verify \
   --root evidence/index-partition/retained-run \
-  --manifest evidence/index-partition/retained-run.archive-manifest.json
+  --manifest evidence/index-partition/retained-run.archive-manifest.json \
+  --output evidence/index-partition/retained-run.archive-verification.json
 ```
 
 `partition-archive-verify` requires the saved manifest to be a non-empty regular non-symlink file outside the immutable bundle. It rejects lexical or canonical paths inside the bundle and rejects a hard-link alias to any of the nine retained files. It reads the saved manifest through a stable file descriptor, verifies the saved `manifest_digest`, reruns the full retained-bundle inspection, rebuilds the admitted archive manifest, and canonical-compares the complete saved manifest to the recalculated result.
@@ -95,7 +98,7 @@ Before publishing success, the verifier confirms that the retained bundle root s
 
 The verifier fails closed on a pre-existing unexpected bundle entry, nested directory inventory drift after inspection, same-byte filesystem identity replacement, same-inode metadata drift, retained bundle root metadata drift, retained bundle root replacement, saved-manifest replacement or rewrite, post-inspection exact-byte drift, current retained-file aliasing, or identity/content drift while a file or directory is being read. The internal directory and filesystem snapshot fields remain outside `index_partition_retained_archive_manifest_v1` and `index_partition_retained_archive_verification_v1`.
 
-A successful verification prints a deterministic `index_partition_retained_archive_verification_v1` receipt with `retained_files_rechecked: true`, the evidence ID, packet and manifest digests, exact-byte SHA-256 of the saved manifest file, retained file count, total retained bytes, and `production_lifecycle_authorized: false`. The verifier writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. The receipt is derived metadata, not a tenth authoritative evidence input and not production authorization.
+A successful verification produces a deterministic `index_partition_retained_archive_verification_v1` receipt with `retained_files_rechecked: true`, the evidence ID, packet and manifest digests, exact-byte SHA-256 of the saved manifest file, retained file count, total retained bytes, and `production_lifecycle_authorized: false`. With `--output`, receipt publication uses the same external no-clobber temporary-file plus hard-link boundary as the archive manifest. Without `--output`, the verifier prints the receipt to stdout and writes no files. The receipt is derived metadata, not a tenth authoritative evidence input and not production authorization.
 
 A failed attempt may leave evidence schemas or raw artifacts for inspection. Do not edit or reuse them. Prepare a fresh manifest run key and a new empty directory.
 

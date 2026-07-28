@@ -3,11 +3,13 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext};
+use rustok_api::{
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    TenantContext,
+};
 use rustok_fulfillment::{FulfillmentError, FulfillmentService};
-use rustok_order::OrderService;
 use rustok_order::error::OrderError;
+use rustok_order::{ListOrderProjectionsRequest, OrderService, ReadOrderProjectionRequest};
 use rustok_payment::{PaymentError, PaymentService};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
@@ -54,6 +56,96 @@ impl AdminOrderErrorContext {
             operation,
         }
     }
+}
+
+fn admin_order_read_port_context(
+    tenant_id: Uuid,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    order_id: Option<Uuid>,
+    operation: &'static str,
+) -> PortContext {
+    let resource_id = order_id.unwrap_or(tenant_id);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-order:{operation}:{resource_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_admin_order_port_error(
+    context: AdminOrderErrorContext,
+    port_context: &PortContext,
+    owner_operation: &'static str,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "invariant_violation",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_ORDER_OWNER,
+        owner_operation,
+        correlation_id = %port_context.correlation_id,
+        tenant_id = %context.tenant_id,
+        actor_id = %context.actor_id,
+        order_id = ?context.order_id,
+        customer_id = ?context.customer_id,
+        operation = %context.operation,
+        actor = ?port_context.actor,
+        channel = ?port_context.channel,
+        locale = %port_context.locale,
+        deadline_ms = ?port_context.deadline_ms,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_BOUNDARY,
+        "commerce admin order owner read failed"
+    );
+    HttpError::new(status, code, message)
 }
 
 fn admin_order_error_policy(error: &OrderError) -> AdminOrderHttpPolicy {
@@ -130,7 +222,7 @@ pub async fn list_orders(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     Query(params): Query<ListOrdersParams>,
 ) -> HttpResult<Json<PaginatedResponse<OrderResponse>>> {
     ensure_permissions(
@@ -141,21 +233,23 @@ pub async fn list_orders(
 
     let pagination = params.pagination.unwrap_or_default();
     let customer_id = params.customer_id;
-    let (orders, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .list_orders_with_locale_fallback(
-            tenant.id,
-            rustok_order::dto::ListOrdersInput {
+    let read_context =
+        admin_order_read_port_context(tenant.id, &auth, &request_context, None, "list_orders");
+    let page = runtime
+        .order_read_port()
+        .list_order_projections(
+            read_context.clone(),
+            ListOrderProjectionsRequest {
                 page: pagination.page,
                 per_page: pagination.limit(),
                 status: params.status,
                 customer_id,
+                tenant_default_locale: Some(tenant.default_locale.clone()),
             },
-            request_context.locale.as_str(),
-            Some(tenant.default_locale.as_str()),
         )
         .await
         .map_err(|error| {
-            map_admin_order_error(
+            map_admin_order_port_error(
                 AdminOrderErrorContext::new(
                     tenant.id,
                     auth.user_id,
@@ -163,13 +257,19 @@ pub async fn list_orders(
                     customer_id,
                     "list_orders",
                 ),
+                &read_context,
+                "list_order_projections",
                 error,
             )
         })?;
 
     Ok(Json(PaginatedResponse {
-        data: orders,
-        meta: super::super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
+        data: page.items,
+        meta: super::super::common::PaginationMeta::new(
+            pagination.page,
+            pagination.limit(),
+            page.total,
+        ),
     }))
 }
 
@@ -188,7 +288,7 @@ pub async fn show_order(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<AdminOrderDetailResponse>> {
     ensure_permissions(
@@ -197,17 +297,23 @@ pub async fn show_order(
         "Permission denied: orders:read required",
     )?;
 
-    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .get_order_with_locale_fallback(
-            tenant.id,
-            id,
-            request_context.locale.as_str(),
-            Some(tenant.default_locale.as_str()),
+    let read_context =
+        admin_order_read_port_context(tenant.id, &auth, &request_context, Some(id), "get_order");
+    let order = runtime
+        .order_read_port()
+        .read_order_projection(
+            read_context.clone(),
+            ReadOrderProjectionRequest {
+                order_id: id,
+                tenant_default_locale: Some(tenant.default_locale.clone()),
+            },
         )
         .await
         .map_err(|error| {
-            map_admin_order_error(
+            map_admin_order_port_error(
                 AdminOrderErrorContext::new(tenant.id, auth.user_id, Some(id), None, "get_order"),
+                &read_context,
+                "read_order_projection",
                 error,
             )
         })?;

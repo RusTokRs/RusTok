@@ -1,30 +1,27 @@
 # Count-only physical DLQ duplicate inspection
 
-Status: **classifier and bounded external-Iggy adapter source-complete; runtime evidence pending**.
+Status: **classifier, bounded scanner, runtime harness, retained tooling, alert policy, latest-value runtime, and mode-aware server observer source-complete; runtime execution and telemetry/health projection pending**.
 
 ## Purpose
 
-The neutral poison receipt store answers whether a source delivery is reserved, publishing, published, or acknowledged. It does not answer how many physical copies currently exist in the Iggy `dlq` topic.
+The neutral poison receipt store answers whether a source delivery is reserved, publishing, published, or acknowledged. It does not answer how many physical copies currently exist in the physical `dlq` topic.
 
-Physical copies can exceed one when:
+Physical copies can exceed one when broker-side deterministic message-ID deduplication is disabled, expired, evicted, or not preserved by an unsupported path.
 
-- server-side message-ID deduplication is disabled;
-- the deterministic ID expired from the dedup window;
-- capacity pressure evicted the ID;
-- a failover or unsupported broker path did not preserve the expected dedup state.
-
-`dlq_duplicate_inspection.rs` provides a transport-neutral, read-only reduction for a bounded set of physical observations. `dlq_duplicate_external_scan.rs` now provides the bounded external-Iggy polling adapter described in `dlq-duplicate-external-scan.md`.
-
-## Input boundary
-
-Each observation accepts:
+The implementation is deliberately split:
 
 ```text
-non-nil deterministic Iggy message header UUID
-exact physical payload bytes
+physical observations
+  -> DlqDuplicateSummary
+  -> explicit alert policy
+  -> latest-value runtime
+  -> mode-aware server observer
+  -> future telemetry/health or notification owners
 ```
 
-The exact bytes are immediately reduced to a domain-separated SHA-256 value in memory. The observation exposes neither the bytes nor their digest. Empty payloads are valid because empty raw poison bytes are already valid at the receipt boundary.
+## Input and identity boundary
+
+Each observation accepts a non-nil deterministic Iggy header UUID and exact physical payload bytes. Bytes are immediately reduced to a domain-separated SHA-256 value in memory and are never exposed by the observation or summary.
 
 A nil UUID fails closed with:
 
@@ -45,99 +42,31 @@ conflicting_payload_groups
 max_copies_per_message_id
 ```
 
-Where:
-
 ```text
 duplicate_messages = total_messages - unique_message_ids
 ```
 
-A duplicate group has more than one physical observation for the same deterministic message ID.
+An ordinary duplicate has the same deterministic ID and same exact bytes. Reuse of one ID with different exact bytes is an identity conflict and requires manual review.
 
-## Ordinary duplicate versus identity conflict
-
-### Ordinary physical duplicate
-
-```text
-same non-nil message header UUID
-same exact payload digest
-```
-
-This is the expected shape of a publish/mark ambiguity retry when the broker accepts the same deterministic ID more than once.
-
-### Identity conflict
-
-```text
-same non-nil message header UUID
-different exact payload digests
-```
-
-This must not be silently collapsed into an ordinary duplicate. It indicates header corruption, an invalid producer, an unsupported reuse of the deterministic ID, or an extraordinary hash/identity failure.
-
-The summary increments `conflicting_payload_groups` and `requires_manual_review()` returns `true`.
-
-## Privacy boundary
-
-The summary does not expose:
-
-- broker address;
-- stream, topic, partition, or offset;
-- deterministic message UUID;
-- payload or payload digest;
-- receipt identity or state;
-- error classification;
-- publisher identity;
-- timestamps;
-- credentials.
-
-The classifier does not implement serialization. Any operator endpoint must preserve the same count-only projection unless a separately authorized forensic workflow is explicitly designed.
+The summary excludes broker coordinates, UUIDs, payloads/digests, receipt identities, error classification, publisher identity, timestamps, and credentials.
 
 ## Mutation boundary
 
-The classifier and external scanner cannot:
+The classifier and scanner cannot acknowledge, store offsets, delete, purge, replay, retry, publish, repair broker state, mutate poison receipts, or choose operator policy.
 
-- acknowledge a DLQ cursor;
-- store or auto-commit a consumer offset;
-- delete or purge physical messages;
-- replay or retry a message;
-- publish a message;
-- repair broker state;
-- claim or release a poison receipt;
-- mark a receipt published or acknowledged;
-- choose alert thresholds or operator policy.
+The alert policy cannot scan, route notifications, persist thresholds, or mutate state. The latest-value runtime cannot start workers, register telemetry/health, deliver notifications, or mutate broker/receipt/Profile state.
 
-This separation is deliberate. Observation must not accidentally become destructive reconciliation.
+## Production identity relationship
 
-## Relationship to deterministic raw poison identity
-
-`ConsumedContractDecodeFailure::delivery_id` derives one UUID from immutable source stream/topic/partition/offset and exact raw bytes. Failure kind, retry count, process identity, time, and random values are excluded.
+`ConsumedContractDecodeFailure::delivery_id` derives one UUID from immutable source coordinates and exact raw bytes. Failure kind, retry count, process identity, time, and random values are excluded.
 
 `to_dlq_entry` attaches that UUID as the Iggy broker message ID. `IggyTransport::move_to_dlq` uses the deterministic publisher path when this ID is present.
 
-The duplicate classifier therefore groups physical Iggy messages by the same identity used for server-side deduplication.
+`ConsumerPoisonReceiptInspector` remains an independent count-only PostgreSQL view. Receipt and physical duplicate summaries contain no identifiers and cannot be joined message by message.
 
-## Relationship to receipt health
+## Bounded Iggy scanner
 
-`ConsumerPoisonReceiptInspector` remains an independent count-only view of PostgreSQL receipt progress:
-
-```text
-reserved
-publishing
-expired_publishing
-published
-acknowledged
-```
-
-Neither summary contains identifiers, so they cannot be joined message-by-message. An operator may compare aggregate trends, for example:
-
-- rising `expired_publishing` with rising physical duplicates suggests lease recovery outside the effective dedup window;
-- zero receipt recovery work with growing duplicates suggests historic or downstream DLQ duplication;
-- `conflicting_payload_groups > 0` always requires direct forensic escalation.
-
-These are operator interpretations, not storage-layer decisions.
-
-## Bounded external-Iggy adapter
-
-`IggyDlqDuplicateScanner` borrows an already connected `IggyClient` and polls only:
+`IggyDlqDuplicateScanner` polls only:
 
 ```text
 topic = dlq
@@ -147,47 +76,98 @@ PollingStrategy::offset(explicit_offset)
 auto_commit = false
 ```
 
-One request permits at most 128 partitions, 10,000 messages globally, and batches of 1,000. It validates returned partition, count, monotonic offsets, and header identity before returning only `DlqDuplicateSummary`.
+One request permits at most 128 partition identifiers, 10,000 messages globally, and batches of 1,000. It validates returned partition, count, monotonic offsets, and header identity before returning only `DlqDuplicateSummary`.
 
-The adapter does not own credentials or connection lifecycle, query topology metadata, join a consumer group, persist progress, or call shutdown. See `dlq-duplicate-external-scan.md` for the complete contract.
+The global message budget is shared across the ordered partition allowlist. It may be exhausted before later partitions are polled, so the scanner and observer make no partition-fairness claim.
+
+## Count-only alert policy
+
+`DlqDuplicateAlertPolicy` requires explicit warning and critical thresholds for duplicate messages, duplicate groups, and maximum copies for one message ID. It defines no production defaults.
+
+```text
+identity conflict -> Critical
+critical numeric threshold -> Critical
+warning numeric threshold -> Warning
+physical duplicate below warning -> Notice
+no duplicate -> Clear
+```
+
+The evaluation exposes only level and boolean reason flags.
+
+## Latest-value alert runtime
+
+`DlqDuplicateAlertRuntimePublisher` accepts an already-observed summary and a prevalidated policy.
+
+Initial state is generation `0`, unavailable, with no evaluation. Successful and unavailable transitions advance generation through checked arithmetic. `mark_unavailable()` clears the previous evaluation so stale severity is not shown as current.
+
+The runtime is a latest-value channel, not an event log. It adds no serialization or persistence.
+
+## Mode-aware server observer
+
+The host owns an explicit capability gate across every delivery/startup mode:
+
+```text
+disabled      -> Disabled
+startup issue -> Unavailable, no task or snapshot
+memory        -> NotApplicableMemory
+outbox_local  -> NotApplicableOutboxLocal
+outbox_iggy   -> IggyBundled or IggyExternal
+```
+
+For `memory` and `outbox_local`, no Iggy transport is requested, no broker connection is opened, and thresholds are not required. Not-applicable state is valid operation rather than a degraded condition.
+
+For `outbox_iggy`, the observer reuses the exact active transport configuration and opens a separate read-only SDK client:
+
+- bundled mode connects to the existing validated loopback broker;
+- external mode uses the reviewed address list;
+- missing active Iggy mode fails closed;
+- no second transport or broker process is created;
+- connection/scan failure publishes unavailable state and retries later;
+- event delivery and module projection remain active.
+
+Observer-specific startup failures are non-fatal. Invalid observer configuration or a missing observer dependency records `Unavailable`, logs only a stable code, and returns success to server bootstrap.
+
+The observer includes every configured domain partition in the scanner request, but the single global budget may prevent later partitions from being polled.
+
+Each poll reuses the same configured explicit start offset. This is a repeated bounded window, not a moving cursor, current-tail monitor, or complete-history observer. Moving-window and per-partition cursor/fairness behavior remain separate design work.
 
 ## Safe operational sequence
 
-1. select an external service, stream, explicit partition allowlist, offset, and message cap;
-2. connect and authenticate an `IggyClient` outside the scanner;
-3. call the bounded scanner using explicit-offset polling with `auto_commit=false`;
-4. publish only the count-only summary;
-5. close the client through the caller-owned lifecycle;
-6. treat the result as a bounded window, not automatically as complete history.
+1. resolve the active event delivery profile;
+2. return not-applicable before Iggy access for `memory` or `outbox_local`;
+3. for `outbox_iggy`, use the already-active bundled or external configuration;
+4. scan one bounded explicit-offset window with `auto_commit=false`;
+5. evaluate through explicit thresholds;
+6. publish only the identifier-free latest snapshot;
+7. mark unavailable after startup, connection, scan, or shutdown failures without stopping the host;
+8. keep cursor/fairness policy, telemetry, health, notification delivery, and destructive actions in separate owners.
 
-Any destructive action must be a separate, explicitly authorized workflow with its own preview, selection, audit, and retained evidence.
+## Runtime and retained evidence status
 
-## Source tests and guards
+The opt-in external harness and privacy-safe retained tooling are source-complete. The canonical execution JSON remains absent until a maintainer runs the reviewed external-Iggy scenario successfully.
 
-The focused classifier cases define:
+The mode-aware server observer is source-complete. Runtime execution, moving-window/fairness semantics, identifier-free telemetry, optional operational health without readiness coupling, and retained server evidence remain pending.
 
-- same ID and exact bytes counted as ordinary physical duplicates;
-- same ID and different bytes escalated as an identity conflict;
-- empty scan and empty payload behavior;
-- nil ID rejection and stable error code.
-
-The external scanner cases define request bounds and identifier-free stable errors.
-
-Suggested maintainer commands:
+## Source verification
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
-cargo test -p rustok-iggy dlq_duplicate -- --nocapture
+node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
+node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 ```
 
-No tests, Cargo commands, formatters, verifiers, or external-Iggy scans were run while defining these source slices.
+No tests, Cargo commands, formatters, verifiers, broker scans, server observers, telemetry registration, alert dispatch, or retained capture were run while defining these source slices.
 
 ## Remaining work
 
-1. prove physical header and exact-byte ingestion against a disposable external broker;
-2. prove explicit-offset polling does not store consumer progress;
-3. retain runtime evidence without identifiers, payloads, addresses, credentials, offsets, or raw logs;
-4. define alert thresholds outside the inspector;
-5. design any acknowledgement/delete/replay workflow as a separate authorized operation;
-6. correlate aggregate receipt and duplicate health without exporting message identities.
+1. execute and retain the reviewed external-Iggy duplicate scan packet;
+2. define partition fairness/per-partition budgets and a moving-window or per-partition cursor policy;
+3. define identifier-free telemetry and optional operational health;
+4. retain mode-aware server observer execution evidence;
+5. define alert routing, cooldown, and suppression separately;
+6. design acknowledgement/delete/replay as a separately authorized operation;
+7. correlate aggregate receipt and duplicate health without exporting message identities.

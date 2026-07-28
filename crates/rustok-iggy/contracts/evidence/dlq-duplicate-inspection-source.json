@@ -85,9 +85,50 @@
     "auto_commit": false,
     "result": "DlqDuplicateSummary"
   },
+  "alert_policy": {
+    "status": "source_complete_server_observer_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json",
+    "source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
+    "input": "DlqDuplicateSummary",
+    "result": "DlqDuplicateAlertEvaluation",
+    "identity_conflict_always_critical": true,
+    "production_defaults": false,
+    "notification_dispatch": false,
+    "destructive_action": false
+  },
+  "alert_runtime": {
+    "status": "source_complete_server_observer_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json",
+    "source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+    "input": "DlqDuplicateSummary",
+    "result": "DlqDuplicateAlertRuntimeSnapshot",
+    "latest_value": true,
+    "single_writer": true,
+    "unavailable_clears_evaluation": true,
+    "notification_dispatch": false,
+    "destructive_action": false
+  },
+  "server_observer": {
+    "status": "source_complete_runtime_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
+    "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+    "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
+    "memory": "not_applicable",
+    "outbox_local": "not_applicable",
+    "outbox_iggy_modes": [
+      "bundled",
+      "external"
+    ],
+    "startup_failure_non_fatal": true,
+    "partition_fairness_claimed": false,
+    "readiness_dependency": false,
+    "profiles_authorization": false
+  },
   "remaining_work": [
     "retained_external_iggy_duplicate_scan_evidence",
-    "operator_alert_threshold_policy",
+    "partition_fairness_or_per_partition_budget_policy",
+    "telemetry_and_health_projection",
+    "alert_delivery_and_suppression_outside_policy",
     "operator_ack_delete_replay_workflow_outside_inspector",
     "correlation_with_count_only_receipt_health_without_identifier_export"
   ],

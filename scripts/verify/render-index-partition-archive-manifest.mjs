@@ -3,6 +3,10 @@
 import path from 'node:path';
 
 import { buildRetainedPartitionArchiveManifest } from './index-partition-archive-manifest-core.mjs';
+import {
+  publishDerivedJsonOutsideRetainedBundle,
+  renderDerivedJson,
+} from './index-partition-derived-output-core.mjs';
 import { inspectRetainedPartitionBundle } from './index-partition-review-core.mjs';
 
 const prefix = '[render-index-partition-archive-manifest]';
@@ -12,9 +16,10 @@ const usage = () => {
   node scripts/verify/render-index-partition-archive-manifest.mjs \
     --root <retained-bundle-directory> \
     [--packet <partition-packet.json>] \
-    [--admission <admission.json>]
+    [--admission <admission.json>] \
+    [--output <archive-manifest.json>]
 
-The command validates one admitted retained bundle and prints a deterministic archive manifest to stdout. It writes no files.`);
+The command validates one admitted retained bundle and prints a deterministic archive manifest to stdout by default. Stdout mode: It writes no files. With --output, it atomically creates one new regular file outside the retained bundle and refuses overwrite.`);
 };
 
 const parseArgs = (args) => {
@@ -23,8 +28,9 @@ const parseArgs = (args) => {
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index];
     const value = args[index + 1];
-    if (!['--root', '--packet', '--admission'].includes(flag) || !value || value.startsWith('--')) {
-      throw new Error('expected --root and optional --packet/--admission pairs');
+    if (!['--root', '--packet', '--admission', '--output'].includes(flag)
+        || !value || value.startsWith('--')) {
+      throw new Error('expected --root and optional --packet/--admission/--output pairs');
     }
     if (values.has(flag)) throw new Error(`${flag} was provided more than once`);
     values.set(flag, value);
@@ -34,6 +40,7 @@ const parseArgs = (args) => {
     root: path.resolve(values.get('--root')),
     packetPath: values.has('--packet') ? path.resolve(values.get('--packet')) : undefined,
     admissionPath: values.has('--admission') ? path.resolve(values.get('--admission')) : undefined,
+    outputPath: values.has('--output') ? path.resolve(values.get('--output')) : undefined,
   };
 };
 
@@ -44,7 +51,16 @@ try {
   } else {
     const inspection = inspectRetainedPartitionBundle(options);
     const manifest = buildRetainedPartitionArchiveManifest(inspection);
-    process.stdout.write(`${JSON.stringify(manifest, null, 2)}\n`);
+    if (options.outputPath === undefined) {
+      process.stdout.write(renderDerivedJson(manifest));
+    } else {
+      publishDerivedJsonOutsideRetainedBundle({
+        root: options.root,
+        outputPath: options.outputPath,
+        value: manifest,
+        label: 'archive manifest output',
+      });
+    }
   }
 } catch (error) {
   console.error(`${prefix} ${error.message}`);

@@ -37,6 +37,7 @@ try {
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
   const plan = read('crates/rustok-index/docs/implementation-plan.md');
+  const readme = read('crates/rustok-index/README.md');
   const m3Start = plan.indexOf('### M3 - PostgreSQL storage engine');
   const retainedStart = plan.indexOf('#### Retained repository contract wording');
   if (m3Start < 0 || retainedStart <= m3Start) {
@@ -123,6 +124,12 @@ try {
     'assertCanonicalMatch(admission, recalculatedAdmission',
     'aliases another retained bundle file',
     'sha256Hex(file.bytes)',
+    'readdirSync',
+    'inspectRetainedBundleDirectoryInventory',
+    'collectRetainedBundleDirectoryInventory',
+    'unexpected retained bundle entry',
+    'retained bundle directory inventory changed during inspection',
+    'directories,',
     'Exact-byte SHA-256',
     'does not create, edit, or admit evidence',
     'Production partition copy/replay',
@@ -143,6 +150,11 @@ try {
     'REVIEW_CONTRACT',
     "admission.outcome !== 'admitted'",
     'must contain exactly nine retained files',
+    'normalizeDirectories',
+    'assertDirectoryInventoryUnchanged',
+    'inspection.directories',
+    'readdirSync',
+    'inventory changed after inspection',
     'total_bytes: totalBytes',
     "sha256Hex(Buffer.from(canonicalJson(payload), 'utf8'))",
     'must stay outside the retained bundle root',
@@ -204,13 +216,22 @@ try {
   requireMarkers(postInspectionGuard, [
     '[verify-index-partition-post-inspection-drift]',
     'readStableRegularFile',
+    'inspectRetainedBundleDirectoryInventory',
     'assertRetainedFilesUnchanged',
+    'assertDirectoryInventoryUnchanged',
+    'unexpected retained bundle entry',
+    'inventory changed after inspection',
     'changed after inspection',
     'retained_files_rechecked: true',
     'production_lifecycle_authorized: false',
   ], 'post-inspection drift guard');
   requireMarkers(postInspectionTest, [
-    'rechecks all retained files before publishing an archive verification receipt',
+    'rechecks the complete filesystem snapshot before publishing an archive verification receipt',
+    "Object.hasOwn(savedManifest, 'directories')",
+    'rejects unexpected retained bundle entries before inspection completes',
+    'unexpected retained bundle entry unexpected\\.json',
+    'fails closed when nested retained bundle inventory changes after inspection',
+    'retained bundle directory nested (metadata|inventory) changed after inspection',
     'fails closed when a retained file changes after inspection',
     'retained bundle file query changed after inspection',
   ], 'post-inspection drift fixture');
@@ -243,25 +264,46 @@ try {
     'partition-report',
     'all nine retained files',
     'recalculates packet assembly and admission',
+    'exact recursive directory inventory',
+    'unexpected file, directory, symbolic link, or special entry',
     'partition-archive-manifest',
     'refuses any outcome other than `admitted`',
     'canonical_json_without_manifest_digest_v1',
     'partition-archive-verify',
     'outside the immutable bundle',
+    'nested directory inventory drift',
     'index_partition_retained_archive_verification_v1',
     'production_lifecycle_authorized',
     'writes no files',
     'forbidden before one retained admitted packet',
   ], 'full partition capture runbook');
+  requireMarkers(readme, [
+    'M3 partition evidence capture and packet assembly: complete',
+    'M3 retained packet owner orchestration: complete',
+    'M3 retained bundle review and archive verification: complete',
+    'Real retained PostgreSQL packet execution: open',
+    'exact recursive filesystem snapshot',
+    '`production_lifecycle_authorized: false`',
+    '[M3 retained partition capture runbook](./docs/partition-full-capture.md)',
+  ], 'Index README');
   requireMarkers(plan, [
     'M3 partition cutover rehearsal evidence runner: `complete`',
     'M3 retained packet owner orchestration: `complete`',
+    'M3 retained bundle review/report: `complete`',
+    'M3 admitted archive manifest: `complete`',
+    'M3 retained archive verification and filesystem snapshot: `complete`',
     'Real retained PostgreSQL packet execution: `open`',
     '- [x] Add owner-operated PostgreSQL cutover/rollback rehearsal evidence capture.',
     '- [x] Add owner-operated full retained packet orchestration and capture finalization.',
+    '- [x] Add read-only retained bundle review with recalculated assembly and admission.',
+    '- [x] Add admitted archive manifest and saved-manifest verification receipt.',
     '12. The cutover rehearsal runner validates production and retained shadow identities,',
     '13. The full-capture orchestrator requires one explicit owner opt-in, one immutable',
-    'one retained admitted packet, query adapter, and production partition',
+    '14. The retained bundle review inspects exactly nine authoritative files,',
+    '15. The archive tooling emits a deterministic admitted-only manifest outside the',
+    '16. Retained verification binds every authoritative file and required directory',
+    'node scripts/verify/verify-index-partition-post-inspection-drift.mjs',
+    'one retained admitted packet, query',
   ], 'Index implementation plan');
   requireExactlyOnce(
     primaryM3Checklist,

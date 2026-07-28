@@ -30,8 +30,10 @@ mod mention_relation_tests {
 pub mod moderation;
 mod moderation_audience_authorization;
 mod posting_policy;
+mod posting_policy_approved_facts;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
+mod posting_policy_reading_facts;
 mod quote_command;
 mod rbac;
 pub mod read_model;
@@ -114,6 +116,7 @@ pub use posting_policy::{
     ForumPostingWindowCount, MAX_FORUM_POSTING_POLICY_FACTS,
     MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
 };
+pub use posting_policy_approved_facts::ForumApprovedPostsFactPort;
 pub use posting_policy_evaluator::{
     ForumPostingPolicyEvaluator, ForumPostingPolicyRules, ForumPostingWindowLimit,
     FORUM_POSTING_POLICY_PRECEDENCE,
@@ -126,6 +129,7 @@ pub use posting_policy_facts::{
     FORUM_POSTING_POLICY_FACTS_CAPABILITY,
     FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE,
 };
+pub use posting_policy_reading_facts::ForumTopicReadPostingFactPort;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use read_tracking::{

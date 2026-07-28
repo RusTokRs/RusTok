@@ -4,9 +4,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_forum::{
-    ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer, ForumPostingPolicyOwnerFactPort,
-    ForumPostingPolicyOwnerFactRequest, ForumPostingPolicyOwnerFactResponse,
-    ForumPostingPolicyOwnerFactValue, ForumPostingTrustFactPort, SharedForumAudienceFactsPort,
+    ForumApprovedPostsFactPort, ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer,
+    ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
+    ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
+    ForumPostingTrustFactPort, ForumTopicReadPostingFactPort, SharedForumAudienceFactsPort,
     SharedForumPostingPolicyOwnerFactPort,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -127,9 +128,9 @@ impl ForumPostingPolicyOwnerFactPort for ServerForumAccountAgeFactPort {
     }
 }
 
-/// Stable host facade that publishes the initial authoritative posting-fact
-/// profile: Forum trust plus server-owned account age. Other fact kinds remain
-/// explicitly unavailable in the Forum composer until their owners are added.
+/// Stable host facade that publishes authoritative Forum trust, server-owned
+/// account age, Forum-owned topic reading activity and current approved posts.
+/// Other fact kinds remain explicitly unavailable until their owners are added.
 pub(crate) struct ServerForumPostingPolicyFactsComposer;
 
 impl ServerForumPostingPolicyFactsComposer {
@@ -139,7 +140,9 @@ impl ServerForumPostingPolicyFactsComposer {
     ) -> Result<SharedForumPostingPolicyFactsComposer, PortError> {
         let composer = ForumPostingPolicyFactsComposer::new(vec![
             ForumPostingTrustFactPort::shared(audience_facts),
-            ServerForumAccountAgeFactPort::shared(db),
+            ServerForumAccountAgeFactPort::shared(db.clone()),
+            ForumApprovedPostsFactPort::shared(db.clone()),
+            ForumTopicReadPostingFactPort::shared(db),
         ])?;
         Ok(Arc::new(composer))
     }

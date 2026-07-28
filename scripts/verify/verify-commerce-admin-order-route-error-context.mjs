@@ -30,11 +30,17 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const mapper = between(
+const readMapper = between(
+  orders,
+  'fn admin_order_read_port_context(',
+  'fn admin_order_error_policy(',
+  'admin order read mapper',
+);
+const mutationMapper = between(
   orders,
   'fn admin_order_error_policy(',
   '/// Show admin ecommerce order',
-  'admin order route mapper',
+  'admin order mutation mapper',
 );
 const listRoute = between(
   orders,
@@ -71,11 +77,13 @@ const cancelRoute = cancelStart < 0 ? '' : orders.slice(cancelStart);
 if (cancelStart < 0) failures.push('cancel order route: unable to isolate source block');
 
 for (const [value, label] of [
-  ['use rustok_order::error::OrderError;', 'typed order error import'],
+  ['PortActor, PortContext, PortError, PortErrorKind, RequestContext', 'typed read context imports'],
+  ['use rustok_order::error::OrderError;', 'typed mutation error import'],
+  ['ListOrderProjectionsRequest, OrderService, ReadOrderProjectionRequest', 'read request and mutation service imports'],
   ['use rustok_web::{HttpError, HttpResult};', 'typed HTTP error import'],
   ['const ADMIN_ORDER_OWNER: &str = "rustok_order.admin_orders";', 'owner constant'],
   ['const ADMIN_ORDER_BOUNDARY: &str = "commerce_admin_order_http";', 'HTTP boundary constant'],
-  ['type AdminOrderHttpPolicy = (', 'static HTTP policy type'],
+  ['type AdminOrderHttpPolicy = (', 'static mutation HTTP policy type'],
   ['struct AdminOrderErrorContext {', 'order error context'],
   ['tenant_id: Uuid,', 'tenant field'],
   ['actor_id: Uuid,', 'actor field'],
@@ -85,6 +93,33 @@ for (const [value, label] of [
 ]) requireText(orders, value, label);
 
 for (const [value, label] of [
+  ['PortContext::new(', 'PortContext construction'],
+  ['PortActor::user(auth.user_id.to_string())', 'authenticated actor'],
+  ['request_context.locale.as_str()', 'requested locale'],
+  ['format!("commerce-admin-order:{operation}:{resource_id}")', 'resource correlation'],
+  ['.with_deadline(std::time::Duration::from_secs(2))', 'bounded deadline'],
+  ['request_context.channel_slug.as_deref()', 'optional channel'],
+  ['fn map_admin_order_port_error(', 'typed port mapper'],
+  ['PortErrorKind::Validation', 'validation kind'],
+  ['PortErrorKind::NotFound', 'not-found kind'],
+  ['PortErrorKind::Conflict', 'conflict kind'],
+  ['PortErrorKind::Forbidden', 'forbidden kind'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'unavailable/timeout kinds'],
+  ['PortErrorKind::InvariantViolation', 'invariant kind'],
+  ['"commerce_admin_order_invalid"', 'validation code'],
+  ['"commerce_admin_not_found"', 'not-found code'],
+  ['"commerce_admin_order_state_conflict"', 'conflict code'],
+  ['"commerce_permission_denied"', 'permission code'],
+  ['"commerce_admin_order_storage_unavailable"', 'storage code'],
+  ['"commerce_admin_order_failed"', 'fail-closed code'],
+  ['owner_operation,', 'owner operation log'],
+  ['correlation_id = %port_context.correlation_id', 'correlation log'],
+  ['internal_code = %error.code', 'stable internal code log'],
+  ['retryable = error.retryable', 'retryability log'],
+  ['HttpError::new(status, code, message)', 'static read envelope'],
+]) requireText(readMapper, value, label);
+
+for (const [value, label] of [
   ['OrderError::Validation(_)', 'validation variant'],
   ['OrderError::OrderNotFound(_)', 'order not-found variant'],
   ['OrderError::OrderReturnNotFound(_)', 'return not-found variant'],
@@ -92,52 +127,42 @@ for (const [value, label] of [
   ['OrderError::InvalidTransition { .. }', 'transition variant'],
   ['OrderError::Database(_)', 'database variant'],
   ['OrderError::Core(_)', 'core variant'],
-  ['StatusCode::BAD_REQUEST', 'bad-request status'],
-  ['StatusCode::NOT_FOUND', 'not-found status'],
-  ['StatusCode::CONFLICT', 'conflict status'],
-  ['StatusCode::SERVICE_UNAVAILABLE', 'storage status'],
-  ['StatusCode::INTERNAL_SERVER_ERROR', 'fail-closed status'],
-  ['"commerce_admin_order_invalid"', 'validation code'],
-  ['"commerce_admin_not_found"', 'not-found code'],
-  ['"commerce_admin_order_state_conflict"', 'conflict code'],
-  ['"commerce_admin_order_storage_unavailable"', 'storage code'],
-  ['"commerce_admin_order_failed"', 'fail-closed code'],
-  ['"Order request is invalid"', 'static validation message'],
-  ['"Commerce resource not found"', 'static not-found message'],
-  ['"Order operation conflicts with the current state"', 'static conflict message'],
-  ['"Order storage is temporarily unavailable"', 'static storage message'],
-  ['"Order operation could not be completed safely"', 'static fail-closed message'],
   ['if let OrderError::OrderNotFound(id) = &error', 'typed order identity adoption'],
   ['context.order_id = Some(*id);', 'adopted order identity'],
   ['error = ?error', 'typed cause log'],
   ['owner = ADMIN_ORDER_OWNER', 'owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['actor_id = %context.actor_id', 'actor log'],
-  ['order_id = ?context.order_id', 'order identity log'],
-  ['customer_id = ?context.customer_id', 'customer identity log'],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error-kind log'],
-  ['public_code = code', 'public-code log'],
-  ['status = %status', 'status log'],
-  ['boundary = ADMIN_ORDER_BOUNDARY', 'boundary log'],
-  ['HttpError::new(status, code, message)', 'static envelope constructor'],
-]) requireText(mapper, value, label);
+  ['HttpError::new(status, code, message)', 'static mutation envelope'],
+]) requireText(mutationMapper, value, label);
 
-for (const [block, operation, identity, serviceCall, label] of [
+for (const [block, operation, ownerCall, requestMarker, label] of [
   [
     listRoute,
     '"list_orders"',
-    'tenant.id,\n                    auth.user_id,\n                    None,\n                    customer_id,',
-    '.list_orders_with_locale_fallback(',
+    '.list_order_projections(',
+    'ListOrderProjectionsRequest {',
     'list route',
   ],
   [
     showRoute,
     '"get_order"',
-    'tenant.id,\n                    auth.user_id,\n                    Some(id),\n                    None,',
-    '.get_order_with_locale_fallback(',
+    '.read_order_projection(',
+    'ReadOrderProjectionRequest {',
     'show route',
   ],
+]) {
+  requireText(block, 'admin_order_read_port_context(', `${label} PortContext`);
+  requireText(block, '.order_read_port()', `${label} injected port`);
+  requireText(block, ownerCall, `${label} owner call`);
+  requireText(block, requestMarker, `${label} typed request`);
+  requireText(block, 'map_admin_order_port_error(', `${label} port mapper`);
+  requireText(block, 'AdminOrderErrorContext::new(', `${label} route identity`);
+  requireText(block, operation, `${label} operation`);
+  requireText(block, 'tenant_default_locale: Some(tenant.default_locale.clone())', `${label} locale fallback`);
+  forbidText(block, 'OrderService::new', `${label} concrete order service`);
+  forbidText(block, 'map_admin_order_error(', `${label} mutation mapper`);
+}
+
+for (const [block, operation, identity, serviceCall, label] of [
   [
     markPaidRoute,
     '"mark_order_paid"',
@@ -148,7 +173,7 @@ for (const [block, operation, identity, serviceCall, label] of [
   [
     shipRoute,
     '"ship_order"',
-    'tenant.id,\n                    auth.user_id,\n                    Some(id),\n                    None,',
+    'tenant.id, auth.user_id, Some(id), None, "ship_order"',
     '.ship_order(',
     'ship route',
   ],
@@ -167,12 +192,14 @@ for (const [block, operation, identity, serviceCall, label] of [
     'cancel route',
   ],
 ]) {
+  requireText(block, 'OrderService::new(runtime.db_clone(), runtime.event_bus())', `${label} concrete mutation owner`);
   requireText(block, '.map_err(|error| {', `${label} typed mapping closure`);
-  requireText(block, 'map_admin_order_error(', `${label} mapper handoff`);
+  requireText(block, 'map_admin_order_error(', `${label} mutation mapper`);
   requireText(block, 'AdminOrderErrorContext::new(', `${label} context construction`);
   requireText(block, operation, `${label} operation`);
   requireText(block, identity, `${label} truthful route identity`);
   requireText(block, serviceCall, `${label} service contract`);
+  forbidText(block, 'map_admin_order_port_error(', `${label} read mapper`);
 }
 
 for (const [value, label] of [
@@ -184,8 +211,8 @@ for (const [value, label] of [
   ['customer_id,', 'customer filter forwarding'],
   ['page: pagination.page', 'pagination page forwarding'],
   ['per_page: pagination.limit()', 'pagination size forwarding'],
-  ['request_context.locale.as_str()', 'requested locale forwarding'],
-  ['Some(tenant.default_locale.as_str())', 'tenant fallback locale forwarding'],
+  ['data: page.items,', 'owner list items'],
+  ['page.total,', 'owner pagination total'],
   ['input.payment_id', 'payment identity forwarding'],
   ['input.payment_method', 'payment method forwarding'],
   ['input.tracking_number', 'tracking forwarding'],
@@ -201,10 +228,15 @@ for (const [value, label] of [
   ['map_order_detail_fulfillment_error(tenant.id, id, error)', 'fulfillment detail mapper call'],
 ]) requireText(showRoute + orders, value, label);
 
-const mapperUses =
+const mutationMapperUses =
   orders.match(/map_admin_order_error\(\s+AdminOrderErrorContext::new\(/g) ?? [];
-if (mapperUses.length !== 6) {
-  failures.push(`expected six context-aware admin order mapper callsites, found ${mapperUses.length}`);
+if (mutationMapperUses.length !== 4) {
+  failures.push(`expected four context-aware admin order mutation mapper callsites, found ${mutationMapperUses.length}`);
+}
+const readMapperUses =
+  orders.match(/map_admin_order_port_error\(\s+AdminOrderErrorContext::new\(/g) ?? [];
+if (readMapperUses.length !== 2) {
+  failures.push(`expected two context-aware admin order read mapper callsites, found ${readMapperUses.length}`);
 }
 
 for (const [value, label] of [
@@ -233,5 +265,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin order routes retain typed causes, route identities, and static public envelopes',
+  '✔ Commerce admin order reads use typed owner ports while mutations retain typed concrete-owner errors and all public envelopes remain static',
 );

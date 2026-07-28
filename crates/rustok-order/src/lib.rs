@@ -24,6 +24,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+mod order_read;
 pub mod ports;
 pub mod services;
 pub mod status;
@@ -56,6 +57,10 @@ pub use checkout_payment_settlement::{
 };
 pub use dto::*;
 pub use entities::*;
+pub use order_read::{
+    InProcessOrderReadPort, ListOrderProjectionsRequest, OrderProjectionPage, OrderReadPort,
+    ReadOrderProjectionRequest, in_process_order_read_port,
+};
 pub use ports::*;
 pub use status::*;
 

@@ -23,8 +23,8 @@ const usage = () => {
   node scripts/verify/index-storage-tooling.mjs partition-assemble --manifest <manifest.json> --capture <capture.json> --output <packet.json>
   node scripts/verify/index-storage-tooling.mjs partition-validate --input <packet.json> --output <admission.json>
   node scripts/verify/index-storage-tooling.mjs partition-report --root <bundle-directory> [--packet <packet.json>] [--admission <admission.json>]
-  node scripts/verify/index-storage-tooling.mjs partition-archive-manifest --root <bundle-directory> [--packet <packet.json>] [--admission <admission.json>]
-  node scripts/verify/index-storage-tooling.mjs partition-archive-verify --root <bundle-directory> --manifest <archive-manifest.json> [--packet <packet.json>] [--admission <admission.json>]
+  node scripts/verify/index-storage-tooling.mjs partition-archive-manifest --root <bundle-directory> [--packet <packet.json>] [--admission <admission.json>] [--output <archive-manifest.json>]
+  node scripts/verify/index-storage-tooling.mjs partition-archive-verify --root <bundle-directory> --manifest <archive-manifest.json> [--packet <packet.json>] [--admission <admission.json>] [--output <verification-receipt.json>]
   node scripts/verify/index-storage-tooling.mjs hash <comparison.json>
   node scripts/verify/index-storage-tooling.mjs prepare --comparison <comparison.json> --selected <prototype> --owner <owner> --date <YYYY-MM-DD> --output <decision.json> [--force]
   node scripts/verify/index-storage-tooling.mjs render --comparison <comparison.json> --decision <decision.json> --output <adr.md>
@@ -40,8 +40,8 @@ Commands:
   partition-assemble          Build one packet from six retained raw JSON artifacts and exact-byte hashes.
   partition-validate          Validate a measured partition packet and publish calculated admission output.
   partition-report            Recalculate and render a read-only review of all nine retained bundle files.
-  partition-archive-manifest  Print a deterministic JSON archive manifest for one admitted retained bundle.
-  partition-archive-verify    Verify a saved archive manifest against the current admitted retained bundle.
+  partition-archive-manifest  Print or no-clobber save a deterministic JSON archive manifest for one admitted retained bundle.
+  partition-archive-verify    Verify a saved archive manifest and print or no-clobber save its receipt.
   hash                        Print the SHA-256 digest of the exact comparison.json bytes.
   prepare                     Create a non-overwriting manual decision draft bound to exact comparison bytes.
   render                      Finalize the manual storage ADR with comparison and decision SHA-256 bindings.
@@ -79,6 +79,7 @@ const runContract = (args) => {
     'verify-index-partition-maintenance-evidence.mjs',
     'verify-index-partition-cutover-evidence.mjs',
     'verify-index-partition-full-capture.mjs',
+    'verify-index-partition-derived-output.mjs',
     'verify-index-partition-post-inspection-drift.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-read-ordering-contract.mjs',
@@ -121,6 +122,7 @@ const runFixtures = (args) => {
     scriptPath('index-partition-evidence-assembly.test.mjs'),
     scriptPath('index-partition-full-capture-plan.test.mjs'),
     scriptPath('index-partition-review.test.mjs'),
+    scriptPath('index-partition-derived-output.test.mjs'),
     scriptPath('index-partition-post-inspection-drift.test.mjs'),
   ], 'Index storage fixture suites');
 };

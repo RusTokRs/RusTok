@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "module": "event-delivery",
+  "packet": "dlq-duplicate-alert-server-observer-source",
+  "status": "source_complete_runtime_execution_pending",
+  "owners": [
+    "rustok-server",
+    "rustok-iggy"
+  ],
+  "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+  "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
+  "bootstrap_source": "apps/server/src/services/server_bootstrap.rs",
+  "service_registry_source": "apps/server/src/services/mod.rs",
+  "public_iggy_exports": [
+    "IggyDlqDuplicateAlertObserver",
+    "IggyDlqDuplicateAlertObserverError"
+  ],
+  "delivery_profiles": {
+    "memory": "not_applicable",
+    "outbox_local": "not_applicable",
+    "outbox_iggy": "iggy_observer"
+  },
+  "iggy_modes": {
+    "bundled": "connect_to_existing_loopback_broker",
+    "external": "connect_to_reviewed_external_addresses"
+  },
+  "activation": {
+    "default_enabled": false,
+    "enable_env": "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED",
+    "background_workers_required": true,
+    "event_runtime_required": true,
+    "memory_requires_iggy": false,
+    "outbox_local_requires_iggy": false,
+    "outbox_iggy_requires_shared_transport": true,
+    "outbox_iggy_missing_active_mode_fails_closed": true,
+    "observer_startup_failure_is_non_fatal": true,
+    "startup_failure_mode": "unavailable",
+    "non_iggy_profiles_are_errors": false
+  },
+  "scan": {
+    "topic": "dlq",
+    "configured_domain_partition_allowlist": true,
+    "global_message_budget_may_stop_before_later_partitions": true,
+    "partition_fairness_claimed": false,
+    "explicit_start_offset": true,
+    "same_configured_start_offset_reused_each_poll": true,
+    "moving_cursor": false,
+    "current_tail_coverage_claimed": false,
+    "complete_history_claimed": false,
+    "bounded_max_messages": true,
+    "bounded_batch_size": true,
+    "auto_commit": false,
+    "stored_offset_polling": false
+  },
+  "runtime": {
+    "publisher": "DlqDuplicateAlertRuntimePublisher",
+    "initial_snapshot_unavailable": true,
+    "success_publishes_identifier_free_evaluation": true,
+    "startup_failure_records_unavailable_without_task": true,
+    "connection_failure_marks_unavailable": true,
+    "scan_failure_marks_unavailable": true,
+    "shutdown_marks_unavailable": true,
+    "reconnect_after_failure": true,
+    "event_delivery_remains_active": true
+  },
+  "startup_stable_codes": {
+    "configuration_invalid": "iggy.dlq_duplicate.alert_server_observer_configuration_invalid",
+    "runtime_unavailable": "iggy.dlq_duplicate.alert_server_observer_runtime_unavailable"
+  },
+  "policy": {
+    "all_six_thresholds_required_when_active": true,
+    "production_threshold_defaults": false,
+    "notification_routing": false,
+    "cooldown_or_suppression": false
+  },
+  "privacy_boundary": {
+    "logs_and_snapshots_exclude": [
+      "broker_address",
+      "stream",
+      "topic",
+      "partition",
+      "offset",
+      "broker_message_id",
+      "payload",
+      "payload_sha256",
+      "receipt_identity",
+      "credential",
+      "raw_client_error",
+      "raw_threshold_values",
+      "source_counts"
+    ],
+    "stable_error_codes_only": true,
+    "serialization_added": false,
+    "persistence_added": false
+  },
+  "lifecycle_boundary": {
+    "starts_bundled_process": false,
+    "stops_shared_transport": false,
+    "creates_second_event_transport": false,
+    "server_bootstrap_dependency": false,
+    "readiness_dependency": false,
+    "liveness_dependency": false,
+    "projection_dependency": false,
+    "profiles_authorization": false
+  },
+  "mutation_boundary": {
+    "publish": false,
+    "acknowledge": false,
+    "store_offset": false,
+    "delete": false,
+    "purge": false,
+    "replay": false,
+    "retry": false,
+    "receipt_claim_or_mark": false,
+    "broker_configuration_change": false
+  },
+  "required_iggy_tests": [
+    "bundled_mode_requires_matching_loopback_address",
+    "all_configured_partitions_are_included_in_request",
+    "invalid_partition_count_fails_closed",
+    "stable_errors_expose_no_connection_details"
+  ],
+  "required_server_tests": [
+    "every_event_delivery_profile_has_an_explicit_observer_mode",
+    "startup_unavailable_state_has_no_task_or_snapshot",
+    "boolean_parser_is_bounded"
+  ],
+  "verifier": "scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md",
+  "execution_status": "source_not_run",
+  "remaining_work": [
+    "partition_fairness_or_per_partition_budget_policy",
+    "moving_window_or_per_partition_cursor_policy",
+    "telemetry_projection_outside_observer",
+    "health_projection_without_readiness_coupling",
+    "notification_delivery_and_suppression",
+    "retained_server_observer_execution_evidence",
+    "authorized_destructive_reconciliation"
+  ]
+}

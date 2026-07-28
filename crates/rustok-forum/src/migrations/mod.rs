@@ -36,6 +36,7 @@ mod m20260728_000001_add_forum_category_reply_create_audience;
 mod m20260728_000002_add_forum_topic_reply_create_audience;
 mod m20260728_000003_add_forum_category_moderation_audience;
 mod m20260728_000004_add_forum_user_trust_state;
+mod m20260728_000005_add_forum_approved_posts_indexes;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -80,6 +81,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260728_000002_add_forum_topic_reply_create_audience::Migration),
         Box::new(m20260728_000003_add_forum_category_moderation_audience::Migration),
         Box::new(m20260728_000004_add_forum_user_trust_state::Migration),
+        Box::new(m20260728_000005_add_forum_approved_posts_indexes::Migration),
     ]
 }
 
