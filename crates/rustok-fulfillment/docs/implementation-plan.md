@@ -23,6 +23,14 @@ projections. Fulfillment owner uses `FulfillmentService::list_by_order` and
 `create_fulfillment`; mounted commerce checkout no longer queries the
 `fulfillments` table or constructs `FulfillmentService`.
 
+The root in-process checkout factory now mounts
+`TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
+`Pending`, `Shipped`, and `Delivered` owner states. `Cancelled` and unknown
+lifecycle values fail closed with a typed manual-reconciliation outcome instead
+of being adopted as a successful checkout fulfillment set. The underlying
+execution adapter remains the persistence/idempotency delegate, so transport
+contracts and request DTOs are unchanged.
+
 Complete shipping-option active list and lookup use `ShippingOptionReadPort`,
 while administrative list-all uses the separate `ShippingOptionAdminReadPort`.
 The root in-process factories own `FulfillmentService` construction, require read
