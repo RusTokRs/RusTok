@@ -18,7 +18,7 @@ use crate::error::{ForumError, ForumResult};
 
 use super::rbac::enforce_scope;
 
-pub const MAX_FORUM_USER_TRUST_LEVEL: u8 = 100;
+pub const MAX_FORUM_USER_TRUST_LEVEL: u8 = crate::audience::MAX_FORUM_AUDIENCE_TRUST_LEVEL;
 pub const MAX_FORUM_USER_TRUST_HISTORY_PAGE: u16 = 100;
 const MAX_REASON_CODE_LENGTH: usize = 64;
 const MAX_REASON_SUMMARY_LENGTH: usize = 256;
@@ -176,25 +176,19 @@ impl ForumUserTrustService {
         .insert(&txn)
         .await?;
 
-        match current {
-            Some(current) => {
-                let mut active: forum_user_trust_state::ActiveModel = current.into();
-                active.trust_level = Set(i16::from(input.trust_level));
-                active.revision = Set(revision);
-                active.updated_at = Set(now.into());
-                active.update(&txn).await?;
-            }
-            None => {
-                forum_user_trust_state::ActiveModel {
-                    tenant_id: Set(tenant_id),
-                    user_id: Set(user_id),
-                    trust_level: Set(i16::from(input.trust_level)),
-                    revision: Set(revision),
-                    updated_at: Set(now.into()),
-                }
-                .insert(&txn)
-                .await?;
-            }
+        let materialized = load_state(&txn, tenant_id, user_id)
+            .await?
+            .ok_or_else(|| {
+                ForumError::Validation(
+                    "Forum trust revision did not materialize a current state".to_string(),
+                )
+            })?;
+        if materialized.revision != revision
+            || materialized.trust_level != i16::from(input.trust_level)
+        {
+            return Err(ForumError::Validation(
+                "Forum trust materialized state does not match its immutable revision".to_string(),
+            ));
         }
 
         let change = change_from_revision_model(inserted)?;
