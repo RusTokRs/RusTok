@@ -22,15 +22,18 @@ const expectedSequence = [
   "publish_first_failure_through_iggy_transport_move_to_dlq",
   "receive_and_ack_exact_first_dlq_payload",
   "drop_source_cursor_without_ack",
-  "reopen_same_source_group_and_receive_same_offset_payload_and_delivery_uuid",
+  "shutdown_first_transport_without_source_ack",
+  "connect_new_transport_with_same_stream_and_source_group",
+  "receive_same_offset_payload_and_delivery_uuid_after_reconnect",
   "explicitly_acknowledge_redelivered_failure",
   "receive_second_payload_at_a_greater_offset",
   "publish_and_verify_exact_second_dlq_payload",
   "explicitly_acknowledge_second_failure",
-  "shutdown_fixture_connector_and_transport",
+  "shutdown_fixture_connector_and_reopened_transport",
 ];
 const expectedProductionPaths = [
   "IggyTransport::new",
+  "IggyTransport::shutdown",
   "IggyTransport::open_persistent_contract_consumer_group",
   "PersistentContractConsumerGroup::receive_delivery",
   "ConsumedContractDecodeFailure::to_dlq_entry",
@@ -173,37 +176,50 @@ for (const marker of [
   "first_failure.ack_token().is_some()",
   "transport.move_to_dlq(first_failure.to_dlq_entry(1))",
   "drop(first_source_cursor)",
+  "transport.shutdown().await?",
+  "let reopened_transport = IggyTransport::new(config.clone()).await?;",
   "redelivered.offset(), first_offset",
   "redelivered.delivery_id(), first_delivery_id",
   "redelivered.raw_payload(), first_dlq.payload.as_slice()",
   ".acknowledge_decode_failure(&redelivered)",
   "second_failure.offset() > first_offset",
   "second_failure.delivery_id(), first_delivery_id",
-  "transport.move_to_dlq(second_failure.to_dlq_entry(1))",
+  ".move_to_dlq(second_failure.to_dlq_entry(1))",
   ".acknowledge_decode_failure(&second_failure)",
   "fixture_connector.shutdown().await?",
-  "transport.shutdown().await?",
+  "reopened_transport.shutdown().await?",
   "timeout(RECEIVE_TIMEOUT",
 ]) {
   requireText("external Iggy raw poison test", test, marker);
 }
 
-requireOrdered("first raw poison lifecycle", test, [
+requireOrdered("consumer groups precede fixture publication", test, [
+  "let first_source_cursor = transport",
+  "let mut dlq_cursor = fixture_connector",
+  "publish_fixture(&fixture_connector, &stream, first_payload.clone()).await?;",
+  "publish_fixture(&fixture_connector, &stream, second_payload.clone()).await?;",
+]);
+requireOrdered("first raw poison lifecycle and reconnect", test, [
   "let first_failure = receive_decode_failure(&first_source_cursor).await?;",
   "transport.move_to_dlq(first_failure.to_dlq_entry(1)).await?;",
   "let first_dlq = receive_cursor_message(&mut dlq_cursor).await?;",
   "acknowledge_cursor_message(&mut dlq_cursor, &first_dlq).await?;",
   "drop(first_source_cursor);",
+  "transport.shutdown().await?;",
+  "let reopened_transport = IggyTransport::new(config.clone()).await?;",
+  "let reopened_source_cursor = reopened_transport",
   "let redelivered = receive_decode_failure(&reopened_source_cursor).await?;",
   ".acknowledge_decode_failure(&redelivered)",
   "let second_failure = receive_decode_failure(&reopened_source_cursor).await?;",
 ]);
 requireOrdered("second raw poison lifecycle", test, [
   "let second_failure = receive_decode_failure(&reopened_source_cursor).await?;",
-  "transport.move_to_dlq(second_failure.to_dlq_entry(1)).await?;",
+  "reopened_transport\n        .move_to_dlq(second_failure.to_dlq_entry(1))",
   "let second_dlq = receive_cursor_message(&mut dlq_cursor).await?;",
   "acknowledge_cursor_message(&mut dlq_cursor, &second_dlq).await?;",
   ".acknowledge_decode_failure(&second_failure)",
+  "fixture_connector.shutdown().await?;",
+  "reopened_transport.shutdown().await?;",
 ]);
 
 for (const forbidden of [
@@ -259,5 +275,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "External Iggy raw poison source evidence verified: unique external topology, production typed receive and DLQ paths, no-ack redelivery, explicit cursor advancement, exact-byte DLQ, and bounded unexecuted claims are locked.",
+  "External Iggy raw poison source evidence verified: unique external topology, production typed receive and DLQ paths, no-ack transport reconnect/redelivery, explicit cursor advancement, exact-byte DLQ, and bounded unexecuted claims are locked.",
 );
