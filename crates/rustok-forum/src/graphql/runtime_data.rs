@@ -23,10 +23,6 @@ pub fn attach_schema_data(
 }
 
 impl ForumGraphqlRuntimeData {
-    pub(crate) fn audience_facts(&self) -> Option<SharedForumAudienceFactsPort> {
-        self.audience_facts.clone()
-    }
-
     pub(crate) fn topic_service(
         &self,
         db: DatabaseConnection,
@@ -101,7 +97,7 @@ mod tests {
         );
 
         let runtime = attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
-        assert!(runtime.audience_facts().is_some());
+        assert!(runtime.audience_facts.is_some());
     }
 
     #[tokio::test]
@@ -112,6 +108,6 @@ mod tests {
         let inputs = GraphqlRuntimeInputs::new(HostRuntimeContext::new(db));
 
         let runtime = attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
-        assert!(runtime.audience_facts().is_none());
+        assert!(runtime.audience_facts.is_none());
     }
 }
