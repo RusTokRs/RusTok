@@ -15,7 +15,8 @@ restricted or unavailable rows as absent.
 `followers_only` visibility resolves through authoritative Social Graph owner
 ports. Profiles never reads relation tables and never authorizes from an event,
 Index projection, decoded/raw DLQ receipt, neutral receipt aggregate, broker
-identifier, consumer offset, lag metric, or poison-receipt health signal.
+identifier, consumer offset, lag metric, poison-receipt health signal, or retained
+receipt evidence packet.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and
 MIME constraints and exposes only Media-selected descriptors. Profiles does not
@@ -67,10 +68,14 @@ mutation retry.
   values; a missing/stopped observer is degraded health and never blocks projection.
 - The explicit append-only migration tail contains both receipt migrations, so the
   previously published migration prefix is preserved.
-- An opt-in PostgreSQL receipt harness now defines isolated-schema evidence for
+- An opt-in PostgreSQL receipt harness defines isolated-schema evidence for
   concurrent ownership, lease reclaim/fencing, collision rollback,
   first-diagnostic retention, empty payloads, terminal recognition, and aggregate
-  inspection. It has not been executed.
+  inspection.
+- A retained execution contract locks the exact Cargo commands, required cases,
+  bounded metadata, source hashes, and canonical packet path. Its clean-commit
+  runner and strict verifier are source-complete; the execution JSON is intentionally
+  absent until a maintainer runs PostgreSQL successfully.
 - Main also contains generic Index partition snapshot/query/mutation evidence.
   That strengthens the shared Index substrate but does not validate this Social
   Graph consumer, its schema registration, or Profiles presentation policy.
@@ -134,9 +139,10 @@ The Social Graph Index worker is wired to the typed result:
 - the raw path never invokes Index projection and never creates tenant/event facts.
 
 Migration-order reconciliation is complete. The remaining work is execution and
-retained proof: compile the current mainline, run PostgreSQL claim/lease/collision/
-inspection scenarios, run real-Iggy publication/ack/restart scenarios, and retain
-multi-replica/operator evidence without weakening privacy or exactly-once language.
+retained proof: compile the current mainline, run the clean-commit PostgreSQL
+capture runner, review and commit its canonical evidence JSON, run real-Iggy
+publication/ack/restart scenarios, and retain multi-replica/operator evidence
+without weakening privacy or exactly-once language.
 
 ## FFA/FBA boundary
 
@@ -194,19 +200,22 @@ multi-replica/operator evidence without weakening privacy or exactly-once langua
    deterministic DLQ broker identity, maintenance, events, replay, cleanup CLI,
    persisted schema registration, durable terminal recognition, default-off shared
    transport lifecycle, retries, shutdown, readiness, bounded metrics, complete
-   lag, count-only poison health, and a PostgreSQL receipt evidence harness.
-   **Remaining:** execute PostgreSQL concurrency/retention/replay/rollback evidence,
-   approve deployment retention, prove real broker observer/reconnect/TLS/rebalance,
-   deterministic header and dedup disabled/enabled/expiry/capacity behavior,
-   confirmation policy, multi-replica behavior, and retained operator packets.
+   lag, count-only poison health, PostgreSQL scenarios, and retained capture tooling.
+   **Remaining:** execute and commit PostgreSQL evidence, prove retention/replay/
+   rollback, approve deployment retention, prove real broker observer/reconnect/
+   TLS/rebalance, deterministic header and dedup disabled/enabled/expiry/capacity
+   behavior, confirmation policy, multi-replica behavior, and retained operator
+   packets.
 
 6. **Handle undecodable sealed contract deliveries without invented ownership.**
    **Status:** source-complete for typed receive, immutable connector identity,
    neutral durable receipt, exact-byte DLQ publication, durable published-before-ack,
    existing-result recovery, best-effort post-ack bookkeeping, append-only migration
-   placement, count-only health, and opt-in PostgreSQL evidence scenarios.
-   **Next:** execute the PostgreSQL harness, retain database/server/cleanup evidence,
-   then execute real-Iggy failure/restart/dedup/multi-replica scenarios.
+   placement, count-only health, opt-in PostgreSQL scenarios, and a fail-closed
+   retained execution contract/runner/verifier.
+   **Next:** execute the clean-commit PostgreSQL runner, review and commit the
+   canonical packet, then execute real-Iggy failure/restart/dedup/multi-replica
+   scenarios.
    **Done when:** malformed bytes are retained, classified, durably terminalized,
    published/recovered, and acknowledged without fabricated tenant/event identity,
    implicit commits, duplicate authorization effects, or exactly-once claims, and
@@ -222,7 +231,7 @@ multi-replica/operator evidence without weakening privacy or exactly-once langua
   identity, readiness, telemetry, and position observation from PR #2317.
 - Reconfirmed privacy-before-presentation, bounded follower reads, owner-scoped
   writes, Media-owned descriptors, no automatic mutation retry, and the rule that
-  Index/broker/receipt/metric state never authorizes profile presentation.
+  Index/broker/receipt/metric/evidence state never authorizes profile presentation.
 - Added the typed exact-byte decode-failure contract with explicit acknowledgement.
 - Added connector-owned neutral receipt DDL/store with private immutable source
   identity, empty exact-byte support, collision detection, first-diagnostic
@@ -242,6 +251,9 @@ multi-replica/operator evidence without weakening privacy or exactly-once langua
 - Added an opt-in isolated-schema PostgreSQL harness for claim ownership, lease
   reclaim/fencing, collision rollback, atomic first-diagnostic retention, terminal
   recognition, and aggregate consistency.
+- Added a PostgreSQL metadata test, clean-commit capture runner, atomic canonical
+  packet writer, source/output SHA-256 binding, and strict retained-evidence verifier.
+- The canonical execution JSON remains absent until a maintainer runs PostgreSQL.
 - Tests, Cargo commands, formatters, source verifiers, PostgreSQL, real-broker, and
   multi-replica scenarios were not run, per maintainer instruction.
 
@@ -259,9 +271,11 @@ multi-replica/operator evidence without weakening privacy or exactly-once langua
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_inspection -- --nocapture`
 - `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' cargo test -p rustok-iggy-connector --features migrations --test consumer_poison_receipt_postgres -- --nocapture`
+- `RUSTOK_IGGY_CONNECTOR_TEST_DATABASE_URL='postgresql://…' node scripts/evidence/capture-iggy-consumer-poison-postgres.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-inspection.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-postgres-evidence.mjs`
+- `node scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-index --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
@@ -309,6 +323,8 @@ multi-replica/operator evidence without weakening privacy or exactly-once langua
     connector poison contract and acknowledge only after its terminal result exists.
 16. Existing durable poison choices remain recoverable across later policy disablement;
     new undecodable deliveries remain uncommitted without an enabled terminal policy.
-17. Count-only receipt health and PostgreSQL evidence never authorize, acknowledge,
-    reclaim, repair, retain, or delete production delivery state.
-18. Update Profiles and affected owner docs with every boundary change.
+17. Count-only receipt health and retained PostgreSQL evidence never authorize,
+    acknowledge, reclaim, repair, retain, or delete production delivery state.
+18. Retained packets must be generated from a clean commit, omit credentials and
+    delivery-level facts, and become stale when any bound source SHA-256 changes.
+19. Update Profiles and affected owner docs with every boundary change.
