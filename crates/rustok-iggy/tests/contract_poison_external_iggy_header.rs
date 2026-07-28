@@ -68,6 +68,8 @@ async fn deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_pa
             Some(received.partition_id),
         )
         .await?;
+    drop(probe);
+    client.shutdown().await?;
     transport.shutdown().await?;
     Ok(())
 }
