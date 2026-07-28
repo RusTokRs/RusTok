@@ -1,10 +1,11 @@
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{
     CreateReplyCommandInput, CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse,
     UpdateReplyCommandInput, UpdateReplyInput,
@@ -14,6 +15,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
 use super::rbac::enforce_scope;
+use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::reply_owner;
 use super::topic_visibility::ForumTopicVisibilityService;
 
@@ -24,12 +26,33 @@ use super::topic_visibility::ForumTopicVisibilityService;
 pub struct ReplyService {
     db: DatabaseConnection,
     inner: reply_owner::ReplyService,
+    create_audience: ForumReplyCreateAudienceAuthorizationService,
 }
 
 impl ReplyService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self::with_optional_audience_facts(db, event_bus, None)
+    }
+
+    pub fn with_audience_facts(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        facts_port: SharedForumAudienceFactsPort,
+    ) -> Self {
+        Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
+    }
+
+    fn with_optional_audience_facts(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        facts_port: Option<SharedForumAudienceFactsPort>,
+    ) -> Self {
         Self {
             inner: reply_owner::ReplyService::new(db.clone(), event_bus),
+            create_audience: ForumReplyCreateAudienceAuthorizationService::new(
+                db.clone(),
+                facts_port,
+            ),
             db,
         }
     }
@@ -41,8 +64,32 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        self.create_command(tenant_id, security, topic_id, input.into())
-            .await
+        self.create_command_with_optional_audience_context(
+            tenant_id,
+            security,
+            topic_id,
+            None,
+            input.into(),
+        )
+        .await
+    }
+
+    pub async fn create_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        context: PortContext,
+        input: CreateReplyInput,
+    ) -> ForumResult<ReplyResponse> {
+        self.create_command_with_optional_audience_context(
+            tenant_id,
+            security,
+            topic_id,
+            Some(context),
+            input.into(),
+        )
+        .await
     }
 
     pub async fn create_command(
@@ -52,6 +99,45 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
+        self.create_command_with_optional_audience_context(
+            tenant_id,
+            security,
+            topic_id,
+            None,
+            input,
+        )
+        .await
+    }
+
+    pub async fn create_command_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        context: PortContext,
+        input: CreateReplyCommandInput,
+    ) -> ForumResult<ReplyResponse> {
+        self.create_command_with_optional_audience_context(
+            tenant_id,
+            security,
+            topic_id,
+            Some(context),
+            input,
+        )
+        .await
+    }
+
+    async fn create_command_with_optional_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        context: Option<PortContext>,
+        input: CreateReplyCommandInput,
+    ) -> ForumResult<ReplyResponse> {
+        self.create_audience
+            .require(tenant_id, topic_id, &security, context)
+            .await?;
         let response = self
             .inner
             .create_command(tenant_id, security, topic_id, input)

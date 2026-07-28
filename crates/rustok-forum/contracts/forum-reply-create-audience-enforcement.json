@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20AV",
+  "upstream_task": "FORUM-20AU",
+  "scope": "Command-time enforcement of inherited category reply-create audience policy in every public reply owner create path",
+  "policy_contract": "crates/rustok-forum/contracts/forum-category-reply-create-audience-policy.json",
+  "authorization_service": "crates/rustok-forum/src/services/reply_create_audience_authorization.rs",
+  "reply_facade": "crates/rustok-forum/src/services/reply_facade.rs",
+  "raw_reply_owner": "crates/rustok-forum/src/services/reply_owner.rs",
+  "raw_reply_owner_inline": "crates/rustok-forum/src/services/reply_owner_inline.rs",
+  "services_module": "crates/rustok-forum/src/services/mod.rs",
+  "crate_root": "crates/rustok-forum/src/lib.rs",
+  "runtime_test_file": "crates/rustok-forum/tests/reply_create_audience_enforcement_sqlite.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20av-reply-create-audience-enforcement.md",
+  "source_verifier": "scripts/verify/verify-forum-reply-create-audience-enforcement.mjs",
+  "composition": {
+    "reply_create_permission_first": true,
+    "tenant_scoped_topic_category_resolution": true,
+    "root_to_category_conjunction": true,
+    "explicit_deny_precedence": true,
+    "local_role_and_explicit_user_short_circuit": true,
+    "exact_optional_owner_facts": true,
+    "missing_context_fail_closed": true,
+    "missing_provider_fail_closed": true,
+    "legacy_create_gated": true,
+    "inline_quote_create_gated": true,
+    "authorization_before_raw_owner": true,
+    "authorization_before_reply_body_relation_counter_stat_event_writes": true,
+    "generic_public_denial": true,
+    "transport_changed": false,
+    "migration_changed": false,
+    "public_dto_changed": false,
+    "dependency_changed": false
+  },
+  "not_delivered": [
+    "reply-create GraphQL and REST exact caller-context composition",
+    "topic-local reply audience narrowing",
+    "moderation audience policy persistence and enforcement",
+    "Forum trust owner state and facts adapter",
+    "remaining Forum read search index SEO and deep-link audience migration",
+    "visibility-scoped category and all-read commands",
+    "tenant-wide scheduled reconciliation and payload redaction",
+    "channel delivery enqueue and delivery-time authorization",
+    "PostgreSQL concurrency and cross-consumer runtime evidence",
+    "canonical plan synchronization blocked by connector whole-file replacement limitation"
+  ],
+  "verification": {
+    "commands": [
+      "cargo test -p rustok-forum --test reply_create_audience_enforcement_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs",
+      "node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs",
+      "cargo xtask module validate forum"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
