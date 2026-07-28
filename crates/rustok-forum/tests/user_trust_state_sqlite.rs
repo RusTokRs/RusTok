@@ -36,8 +36,9 @@ CREATE TABLE forum_user_stats (
 
     let manager = SchemaManager::new(&db);
     let migration = rustok_forum::migrations::migrations()
-        .pop()
-        .expect("FORUM-26A migration should be registered last");
+        .into_iter()
+        .find(|migration| migration.name() == "m20260728_000004_add_forum_user_trust_state")
+        .expect("FORUM-26A migration should be registered");
     migration
         .up(&manager)
         .await
