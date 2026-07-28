@@ -180,11 +180,46 @@ const adminShow = between(
   'admin fulfillment show',
 );
 for (const [source, value, label] of [
-  [adminList, 'FulfillmentService::new(runtime.db_clone())', 'retained admin list service'],
-  [adminList, '.list_fulfillments(', 'retained admin list operation'],
-  [adminShow, 'FulfillmentService::new(runtime.db_clone())', 'retained admin show service'],
-  [adminShow, '.get_fulfillment(tenant.id, id)', 'retained admin show operation'],
+  [adminList, 'request_context: RequestContext', 'admin list request context'],
+  [adminList, '.fulfillment_read_port()', 'admin list runtime port'],
+  [adminList, '.list_fulfillment_projections(', 'admin list owner operation'],
+  [adminList, 'ListFulfillmentProjectionsRequest {', 'admin list typed request'],
+  [adminList, 'status: params.status', 'admin list status filter'],
+  [adminList, 'order_id: params.order_id', 'admin list order filter'],
+  [adminList, 'customer_id: params.customer_id', 'admin list customer filter'],
+  [adminList, 'data: page.items', 'admin list owner projection'],
+  [adminList, 'page.total', 'admin list owner total'],
+  [adminShow, 'request_context: RequestContext', 'admin show request context'],
+  [adminShow, '.fulfillment_read_port()', 'admin show runtime port'],
+  [adminShow, '.read_fulfillment_projection(', 'admin show owner operation'],
+  [adminShow, 'ReadFulfillmentProjectionRequest { fulfillment_id: id }', 'admin show typed request'],
 ]) requireText(source, value, label);
+
+for (const [source, value, label] of [
+  [adminList, 'FulfillmentService::new(', 'admin list concrete service'],
+  [adminList, '.list_fulfillments(', 'admin list concrete operation'],
+  [adminShow, 'FulfillmentService::new(', 'admin show concrete service'],
+  [adminShow, '.get_fulfillment(', 'admin show concrete operation'],
+]) forbidText(source, value, label);
+
+for (const [value, label] of [
+  ['fn admin_fulfillment_read_port_context(', 'admin read context builder'],
+  ['PortActor::user(auth.user_id.to_string())', 'admin user actor'],
+  ['request_context.locale.as_str()', 'admin locale propagation'],
+  ['request_context.channel_slug.as_deref()', 'admin channel propagation'],
+  ['commerce-admin-fulfillment:{operation}:{resource_id}', 'admin correlation id'],
+  ['with_deadline(std::time::Duration::from_secs(2))', 'admin read deadline'],
+  ['fn map_admin_fulfillment_port_error(', 'admin typed error mapper'],
+  ['PortErrorKind::Forbidden', 'admin forbidden mapping'],
+  ['PortErrorKind::Timeout', 'admin timeout mapping'],
+  ['PortErrorKind::InvariantViolation', 'admin invariant mapping'],
+  ['"commerce_admin_fulfillment_invalid"', 'admin validation public code'],
+  ['"commerce_admin_not_found"', 'admin not-found public code'],
+  ['"commerce_admin_fulfillment_state_conflict"', 'admin conflict public code'],
+  ['"commerce_admin_fulfillment_storage_unavailable"', 'admin unavailable public code'],
+  ['"commerce_admin_fulfillment_failed"', 'admin invariant public code'],
+  ['internal_code = %error.code', 'admin stable owner code logging'],
+]) requireText(adminRest, value, label);
 
 for (const value of [
   'error = %message',
@@ -192,9 +227,9 @@ for (const value of [
   'error.message',
 ]) forbidText(ownerSource, value, 'owner message exposure');
 
-if (evidence.status !== 'source_composed_unvalidated') {
+if (evidence.status !== 'source_rest_cutover_unvalidated') {
   failures.push(
-    `evidence status: expected source_composed_unvalidated, found ${evidence.status}`,
+    `evidence status: expected source_rest_cutover_unvalidated, found ${evidence.status}`,
   );
 }
 if (evidence.owner?.port !== 'FulfillmentReadPort') {
@@ -221,11 +256,26 @@ if (evidence.runtime_publication?.commerce_http_runtime_required !== true) {
 if (evidence.runtime_publication?.external_adapter_preserved !== true) {
   failures.push('evidence must record preservation of external adapters');
 }
+if (evidence.admin_rest?.pagination_total_preserved !== true) {
+  failures.push('evidence must record preserved admin pagination total');
+}
+if (evidence.admin_rest?.filters_preserved !== true) {
+  failures.push('evidence must record preserved admin list filters');
+}
+if (evidence.admin_rest?.public_error_policy_preserved !== true) {
+  failures.push('evidence must record preserved admin public error policy');
+}
+if (evidence.admin_rest?.concrete_service_read_construction !== false) {
+  failures.push('evidence must forbid concrete admin REST read construction');
+}
+if (evidence.admin_rest?.mutation_service_construction_unchanged !== true) {
+  failures.push('evidence must retain lifecycle mutation service construction');
+}
 if (evidence.consumer_cutover?.graphql_compatibility_facade !== false) {
   failures.push('evidence must retain GraphQL facade cutover as false');
 }
-if (evidence.consumer_cutover?.admin_rest_list_show !== false) {
-  failures.push('evidence must retain admin REST list/show cutover as false');
+if (evidence.consumer_cutover?.admin_rest_list_show !== true) {
+  failures.push('evidence must record admin REST list/show cutover');
 }
 if (evidence.consumer_cutover?.concrete_delegate_removed !== false) {
   failures.push('evidence must retain concrete delegate removal as false');
@@ -250,5 +300,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ fulfillment lifecycle reads are owner-published, default-host composed, and injected into Commerce HTTP while GraphQL/admin consumer cutovers remain explicitly open',
+  '✔ fulfillment lifecycle reads are owner-published and host-composed; admin REST list/show consume the typed port while GraphQL cutover remains explicitly open',
 );

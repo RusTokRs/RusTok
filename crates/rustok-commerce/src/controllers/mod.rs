@@ -61,7 +61,6 @@ impl CommerceHttpRuntime {
             .shipping_option_admin_read_port()
     }
 
-    #[allow(dead_code)]
     fn fulfillment_read_port(
         &self,
     ) -> std::sync::Arc<dyn rustok_fulfillment::FulfillmentReadPort> {
