@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{FulfillmentError, FulfillmentService, ShippingOptionResponse};
 
-/// Transport-neutral owner boundary for complete shipping-option reads.
+/// Transport-neutral owner boundary for storefront-complete shipping-option reads.
 #[async_trait]
 pub trait ShippingOptionReadPort: Send + Sync {
     async fn list_shipping_option_projections(
@@ -16,17 +16,21 @@ pub trait ShippingOptionReadPort: Send + Sync {
         request: ListShippingOptionProjectionsRequest,
     ) -> Result<Vec<ShippingOptionResponse>, PortError>;
 
-    async fn list_all_shipping_option_projections(
-        &self,
-        context: PortContext,
-        request: ListAllShippingOptionProjectionsRequest,
-    ) -> Result<Vec<ShippingOptionResponse>, PortError>;
-
     async fn read_shipping_option_projection(
         &self,
         context: PortContext,
         request: ReadShippingOptionProjectionRequest,
     ) -> Result<ShippingOptionResponse, PortError>;
+}
+
+/// Transport-neutral owner boundary for administrative shipping-option reads.
+#[async_trait]
+pub trait ShippingOptionAdminReadPort: Send + Sync {
+    async fn list_all_shipping_option_projections(
+        &self,
+        context: PortContext,
+        request: ListAllShippingOptionProjectionsRequest,
+    ) -> Result<Vec<ShippingOptionResponse>, PortError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -64,10 +68,32 @@ impl InProcessShippingOptionReadPort {
     }
 }
 
+pub struct InProcessShippingOptionAdminReadPort {
+    inner: FulfillmentService,
+}
+
+impl InProcessShippingOptionAdminReadPort {
+    pub fn new(db: sea_orm::DatabaseConnection) -> Self {
+        Self {
+            inner: FulfillmentService::new(db),
+        }
+    }
+
+    pub fn from_service(inner: FulfillmentService) -> Self {
+        Self { inner }
+    }
+}
+
 pub fn in_process_shipping_option_read_port(
     db: sea_orm::DatabaseConnection,
 ) -> Arc<dyn ShippingOptionReadPort> {
     Arc::new(InProcessShippingOptionReadPort::new(db))
+}
+
+pub fn in_process_shipping_option_admin_read_port(
+    db: sea_orm::DatabaseConnection,
+) -> Arc<dyn ShippingOptionAdminReadPort> {
+    Arc::new(InProcessShippingOptionAdminReadPort::new(db))
 }
 
 #[async_trait]
@@ -101,35 +127,6 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
             })
     }
 
-    async fn list_all_shipping_option_projections(
-        &self,
-        context: PortContext,
-        request: ListAllShippingOptionProjectionsRequest,
-    ) -> Result<Vec<ShippingOptionResponse>, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_tenant_id(&context, "list_all_shipping_option_projections")?;
-        let requested_locale_length = request.requested_locale.as_deref().map(str::len);
-        let tenant_default_locale_length = request.tenant_default_locale.as_deref().map(str::len);
-
-        self.inner
-            .list_all_shipping_options(
-                tenant_id,
-                request.requested_locale.as_deref(),
-                request.tenant_default_locale.as_deref(),
-            )
-            .await
-            .map_err(|error| {
-                map_owner_error(
-                    &context,
-                    "list_all_shipping_option_projections",
-                    None,
-                    requested_locale_length,
-                    tenant_default_locale_length,
-                    error,
-                )
-            })
-    }
-
     async fn read_shipping_option_projection(
         &self,
         context: PortContext,
@@ -153,6 +150,38 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
                     &context,
                     "read_shipping_option_projection",
                     Some(request.shipping_option_id),
+                    requested_locale_length,
+                    tenant_default_locale_length,
+                    error,
+                )
+            })
+    }
+}
+
+#[async_trait]
+impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort {
+    async fn list_all_shipping_option_projections(
+        &self,
+        context: PortContext,
+        request: ListAllShippingOptionProjectionsRequest,
+    ) -> Result<Vec<ShippingOptionResponse>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_tenant_id(&context, "list_all_shipping_option_projections")?;
+        let requested_locale_length = request.requested_locale.as_deref().map(str::len);
+        let tenant_default_locale_length = request.tenant_default_locale.as_deref().map(str::len);
+
+        self.inner
+            .list_all_shipping_options(
+                tenant_id,
+                request.requested_locale.as_deref(),
+                request.tenant_default_locale.as_deref(),
+            )
+            .await
+            .map_err(|error| {
+                map_owner_error(
+                    &context,
+                    "list_all_shipping_option_projections",
+                    None,
                     requested_locale_length,
                     tenant_default_locale_length,
                     error,
