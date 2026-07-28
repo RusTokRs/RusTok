@@ -4,26 +4,28 @@ Status: `source_ready_unvalidated`
 
 ## Shipping-option read cutover
 
-The safe commerce GraphQL query facade now routes the mounted shipping-option
-reads through fulfillment's canonical `ShippingOptionReadPort`:
+The safe commerce GraphQL query facade now routes all mounted shipping-option
+reads through fulfillment-owned read ports:
 
 - `storefront_shipping_options` delegates
-  `list_shipping_option_projections`;
+  `ShippingOptionReadPort::list_shipping_option_projections`;
 - single shipping-option lookup delegates
-  `read_shipping_option_projection`.
+  `ShippingOptionReadPort::read_shipping_option_projection`;
+- administrative `shipping_options` delegates
+  `ShippingOptionAdminReadPort::list_all_shipping_option_projections`.
 
 The unchanged `query.rs` source still imports and constructs the private
-`rustok_fulfillment::FulfillmentService` facade. Inside that facade,
-shipping-option methods now use a separate owner read-port field. The facade
-keeps one concrete `FulfillmentService` delegate only for operations not covered
-by this slice:
+`rustok_fulfillment::FulfillmentService` facade. Inside that facade, storefront
+and administrative shipping-option methods use separate owner read-port fields.
+The facade keeps one concrete `FulfillmentService` delegate only for fulfillment
+lifecycle reads not covered by this slice:
 
-- admin `list_all_shipping_options`;
 - fulfillment lookup/list;
 - order-to-fulfillment lookup.
 
-This is a partial topology result. It does not claim that all fulfillment query
-methods are owner-port composed.
+This is a partial topology result. It closes concrete service delegation for
+shipping-option query reads, but it does not claim that every fulfillment query
+method is owner-port composed.
 
 ## Retained read context
 
@@ -42,7 +44,8 @@ propagation remains open for a later source/query signature change.
 
 ## Typed owner mapping
 
-The storefront list facade maps `PortErrorKind` without using owner message text:
+Storefront and administrative list facades map `PortErrorKind` without using
+owner message text:
 
 | Port kind | Public message | Public code | Retryable |
 | --- | --- | --- | --- |
@@ -54,12 +57,20 @@ The storefront list facade maps `PortErrorKind` without using owner message text
 | InvariantViolation | `Fulfillment query could not be completed safely` | `FULFILLMENT_OPERATION_FAILED` | false |
 
 The validation, not-found, conflict, and unavailable envelopes preserve the
-existing `FulfillmentError` public policy. Forbidden and invariant outcomes are
+existing fulfillment public policy. Forbidden and invariant outcomes are
 fail-closed coverage for the complete port kind set and are not status
 promotions.
 
-Single lookup preserves the existing source contract rather than changing
-`query.rs`:
+The administrative resolver source still contains its existing
+`async_graphql::Error::new(err.to_string())` call. The private facade now returns
+`ShippingOptionAdminQueryError`, whose inherent `to_string` method consumes the
+adapter and returns the already-typed `BoundaryError`. Rust resolves that
+inherent method before the standard `ToString` trait, so no string is created,
+parsed, matched, or used as a control-flow protocol. The same public
+`FULFILLMENT_*` message, code, and retryability values reach GraphQL extensions.
+
+Single lookup preserves the existing optional-result source contract rather than
+changing `query.rs`:
 
 - owner `NotFound` becomes the stable compatibility variant
   `ShippingOptionNotFound`, so the resolver still returns `Ok(None)`;
@@ -68,8 +79,8 @@ Single lookup preserves the existing source contract rather than changing
 - the unchanged resolver converts those stable values through its existing
   generic `COMMERCE_QUERY_OPERATION_FAILED` redaction path.
 
-No `PortError.message` or original fulfillment message is copied into these
-compatibility values.
+No `PortError.message` or original fulfillment message is copied into the
+compatibility values or administrative GraphQL boundary.
 
 ## Diagnostics
 
@@ -91,7 +102,7 @@ The port-backed query boundary records:
 
 Unavailable, timeout, and invariant outcomes use error severity and retain the
 stable typed `PortError`. Ordinary outcomes use warning severity without an
-owner message field. The fulfillment owner port independently retains its
+owner message field. The fulfillment owner ports independently retain their
 owner-local diagnostics and technical database cause.
 
 ## Preserved contracts
@@ -101,11 +112,13 @@ owner-local diagnostics and technical database cause.
   resolve through the private safe facade.
 - Single shipping-option not-found still returns `None` rather than a GraphQL
   error.
-- Storefront currency, channel-visibility, and shipping-profile filtering remain
-  unchanged after owner projections are returned.
+- Storefront active-only semantics, currency, channel-visibility, and
+  shipping-profile filtering remain unchanged after owner projections return.
+- Administrative list-all still includes inactive options before local active,
+  currency, provider, search, and pagination filtering.
 - Shipping-option GraphQL DTOs and successful results are unchanged.
-- Admin `list_all_shipping_options` and fulfillment lifecycle query behavior
-  remain on the existing concrete delegate.
+- Fulfillment lifecycle and order lookup remain on the isolated concrete
+  delegate.
 - Admin order lookup and non-not-found single shipping-option failures keep their
   existing generic `COMMERCE_QUERY_OPERATION_FAILED` fail-closed envelope after
   stable compatibility conversion.
@@ -114,11 +127,12 @@ owner-local diagnostics and technical database cause.
 
 ## Still open
 
-- Inject `ShippingOptionReadPort` from the application host rather than using the
-  root in-process factory inside the private facade.
+- Inject both shipping-option read ports from the application host rather than
+  using root in-process factories inside the private facade.
 - Add public-channel propagation to the shipping-option query `PortContext`.
-- Publish owner ports for admin list-all and fulfillment lifecycle query reads,
-  then remove the remaining concrete `FulfillmentService` field.
+- Publish owner ports for fulfillment lifecycle query reads, then remove the
+  remaining concrete `FulfillmentService` field.
+- Migrate REST/native shipping reads and retain parity evidence.
 - Continue reviewing order, payment, customer, inventory, region, channel,
   catalog, and remaining commerce query conversions that still pass through
   dynamic strings.

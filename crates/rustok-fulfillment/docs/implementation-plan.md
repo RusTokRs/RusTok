@@ -36,10 +36,11 @@ while administrative list-all uses the separate `ShippingOptionAdminReadPort`.
 The root in-process factories own `FulfillmentService` construction, require read
 policy, preserve requested and default locale values, and map owner failures to
 stable `PortError` envelopes. Mounted commerce GraphQL shipping-option
-validation, shipping enrichment, and storefront listing use the storefront port
-instead of constructing `FulfillmentService` directly. The administrative
-list-all owner contract is source-ready for the remaining mounted GraphQL
-cutover. The seller/cart `ShippingSelectionPort` contract is unchanged.
+validation, shipping enrichment, storefront listing, single lookup, and
+administrative list-all now route through those owner ports. The private Commerce
+facade retains one concrete `FulfillmentService` only for fulfillment lifecycle
+and order-to-fulfillment compatibility reads. The seller/cart
+`ShippingSelectionPort` contract is unchanged.
 
 Stable fulfillment keys and metadata identity remain owner-local compatibility
 mechanisms. Duplicate keys fail closed. A typed durable checkout fulfillment
@@ -70,9 +71,9 @@ identity and database uniqueness migration remain open.
   `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`, and
   `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` lock the
   owner-admin/storefront, checkout execution, and typed lifecycle split.
-- `scripts/verify/verify-fulfillment-shipping-option-read-port.mjs` guards the
-  internal shipping-option read boundaries and mounted storefront commerce
-  cutover.
+- `scripts/verify/verify-fulfillment-shipping-option-read-port.mjs` and
+  `scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs` guard the
+  internal shipping-option read boundaries and mounted GraphQL query cutover.
 - No status promotion is claimed from source. Compile, upgraded database,
   contention, restart, mounted transport, and remote evidence remain missing.
 
@@ -107,8 +108,9 @@ identity and database uniqueness migration remain open.
 - [x] Export canonical root in-process factories.
 - [x] Remove direct `FulfillmentService` construction from mounted commerce
   GraphQL shipping-option validation, enrichment, and storefront listing.
-- [ ] Cut the mounted administrative GraphQL `shipping_options` query over to
-  `list_all_shipping_option_projections`.
+- [x] Cut mounted GraphQL single lookup and administrative `shipping_options`
+  list-all over to owner read ports while preserving optional-not-found and
+  `FULFILLMENT_*` public envelopes.
 - [ ] Inject the read ports from the application host rather than constructing
   root in-process providers inside the commerce seam.
 - [ ] Execute compile, mounted GraphQL, REST/native parity, deadline, failure,
@@ -146,9 +148,8 @@ identity and database uniqueness migration remain open.
    **Done when:** production-like execution proves degraded fallback and typed
    adapter errors while `FulfillmentService` remains the sole lifecycle owner.
 
-5. **Prove and host-compose shipping-option reads.** Cut the mounted
-   administrative list-all query over to the admin owner port, execute active
-   list, administrative list-all, and lookup through mounted GraphQL consumers,
+5. **Prove and host-compose shipping-option reads.** Execute active list,
+   administrative list-all, and lookup through mounted GraphQL consumers,
    compare REST/native behavior, and move provider construction to the
    application host.
    **Depends on:** compiled fulfillment/commerce crates and mounted transport
@@ -171,6 +172,7 @@ identity and database uniqueness migration remain open.
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 - `node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`
+- `node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs`
 - `node scripts/verify/verify-commerce-graphql-shipping-option-typed-error.mjs`
 - `node scripts/verify/verify-commerce-graphql-shipping-enrichment-typed-error.mjs`
 - `npm run verify:ecommerce:fba`

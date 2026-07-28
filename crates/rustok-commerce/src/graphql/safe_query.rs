@@ -412,9 +412,10 @@ mod source {
         use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
         use ::rustok_fulfillment::{
             FulfillmentError, FulfillmentResponse, FulfillmentResult,
-            ListFulfillmentsInput, ListShippingOptionProjectionsRequest,
-            ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
-            ShippingOptionResponse, in_process_shipping_option_read_port,
+            ListAllShippingOptionProjectionsRequest, ListFulfillmentsInput,
+            ListShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest,
+            ShippingOptionAdminReadPort, ShippingOptionReadPort, ShippingOptionResponse,
+            in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
         };
         use ::sea_orm::{DatabaseConnection, DbErr};
         use ::uuid::Uuid;
@@ -428,16 +429,27 @@ mod source {
         const GRAPHQL_QUERY_FULFILLMENT_BOUNDARY: &str =
             "commerce_graphql_query_fulfillment_facade";
 
+        pub(crate) struct ShippingOptionAdminQueryError(BoundaryError);
+
+        impl ShippingOptionAdminQueryError {
+            #[allow(clippy::inherent_to_string, clippy::wrong_self_convention)]
+            pub(crate) fn to_string(self) -> BoundaryError {
+                self.0
+            }
+        }
+
         pub struct FulfillmentService {
             inner: ::rustok_fulfillment::FulfillmentService,
             shipping_option_reads: Arc<dyn ShippingOptionReadPort>,
+            shipping_option_admin_reads: Arc<dyn ShippingOptionAdminReadPort>,
         }
 
         impl FulfillmentService {
             pub fn new(db: DatabaseConnection) -> Self {
                 Self {
                     inner: ::rustok_fulfillment::FulfillmentService::new(db.clone()),
-                    shipping_option_reads: in_process_shipping_option_read_port(db),
+                    shipping_option_reads: in_process_shipping_option_read_port(db.clone()),
+                    shipping_option_admin_reads: in_process_shipping_option_admin_read_port(db),
                 }
             }
 
@@ -518,21 +530,33 @@ mod source {
                 tenant_id: Uuid,
                 requested_locale: Option<&str>,
                 tenant_default_locale: Option<&str>,
-            ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
-                self.inner
-                    .list_all_shipping_options(tenant_id, requested_locale, tenant_default_locale)
+            ) -> Result<Vec<ShippingOptionResponse>, ShippingOptionAdminQueryError> {
+                let context = shipping_option_query_context(
+                    tenant_id,
+                    "shipping_options",
+                    None,
+                    requested_locale,
+                    tenant_default_locale,
+                );
+                self.shipping_option_admin_reads
+                    .list_all_shipping_option_projections(
+                        context.clone(),
+                        ListAllShippingOptionProjectionsRequest {
+                            requested_locale: requested_locale.map(str::to_owned),
+                            tenant_default_locale: tenant_default_locale.map(str::to_owned),
+                        },
+                    )
                     .await
                     .map_err(|error| {
-                        log_fulfillment_query_error(
-                            &error,
-                            tenant_id,
+                        ShippingOptionAdminQueryError(map_shipping_option_port_error(
+                            error,
+                            &context,
                             "shipping_options",
-                            "list_all_shipping_options",
+                            "list_all_shipping_option_projections",
                             None,
                             requested_locale,
                             tenant_default_locale,
-                        );
-                        error
+                        ))
                     })
             }
 

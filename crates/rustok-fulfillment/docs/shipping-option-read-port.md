@@ -8,7 +8,7 @@ Status: source-ready, unvalidated.
 read boundaries for complete shipping-option projections needed by mounted
 ecommerce transports.
 
-It is separate from `ShippingSelectionPort`:
+They are separate from `ShippingSelectionPort`:
 
 - `ShippingSelectionPort` owns seller/cart selection workflow;
 - `ShippingOptionReadPort` owns storefront active-list and single-option reads;
@@ -46,7 +46,7 @@ Locale values remain request data rather than being inferred from public error
 text. The delegated `PortContext` independently carries tenant, actor, channel,
 locale, correlation, causation, trace, and deadline facts.
 
-## In-process adapter
+## In-process adapters
 
 `InProcessShippingOptionReadPort` and
 `InProcessShippingOptionAdminReadPort` own `FulfillmentService` construction and
@@ -109,25 +109,31 @@ validation, not-found, and conflict events do not add raw owner message fields.
 
 ## Mounted commerce cutover
 
-The mounted storefront GraphQL helpers use the root read-port factory:
+Mounted Commerce GraphQL shipping-option paths now use the root read-port
+factories:
 
-- shipping-option validation calls `read_shipping_option_projection`;
+- shipping-option validation and single query lookup call
+  `read_shipping_option_projection`;
 - cart shipping enrichment and storefront query listing call
-  `list_shipping_option_projections`.
-
-The separate admin owner port now publishes
-`list_all_shipping_option_projections` for the mounted administrative GraphQL
-`shipping_options` query. This source slice publishes and verifies that owner
-contract; the transport cutover remains a separate bounded change so the
-existing public envelope can be preserved and reviewed independently.
+  `list_shipping_option_projections`;
+- administrative `shipping_options` calls
+  `list_all_shipping_option_projections`.
 
 Commerce builds a read `PortContext` with a service actor, resource-scoped
 correlation id, request locale, optional public channel where applicable, and a
-two-second deadline. Existing GraphQL public envelopes remain unchanged.
+two-second deadline. Existing optional-not-found behavior and public GraphQL
+`FULFILLMENT_*` message, code, and retryability envelopes remain unchanged.
 
-Delivery-group projection is a pure commerce function receiving owner
-projections. The existing compatibility service adapter delegates to the same
-pure function, so legacy REST/native behavior is not changed by this slice.
+The administrative resolver source retains its existing `.to_string()` call for
+source compatibility, but the private Commerce facade returns a typed adapter
+whose inherent method yields the already-classified GraphQL boundary. No owner
+message is serialized, parsed, or matched. Administrative list-all still returns
+inactive options before the existing local active, currency, provider, search,
+and pagination filters are applied.
+
+Delivery-group projection is a pure Commerce function receiving owner
+projections. Existing REST/native compatibility adapters delegate to the same
+pure function, so those transports are not changed by this slice.
 
 ## Verification
 
@@ -135,6 +141,7 @@ Focused source guards:
 
 ```bash
 node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs
+node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs
 node scripts/verify/verify-commerce-graphql-shipping-option-typed-error.mjs
 node scripts/verify/verify-commerce-graphql-shipping-enrichment-typed-error.mjs
 cargo check -p rustok-fulfillment --lib
@@ -147,11 +154,12 @@ No command was executed locally in this source wave.
 
 This slice does not:
 
-- cut the mounted administrative GraphQL `shipping_options` query over to
-  `list_all_shipping_option_projections`;
 - inject the read ports from the application host rather than root in-process
   factories;
-- migrate REST/native storefront shipping reads;
+- propagate public channel into every query read context;
+- migrate REST/native shipping reads;
+- publish owner read ports for fulfillment lifecycle and order-to-fulfillment
+  query paths;
 - retire `FulfillmentService` from fulfillment-owned compatibility adapters;
 - modify `ShippingSelectionPort`;
 - add or change an FBA registry contract;
