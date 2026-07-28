@@ -35,7 +35,7 @@ It also requires a runtime profile that runs background workers.
 
 When disabled, the server stores `Disabled` and starts no task or broker client. When enabled in a non-Iggy delivery profile, it stores the corresponding `NotApplicable` state and requires no thresholds.
 
-Observer-specific startup failures do **not** fail application bootstrap. Invalid enable/configuration values, a missing active Iggy mode, or a missing shared observer dependency produce `Unavailable` with no task or snapshot and return `Ok(())` to the bootstrap caller.
+Observer-specific startup failures do **not** fail application bootstrap. Invalid enable/configuration values, a missing active Iggy mode, or a missing shared observer dependency produce `Unavailable` with no task or snapshot and return normally to the bootstrap caller.
 
 Stable startup codes:
 
@@ -58,32 +58,69 @@ The configured address must be one loopback address using the configured bundled
 
 The observer tries the reviewed external addresses in configured order. Credentials and TLS options are used to construct SDK connection strings but are never retained in the runtime snapshot or logs.
 
-## Scan configuration
+## Scan modes
 
-Optional bounded controls:
+The scan mode is explicit:
 
 ```text
-RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_POLL_MS          default 30000, max 300000
-RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET     default 0
-RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES     default 1000
-RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE       default 100
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=global_budget
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=fair_window
 ```
 
-The Iggy adapter builds a one-based allowlist containing every configured domain partition and passes it to the existing scanner:
+`global` and `fair` are accepted aliases. The default remains `global_budget`, preserving the previously published server behavior.
+
+Common controls:
+
+```text
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_POLL_MS       default 30000, max 300000
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET  default 0
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE    default 100
+```
+
+Both modes use:
 
 ```text
 topic = dlq
 standalone consumer
 explicit start offset
-configured partition allowlist
-one bounded global message count
-bounded batch size
+configured one-based partition allowlist
 auto_commit = false
 ```
 
-The global message budget applies across the ordered partition allowlist. A busy earlier partition may exhaust the budget before later partitions are polled. This source slice therefore makes no partition-fairness or complete-history claim.
+### Compatibility global budget
 
-The scanner remains responsible for the hard limits: no more than 128 partition identifiers, 10,000 messages globally, or 1,000 messages per batch.
+```text
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES  default 1000
+```
+
+One bounded budget is consumed across the ordered partition allowlist. A busy earlier partition may exhaust it before later partitions are polled.
+
+### Fair snapshot window
+
+```text
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES  required
+```
+
+Every configured partition receives the same message cap and is attempted on a successful scan. The scanner validates:
+
+```text
+partition_count * per_partition_messages <= 10000
+batch_size <= per_partition_messages
+partition_count <= 128
+batch_size <= 1000
+```
+
+Observations from all partitions are combined before classification, so a repeated deterministic header UUID or conflicting payload group spanning partitions remains visible in the aggregate summary.
+
+Fairness is limited to one fixed snapshot window. Every poll still reuses the same configured start offset. Neither mode adds:
+
+- a moving cursor;
+- persisted offsets;
+- cross-cycle identity or digest accumulation;
+- current-tail coverage;
+- complete-history proof.
+
+Moving a partition window without retaining bounded prior identity state could split copies across cycles and hide their relationship. That remains a separate reviewed design.
 
 ## Explicit alert thresholds
 
@@ -137,9 +174,10 @@ Tests, Cargo commands, formatters, source verifiers, server startup, Iggy connec
 
 ## Remaining work
 
-1. define partition fairness or an explicit per-partition budget policy;
-2. project the shared snapshot into telemetry without exporting identifiers;
-3. expose optional operational health without readiness coupling;
-4. define alert routing, cooldown, and suppression separately;
-5. retain server-observer execution evidence for each applicable mode and unavailable startup state;
-6. keep destructive reconciliation in a separately authorized workflow.
+1. execute fair-window scans against reviewed external Iggy partitions and retain evidence;
+2. design moving per-partition windows with bounded cross-cycle duplicate state, or explicitly reject them;
+3. project the shared snapshot into telemetry without exporting identifiers;
+4. expose optional operational health without readiness coupling;
+5. define alert routing, cooldown, and suppression separately;
+6. retain server-observer execution evidence for each applicable mode and unavailable startup state;
+7. keep destructive reconciliation in a separately authorized workflow.

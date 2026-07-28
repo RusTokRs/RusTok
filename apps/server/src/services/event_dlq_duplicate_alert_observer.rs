@@ -17,8 +17,11 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const ENABLE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED";
 const POLL_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_POLL_MS";
+const SCAN_MODE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE";
 const START_OFFSET_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET";
 const MAX_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES";
+const PER_PARTITION_MESSAGES_ENV: &str =
+    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES";
 const BATCH_SIZE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE";
 const WARNING_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_WARNING_MESSAGES";
 const CRITICAL_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_CRITICAL_MESSAGES";
@@ -45,6 +48,18 @@ pub enum EventDlqDuplicateAlertObserverMode {
     IggyExternal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventDlqDuplicateAlertScanConfig {
+    GlobalBudget {
+        max_messages: u32,
+        batch_size: u32,
+    },
+    FairWindow {
+        per_partition_messages: u32,
+        batch_size: u32,
+    },
+}
+
 pub struct EventDlqDuplicateAlertObserverHandle {
     mode: EventDlqDuplicateAlertObserverMode,
     subscriber: Option<DlqDuplicateAlertRuntimeSubscriber>,
@@ -68,8 +83,7 @@ impl EventDlqDuplicateAlertObserverHandle {
 struct EventDlqDuplicateAlertObserverConfig {
     poll: Duration,
     start_offset: u64,
-    max_messages: u32,
-    batch_size: u32,
+    scan: EventDlqDuplicateAlertScanConfig,
     policy: DlqDuplicateAlertPolicy,
 }
 
@@ -190,14 +204,33 @@ async fn observer_loop(
         }
 
         if observer.is_none() {
-            match IggyDlqDuplicateAlertObserver::connect(
-                &iggy_config,
-                config.start_offset,
-                config.max_messages,
-                config.batch_size,
-            )
-            .await
-            {
+            let connection = match config.scan {
+                EventDlqDuplicateAlertScanConfig::GlobalBudget {
+                    max_messages,
+                    batch_size,
+                } => {
+                    IggyDlqDuplicateAlertObserver::connect(
+                        &iggy_config,
+                        config.start_offset,
+                        max_messages,
+                        batch_size,
+                    )
+                    .await
+                }
+                EventDlqDuplicateAlertScanConfig::FairWindow {
+                    per_partition_messages,
+                    batch_size,
+                } => {
+                    IggyDlqDuplicateAlertObserver::connect_fair_window(
+                        &iggy_config,
+                        config.start_offset,
+                        per_partition_messages,
+                        batch_size,
+                    )
+                    .await
+                }
+            };
+            match connection {
                 Ok(connected) => observer = Some(connected),
                 Err(error) => {
                     let _ = publisher.mark_unavailable();
@@ -267,8 +300,24 @@ impl EventDlqDuplicateAlertObserverConfig {
                 "{POLL_ENV} must be between 1 and {MAX_POLL_MS}"
             )));
         }
-        let max_messages = optional_u32_env(MAX_MESSAGES_ENV, DEFAULT_MAX_MESSAGES)?;
-        let batch_size = optional_u32_env(BATCH_SIZE_ENV, DEFAULT_BATCH_SIZE)?;
+        let scan = match optional_scan_mode_env()? {
+            EventDlqDuplicateAlertScanMode::GlobalBudget => {
+                EventDlqDuplicateAlertScanConfig::GlobalBudget {
+                    max_messages: optional_u32_env(MAX_MESSAGES_ENV, DEFAULT_MAX_MESSAGES)?,
+                    batch_size: optional_u32_env(BATCH_SIZE_ENV, DEFAULT_BATCH_SIZE)?,
+                }
+            }
+            EventDlqDuplicateAlertScanMode::FairWindow => {
+                let per_partition_messages = required_u32_env(PER_PARTITION_MESSAGES_ENV)?;
+                EventDlqDuplicateAlertScanConfig::FairWindow {
+                    per_partition_messages,
+                    batch_size: optional_u32_env(
+                        BATCH_SIZE_ENV,
+                        DEFAULT_BATCH_SIZE.min(per_partition_messages),
+                    )?,
+                }
+            }
+        };
         let policy = DlqDuplicateAlertPolicy::new(
             required_u64_env(WARNING_MESSAGES_ENV)?,
             required_u64_env(CRITICAL_MESSAGES_ENV)?,
@@ -282,10 +331,37 @@ impl EventDlqDuplicateAlertObserverConfig {
         Ok(Self {
             poll: Duration::from_millis(poll_ms),
             start_offset: optional_u64_env(START_OFFSET_ENV, 0)?,
-            max_messages,
-            batch_size,
+            scan,
             policy,
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventDlqDuplicateAlertScanMode {
+    GlobalBudget,
+    FairWindow,
+}
+
+fn optional_scan_mode_env() -> Result<EventDlqDuplicateAlertScanMode> {
+    match env::var(SCAN_MODE_ENV) {
+        Ok(value) => parse_scan_mode(&value).map_err(Error::Message),
+        Err(env::VarError::NotPresent) => Ok(EventDlqDuplicateAlertScanMode::GlobalBudget),
+        Err(error) => Err(Error::Message(format!(
+            "failed to read {SCAN_MODE_ENV}: {error}"
+        ))),
+    }
+}
+
+fn parse_scan_mode(
+    value: &str,
+) -> std::result::Result<EventDlqDuplicateAlertScanMode, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "global" | "global_budget" => Ok(EventDlqDuplicateAlertScanMode::GlobalBudget),
+        "fair" | "fair_window" => Ok(EventDlqDuplicateAlertScanMode::FairWindow),
+        _ => Err(format!(
+            "{SCAN_MODE_ENV} must be global_budget or fair_window"
+        )),
     }
 }
 
@@ -351,6 +427,11 @@ fn optional_u32_env(name: &str, default: u32) -> Result<u32> {
     u32::try_from(value).map_err(|_| Error::Message(format!("{name} exceeds u32")))
 }
 
+fn required_u32_env(name: &str) -> Result<u32> {
+    let value = required_u64_env(name)?;
+    u32::try_from(value).map_err(|_| Error::Message(format!("{name} exceeds u32")))
+}
+
 fn required_u64_env(name: &str) -> Result<u64> {
     match env::var(name) {
         Ok(value) => value
@@ -398,6 +479,19 @@ mod tests {
         assert_eq!(handle.mode(), EventDlqDuplicateAlertObserverMode::Unavailable);
         assert_eq!(handle.current_snapshot(), None);
         assert!(!handle.is_finished());
+    }
+
+    #[test]
+    fn scan_mode_parser_preserves_global_default_and_explicit_fair_window() {
+        assert_eq!(
+            parse_scan_mode("global_budget").unwrap(),
+            EventDlqDuplicateAlertScanMode::GlobalBudget
+        );
+        assert_eq!(
+            parse_scan_mode("fair_window").unwrap(),
+            EventDlqDuplicateAlertScanMode::FairWindow
+        );
+        assert!(parse_scan_mode("moving_cursor").is_err());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "iggy",
   "packet": "dlq-duplicate-external-scan-source",
   "status": "source_complete_runtime_pending",
@@ -54,6 +54,14 @@
     "cross_cycle_duplicate_accumulation": false,
     "current_tail_coverage_claimed": false,
     "complete_history_claimed": false
+  },
+  "server_integration": {
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
+    "default_mode": "global_budget",
+    "fair_window_mode": "explicit_opt_in",
+    "per_partition_limit_required": true,
+    "profiles_authorization": false,
+    "runtime_execution_pending": true
   },
   "response_validation": {
     "partition_must_match_request": true,
@@ -136,7 +144,6 @@
     "crates/rustok-iggy/src/lib.rs"
   ],
   "remaining_work": [
-    "fair_window_server_observer_integration",
     "fair_window_external_iggy_execution_evidence",
     "moving_window_or_per_partition_cursor_policy",
     "cross_cycle_duplicate_accumulation_policy",
