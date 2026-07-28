@@ -58,6 +58,19 @@ or revision history.
 `forum_user_stats`, solution counts, trust history, and aggregate profile
 counters are not imported or read.
 
+## Performance boundary
+
+The current Forum schema has tenant/category/status/topic-oriented indexes, but
+this slice does not add dedicated exact-author count indexes or retained query-plan
+evidence. Posting owner enforcement is still excluded, so this source-ready
+adapter is not yet claimed as a production write-path latency dependency.
+
+Before enforcement consumes `ApprovedPosts`, a separate bounded hardening slice
+must add the appropriate PostgreSQL and SQLite author-count indexes, capture
+query plans against representative tenant cardinality, and preserve the same
+owner semantics. This debt is explicit rather than hidden behind
+`forum_user_stats`.
+
 ## Host composition
 
 The server posting-fact facade now registers four unique owner providers:
@@ -83,6 +96,7 @@ This slice adds no:
 - topic, reply, edit, or bump owner enforcement;
 - policy configuration persistence or administration;
 - topic or reply write;
+- author-count index migration or query-plan evidence;
 - shared distributed rate-limit reservation, commit, release, or counters;
 - duplicate-content hashing or retained fingerprint;
 - external or AI scoring call;
@@ -103,6 +117,9 @@ The next bounded FORUM-26 slice should audit the authoritative moderation/report
 owner for `ActiveFlags` and `RecentModerationActions`. Missing owner capabilities
 must remain explicit unavailable facts; no moderation state may be inferred from
 `forum_user_stats`, reply status totals, or local policy heuristics.
+
+The author-count index and query-plan hardening must be completed before any
+posting owner begins invoking the policy composer synchronously.
 
 ## Validation status
 
