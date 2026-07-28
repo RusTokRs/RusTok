@@ -201,6 +201,14 @@ async fn trust_database_guards_reject_orphans_gaps_and_direct_mutation() {
         .await;
     assert!(direct_state_update.is_err());
 
+    let direct_state_delete = db
+        .execute_unprepared(&format!(
+            "DELETE FROM forum_user_trust_states \
+             WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}'"
+        ))
+        .await;
+    assert!(direct_state_delete.is_err());
+
     let gap = db
         .execute_unprepared(&format!(
             "INSERT INTO forum_user_trust_revisions \
