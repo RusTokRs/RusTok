@@ -45,6 +45,7 @@ const FACT_AVAILABILITY_PRECEDENCE: [ForumPostingPolicyFactKind; 11] = [
     ForumPostingPolicyFactKind::EditsWindow,
     ForumPostingPolicyFactKind::SecondsSinceLastBump,
 ];
+const MAX_SIGNED_EVIDENCE: u64 = i64::MAX as u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ForumPostingWindowLimit {
@@ -93,13 +94,16 @@ impl ForumPostingPolicyRules {
                 "Forum posting policy minimum trust must be between 1 and {MAX_FORUM_AUDIENCE_TRUST_LEVEL}"
             )));
         }
-        reject_zero_minimum(
+        validate_positive_unsigned_minimum(
             self.minimum_account_age_seconds,
             "minimum account age",
         )?;
-        reject_zero_minimum(self.minimum_topics_read, "minimum topics read")?;
-        reject_zero_minimum(self.minimum_approved_posts, "minimum approved posts")?;
-        reject_zero_minimum(
+        validate_positive_unsigned_minimum(self.minimum_topics_read, "minimum topics read")?;
+        validate_positive_unsigned_minimum(
+            self.minimum_approved_posts,
+            "minimum approved posts",
+        )?;
+        validate_positive_unsigned_minimum(
             self.minimum_seconds_between_bumps,
             "minimum bump interval",
         )?;
@@ -546,10 +550,15 @@ fn push_if(
     }
 }
 
-fn reject_zero_minimum(value: Option<u64>, label: &str) -> ForumResult<()> {
+fn validate_positive_unsigned_minimum(value: Option<u64>, label: &str) -> ForumResult<()> {
     if value == Some(0) {
         return Err(ForumError::Validation(format!(
             "Forum posting policy {label} must be greater than zero"
+        )));
+    }
+    if value.is_some_and(|value| value > MAX_SIGNED_EVIDENCE) {
+        return Err(ForumError::Validation(format!(
+            "Forum posting policy {label} exceeds the supported evidence range"
         )));
     }
     Ok(())
