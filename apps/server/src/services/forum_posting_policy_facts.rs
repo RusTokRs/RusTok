@@ -7,7 +7,7 @@ use rustok_forum::{
     ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer,
     ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
     ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
-    ForumPostingTrustFactPort, SharedForumAudienceFactsPort,
+    ForumPostingTrustFactPort, ForumTopicReadPostingFactPort, SharedForumAudienceFactsPort,
     SharedForumPostingPolicyOwnerFactPort,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -129,8 +129,8 @@ impl ForumPostingPolicyOwnerFactPort for ServerForumAccountAgeFactPort {
     }
 }
 
-/// Stable host facade that publishes the initial authoritative posting-fact
-/// profile: Forum trust plus server-owned account age. Other fact kinds remain
+/// Stable host facade that publishes authoritative Forum trust, server-owned
+/// account age and Forum-owned topic reading activity. Other fact kinds remain
 /// explicitly unavailable in the Forum composer until their owners are added.
 pub(crate) struct ServerForumPostingPolicyFactsComposer;
 
@@ -141,7 +141,8 @@ impl ServerForumPostingPolicyFactsComposer {
     ) -> Result<SharedForumPostingPolicyFactsComposer, PortError> {
         let composer = ForumPostingPolicyFactsComposer::new(vec![
             ForumPostingTrustFactPort::shared(audience_facts),
-            ServerForumAccountAgeFactPort::shared(db),
+            ServerForumAccountAgeFactPort::shared(db.clone()),
+            ForumTopicReadPostingFactPort::shared(db),
         ])?;
         Ok(Arc::new(composer))
     }
