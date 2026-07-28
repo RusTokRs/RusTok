@@ -97,6 +97,10 @@ auto_commit = false
 
 It accepts no more than 128 unique positive partitions, 10,000 physical messages globally, and batches of 1,000. It validates returned partition/count and monotonic offsets before returning only `DlqDuplicateSummary`.
 
+The server observer places every configured domain partition into the request allowlist, but the scanner has one global message budget across the ordered list. An earlier busy partition may exhaust that budget before later partitions are polled. No fairness or complete-partition claim is made.
+
+Each polling cycle reuses the same configured explicit start offset. The current observer therefore measures a repeated bounded window; it does not own a moving cursor, tail coverage, or complete-history semantics. A future per-partition budget or moving-window policy requires a separate source contract.
+
 The scanner does not use a consumer group, stored-offset `next` polling, offset storage, acknowledgement, topology discovery, publication, delete/purge, replay/retry, receipt mutation, or client shutdown.
 
 ## Alert policy boundary
@@ -127,9 +131,11 @@ Unavailable publication clears the previous evaluation so stale severity does no
 
 ## Mode-aware server observer
 
-The server handles every event-delivery profile explicitly:
+The server handles every event-delivery and observer startup mode explicitly:
 
 ```text
+disabled      -> Disabled
+startup issue -> Unavailable, no task or snapshot
 memory        -> NotApplicableMemory
 outbox_local  -> NotApplicableOutboxLocal
 outbox_iggy   -> IggyBundled or IggyExternal
@@ -144,13 +150,15 @@ For `memory` and `outbox_local`, absence of Iggy is expected platform behavior:
 
 For `outbox_iggy`, the observer reuses the exact active transport configuration and opens only a separate read-only SDK client. Bundled mode connects to the existing validated loopback broker; external mode uses the reviewed address list. A missing active Iggy mode fails closed instead of being guessed.
 
-Connection failure, scan failure, and shutdown publish unavailable state while event delivery and module projection remain active. The observer does not create a second transport, start or stop a bundled process, commit offsets, or dispatch notifications.
+Observer-specific startup failures are non-fatal: invalid configuration or missing observer dependencies produce `Unavailable`, log a stable code, and return success to application bootstrap. Connection failure, scan failure, and shutdown publish unavailable state while event delivery and module projection remain active.
+
+The observer does not create a second transport, start or stop a bundled process, commit offsets, or dispatch notifications.
 
 ## Runtime and retained status
 
 The external-Iggy harness and retained execution tooling are source-complete. The harness creates controlled ordinary-duplicate and identity-conflict fixtures through production publication, scans the same explicit offset twice, and requires no stored consumer offset before or after either scan.
 
-The canonical retained execution packet remains absent until a maintainer performs the reviewed external-Iggy run. The mode-aware server observer is source-complete; telemetry, optional operational health, and retained server execution evidence remain pending.
+The canonical retained execution packet remains absent until a maintainer performs the reviewed external-Iggy run. The mode-aware server observer is source-complete; telemetry, optional operational health, moving-window/fairness policy, and retained server execution evidence remain pending.
 
 ## Relationship to receipt health
 
@@ -163,11 +171,11 @@ Aggregate operational interpretation may compare trends, but those interpretatio
 No profile visibility, relationship, block, mute, follow, friendship, audience, storefront, GraphQL, author-card, or presentation decision may depend on:
 
 - event delivery profile or Iggy deployment mode;
-- observer applicability, availability, or generation;
+- observer startup, applicability, availability, or generation;
+- partition ordering, fairness, fixed-window selection, or budget exhaustion;
 - physical DLQ copy or duplicate-group counts;
 - identity-conflict presence;
 - alert level or threshold flags;
-- scan partition or offset selection;
 - scanner, runtime, telemetry, health, or alert-delivery state;
 - receipt recovery counts;
 - deduplication or alert-threshold configuration;
@@ -178,10 +186,11 @@ Profiles presentation continues to consume authorized owner-port results. These 
 ## Remaining work
 
 1. execute and retain the reviewed external-Iggy duplicate scan packet;
-2. define identifier-free telemetry and optional operational health without readiness coupling;
-3. retain mode-aware server observer execution evidence;
-4. define alert routing, cooldown, and suppression outside Profiles and the policy/runtime;
-5. define acknowledgement/delete/replay separately with explicit authorization;
-6. keep aggregate receipt and duplicate observations identifier-free.
+2. define partition fairness/per-partition budgets and a moving-window or per-partition cursor policy;
+3. define identifier-free telemetry and optional operational health without readiness coupling;
+4. retain mode-aware server observer execution evidence;
+5. define alert routing, cooldown, and suppression outside Profiles and the policy/runtime;
+6. define acknowledgement/delete/replay separately with explicit authorization;
+7. keep aggregate receipt and duplicate observations identifier-free.
 
 Tests, Cargo commands, formatters, verifiers, server observers, external-Iggy scans, telemetry registration, alert dispatch, and retained capture were not run by the implementation agent.
