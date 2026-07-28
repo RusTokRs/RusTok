@@ -194,7 +194,6 @@ CREATE TABLE IF NOT EXISTS iggy_consumer_poison_receipts (
     ),
     CONSTRAINT ck_iggy_consumer_poison_partition CHECK (source_partition > 0),
     CONSTRAINT ck_iggy_consumer_poison_offset CHECK (source_offset >= 0),
-    CONSTRAINT ck_iggy_consumer_poison_payload CHECK (octet_length(payload) > 0),
     CONSTRAINT ck_iggy_consumer_poison_error CHECK (
         length(stable_error_code) BETWEEN 1 AND 191
     ),
@@ -250,7 +249,6 @@ CREATE TABLE IF NOT EXISTS iggy_consumer_poison_receipts (
     CHECK (length(source_topic) BETWEEN 1 AND 191),
     CHECK (source_partition > 0),
     CHECK (source_offset >= 0),
-    CHECK (length(payload) > 0),
     CHECK (length(stable_error_code) BETWEEN 1 AND 191),
     CHECK (delivery_attempt_count > 0),
     CHECK (state IN ('reserved', 'publishing', 'published', 'acknowledged')),
