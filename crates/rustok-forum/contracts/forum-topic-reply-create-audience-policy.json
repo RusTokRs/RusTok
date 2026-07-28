@@ -36,6 +36,7 @@
     "raw_group_bound": true,
     "raw_allow_deny_user_bounds": true,
     "immutable_relation_rows": true,
+    "shared_postgres_advisory_lock": true,
     "postgres_and_sqlite_migration": true,
     "transport_changed": false,
     "public_dto_changed": false,
