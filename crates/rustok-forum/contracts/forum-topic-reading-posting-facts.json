@@ -14,6 +14,8 @@
   "owner_note": "crates/rustok-forum/docs/forum-26g-topic-reading-posting-facts.md",
   "source_proof": "crates/rustok-forum/src/services/posting_policy_reading_facts.rs#tests",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "downstream_approved_posts_task": "FORUM-26H",
+  "downstream_approved_posts_contract": "crates/rustok-forum/contracts/forum-approved-posts-posting-facts.json",
   "composition": {
     "forum_topic_read_states_is_authority": true,
     "read_state_primary_key_is_tenant_topic_user": true,
