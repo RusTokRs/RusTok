@@ -25,8 +25,13 @@ topic, partition, offset, and exact payload. Error kind, retry count, time, proc
 identity, random values, credentials, connector message identity, and acknowledgement
 token are excluded. The UUID can populate the transport-required event-shaped DLQ
 field and explicit broker message header, but it is a connector delivery identity only.
-No Social Graph or other runtime worker is wired to acknowledge this path yet, and no
-tenant-scoped durable receipt is claimed before trusted envelope facts exist.
+
+`rustok-iggy-connector` now provides the neutral durable result store for this identity.
+It persists source-coordinate uniqueness, deterministic delivery UUID, exact payload,
+first-observed bounded error code/attempt, leased publication state, terminal
+`published`, and post-source-commit `acknowledged`. Later error classification or retry
+count does not redefine identity. The store performs no publication or acknowledgement.
+No Social Graph or other runtime worker is wired to acknowledge this path yet.
 
 An owner may attach a stable non-nil UUID to a `DlqEntry`. `IggyTransport` then lazily
 opens one SDK publisher connection to the same configured endpoint and sends the exact
@@ -38,8 +43,9 @@ existing generic connector path.
 The deterministic header is an additional duplicate-suppression input, not durable
 exactly-once. Iggy server deduplication is deployment-owned, optional, per-partition,
 bounded by cache capacity/expiry, and may be disabled. The owner receipt remains the
-durable decision record for decoded deliveries. Broker success followed by loss before
-a durable result is recorded remains a confirmation ambiguity whenever the dedup window
+durable decision record for decoded deliveries; the connector receipt is the durable
+result record for undecodable deliveries. Broker success followed by loss before a
+durable result is recorded remains a confirmation ambiguity whenever the dedup window
 is absent or expired.
 
 `IggyConsumerPositionObserver` opens a separate read-only SDK client to the already
@@ -60,8 +66,9 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
 ## Boundary and dependencies
 
 - Owner: event transport platform.
-- `rustok-iggy-connector` owns the primary broker/process lifecycle and exact
-  `ConnectorAckToken::iggy_sdk` receive/commit path.
+- `rustok-iggy-connector` owns the primary broker/process lifecycle, exact
+  `ConnectorAckToken::iggy_sdk` receive/commit path, and neutral raw-poison result
+  persistence.
 - `rustok-iggy` owns serialization, typed raw decode-failure retention, owner-directed
   DLQ composition, deterministic message-header publication, and neutral
   consumer-position semantics.
@@ -71,6 +78,8 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
   source offset; source acknowledgement remains an owner decision after durable result.
 - `acknowledge_decode_failure` only commits the exact retained cursor token. It never
   publishes, retries, persists, or selects poison policy.
+- Consumer workers compose the typed decode failure, connector receipt, exact-byte DLQ
+  publication, and source acknowledgement in that order.
 - Consumers such as Outbox and Social Graph use public transport contracts rather than
   connector internals.
 - Transport positions, tenant/event identities, broker IDs, credentials, raw payloads,
@@ -88,27 +97,31 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
 4. **Stable connector delivery identity.** A versioned length-framed SHA-256 contract
    derives a UUIDv8 from immutable source coordinates and payload; classification and
    retry/process/time values cannot drift the identity.
-5. **Deterministic identified DLQ publication.** `DlqEntry` can retain a stable owner or
+5. **Neutral durable raw-poison result.** Connector-owned PostgreSQL/SQLite receipt
+   storage retains private immutable identity, exact bytes, first diagnostics, leased
+   publication claims, terminal recognition, and post-commit acknowledgement state.
+6. **Deterministic identified DLQ publication.** `DlqEntry` can retain a stable owner or
    connector UUID separately from decoded event semantics; the lazy SDK publisher maps
    it to Iggy's `u128` message header, preserves one-based partition routing, and
    reconnects after failures without acknowledging the source.
-6. **Partition-qualified position observation.** `ConsumerPositionSnapshot` contains
+7. **Partition-qualified position observation.** `ConsumerPositionSnapshot` contains
    every topic partition, committed offset, high-watermark, message count, capture
    timestamp, and checked per-partition lag.
-7. **Fail-closed aggregate lag.** `total_lag` and `max_lag` exist only for a complete
+8. **Fail-closed aggregate lag.** `total_lag` and `max_lag` exist only for a complete
    coherent snapshot; empty partitions contribute zero and missing checkpoints do not.
-8. **Shared-endpoint composition.** Bundled publisher/observation clients connect to the
+9. **Shared-endpoint composition.** Bundled publisher/observation clients connect to the
    reviewed loopback endpoint already managed by `IggyTransport`; external clients reuse
    reviewed address/auth/TLS configuration.
 
 ## Next results
 
 1. **Wire raw decode failures into approved workers.** Adopt `receive_delivery` in the
-   Social Graph Index consumer and any later sealed-family worker, preserving exact-byte
-   publication and explicit acknowledgement ordering.
-2. **Choose durable connector poison confirmation.** Define a neutral durable receipt or
-   outbox/transaction boundary for payloads that cannot establish trusted tenant/event
-   identity; do not reuse a tenant-scoped owner receipt with synthetic facts.
+   Social Graph Index consumer, reserve/recognize the connector receipt, publish exact
+   bytes before `mark_published`, acknowledge only afterward, and record
+   `acknowledged` as best-effort bookkeeping.
+2. **Reconcile migration release order.** Append the existing decoded-event DLQ receipt
+   migration and the connector raw-poison migration to the explicit platform tail
+   without rewriting the published prefix.
 3. **Verify real consumption and acknowledgement.** Prove validated and raw-failure
    receive, no implicit commit, explicit post-result commit, and reconnect in bundled and
    external modes.
@@ -124,8 +137,8 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
 7. **Execute broker-backed replay.** Prove real DLQ retry, then design bounded replay
    with durable progress and idempotency.
 8. **Harden production operation.** Retain reconnect, backpressure, topology, health,
-   lag alert, decode-failure, dedup configuration, and recovery evidence with operator
-   runbooks.
+   lag alert, decode-failure, receipt, dedup configuration, and recovery evidence with
+   operator runbooks.
 
 ## Verification
 
@@ -133,8 +146,11 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
 - `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
 - `cargo test -p rustok-iggy --test integration`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
+- `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
+- `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
 - `node scripts/verify/verify-iggy-consumer-position.mjs`
 - `node scripts/verify/verify-social-graph-index-dlq-receipts.mjs`
 - Real bundled/external Iggy evidence for topology, validated/decode-failure delivery,
