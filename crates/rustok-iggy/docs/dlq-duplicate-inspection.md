@@ -1,6 +1,6 @@
 # Count-only physical DLQ duplicate inspection
 
-Status: **classifier and bounded external-Iggy adapter source-complete; runtime evidence pending**.
+Status: **classifier, bounded external-Iggy adapter, runtime harness, retained tooling, and alert policy source-complete; runtime execution and integration pending**.
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Physical copies can exceed one when:
 - capacity pressure evicted the ID;
 - a failover or unsupported broker path did not preserve the expected dedup state.
 
-`dlq_duplicate_inspection.rs` provides a transport-neutral, read-only reduction for a bounded set of physical observations. `dlq_duplicate_external_scan.rs` now provides the bounded external-Iggy polling adapter described in `dlq-duplicate-external-scan.md`.
+`dlq_duplicate_inspection.rs` provides a transport-neutral, read-only reduction for a bounded set of physical observations. `dlq_duplicate_external_scan.rs` provides the bounded external-Iggy polling adapter. `dlq_duplicate_alert_policy.rs` separately evaluates the count-only summary against explicit operator thresholds.
 
 ## Input boundary
 
@@ -71,7 +71,7 @@ same non-nil message header UUID
 different exact payload digests
 ```
 
-This must not be silently collapsed into an ordinary duplicate. It indicates header corruption, an invalid producer, an unsupported reuse of the deterministic ID, or an extraordinary hash/identity failure.
+This must not be silently collapsed into an ordinary duplicate. It indicates header corruption, an invalid producer, unsupported reuse of the deterministic ID, or an extraordinary hash/identity failure.
 
 The summary increments `conflicting_payload_groups` and `requires_manual_review()` returns `true`.
 
@@ -105,7 +105,9 @@ The classifier and external scanner cannot:
 - mark a receipt published or acknowledged;
 - choose alert thresholds or operator policy.
 
-This separation is deliberate. Observation must not accidentally become destructive reconciliation.
+The separate alert policy accepts explicit caller thresholds, but it cannot scan, send notifications, choose routing/cooldown, persist policy, or perform any mutation.
+
+This separation is deliberate. Observation and evaluation must not accidentally become destructive reconciliation.
 
 ## Relationship to deterministic raw poison identity
 
@@ -151,43 +153,61 @@ One request permits at most 128 partitions, 10,000 messages globally, and batche
 
 The adapter does not own credentials or connection lifecycle, query topology metadata, join a consumer group, persist progress, or call shutdown. See `dlq-duplicate-external-scan.md` for the complete contract.
 
+## Count-only alert policy
+
+`DlqDuplicateAlertPolicy` requires explicit warning and critical thresholds for duplicate messages, duplicate groups, and maximum copies for one message ID. It defines no production defaults.
+
+Evaluation order is:
+
+```text
+identity conflict -> Critical
+critical numeric threshold -> Critical
+warning numeric threshold -> Warning
+physical duplicate below warning -> Notice
+no duplicate -> Clear
+```
+
+The evaluation exposes only level and boolean reason flags. It does not expose source counts, raw threshold values, identifiers, or broker coordinates. See `dlq-duplicate-alert-policy.md`.
+
 ## Safe operational sequence
 
 1. select an external service, stream, explicit partition allowlist, offset, and message cap;
 2. connect and authenticate an `IggyClient` outside the scanner;
 3. call the bounded scanner using explicit-offset polling with `auto_commit=false`;
-4. publish only the count-only summary;
-5. close the client through the caller-owned lifecycle;
-6. treat the result as a bounded window, not automatically as complete history.
+4. pass the count-only summary to an explicitly configured alert policy when evaluation is required;
+5. publish only the identifier-free summary/evaluation through a separately owned delivery layer;
+6. close the client through the caller-owned lifecycle;
+7. treat the result as a bounded window, not automatically as complete history.
 
 Any destructive action must be a separate, explicitly authorized workflow with its own preview, selection, audit, and retained evidence.
 
+## Runtime and retained evidence status
+
+The opt-in external harness is source-complete. It uses production `move_to_dlq` to create ordinary duplicate and identity-conflict fixtures, scans the same explicit offset twice, and requires the scanner's standalone consumer offset to remain absent before and after both scans.
+
+The clean-commit retained contract, runner, verifier, reviewed dedup-disabled configuration boundary, source hashes, exact-case execution, and privacy-safe packet projection are also source-complete.
+
+The canonical execution JSON remains absent until a maintainer runs the reviewed external-Iggy scenario successfully.
+
 ## Source tests and guards
-
-The focused classifier cases define:
-
-- same ID and exact bytes counted as ordinary physical duplicates;
-- same ID and different bytes escalated as an identity conflict;
-- empty scan and empty payload behavior;
-- nil ID rejection and stable error code.
-
-The external scanner cases define request bounds and identifier-free stable errors.
 
 Suggested maintainer commands:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs
 cargo test -p rustok-iggy dlq_duplicate -- --nocapture
 ```
 
-No tests, Cargo commands, formatters, verifiers, or external-Iggy scans were run while defining these source slices.
+No tests, Cargo commands, formatters, verifiers, external-Iggy scans, alert dispatch, or retained capture were run while defining these source slices.
 
 ## Remaining work
 
-1. prove physical header and exact-byte ingestion against a disposable external broker;
-2. prove explicit-offset polling does not store consumer progress;
-3. retain runtime evidence without identifiers, payloads, addresses, credentials, offsets, or raw logs;
-4. define alert thresholds outside the inspector;
-5. design any acknowledgement/delete/replay workflow as a separate authorized operation;
-6. correlate aggregate receipt and duplicate health without exporting message identities.
+1. execute and retain the reviewed external-Iggy duplicate scan packet;
+2. integrate the pure alert policy into an explicitly owned runtime observer;
+3. define alert routing, cooldown, and suppression outside the classifier and policy;
+4. design acknowledgement/delete/replay as a separate authorized operation;
+5. correlate aggregate receipt and duplicate health without exporting message identities.
