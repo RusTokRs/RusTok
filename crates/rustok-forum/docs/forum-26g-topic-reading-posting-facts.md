@@ -66,6 +66,8 @@ This slice adds no:
 - trust-state write or automatic promotion/demotion;
 - event, worker, migration, GraphQL, REST, OpenAPI, admin, or storefront surface.
 
+There is no shared distributed rate-limit reservation or execution in this slice.
+
 ## Canonical documentation debt
 
 The canonical Forum implementation plan and `CRATE_API.md` were not replaced
