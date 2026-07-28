@@ -33,12 +33,13 @@ impl ContractDecodeFailureKind {
 /// a domain event id, not a tenant identity, and not a durable exactly-once receipt.
 #[derive(Debug, Clone)]
 pub struct ConsumedContractDecodeFailure {
-    pub stream: String,
-    pub topic: String,
-    pub partition: u32,
-    pub connector_metadata: SubscriberMessageMetadata,
-    pub raw_payload: Vec<u8>,
-    pub kind: ContractDecodeFailureKind,
+    stream: String,
+    topic: String,
+    partition: u32,
+    source_offset: u64,
+    connector_metadata: SubscriberMessageMetadata,
+    raw_payload: Vec<u8>,
+    kind: ContractDecodeFailureKind,
 }
 
 impl ConsumedContractDecodeFailure {
@@ -49,8 +50,14 @@ impl ConsumedContractDecodeFailure {
         raw_payload: Vec<u8>,
         kind: ContractDecodeFailureKind,
     ) -> Result<Self> {
+        let source_offset = connector_metadata.offset.ok_or_else(|| {
+            rustok_core::Error::External(
+                "Undecodable contract delivery has no connector offset".to_string(),
+            )
+        })?;
         let failure = Self {
             partition: connector_metadata.partition,
+            source_offset,
             stream,
             topic,
             connector_metadata,
@@ -58,20 +65,35 @@ impl ConsumedContractDecodeFailure {
             kind,
         };
         failure.validate_connector_metadata()?;
-        if failure.offset().is_none() {
-            return Err(rustok_core::Error::External(
-                "Undecodable contract delivery has no connector offset".to_string(),
-            ));
-        }
         Ok(failure)
+    }
+
+    pub fn stream(&self) -> &str {
+        &self.stream
+    }
+
+    pub fn topic(&self) -> &str {
+        &self.topic
+    }
+
+    pub const fn partition(&self) -> u32 {
+        self.partition
+    }
+
+    pub const fn offset(&self) -> u64 {
+        self.source_offset
+    }
+
+    pub const fn kind(&self) -> ContractDecodeFailureKind {
+        self.kind
     }
 
     pub const fn stable_error_code(&self) -> &'static str {
         self.kind.stable_code()
     }
 
-    pub fn offset(&self) -> Option<u64> {
-        self.connector_metadata.offset
+    pub fn connector_metadata(&self) -> &SubscriberMessageMetadata {
+        &self.connector_metadata
     }
 
     pub fn ack_token(&self) -> Option<&str> {
@@ -86,15 +108,18 @@ impl ConsumedContractDecodeFailure {
         if self.connector_metadata.stream != self.stream
             || self.connector_metadata.topic != self.topic
             || self.connector_metadata.partition != self.partition
+            || self.connector_metadata.offset != Some(self.source_offset)
         {
             return Err(rustok_core::Error::External(format!(
-                "Undecodable contract delivery connector metadata mismatch: expected {}/{}/{} got {}/{}/{}",
+                "Undecodable contract delivery connector metadata mismatch: expected {}/{}/{}/{} got {}/{}/{}/{:?}",
                 self.stream,
                 self.topic,
                 self.partition,
+                self.source_offset,
                 self.connector_metadata.stream,
                 self.connector_metadata.topic,
-                self.connector_metadata.partition
+                self.connector_metadata.partition,
+                self.connector_metadata.offset
             )));
         }
         Ok(())
@@ -110,13 +135,7 @@ impl ConsumedContractDecodeFailure {
         hash_part(&mut hasher, self.stream.as_bytes());
         hash_part(&mut hasher, self.topic.as_bytes());
         hash_part(&mut hasher, &self.partition.to_be_bytes());
-        hash_part(
-            &mut hasher,
-            &self
-                .offset()
-                .expect("constructor requires a connector offset")
-                .to_be_bytes(),
-        );
+        hash_part(&mut hasher, &self.source_offset.to_be_bytes());
         hash_part(&mut hasher, &self.raw_payload);
 
         let digest = hasher.finalize();
@@ -162,22 +181,29 @@ mod tests {
             .with_ack_token(format!("ack-{offset}"))
     }
 
-    fn failure(payload: Vec<u8>, offset: u64) -> ConsumedContractDecodeFailure {
+    fn failure(
+        payload: Vec<u8>,
+        offset: u64,
+        kind: ContractDecodeFailureKind,
+    ) -> ConsumedContractDecodeFailure {
         ConsumedContractDecodeFailure::new(
             "rustok".to_string(),
             "domain".to_string(),
             metadata(offset),
             payload,
-            ContractDecodeFailureKind::Deserialize,
+            kind,
         )
         .unwrap()
     }
 
     #[test]
     fn delivery_id_is_stable_custom_versioned_and_kind_independent() {
-        let first = failure(vec![1, 2, 3], 42);
-        let mut second = failure(vec![1, 2, 3], 42);
-        second.kind = ContractDecodeFailureKind::SchemaValidation;
+        let first = failure(vec![1, 2, 3], 42, ContractDecodeFailureKind::Deserialize);
+        let second = failure(
+            vec![1, 2, 3],
+            42,
+            ContractDecodeFailureKind::SchemaValidation,
+        );
 
         assert_eq!(first.delivery_id(), second.delivery_id());
         assert_eq!(first.delivery_id().as_bytes()[6] >> 4, 8);
@@ -187,23 +213,27 @@ mod tests {
     #[test]
     fn delivery_id_changes_with_exact_payload_or_source_position() {
         assert_ne!(
-            failure(vec![1, 2, 3], 42).delivery_id(),
-            failure(vec![1, 2, 4], 42).delivery_id()
+            failure(vec![1, 2, 3], 42, ContractDecodeFailureKind::Deserialize).delivery_id(),
+            failure(vec![1, 2, 4], 42, ContractDecodeFailureKind::Deserialize).delivery_id()
         );
         assert_ne!(
-            failure(vec![1, 2, 3], 42).delivery_id(),
-            failure(vec![1, 2, 3], 43).delivery_id()
+            failure(vec![1, 2, 3], 42, ContractDecodeFailureKind::Deserialize).delivery_id(),
+            failure(vec![1, 2, 3], 43, ContractDecodeFailureKind::Deserialize).delivery_id()
         );
     }
 
     #[test]
     fn dlq_entry_keeps_exact_bytes_and_stable_connector_identity() {
-        let failure = failure(vec![0xff, 0x00, 0x7f], 42);
+        let failure = failure(
+            vec![0xff, 0x00, 0x7f],
+            42,
+            ContractDecodeFailureKind::Deserialize,
+        );
         let entry = failure.to_dlq_entry(3);
 
         assert_eq!(entry.event_id, failure.delivery_id());
         assert_eq!(entry.broker_message_id(), Some(failure.delivery_id()));
-        assert_eq!(entry.payload, failure.raw_payload);
+        assert_eq!(entry.payload, failure.raw_payload());
         assert_eq!(entry.error, "iggy.contract.decode_invalid");
         assert_eq!(entry.retry_count, 3);
     }
