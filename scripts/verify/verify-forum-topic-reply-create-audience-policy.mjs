@@ -145,7 +145,8 @@ for (const marker of [
   "for layer in policy.inherited_category_layers",
   "if let Some(constraints) = policy.configured_constraints",
   "denied_by_category_id: Some(layer.category_id)",
-  "denied_by_topic_id: Some(topic_id)",
+  "denied_by_category_id: None",
+  "already-present `topic_id` as the final topic-local denying layer",
   "Forum reply creation is unavailable for the current audience",
 ]) {
   requireText(authorization, marker, `reply-create authorization is missing ${marker}`);
