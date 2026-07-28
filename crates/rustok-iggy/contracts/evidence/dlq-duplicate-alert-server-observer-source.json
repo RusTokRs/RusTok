@@ -32,6 +32,7 @@
     "memory_requires_iggy": false,
     "outbox_local_requires_iggy": false,
     "outbox_iggy_requires_shared_transport": true,
+    "outbox_iggy_missing_active_mode_fails_closed": true,
     "non_iggy_profiles_are_errors": false
   },
   "scan": {
