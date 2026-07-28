@@ -63,6 +63,7 @@ mod topic_owner {
     include!("topic_owner.rs");
     include!("topic_owner_inline.rs");
 }
+mod topic_reply_create_audience;
 pub mod topic_visibility;
 pub mod user_stats;
 pub mod vote;
@@ -116,6 +117,10 @@ pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };
 pub use topic_facade::TopicService;
+pub use topic_reply_create_audience::{
+    ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
+    SetForumTopicReplyCreateAudiencePolicyInput,
+};
 pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
 };
