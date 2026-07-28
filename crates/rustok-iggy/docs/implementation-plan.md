@@ -26,12 +26,21 @@ identity, random values, credentials, connector message identity, and acknowledg
 token are excluded. The UUID can populate the transport-required event-shaped DLQ
 field and explicit broker message header, but it is a connector delivery identity only.
 
-`rustok-iggy-connector` now provides the neutral durable result store for this identity.
+`rustok-iggy-connector` provides the neutral durable result store for this identity.
 It persists source-coordinate uniqueness, deterministic delivery UUID, exact payload,
 first-observed bounded error code/attempt, leased publication state, terminal
 `published`, and post-source-commit `acknowledged`. Later error classification or retry
-count does not redefine identity. The store performs no publication or acknowledgement.
-No Social Graph or other runtime worker is wired to acknowledge this path yet.
+count does not redefine identity. Empty payload is retained exactly. The store performs
+no publication, acknowledgement, authorization, or policy choice.
+
+The first approved owner worker is wired. `SocialGraphIndexConsumer::receive_delivery`
+passes both typed variants to the server worker. For an undecodable delivery the worker
+recognizes an existing neutral receipt before applying current DLQ policy, reserves a
+new receipt only when policy permits, publishes `to_dlq_entry` exact bytes, persists
+`published`, then acknowledges the retained cursor and records `acknowledged` as
+best-effort bookkeeping. Existing durable work continues recovery if new DLQ decisions
+are later disabled. The raw path never enters Index projection or creates tenant/event
+identity.
 
 An owner may attach a stable non-nil UUID to a `DlqEntry`. `IggyTransport` then lazily
 opens one SDK publisher connection to the same configured endpoint and sends the exact
@@ -59,9 +68,10 @@ broker reads, republish, durable progress/idempotency evidence, and a real broke
 integration test. DLQ retry requires a complete `DlqEntry`; there is no ID-only API
 that can claim success without the original payload.
 
-Compilation, source-verifier execution, real-Iggy deterministic-ID/deduplication,
-raw decode-failure publication/acknowledgement, snapshot/reconnect, persisted-offset,
-TLS/auth, and multi-replica evidence remain maintainer-run or pending.
+Compilation, source-verifier execution, migration-tail reconciliation, real-Iggy
+deterministic-ID/deduplication, raw decode-failure publication/acknowledgement,
+snapshot/reconnect, persisted-offset, TLS/auth, and multi-replica evidence remain
+maintainer-run or pending.
 
 ## Boundary and dependencies
 
@@ -78,10 +88,11 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
   source offset; source acknowledgement remains an owner decision after durable result.
 - `acknowledge_decode_failure` only commits the exact retained cursor token. It never
   publishes, retries, persists, or selects poison policy.
-- Consumer workers compose the typed decode failure, connector receipt, exact-byte DLQ
-  publication, and source acknowledgement in that order.
+- Consumer workers compose typed receive, connector receipt recognition/claim,
+  exact-byte DLQ publication, durable `published`, source acknowledgement, and
+  best-effort `acknowledged` in that order.
 - Consumers such as Outbox and Social Graph use public transport contracts rather than
-  connector internals.
+  connector cursor internals.
 - Transport positions, tenant/event identities, broker IDs, credentials, raw payloads,
   acknowledgement tokens, and raw errors are not Prometheus labels.
 
@@ -98,36 +109,41 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
    derives a UUIDv8 from immutable source coordinates and payload; classification and
    retry/process/time values cannot drift the identity.
 5. **Neutral durable raw-poison result.** Connector-owned PostgreSQL/SQLite receipt
-   storage retains private immutable identity, exact bytes, first diagnostics, leased
-   publication claims, terminal recognition, and post-commit acknowledgement state.
-6. **Deterministic identified DLQ publication.** `DlqEntry` can retain a stable owner or
+   storage retains private immutable identity, exact bytes including empty payload,
+   first diagnostics, leased publication claims, terminal recognition, and post-commit
+   acknowledgement state.
+6. **First approved raw-poison worker.** The Social Graph Index worker adopts typed
+   receive, recognizes existing durable choices before current policy, publishes exact
+   bytes before `mark_published`, acknowledges only afterward, and keeps raw state out
+   of Index projection and Profiles authorization.
+7. **Deterministic identified DLQ publication.** `DlqEntry` can retain a stable owner or
    connector UUID separately from decoded event semantics; the lazy SDK publisher maps
    it to Iggy's `u128` message header, preserves one-based partition routing, and
    reconnects after failures without acknowledging the source.
-7. **Partition-qualified position observation.** `ConsumerPositionSnapshot` contains
+8. **Partition-qualified position observation.** `ConsumerPositionSnapshot` contains
    every topic partition, committed offset, high-watermark, message count, capture
    timestamp, and checked per-partition lag.
-8. **Fail-closed aggregate lag.** `total_lag` and `max_lag` exist only for a complete
+9. **Fail-closed aggregate lag.** `total_lag` and `max_lag` exist only for a complete
    coherent snapshot; empty partitions contribute zero and missing checkpoints do not.
-9. **Shared-endpoint composition.** Bundled publisher/observation clients connect to the
-   reviewed loopback endpoint already managed by `IggyTransport`; external clients reuse
-   reviewed address/auth/TLS configuration.
+10. **Shared-endpoint composition.** Bundled publisher/observation clients connect to the
+    reviewed loopback endpoint already managed by `IggyTransport`; external clients reuse
+    reviewed address/auth/TLS configuration.
 
 ## Next results
 
-1. **Wire raw decode failures into approved workers.** Adopt `receive_delivery` in the
-   Social Graph Index consumer, reserve/recognize the connector receipt, publish exact
-   bytes before `mark_published`, acknowledge only afterward, and record
-   `acknowledged` as best-effort bookkeeping.
-2. **Reconcile migration release order.** Append the existing decoded-event DLQ receipt
+1. **Reconcile migration release order.** Append the existing decoded-event DLQ receipt
    migration and the connector raw-poison migration to the explicit platform tail
-   without rewriting the published prefix.
-3. **Verify real consumption and acknowledgement.** Prove validated and raw-failure
-   receive, no implicit commit, explicit post-result commit, and reconnect in bundled and
-   external modes.
-4. **Verify deterministic DLQ behavior.** Prove the outgoing header ID, same-partition
+   without rewriting the published prefix; then reconcile current `main` and refresh
+   `Cargo.lock`.
+2. **Verify real consumption and acknowledgement.** Prove validated and raw-failure
+   receive, no implicit commit, exact-byte publish, durable published-before-ack,
+   acknowledgement-only recovery, and reconnect in bundled and external modes.
+3. **Verify deterministic DLQ behavior.** Prove the outgoing header ID, same-partition
    retry, publish failure reconnect, broker-success/result-mark crash, and duplicate
    behavior with deduplication disabled, enabled, capacity-evicted, and expired.
+4. **Verify connector receipt concurrency.** Prove PostgreSQL claim ownership, lease
+   expiry/reclaim, UUID/source collision handling, rollback, first-diagnostic retention,
+   and multi-replica redelivery.
 5. **Verify consumer-position observation.** Prove every-partition topic/offset reads,
    empty/missing checkpoint behavior, concurrent publication during a snapshot,
    reconnect, TLS/auth failure, and multi-replica consumer-group semantics.
@@ -148,10 +164,14 @@ TLS/auth, and multi-replica evidence remain maintainer-run or pending.
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy-connector --features iggy,migrations --all-targets`
 - `cargo test -p rustok-iggy-connector --features migrations consumer_poison_receipt -- --nocapture`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --features index-consumer --all-targets`
+- `RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --features mod-social_graph --all-targets`
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `node scripts/verify/verify-iggy-contract-decode-failure.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
 - `node scripts/verify/verify-iggy-consumer-position.mjs`
+- `node scripts/verify/verify-social-graph-index-runtime-consumer.mjs`
+- `node scripts/verify/verify-social-graph-index-worker-lifecycle.mjs`
 - `node scripts/verify/verify-social-graph-index-dlq-receipts.mjs`
 - Real bundled/external Iggy evidence for topology, validated/decode-failure delivery,
   deterministic message headers, dedup disabled/enabled/expiry/capacity behavior,
