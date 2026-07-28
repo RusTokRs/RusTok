@@ -55,7 +55,7 @@ try {
 
   requireMarkers(runbook, [
     'rereads all nine retained files',
-    'post-inspection identity or exact-byte drift',
+    'post-inspection exact-byte drift',
     '`retained_files_rechecked: true`',
   ], 'full partition capture runbook');
 
