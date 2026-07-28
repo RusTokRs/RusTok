@@ -16,6 +16,12 @@ pub trait ShippingOptionReadPort: Send + Sync {
         request: ListShippingOptionProjectionsRequest,
     ) -> Result<Vec<ShippingOptionResponse>, PortError>;
 
+    async fn list_all_shipping_option_projections(
+        &self,
+        context: PortContext,
+        request: ListAllShippingOptionProjectionsRequest,
+    ) -> Result<Vec<ShippingOptionResponse>, PortError>;
+
     async fn read_shipping_option_projection(
         &self,
         context: PortContext,
@@ -25,6 +31,12 @@ pub trait ShippingOptionReadPort: Send + Sync {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ListShippingOptionProjectionsRequest {
+    pub requested_locale: Option<String>,
+    pub tenant_default_locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ListAllShippingOptionProjectionsRequest {
     pub requested_locale: Option<String>,
     pub tenant_default_locale: Option<String>,
 }
@@ -81,6 +93,35 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
                 map_owner_error(
                     &context,
                     "list_shipping_option_projections",
+                    None,
+                    requested_locale_length,
+                    tenant_default_locale_length,
+                    error,
+                )
+            })
+    }
+
+    async fn list_all_shipping_option_projections(
+        &self,
+        context: PortContext,
+        request: ListAllShippingOptionProjectionsRequest,
+    ) -> Result<Vec<ShippingOptionResponse>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_tenant_id(&context, "list_all_shipping_option_projections")?;
+        let requested_locale_length = request.requested_locale.as_deref().map(str::len);
+        let tenant_default_locale_length = request.tenant_default_locale.as_deref().map(str::len);
+
+        self.inner
+            .list_all_shipping_options(
+                tenant_id,
+                request.requested_locale.as_deref(),
+                request.tenant_default_locale.as_deref(),
+            )
+            .await
+            .map_err(|error| {
+                map_owner_error(
+                    &context,
+                    "list_all_shipping_option_projections",
                     None,
                     requested_locale_length,
                     tenant_default_locale_length,
