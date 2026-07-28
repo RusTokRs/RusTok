@@ -1,6 +1,6 @@
 # Profiles checkpoint: physical DLQ duplicate operations
 
-Status: **count-only classifier source-complete; external observer pending**.
+Status: **count-only classifier and bounded external observer source-complete; runtime evidence pending**.
 
 ## Why this matters for Profiles
 
@@ -10,26 +10,34 @@ Profiles authorization remains independent of broker and receipt state. However,
 - one durable neutral result with repeated identical physical copies;
 - one deterministic DLQ ID associated with conflicting exact bytes.
 
-The new Iggy-owned classifier makes that difference visible without exposing message identities or payloads.
+The Iggy-owned classifier makes that difference visible without exposing message identities or payloads. The bounded external scanner now supplies physical observations through explicit-offset polling without storing progress.
 
-## New owner boundary
+## Owner boundaries
 
-Source:
+Classifier source:
 
 ```text
 crates/rustok-iggy/src/dlq_duplicate_inspection.rs
 ```
 
-Machine contract:
+External scanner source:
+
+```text
+crates/rustok-iggy/src/dlq_duplicate_external_scan.rs
+```
+
+Machine contracts:
 
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-inspection-source.json
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json
 ```
 
-Verifier:
+Verifiers:
 
 ```text
 scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
+scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 ```
 
 Public API:
@@ -39,6 +47,9 @@ DlqDuplicateObservation
 DlqDuplicateSummary
 DlqDuplicateInspectionError
 summarize_dlq_duplicates
+IggyDlqDuplicateScanRequest
+IggyDlqDuplicateScanner
+IggyDlqDuplicateScanError
 ```
 
 ## Count-only projection
@@ -69,11 +80,21 @@ The bytes are compared through an in-memory domain-separated SHA-256 digest that
 
 A repeated UUID with different exact bytes increments `conflicting_payload_groups` and requires manual review. It is not silently collapsed into a normal duplicate.
 
-## Mutation boundary
+## External scan boundary
 
-The classifier cannot acknowledge, delete, replay, retry, repair, claim, release, or mark anything. It cannot choose alert thresholds or operator policy.
+The scanner borrows an already connected `IggyClient` and uses:
 
-A future external-Iggy scan adapter must remain read-only and bounded. Any destructive reconciliation must be a separate explicitly authorized workflow with preview and audit evidence.
+```text
+topic = dlq
+standalone consumer
+explicit partition
+explicit offset
+auto_commit = false
+```
+
+It accepts no more than 128 unique positive partitions, 10,000 physical messages globally, and batches of 1,000. It validates returned partition/count and monotonic offsets before returning only `DlqDuplicateSummary`.
+
+The scanner does not use a consumer group, stored-offset `next` polling, offset storage, acknowledgement, topology discovery, publication, delete/purge, replay/retry, receipt mutation, or client shutdown.
 
 ## Relationship to receipt health
 
@@ -94,19 +115,20 @@ No profile visibility, relationship, block, mute, follow, friendship, audience, 
 - physical DLQ copy count;
 - duplicate group count;
 - conflicting-payload group count;
+- scan partition or offset selection;
 - receipt recovery counts;
 - deduplication configuration;
 - retained evidence metadata.
 
-Profiles presentation continues to consume authorized owner-port results. This classifier only improves operational observability of downstream neutralization.
+Profiles presentation continues to consume authorized owner-port results. This classifier and scanner only improve operational observability of downstream neutralization.
 
 ## Remaining work
 
-1. add a bounded read-only external-Iggy DLQ scan adapter;
-2. prove physical header and byte ingestion against a disposable broker;
+1. prove physical header and exact-byte ingestion against a disposable external broker;
+2. prove `auto_commit=false` explicit-offset polling leaves no stored progress;
 3. retain only count-level runtime evidence;
-4. define alert thresholds outside the classifier;
-5. define any acknowledgement/delete/replay workflow separately with explicit authorization;
+4. define alert thresholds outside the classifier and Profiles;
+5. define acknowledgement/delete/replay separately with explicit authorization;
 6. keep aggregate receipt and duplicate observations identifier-free.
 
-No runtime adapter or retained execution packet exists for this checkpoint. Tests and verifiers were not run by the implementation agent.
+No retained execution packet exists for this checkpoint. Tests, Cargo commands, formatters, verifiers, and external-Iggy scans were not run by the implementation agent.
