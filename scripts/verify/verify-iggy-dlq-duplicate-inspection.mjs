@@ -210,10 +210,17 @@ if (
   contract.server_observer?.memory !== "not_applicable" ||
   contract.server_observer?.outbox_local !== "not_applicable" ||
   !sameValue(contract.server_observer?.outbox_iggy_modes, ["bundled", "external"]) ||
+  contract.server_observer?.startup_failure_non_fatal !== true ||
+  contract.server_observer?.partition_fairness_claimed !== false ||
   contract.server_observer?.readiness_dependency !== false ||
   contract.server_observer?.profiles_authorization !== false ||
   observerContract.packet !== "dlq-duplicate-alert-server-observer-source" ||
   observerContract.status !== "source_complete_runtime_execution_pending" ||
+  observerContract.activation?.observer_startup_failure_is_non_fatal !== true ||
+  observerContract.scan?.partition_fairness_claimed !== false ||
+  observerContract.scan?.moving_cursor !== false ||
+  observerContract.scan?.current_tail_coverage_claimed !== false ||
+  observerContract.scan?.complete_history_claimed !== false ||
   observerContract.iggy_source !== observerIggySourcePath ||
   observerContract.server_source !== observerServerSourcePath
 ) {
@@ -331,10 +338,12 @@ for (const marker of [
   requireText("Iggy alert observer", observerIggySource, marker);
 }
 for (const marker of [
+  "Unavailable",
   "NotApplicableMemory",
   "NotApplicableOutboxLocal",
   "IggyBundled",
   "IggyExternal",
+  "record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);",
   "DlqDuplicateAlertRuntimePublisher::new(config.policy)",
   "publisher.mark_unavailable()",
 ]) {
@@ -391,6 +400,8 @@ if (
 
 const requiredRemaining = new Set([
   "retained_external_iggy_duplicate_scan_evidence",
+  "partition_fairness_or_per_partition_budget_policy",
+  "moving_window_or_per_partition_cursor_policy",
   "telemetry_and_health_projection",
   "alert_delivery_and_suppression_outside_policy",
   "operator_ack_delete_replay_workflow_outside_inspector",
@@ -410,5 +421,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate inspection source verified: deterministic header identity, in-memory exact-byte digest comparison, count-only privacy boundary, bounded auto_commit=false scanning, explicit alert policy, single-writer latest-value runtime, and mode-aware Memory/OutboxLocal/OutboxIggy server observation are locked; retained execution and telemetry/health projection remain pending.",
+  "Iggy DLQ duplicate inspection source verified: deterministic header identity, in-memory exact-byte digest comparison, count-only privacy boundary, bounded auto_commit=false scanning, explicit alert policy, single-writer latest-value runtime, and mode-aware Memory/OutboxLocal/OutboxIggy server observation with non-fatal startup and explicit fairness/moving-window non-claims are locked; retained execution and telemetry/health projection remain pending.",
 );
