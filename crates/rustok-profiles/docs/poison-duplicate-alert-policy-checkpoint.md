@@ -1,21 +1,18 @@
 # Profiles checkpoint: physical DLQ duplicate alert policy
 
-Status: **count-only policy and latest-value runtime composition source-complete; server integration pending**.
+Status: **count-only policy, latest-value runtime, and mode-aware server observer source-complete; runtime execution pending**.
 
 ## What changed
 
-`rustok-iggy` owns a transport-neutral policy that evaluates the existing count-only physical DLQ duplicate summary and an in-memory latest-value runtime composition for the resulting identifier-free evaluation.
+`rustok-iggy` owns a transport-neutral policy that evaluates the count-only physical DLQ duplicate summary and an in-memory latest-value runtime for the resulting identifier-free evaluation. The host owns a separate mode-aware observer lifecycle.
 
-Policy source:
-
-```text
-crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs
-```
-
-Runtime source:
+Sources:
 
 ```text
-crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
+policy:          crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs
+runtime:         crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
+Iggy observer:   crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+server observer: apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 ```
 
 Machine contracts:
@@ -23,13 +20,7 @@ Machine contracts:
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
-```
-
-Verifiers:
-
-```text
-scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs
-scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
 ```
 
 No Profiles API, database table, GraphQL field, storefront behavior, privacy port, or authorization input changed.
@@ -46,25 +37,21 @@ max_copies_per_message_id
 
 There is no library-owned production default. Invalid zero, inverted, or impossible max-copies thresholds fail closed.
 
-This preserves ownership: Profiles does not select operational duplicate tolerance, and `rustok-iggy` does not invent a tenant or product policy.
+Profiles does not select operational duplicate tolerance, and `rustok-iggy` does not invent a tenant or product policy.
 
 ## Level semantics
 
 ```text
-Clear    no physical duplicate
-Notice   duplicates exist below warning thresholds
-Warning  one or more warning thresholds reached
-Critical one or more critical thresholds reached
-         OR any identity conflict exists
+Clear     no physical duplicate
+Notice    duplicates exist below warning thresholds
+Warning   one or more warning thresholds reached
+Critical  one or more critical thresholds reached
+          OR any identity conflict exists
 ```
 
-Identity conflict means one deterministic physical message UUID was observed with different exact bytes. It is always `Critical` and `requires_manual_review()` is true.
+Identity conflict is always `Critical` and requires manual review. A numeric `Critical` result without an identity conflict does not authorize payload inspection or destructive reconciliation.
 
-A numeric `Critical` result without an identity conflict does not by itself authorize manual payload inspection or destructive reconciliation.
-
-## Latest-value runtime composition
-
-The runtime sequence is:
+## Latest-value runtime
 
 ```text
 already observed DlqDuplicateSummary
@@ -74,9 +61,30 @@ already observed DlqDuplicateSummary
   -> read-only subscribers
 ```
 
-The initial state is unavailable with generation `0` and no evaluation. Successful observation publishes an available evaluation. Observation failure or shutdown publishes unavailable and clears the old evaluation so stale severity does not remain current.
+Initial state is unavailable with generation `0` and no evaluation. Observation failure or shutdown publishes unavailable and clears the old evaluation so stale severity does not remain current.
 
-The channel retains only the latest state. It is not an audit log and does not promise that every subscriber sees every intermediate generation.
+The channel retains only the latest state. It is not an audit log.
+
+## Delivery-profile-aware server composition
+
+The observer handles all active event delivery profiles explicitly:
+
+```text
+memory        -> NotApplicableMemory
+outbox_local  -> NotApplicableOutboxLocal
+outbox_iggy   -> IggyBundled or IggyExternal
+```
+
+For `memory` and `outbox_local`:
+
+- no Iggy transport is requested;
+- no broker client is opened;
+- no alert thresholds are required;
+- not-applicable state is not a Profiles degradation.
+
+For `outbox_iggy`, the observer reuses the exact active Iggy configuration. Bundled mode connects to the existing loopback broker; external mode uses reviewed configured addresses. It never creates another transport or broker process. Missing active Iggy mode fails closed.
+
+Connection and scan failures clear runtime availability but do not stop event delivery or module projection.
 
 ## Count-only runtime projection
 
@@ -88,18 +96,7 @@ available
 evaluation
 ```
 
-The optional evaluation exposes only:
-
-```text
-level
-physical_duplicates
-identity_conflict
-duplicate_messages_threshold_reached
-duplicate_groups_threshold_reached
-max_copies_threshold_reached
-```
-
-It does not expose counts from the source summary, raw threshold values, broker coordinates, UUIDs, payloads, payload digests, receipt identities, credentials, timestamps, or raw Iggy errors.
+The optional evaluation exposes only level and aggregate boolean reasons. It excludes source counts, raw thresholds, broker coordinates, UUIDs, payloads/digests, receipt identities, credentials, timestamps, and raw Iggy errors.
 
 No serialization or persistence is added.
 
@@ -107,13 +104,13 @@ No serialization or persistence is added.
 
 No profile visibility, ownership, follower access, block, mute, relationship, audience, storefront presentation, or author-card decision may depend on:
 
+- event delivery profile or Iggy deployment mode;
+- observer applicability or availability;
 - `DlqDuplicateAlertLevel`;
-- runtime availability or generation;
-- any threshold-reached boolean;
-- physical duplicate presence;
-- identity-conflict presence;
-- scanner availability or failure;
-- threshold configuration;
+- runtime generation;
+- threshold-reached booleans;
+- physical duplicate or identity-conflict presence;
+- scanner connection state;
 - alert delivery state;
 - retained evidence metadata.
 
@@ -121,30 +118,26 @@ Profiles continues to resolve privacy through authoritative owner ports and pres
 
 ## Operational separation
 
-The policy/runtime cannot:
+The policy/runtime/observer path cannot:
 
-- poll Iggy;
-- inspect PostgreSQL receipts;
-- start a server worker;
-- register telemetry or health policy;
+- change readiness or liveness;
+- stop event delivery or projection;
 - send or page;
-- choose a destination;
+- choose a destination, cooldown, or suppression;
 - persist thresholds or snapshots;
-- schedule scans;
-- affect readiness;
 - acknowledge, delete, purge, replay, retry, or publish;
-- claim, release, publish, or acknowledge a poison receipt;
+- store consumer offsets;
+- mutate poison receipts;
 - alter broker configuration or profile state.
 
-Server observation, telemetry projection, notification delivery, cooldown/suppression, and destructive reconciliation remain separate owner boundaries.
+Telemetry projection, optional health, notification delivery, cooldown/suppression, and destructive reconciliation remain separate owner boundaries.
 
 ## Remaining work
 
-1. integrate an explicitly owned server observer;
-2. define reviewed telemetry and health projection;
-3. define alert routing, cooldown, and suppression outside Profiles and outside the policy/runtime;
-4. retain identifier-free runtime integration evidence;
-5. keep destructive reconciliation in a separate authorized workflow;
-6. compare receipt and duplicate health only as aggregate operational trends.
+1. define reviewed telemetry and optional health without readiness coupling;
+2. define alert routing, cooldown, and suppression outside Profiles and the policy/runtime;
+3. retain identifier-free runtime/server execution evidence;
+4. keep destructive reconciliation in a separate authorized workflow;
+5. compare receipt and duplicate health only as aggregate operational trends.
 
-No tests, Cargo commands, formatters, verifiers, server observers, external-Iggy scans, alert delivery, or retained capture were run by the implementation agent.
+No tests, Cargo commands, formatters, verifiers, server observers, broker connections, alert delivery, or retained capture were run by the implementation agent.
