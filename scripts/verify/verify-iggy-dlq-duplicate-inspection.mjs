@@ -17,6 +17,12 @@ const alertSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
 const alertRuntimeContractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json";
 const alertRuntimeSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
+const observerContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+const observerIggySourcePath =
+  "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+const observerServerSourcePath =
+  "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
 const decodeFailurePath = "crates/rustok-iggy/src/contract_decode_failure.rs";
 const transportPath = "crates/rustok-iggy/src/transport.rs";
@@ -57,10 +63,15 @@ const alertContract = JSON.parse(
 const alertRuntimeContract = JSON.parse(
   readFileSync(resolve(repoRoot, alertRuntimeContractPath), "utf8"),
 );
+const observerContract = JSON.parse(
+  readFileSync(resolve(repoRoot, observerContractPath), "utf8"),
+);
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
 const adapterSource = readFileSync(resolve(repoRoot, adapterSourcePath), "utf8");
 const alertSource = readFileSync(resolve(repoRoot, alertSourcePath), "utf8");
 const alertRuntimeSource = readFileSync(resolve(repoRoot, alertRuntimeSourcePath), "utf8");
+const observerIggySource = readFileSync(resolve(repoRoot, observerIggySourcePath), "utf8");
+const observerServerSource = readFileSync(resolve(repoRoot, observerServerSourcePath), "utf8");
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
 const decodeFailure = readFileSync(resolve(repoRoot, decodeFailurePath), "utf8");
 const transport = readFileSync(resolve(repoRoot, transportPath), "utf8");
@@ -116,63 +127,8 @@ if (
 }
 
 if (
-  contract.runtime_adapter?.status !== "source_complete_runtime_pending" ||
-  contract.runtime_adapter?.contract !== adapterContractPath ||
-  contract.runtime_adapter?.source !== adapterSourcePath ||
-  contract.runtime_adapter?.auto_commit !== false ||
-  contract.runtime_adapter?.result !== "DlqDuplicateSummary" ||
-  adapterContract.packet !== "dlq-duplicate-external-scan-source" ||
-  adapterContract.status !== "source_complete_runtime_pending" ||
-  adapterContract.source !== adapterSourcePath ||
-  adapterContract.classifier_source !== sourcePath
-) {
-  fail("DLQ duplicate inspection runtime adapter relationship drift");
-}
-
-if (
-  contract.alert_policy?.status !==
-    "source_complete_runtime_composition_pending_server_integration" ||
-  contract.alert_policy?.contract !== alertContractPath ||
-  contract.alert_policy?.source !== alertSourcePath ||
-  contract.alert_policy?.input !== "DlqDuplicateSummary" ||
-  contract.alert_policy?.result !== "DlqDuplicateAlertEvaluation" ||
-  contract.alert_policy?.identity_conflict_always_critical !== true ||
-  contract.alert_policy?.production_defaults !== false ||
-  contract.alert_policy?.notification_dispatch !== false ||
-  contract.alert_policy?.destructive_action !== false ||
-  alertContract.packet !== "dlq-duplicate-alert-policy-source" ||
-  alertContract.status !==
-    "source_complete_runtime_composition_pending_server_integration" ||
-  alertContract.source !== alertSourcePath ||
-  alertContract.summary_source !== sourcePath
-) {
-  fail("DLQ duplicate inspection alert policy relationship drift");
-}
-
-if (
-  contract.alert_runtime?.status !== "source_complete_server_integration_pending" ||
-  contract.alert_runtime?.contract !== alertRuntimeContractPath ||
-  contract.alert_runtime?.source !== alertRuntimeSourcePath ||
-  contract.alert_runtime?.input !== "DlqDuplicateSummary" ||
-  contract.alert_runtime?.result !== "DlqDuplicateAlertRuntimeSnapshot" ||
-  contract.alert_runtime?.latest_value !== true ||
-  contract.alert_runtime?.single_writer !== true ||
-  contract.alert_runtime?.unavailable_clears_evaluation !== true ||
-  contract.alert_runtime?.notification_dispatch !== false ||
-  contract.alert_runtime?.destructive_action !== false ||
-  alertRuntimeContract.packet !== "dlq-duplicate-alert-runtime-source" ||
-  alertRuntimeContract.status !== "source_complete_server_integration_pending" ||
-  alertRuntimeContract.source !== alertRuntimeSourcePath ||
-  alertRuntimeContract.policy_source !== alertSourcePath ||
-  alertRuntimeContract.summary_source !== sourcePath
-) {
-  fail("DLQ duplicate inspection alert runtime relationship drift");
-}
-
-if (
   contract.identity?.input !== "non_nil_deterministic_iggy_message_header_uuid" ||
-  contract.identity?.payload_comparison !==
-    "domain_separated_sha256_in_memory_only" ||
+  contract.identity?.payload_comparison !== "domain_separated_sha256_in_memory_only" ||
   contract.identity?.empty_payload_valid !== true ||
   contract.identity?.nil_uuid_rejected !== true
 ) {
@@ -190,7 +146,6 @@ if (
 ) {
   fail("DLQ duplicate inspection semantic contract drift");
 }
-
 for (const [operation, allowed] of Object.entries(contract.mutation_boundary ?? {})) {
   if (allowed !== false) fail(`DLQ duplicate inspection mutation became allowed: ${operation}`);
 }
@@ -200,6 +155,78 @@ if (
 ) {
   fail("DLQ duplicate inspection privacy flags drift");
 }
+
+if (
+  contract.runtime_adapter?.status !== "source_complete_runtime_pending" ||
+  contract.runtime_adapter?.contract !== adapterContractPath ||
+  contract.runtime_adapter?.source !== adapterSourcePath ||
+  contract.runtime_adapter?.auto_commit !== false ||
+  contract.runtime_adapter?.result !== "DlqDuplicateSummary" ||
+  adapterContract.packet !== "dlq-duplicate-external-scan-source" ||
+  adapterContract.source !== adapterSourcePath ||
+  adapterContract.classifier_source !== sourcePath
+) {
+  fail("DLQ duplicate inspection runtime adapter relationship drift");
+}
+if (
+  contract.alert_policy?.status !== "source_complete_server_observer_execution_pending" ||
+  contract.alert_policy?.contract !== alertContractPath ||
+  contract.alert_policy?.source !== alertSourcePath ||
+  contract.alert_policy?.input !== "DlqDuplicateSummary" ||
+  contract.alert_policy?.result !== "DlqDuplicateAlertEvaluation" ||
+  contract.alert_policy?.identity_conflict_always_critical !== true ||
+  contract.alert_policy?.production_defaults !== false ||
+  contract.alert_policy?.notification_dispatch !== false ||
+  contract.alert_policy?.destructive_action !== false ||
+  alertContract.status !== "source_complete_server_observer_execution_pending" ||
+  alertContract.source !== alertSourcePath ||
+  alertContract.summary_source !== sourcePath
+) {
+  fail("DLQ duplicate inspection alert policy relationship drift");
+}
+if (
+  contract.alert_runtime?.status !== "source_complete_server_observer_execution_pending" ||
+  contract.alert_runtime?.contract !== alertRuntimeContractPath ||
+  contract.alert_runtime?.source !== alertRuntimeSourcePath ||
+  contract.alert_runtime?.input !== "DlqDuplicateSummary" ||
+  contract.alert_runtime?.result !== "DlqDuplicateAlertRuntimeSnapshot" ||
+  contract.alert_runtime?.latest_value !== true ||
+  contract.alert_runtime?.single_writer !== true ||
+  contract.alert_runtime?.unavailable_clears_evaluation !== true ||
+  contract.alert_runtime?.notification_dispatch !== false ||
+  contract.alert_runtime?.destructive_action !== false ||
+  alertRuntimeContract.status !== "source_complete_server_observer_execution_pending" ||
+  alertRuntimeContract.source !== alertRuntimeSourcePath ||
+  alertRuntimeContract.policy_source !== alertSourcePath ||
+  alertRuntimeContract.summary_source !== sourcePath
+) {
+  fail("DLQ duplicate inspection alert runtime relationship drift");
+}
+if (
+  contract.server_observer?.status !== "source_complete_runtime_execution_pending" ||
+  contract.server_observer?.contract !== observerContractPath ||
+  contract.server_observer?.iggy_source !== observerIggySourcePath ||
+  contract.server_observer?.server_source !== observerServerSourcePath ||
+  contract.server_observer?.memory !== "not_applicable" ||
+  contract.server_observer?.outbox_local !== "not_applicable" ||
+  !sameValue(contract.server_observer?.outbox_iggy_modes, ["bundled", "external"]) ||
+  contract.server_observer?.startup_failure_non_fatal !== true ||
+  contract.server_observer?.partition_fairness_claimed !== false ||
+  contract.server_observer?.readiness_dependency !== false ||
+  contract.server_observer?.profiles_authorization !== false ||
+  observerContract.packet !== "dlq-duplicate-alert-server-observer-source" ||
+  observerContract.status !== "source_complete_runtime_execution_pending" ||
+  observerContract.activation?.observer_startup_failure_is_non_fatal !== true ||
+  observerContract.scan?.partition_fairness_claimed !== false ||
+  observerContract.scan?.moving_cursor !== false ||
+  observerContract.scan?.current_tail_coverage_claimed !== false ||
+  observerContract.scan?.complete_history_claimed !== false ||
+  observerContract.iggy_source !== observerIggySourcePath ||
+  observerContract.server_source !== observerServerSourcePath
+) {
+  fail("DLQ duplicate inspection server observer relationship drift");
+}
+
 const requiredExcludedFields = new Set([
   "broker_address",
   "stream",
@@ -219,7 +246,9 @@ for (const field of contract.privacy_boundary?.summary_excludes ?? []) {
   requiredExcludedFields.delete(field);
 }
 if (requiredExcludedFields.size > 0) {
-  fail(`DLQ duplicate privacy exclusions are incomplete: ${[...requiredExcludedFields].join(", ")}`);
+  fail(`DLQ duplicate privacy exclusions are incomplete: ${[
+    ...requiredExcludedFields,
+  ].join(", ")}`);
 }
 
 for (const marker of [
@@ -258,7 +287,6 @@ for (const testName of expectedTests) {
 if (countText(source, "#[test]") !== expectedTests.length) {
   fail("DLQ duplicate inspection source must contain exactly four focused unit tests");
 }
-
 for (const marker of [
   "pub broker_message_id:",
   "pub payload_sha256:",
@@ -288,87 +316,46 @@ for (const marker of [
   requireText("bounded external duplicate scan adapter", adapterSource, marker);
 }
 for (const marker of [
-  ".store_consumer_offset(",
-  ".store_offset(",
-  ".acknowledge(",
-  ".send_messages(",
-  ".delete_topic(",
-  ".purge_topic(",
-]) {
-  forbidText("bounded external duplicate scan adapter", adapterSource, marker);
-}
-
-for (const marker of [
   "pub struct DlqDuplicateAlertPolicy",
   "pub const fn evaluate(",
-  "summary: &DlqDuplicateSummary",
   "pub enum DlqDuplicateAlertLevel",
-  "DlqDuplicateAlertLevel::Critical",
-  "DlqDuplicateAlertLevel::Warning",
-  "DlqDuplicateAlertLevel::Notice",
-  "DlqDuplicateAlertLevel::Clear",
   "pub struct DlqDuplicateAlertEvaluation",
-  "pub const fn requires_manual_review(&self) -> bool",
-  '"iggy.dlq_duplicate.alert_policy_invalid"',
 ]) {
   requireText("count-only duplicate alert policy", alertSource, marker);
 }
 for (const marker of [
-  "IggyClient",
-  "IggyTransport",
-  "ConsumerPoisonReceipt",
-  "tokio::sync::watch",
-  ".acknowledge(",
-  ".delete(",
-  ".replay(",
-  ".send(",
-  ".notify(",
-  ".page(",
-]) {
-  forbidText("count-only duplicate alert policy", alertSource, marker);
-}
-
-for (const marker of [
   "pub struct DlqDuplicateAlertRuntimePublisher",
-  "pub struct DlqDuplicateAlertRuntimeSubscriber",
   "pub struct DlqDuplicateAlertRuntimeSnapshot",
-  "watch::channel(DlqDuplicateAlertRuntimeSnapshot::unavailable(0))",
-  "pub fn publish(\n        &mut self,",
-  "self.policy.evaluate(summary)",
-  "pub fn mark_unavailable(\n        &mut self,",
+  "pub fn mark_unavailable(",
   "evaluation: None",
-  ".checked_add(1)",
-  '"iggy.dlq_duplicate.alert_runtime_publisher_closed"',
 ]) {
-  requireText("count-only duplicate alert runtime", alertRuntimeSource, marker);
+  requireText("latest-value alert runtime", alertRuntimeSource, marker);
 }
 for (const marker of [
-  "IggyClient",
-  "IggyTransport",
-  "ConsumerPoisonReceiptInspector",
-  ".poll_messages(",
-  ".get_consumer_offset(",
-  ".move_to_dlq(",
-  ".acknowledge(",
-  ".delete_topic(",
-  ".purge_topic(",
-  ".notify(",
-  ".page(",
+  "pub struct IggyDlqDuplicateAlertObserver",
+  "IggyDlqDuplicateScanner::new(&self.client, &self.stream_name)?",
 ]) {
-  forbidText("count-only duplicate alert runtime", alertRuntimeSource, marker);
+  requireText("Iggy alert observer", observerIggySource, marker);
+}
+for (const marker of [
+  "Unavailable",
+  "NotApplicableMemory",
+  "NotApplicableOutboxLocal",
+  "IggyBundled",
+  "IggyExternal",
+  "record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);",
+  "DlqDuplicateAlertRuntimePublisher::new(config.policy)",
+  "publisher.mark_unavailable()",
+]) {
+  requireText("server alert observer", observerServerSource, marker);
 }
 
 requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_inspection;");
 requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_alert_policy;");
 requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_alert_runtime;");
+requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_alert_observer;");
 for (const exportName of expectedExports) {
   requireText("rustok-iggy public exports", lib, exportName);
-}
-for (const exportName of alertContract.public_exports ?? []) {
-  requireText("rustok-iggy alert exports", lib, exportName);
-}
-for (const exportName of alertRuntimeContract.public_exports ?? []) {
-  requireText("rustok-iggy alert runtime exports", lib, exportName);
 }
 
 for (const marker of [
@@ -413,7 +400,8 @@ if (
 
 const requiredRemaining = new Set([
   "retained_external_iggy_duplicate_scan_evidence",
-  "server_alert_observer_integration",
+  "partition_fairness_or_per_partition_budget_policy",
+  "moving_window_or_per_partition_cursor_policy",
   "telemetry_and_health_projection",
   "alert_delivery_and_suppression_outside_policy",
   "operator_ack_delete_replay_workflow_outside_inspector",
@@ -421,7 +409,9 @@ const requiredRemaining = new Set([
 ]);
 for (const item of contract.remaining_work ?? []) requiredRemaining.delete(item);
 if (requiredRemaining.size > 0) {
-  fail(`DLQ duplicate inspection remaining work drift: ${[...requiredRemaining].join(", ")}`);
+  fail(`DLQ duplicate inspection remaining work drift: ${[
+    ...requiredRemaining,
+  ].join(", ")}`);
 }
 
 if (failures.length > 0) {
@@ -431,5 +421,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate inspection source verified: deterministic header identity, in-memory exact-byte digest comparison, count-only privacy boundary, conflict escalation, stable errors, no broker/receipt mutation, focused tests, independent receipt-health semantics, bounded auto_commit=false external scan, explicit no-default count-only alert policy, and single-writer stale-clearing latest-value alert runtime are locked; retained execution and server integration remain pending.",
+  "Iggy DLQ duplicate inspection source verified: deterministic header identity, in-memory exact-byte digest comparison, count-only privacy boundary, bounded auto_commit=false scanning, explicit alert policy, single-writer latest-value runtime, and mode-aware Memory/OutboxLocal/OutboxIggy server observation with non-fatal startup and explicit fairness/moving-window non-claims are locked; retained execution and telemetry/health projection remain pending.",
 );

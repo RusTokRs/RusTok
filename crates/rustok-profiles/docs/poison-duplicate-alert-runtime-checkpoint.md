@@ -1,50 +1,64 @@
 # Profiles checkpoint: DLQ duplicate alert runtime
 
-Status: **identifier-free latest-value runtime source-complete; server integration pending**.
+Status: **identifier-free latest-value runtime and mode-aware server observer source-complete; runtime execution pending**.
 
 ## What changed
 
-`rustok-iggy` now owns an in-memory runtime composition for the count-only physical DLQ duplicate alert policy.
+`rustok-iggy` owns an in-memory runtime composition for the count-only physical DLQ duplicate alert policy, and the server now owns a separate observer lifecycle that uses it only when the active event-delivery profile has an Iggy capability.
 
-Source:
+Reusable runtime source:
 
 ```text
 crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
 ```
 
-Machine contract:
+Server observer sources:
+
+```text
+crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+apps/server/src/services/event_dlq_duplicate_alert_observer.rs
+```
+
+Machine contracts:
 
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
 ```
 
-Verifier:
+Verifiers:
 
 ```text
 scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
-```
-
-Public API:
-
-```text
-DlqDuplicateAlertRuntimePublisher
-DlqDuplicateAlertRuntimeSubscriber
-DlqDuplicateAlertRuntimeSnapshot
-DlqDuplicateAlertRuntimeError
+scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 ```
 
 No Profiles API, storage, policy port, GraphQL field, storefront behavior, or authorization input changed.
 
+## Delivery-profile boundary
+
+The server observer handles all event-delivery profiles explicitly:
+
+```text
+memory        -> NotApplicableMemory
+outbox_local  -> NotApplicableOutboxLocal
+outbox_iggy   -> IggyBundled or IggyExternal
+```
+
+`memory` and `outbox_local` do not request an Iggy transport, do not open a broker connection, and do not require alert threshold configuration. Their not-applicable state is valid platform operation, not a Profiles degradation.
+
+Only `outbox_iggy` resolves the shared `IggyTransport` already created by the event runtime. The observer never creates a second transport or bundled broker process.
+
 ## Composition boundary
 
-The publisher accepts only:
+The reusable publisher accepts only:
 
 ```text
 already observed DlqDuplicateSummary
 prevalidated DlqDuplicateAlertPolicy
 ```
 
-It does not scan Iggy, read PostgreSQL poison receipts, choose thresholds, or start a worker.
+The server's Iggy-specific source obtains the summary through bounded explicit-offset polling with `auto_commit=false`. It supports both the existing bundled loopback deployment and reviewed external addresses.
 
 The single writer evaluates the summary and replaces one Tokio watch latest-value snapshot. Read-only subscribers may observe the current value or await a change.
 
@@ -60,7 +74,7 @@ evaluation = None
 
 Every successful publication or unavailable transition increments generation through checked arithmetic.
 
-`mark_unavailable()` always clears evaluation. This prevents a stale Warning or Critical result from appearing current after observer failure or shutdown.
+Connection failure, scan failure, and shutdown call `mark_unavailable()`, which clears evaluation. This prevents a stale Warning or Critical result from appearing current while event delivery and module projection continue.
 
 ## Identifier-free snapshot
 
@@ -91,6 +105,8 @@ The runtime adds no serialization or persistence.
 
 No profile visibility, owner access, relationship, follow, block, mute, friendship, audience, storefront, GraphQL, or presentation decision may depend on:
 
+- event delivery profile;
+- observer mode or applicability;
 - runtime availability;
 - runtime generation;
 - alert level;
@@ -104,34 +120,36 @@ Profiles continues to authorize through owner ports and its canonical privacy-be
 
 ## Runtime and mutation boundary
 
-The runtime does not:
+The runtime and server observer do not:
 
-- register readiness or health policy;
-- emit metrics directly;
-- choose notification delivery, paging, cooldown, suppression, or escalation timing;
+- change readiness or liveness;
+- stop event delivery or module projection;
+- emit notification delivery, paging, cooldown, suppression, or escalation timing;
 - acknowledge, delete, purge, replay, retry, or publish broker messages;
+- store consumer offsets;
 - claim, release, or mark poison receipts;
 - change broker configuration;
 - change profile state.
 
-A future server adapter may consume the snapshot only as operational observability. Notification and destructive workflows require separate owner contracts and authorization.
+Telemetry and optional operational health may consume the shared snapshot later, but they require separate contracts and must remain independent of readiness and Profiles authorization.
 
 ## Stable errors
 
 ```text
 iggy.dlq_duplicate.alert_runtime_generation_overflow
 iggy.dlq_duplicate.alert_runtime_publisher_closed
+iggy.dlq_duplicate.alert_observer_configuration_invalid
+iggy.dlq_duplicate.alert_observer_connection_unavailable
 ```
 
-Both are identifier-free and do not reveal broker or delivery facts.
+All are identifier-free and do not reveal broker or delivery facts.
 
 ## Remaining work
 
-1. integrate an explicit server-owned observer lifecycle;
-2. define reviewed telemetry and health projection without source counts or identifiers;
-3. retain runtime integration evidence;
-4. keep notification delivery and suppression outside the runtime;
-5. keep destructive reconciliation separately authorized;
-6. preserve the rule that operational alert state never authorizes Profiles presentation.
+1. define reviewed telemetry and optional operational health projection;
+2. retain server observer execution evidence for applicable Iggy modes;
+3. keep notification delivery and suppression outside the runtime;
+4. keep destructive reconciliation separately authorized;
+5. preserve the rule that operational alert state never authorizes Profiles presentation.
 
 Tests, Cargo commands, formatters, source verifiers, server observers, external-Iggy scans, telemetry registration, and alert dispatch were not run by the implementation agent.
