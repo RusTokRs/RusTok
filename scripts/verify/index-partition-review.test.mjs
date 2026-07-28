@@ -15,6 +15,7 @@ import {
 
 const reportScript = path.resolve('scripts/verify/render-index-partition-review.mjs');
 const archiveManifestScript = path.resolve('scripts/verify/render-index-partition-archive-manifest.mjs');
+const archiveVerifyScript = path.resolve('scripts/verify/verify-index-partition-archive-manifest.mjs');
 const digest = (character) => character.repeat(64);
 
 const writeJson = (filename, value) => writeFileSync(filename, `${JSON.stringify(value, null, 2)}\n`);
@@ -134,10 +135,33 @@ const runScript = (script, root) => spawnSync(
 
 const runReport = (root) => runScript(reportScript, root);
 const runArchiveManifest = (root) => runScript(archiveManifestScript, root);
+const runArchiveVerify = (root, manifestPath) => spawnSync(
+  process.execPath,
+  [archiveVerifyScript, '--root', root, '--manifest', manifestPath],
+  { encoding: 'utf8' },
+);
+
+const externalManifestPath = (root) => path.join(
+  path.dirname(root),
+  `${path.basename(root)}-archive-manifest.json`,
+);
+
+const saveArchiveManifest = (root) => {
+  const result = runArchiveManifest(root);
+  assert.equal(result.status, 0, result.stderr);
+  const filename = externalManifestPath(root);
+  writeFileSync(filename, result.stdout);
+  return filename;
+};
 
 const snapshot = (root) => Object.fromEntries(
   readdirSync(root).sort().map((filename) => [filename, readFileSync(path.join(root, filename))]),
 );
+
+const cleanup = (root, manifestPath) => {
+  if (manifestPath) rmSync(manifestPath, { force: true });
+  rmSync(root, { recursive: true, force: true });
+};
 
 test('renders a deterministic read-only nine-file retained bundle review', () => {
   const context = buildBundle();
@@ -156,7 +180,7 @@ test('renders a deterministic read-only nine-file retained bundle review', () =>
     assert.match(first.stdout, /Production partition copy\/replay/u);
     assert.deepEqual(snapshot(context.root), before);
   } finally {
-    rmSync(context.root, { recursive: true, force: true });
+    cleanup(context.root);
   }
 });
 
@@ -188,7 +212,91 @@ test('prints a deterministic read-only admitted archive manifest', () => {
     );
     assert.deepEqual(snapshot(context.root), before);
   } finally {
-    rmSync(context.root, { recursive: true, force: true });
+    cleanup(context.root);
+  }
+});
+
+test('verifies a saved admitted archive manifest without changing either input', () => {
+  const context = buildBundle();
+  let manifestPath;
+  try {
+    manifestPath = saveArchiveManifest(context.root);
+    const beforeBundle = snapshot(context.root);
+    const beforeManifest = readFileSync(manifestPath);
+    const first = runArchiveVerify(context.root, manifestPath);
+    const second = runArchiveVerify(context.root, manifestPath);
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(first.stderr, '');
+    assert.equal(first.stdout, second.stdout);
+    const receipt = JSON.parse(first.stdout);
+    assert.equal(receipt.contract, 'index_partition_retained_archive_verification_v1');
+    assert.equal(receipt.verified, true);
+    assert.equal(receipt.source_manifest_contract, 'index_partition_retained_archive_manifest_v1');
+    assert.equal(receipt.source_digest_contract, 'canonical_json_without_manifest_digest_v1');
+    assert.equal(receipt.file_count, 9);
+    assert.equal(receipt.production_lifecycle_authorized, false);
+    assert.equal(
+      receipt.saved_manifest_sha256,
+      createHash('sha256').update(beforeManifest).digest('hex'),
+    );
+    assert.deepEqual(snapshot(context.root), beforeBundle);
+    assert.deepEqual(readFileSync(manifestPath), beforeManifest);
+  } finally {
+    cleanup(context.root, manifestPath);
+  }
+});
+
+test('rejects saved archive manifest digest drift', () => {
+  const context = buildBundle();
+  let manifestPath;
+  try {
+    manifestPath = saveArchiveManifest(context.root);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.manifest_digest = '0'.repeat(64);
+    writeJson(manifestPath, manifest);
+    const result = runArchiveVerify(context.root, manifestPath);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /digest does not match canonical payload/u);
+    assert.equal(result.stdout, '');
+  } finally {
+    cleanup(context.root, manifestPath);
+  }
+});
+
+test('rejects saved archive manifest semantic drift with a recalculated digest', () => {
+  const context = buildBundle();
+  let manifestPath;
+  try {
+    manifestPath = saveArchiveManifest(context.root);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.total_bytes += 1;
+    const { manifest_digest: ignoredDigest, ...payload } = manifest;
+    void ignoredDigest;
+    manifest.manifest_digest = createHash('sha256').update(canonicalJson(payload)).digest('hex');
+    writeJson(manifestPath, manifest);
+    const result = runArchiveVerify(context.root, manifestPath);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /does not match recalculated retained bundle manifest/u);
+    assert.equal(result.stdout, '');
+  } finally {
+    cleanup(context.root, manifestPath);
+  }
+});
+
+test('requires the saved archive manifest to stay outside the retained bundle', () => {
+  const context = buildBundle();
+  try {
+    const result = runArchiveManifest(context.root);
+    assert.equal(result.status, 0, result.stderr);
+    const manifestPath = path.join(context.root, 'archive-manifest.json');
+    writeFileSync(manifestPath, result.stdout);
+    const verification = runArchiveVerify(context.root, manifestPath);
+    assert.notEqual(verification.status, 0);
+    assert.match(verification.stderr, /must stay outside the retained bundle root/u);
+    assert.equal(verification.stdout, '');
+  } finally {
+    cleanup(context.root);
   }
 });
 
@@ -206,7 +314,7 @@ test('refuses an archive manifest for a non-admitted retained bundle', () => {
     assert.match(result.stderr, /requires admission outcome admitted/u);
     assert.equal(result.stdout, '');
   } finally {
-    rmSync(context.root, { recursive: true, force: true });
+    cleanup(context.root);
   }
 });
 
@@ -222,7 +330,7 @@ test('rejects a saved admission that does not match recalculated packet admissio
     assert.match(result.stderr, /admission file does not match recalculated retained bundle content/u);
     assert.equal(result.stdout, '');
   } finally {
-    rmSync(context.root, { recursive: true, force: true });
+    cleanup(context.root);
   }
 });
 
@@ -238,6 +346,6 @@ test('rejects raw artifact drift from the retained packet', () => {
     assert.match(result.stderr, /packet file does not match recalculated retained bundle content/u);
     assert.equal(result.stdout, '');
   } finally {
-    rmSync(context.root, { recursive: true, force: true });
+    cleanup(context.root);
   }
 });
