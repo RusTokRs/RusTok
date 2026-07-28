@@ -10,6 +10,7 @@ use rustok_fulfillment::{
     in_process_fulfillment_read_port, in_process_shipping_option_admin_read_port,
     in_process_shipping_option_read_port,
 };
+use rustok_order::{OrderReadPort, in_process_order_read_port};
 use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::DatabaseConnection;
 
@@ -72,6 +73,33 @@ impl CommerceFulfillmentLifecycleReadRuntime {
 
     pub fn fulfillment_read_port(&self) -> Arc<dyn FulfillmentReadPort> {
         self.fulfillment_reads.clone()
+    }
+}
+
+/// Host-selected complete order projection read port.
+///
+/// HTTP admin routes consume this runtime in the current source wave. GraphQL schema data carries
+/// the same host-selected value so later resolver cutover cannot silently construct a different
+/// owner adapter.
+#[derive(Clone)]
+pub struct CommerceOrderReadRuntime {
+    order_reads: Arc<dyn OrderReadPort>,
+}
+
+impl CommerceOrderReadRuntime {
+    pub fn new(order_reads: Arc<dyn OrderReadPort>) -> Self {
+        Self { order_reads }
+    }
+
+    pub fn in_process(
+        db: DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> Self {
+        Self::new(in_process_order_read_port(db, event_bus))
+    }
+
+    pub fn order_read_port(&self) -> Arc<dyn OrderReadPort> {
+        self.order_reads.clone()
     }
 }
 
@@ -138,8 +166,9 @@ pub(crate) fn fulfillment_lifecycle_read_runtime_for_current_graphql_scope(
 ///
 /// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual
 /// provider registries remain deterministic fallbacks. Mounted shipping-option and fulfillment
-/// lifecycle reads consume host-selected runtime data; directly embedded compatibility schemas
-/// retain explicit in-process read fallbacks.
+/// lifecycle reads consume host-selected runtime data; order reads are now also required in schema
+/// composition ahead of resolver cutover. Directly embedded compatibility schemas retain explicit
+/// in-process fulfillment and shipping-option read fallbacks only.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
@@ -147,6 +176,7 @@ pub struct CommerceGraphqlRuntimeData {
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
     shipping_option_read_runtime: CommerceShippingOptionReadRuntime,
     fulfillment_lifecycle_read_runtime: CommerceFulfillmentLifecycleReadRuntime,
+    order_read_runtime: CommerceOrderReadRuntime,
 }
 
 impl CommerceGraphqlRuntimeData {
@@ -168,6 +198,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn fulfillment_lifecycle_read_runtime(&self) -> CommerceFulfillmentLifecycleReadRuntime {
         self.fulfillment_lifecycle_read_runtime.clone()
+    }
+
+    pub fn order_read_runtime(&self) -> CommerceOrderReadRuntime {
+        self.order_read_runtime.clone()
     }
 }
 
@@ -199,6 +233,11 @@ pub fn attach_schema_data(
             .unwrap_or_else(|| {
                 CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone())
             }),
+        order_read_runtime: inputs
+            .shared_get::<CommerceOrderReadRuntime>()
+            .ok_or_else(|| {
+                "commerce GraphQL requires CommerceOrderReadRuntime in host composition".to_string()
+            })?,
     })
 }
 

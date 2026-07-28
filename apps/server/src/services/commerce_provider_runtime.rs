@@ -73,6 +73,26 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+    let host = {
+        let runtime = server
+            .shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
+            .unwrap_or_else(|| {
+                let event_bus = server
+                    .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .expect(
+                        "TransactionalEventBus must be initialized before CommerceOrderReadRuntime",
+                    );
+                let runtime = rustok_commerce::graphql_runtime::CommerceOrderReadRuntime::in_process(
+                    server.db_clone(),
+                    event_bus,
+                );
+                server.shared_insert(runtime.clone());
+                runtime
+            });
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(feature = "mod-commerce")]
     let host = {
         let runtime = server
@@ -184,6 +204,11 @@ pub fn attach_commerce_provider_registries(
 
 #[cfg(all(test, feature = "mod-payment", feature = "mod-fulfillment"))]
 mod tests {
+    #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+    use std::sync::Arc;
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
     use sea_orm::Database;
 
     use super::attach_commerce_provider_registries;
@@ -196,6 +221,10 @@ mod tests {
             .await
             .expect("in-memory sqlite should connect");
         let server = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+        server.shared_insert(TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+            db.clone(),
+        ))));
 
         let first = attach_commerce_provider_registries(
             rustok_api::HostRuntimeContext::new(db.clone()),
@@ -222,6 +251,20 @@ mod tests {
             first_fulfillment.descriptors(),
             second_fulfillment.descriptors()
         );
+
+        #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
+        {
+            let first_order = first
+                .shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
+                .expect("order read runtime should be attached");
+            let second_order = second
+                .shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
+                .expect("order read runtime should be reused");
+            assert!(Arc::ptr_eq(
+                &first_order.order_read_port(),
+                &second_order.order_read_port()
+            ));
+        }
     }
 }
 

@@ -15,8 +15,8 @@ use rustok_api::{
 };
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::graphql_runtime::{
-    CommerceFulfillmentLifecycleReadRuntime, CommerceShippingOptionReadRuntime,
-    CommerceShippingOptionReadScope,
+    CommerceFulfillmentLifecycleReadRuntime, CommerceOrderReadRuntime,
+    CommerceShippingOptionReadRuntime, CommerceShippingOptionReadScope,
 };
 use rustok_commerce::{MarketplaceFinancialRuntime, dto::CreateOrderInput};
 use rustok_fulfillment::{
@@ -200,12 +200,17 @@ fn host_runtime(
     db: &DatabaseConnection,
     fulfillment_port: Arc<dyn FulfillmentReadPort>,
 ) -> HostRuntimeContext {
+    let event_bus = mock_transactional_event_bus();
     HostRuntimeContext::new(db.clone())
-        .with_shared_value(mock_transactional_event_bus())
+        .with_shared_value(event_bus.clone())
         .with_shared_value(MarketplaceFinancialRuntime::in_process(db.clone()))
         .with_shared_value(CommerceShippingOptionReadRuntime::in_process(db.clone()))
         .with_shared_value(CommerceFulfillmentLifecycleReadRuntime::new(
             fulfillment_port,
+        ))
+        .with_shared_value(CommerceOrderReadRuntime::in_process(
+            db.clone(),
+            event_bus,
         ))
 }
 

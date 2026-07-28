@@ -196,8 +196,11 @@ These are source-contract defects, not verification-only tasks.
   Payment, and Fulfillment concrete services behind host-composed owner ports.
 - [x] Publish the order-owned `OrderReadPort` for complete detail/list projections with
   locale fallback, canonical read context/deadline policy, stable typed errors, and
-  explicit unvalidated source evidence; host composition and Commerce consumer cutover
-  remain open.
+  explicit unvalidated source evidence.
+- [x] Host-compose `CommerceOrderReadRuntime`, require it in Commerce HTTP and GraphQL
+  schema data, and cut admin REST order list/detail to the owner port while preserving
+  public envelopes and payment/fulfillment detail aggregation. GraphQL resolvers and
+  storefront order reads remain open.
 - [ ] Correct Product's declared dependency contract or extract its direct
   inventory/pricing persistence operations behind owner ports; the current manifest
   declares only Taxonomy while production code uses Inventory and Pricing persistence.
@@ -555,6 +558,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - [ ] `node scripts/verify/verify-order-read-port.mjs`
+- [ ] `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 - [ ] `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - [ ] `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
 - [ ] `node scripts/verify/verify-commerce-checkout-completion-cutover.mjs`
@@ -590,15 +594,20 @@ Source inspection is not execution evidence.
   staged completion paths.
 - [x] Extend the public-error guard to pricing and `PaymentCollectionPort`, including
   correlation, tenant, operation, stable code, and raw-cause bans.
-- [ ] Execute the new public-error, typed-lifecycle, and storefront-cutover static guards
-  against a repository checkout and retain their output.
+- [x] Add static source guards for host-selected order read runtime composition and
+  admin REST order list/detail cutover without changing mutation or detail-aggregation
+  ownership.
+- [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, and order-read
+  static guards against a repository checkout and retain their output.
 
 ### Compile/tests
 
 - [ ] `cargo check -p rustok-commerce --lib`
 - [ ] `cargo test -p rustok-commerce --test checkout_marketplace_economics_checkpoint`
 - [ ] `cargo check -p rustok-order --all-features`
-- [ ] Targeted `OrderReadPort` detail/list, locale fallback, context, and typed-error tests.
+- [ ] `cargo check -p rustok-server --features mod-commerce`
+- [ ] Targeted `OrderReadPort` detail/list, locale fallback, context, typed-error,
+  host-composition, and admin REST transport tests.
 - [ ] `cargo test -p rustok-order --test order_checkout_identity`
 - [ ] `cargo test -p rustok-order --test checkout_order_identity_port`
 - [ ] `cargo test -p rustok-order --test checkout_completion_port`
@@ -736,8 +745,10 @@ Source inspection is not execution evidence.
   one staged recovery runtime with explicit idempotency and host provider composition.
 - [x] Harden pricing and payment collection owner-port errors with stable public
   messages plus correlation-aware internal logging.
-- [x] Publish `OrderReadPort` for complete order detail/list projections while retaining
-  host composition and Commerce consumer cutover as explicit unvalidated follow-up work.
+- [x] Publish `OrderReadPort` for complete order detail/list projections.
+- [x] Host-compose `CommerceOrderReadRuntime` and cut admin REST order list/detail to the
+  owner port while preserving public envelopes and unchanged mutation/detail aggregation
+  ownership; GraphQL/storefront reads and execution evidence remain open.
 
 ## Change rules
 
