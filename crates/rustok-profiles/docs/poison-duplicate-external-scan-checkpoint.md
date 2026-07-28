@@ -1,12 +1,11 @@
 # Profiles checkpoint: bounded external DLQ duplicate scan
 
-Status: **global scanner harness and fair-window server source complete; execution and retained evidence pending**.
+Status: **global and fair-window source harnesses complete; execution and retained evidence pending**.
 
-## What changed
+## Owner boundary
 
-`rustok-iggy` owns a bounded read-only adapter that feeds physical external-Iggy `dlq` messages into the count-only duplicate classifier.
-
-Public API:
+`rustok-iggy` owns the bounded read-only adapter and returns only
+`DlqDuplicateSummary`.
 
 ```text
 IggyDlqDuplicateScanRequest
@@ -15,11 +14,9 @@ IggyDlqDuplicateScanner
 IggyDlqDuplicateScanError
 ```
 
-The result remains `DlqDuplicateSummary`; no new Profiles API or authorization input was added.
+No Profiles API or authorization input was added.
 
-## Read-only Iggy boundary
-
-The scanner borrows an already connected `IggyClient` and fixes:
+## Read-only polling
 
 ```text
 topic = dlq
@@ -29,101 +26,111 @@ partition = explicit positive ID
 auto_commit = false
 ```
 
-It does not join a consumer group, use stored-offset `next` polling, store a consumer offset, acknowledge a cursor, discover topic topology, publish, delete, purge, replay, retry, or shut down the caller's client.
+The scanner does not join a consumer group, use stored-offset `next` polling,
+store an offset, acknowledge, discover topology, publish, delete, purge, replay,
+retry, or shut down the caller-owned client.
 
-## Global request
+## Global and fair policies
 
-The compatibility request is limited to:
+The compatibility global request has one cap shared by the ordered partition
+allowlist. An early partition may consume it.
 
-- at most 128 unique positive partitions;
-- at most 10,000 physical messages globally;
-- batches of at most 1,000 messages;
-- one explicit start offset applied independently to each partition.
-
-The ordered global budget may be consumed before later partitions are polled.
-
-## Fair snapshot window
-
-The fair policy assigns one equal positive message cap to every selected partition and checks:
+The fair policy gives every selected partition the same positive cap and checks:
 
 ```text
 partition_count * per_partition_messages <= 10000
 batch_size <= per_partition_messages
 ```
 
-A successful scan attempts every configured partition and combines all observations before classification. This preserves duplicate and conflicting-payload groups that span partitions.
+All observations are combined before classification.
 
-The fair policy remains one fixed window. It does not provide moving cursors, stored progress, cross-cycle duplicate accumulation, current-tail coverage, or complete-history proof.
+## Production partition invariant
 
-## Server integration
-
-The event-delivery observer keeps `global_budget` as the default and supports explicit:
+Production deterministic DLQ publication uses:
 
 ```text
-RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=fair_window
-RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES=<positive cap>
+partition = (broker_message_id_as_u128 mod partition_count) + 1
 ```
 
-This applies only to `outbox_iggy`. `memory` and `outbox_local` remain intentional not-applicable modes and do not require Iggy.
+Physical copies with the same broker UUID are colocated. The scanner can combine
+arbitrary partition observations, but production runtime evidence must not claim
+that `IggyTransport::move_to_dlq` split one deterministic ID across partitions.
 
-## Source-complete runtime case
+This invariant does not weaken the reason for fair budgets: one busy partition
+must not prevent other partitions from being inspected.
 
-The existing opt-in runtime case remains global-budget evidence. It requires one reviewed dedup-disabled disposable external service and publishes four physical messages through production `IggyTransport::move_to_dlq`:
+## Compatibility-global source case
+
+The existing one-partition case publishes ordinary and conflicting duplicates,
+runs the same global request twice, and requires the scanner offset to remain
+absent.
+
+Execution and retained capture are pending.
+
+## Multi-partition fair-window source case
+
+The new source harness publishes through production `IggyTransport::move_to_dlq`:
 
 ```text
-A, A: one ordinary duplicate group
-B1, B2: one conflicting-payload group
+partition 1: A/A ordinary duplicate plus one unique overflow message
+partition 2: B1/B2 conflicting-payload duplicate
 ```
 
-Two scans reuse the exact request `[partition 1, offset 0, max 4, batch 4]`. Both must return:
+The fair policy reads two messages per partition. It therefore observes both
+duplicate groups and the partition-2 conflict.
+
+The compatibility global request reads three messages from partition 1 and only
+one from partition 2. Its summary must differ and must not observe the conflict.
+
+The same fair policy runs twice from offset zero. Consumer offsets must remain
+absent on partitions 1 and 2 before publication and after every scan.
+
+Sources:
 
 ```text
-total_messages = 4
-unique_message_ids = 2
-duplicate_messages = 2
-duplicate_groups = 2
-conflicting_payload_groups = 1
-max_copies_per_message_id = 2
+crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-fair-window-external-scan-runtime-source.json
+scripts/verify/
+  verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs
 ```
 
-The scanner consumer offset must be absent before publication, after the first scan, and after the second scan. Runtime execution remains pending.
+## Fixed-window limitation
 
-A separate multi-partition fair-window harness and retained packet remain pending.
+Neither global nor fair mode owns moving cursors, persisted per-partition
+progress, cross-cycle identity state, current-tail coverage, or complete-history
+proof.
 
-## Count-only privacy boundary
+Repeated fixed scans are intentionally idempotent observations of the same
+configured window.
 
-During a scan, physical header UUIDs and exact bytes exist only long enough to create in-memory duplicate observations. Exact bytes are reduced to a domain-separated digest inside the classifier.
+## Profiles authorization
 
-The returned result exposes only counts. It does not expose broker addresses, stream/topic/partition/offset, UUIDs, payloads, payload digests, credentials, or raw Iggy errors.
+No profile visibility, relationship, follower, block, mute, ownership, audience,
+storefront, author-card, or localized presentation result may depend on:
 
-## Profiles authorization remains unchanged
+- scan mode, partitions, offsets, caps, or availability;
+- duplicate/conflict counts;
+- stored-offset observations;
+- broker configuration;
+- source harness or retained evidence status.
 
-No profile visibility, relationship, block, mute, follow, friendship, audience, ownership, or presentation decision may depend on:
+Profiles continues to consume authoritative owner-port results only.
 
-- whether a global or fair DLQ scan was performed;
-- selected partitions, offsets, or scan mode;
-- physical duplicate or conflicting-payload counts;
-- scanner, observer, or harness errors;
-- broker deduplication configuration;
-- consumer offset presence;
-- future retained evidence metadata.
+## Privacy
 
-Profiles continues to consume authorized owner-port results. The scanner and observer are operational observability for downstream neutralization only.
-
-## Operator interpretation
-
-A bounded scan is not automatically a complete historical inventory. Its meaning depends on the explicitly selected stream, partitions, offsets, retention window, and message caps.
-
-Aggregate receipt health and aggregate physical duplicate health remain independent identifier-free views. They may be compared as operational trends, but they cannot be joined message by message and must not become authorization evidence.
-
-Any `conflicting_payload_groups > 0` result requires manual forensic escalation. The scanner does not identify the affected UUID or provide a destructive action.
+Summaries and future packets exclude broker addresses, credentials, stream/topic
+coordinates, UUIDs, payloads/digests, offsets, receipt identities, and raw client
+errors.
 
 ## Remaining work
 
-1. execute and retain the compatibility-global runtime case;
-2. add and execute multi-partition fair-window evidence;
-3. design moving windows plus bounded cross-cycle duplicate state, or keep fixed windows;
-4. design acknowledgement/delete/replay as a separate explicitly authorized workflow;
-5. preserve the identifier-free boundary when comparing receipt and physical duplicate trends.
+1. execute and retain the compatibility-global case;
+2. execute the two-partition fair-window case;
+3. add a clean-commit retained runner and packet for fair-window evidence;
+4. choose fixed snapshots or a bounded moving-window design with cross-cycle
+   identity state;
+5. keep acknowledgement/delete/replay separately authorized.
 
-No tests, Cargo commands, formatters, source verifiers, external-Iggy scans, or retained capture were run by the implementation agent.
+No tests, Cargo commands, formatters, source verifiers, external-Iggy scans, or
+retained capture were run by the implementation agent.
