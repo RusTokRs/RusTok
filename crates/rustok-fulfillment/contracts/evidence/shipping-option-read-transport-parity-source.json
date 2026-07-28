@@ -1,12 +1,16 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "generated_at": "2026-07-28",
-  "status": "source_audit_only_unvalidated",
-  "source_revision": "aa1f12d7660bda14daa5d8ade11d3074418a573f",
+  "status": "source_cutover_ready_unvalidated",
+  "source_base_revision": "862291c0f0b8bcf869c444c49c2681c5a36349ca",
   "scope": "shipping-option projection reads across mounted commerce transports",
-  "graphql": {
+  "shared_runtime": {
     "composition": "application_host",
     "runtime": "CommerceShippingOptionReadRuntime",
+    "host_context": "HostRuntimeContext"
+  },
+  "graphql": {
+    "composition": "application_host",
     "operations": [
       "ShippingOptionReadPort::list_shipping_option_projections",
       "ShippingOptionReadPort::read_shipping_option_projection",
@@ -17,25 +21,38 @@
     "single_lookup_optional_not_found": true
   },
   "rest": {
-    "composition": "direct_concrete_service",
+    "composition": "application_host",
+    "runtime_state": "CommerceHttpRuntime",
     "storefront_active_list": {
       "source": "crates/rustok-commerce/src/controllers/store/products.rs",
-      "operation": "FulfillmentService::list_shipping_options",
+      "operation": "ShippingOptionReadPort::list_shipping_option_projections",
       "currency_filter_retained": true,
       "public_channel_filter_retained": true,
-      "shipping_profile_filter_retained": true
+      "shipping_profile_filter_retained": true,
+      "effective_public_channel_in_port_context": true
     },
     "admin_list_all": {
       "source": "crates/rustok-commerce/src/controllers/admin/shipping.rs",
-      "operation": "FulfillmentService::list_all_shipping_options",
+      "operation": "ShippingOptionAdminReadPort::list_all_shipping_option_projections",
       "inactive_before_filters": true,
       "active_currency_provider_search_pagination_retained": true
     },
     "admin_lookup": {
       "source": "crates/rustok-commerce/src/controllers/admin/shipping.rs",
-      "operation": "FulfillmentService::get_shipping_option"
+      "operation": "ShippingOptionReadPort::read_shipping_option_projection"
     },
-    "cutover_required": true
+    "context": {
+      "tenant": true,
+      "actor": true,
+      "locale": true,
+      "channel_when_available": true,
+      "resource_scoped_correlation_id": true,
+      "deadline_ms": 2000
+    },
+    "legacy_http_envelopes_retained": true,
+    "concrete_service_read_construction": false,
+    "mutation_service_construction_unchanged": true,
+    "cutover_required": false
   },
   "native_ffa": {
     "projection_read_surface": "absent_by_design",
@@ -47,11 +64,12 @@
     "expand_selection_contract_for_projection_parity": false
   },
   "decision": {
-    "next_slice": "migrate_rest_projection_reads_to_host_composed_owner_ports",
+    "next_slice": "execute_mounted_graphql_rest_projection_parity",
     "preserve_existing_http_success_filters": true,
     "preserve_existing_http_public_envelopes": true,
     "do_not_add_native_projection_api_without_a_consumer_contract": true
   },
+  "runtime_parity_proven": false,
   "validation": {
     "tests_run": false,
     "cargo_run": false,

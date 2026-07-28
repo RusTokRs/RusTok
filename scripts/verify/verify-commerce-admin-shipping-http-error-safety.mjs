@@ -13,6 +13,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const shipping = read('crates/rustok-commerce/src/controllers/admin/shipping.rs');
 const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
 const fulfillmentErrors = read('crates/rustok-fulfillment/src/error.rs');
+const apiPorts = read('crates/rustok-api/src/ports.rs');
 const shippingService = read('crates/rustok-commerce/src/services/shipping_profile.rs');
 const failures = [];
 
@@ -38,198 +39,215 @@ const profileMapper = between(
   'fn map_admin_shipping_option_error(',
   'shipping-profile mapper',
 );
-const optionMapper = between(
+const mutationMapper = between(
   shipping,
   'fn map_admin_shipping_option_error(',
-  'async fn validate_shipping_option_profile_inputs(',
-  'shipping-option mapper',
+  'fn admin_shipping_option_read_port_context(',
+  'shipping-option mutation mapper',
 );
+const readContext = between(
+  shipping,
+  'fn admin_shipping_option_read_port_context(',
+  'fn map_admin_shipping_option_port_error(',
+  'shipping-option read context',
+);
+const readMapper = between(
+  shipping,
+  'fn map_admin_shipping_option_port_error(',
+  'async fn validate_shipping_option_profile_inputs(',
+  'shipping-option read mapper',
+);
+const listRoute = between(
+  shipping,
+  'pub async fn list_shipping_options(',
+  '/// Create admin shipping option',
+  'shipping-option list route',
+);
+const createRoute = between(
+  shipping,
+  'pub async fn create_shipping_option(',
+  '/// Show admin shipping option',
+  'shipping-option create route',
+);
+const showRoute = between(
+  shipping,
+  'pub async fn show_shipping_option(',
+  '/// Update admin shipping option',
+  'shipping-option show route',
+);
+const updateRoute = between(
+  shipping,
+  'pub async fn update_shipping_option(',
+  '/// Deactivate admin shipping option',
+  'shipping-option update route',
+);
+const deactivateRoute = between(
+  shipping,
+  'pub async fn deactivate_shipping_option(',
+  '/// Reactivate admin shipping option',
+  'shipping-option deactivate route',
+);
+const reactivateStart = shipping.indexOf('pub async fn reactivate_shipping_option(');
+const reactivateRoute = reactivateStart < 0 ? '' : shipping.slice(reactivateStart);
+if (reactivateStart < 0) failures.push('shipping-option reactivate route: unable to isolate source block');
 
 for (const [value, label] of [
   ['CommerceError, ShippingProfileService', 'typed commerce error import'],
-  ['use rustok_fulfillment::error::FulfillmentError;', 'typed fulfillment error import'],
-  ['fn map_shipping_profile_error(error: CommerceError)', 'local shipping profile mapper'],
-  ['fn map_admin_shipping_option_error(', 'local shipping option mapper'],
-  ['async fn validate_shipping_option_profile_inputs(', 'local profile validation helper'],
-  [
-    'const ADMIN_SHIPPING_OPTION_OWNER: &str = "rustok_fulfillment.admin_shipping_options";',
-    'shipping-option owner constant',
-  ],
-  [
-    'const ADMIN_SHIPPING_BOUNDARY: &str = "commerce_admin_shipping_http";',
-    'shipping HTTP boundary constant',
-  ],
-  ['struct AdminShippingOptionErrorContext {', 'shipping-option context'],
-  ['tenant_id: Uuid,', 'tenant context field'],
-  ['shipping_option_id: Option<Uuid>,', 'truthful option identity field'],
-  ["operation: &'static str,", 'operation field'],
+  ['use rustok_fulfillment::error::FulfillmentError;', 'typed mutation error import'],
+  ['PortActor, PortContext, PortError, PortErrorKind, RequestContext', 'typed read error imports'],
+  ['ListAllShippingOptionProjectionsRequest', 'typed admin list request'],
+  ['ReadShippingOptionProjectionRequest', 'typed admin lookup request'],
+  ['fn map_shipping_profile_error(error: CommerceError)', 'profile mapper'],
+  ['fn map_admin_shipping_option_error(', 'mutation mapper'],
+  ['fn admin_shipping_option_read_port_context(', 'read context builder'],
+  ['fn map_admin_shipping_option_port_error(', 'read port mapper'],
+  ['async fn validate_shipping_option_profile_inputs(', 'profile validation helper'],
+  ['const ADMIN_SHIPPING_BOUNDARY: &str = "commerce_admin_shipping_http";', 'HTTP boundary'],
 ]) requireText(shipping, value, label);
 
 for (const [value, label] of [
   ['CommerceError::ShippingProfileNotFound(_)', 'profile not-found mapping'],
-  ['CommerceError::DuplicateShippingProfileSlug(_)', 'duplicate profile slug mapping'],
+  ['CommerceError::DuplicateShippingProfileSlug(_)', 'profile conflict mapping'],
   ['CommerceError::Validation(_)', 'profile validation mapping'],
   ['CommerceError::Database(_)', 'profile database mapping'],
   ['StatusCode::NOT_FOUND', 'profile not-found status'],
   ['StatusCode::CONFLICT', 'profile conflict status'],
-  ['StatusCode::BAD_REQUEST', 'profile bad-request status'],
+  ['StatusCode::BAD_REQUEST', 'profile validation status'],
   ['StatusCode::SERVICE_UNAVAILABLE', 'profile unavailable status'],
   ['StatusCode::INTERNAL_SERVER_ERROR', 'profile fail-closed status'],
-  ['"commerce_admin_not_found"', 'shared not-found code'],
   ['"commerce_admin_shipping_profile_conflict"', 'profile conflict code'],
   ['"commerce_admin_shipping_profile_invalid"', 'profile invalid code'],
   ['"commerce_admin_shipping_profile_storage_unavailable"', 'profile storage code'],
   ['"commerce_admin_shipping_profile_failed"', 'profile fail-closed code'],
-  ['"unexpected_commerce_error"', 'unexpected owner variant kind'],
-  ['error = ?error', 'profile typed internal cause'],
-  ['owner = "rustok_commerce.shipping_profile"', 'profile owner logging'],
-  ['boundary = ADMIN_SHIPPING_BOUNDARY', 'profile boundary logging'],
-  ['HttpError::new(status, code, message)', 'profile static envelope construction'],
+  ['HttpError::new(status, code, message)', 'profile static envelope'],
 ]) requireText(profileMapper, value, label);
 
-for (const value of [
-  'CommerceError::ProductNotFound(_)',
-  'CommerceError::VariantNotFound(_)',
-  'CommerceError::DuplicateHandle { .. }',
-  'CommerceError::DuplicateSku(_)',
-  'CommerceError::InvalidPrice(_)',
-  'CommerceError::InsufficientInventory { .. }',
-  'CommerceError::InvalidOptionCombination',
-  'CommerceError::NoVariants',
-  'CommerceError::CannotDeletePublished',
-  'CommerceError::Rich(_)',
-  'CommerceError::Core(_)',
-]) requireText(profileMapper, value, 'fail-closed unrelated commerce variant');
+for (const [value, label] of [
+  ['FulfillmentError::Validation(_)', 'mutation validation mapping'],
+  ['FulfillmentError::ShippingOptionNotFound(_)', 'mutation not-found mapping'],
+  ['FulfillmentError::FulfillmentNotFound(_)', 'mutation fulfillment mapping'],
+  ['FulfillmentError::InvalidTransition { .. }', 'mutation conflict mapping'],
+  ['FulfillmentError::Database(_)', 'mutation unavailable mapping'],
+  ['"commerce_admin_fulfillment_invalid"', 'mutation invalid code'],
+  ['"commerce_admin_not_found"', 'mutation not-found code'],
+  ['"commerce_admin_fulfillment_state_conflict"', 'mutation conflict code'],
+  ['"commerce_admin_fulfillment_storage_unavailable"', 'mutation unavailable code'],
+  ['HttpError::new(status, code, message)', 'mutation static envelope'],
+]) requireText(mutationMapper, value, label);
 
 for (const [value, label] of [
-  ['error: FulfillmentError,', 'owned fulfillment cause'],
-  ['FulfillmentError::Validation(_)', 'option validation mapping'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'option not-found mapping'],
-  ['FulfillmentError::FulfillmentNotFound(_)', 'unexpected fulfillment not-found mapping'],
-  ['FulfillmentError::InvalidTransition { .. }', 'option transition mapping'],
-  ['FulfillmentError::Database(_)', 'option database mapping'],
-  ['StatusCode::BAD_REQUEST', 'option bad-request status'],
-  ['StatusCode::NOT_FOUND', 'option not-found status'],
-  ['StatusCode::CONFLICT', 'option conflict status'],
-  ['StatusCode::SERVICE_UNAVAILABLE', 'option unavailable status'],
-  ['"commerce_admin_fulfillment_invalid"', 'option validation code'],
-  ['"commerce_admin_not_found"', 'option not-found code'],
-  ['"commerce_admin_fulfillment_state_conflict"', 'option conflict code'],
-  ['"commerce_admin_fulfillment_storage_unavailable"', 'option storage code'],
-  ['"Fulfillment request is invalid"', 'static option validation message'],
-  ['"Commerce resource not found"', 'static option not-found message'],
+  ['PortActor::user(auth.user_id.to_string())', 'read user actor'],
+  ['request_context.locale.as_str()', 'read locale'],
+  ['format!("commerce-admin-shipping-option:{operation}:{resource_id}")', 'read correlation id'],
+  ['with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
+  ['request_context.channel_slug.as_deref()', 'read channel'],
+]) requireText(readContext, value, label);
+
+for (const [value, label] of [
+  ['PortErrorKind::Validation', 'read validation kind'],
+  ['PortErrorKind::NotFound', 'read not-found kind'],
+  ['PortErrorKind::Conflict', 'read conflict kind'],
+  ['PortErrorKind::Forbidden', 'read forbidden kind'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'read unavailable kinds'],
+  ['PortErrorKind::InvariantViolation', 'read invariant kind'],
+  ['StatusCode::BAD_REQUEST', 'read validation status'],
+  ['StatusCode::NOT_FOUND', 'read not-found status'],
+  ['StatusCode::CONFLICT', 'read conflict status'],
+  ['StatusCode::UNAUTHORIZED', 'read forbidden status'],
+  ['StatusCode::SERVICE_UNAVAILABLE', 'read unavailable status'],
+  ['StatusCode::INTERNAL_SERVER_ERROR', 'read invariant status'],
+  ['"commerce_admin_fulfillment_invalid"', 'read validation code'],
+  ['"commerce_admin_not_found"', 'read not-found code'],
+  ['"commerce_admin_fulfillment_state_conflict"', 'read conflict code'],
+  ['"commerce_permission_denied"', 'read forbidden code'],
+  ['"commerce_admin_fulfillment_storage_unavailable"', 'read unavailable code'],
+  ['"commerce_admin_fulfillment_failed"', 'read invariant code'],
+  ['error = ?error', 'typed owner cause'],
+  ['correlation_id = %port_context.correlation_id', 'correlation log'],
+  ['internal_code = %error.code', 'owner code log'],
+  ['retryable = error.retryable', 'retryability log'],
+  ['HttpError::new(status, code, message)', 'read static envelope'],
+]) requireText(readMapper, value, label);
+
+for (const [block, getter, operation, request, label] of [
   [
-    '"Fulfillment operation conflicts with the current state"',
-    'static option conflict message',
+    listRoute,
+    '.shipping_option_admin_read_port()',
+    '.list_all_shipping_option_projections(',
+    'ListAllShippingOptionProjectionsRequest {',
+    'list route',
   ],
-  ['"Fulfillment storage is temporarily unavailable"', 'static option storage message'],
-  ['error = ?error', 'option typed internal cause'],
-  ['owner = ADMIN_SHIPPING_OPTION_OWNER', 'option owner logging'],
-  ['tenant_id = %context.tenant_id', 'option tenant logging'],
-  ['shipping_option_id = ?context.shipping_option_id', 'option identity logging'],
-  ['operation = %context.operation', 'option operation logging'],
-  ['error_kind,', 'option error-kind logging'],
-  ['public_code = code', 'option public-code logging'],
-  ['status = %status', 'option status logging'],
-  ['boundary = ADMIN_SHIPPING_BOUNDARY', 'option boundary logging'],
-  ['HttpError::new(status, code, message)', 'option static envelope construction'],
-]) requireText(optionMapper, value, label);
-
-for (const [value, label] of [
-  ['Database(#[from] sea_orm::DbErr)', 'owner database variant'],
-  ['ProductNotFound(Uuid)', 'owner product variant'],
-  ['VariantNotFound(Uuid)', 'owner variant variant'],
-  ['DuplicateHandle { handle: String, locale: String }', 'owner duplicate handle variant'],
-  ['DuplicateSku(String)', 'owner duplicate SKU variant'],
-  ['InvalidPrice(String)', 'owner invalid price variant'],
-  ['InsufficientInventory { requested: i32, available: i32 }', 'owner inventory variant'],
-  ['InvalidOptionCombination', 'owner option-combination variant'],
-  ['Validation(String)', 'owner validation variant'],
-  ['ShippingProfileNotFound(Uuid)', 'owner shipping profile variant'],
-  ['DuplicateShippingProfileSlug(String)', 'owner duplicate profile slug variant'],
-  ['NoVariants', 'owner no-variants variant'],
-  ['CannotDeletePublished', 'owner published-delete variant'],
-  ['Rich(#[source] Box<RichError>)', 'owner rich variant'],
-  ['Core(#[from] CoreError)', 'owner core variant'],
-]) requireText(commerceErrors, value, label);
-
-for (const [value, label] of [
-  ['Validation(String)', 'fulfillment validation variant'],
-  ['ShippingOptionNotFound(Uuid)', 'fulfillment shipping option variant'],
-  ['FulfillmentNotFound(Uuid)', 'fulfillment resource variant'],
-  ['InvalidTransition { from: String, to: String }', 'fulfillment transition variant'],
-  ['Database(#[from] DbErr)', 'fulfillment database variant'],
-]) requireText(fulfillmentErrors, value, label);
-
-for (const [value, label] of [
-  ['CommerceError::Validation(error.to_string())', 'shipping service validation construction'],
   [
-    'CommerceError::ShippingProfileNotFound(shipping_profile_id)',
-    'shipping service not-found construction',
+    showRoute,
+    '.shipping_option_read_port()',
+    '.read_shipping_option_projection(',
+    'ReadShippingOptionProjectionRequest {',
+    'show route',
   ],
-  ['CommerceError::DuplicateShippingProfileSlug(', 'shipping service conflict construction'],
-  ['active_profile.insert(&self.db).await?;', 'shipping service database propagation'],
-]) requireText(shippingService, value, label);
+]) {
+  requireText(block, getter, `${label} host runtime getter`);
+  requireText(block, operation, `${label} owner operation`);
+  requireText(block, request, `${label} typed request`);
+  requireText(block, 'map_admin_shipping_option_port_error(', `${label} port mapper`);
+  requireText(block, 'requested_locale: Some(request_context.locale.clone())', `${label} locale forwarding`);
+  requireText(block, 'tenant_default_locale: Some(tenant.default_locale.clone())', `${label} fallback forwarding`);
+  forbidText(block, 'FulfillmentService::new(', `${label} concrete read service`);
+}
+
+for (const [block, operation, label] of [
+  [createRoute, '.create_shipping_option(tenant.id, input)', 'create route'],
+  [updateRoute, '.update_shipping_option(tenant.id, id, input)', 'update route'],
+  [deactivateRoute, '.deactivate_shipping_option(tenant.id, id)', 'deactivate route'],
+  [reactivateRoute, '.reactivate_shipping_option(tenant.id, id)', 'reactivate route'],
+]) {
+  requireText(block, 'FulfillmentService::new(runtime.db_clone())', `${label} concrete mutation service`);
+  requireText(block, operation, `${label} mutation operation`);
+  requireText(block, 'map_admin_shipping_option_error(', `${label} mutation mapper`);
+}
 
 for (const [value, label] of [
-  ['pub async fn list_shipping_profiles(', 'profile list handler'],
-  ['pub async fn create_shipping_profile(', 'profile create handler'],
-  ['pub async fn show_shipping_profile(', 'profile detail handler'],
-  ['pub async fn update_shipping_profile(', 'profile update handler'],
-  ['pub async fn deactivate_shipping_profile(', 'profile deactivate handler'],
-  ['pub async fn reactivate_shipping_profile(', 'profile reactivate handler'],
-  ['pub async fn list_shipping_options(', 'option list handler'],
-  ['pub async fn create_shipping_option(', 'option create handler'],
-  ['pub async fn show_shipping_option(', 'option detail handler'],
-  ['pub async fn update_shipping_option(', 'option update handler'],
-  ['pub async fn deactivate_shipping_option(', 'option deactivate handler'],
-  ['pub async fn reactivate_shipping_option(', 'option reactivate handler'],
-  ['list_shipping_profiles(', 'profile list service call'],
-  ['create_shipping_profile(tenant.id, input)', 'profile create service call'],
-  ['get_shipping_profile(', 'profile detail service call'],
-  ['update_shipping_profile(tenant.id, id, input)', 'profile update service call'],
-  ['deactivate_shipping_profile(tenant.id, id)', 'profile deactivate service call'],
-  ['reactivate_shipping_profile(tenant.id, id)', 'profile reactivate service call'],
-  ['list_all_shipping_options(', 'option list service call'],
-  ['create_shipping_option(tenant.id, input)', 'option create service call'],
-  ['get_shipping_option(', 'option detail service call'],
-  ['update_shipping_option(tenant.id, id, input)', 'option update service call'],
-  ['deactivate_shipping_option(tenant.id, id)', 'option deactivate service call'],
-  ['reactivate_shipping_option(tenant.id, id)', 'option reactivate service call'],
-  ['page: pagination.page', 'pagination page forwarding'],
-  ['per_page: pagination.limit()', 'pagination size forwarding'],
   ['items.retain(|option| option.active == active)', 'active filter'],
   ['option.currency_code.eq_ignore_ascii_case(currency_code)', 'currency filter'],
   ['option.provider_id.eq_ignore_ascii_case(provider_id)', 'provider filter'],
   ['option.name.to_ascii_lowercase().contains(&search)', 'search filter'],
+  ['skip(pagination.offset() as usize)', 'pagination offset'],
+  ['take(pagination.limit() as usize)', 'pagination limit'],
+  ['validate_shipping_option_profile_inputs(', 'profile validation helper'],
 ]) requireText(shipping, value, label);
+
+for (const [content, value, label] of [
+  [commerceErrors, 'Database(#[from] sea_orm::DbErr)', 'commerce database variant'],
+  [commerceErrors, 'Validation(String)', 'commerce validation variant'],
+  [fulfillmentErrors, 'Validation(String)', 'fulfillment validation variant'],
+  [fulfillmentErrors, 'ShippingOptionNotFound(Uuid)', 'fulfillment shipping-option variant'],
+  [fulfillmentErrors, 'FulfillmentNotFound(Uuid)', 'fulfillment resource variant'],
+  [fulfillmentErrors, 'InvalidTransition { from: String, to: String }', 'fulfillment transition variant'],
+  [fulfillmentErrors, 'Database(#[from] DbErr)', 'fulfillment database variant'],
+  [apiPorts, 'pub enum PortErrorKind {', 'port kind enum'],
+  [apiPorts, 'InvariantViolation,', 'invariant port kind'],
+  [shippingService, 'CommerceError::Validation(error.to_string())', 'profile validation construction'],
+]) requireText(content, value, label);
 
 for (const value of [
   'err.to_string()',
   'other.to_string()',
+  'error.message',
+  'format!("{}: {}", error.code, error.message)',
   'HttpError::bad_request("commerce_operation_failed"',
-  'super::map_shipping_profile_error',
-  'super::validate_shipping_option_profile_inputs',
   '.map_err(super::map_fulfillment_error)?;',
-  'format!("Fulfillment request is invalid:',
 ]) forbidText(shipping, value, 'unsafe admin shipping public conversion');
 
-const profileMapperUses = shipping.match(/map_shipping_profile_error\(/g) ?? [];
-if (profileMapperUses.length !== 8) {
-  failures.push(`expected profile mapper definition plus seven uses, found ${profileMapperUses.length}`);
+const mutationMapperUses = shipping.match(/map_admin_shipping_option_error\(/g) ?? [];
+if (mutationMapperUses.length !== 5) {
+  failures.push(`expected mutation mapper definition plus four uses, found ${mutationMapperUses.length}`);
 }
-
-const optionMapperUses =
-  shipping.match(
-    /map_admin_shipping_option_error\(\s+AdminShippingOptionErrorContext::new\(/g,
-  ) ?? [];
-if (optionMapperUses.length !== 6) {
-  failures.push(`expected six context-aware shipping-option mapper callsites, found ${optionMapperUses.length}`);
+const readMapperUses = shipping.match(/map_admin_shipping_option_port_error\(/g) ?? [];
+if (readMapperUses.length !== 3) {
+  failures.push(`expected read mapper definition plus two uses, found ${readMapperUses.length}`);
 }
-
 const localValidationUses = shipping.match(/validate_shipping_option_profile_inputs\(/g) ?? [];
 if (localValidationUses.length !== 3) {
-  failures.push(`expected local validation helper definition plus two uses, found ${localValidationUses.length}`);
+  failures.push(`expected validation helper definition plus two uses, found ${localValidationUses.length}`);
 }
 
 if (failures.length > 0) {
@@ -239,5 +257,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce admin shipping profile and option errors use stable context-aware public envelopes',
+  '✔ Commerce admin shipping reads use host-composed owner ports and stable HTTP envelopes while mutations retain lifecycle services',
 );

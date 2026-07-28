@@ -3,10 +3,15 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext};
-use rustok_fulfillment::FulfillmentService;
+use rustok_api::{
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
+    TenantContext,
+};
 use rustok_fulfillment::error::FulfillmentError;
+use rustok_fulfillment::{
+    FulfillmentService, ListAllShippingOptionProjectionsRequest,
+    ReadShippingOptionProjectionRequest,
+};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -143,6 +148,94 @@ fn map_admin_shipping_option_error(
     HttpError::new(status, code, message)
 }
 
+fn admin_shipping_option_read_port_context(
+    tenant_id: Uuid,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    shipping_option_id: Option<Uuid>,
+    operation: &'static str,
+) -> PortContext {
+    let resource_id = shipping_option_id.unwrap_or(tenant_id);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-shipping-option:{operation}:{resource_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_admin_shipping_option_port_error(
+    context: AdminShippingOptionErrorContext,
+    port_context: &PortContext,
+    owner_operation: &'static str,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+            "Fulfillment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_fulfillment_failed",
+            "Fulfillment operation could not be completed safely",
+            "invariant_violation",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = ADMIN_SHIPPING_OPTION_OWNER,
+        owner_operation,
+        correlation_id = %port_context.correlation_id,
+        tenant_id = %context.tenant_id,
+        shipping_option_id = ?context.shipping_option_id,
+        operation = %context.operation,
+        actor = ?port_context.actor,
+        channel = ?port_context.channel,
+        locale = %port_context.locale,
+        deadline_ms = ?port_context.deadline_ms,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        "commerce admin shipping option read failed"
+    );
+    HttpError::new(status, code, message)
+}
+
 async fn validate_shipping_option_profile_inputs(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
@@ -175,7 +268,7 @@ pub async fn list_shipping_profiles(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     Query(params): Query<ListShippingProfilesParams>,
 ) -> HttpResult<Json<PaginatedResponse<ShippingProfileResponse>>> {
     ensure_permissions(
@@ -254,7 +347,7 @@ pub async fn show_shipping_profile(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ShippingProfileResponse>> {
     ensure_permissions(
@@ -389,7 +482,7 @@ pub async fn list_shipping_options(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     Query(params): Query<ListShippingOptionsParams>,
 ) -> HttpResult<Json<PaginatedResponse<ShippingOptionResponse>>> {
     ensure_permissions(
@@ -399,16 +492,28 @@ pub async fn list_shipping_options(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let mut items = FulfillmentService::new(runtime.db_clone())
-        .list_all_shipping_options(
-            tenant.id,
-            Some(request_context.locale.as_str()),
-            Some(tenant.default_locale.as_str()),
+    let read_context = admin_shipping_option_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        None,
+        "list_shipping_options",
+    );
+    let mut items = runtime
+        .shipping_option_admin_read_port()
+        .list_all_shipping_option_projections(
+            read_context.clone(),
+            ListAllShippingOptionProjectionsRequest {
+                requested_locale: Some(request_context.locale.clone()),
+                tenant_default_locale: Some(tenant.default_locale.clone()),
+            },
         )
         .await
         .map_err(|error| {
-            map_admin_shipping_option_error(
+            map_admin_shipping_option_port_error(
                 AdminShippingOptionErrorContext::new(tenant.id, None, "list_shipping_options"),
+                &read_context,
+                "list_all_shipping_option_projections",
                 error,
             )
         })?;
@@ -499,7 +604,7 @@ pub async fn show_shipping_option(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: rustok_api::RequestContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
@@ -508,17 +613,33 @@ pub async fn show_shipping_option(
         "Permission denied: fulfillments:read required",
     )?;
 
-    let option = FulfillmentService::new(runtime.db_clone())
-        .get_shipping_option(
-            tenant.id,
-            id,
-            Some(request_context.locale.as_str()),
-            Some(tenant.default_locale.as_str()),
+    let read_context = admin_shipping_option_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "get_shipping_option",
+    );
+    let option = runtime
+        .shipping_option_read_port()
+        .read_shipping_option_projection(
+            read_context.clone(),
+            ReadShippingOptionProjectionRequest {
+                shipping_option_id: id,
+                requested_locale: Some(request_context.locale.clone()),
+                tenant_default_locale: Some(tenant.default_locale.clone()),
+            },
         )
         .await
         .map_err(|error| {
-            map_admin_shipping_option_error(
-                AdminShippingOptionErrorContext::new(tenant.id, Some(id), "get_shipping_option"),
+            map_admin_shipping_option_port_error(
+                AdminShippingOptionErrorContext::new(
+                    tenant.id,
+                    Some(id),
+                    "get_shipping_option",
+                ),
+                &read_context,
+                "read_shipping_option_projection",
                 error,
             )
         })?;
