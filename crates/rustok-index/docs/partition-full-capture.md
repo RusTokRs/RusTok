@@ -52,6 +52,19 @@ The orchestration command runs, in order:
 
 The final retained directory contains `baseline.json`, `shadow.json`, `query.json`, `mutation.json`, `maintenance.json`, `cutover.json`, `capture.json`, `partition-packet.json`, and `admission.json`.
 
+## Owner review and archive report
+
+After a successful capture, render a read-only review of all nine retained files:
+
+```bash
+node scripts/verify/index-storage-tooling.mjs partition-report \
+  --root evidence/index-partition/retained-run
+```
+
+`partition-report` requires a regular non-symlink bundle and keeps `capture.json`, the packet, the admission file, and all six raw artifacts inside that bundle. It recalculates packet assembly and admission from the retained bytes, rejects raw-artifact, packet, or admission drift, checks that all nine files have distinct filesystem identities, and prints a stable Markdown inventory with exact-byte SHA-256 digests, PostgreSQL identity, provenance, calculated measurements, outcome, and typed reasons.
+
+The report command writes no files, opens no PostgreSQL connection, and starts no Cargo or evidence stage. Shell redirection may save the derived report outside the immutable bundle, but the six raw artifacts, `capture.json`, `partition-packet.json`, and `admission.json` remain the authoritative archive inputs. A report does not change admission and does not authorize production lifecycle work.
+
 A failed attempt may leave evidence schemas or raw artifacts for inspection. Do not edit or reuse them. Prepare a fresh manifest run key and a new empty directory.
 
 This tooling does not authorize or implement production relation rename/drop, copy/replay, dual-write, cutover, cleanup, or query-adapter changes. Admission remains a measured owner decision based on the retained packet.
