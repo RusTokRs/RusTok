@@ -22,8 +22,7 @@ try {
   const module = read('ops/benches/src/index_storage/mod.rs');
   const orchestrator = read('scripts/verify/run-index-partition-evidence.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
-  const runbook = read('crates/rustok-index/docs/partition-evidence-runbook.md');
-  const plan = read('crates/rustok-index/docs/implementation-plan.md');
+  const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
 
   requireMarkers(finalizer, [
     'INDEX_PARTITION_ALLOW_CAPTURE_FINALIZE',
@@ -79,14 +78,13 @@ try {
     'verify-index-partition-full-capture.mjs',
   ], 'index storage tooling router');
   requireMarkers(runbook, [
-    'partition-capture',
-    'INDEX_PARTITION_ALLOW_FULL_CAPTURE=1',
-    'index-partition-capture-finalize',
-  ], 'partition evidence runbook');
-  requireMarkers(plan, [
     'M3 partition cutover rehearsal evidence runner: `complete`',
     'M3 retained packet owner orchestration: `complete`',
-  ], 'Index implementation plan');
+    'Real retained PostgreSQL packet execution: `open`',
+    'INDEX_PARTITION_ALLOW_FULL_CAPTURE=1',
+    'index-partition-capture-finalize',
+    'forbidden before one retained admitted packet',
+  ], 'full partition capture runbook');
 
   console.log(`${prefix} contract satisfied`);
 } catch (error) {
