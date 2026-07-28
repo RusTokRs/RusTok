@@ -6,6 +6,7 @@ mod category {
     include!("category_visibility_list.rs");
 }
 mod category_audience;
+mod category_reply_create_audience;
 mod category_topic_create_audience;
 #[allow(clippy::collapsible_if)]
 mod category_command;
@@ -69,6 +70,11 @@ pub mod widget_contract;
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+};
+pub use category_reply_create_audience::{
+    ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
+    ForumCategoryReplyCreateAudiencePolicyService,
+    SetForumCategoryReplyCreateAudiencePolicyInput,
 };
 pub use category_topic_create_audience::{
     ForumCategoryTopicCreateAudiencePolicy, ForumCategoryTopicCreateAudiencePolicyLayer,

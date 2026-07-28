@@ -50,8 +50,9 @@ pub use notification_recipient::{
 };
 pub use services::{
     CategoryService, ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
-    ForumCategoryAudiencePolicyService, ForumCategoryTopicCreateAudiencePolicy,
-    ForumCategoryTopicCreateAudiencePolicyLayer,
+    ForumCategoryAudiencePolicyService, ForumCategoryReplyCreateAudiencePolicy,
+    ForumCategoryReplyCreateAudiencePolicyLayer, ForumCategoryReplyCreateAudiencePolicyService,
+    ForumCategoryTopicCreateAudiencePolicy, ForumCategoryTopicCreateAudiencePolicyLayer,
     ForumCategoryTopicCreateAudiencePolicyService, ForumCategoryVisibilityPolicy,
     ForumCategoryVisibilityPolicyService, ForumEventService, ForumQuoteCommandService,
     ForumReadModelService, ForumRelationReadService, ForumStorefrontReadStateService,
@@ -62,7 +63,7 @@ pub use services::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, ForumWidgetContractService,
     MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
     MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
-    SetForumCategoryAudiencePolicyInput,
+    SetForumCategoryAudiencePolicyInput, SetForumCategoryReplyCreateAudiencePolicyInput,
     SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
     SetForumTopicAudiencePolicyInput, SubscriptionService, TopicService, UserStatsService,
     VoteService,
