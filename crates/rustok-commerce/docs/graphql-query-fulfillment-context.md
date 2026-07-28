@@ -46,6 +46,36 @@ in the public Commerce GraphQL runtime module. The fallback preserves existing
 standalone schema tests and embeddings without turning the private facade back
 into a provider constructor.
 
+## Transport parity source inventory
+
+The source inventory at
+`crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`
+compares the mounted GraphQL projection reads with the current Commerce REST and
+FFA/native surfaces. It is explicitly marked `source_audit_only_unvalidated` and
+is not runtime parity evidence.
+
+The inventory records:
+
+- mounted GraphQL active list, administrative list-all, and single lookup use the
+  host-composed owner ports;
+- storefront REST still creates `FulfillmentService` directly for the active
+  list, then applies the same currency, public-channel, and shipping-profile
+  filters as GraphQL;
+- admin REST still creates `FulfillmentService` directly for list-all and single
+  lookup, while preserving inactive-before-filter semantics and the existing
+  active, currency, provider, search, and pagination filters;
+- the native FFA surface does not publish complete shipping-option projection
+  list or lookup operations; it owns seller/cart selection through
+  `ShippingSelectionPort` over native-server and GraphQL transports;
+- projection parity therefore does not justify adding projection reads to the
+  native selection contract without a concrete consumer contract.
+
+The decision retained by the inventory is to migrate the existing REST
+projection reads to `CommerceShippingOptionReadRuntime` next, preserving their
+successful response filtering and HTTP public envelopes. The focused guard
+`scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
+locks this audited topology until that cutover deliberately updates the evidence.
+
 ## Retained read context
 
 Each port-backed shipping-option query constructs `PortContext` with:
@@ -140,6 +170,10 @@ owner-local diagnostics and technical database cause.
   delegate.
 - Directly embedded schemas keep an explicit compatibility fallback without
   changing the mounted server composition path.
+- Current REST success filtering is retained by the source inventory but REST is
+  not yet owner-port composed.
+- Native seller/cart selection remains a separate contract and is not treated as
+  a complete projection-read transport.
 - Admin order lookup and non-not-found single shipping-option failures keep their
   existing generic `COMMERCE_QUERY_OPERATION_FAILED` fail-closed envelope after
   stable compatibility conversion.
@@ -148,20 +182,26 @@ owner-local diagnostics and technical database cause.
 
 ## Still open
 
+- Migrate storefront REST active-list plus admin REST list-all and single lookup
+  to the host-composed shipping-option read runtime.
+- Preserve existing HTTP status/code/message policy while mapping typed
+  `PortErrorKind` without owner-message control flow.
 - Add public-channel propagation to the shipping-option query `PortContext`.
 - Publish owner ports for fulfillment lifecycle query reads, then remove the
   remaining concrete `FulfillmentService` field.
-- Migrate REST/native shipping reads and retain parity evidence.
+- Add mounted GraphQL/REST execution evidence; no native projection evidence is
+  required until a native projection consumer contract exists.
 - Continue reviewing order, payment, customer, inventory, region, channel,
   catalog, and remaining Commerce query conversions that still pass through
   dynamic strings.
-- Add compile, mounted transport, deadline, REST/native parity, and remote
-  evidence before promoting any FBA/FFA status.
+- Add compile, mounted transport, deadline, REST parity, and remote evidence
+  before promoting any FBA/FFA status.
 
 ## Intended checks
 
 ```bash
 node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs
+node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs
 node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs
 node scripts/verify/verify-commerce-graphql-query-error-boundary.mjs
 cargo check -p rustok-commerce --lib

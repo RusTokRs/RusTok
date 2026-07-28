@@ -90,6 +90,44 @@ an explicit `CommerceShippingOptionReadRuntime::in_process` compatibility
 fallback in the Commerce GraphQL runtime module. The fallback is outside the
 private facade and is not evidence of mounted transport composition or parity.
 
+## Transport parity source inventory
+
+`contracts/evidence/shipping-option-read-transport-parity-source.json` records a
+source-only inventory at revision
+`aa1f12d7660bda14daa5d8ade11d3074418a573f`. Its status is
+`source_audit_only_unvalidated`; it does not claim compiled or mounted behavior.
+
+The inventory establishes three distinct transport states:
+
+1. Mounted GraphQL active list, admin list-all, and lookup consume the
+   application-host runtime and fulfillment owner ports.
+2. Commerce REST preserves the same successful projection filtering, but its
+   storefront active list and admin list-all/lookup still construct concrete
+   `FulfillmentService` instances.
+3. Fulfillment storefront FFA exposes seller/cart shipping selection over native
+   server and GraphQL paths. It does not expose complete shipping-option
+   projection list or lookup operations.
+
+The third state is not a missing parity implementation: `ShippingSelectionPort`
+and the complete projection read ports have different consumers and semantics.
+A projection API must not be added to the native selection surface merely to make
+transport counts look symmetrical.
+
+The retained decision is therefore:
+
+- migrate the existing REST projection reads to the host-composed owner runtime;
+- preserve storefront currency/channel/profile filters;
+- preserve admin inactive-before-filter behavior and active/currency/provider/
+  search/pagination filters;
+- preserve current HTTP public status/code/message policy through typed
+  `PortErrorKind` mapping;
+- leave the native selection contract unchanged unless a complete projection
+  consumer is designed.
+
+`scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
+locks this inventory and decision until the REST cutover deliberately updates
+both source and evidence.
+
 ## Stable owner errors
 
 | Owner outcome | Port kind | Code | Retryable |
@@ -149,8 +187,8 @@ inactive options before the existing local active, currency, provider, search,
 and pagination filters are applied.
 
 Delivery-group projection is a pure Commerce function receiving owner
-projections. Existing REST/native compatibility adapters delegate to the same
-pure function, so those transports are not changed by this slice.
+projections. Existing selection adapters continue to delegate to the separate
+`ShippingSelectionPort`; they are not projection-read transports.
 
 ## Verification
 
@@ -159,6 +197,7 @@ Focused source guards:
 ```bash
 node scripts/verify/verify-fulfillment-shipping-option-read-port.mjs
 node scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs
+node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs
 node scripts/verify/verify-commerce-graphql-shipping-option-typed-error.mjs
 node scripts/verify/verify-commerce-graphql-shipping-enrichment-typed-error.mjs
 cargo check -p rustok-fulfillment --lib
@@ -172,8 +211,11 @@ No command was executed locally in this source wave.
 
 This slice does not:
 
-- propagate public channel into every query read context;
-- migrate REST/native shipping reads;
+- migrate Commerce REST storefront active-list or admin list-all/lookup to the
+  host-composed read ports;
+- execute GraphQL/REST parity, deadline, locale, channel, or failure fixtures;
+- add a native complete-projection read surface without a consumer contract;
+- propagate public channel into every GraphQL query read context;
 - publish owner read ports for fulfillment lifecycle and order-to-fulfillment
   query paths;
 - retire `FulfillmentService` from fulfillment-owned compatibility adapters;
