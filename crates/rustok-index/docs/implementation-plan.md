@@ -43,10 +43,11 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - M3 partition baseline/shadow snapshot runner: `complete`
 - M3 partition query evidence runner: `complete`
 - M3 partition mutation/WAL evidence runner: `complete`
+- M3 partition maintenance evidence runner: `complete`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
-  partition admission, snapshot/query/mutation evidence tooling, exact-byte packet
-  assembly, and validation are implemented; real retained packet execution,
-  maintenance/cutover evidence, query adapter, and production partition lifecycle
+  partition admission, snapshot/query/mutation/maintenance evidence tooling,
+  exact-byte packet assembly, and validation are implemented; real retained packet
+  execution, cutover evidence, query adapter, and production partition lifecycle
   remain open
 
 The production crate contains the generic domain/application core, seven canonical
@@ -98,6 +99,7 @@ ops/benches/src/index_storage/
   partition_snapshot.rs
   partition_query.rs
   partition_mutation.rs
+  partition_maintenance.rs
 ```
 
 ## Library decisions
@@ -172,9 +174,11 @@ unpartitioned until separate shadow evidence is retained and admitted.
 - [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.
 - [x] Add owner-operated PostgreSQL baseline/shadow query evidence capture.
 - [x] Add owner-operated PostgreSQL baseline/shadow mutation and WAL evidence capture.
-- [ ] Execute and retain PostgreSQL baseline/shadow, query, and mutation evidence
-      with the owner-operated runners.
+- [x] Add owner-operated PostgreSQL baseline/shadow ordinary-VACUUM maintenance evidence capture.
+- [ ] Execute and retain PostgreSQL baseline/shadow, query, mutation, and maintenance
+      evidence with the owner-operated runners.
 - [ ] Execute retained PostgreSQL maintenance and cutover evidence.
+- [ ] Execute retained PostgreSQL cutover evidence.
 - [ ] Assemble and validate one complete retained real packet.
 - [ ] Add partition copy/checkpoints, constraints/index attachment, replay/dual-write,
       cutover, rollback, and durable global operation ownership.
@@ -244,6 +248,21 @@ read-only and proves semantic parity and one-child pruning.
     maximum per-sample plan-node WAL bytes, proves one-child shadow pruning, and
     publishes `mutation.json` without overwrite. Real database execution remains an
     owner step.
+11. The eleventh M3 slice adds owner-operated ordinary-VACUUM maintenance evidence.
+    It independently revalidates the manifest and retained shadow catalog, confirms
+    canonical/shadow logical parity, and creates one deterministic evidence-only
+    schema. Ordinary and tenant-hash-partitioned clone pairs copy the same rows and
+    storage attributes without importing production constraints or indexes.
+    Autovacuum is disabled on each physical clone. Exactly the manifest maintenance
+    run count applies identical committed entity-update and link delete/reinsert
+    cycles only to the clones, verifies equal effects and logical digests, captures
+    flushed pre-VACUUM dead-tuple statistics, alternates measurement order, and times
+    ordinary `VACUUM (ANALYZE)` over every physical relation. Each run requires zero
+    estimated dead tuples and logical parity after cleanup. The runner retains
+    detailed table statistics, leaves the evidence schema for inspection, proves the
+    canonical and retained snapshot-shadow relations unchanged, and publishes
+    `maintenance.json` without overwrite. Real database execution remains an owner
+    step.
 
 ### M4 - Query engine v1
 
@@ -336,6 +355,8 @@ cargo check -p rustok-benchmarks --bin index-partition-query-evidence
 cargo test -p rustok-benchmarks partition_query
 cargo check -p rustok-benchmarks --bin index-partition-mutation-evidence
 cargo test -p rustok-benchmarks partition_mutation
+cargo check -p rustok-benchmarks --bin index-partition-maintenance-evidence
+cargo test -p rustok-benchmarks partition_maintenance
 ```
 
 Targeted M3 guards:
@@ -349,6 +370,7 @@ node scripts/verify/verify-index-partition-evidence.mjs
 node scripts/verify/verify-index-partition-snapshot-capture.mjs
 node scripts/verify/verify-index-partition-query-evidence.mjs
 node scripts/verify/verify-index-partition-mutation-evidence.mjs
+node scripts/verify/verify-index-partition-maintenance-evidence.mjs
 ```
 
 ## Progress log
@@ -359,6 +381,7 @@ node scripts/verify/verify-index-partition-mutation-evidence.mjs
 - 2026-07-27: completed canonical M3 schema, atomic mutation persistence, schema
   leases, secondary-index lifecycle, partition admission/planning, immutable packet
   tooling, exact-byte assembly, baseline/shadow snapshot capture, query evidence
-  capture, and rollback-only mutation/WAL evidence capture.
+  capture, rollback-only mutation/WAL evidence capture, and isolated ordinary-VACUUM
+  maintenance evidence capture.
 - Repository tests, verifiers, and real PostgreSQL partition evidence remain for the
   owner to execute.

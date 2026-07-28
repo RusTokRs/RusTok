@@ -4,6 +4,7 @@ mod database_metadata;
 mod explain;
 mod maintenance_runner;
 mod mutation_runner;
+mod partition_maintenance;
 mod partition_mutation;
 mod partition_query;
 mod partition_snapshot;
@@ -19,6 +20,10 @@ pub use maintenance_runner::{
     MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
 };
 pub use mutation_runner::{MutationBenchmarkReport, run_mutations, write_mutation_report};
+pub use partition_maintenance::{
+    PartitionMaintenanceCapture, PartitionMaintenanceConfig,
+    capture_partition_maintenance_evidence,
+};
 pub use partition_mutation::{
     PartitionMutationCapture, PartitionMutationConfig, capture_partition_mutation_evidence,
 };

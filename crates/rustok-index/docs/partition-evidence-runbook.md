@@ -7,7 +7,7 @@ relations remain unpartitioned unless one retained packet validates to `admitted
 
 ## Tooling boundary
 
-The evidence flow has six explicit boundaries:
+The evidence flow has seven explicit boundaries:
 
 1. `partition-prepare` binds an immutable run manifest to one SHA-256
    `evidence_id` and emits deterministic shadow-only bootstrap SQL.
@@ -18,16 +18,20 @@ The evidence flow has six explicit boundaries:
    one read-only repeatable-read transaction and publishes `query.json`.
 4. `index-partition-mutation-evidence` compares rollback-only canonical and shadow
    mutations and publishes `mutation.json`.
-5. The owner executes maintenance and cutover rehearsal measurements.
-   `partition-assemble` reads all six exact raw files, calculates exact-byte SHA-256
-   identities, and publishes one structurally validated packet.
-6. `partition-validate` recalculates admission metrics and atomically publishes
+5. `index-partition-maintenance-evidence` creates isolated ordinary/partitioned
+   clones, commits equivalent churn only there, measures ordinary VACUUM, and
+   publishes `maintenance.json`.
+6. The owner executes cutover rehearsal measurements. `partition-assemble` reads all
+   six exact raw files, calculates exact-byte SHA-256 identities, and publishes one
+   structurally validated packet.
+7. `partition-validate` recalculates admission metrics and atomically publishes
    `admission.json`.
 
 The preparer and all artifact producers refuse to overwrite retained outputs. None
 of the tools renames or drops production relations, performs production cutover, or
 starts runtime replay or dual-write. The mutation runner executes writes only under
-savepoints and rolls back both each sample and the enclosing transaction.
+savepoints and rolls back both each sample and the enclosing transaction. The
+maintenance runner commits only to its evidence-only maintenance schema.
 
 ## Prepare an immutable run
 
@@ -178,6 +182,60 @@ The runner publishes one top-level array to `mutation.json` using temporary-file
 hard-link no-clobber semantics. WAL values are plan evidence, not persistent bloat
 or post-checkpoint storage measurements.
 
+## Capture baseline/shadow ordinary-VACUUM maintenance evidence
+
+Run only after snapshot capture while the manifest-bound shadow catalog remains
+unchanged:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
+INDEX_PARTITION_ALLOW_MAINTENANCE_EVIDENCE=1 \
+INDEX_PARTITION_MANIFEST=evidence/index-partition/manifest.json \
+INDEX_PARTITION_EVIDENCE_ROOT=evidence/index-partition \
+INDEX_PARTITION_MAINTENANCE_CYCLES=3 \
+INDEX_PARTITION_MAINTENANCE_BATCH=128 \
+cargo run -p rustok-benchmarks --bin index-partition-maintenance-evidence --release
+```
+
+The explicit maintenance opt-in is mandatory because this runner creates logged
+relations and commits churn. It revalidates the complete manifest identity,
+PostgreSQL 16, JIT off, partition pruning, `synchronous_commit=on`,
+`vacuum_cost_delay=0`, ordinary canonical relations, shadow comments, child names,
+and partition bounds. It calculates logical canonical/shadow parity before any
+clone is created.
+
+The runner creates one deterministic `index_pe_maintenance_<evidence>` schema and
+refuses an existing schema. The evidence-only maintenance schema contains two
+ordinary baseline heaps and two tenant-hash-partitioned parents with the manifest
+modulus. All clones use the source column/default/storage shape but deliberately do
+not import production constraints or indexes. Autovacuum is disabled on every
+physical clone so the owner-operated run controls cleanup timing.
+
+Canonical and retained snapshot-shadow relations are read-only sources. Every
+committed entity timestamp update and link delete/reinsert occurs only in the
+maintenance clones. For each of exactly `manifest.repetitions.maintenance` unique
+runs, the runner:
+
+- requires the baseline and partitioned clones to start with zero estimated dead
+  tuples after the previous ordinary VACUUM;
+- commits the configured number of deterministic churn cycles and requires identical
+  baseline/shadow affected-row counts;
+- verifies exact logical row/digest parity before maintenance;
+- flushes PostgreSQL statistics through `pg_stat_force_next_flush`;
+- records positive pre-VACUUM `pg_stat_user_tables.n_dead_tup` totals and full
+  per-table insert/update/delete/HOT/vacuum/analyze counters;
+- alternates baseline/shadow measurement order;
+- times ordinary `VACUUM (ANALYZE)` over both baseline heaps and every physical
+  shadow partition outside a transaction;
+- requires zero estimated dead tuples and equal logical digests after cleanup;
+- verifies that canonical and retained snapshot-shadow relations remain unchanged.
+
+The runner publishes a top-level `maintenance.json` array with the packet-required
+`baseline_vacuum_ms`, `shadow_vacuum_ms`, `baseline_dead_tuples`, and
+`shadow_dead_tuples`, plus detailed before/after statistics and logical digests.
+Temporary-file plus hard-link publication refuses overwrite. The evidence schema is
+left in place for owner inspection; rerunning the same evidence ID fails closed.
+
 ## Capture the remaining raw artifacts
 
 The complete bundle contains six regular, non-symlink JSON files:
@@ -186,11 +244,12 @@ The complete bundle contains six regular, non-symlink JSON files:
 - `shadow.json` — produced by the snapshot runner;
 - `query.json` — produced by the query evidence runner;
 - `mutation.json` — produced by the mutation/WAL evidence runner;
-- `maintenance.json` — ordinary VACUUM/dead-tuple measurements;
+- `maintenance.json` — produced by the ordinary-VACUUM maintenance runner;
 - `cutover.json` — lock rehearsals and rollback/invariance facts.
 
-The owner still executes maintenance and cutover rehearsal evidence. Final files are
-written once and never edited after measurement.
+The owner still executes maintenance and cutover rehearsal evidence. Maintenance
+tooling is now available, but its real PostgreSQL artifact and the cutover rehearsal
+remain owner-run. Final files are written once and never edited after measurement.
 
 Create `capture.json` beside the six artifacts:
 
@@ -282,7 +341,10 @@ samples. The validator calculates mutation latency regression and WAL amplificat
 
 ### Maintenance measurements
 
-Baseline/shadow ordinary VACUUM duration and dead tuples. `VACUUM FULL` is invalid.
+Each unique run records baseline/shadow ordinary VACUUM duration and positive
+pre-cleanup dead tuples. Raw evidence additionally retains the controlled churn
+shape, full physical-table statistics, zero post-VACUUM dead-tuple state, logical
+parity, and proof that source relations were unchanged. `VACUUM FULL` is invalid.
 
 ### Cutover rehearsals
 
@@ -294,7 +356,8 @@ unchanged. Production cutover is not implemented by this runbook.
 Retain together:
 
 - `config.json`, `manifest.json`, `bootstrap.sql`, and `query-audit.json`;
-- all six raw JSON artifacts and deeper PostgreSQL/EXPLAIN inputs;
+- all six raw JSON artifacts and deeper PostgreSQL/EXPLAIN/statistics inputs;
+- the evidence-only maintenance schema until owner review completes;
 - `capture.json`, `partition-packet.json`, and `admission.json`;
 - PostgreSQL logs and runner metadata.
 
@@ -311,14 +374,17 @@ The repository owner runs:
 cargo test -p rustok-benchmarks partition_snapshot
 cargo test -p rustok-benchmarks partition_query
 cargo test -p rustok-benchmarks partition_mutation
+cargo test -p rustok-benchmarks partition_maintenance
 cargo check -p rustok-benchmarks --bin index-partition-snapshot-capture
 cargo check -p rustok-benchmarks --bin index-partition-query-evidence
 cargo check -p rustok-benchmarks --bin index-partition-mutation-evidence
+cargo check -p rustok-benchmarks --bin index-partition-maintenance-evidence
 node --test scripts/verify/index-partition-evidence.test.mjs
 node --test scripts/verify/index-partition-evidence-assembly.test.mjs
 node scripts/verify/verify-index-partition-evidence.mjs
 node scripts/verify/verify-index-partition-snapshot-capture.mjs
 node scripts/verify/verify-index-partition-query-evidence.mjs
 node scripts/verify/verify-index-partition-mutation-evidence.mjs
+node scripts/verify/verify-index-partition-maintenance-evidence.mjs
 node scripts/verify/index-storage-tooling.mjs contract
 ```

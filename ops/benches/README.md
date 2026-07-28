@@ -23,6 +23,8 @@ This is a standalone workspace crate named `rustok-benchmarks`.
   query latency, result-parity, plan-normalization, and pruning evidence runner.
 - `src/bin/index_partition_mutation_evidence.rs` — owner-operated M3 baseline/shadow
   rollback-only mutation latency and WAL evidence runner.
+- `src/bin/index_partition_maintenance_evidence.rs` — owner-operated M3 ordinary
+  VACUUM and dead-tuple evidence runner over isolated baseline/partitioned clones.
 
 ## Purpose
 
@@ -44,8 +46,9 @@ The M3 partition runners are different. The snapshot runner reads the canonical
 shadow parents and children, and copies one repeatable-read snapshot into them. The
 query runner compares those canonical and shadow relations read-only. The mutation
 runner executes matched updates/deletes through savepoints inside one rollback-only
-repeatable-read transaction. None of these runners renames, drops, or cuts over the
-canonical relations. The snapshot runner does not rename, drop, or alter the canonical production relations.
+repeatable-read transaction. The maintenance runner copies both layouts into one
+retained evidence-only schema and commits churn only there. None of these runners
+renames, drops, or cuts over the canonical relations. The snapshot runner does not rename, drop, or alter the canonical production relations.
 Run them only against an owner-approved PostgreSQL 16 evidence database.
 
 ## Typical Criterion usage
@@ -190,6 +193,43 @@ EXPLAIN sample, and records maximum per-sample plan-node WAL bytes conservativel
 `baseline_wal_bytes` and `shadow_wal_bytes`. Each shadow mutation must prune its
 target to exactly one child partition. The completed array is published once as
 `mutation.json` with temporary-file plus hard-link no-clobber semantics.
+
+## Index partition maintenance evidence
+
+Run this after snapshot capture while the same manifest-bound shadow relations are
+still available:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_evidence \
+INDEX_PARTITION_ALLOW_MAINTENANCE_EVIDENCE=1 \
+INDEX_PARTITION_MANIFEST=evidence/index-partition/manifest.json \
+INDEX_PARTITION_EVIDENCE_ROOT=evidence/index-partition \
+INDEX_PARTITION_MAINTENANCE_CYCLES=3 \
+INDEX_PARTITION_MAINTENANCE_BATCH=128 \
+cargo run -p rustok-benchmarks --bin index-partition-maintenance-evidence --release
+```
+
+The explicit maintenance opt-in is mandatory because this runner creates retained
+logged tables and commits churn. It first revalidates the prepared manifest,
+PostgreSQL 16/JIT/pruning/synchronous-commit settings, ordinary canonical tables,
+and the complete evidence-bound shadow catalog. It confirms logical canonical/shadow
+parity before creating one deterministic `index_pe_maintenance_<evidence>` schema.
+
+Inside that schema it creates evidence-only baseline and partitioned clones with the
+same columns and storage attributes but without production constraints or indexes.
+Autovacuum is disabled on every physical clone so the measurement controls when
+cleanup occurs. Canonical and retained snapshot-shadow relations are read-only
+sources; all updates and delete/reinsert churn are committed only into the clones.
+
+The runner produces exactly `manifest.repetitions.maintenance` unique runs. Each run
+applies identical committed churn cycles, checks affected-row and logical digest
+parity, flushes `pg_stat_user_tables`, records positive pre-VACUUM dead tuples,
+alternates side order, and times ordinary `VACUUM (ANALYZE)` over two baseline heaps
+versus every physical partition. It requires zero estimated dead tuples and equal
+logical digests after cleanup, retains full per-table statistics, and publishes the
+packet-required `baseline_vacuum_ms`, `shadow_vacuum_ms`, `baseline_dead_tuples`, and
+`shadow_dead_tuples` in a no-clobber `maintenance.json` array. The evidence schema is
+left in place for owner inspection; rerunning the same evidence ID fails closed.
 
 Scale values for the M2 runners:
 
