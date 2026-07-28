@@ -2,7 +2,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value as SqlValue,
 };
 
-use crate::migrations::ConsumerPoisonReceiptError;
+use super::consumer_poison_receipt::ConsumerPoisonReceiptError;
 
 const MAX_CONSUMER_GROUP_BYTES: usize = 191;
 
