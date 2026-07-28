@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "contract-poison-external-iggy-header-source",
+  "status": "source_complete_runtime_pending",
+  "scope": "external_real_iggy_physical_dlq_header_and_partition",
+  "test_target": "contract_poison_external_iggy_header",
+  "test_case": "deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_partition",
+  "source_path": "crates/rustok-iggy/tests/contract_poison_external_iggy_header.rs",
+  "verifier": "scripts/verify/verify-iggy-contract-poison-external-header-evidence.mjs",
+  "required_environment": [
+    "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS"
+  ],
+  "optional_environment": [
+    "RUSTOK_IGGY_EXTERNAL_TEST_USERNAME",
+    "RUSTOK_IGGY_EXTERNAL_TEST_PASSWORD"
+  ],
+  "topology": {
+    "mode": "external",
+    "protocol": "tcp",
+    "unique_stream_per_run": true,
+    "domain_partitions": 3,
+    "replication_factor": 1,
+    "observed_topic": "dlq",
+    "broker_requirement": "disposable_or_operator_cleaned_external_iggy"
+  },
+  "required_sequence": [
+    "start_production_transport_and_topology",
+    "open_sdk_dlq_probe_group_before_publication",
+    "construct_nonempty_synthetic_decode_failure_with_production_type",
+    "derive_dlq_entry_and_expected_connector_uuid",
+    "derive_expected_one_based_partition_from_uuid_modulo_partition_count",
+    "publish_once_through_iggy_transport_move_to_dlq",
+    "receive_one_physical_dlq_message_through_sdk_probe",
+    "assert_physical_header_id_equals_uuid_as_u128",
+    "assert_received_partition_equals_expected_one_based_partition",
+    "assert_physical_payload_is_exact",
+    "commit_probe_header_offset_only",
+    "shutdown_production_transport"
+  ],
+  "production_paths": [
+    "ConsumedContractDecodeFailure::new",
+    "ConsumedContractDecodeFailure::to_dlq_entry",
+    "DlqEntry::broker_message_id",
+    "IggyTransport::new",
+    "IggyTransport::move_to_dlq",
+    "IggyTransport::shutdown"
+  ],
+  "sdk_probe_boundary": {
+    "purpose": "observe_physical_dlq_message_only",
+    "allowed_operations": [
+      "connect",
+      "open_dlq_consumer_group",
+      "receive_one_message",
+      "read_header_id",
+      "read_partition_id",
+      "read_payload",
+      "store_probe_offset"
+    ],
+    "forbidden_operations": [
+      "publish",
+      "create_source_fixture",
+      "mutate_production_receipt",
+      "acknowledge_source_cursor",
+      "delete_stream",
+      "change_broker_deduplication"
+    ]
+  },
+  "publication_count": 1,
+  "forbidden_claims": [
+    "source_cursor_lifecycle_proved_by_this_test",
+    "database_receipt_ordering_proved",
+    "broker_deduplication_runtime_proved",
+    "duplicate_suppression_window_proved",
+    "physical_exactly_once_proved",
+    "bundled_mode_proved",
+    "tls_or_auth_failure_proved",
+    "multi_replica_proved"
+  ],
+  "execution_status": "not_run"
+}
