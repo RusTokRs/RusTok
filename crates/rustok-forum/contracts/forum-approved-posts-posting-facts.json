@@ -21,6 +21,8 @@
   "owner_note": "crates/rustok-forum/docs/forum-26h-approved-posts-posting-facts.md",
   "source_proof": "crates/rustok-forum/src/services/posting_policy_approved_facts.rs#tests",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "downstream_index_hardening_task": "FORUM-26I",
+  "downstream_index_hardening_contract": "crates/rustok-forum/contracts/forum-approved-posts-index-hardening.json",
   "composition": {
     "forum_topics_and_replies_are_authority": true,
     "current_retained_snapshot": true,
