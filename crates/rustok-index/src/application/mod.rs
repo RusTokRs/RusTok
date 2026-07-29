@@ -17,16 +17,18 @@ mod reference;
 
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
 pub use planner::{
-    ExecutableQueryPlan, PlannedField, PlannedJoin, PlannedOrder, QueryPlanError,
-    QueryPlanFingerprint,
+    ExecutableQueryPlan, PlannedField, PlannedJoin, PlannedManyProjection, PlannedOrder,
+    QueryPlanError, QueryPlanFingerprint,
 };
 pub use postgres_compiler::{
-    CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue,
-    PostgresQueryBuildError, PostgresQueryCompileError,
+    CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
+    CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError,
+    PostgresQueryCompileError,
 };
 pub use postgres_query_result::{
-    CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow, IndexProjectedValue,
-    IndexQueryItem, IndexQueryPage, IndexRelationIdentity, PostgresQueryDecodeError,
+    CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow,
+    IndexNestedRelationItem, IndexNestedRelationProjection, IndexProjectedValue, IndexQueryItem,
+    IndexQueryPage, IndexRelationIdentity, PostgresQueryDecodeError,
     PostgresQueryPageBuildError,
 };
 pub use registry::{

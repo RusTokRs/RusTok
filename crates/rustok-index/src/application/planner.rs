@@ -66,6 +66,15 @@ pub struct PlannedOrder {
     pub direction: OrderDirection,
 }
 
+/// One deterministic nested result group for projected fields sharing a terminal
+/// relation path that crosses at least one many-cardinality link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedManyProjection {
+    pub path: Vec<LinkName>,
+    pub identity_paths: Vec<Vec<LinkName>>,
+    pub fields: Vec<PlannedField>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutableQueryPlan {
     pub scope: IndexQueryScope,
@@ -75,6 +84,7 @@ pub struct ExecutableQueryPlan {
     pub joins: Vec<PlannedJoin>,
     pub referenced_fields: BTreeMap<FieldPath, PlannedField>,
     pub projection: Vec<PlannedField>,
+    pub many_projections: Vec<PlannedManyProjection>,
     pub filter: Option<FilterExpr>,
     pub order_by: Vec<PlannedOrder>,
     pub pagination: Pagination,
@@ -100,10 +110,14 @@ impl ExecutableQueryPlan {
         self.joins.iter().filter(|join| !join.traverses_many)
     }
 
+    pub(crate) fn outer_projection(&self) -> impl Iterator<Item = &PlannedField> {
+        self.projection.iter().filter(|field| !field.traverses_many)
+    }
+
     pub fn fingerprint(&self) -> Result<QueryPlanFingerprint, postcard::Error> {
         let bytes = postcard::to_stdvec(self)?;
         let mut hasher = Sha256::new();
-        hasher.update(b"rustok-index-query-plan-v3");
+        hasher.update(b"rustok-index-query-plan-v4");
         hasher.update((bytes.len() as u64).to_be_bytes());
         hasher.update(bytes);
         Ok(QueryPlanFingerprint(hasher.finalize().into()))
@@ -227,6 +241,7 @@ impl SchemaRegistry {
             .iter()
             .map(|path| planned_field(&referenced_fields, path))
             .collect::<Result<Vec<_>, _>>()?;
+        let many_projections = derive_many_projections(&projection);
         let order_by = query
             .order_by
             .iter()
@@ -246,6 +261,7 @@ impl SchemaRegistry {
             joins,
             referenced_fields,
             projection,
+            many_projections,
             filter: query.filter.clone(),
             order_by,
             pagination: query.pagination.clone(),
@@ -262,6 +278,33 @@ fn planned_field(
         .get(path)
         .cloned()
         .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))
+}
+
+pub(crate) fn derive_many_projections(
+    projection: &[PlannedField],
+) -> Vec<PlannedManyProjection> {
+    let mut group_indexes = BTreeMap::<Vec<LinkName>, usize>::new();
+    let mut groups = Vec::<PlannedManyProjection>::new();
+
+    for field in projection.iter().filter(|field| field.traverses_many) {
+        let path = field.path.links().to_vec();
+        if let Some(index) = group_indexes.get(&path).copied() {
+            groups[index].fields.push(field.clone());
+            continue;
+        }
+
+        let identity_paths = (1..=path.len())
+            .map(|depth| path[..depth].to_vec())
+            .collect();
+        group_indexes.insert(path.clone(), groups.len());
+        groups.push(PlannedManyProjection {
+            path,
+            identity_paths,
+            fields: vec![field.clone()],
+        });
+    }
+
+    groups
 }
 
 fn collect_link_prefixes(query: &IndexQuery) -> Vec<Vec<LinkName>> {
