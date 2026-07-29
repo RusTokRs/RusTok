@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BB",
+  "upstream_task": "FORUM-20BA",
+  "scope": "Exact owner composition for one storefront topic read through the canonical base visibility and richer category/topic audience decision",
+  "owner_service": "crates/rustok-forum/src/services/topic_audience_read.rs",
+  "base_visibility_owner": "crates/rustok-forum/src/services/topic_visibility.rs",
+  "richer_visibility_owner": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
+  "topic_owner_facade": "crates/rustok-forum/src/services/topic_facade.rs",
+  "source_test": "crates/rustok-forum/tests/topic_audience_exact_read_sqlite.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bb-topic-audience-exact-read.md",
+  "source_verifier": "scripts/verify/verify-forum-topic-audience-exact-read.mjs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "crate_api": "crates/rustok-forum/CRATE_API.md",
+  "owner_boundary": {
+    "public_exact_read_published": true,
+    "authenticated_exact_read_published": true,
+    "read_scope_required_before_visibility": true,
+    "authenticated_tenant_validated_before_topic_lookup": true,
+    "authenticated_actor_validated_before_topic_lookup": true,
+    "effective_locale_from_port_context": true,
+    "route_channel_from_port_context": true,
+    "base_visibility_before_richer_facts": true,
+    "inherited_category_layers_enforced": true,
+    "topic_local_layer_enforced": true,
+    "explicit_deny_precedence_preserved": true,
+    "optional_owner_facts_exact_and_bounded": true,
+    "missing_required_facts_fail_closed": true,
+    "denied_and_missing_topic_non_oracular": true,
+    "topic_hydration_after_authorization": true,
+    "public_request_does_not_call_optional_facts": true,
+    "transport_composition_changed": false,
+    "list_read_changed": false,
+    "reply_read_changed": false,
+    "search_index_changed": false,
+    "seo_changed": false,
+    "deep_link_changed": false,
+    "migration_added": false,
+    "dependency_changed": false,
+    "public_dto_changed": false
+  },
+  "documentation": {
+    "owner_note_updated": true,
+    "crate_api_updated": false,
+    "canonical_plan_updated": false,
+    "synchronization_debt": "Advance CRATE_API and the FORUM-20 ledger through FORUM-20BB, then record FORUM-20BC transport composition through a safe repository-local edit; the contents API requires complete replacement of both owner documents and the implementation plan is multi-thousand-line."
+  },
+  "compatibility": {
+    "existing_topic_service_methods_changed": false,
+    "existing_transport_call_sites_changed": false,
+    "new_owner_service_additive": true,
+    "public_topics_without_richer_layers_preserve_visibility": true,
+    "locally_decidable_authenticated_layers_do_not_require_provider": true,
+    "external_fact_layers_require_exact_context_and_provider": true
+  },
+  "remaining_scope": [
+    "compose native and GraphQL selected-topic reads through the FORUM-20BB owner service",
+    "compose authenticated mark-read visibility recheck through the same exact owner service",
+    "migrate topic list pagination through an exact bounded richer-audience scope without count drift",
+    "migrate exact reply and reply-list reads through parent-topic richer authorization",
+    "migrate remaining category reads, search/index, SEO, and deep-link authorization",
+    "synchronize CRATE_API and the canonical Forum plan through FORUM-20BB with a safe repository-local edit",
+    "capture maintainer-executed SQLite, PostgreSQL, and transport runtime evidence"
+  ],
+  "downstream_task": "FORUM-20BC",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-forum --test topic_audience_exact_read_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-topic-audience-exact-read.mjs",
+      "node scripts/verify/verify-forum-topic-audience-visibility.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}

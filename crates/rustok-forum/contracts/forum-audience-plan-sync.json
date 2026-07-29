@@ -40,7 +40,7 @@
     "public_contract_changed": false
   },
   "preserved_residuals": [
-    "remaining Forum read authorization migration",
+    "remaining Forum read transport list reply and category authorization migration",
     "search index SEO and deep-link policy migration",
     "visibility-scoped category and all-read commands",
     "future moderation transports must reuse context-aware owner methods",
@@ -49,6 +49,8 @@
     "delivery-time target authorization",
     "PostgreSQL concurrency lease contention inheritance and cross-consumer runtime evidence"
   ],
+  "downstream_task": "FORUM-20BB",
+  "downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-exact-read.json",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
