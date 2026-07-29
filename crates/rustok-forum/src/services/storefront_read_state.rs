@@ -20,6 +20,7 @@ use crate::services::read_model::ForumReadModelService;
 use crate::services::read_tracking::{
     ForumTopicReadState, ForumTopicReadStateService, MarkForumTopicReadInput,
 };
+use crate::services::topic_audience_list::ForumTopicAudienceListService;
 use crate::services::topic_audience_read::ForumTopicAudienceReadService;
 use crate::services::topic_facade::TopicService;
 use crate::state_machine::ReplyStatus;
@@ -75,9 +76,40 @@ impl ForumStorefrontReadStateService {
         }
     }
 
-    /// Selects the storefront-visible topic page before enriching those exact IDs
-    /// through the canonical unread aggregate. Raw arbitrary-ID enrichment is not
-    /// exposed outside the Forum owner crate.
+    /// Selects one exact authenticated audience-visible storefront page before
+    /// enriching those exact IDs through the canonical unread aggregate.
+    pub async fn list_topics_with_unread_audience_visible(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        filter: ListTopicsFilter,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
+        let service = match self.audience_facts.clone() {
+            Some(facts) => ForumTopicAudienceListService::with_audience_facts(
+                self.db.clone(),
+                self.event_bus.clone(),
+                facts,
+            ),
+            None => ForumTopicAudienceListService::new(self.db.clone(), self.event_bus.clone()),
+        };
+        let page = service
+            .list_authenticated_storefront_visible_with_audience_context(
+                tenant_id,
+                security.clone(),
+                context,
+                filter,
+                fallback_locale,
+            )
+            .await?;
+        self.enrich_topics_with_unread(tenant_id, security, page.items, page.total)
+            .await
+    }
+
+    /// Compatibility composition for consumers that have not yet supplied an
+    /// exact richer-audience context. New authenticated public transports must
+    /// use `list_topics_with_unread_audience_visible`.
     pub async fn list_topics_with_unread(
         &self,
         tenant_id: Uuid,
@@ -100,6 +132,17 @@ impl ForumStorefrontReadStateService {
                 channel_slug,
             )
             .await?;
+        self.enrich_topics_with_unread(tenant_id, security, topics, total)
+            .await
+    }
+
+    async fn enrich_topics_with_unread(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topics: Vec<TopicListItem>,
+        total: u64,
+    ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
         let summaries = ForumReadModelService::new(self.db.clone())
             .summarize_topic_ids(
                 tenant_id,
