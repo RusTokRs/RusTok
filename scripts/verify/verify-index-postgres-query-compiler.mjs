@@ -34,9 +34,12 @@ const compiler = requireMarkers(compilerPath, [
   'pub fn compile_postgres(&self)',
   'self.validate_compiler_contract(cursor)?;',
   'super::postgres_query_sql::compile_postgres_plan(self, cursor)',
-  'ManyLinkSemanticsPending',
+  'ManyLinkProjectionPending(FieldPath)',
+  'ManyLinkOrderingPending(FieldPath)',
+  'ManyTraversalMismatch(Vec<LinkName>)',
   'self.referenced_fields.get(&field.path) != Some(field)',
   'self.path_aliases.get(&Vec::new())',
+  'expected_traverses_many',
   'validate_alias(&self.root_alias)?;',
 ]);
 
@@ -50,9 +53,15 @@ const sqlPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
 const sql = requireMarkers(sqlPath, [
   'pub(super) fn compile_postgres_plan(',
   'let base = compile_base(plan, &mut bindings);',
+  'for join in plan.outer_joins()',
   'FilterExpr::And(children)',
   'FilterExpr::Contains(path, value)',
   'FilterExpr::IsNull(path, expected_null)',
+  'fn compile_many_exists(',
+  'EXISTS ({wrapper}{expression})',
+  'AND NOT ({disqualifying})',
+  'sql.non_null_predicate()',
+  '.source_version = {source_alias_q}.source_version',
   'COALESCE(',
   '::boolean',
   '::bigint',
@@ -90,6 +99,12 @@ if (
   fail('scope, filters, keyset, ordering, and pagination must retain deterministic emission order');
 }
 
+const manyExistsPosition = sql.indexOf('fn compile_many_exists(');
+const exactCountPosition = sql.indexOf('fn compile_exact_count(');
+if (manyExistsPosition < 0 || exactCountPosition < 0 || manyExistsPosition >= exactCountPosition) {
+  fail('many-link correlated predicate support must be shared by page and count compilation');
+}
+
 for (const [relative, source] of [[compilerPath, compiler], [sqlPath, sql]]) {
   for (const forbidden of [
     'rustok_product',
@@ -121,7 +136,10 @@ requireMarkers('crates/rustok-index/src/application/postgres_compiler_tests.rs',
   'compiles_typed_filters_order_exact_count_and_bounded_offset',
   'compiles_validated_lexicographic_keyset_with_entity_tie_breaker',
   'rejects_cursor_reuse_across_query_semantics_before_sql_compilation',
-  'rejects_many_link_semantics_before_sql_is_emitted',
+  'compiles_nested_many_link_filter_as_correlated_exists_without_outer_join',
+  'compiles_many_link_ne_and_is_null_with_reference_totality',
+  'rejects_many_link_projection_until_nested_aggregation_exists',
+  'rejects_tampered_many_traversal_metadata',
   'rejects_tampered_path_alias_mapping',
   'assert!(!compiled.sql.contains(&tenant_id.to_string()))',
   'assert!(!compiled.sql.contains("sales_channel"))',
@@ -137,19 +155,21 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
 requireMarkers('crates/rustok-index/docs/m4-postgres-query-compiler.md', [
   '## Supported query semantics',
   'Atomic predicates are compiled into total booleans.',
+  '## Many-link filter boundary',
+  'Many-link `Ne` is intentionally stricter than `NOT EXISTS(Eq)`',
   'Ascending order uses `NULLS LAST`; descending order uses `NULLS FIRST`',
   'rustok-index-cursor-query-v1',
   'QueryFingerprintMismatch',
   'CompiledPostgresCount',
-  'ManyLinkSemanticsPending',
+  'ManyLinkProjectionPending',
   'does not connect to PostgreSQL',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   'M4 controlled PostgreSQL query compilation: `complete`',
-  'M4 typed root/one-link query semantics: `complete`',
-  '- [x] Compile plans through SeaQuery or controlled SQL.',
-  '- [x] Keep offset pagination bounded and compatibility-only.',
-  'Many-cardinality paths remain fail-closed with `ManyLinkSemanticsPending`',
+  'M4 many-link `EXISTS` filtering: `complete`',
+  '- [x] Add explicit many-link `EXISTS` filtering.',
+  '- [ ] Add nested many-link projection aggregation.',
+  'ManyLinkProjectionPending',
 ]);
 
 console.log('[verify-index-postgres-query-compiler] OK');

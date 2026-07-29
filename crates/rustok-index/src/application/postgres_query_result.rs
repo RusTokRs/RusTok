@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -201,7 +201,14 @@ impl SchemaRegistry {
                 actual: compiled.plan_fingerprint,
             });
         }
-        if compiled.columns != expected_columns(&plan) {
+        let unique_aliases = compiled
+            .columns
+            .iter()
+            .map(column_output_alias)
+            .collect::<BTreeSet<_>>();
+        if unique_aliases.len() != compiled.columns.len()
+            || compiled.columns != expected_columns(&plan)
+        {
             return Err(PostgresQueryDecodeError::ColumnContractMismatch);
         }
 
@@ -312,7 +319,7 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
         output_alias: identity_alias(&plan.root_alias),
         relation_alias: plan.root_alias.clone(),
     });
-    columns.extend(plan.joins.iter().map(|join| CompiledQueryColumn::EntityId {
+    columns.extend(plan.outer_joins().map(|join| CompiledQueryColumn::EntityId {
         output_alias: identity_alias(&join.alias),
         relation_alias: join.alias.clone(),
     }));
@@ -335,6 +342,14 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
             }),
     );
     columns
+}
+
+fn column_output_alias(column: &CompiledQueryColumn) -> &str {
+    match column {
+        CompiledQueryColumn::EntityId { output_alias, .. }
+        | CompiledQueryColumn::Field { output_alias, .. }
+        | CompiledQueryColumn::OrderValue { output_alias, .. } => output_alias,
+    }
 }
 
 fn identity_alias(relation_alias: &str) -> String {
@@ -390,7 +405,7 @@ fn decode_row(
         }
     }
 
-    let root_entity_id = root_entity_id.flatten().ok_or_else(|| {
+    let root_entity_id = root_entity_id.ok_or_else(|| {
         PostgresQueryDecodeError::MissingColumn(identity_alias(&plan.root_alias))
     })?;
     let mut fields = Vec::with_capacity(plan.projection.len());
@@ -466,6 +481,11 @@ fn decode_field(
         }
     };
 
+    if missing_relation && !matches!(value, IndexValue::Null) {
+        return Err(PostgresQueryDecodeError::InvalidFieldValue {
+            path: field.path.clone(),
+        });
+    }
     if matches!(value, IndexValue::Null) && !field.nullable && !missing_relation {
         return Err(PostgresQueryDecodeError::UnexpectedFieldNull {
             path: field.path.clone(),
@@ -480,11 +500,8 @@ fn decode_field(
 }
 
 fn valid_field_value(field: &PlannedField, value: &IndexValue, missing_relation: bool) -> bool {
-    if missing_relation {
-        return matches!(value, IndexValue::Null);
-    }
     match value {
-        IndexValue::Null => field.nullable,
+        IndexValue::Null => field.nullable || missing_relation,
         IndexValue::List(values) => {
             field.cardinality == FieldCardinality::Many
                 && values

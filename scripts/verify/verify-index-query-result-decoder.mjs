@@ -23,7 +23,6 @@ const decoder = requireMarkers(decoderPath, [
   'pub enum CompiledPostgresCell',
   'pub struct CompiledPostgresRow',
   'pub struct CompiledPostgresPageQuery',
-  'The wrapper deliberately has no serde implementation',
   'pub struct IndexQueryPage',
   'pub enum PostgresQueryPageBuildError',
   'pub enum PostgresQueryDecodeError',
@@ -35,10 +34,11 @@ const decoder = requireMarkers(decoderPath, [
   'PlanFingerprintMismatch',
   'rows.len() > requested_page_size as usize',
   'CursorCodec::encode_for_query(&cursor, query, self)?',
-  'root_entity_id.flatten()',
-  'if missing_relation {',
+  'let root_entity_id = root_entity_id.ok_or_else',
+  'if missing_relation && !matches!(value, IndexValue::Null)',
   'fn join_is_projected(',
   'if join_is_projected(plan, &join.path)',
+  'plan.outer_joins().map(|join| CompiledQueryColumn::EntityId',
   'ExactCountContractMismatch',
   'InvalidTaggedValue',
 ]);
@@ -83,7 +83,8 @@ for (const forbidden of [
 }
 
 requireMarkers('crates/rustok-index/src/application/postgres_compiler.rs', [
-  'ManyLinkSemanticsPending',
+  'ManyLinkProjectionPending(FieldPath)',
+  'ManyLinkOrderingPending(FieldPath)',
 ]);
 requireMarkers('crates/rustok-index/src/application/postgres_query_result_tests.rs', [
   'page_compilation_adds_exactly_one_lookahead_row',
@@ -105,12 +106,14 @@ requireMarkers('crates/rustok-index/docs/m4-query-result-decoder.md', [
   'compiled column contract',
   'query-scoped continuation cursor',
   'does not execute SQL',
-  'Many-link semantics remain fail-closed',
+  'Many-link filtering is supported without changing the decoder result shape.',
+  'ManyLinkProjectionPending',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   'M4 deterministic PostgreSQL result decoding: `complete`',
   '- [x] Add deterministic root/one-link result decoding and cursor construction.',
-  '- [ ] Add explicit many-link `EXISTS` filtering and nested projection aggregation.',
+  '- [x] Add explicit many-link `EXISTS` filtering.',
+  '- [ ] Add nested many-link projection aggregation.',
 ]);
 
 console.log('[verify-index-query-result-decoder] OK');

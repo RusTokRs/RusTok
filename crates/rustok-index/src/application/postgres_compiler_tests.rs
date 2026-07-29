@@ -104,8 +104,105 @@ fn registry(link_cardinality: LinkCardinality) -> SchemaRegistry {
     registry
 }
 
+fn many_registry() -> SchemaRegistry {
+    let channel = IndexSchema {
+        reference: schema_ref("sales_channel"),
+        locale_mode: LocaleMode::None,
+        fields: vec![field(
+            "id",
+            IndexValueType::Uuid,
+            FieldCardinality::One,
+            false,
+            true,
+        )],
+        links: Vec::new(),
+    };
+    let variant = IndexSchema {
+        reference: schema_ref("variant"),
+        locale_mode: LocaleMode::Required,
+        fields: vec![
+            field(
+                "id",
+                IndexValueType::Uuid,
+                FieldCardinality::One,
+                false,
+                true,
+            ),
+            field(
+                "score",
+                IndexValueType::Integer,
+                FieldCardinality::One,
+                true,
+                true,
+            ),
+            field(
+                "title",
+                IndexValueType::String,
+                FieldCardinality::One,
+                true,
+                true,
+            ),
+            field(
+                "tags",
+                IndexValueType::String,
+                FieldCardinality::Many,
+                false,
+                false,
+            ),
+            field(
+                "sales_channel_id",
+                IndexValueType::Uuid,
+                FieldCardinality::One,
+                false,
+                false,
+            ),
+        ],
+        links: vec![IndexLink {
+            name: LinkName::new("sales_channel").unwrap(),
+            source_fields: vec![FieldName::new("sales_channel_id").unwrap()],
+            target_schema: channel.reference.clone(),
+            target_fields: vec![FieldName::new("id").unwrap()],
+            cardinality: LinkCardinality::One,
+        }],
+    };
+    let product = IndexSchema {
+        reference: schema_ref("product"),
+        locale_mode: LocaleMode::Required,
+        fields: vec![field(
+            "id",
+            IndexValueType::Uuid,
+            FieldCardinality::One,
+            false,
+            true,
+        )],
+        links: vec![IndexLink {
+            name: LinkName::new("variants").unwrap(),
+            source_fields: vec![FieldName::new("id").unwrap()],
+            target_schema: variant.reference.clone(),
+            target_fields: vec![FieldName::new("id").unwrap()],
+            cardinality: LinkCardinality::Many,
+        }],
+    };
+
+    let mut registry = SchemaRegistry::new();
+    registry
+        .register_batch([product, variant, channel])
+        .unwrap();
+    registry
+}
+
 fn path(name: &str) -> FieldPath {
     FieldPath::new(FieldName::new(name).unwrap())
+}
+
+fn linked_path(links: &[&str], field: &str) -> FieldPath {
+    FieldPath::linked(
+        links
+            .iter()
+            .map(|link| LinkName::new(*link).unwrap())
+            .collect::<Vec<_>>(),
+        FieldName::new(field).unwrap(),
+    )
 }
 
 fn root_query(tenant_id: Uuid) -> IndexQuery {
@@ -368,19 +465,105 @@ fn rejects_cursor_reuse_across_query_semantics_before_sql_compilation() {
 }
 
 #[test]
-fn rejects_many_link_semantics_before_sql_is_emitted() {
+fn compiles_nested_many_link_filter_as_correlated_exists_without_outer_join() {
+    let registry = many_registry();
+    let tenant_id = Uuid::new_v4();
+    let expected_channel = Uuid::new_v4();
+    let mut query = root_query(tenant_id);
+    query.filter = Some(FilterExpr::Eq(
+        linked_path(&["variants", "sales_channel"], "id"),
+        IndexValue::Uuid(expected_channel),
+    ));
+    query.include_exact_count = true;
+
+    let compiled = registry.compile_postgres_query(&query).unwrap();
+
+    assert!(compiled
+        .sql
+        .contains("EXISTS (SELECT 1 FROM index_links AS \"mx_l1\""));
+    assert!(compiled
+        .sql
+        .contains("EXISTS (SELECT 1 FROM index_links AS \"mx_l2\""));
+    assert!(!compiled.sql.contains("LEFT JOIN index_links AS \"l1\""));
+    assert!(!compiled.sql.contains("__t1_entity_id"));
+    assert!(!compiled.sql.contains("variants"));
+    assert!(!compiled.sql.contains("sales_channel"));
+    assert_eq!(compiled.columns.len(), 2);
+    assert!(compiled
+        .binds
+        .contains(&PostgresBindValue::Text("variants".to_owned())));
+    assert!(compiled
+        .binds
+        .contains(&PostgresBindValue::Text("sales_channel".to_owned())));
+    assert!(compiled
+        .binds
+        .contains(&PostgresBindValue::Uuid(expected_channel)));
+
+    let count = compiled.exact_count.expect("many filter count");
+    assert!(count.sql.contains("EXISTS (SELECT 1 FROM index_links"));
+    assert!(!count.sql.contains("LEFT JOIN index_links AS \"l1\""));
+    assert!(!count.sql.contains("ORDER BY"));
+    assert!(!count.sql.contains("LIMIT"));
+}
+
+#[test]
+fn compiles_many_link_ne_and_is_null_with_reference_totality() {
+    let registry = many_registry();
+    let mut query = root_query(Uuid::new_v4());
+    query.filter = Some(FilterExpr::And(vec![
+        FilterExpr::Ne(
+            linked_path(&["variants"], "score"),
+            IndexValue::Integer(7),
+        ),
+        FilterExpr::IsNull(linked_path(&["variants"], "title"), true),
+        FilterExpr::Contains(
+            linked_path(&["variants"], "tags"),
+            IndexValue::String("featured".to_owned()),
+        ),
+    ]));
+
+    let compiled = registry.compile_postgres_query(&query).unwrap();
+
+    assert!(compiled.sql.matches("EXISTS (SELECT 1 FROM index_links").count() >= 4);
+    assert!(compiled.sql.contains("AND NOT (EXISTS"));
+    assert!(compiled.sql.contains("IS NULL OR"));
+    assert!(compiled.sql.contains("NOT (EXISTS"));
+    assert!(compiled.sql.contains(" @> "));
+    assert!(!compiled.sql.contains("LEFT JOIN index_links AS \"l1\""));
+}
+
+#[test]
+fn rejects_many_link_projection_until_nested_aggregation_exists() {
     let registry = registry(LinkCardinality::Many);
     let mut query = root_query(Uuid::new_v4());
-    query.fields = vec![FieldPath::linked(
+    let many_id = FieldPath::linked(
         [LinkName::new("sales_channel").unwrap()],
         FieldName::new("id").unwrap(),
-    )];
+    );
+    query.fields = vec![many_id.clone()];
 
     assert!(matches!(
         registry.compile_postgres_query(&query),
         Err(PostgresQueryBuildError::Compile(
-            PostgresQueryCompileError::ManyLinkSemanticsPending
-        ))
+            PostgresQueryCompileError::ManyLinkProjectionPending(path)
+        )) if path == many_id
+    ));
+}
+
+#[test]
+fn rejects_tampered_many_traversal_metadata() {
+    let registry = many_registry();
+    let mut query = root_query(Uuid::new_v4());
+    query.filter = Some(FilterExpr::Eq(
+        linked_path(&["variants"], "id"),
+        IndexValue::Uuid(Uuid::new_v4()),
+    ));
+    let mut plan = registry.plan_query(&query).unwrap();
+    plan.joins[0].traverses_many = false;
+
+    assert!(matches!(
+        plan.compile_postgres(),
+        Err(PostgresQueryCompileError::ManyTraversalMismatch(_))
     ));
 }
 

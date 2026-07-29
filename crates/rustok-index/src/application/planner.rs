@@ -47,6 +47,7 @@ pub struct PlannedJoin {
     pub source_fields: Vec<FieldName>,
     pub target_fields: Vec<FieldName>,
     pub cardinality: LinkCardinality,
+    pub traverses_many: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +57,7 @@ pub struct PlannedField {
     pub value_type: IndexValueType,
     pub cardinality: FieldCardinality,
     pub nullable: bool,
+    pub traverses_many: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,10 +90,20 @@ impl ExecutableQueryPlan {
         self.referenced_fields.get(path)
     }
 
+    pub(crate) fn join_for_path(&self, path: &[LinkName]) -> Option<&PlannedJoin> {
+        self.joins
+            .iter()
+            .find(|join| join.path.as_slice() == path)
+    }
+
+    pub(crate) fn outer_joins(&self) -> impl Iterator<Item = &PlannedJoin> {
+        self.joins.iter().filter(|join| !join.traverses_many)
+    }
+
     pub fn fingerprint(&self) -> Result<QueryPlanFingerprint, postcard::Error> {
         let bytes = postcard::to_stdvec(self)?;
         let mut hasher = Sha256::new();
-        hasher.update(b"rustok-index-query-plan-v2");
+        hasher.update(b"rustok-index-query-plan-v3");
         hasher.update((bytes.len() as u64).to_be_bytes());
         hasher.update(bytes);
         Ok(QueryPlanFingerprint(hasher.finalize().into()))
@@ -121,6 +133,7 @@ impl SchemaRegistry {
         }
 
         let mut schemas = BTreeMap::from([(Vec::new(), query.schema.clone())]);
+        let mut many_paths = BTreeMap::from([(Vec::new(), false)]);
         let mut joins = Vec::with_capacity(paths.len());
         for path in &paths {
             let parent = path[..path.len() - 1].to_vec();
@@ -146,6 +159,8 @@ impl SchemaRegistry {
                     target: source_schema.clone(),
                 })?;
             let target_schema = link.target_schema.clone();
+            let traverses_many = many_paths.get(&parent).copied().unwrap_or(false)
+                || link.cardinality == LinkCardinality::Many;
             joins.push(PlannedJoin {
                 path: path.clone(),
                 alias: aliases[path].clone(),
@@ -156,8 +171,10 @@ impl SchemaRegistry {
                 source_fields: link.source_fields.clone(),
                 target_fields: link.target_fields.clone(),
                 cardinality: link.cardinality,
+                traverses_many,
             });
             schemas.insert(path.clone(), target_schema);
+            many_paths.insert(path.clone(), traverses_many);
         }
 
         let referenced_paths = query
@@ -188,6 +205,10 @@ impl SchemaRegistry {
                 .get(&link_path)
                 .cloned()
                 .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))?;
+            let traverses_many = many_paths
+                .get(&link_path)
+                .copied()
+                .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))?;
             referenced_fields.insert(
                 path.clone(),
                 PlannedField {
@@ -196,6 +217,7 @@ impl SchemaRegistry {
                     value_type: field.value_type,
                     cardinality: field.cardinality,
                     nullable: field.nullable,
+                    traverses_many,
                 },
             );
         }

@@ -110,14 +110,15 @@ before producing deterministic tenant-hash shadow relation names and bootstrap
 SQL. It does not execute copy, constraint/index attachment, dual-write/replay,
 cutover, or rollback.
 
-M4 now provides validated typed executable plans, controlled PostgreSQL SQL and bind
-DTOs for root and explicit one-cardinality-link query semantics, query-scoped cursor
-continuation, one-row page lookahead, strict compiled-column/result decoding,
-exact-count decoding, `has_more`, and next-cursor construction. It still does not
-execute statements, adapt SeaORM rows directly, implement many-link semantics,
-publish `IndexQueryPort`, or claim PostgreSQL/reference-engine equivalence.
-Multi-source catalog composition, batch ingestion, rebuild, query-port, partition
-cutover, and operator APIs remain later work.
+M4 provides validated typed executable plans, controlled PostgreSQL SQL and bind
+DTOs for root/one-link projection, filtering, ordering, counting and pagination,
+correlated many-link filtering, query-scoped cursor continuation, one-row page
+lookahead, strict compiled-column/result decoding, exact-count decoding, `has_more`,
+and next-cursor construction. It still does not execute statements, adapt SeaORM
+rows directly, aggregate many-link projections, publish `IndexQueryPort`, or claim
+PostgreSQL/reference-engine equivalence. Multi-source catalog composition, batch
+ingestion, rebuild, query-port, partition cutover, and operator APIs remain later
+work.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -151,6 +152,8 @@ APIs.
   one-row-lookahead `compile_postgres_page_query` handoff.
 - Decoding rows without rechecking the plan fingerprint and exact compiled column
   contract.
+- Compiling a many-link filter as an ordinary outer join; it must remain a correlated
+  predicate so child multiplicity cannot duplicate root rows or counts.
 - Sorting or projecting through a `many` link without an explicit aggregate policy.
 - Completing or heartbeating schema/index work without exact worker and attempt
   fencing.
@@ -209,6 +212,7 @@ APIs.
   and cardinality.
 - Selected, filtered, and ordered fields are resolved through typed link paths.
 - Query complexity, path depth, page size, and offset depth are bounded.
+- Filtering through `many` paths uses correlated existential semantics.
 - Sorting through a `many` link is rejected until aggregation is explicit.
 - Source versions and tombstones prevent stale mutation overwrite.
 - Generic engine types remain source-domain agnostic.
@@ -292,21 +296,25 @@ APIs.
 ### Query Planning, Compilation, and Result Decoding
 
 - `SchemaRegistry::plan_query` validates first and captures deterministic aliases,
-  joins, typed referenced fields, projection, filters, ordering, pagination, and a
-  versioned plan fingerprint.
-- `compile_postgres_query` accepts only the supported root/one-link subset and emits
-  controlled SQL plus ordered bind DTOs; caller values and contract names remain
-  binds.
+  joins, typed referenced fields, propagated `traverses_many`, projection, filters,
+  ordering, pagination, and a v3 plan fingerprint.
+- `compile_postgres_query` emits controlled SQL plus ordered bind DTOs for root and
+  one-link projection/ordering plus all validated filters; caller values and contract
+  names remain binds.
+- Every many-traversing atomic filter emits an independent nested correlated `EXISTS`
+  chain. No many join enters the outer rowset or identity-column contract.
+- Many-link `Ne` requires at least one stored reachable value and no reachable null or
+  equal value; `IsNull` tests the absence of any reachable non-null value.
 - `compile_postgres_page_query` changes only the validated main-statement page-limit
   bind from `N` to `N + 1`; offset and exact-count binds are preserved.
 - `decode_postgres_query_page` re-plans the query, compares the plan fingerprint and
-  complete column metadata, validates every tagged field value, and rejects more
-  than `N + 1` rows.
+  complete unique column metadata, validates every tagged field value, and rejects
+  more than `N + 1` rows.
 - The lookahead row is removed. Cursor pages produce `has_more` and a scoped next
   cursor from the last retained entity/order tuple; offset pages produce
   `has_more` without a cursor.
-- SQL execution, SeaORM row adaptation, many-link semantics, and live equivalence
-  evidence remain separate future boundaries.
+- Many-link projection/order, SQL execution, SeaORM row adaptation, and live
+  equivalence evidence remain separate future boundaries.
 
 ### Cursor Contract
 
@@ -346,7 +354,8 @@ APIs.
   scope/schema/query-fingerprint/type mismatches.
 - `QueryPlanError`, `PostgresQueryBuildError`, and `PostgresQueryCompileError`
   separate validation/planning failures from unsupported or corrupted compiler
-  contracts.
+  contracts. Many-link projection, ordering, missing join plans, and inconsistent
+  traversal metadata are distinct typed compiler failures.
 - `PostgresQueryPageBuildError` rejects missing or mismatched pagination binds;
   `PostgresQueryDecodeError` rejects plan/column/count mismatches, malformed cells,
   invalid tagged values, unexpected nulls, and oversized result batches.
