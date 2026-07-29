@@ -1,6 +1,3 @@
-#[path = "projector_legacy.rs"]
-mod legacy;
-
 use std::time::Instant;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
@@ -8,6 +5,8 @@ use uuid::Uuid;
 
 use rustok_core::{Error, Result};
 use rustok_telemetry::metrics;
+
+use crate::projector_legacy;
 
 const CORE_SCOPE_COUNT_SQL: &str = r#"
 SELECT COUNT(*) AS total
@@ -26,13 +25,13 @@ WHERE tenant_id = $1
 #[derive(Clone)]
 pub struct SearchProjector {
     db: DatabaseConnection,
-    legacy: legacy::SearchProjector,
+    legacy: projector_legacy::SearchProjector,
 }
 
 impl SearchProjector {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            legacy: legacy::SearchProjector::new(db.clone()),
+            legacy: projector_legacy::SearchProjector::new(db.clone()),
             db,
         }
     }
