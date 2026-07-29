@@ -3,9 +3,9 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::{
-    ForumReplyAudienceReadService, ForumStorefrontReadStateService,
-    ForumTopicAudienceReadService, ModerationService, ReplyService,
-    SharedForumAudienceFactsPort, TopicService,
+    ForumCategoryAudienceReadService, ForumReplyAudienceReadService,
+    ForumStorefrontReadStateService, ForumTopicAudienceReadService, ModerationService,
+    ReplyService, SharedForumAudienceFactsPort, TopicService,
 };
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
@@ -28,6 +28,16 @@ pub fn attach_schema_data(
 }
 
 impl ForumGraphqlRuntimeData {
+    pub(crate) fn category_audience_read_service(
+        &self,
+        db: DatabaseConnection,
+    ) -> ForumCategoryAudienceReadService {
+        match self.audience_facts.clone() {
+            Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db, facts),
+            None => ForumCategoryAudienceReadService::new(db),
+        }
+    }
+
     pub(crate) fn topic_service(
         &self,
         db: DatabaseConnection,
