@@ -14,6 +14,7 @@ rustok-api.workspace = true
 rustok-product.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 subtle = "2"
 thiserror.workspace = true
 tonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }
