@@ -10,7 +10,7 @@
 - `TelemetryConfig`, `TelemetryHandles`, `LogFormat`, `TelemetryError`
 - `init`, `init_metrics`, `metrics_handle`, `render_metrics`, `current_trace_id`
 - `register_runtime_collector`
-- `dlq_duplicate_alert_metrics::{register, record_state, record_snapshot, record_failure}`
+- `dlq_duplicate_alert_metrics::{register, record_state, record_snapshot}`
 - `otel::OtelConfig`, `otel::init_tracing`, `otel::shutdown`
 
 ## Contract invariants
@@ -20,9 +20,9 @@
 - Modules may emit measurements but retain domain label policy and alert/runbook
   ownership.
 - Physical DLQ duplicate metrics use only bounded deployment, scan-mode, health
-  state, alert-level, flag, and lifecycle-stage labels. They exclude message,
-  tenant, broker-coordinate, payload, credential, threshold, source-count,
-  timestamp, and raw-error labels.
+  state, alert-level, availability, and evaluation-flag labels. They exclude
+  message, tenant, broker-coordinate, payload, credential, threshold,
+  source-count, timestamp, and raw-error labels.
 - OpenTelemetry configuration and exporter failures use the documented
   `TelemetryError` or explicit fallback behavior; they must not be silently
   represented as a second telemetry pipeline.
