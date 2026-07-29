@@ -89,8 +89,10 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
             .expect("forum migration should apply");
     }
 
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
-    (db, event_bus)
+    (
+        db,
+        TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
+    )
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
@@ -103,17 +105,44 @@ async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
     .expect("platform user fixture should insert");
 }
 
+async fn create_category(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    security: SecurityContext,
+    slug: &str,
+    parent_id: Option<Uuid>,
+) -> Uuid {
+    CategoryService::new(db.clone())
+        .create(
+            tenant_id,
+            security,
+            CreateCategoryInput {
+                locale: "en".into(),
+                name: slug.replace('-', " "),
+                slug: slug.into(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await
+        .expect("category should be created")
+        .id
+}
+
 fn read_context(
     tenant_id: Uuid,
     user_id: Uuid,
-    locale: &str,
     channel: Option<&str>,
     correlation: &str,
 ) -> PortContext {
     let mut context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(user_id.to_string()),
-        locale,
+        "en",
         correlation,
     )
     .with_deadline(Duration::from_secs(1));
@@ -124,7 +153,7 @@ fn read_context(
 }
 
 #[tokio::test]
-async fn exact_topic_read_enforces_richer_policy_before_hydration() {
+async fn exact_topic_read_enforces_inherited_and_topic_audience_before_hydration() {
     let (db, event_bus) = setup().await;
     let tenant_id = Uuid::new_v4();
     let foreign_tenant_id = Uuid::new_v4();
@@ -143,32 +172,15 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
     }
 
     let admin = SecurityContext::new(UserRole::Admin, Some(admin_user_id));
-    let root = CategoryService::new(db.clone())
-        .create(
-            tenant_id,
-            admin.clone(),
-            CreateCategoryInput {
-                locale: "en".into(),
-                name: "Members".into(),
-                slug: "members".into(),
-                description: None,
-                icon: None,
-                color: None,
-                parent_id: None,
-                position: Some(0),
-                moderated: false,
-            },
-        )
-        .await
-        .expect("category should be created")
-        .id;
+    let root = create_category(&db, tenant_id, admin.clone(), "members", None).await;
+    let child = create_category(&db, tenant_id, admin.clone(), "trusted", Some(root)).await;
     let topic_id = TopicService::new(db.clone(), event_bus.clone())
         .create(
             tenant_id,
             admin.clone(),
             CreateTopicInput {
                 locale: "en".into(),
-                category_id: root,
+                category_id: child,
                 title: "Exact audience read".into(),
                 slug: Some("exact-audience-read".into()),
                 body: "Exact audience owner fixture".into(),
@@ -183,7 +195,8 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
         .expect("topic should be created")
         .id;
 
-    ForumCategoryAudiencePolicyService::new(db.clone())
+    let category_policy = ForumCategoryAudiencePolicyService::new(db.clone());
+    category_policy
         .set(
             tenant_id,
             root,
@@ -191,13 +204,26 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
             SetForumCategoryAudiencePolicyInput {
                 constraints: ForumAudienceConstraints {
                     roles_any: vec![UserRole::Customer],
+                    ..ForumAudienceConstraints::default()
+                },
+            },
+        )
+        .await
+        .expect("root role layer should persist");
+    category_policy
+        .set(
+            tenant_id,
+            child,
+            admin.clone(),
+            SetForumCategoryAudiencePolicyInput {
+                constraints: ForumAudienceConstraints {
                     minimum_trust_level: Some(5),
                     ..ForumAudienceConstraints::default()
                 },
             },
         )
         .await
-        .expect("category audience should persist");
+        .expect("child trust layer should persist");
     ForumTopicAudiencePolicyService::new(db.clone())
         .set(
             tenant_id,
@@ -211,7 +237,7 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
             },
         )
         .await
-        .expect("topic audience should persist");
+        .expect("topic deny layer should persist");
 
     let requests = Arc::new(Mutex::new(Vec::new()));
     let service = ForumTopicAudienceReadService::with_audience_facts(
@@ -249,13 +275,7 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
         .get_authenticated_storefront_visible_with_audience_context(
             tenant_id,
             allowed_security.clone(),
-            read_context(
-                tenant_id,
-                allowed_user_id,
-                "en",
-                Some("web"),
-                "allowed-read",
-            ),
+            read_context(tenant_id, allowed_user_id, Some("web"), "allowed-read"),
             topic_id,
             Some("en"),
         )
@@ -283,13 +303,7 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
             .get_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
                 SecurityContext::new(UserRole::Customer, Some(low_trust_user_id)),
-                read_context(
-                    tenant_id,
-                    low_trust_user_id,
-                    "en",
-                    Some("web"),
-                    "low-trust-read",
-                ),
+                read_context(tenant_id, low_trust_user_id, Some("web"), "low-trust-read"),
                 topic_id,
                 Some("en"),
             )
@@ -297,19 +311,14 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
             .expect("low-trust exact read should resolve as absent")
             .is_none()
     );
-
     assert!(
         service
             .get_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
-                SecurityContext::new(
-                    UserRole::Customer,
-                    Some(explicitly_denied_user_id),
-                ),
+                SecurityContext::new(UserRole::Customer, Some(explicitly_denied_user_id)),
                 read_context(
                     tenant_id,
                     explicitly_denied_user_id,
-                    "en",
                     Some("web"),
                     "explicit-deny-read",
                 ),
@@ -330,13 +339,7 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
             .get_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
                 allowed_security.clone(),
-                read_context(
-                    tenant_id,
-                    allowed_user_id,
-                    "en",
-                    None,
-                    "route-channel-miss",
-                ),
+                read_context(tenant_id, allowed_user_id, None, "route-channel-miss"),
                 topic_id,
                 Some("en"),
             )
@@ -354,17 +357,11 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
     );
 
     assert!(matches!(
-        ForumTopicAudienceReadService::new(db.clone(), event_bus.clone())
+        ForumTopicAudienceReadService::new(db.clone(), event_bus)
             .get_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
                 allowed_security.clone(),
-                read_context(
-                    tenant_id,
-                    allowed_user_id,
-                    "en",
-                    Some("web"),
-                    "missing-provider",
-                ),
+                read_context(tenant_id, allowed_user_id, Some("web"), "missing-provider"),
                 topic_id,
                 Some("en"),
             )
@@ -384,7 +381,6 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
                 read_context(
                     foreign_tenant_id,
                     allowed_user_id,
-                    "en",
                     Some("web"),
                     "foreign-tenant-context",
                 ),
@@ -402,7 +398,6 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
                 read_context(
                     tenant_id,
                     Uuid::new_v4(),
-                    "en",
                     Some("web"),
                     "foreign-actor-context",
                 ),
@@ -426,13 +421,7 @@ async fn exact_topic_read_enforces_richer_policy_before_hydration() {
             .get_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
                 SecurityContext::new(UserRole::Customer, Some(allowed_user_id)),
-                read_context(
-                    tenant_id,
-                    allowed_user_id,
-                    "en",
-                    Some("web"),
-                    "missing-topic",
-                ),
+                read_context(tenant_id, allowed_user_id, Some("web"), "missing-topic"),
                 Uuid::new_v4(),
                 Some("en"),
             )
