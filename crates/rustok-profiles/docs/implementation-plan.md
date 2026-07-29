@@ -87,9 +87,14 @@ mutation retry.
   bounds; requires an explicit maximum distinct-ID count per physical partition;
   distinguishes disabled, expiry, capacity, combined, and sufficient states; and
   contains no production default or exactly-once claim.
+- Recovery-window retained calibration tooling is source-complete. A versioned
+  external bounds file and reviewed enabled Iggy configuration are reduced to
+  canonical privacy-safe projections; one exact Rust case must report a
+  sufficient assessment from a clean unchanged commit before a no-clobber packet
+  can be published.
 - Canonical retained packets remain pending and must omit credentials and
-  delivery-level facts, bind reviewed source/configuration digests, and become
-  stale when bound sources change.
+  delivery-level facts, bind reviewed source/configuration/input digests, and
+  become stale when any bound source or reviewed input changes.
 
 ## Physical DLQ duplicate inspection
 
@@ -171,6 +176,38 @@ canonical path, so existing reviewed evidence cannot be replaced.
 
 Runtime execution and the canonical packet remain pending.
 
+### Recovery-window retained calibration
+
+Source-complete paths:
+
+```text
+crates/rustok-iggy/contracts/evidence/
+  dedup-recovery-window-policy-source.json
+  dedup-recovery-window-calibration-execution-contract.json
+crates/rustok-iggy/tests/
+  dedup_recovery_window_calibration.rs
+scripts/evidence/
+  capture-iggy-dedup-recovery-window-calibration.mjs
+scripts/verify/
+  verify-iggy-dedup-recovery-window-policy.mjs
+  verify-iggy-dedup-recovery-window-retained.mjs
+```
+
+The capture requires one reviewed versioned recovery-bounds JSON and one reviewed
+Iggy configuration outside the repository. The bounds projection retains the
+lease, restart, reconnect, operator-recovery, required per-partition entry count,
+capacity-basis label, checked required expiry, and canonical digest. The Iggy
+projection retains only enabled, `max_entries`, `expiry`, normalized milliseconds,
+and its canonical digest.
+
+The exact Rust case is opt-in for ordinary test runs, but retained capture rejects
+a skip and requires `running 1 test`, the exact named pass, a sufficient status,
+an unchanged commit and source hash set, and a clean worktree. It retains no
+input paths, full files, endpoints, credentials, identifiers, broker coordinates,
+payloads, or raw output. Publication is no-clobber.
+
+Runtime calibration and the canonical packet remain pending.
+
 Detailed checkpoints:
 
 - `crates/rustok-profiles/docs/poison-duplicate-external-scan-checkpoint.md`
@@ -220,13 +257,12 @@ Detailed checkpoints:
    best-effort `acknowledged`, process loss, acknowledgement-only recovery, and
    multi-replica ownership on PostgreSQL plus real Iggy.
 
-9. **Calibrate confirmation-window sufficiency.**
-   The source policy now compares reviewed dedup `expiry` with the checked sum of
-   lease, restart, reconnect, and operator-recovery bounds, and compares
-   `max_entries` with an explicit per-partition distinct-ID bound. Supply and
-   review those production inputs, bind them to configuration digests, execute
-   the focused tests/verifier, and retain a clean-commit assessment before making
-   a stronger duplicate-suppression statement.
+9. **Execute recovery-window calibration.**
+   Review the production lease, restart, reconnect, operator-response, and
+   per-partition distinct-ID bounds; run the locked sufficient-only capture
+   against a reviewed enabled Iggy configuration; inspect and commit the
+   no-clobber packet; and repeat whenever a bound source, configuration, or input
+   changes. A packet covers only that supplied model.
 
 10. **Design moving duplicate windows or keep fixed snapshots.**
     A moving per-partition cursor must retain bounded prior identity/digest state
@@ -240,25 +276,26 @@ Detailed checkpoints:
 
 ## Recheck checkpoint — 2026-07-29
 
-- Rechecked the canonical plan and current `main` after the two-partition
-  fair-window harness and retained-capture tooling.
+- Rechecked the canonical plan and current `main` after the recovery-window
+  policy merge.
 - Reconfirmed privacy-before-presentation, owner-scoped writes, Media ownership,
   fail-closed follower reads, no automatic mutation retry, and the rule that
   operational state never authorizes profile presentation.
 - Reconfirmed deterministic same-ID colocation and the production-reachable
   fair/global comparison.
-- Rechecked the existing external-Iggy dedup cases and confirmed that immediate,
+- Rechecked the external-Iggy dedup cases and confirmed that immediate,
   capacity, and expiry sequences do not establish a production recovery window.
-- Added a pure fail-closed recovery-window policy with caller-reviewed additive
-  time bounds and explicit per-partition capacity; disabled or insufficient
-  configuration cannot report sufficient.
-- Locked stable statuses/codes, focused source tests, an owner guide, a Profiles
-  checkpoint, and a static source verifier.
-- Kept active configuration readback, reviewed production calibration, runtime
-  execution, canonical retained packets, moving-window state, bundled/TLS/auth,
-  failover, and multi-replica claims open.
-- Tests, Cargo commands, repository source verifiers, external/bundled Iggy,
-  retained capture, and multi-replica scenarios were not run per maintainer
+- Reconfirmed the pure fail-closed recovery-window policy and added a locked
+  retained-calibration path around reviewed bounds and reviewed enabled Iggy
+  configuration.
+- Added one exact opt-in Rust calibration case, strict skip rejection, checked
+  reviewed-input projections and digests, current source hashes, clean-commit
+  requirements, a sufficient-only gate, and no-clobber packet publication.
+- Kept active configuration readback, correctness of the operator capacity
+  basis, runtime execution, canonical retained packets, moving-window state,
+  bundled/TLS/auth, failover, and multi-replica claims open.
+- Tests, Cargo commands, repository source verifiers, retained capture,
+  external/bundled Iggy, and multi-replica scenarios were not run per maintainer
   instruction.
 
 ## Verification backlog
@@ -270,6 +307,13 @@ cargo check -p rustok-profiles-storefront --all-targets
 cargo test -p rustok-profiles-storefront
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
 cargo test -p rustok-iggy dedup_recovery_window_policy -- --nocapture
+cargo test -p rustok-iggy --test dedup_recovery_window_calibration
+node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
+node scripts/verify/verify-iggy-dedup-recovery-window-retained.mjs
+RUSTOK_IGGY_DEDUP_RECOVERY_BOUNDS_PATH=/outside/repository/bounds.json \
+RUSTOK_IGGY_DEDUP_RECOVERY_CONFIG_PATH=/outside/repository/iggy.toml \
+RUSTOK_IGGY_DEDUP_RECOVERY_SERVER_ARTIFACT=reviewed-iggy-build \
+node scripts/evidence/capture-iggy-dedup-recovery-window-calibration.mjs
 cargo test -p rustok-iggy dlq_duplicate_external_scan -- --nocapture
 RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_ADDRESS='host:8090' \
 cargo test -p rustok-iggy --features iggy \
@@ -278,7 +322,6 @@ cargo test -p rustok-iggy --features iggy \
   --exact --nocapture --test-threads=1
 cargo test -p rustok-iggy dlq_duplicate_alert_observer -- --nocapture
 cargo test -p rustok-server event_dlq_duplicate_alert_observer -- --nocapture
-node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs
@@ -295,7 +338,7 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
 3. Public GraphQL/storefront reads use the canonical visibility matrix.
 4. Presentation consumers use `ProfilePresentationService`; raw readers remain
    internal.
-5. `followers_only` resolves through bounded fail-closed Social Graph ports.
+5. `followers_only` resolves through bounded fail-closed Social Graph owner ports.
 6. Profile media resolves through Media owner ports only.
 7. Follow controls use owner ports, unique idempotency, optimistic revision, and
    no automatic retry.
@@ -314,7 +357,7 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
 14. Production deterministic broker IDs remain colocated by the publisher's
     one-based modulo partition rule.
 15. Retained evidence is no-clobber, commit-bound, and stale after any bound
-    source change.
+    source or reviewed input change.
 16. Moving duplicate windows require bounded cross-cycle identity state.
 17. A sufficient recovery-window assessment covers only the supplied reviewed
     model and never authorizes Profiles or proves exactly-once.

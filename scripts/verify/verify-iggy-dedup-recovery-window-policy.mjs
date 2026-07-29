@@ -7,12 +7,21 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
   "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json";
+const executionContractPath =
+  "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution-contract.json";
 const sourcePath = "crates/rustok-iggy/src/dedup_recovery_window_policy.rs";
+const testPath = "crates/rustok-iggy/tests/dedup_recovery_window_calibration.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
 const documentationPath = "crates/rustok-iggy/docs/dedup-recovery-window-policy.md";
 const profilesCheckpointPath =
   "crates/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md";
 const verifierPath = "scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs";
+const runnerPath =
+  "scripts/evidence/capture-iggy-dedup-recovery-window-calibration.mjs";
+const retainedVerifierPath =
+  "scripts/verify/verify-iggy-dedup-recovery-window-retained.mjs";
+const evidencePath =
+  "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution.json";
 
 const expectedExports = [
   "IggyDeduplicationConfiguration",
@@ -43,13 +52,19 @@ const expectedTests = [
 ];
 
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));
+const executionContract = JSON.parse(
+  readFileSync(resolve(repoRoot, executionContractPath), "utf8"),
+);
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
+const test = readFileSync(resolve(repoRoot, testPath), "utf8");
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
 const documentation = readFileSync(resolve(repoRoot, documentationPath), "utf8");
 const profilesCheckpoint = readFileSync(
   resolve(repoRoot, profilesCheckpointPath),
   "utf8",
 );
+const runner = readFileSync(resolve(repoRoot, runnerPath), "utf8");
+const retainedVerifier = readFileSync(resolve(repoRoot, retainedVerifierPath), "utf8");
 const failures = [];
 
 function fail(message) {
@@ -73,10 +88,10 @@ function countText(text, marker) {
 }
 
 if (
-  contract.schema_version !== 1 ||
+  contract.schema_version !== 2 ||
   contract.module !== "iggy" ||
   contract.packet !== "dedup-recovery-window-policy-source" ||
-  contract.status !== "source_complete_runtime_calibration_pending" ||
+  contract.status !== "source_complete_retained_calibration_pending" ||
   contract.owner !== "rustok-iggy" ||
   contract.source !== sourcePath ||
   contract.verifier !== verifierPath ||
@@ -130,6 +145,38 @@ for (const [operation, allowed] of Object.entries(contract.policy_boundary ?? {}
 }
 for (const [field, required] of Object.entries(contract.privacy_boundary ?? {})) {
   if (required !== true) fail(`dedup recovery-window privacy boundary weakened: ${field}`);
+}
+
+const retained = contract.retained_calibration;
+if (
+  retained?.status !== "capture_source_complete_execution_pending" ||
+  retained?.contract !== executionContractPath ||
+  retained?.test !== testPath ||
+  retained?.runner !== runnerPath ||
+  retained?.verifier !== retainedVerifierPath ||
+  retained?.evidence_path !== evidencePath ||
+  retained?.canonical_packet_present !== false ||
+  retained?.requires_reviewed_bounds_file !== true ||
+  retained?.requires_reviewed_enabled_configuration !== true ||
+  retained?.requires_sufficient_assessment !== true ||
+  retained?.no_clobber_write !== true
+) {
+  fail("dedup recovery-window retained calibration relationship drift");
+}
+if (
+  executionContract.packet !==
+    "dedup-recovery-window-calibration-execution-contract" ||
+  executionContract.status !== "runtime_execution_contract_locked" ||
+  executionContract.source_contract !== contractPath ||
+  executionContract.test_target !== "dedup_recovery_window_calibration" ||
+  executionContract.case !== "reviewed_configuration_covers_recovery_window" ||
+  executionContract.runner !== runnerPath ||
+  executionContract.verifier !== retainedVerifierPath ||
+  executionContract.source_verifier !== verifierPath ||
+  executionContract.evidence_path !== evidencePath ||
+  executionContract.evidence_status !== "runtime_calibration_pending"
+) {
+  fail("dedup recovery-window execution contract relationship drift");
 }
 
 for (const marker of [
@@ -190,6 +237,32 @@ for (const marker of [
   forbidText("dedup recovery-window policy source", source, marker);
 }
 
+for (const marker of [
+  "const SKIP_MESSAGE",
+  "fn reviewed_configuration_covers_recovery_window()",
+  "IggyDedupRecoveryWindowPolicy::new(",
+  "IggyDeduplicationConfiguration::enabled(",
+  "IggyDedupRecoveryWindowStatus::Sufficient",
+  "RUSTOK_DEDUP_RECOVERY_CALIBRATION status={}",
+]) {
+  requireText("dedup recovery-window retained calibration test", test, marker);
+}
+if (countText(test, "#[test]") !== 1) {
+  fail("dedup recovery-window retained calibration must contain exactly one focused test");
+}
+for (const marker of [
+  "IggyClient",
+  "IggyTransport",
+  ".connect(",
+  ".poll_messages(",
+  ".move_to_dlq(",
+  ".acknowledge(",
+  ".delete(",
+  ".purge(",
+]) {
+  forbidText("dedup recovery-window retained calibration test", test, marker);
+}
+
 requireText(
   "rustok-iggy module list",
   lib,
@@ -204,24 +277,46 @@ for (const marker of [
   "per physical partition",
   "No production default",
   "does not prove exactly-once",
-  "runtime calibration remains pending",
+  "Retained calibration",
+  "canonical packet remains pending",
 ]) {
   requireText("dedup recovery-window documentation", documentation, marker);
 }
 for (const marker of [
   "Profiles never authorizes",
   "source-complete",
-  "runtime calibration",
+  "retained calibration",
+  "no-clobber",
   "multi-replica",
 ]) {
   requireText("Profiles dedup recovery-window checkpoint", profilesCheckpoint, marker);
 }
+for (const marker of [
+  "function reviewedBounds(",
+  "function reviewedConfiguration(",
+  "function ensureCleanCommit(",
+  "function parsePassedAssessment(",
+  "function writeNoClobber(",
+  "linkSync(temporaryPath, outputPath)",
+  "sourceHashes()",
+  "reported a skip",
+]) {
+  requireText("dedup recovery-window capture runner", runner, marker);
+}
+for (const marker of [
+  "canonical runtime packet is pending",
+  "canonical recovery-window source hash is stale",
+  "canonical sufficient recovery-window assessment drift",
+  "forbidden field",
+]) {
+  requireText("dedup recovery-window retained verifier", retainedVerifier, marker);
+}
 
 const requiredRemainingWork = new Set([
-  "supply_reviewed_production_horizon_bounds",
-  "derive_per_partition_distinct_id_capacity_bound",
-  "bind_assessment_to_reviewed_iggy_configuration_digest",
-  "retain_runtime_calibration_packet",
+  "execute_retained_calibration_on_reviewed_production_inputs",
+  "review_capacity_basis_and_recovery_horizon_bounds",
+  "commit_no_clobber_calibration_packet",
+  "repeat_when_bound_source_configuration_or_bounds_change",
   "repeat_for_bundled_tls_auth_failover_and_multi_replica_operation",
 ]);
 for (const item of contract.remaining_work ?? []) requiredRemainingWork.delete(item);
@@ -238,5 +333,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy dedup recovery-window policy source verified: reviewed disabled/enabled configuration, checked additive recovery horizon, explicit per-partition capacity bound, fail-closed expiry/capacity assessments, stable codes, identifier-free projection, no broker or receipt access, no production defaults, and no exactly-once claim are locked; runtime calibration and retained evidence remain pending.",
+  "Iggy dedup recovery-window policy source verified: reviewed disabled/enabled configuration, checked additive recovery horizon, explicit per-partition capacity bound, fail-closed assessments, stable codes, identifier-free projection, exact retained calibration test, reviewed bounds/config digests, clean-commit source binding, skip rejection, sufficient-only gate, no-clobber publication, no broker or receipt access, no production defaults, and no exactly-once claim are locked; runtime calibration and canonical retained evidence remain pending.",
 );
