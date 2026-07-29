@@ -84,12 +84,14 @@ requireAll(registry, [
   '"commerce-checkout-http"',
   '"commerce-checkout-graphql"',
   '"order-storefront-native"',
-  '"status": "source_complete_consumer_cutover_partial"',
+  '"pending_consumers": []',
+  '"status": "source_complete_consumer_cutover_complete"',
 ], "Product FBA registry");
 requireAll(plan, [
   "ProductCatalogReadRuntime",
-  "AI and Marketplace Listing",
-  "checkout transport cutover remains open",
+  "AI,",
+  "checkout consumer source cutover is complete",
+  "Concrete external transport execution remains open",
   "verify-product-catalog-read-runtime-composition.mjs",
 ], "Product implementation plan");
 
