@@ -72,11 +72,19 @@ requireMarkers(referencePath, [
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod postgres_reference_equivalence_tests;',
 ]);
+requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-postgres-reference-equivalence.mjs'",
+]);
 requireMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
   'Status: `source_complete_owner_execution_pending`',
   'compares the complete `IndexQueryPage`',
   'does not introduce Testcontainers or a second database stack',
   'Not run by the implementation agent',
+]);
+requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
+  'M4 PostgreSQL/reference fixture source: `source_complete_owner_execution_pending`',
+  'M4 live PostgreSQL/reference execution evidence: `open_owner_action`',
+  'The canonical checklist remains open until the owner runs the fixture',
 ]);
 
 console.log('[verify-index-postgres-reference-equivalence] OK');
