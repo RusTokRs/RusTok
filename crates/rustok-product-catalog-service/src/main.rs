@@ -8,13 +8,16 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use rustok_api::PortActor;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use rustok_product::CatalogService;
+use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
+use rustok_product::{
+    CatalogService,
+    entities::{Product, ProductVariant},
+};
 use rustok_product_transport::{
     ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcService,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use url::Url;
 
@@ -23,6 +26,7 @@ const DEFAULT_DATABASE_CONNECT_TIMEOUT_MS: u64 = 5_000;
 const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 20;
 const MAX_DATABASE_CONNECT_TIMEOUT_MS: u64 = 30_000;
 const MAX_DATABASE_CONNECTIONS: u32 = 200;
+const REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_events"];
 
 const BIND_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_BIND";
 const DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL";
@@ -120,9 +124,8 @@ impl ServiceConfig {
         }
 
         let bearer_token = RedactedSecret::new(required_secret_env(BEARER_TOKEN_ENV)?);
-        let trusted_service_actor = validate_service_actor(required_env(
-            TRUSTED_SERVICE_ACTOR_ENV,
-        )?)?;
+        let trusted_service_actor =
+            validate_service_actor(required_env(TRUSTED_SERVICE_ACTOR_ENV)?)?;
         let transport = validate_transport_security(
             bind,
             optional_path_env(TLS_CERT_PATH_ENV),
@@ -167,6 +170,8 @@ async fn run() -> Result<()> {
     );
 
     let database = connect_database(&config).await?;
+    verify_required_schema(&database).await?;
+
     let outbox = Arc::new(OutboxTransport::new(database.clone()));
     let event_bus = TransactionalEventBus::new(outbox);
     let provider = Arc::new(CatalogService::new(database, event_bus));
@@ -212,6 +217,33 @@ async fn connect_database(config: &ServiceConfig) -> Result<DatabaseConnection> 
     Database::connect(options)
         .await
         .map_err(|_| anyhow!("Product catalog PostgreSQL connection failed"))
+}
+
+async fn verify_required_schema(database: &DatabaseConnection) -> Result<()> {
+    Product::find()
+        .one(database)
+        .await
+        .map_err(|_| schema_preflight_error("products"))?;
+    ProductVariant::find()
+        .one(database)
+        .await
+        .map_err(|_| schema_preflight_error("product_variants"))?;
+    SysEvents::find()
+        .one(database)
+        .await
+        .map_err(|_| schema_preflight_error("sys_events"))?;
+
+    tracing::info!(
+        required_tables = ?REQUIRED_SCHEMA_TABLES,
+        "Product catalog database schema preflight passed"
+    );
+    Ok(())
+}
+
+fn schema_preflight_error(table: &'static str) -> anyhow::Error {
+    anyhow!(
+        "Product catalog schema preflight failed for `{table}`; run platform migrations before starting the service"
+    )
 }
 
 async fn load_tls_identity(cert_path: &Path, key_path: &Path) -> Result<Identity> {
@@ -406,8 +438,8 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::{
-        RedactedSecret, ServiceTransport, validate_database_url, validate_service_actor,
-        validate_transport_security,
+        REQUIRED_SCHEMA_TABLES, RedactedSecret, ServiceTransport, validate_database_url,
+        validate_service_actor, validate_transport_security,
     };
     use std::{net::SocketAddr, path::PathBuf};
 
@@ -429,6 +461,14 @@ mod tests {
         assert!(!target.contains("catalog_password"));
         assert_eq!(format!("{secret:?}"), "[REDACTED]");
         assert!(validate_database_url("sqlite::memory:".to_string()).is_err());
+    }
+
+    #[test]
+    fn required_schema_tables_are_owner_and_outbox_tables() {
+        assert_eq!(
+            REQUIRED_SCHEMA_TABLES,
+            ["products", "product_variants", "sys_events"]
+        );
     }
 
     #[test]
