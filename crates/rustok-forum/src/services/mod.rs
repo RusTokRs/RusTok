@@ -44,6 +44,8 @@ mod mention_relation_tests {
 }
 #[path = "moderation.rs"]
 mod moderation_legacy;
+#[doc(hidden)]
+pub use moderation_legacy::ModerationService as __ModerationServiceLegacyTarget;
 mod moderation_owner;
 pub mod moderation {
     pub use super::moderation_owner::ModerationService;
