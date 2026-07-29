@@ -24,6 +24,7 @@ impl ForumTopicReadTransport {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ForumTopicReadOperation {
+    TopicList,
     SelectedTopic,
     MarkRead,
 }
@@ -31,6 +32,7 @@ pub enum ForumTopicReadOperation {
 impl ForumTopicReadOperation {
     const fn label(self) -> &'static str {
         match self {
+            Self::TopicList => "topic-list",
             Self::SelectedTopic => "selected-topic",
             Self::MarkRead => "mark-read",
         }
@@ -185,6 +187,27 @@ mod tests {
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
         assert!(context.correlation_id.starts_with("forum-graphql-mark-read-"));
+    }
+
+    #[test]
+    fn topic_list_context_has_a_distinct_bounded_correlation_identity() {
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let auth = auth(tenant_id, user_id);
+        let request = request(tenant_id, user_id);
+
+        let context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::TopicList,
+            tenant_id,
+            &auth,
+            Some(&request),
+            "ru-RU",
+        )
+        .expect("trusted list context should compose");
+
+        assert!(context.correlation_id.starts_with("forum-graphql-topic-list-"));
+        assert_eq!(context.deadline_ms, Some(5_000));
     }
 
     #[test]
