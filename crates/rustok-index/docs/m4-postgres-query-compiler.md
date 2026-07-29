@@ -28,8 +28,7 @@ and validates any continuation cursor, and then compiles:
 - `And`, `Or`, `Not`, `Eq`, `Ne`, `In`, range, `Contains`, and `IsNull` filters;
 - typed PostgreSQL casts for boolean, integer, decimal, string, UUID, and
   timestamp fields;
-- deterministic multi-column ordering with PostgreSQL null placement matching
-  the reference engine;
+- deterministic multi-column ordering with explicit null placement;
 - lexicographic keyset continuation with an ascending root `entity_id`
   tie-breaker;
 - bounded cursor limits;
@@ -56,23 +55,32 @@ fields, and tagged null values do not leak SQL `NULL` into `Not`, `And`, or
 - `Ne` is true only for an existing non-null scalar that differs;
 - `IsNull` treats an absent field, missing linked row, or tagged null as null.
 
-Ascending order uses `NULLS LAST`; descending order uses `NULLS FIRST`. This
-matches the existing reference comparison before the invariant ascending
-`entity_id` tie-breaker.
+Ascending order uses `NULLS LAST`; descending order uses `NULLS FIRST`, followed
+by the invariant ascending `entity_id` tie-breaker. PostgreSQL/reference-engine
+equivalence remains a later evidence slice rather than a claim of this source
+change.
 
 ## Cursor boundary
 
-Opaque cursor bytes are never accepted directly by
-`ExecutableQueryPlan::compile_postgres`. A continuation query must use
-`SchemaRegistry::compile_postgres_query`, which verifies:
+Raw v1 cursor envelopes remain available only for codec round trips and the
+test-only reference engine. They are not accepted by the PostgreSQL compiler.
 
-- checksum and cursor version;
+Production continuation tokens use scoped v2 envelopes created by
+`CursorCodec::encode_for_query`. The outer envelope includes a versioned
+`rustok-index-cursor-query-v1` fingerprint over tenant, schema, locale, filter,
+and ordered field/direction semantics. A continuation query must use
+`SchemaRegistry::compile_postgres_query`, which calls
+`CursorCodec::decode_scoped_for_query` and verifies:
+
+- checksum and scoped cursor version;
+- filter/order query fingerprint;
 - tenant, schema, locale, and schema fingerprint;
 - non-nil entity identity;
 - order-value arity;
 - every non-null cursor order value against the registered field type.
 
-Only then is the cursor compiled into lexicographic predicates.
+Changing a filter, ordered field, or order direction therefore produces
+`QueryFingerprintMismatch` before keyset SQL is emitted.
 
 ## Bind and SQL boundary
 
@@ -83,8 +91,8 @@ and `lN` aliases appear in SQL.
 
 The compiler contract and SQL emission live in separate modules:
 
-- `application/postgres_compiler.rs` owns public types, cursor entry points, and
-  plan invariant checks;
+- `application/postgres_compiler.rs` owns public types, scoped cursor entry
+  points, and plan invariant checks;
 - `application/postgres_query_sql.rs` owns controlled SQL and deterministic bind
   emission.
 
