@@ -41,11 +41,12 @@
     "canonical_source_entity_pair_required": true,
     "spoofed_source_entity_pairs_fail_closed": true,
     "forum_storefront_query_keys_reused": true,
+    "neutral_core_projection_capability_added": true,
     "forum_projection_consumer_wired": true,
     "forum_search_documents_written": true,
     "forum_index_storage_changed": false,
     "forum_event_ingestion_changed": true,
-    "downstream_workspace_dependency_added": true,
+    "downstream_workspace_dependency_added": false,
     "completion_contract": "crates/rustok-forum/contracts/forum-search-projection.json"
   },
   "compatibility": {
@@ -57,6 +58,8 @@
     "existing_search_product_content_blog_routes_changed": false,
     "migration_added": false,
     "dependency_changed_in_forum_20bi": false,
+    "dependency_changed_in_forum_20bj": false,
+    "cargo_lock_changed_in_forum_20bj": false,
     "public_response_dto_changed": false,
     "legacy_graphql_snapshot_changed": false
   },
@@ -66,7 +69,7 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BJ through a conflict-safe repository-local edit after maintainer validation; see the completion contract for Cargo.lock handoff."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BJ through a conflict-safe repository-local edit after maintainer validation."
   },
   "remaining_scope": [
     "publish owner-transactional projection invalidation events for every category and topic content translation visibility tag solution tree and route change",
@@ -79,7 +82,7 @@
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
-      "cargo test -p rustok-search projection_source -- --nocapture",
+      "cargo test -p rustok-core search_projection -- --nocapture",
       "cargo test -p rustok-search forum_projector -- --nocapture",
       "cargo test -p rustok-forum search_projection -- --nocapture",
       "node scripts/verify/verify-forum-public-discovery-seo.mjs",
