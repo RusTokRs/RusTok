@@ -20,6 +20,7 @@ pub mod pg_engine;
 pub mod ports;
 pub mod presets;
 pub mod projection_source;
+#[allow(dead_code)]
 #[path = "projector_legacy.rs"]
 mod projector_legacy;
 pub mod projector;
