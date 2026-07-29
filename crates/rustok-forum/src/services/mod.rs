@@ -61,7 +61,10 @@ mod public_discovery;
 mod quote_command;
 mod rbac;
 pub mod read_model;
-pub mod read_tracking;
+pub mod read_tracking {
+    include!("read_tracking.rs");
+    include!("read_tracking_audience.rs");
+}
 mod relation_quote_input;
 mod relation_read;
 #[allow(clippy::collapsible_if, clippy::items_after_test_module)]
@@ -169,8 +172,8 @@ pub use public_discovery::ForumPublicDiscoveryService;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use read_tracking::{
-    ForumTopicReadState, ForumTopicReadStateService, MarkForumTopicReadInput,
-    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
+    ForumTopicReadState, ForumTopicReadStateService, ForumVisibilityScopedReadStateService,
+    MarkForumTopicReadInput, MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
 };
 pub use relation_read::ForumRelationReadService;
 pub use reply_audience_read::ForumReplyAudienceReadService;
