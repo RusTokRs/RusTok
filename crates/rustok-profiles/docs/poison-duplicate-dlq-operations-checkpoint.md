@@ -1,6 +1,6 @@
 # Profiles checkpoint: physical DLQ duplicate operations
 
-Status: **classifier, bounded scanner, runtime harness, retained tooling, alert policy, latest-value runtime, and mode-aware server observer source-complete; runtime execution and telemetry/health projection pending**.
+Status: **classifier, bounded scanner, bounded rolling state, runtime harness, retained tooling, alert policy, latest-value runtime, and mode-aware server observer source-complete; scanner/cursor integration, runtime execution, and telemetry/health projection pending**.
 
 ## Why this matters for Profiles
 
@@ -8,14 +8,16 @@ Profiles authorization remains independent of broker and receipt state. Downstre
 
 - one durable neutral result with one physical DLQ copy;
 - one durable neutral result with repeated identical physical copies;
-- one deterministic DLQ ID associated with conflicting exact bytes.
+- one deterministic DLQ ID associated with conflicting exact bytes;
+- copies of the same physical duplicate observed in adjacent retained scan cycles.
 
-The Iggy-owned classifier exposes this distinction without message identities or payloads. The bounded scanner supplies observations through explicit-offset polling without storing progress. The alert policy evaluates only the count-only summary. The latest-value runtime and server observer publish only identifier-free operational state. None becomes a Profiles authorization input.
+The Iggy-owned classifier exposes these distinctions without message identities or payloads. The bounded scanner supplies observations through explicit-offset polling without storing progress. The rolling state can preserve opaque relationships across complete retained cycles. The alert policy evaluates only the count-only summary. The latest-value runtime and server observer publish only identifier-free operational state. None becomes a Profiles authorization input.
 
 ## Owner boundaries
 
 ```text
 classifier:      crates/rustok-iggy/src/dlq_duplicate_inspection.rs
+rolling state:   crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs
 scanner:         crates/rustok-iggy/src/dlq_duplicate_external_scan.rs
 policy:          crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs
 runtime:         crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
@@ -27,6 +29,7 @@ Machine contracts:
 
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-inspection-source.json
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
@@ -37,6 +40,7 @@ Verifiers:
 
 ```text
 scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
+scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
 scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs
 scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
@@ -54,6 +58,15 @@ duplicate_messages
 duplicate_groups
 conflicting_payload_groups
 max_copies_per_message_id
+```
+
+The rolling snapshot adds only:
+
+```text
+retained_cycles
+retained_observations
+evicted_cycles
+history_truncated
 ```
 
 The policy evaluation exposes only:
@@ -95,13 +108,27 @@ explicit offset
 auto_commit = false
 ```
 
-It accepts no more than 128 unique positive partitions, 10,000 physical messages globally, and batches of 1,000. It validates returned partition/count and monotonic offsets before returning only `DlqDuplicateSummary`.
+Global mode accepts no more than 128 unique positive partitions, 10,000 physical messages total, and batches of 1,000. Fair mode gives every selected partition one equal cap under the same checked 10,000-message total.
 
-The server observer places every configured domain partition into the request allowlist, but the scanner has one global message budget across the ordered list. An earlier busy partition may exhaust that budget before later partitions are polled. No fairness or complete-partition claim is made.
-
-Each polling cycle reuses the same configured explicit start offset. The current observer therefore measures a repeated bounded window; it does not own a moving cursor, tail coverage, or complete-history semantics. A future per-partition budget or moving-window policy requires a separate source contract.
+Each current polling cycle reuses the configured explicit start offset. The observer therefore still measures a repeated bounded snapshot and does not own a moving cursor, tail coverage, or complete-history semantics.
 
 The scanner does not use a consumer group, stored-offset `next` polling, offset storage, acknowledgement, topology discovery, publication, delete/purge, replay/retry, receipt mutation, or client shutdown.
+
+## Bounded cross-cycle state
+
+`DlqDuplicateRollingWindowPolicy` requires explicit positive `max_cycles` and `max_observations_per_cycle`. Cycle count is capped at 128 and their checked product cannot exceed 10,000. No production default is provided.
+
+`push_cycle` accepts one complete cycle of opaque observations. It detects ordinary and conflicting duplicates split across retained cycles. Oversized input fails without changing the current state.
+
+When cycle capacity is reached, the oldest complete cycle is evicted. Partial-cycle eviction is forbidden. Every later snapshot reports:
+
+```text
+history_truncated = true
+```
+
+An evicted old copy can remove a relationship from the retained summary. The snapshot therefore represents only the bounded retained window and is not current-tail or complete-history evidence.
+
+The state does not connect to Iggy, move or store cursors, persist itself, define restart recovery, compose the server observer, or register telemetry. Those remain separate owners and follow-up evidence.
 
 ## Alert policy boundary
 
@@ -141,24 +168,15 @@ outbox_local  -> NotApplicableOutboxLocal
 outbox_iggy   -> IggyBundled or IggyExternal
 ```
 
-For `memory` and `outbox_local`, absence of Iggy is expected platform behavior:
+For `memory` and `outbox_local`, absence of Iggy is expected platform behavior. For `outbox_iggy`, the observer reuses the active transport configuration and opens only a separate read-only SDK client. Observer-specific startup, connection, scan, and shutdown failures are non-fatal to event delivery and module projection.
 
-- no shared `IggyTransport` is requested;
-- no broker client is opened;
-- no alert thresholds are required;
-- not-applicable state is not an error, readiness failure, or Profiles degradation.
-
-For `outbox_iggy`, the observer reuses the exact active transport configuration and opens only a separate read-only SDK client. Bundled mode connects to the existing validated loopback broker; external mode uses the reviewed address list. A missing active Iggy mode fails closed instead of being guessed.
-
-Observer-specific startup failures are non-fatal: invalid configuration or missing observer dependencies produce `Unavailable`, log a stable code, and return success to application bootstrap. Connection failure, scan failure, and shutdown publish unavailable state while event delivery and module projection remain active.
-
-The observer does not create a second transport, start or stop a bundled process, commit offsets, or dispatch notifications.
+The source-complete rolling state is not yet composed into this observer. No second transport, persisted cursor, notification dispatch, or readiness dependency is introduced.
 
 ## Runtime and retained status
 
-The external-Iggy harness and retained execution tooling are source-complete. The harness creates controlled ordinary-duplicate and identity-conflict fixtures through production publication, scans the same explicit offset twice, and requires no stored consumer offset before or after either scan.
+The external-Iggy harness and retained execution tooling are source-complete. The canonical retained execution packet remains absent until a maintainer performs the reviewed external-Iggy run.
 
-The canonical retained execution packet remains absent until a maintainer performs the reviewed external-Iggy run. The mode-aware server observer is source-complete; telemetry, optional operational health, moving-window/fairness policy, and retained server execution evidence remain pending.
+The rolling state is source-complete as a transport-neutral component. Scanner observation feeding, independent per-partition cursor advancement, persistence/restart semantics, cross-cycle external-Iggy evidence, mode-aware composition, telemetry, and optional operational health remain pending.
 
 ## Relationship to receipt health
 
@@ -173,6 +191,7 @@ No profile visibility, relationship, block, mute, follow, friendship, audience, 
 - event delivery profile or Iggy deployment mode;
 - observer startup, applicability, availability, or generation;
 - partition ordering, fairness, fixed-window selection, or budget exhaustion;
+- rolling retention or eviction state, including `history_truncated`;
 - physical DLQ copy or duplicate-group counts;
 - identity-conflict presence;
 - alert level or threshold flags;
@@ -186,11 +205,13 @@ Profiles presentation continues to consume authorized owner-port results. These 
 ## Remaining work
 
 1. execute and retain the reviewed external-Iggy duplicate scan packet;
-2. define partition fairness/per-partition budgets and a moving-window or per-partition cursor policy;
-3. define identifier-free telemetry and optional operational health without readiness coupling;
-4. retain mode-aware server observer execution evidence;
-5. define alert routing, cooldown, and suppression outside Profiles and the policy/runtime;
-6. define acknowledgement/delete/replay separately with explicit authorization;
-7. keep aggregate receipt and duplicate observations identifier-free.
+2. feed complete fair scanner cycles into rolling state without identifier export;
+3. define independent per-partition cursor advancement and persistence/restart semantics;
+4. prove cross-cycle behavior on external Iggy and compose the mode-aware observer;
+5. define identifier-free telemetry and optional operational health without readiness coupling;
+6. retain mode-aware server observer execution evidence;
+7. define alert routing, cooldown, and suppression outside Profiles and the policy/runtime;
+8. define acknowledgement/delete/replay separately with explicit authorization;
+9. keep aggregate receipt and duplicate observations identifier-free.
 
 Tests, Cargo commands, formatters, verifiers, server observers, external-Iggy scans, telemetry registration, alert dispatch, and retained capture were not run by the implementation agent.

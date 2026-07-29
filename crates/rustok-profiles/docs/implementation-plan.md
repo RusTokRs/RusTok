@@ -92,13 +92,18 @@ mutation retry.
   canonical privacy-safe projections; one exact Rust case must report a
   sufficient assessment from a clean unchanged commit before a no-clobber packet
   can be published.
+- A bounded physical-DLQ rolling window is source-complete. It retains opaque
+  observations across complete scan cycles under a checked 10,000-observation
+  cap, detects ordinary and conflicting duplicates split across retained cycles,
+  rejects oversized cycles transactionally, and reports permanent truncation
+  after complete-cycle eviction.
 - Canonical retained packets remain pending and must omit credentials and
   delivery-level facts, bind reviewed source/configuration/input digests, and
   become stale when any bound source or reviewed input changes.
 
 ## Physical DLQ duplicate inspection
 
-Two bounded policies are source-complete:
+Two bounded scanner policies are source-complete:
 
 - `global_budget`: one ordered partition allowlist and one shared cap. A busy
   early partition may prevent later partitions from being polled.
@@ -116,10 +121,12 @@ RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES=<positive cap>
 ```
 
 `memory` and `outbox_local` remain intentional not-applicable modes and do not
-resolve Iggy. Both policies use explicit offsets and `auto_commit=false`. Every
-observer cycle reuses the configured start offset; neither policy owns moving
-cursors, stored progress, cross-cycle duplicate state, current-tail coverage, or
-complete-history semantics.
+resolve Iggy. Both scanner policies use explicit offsets and `auto_commit=false`.
+The current observer still reuses one configured start offset and does not own
+moving cursors, stored progress, current-tail coverage, or complete-history
+semantics. The separate rolling state can preserve relationships across complete
+cycles supplied by a future scanner integration, but it does not move or persist
+a cursor itself.
 
 ### Production partition invariant
 
@@ -208,16 +215,49 @@ payloads, or raw output. Publication is no-clobber.
 
 Runtime calibration and the canonical packet remain pending.
 
+### Bounded rolling duplicate window
+
+Source-complete paths:
+
+```text
+crates/rustok-iggy/src/
+  dlq_duplicate_rolling_window.rs
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-rolling-window-source.json
+scripts/verify/
+  verify-iggy-dlq-duplicate-rolling-window.mjs
+crates/rustok-iggy/docs/
+  dlq-duplicate-rolling-window.md
+crates/rustok-profiles/docs/
+  poison-duplicate-rolling-window-checkpoint.md
+```
+
+`DlqDuplicateRollingWindowPolicy` requires positive explicit cycle and per-cycle
+bounds, caps cycle count at 128, and requires their checked product not to exceed
+10,000 observations. No production default is embedded.
+
+`DlqDuplicateRollingWindow` retains complete cycles and combines all retained
+opaque observations before count-only classification. An oversized cycle leaves
+existing state unchanged. At capacity the oldest complete cycle is evicted, and
+all later snapshots report `history_truncated = true`; an evicted relationship
+may disappear, so the result is never complete-history or current-tail proof.
+
+Scanner collection, independent per-partition cursor advancement, persistence or
+restart-reset semantics, mode-aware server composition, and external-Iggy
+cross-cycle runtime evidence remain pending.
+
 Detailed checkpoints:
 
 - `crates/rustok-profiles/docs/poison-duplicate-external-scan-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-fair-window-external-runtime-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md`
+- `crates/rustok-profiles/docs/poison-duplicate-rolling-window-checkpoint.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-external-scan.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md`
 - `crates/rustok-iggy/docs/dedup-recovery-window-policy.md`
+- `crates/rustok-iggy/docs/dlq-duplicate-rolling-window.md`
 
 ## Results and next work
 
@@ -264,10 +304,11 @@ Detailed checkpoints:
    no-clobber packet; and repeat whenever a bound source, configuration, or input
    changes. A packet covers only that supplied model.
 
-10. **Design moving duplicate windows or keep fixed snapshots.**
-    A moving per-partition cursor must retain bounded prior identity/digest state
-    so copies split across cycles remain related. Fixed snapshots must not be
-    presented as current-tail or complete-history evidence.
+10. **Integrate the bounded rolling duplicate window.**
+    Feed complete fair scanner cycles without exporting identifiers, define
+    independent per-partition cursor advancement, choose persistence or explicit
+    restart-reset semantics, compose the mode-aware observer, and retain real
+    cross-cycle Iggy evidence. Truncated state must remain visibly incomplete.
 
 11. **Retain production operations.**
     Prove bundled mode, restart, TLS/auth/failover, reconnect, rebalance,
@@ -276,27 +317,25 @@ Detailed checkpoints:
 
 ## Recheck checkpoint — 2026-07-29
 
-- Rechecked the canonical plan and current `main` after the recovery-window
-  policy merge.
+- Rechecked the canonical plan and current `main` after the retained
+  recovery-window calibration tooling merge.
 - Reconfirmed privacy-before-presentation, owner-scoped writes, Media ownership,
   fail-closed follower reads, no automatic mutation retry, and the rule that
   operational state never authorizes profile presentation.
 - Reconfirmed deterministic same-ID colocation and the production-reachable
   fair/global comparison.
-- Rechecked the external-Iggy dedup cases and confirmed that immediate,
-  capacity, and expiry sequences do not establish a production recovery window.
-- Reconfirmed the pure fail-closed recovery-window policy and added a locked
-  retained-calibration path around reviewed bounds and reviewed enabled Iggy
-  configuration.
-- Added one exact opt-in Rust calibration case, strict skip rejection, checked
-  reviewed-input projections and digests, current source hashes, clean-commit
-  requirements, a sufficient-only gate, and no-clobber packet publication.
-- Kept active configuration readback, correctness of the operator capacity
-  basis, runtime execution, canonical retained packets, moving-window state,
-  bundled/TLS/auth, failover, and multi-replica claims open.
-- Tests, Cargo commands, repository source verifiers, retained capture,
-  external/bundled Iggy, and multi-replica scenarios were not run per maintainer
-  instruction.
+- Rechecked the fixed scanner APIs and confirmed that returning one already
+  aggregated summary cannot preserve a duplicate relationship split across
+  advancing scan cycles.
+- Added a pure bounded complete-cycle rolling state with checked memory limits,
+  transactional oversized-cycle rejection, cross-cycle ordinary/conflicting
+  classification, complete-cycle eviction, and permanent truncation metadata.
+- Kept scanner observation feeding, per-partition cursor advancement, state
+  persistence/restart semantics, server composition, external runtime evidence,
+  telemetry/health, bundled/TLS/auth, failover, and multi-replica claims open.
+- Tests, Cargo commands, formatters, repository source verifiers, broker scans,
+  server observers, retained capture, and multi-replica scenarios were not run
+  per maintainer instruction.
 
 ## Verification backlog
 
@@ -306,6 +345,8 @@ cargo xtask module test profiles
 cargo check -p rustok-profiles-storefront --all-targets
 cargo test -p rustok-profiles-storefront
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
+cargo test -p rustok-iggy dlq_duplicate_rolling_window -- --nocapture
+node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
 cargo test -p rustok-iggy dedup_recovery_window_policy -- --nocapture
 cargo test -p rustok-iggy --test dedup_recovery_window_calibration
 node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
@@ -338,7 +379,7 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
 3. Public GraphQL/storefront reads use the canonical visibility matrix.
 4. Presentation consumers use `ProfilePresentationService`; raw readers remain
    internal.
-5. `followers_only` resolves through bounded fail-closed Social Graph owner ports.
+5. `followers_only` resolves through bounded fail-closed Social Graph ports.
 6. Profile media resolves through Media owner ports only.
 7. Follow controls use owner ports, unique idempotency, optimistic revision, and
    no automatic retry.
@@ -358,7 +399,10 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
     one-based modulo partition rule.
 15. Retained evidence is no-clobber, commit-bound, and stale after any bound
     source or reviewed input change.
-16. Moving duplicate windows require bounded cross-cycle identity state.
-17. A sufficient recovery-window assessment covers only the supplied reviewed
+16. Cross-cycle duplicate state must be explicitly bounded and retain complete
+    cycles; partial silent eviction is forbidden.
+17. Any cycle eviction permanently marks the in-memory history truncated, and a
+    truncated snapshot is never current-tail or complete-history evidence.
+18. A sufficient recovery-window assessment covers only the supplied reviewed
     model and never authorizes Profiles or proves exactly-once.
-18. Update Profiles and affected owner docs with every boundary change.
+19. Update Profiles and affected owner docs with every boundary change.
