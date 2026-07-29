@@ -11,54 +11,28 @@
       "registry": "crates/rustok-product/contracts/product-fba-registry.json",
       "contract_version": "product.catalog_read.v1",
       "port": "ProductCatalogReadPort",
-      "operations": [
-        "read_product_projection"
-      ],
-      "consuming_tasks": [
-        "product_attributes"
-      ],
-      "required_profiles": [
-        "in_process",
-        "remote_adapter_placeholder",
-        "grpc_loopback"
-      ],
-      "fallback_profiles": [
-        "embedded_native"
-      ],
-      "degraded_modes": [
-        "generate_from_prompt_only",
-        "skip_catalog_enrichment",
-        "require_operator_review"
-      ],
+      "operations": ["read_product_projection"],
+      "consuming_tasks": ["product_attributes"],
+      "required_profiles": ["in_process", "remote_adapter_placeholder", "grpc_loopback"],
+      "fallback_profiles": ["embedded_native"],
+      "degraded_modes": ["generate_from_prompt_only", "skip_catalog_enrichment", "require_operator_review"],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError"
     }
   ],
   "support_adapter": {
     "source": "crates/rustok-ai-product/src/lib.rs",
-    "task_slugs": [
-      "product_copy",
-      "product_attributes"
-    ],
-    "tool_names": [
-      "direct.commerce.product_copy",
-      "direct.commerce.product_attributes"
-    ],
+    "task_slugs": ["product_copy", "product_attributes"],
+    "tool_names": ["direct.commerce.product_copy", "direct.commerce.product_attributes"],
     "registration_api": "register_product_ai_vertical_handlers",
-    "validation_helpers": [
-      "validate_product_copy_payload",
-      "validate_product_attributes_payload"
-    ]
+    "validation_helpers": ["validate_product_copy_payload", "validate_product_attributes_payload"]
   },
   "agent_catalog": {
     "owner": "rustok-ai-product",
     "catalog_api": "product_ai_agents",
     "workflow_api": "product_ai_workflows",
     "stage_input_validation_api": "validate_product_agent_stage_input",
-    "roles": [
-      "product_copywriter",
-      "product_attribute_enricher"
-    ],
+    "roles": ["product_copywriter", "product_attribute_enricher"],
     "workflow": "product_enrichment",
     "all_stages_require_approval": true
   },
@@ -68,32 +42,25 @@
     "verifier": "scripts/verify/verify-ai-product-fba.mjs",
     "static_matrix": "crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json",
     "runtime_fallback_smoke": "crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json",
-    "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs"
+    "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
+    "product_grpc_maintainer_test_attestation": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json"
   },
   "remote_consumer_behavior": {
     "status": "source_complete_execution_pending",
     "profile": "grpc_loopback",
     "source": "crates/rustok-ai/src/direct_product_attributes.rs",
-    "failure_profiles": [
-      "unavailable",
-      "timeout"
-    ],
-    "assertions": [
-      "generate_from_prompt_only",
-      "skip_catalog_enrichment",
-      "require_operator_review",
-      "persistence_none",
-      "typed_port_error_preserved"
-    ]
+    "failure_profiles": ["unavailable", "timeout"],
+    "assertions": ["generate_from_prompt_only", "skip_catalog_enrichment", "require_operator_review", "persistence_none", "typed_port_error_preserved"],
+    "maintainer_harness_status": "passed_no_raw_logs_end_to_end_pending",
+    "attested_at": "2026-07-29T16:33:00+03:00",
+    "separate_process_end_to_end_status": "pending"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
     "source": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
     "runner": "scripts/verify/verify-ai-product-fba.mjs",
-    "profiles": [
-      "in_process",
-      "remote_adapter_placeholder"
-    ],
+    "execution_attestation": "maintainer_attested_passed_no_raw_logs",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
     "cases": [
       {
         "provider": "product",
@@ -109,14 +76,8 @@
     ],
     "fallback_smoke": {
       "status": "runtime_verified",
-      "profiles": [
-        "embedded_native"
-      ],
-      "degraded_modes": [
-        "generate_from_prompt_only",
-        "skip_catalog_enrichment",
-        "require_operator_review"
-      ]
+      "profiles": ["embedded_native"],
+      "degraded_modes": ["generate_from_prompt_only", "skip_catalog_enrichment", "require_operator_review"]
     }
   }
 }
