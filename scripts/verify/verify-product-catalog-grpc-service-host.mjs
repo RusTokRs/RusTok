@@ -228,7 +228,7 @@ requireAll(plan, [
   "products",
   "product_variants",
   "sys_events",
-  "schema-preflight execution evidence remains open",
+  "Schema-preflight execution evidence remains open",
   "host execution evidence remains open",
   "Product remains `boundary_ready`",
   "cargo run -p rustok-product-catalog-service",
