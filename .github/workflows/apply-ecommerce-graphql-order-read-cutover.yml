@@ -1,19 +1,24 @@
 name: Apply ecommerce GraphQL order read cutover
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/ecommerce-graphql-order-read-cutover-20260729
+      - main
+    types:
+      - opened
+      - synchronize
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/ecommerce-graphql-order-read-cutover-20260729'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - name: Apply staged patch
         shell: bash
@@ -30,4 +35,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat(commerce): use order read port in GraphQL"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
