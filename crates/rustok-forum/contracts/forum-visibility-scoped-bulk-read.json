@@ -16,6 +16,7 @@
   "owner_note": "crates/rustok-forum/docs/forum-20bl-visibility-scoped-bulk-read.md",
   "source_verifier": "scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-projection-invalidation.json",
+  "rebuild_scope_preservation_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
   "owner_boundary": {
     "authenticated_human_user_required": true,
     "forum_topics_read_scope_required": true,
@@ -77,6 +78,11 @@
     "request_dto_accepts_tenant_or_user_identity": false,
     "storefront_ui_controls_added": false
   },
+  "downstream_handoff": {
+    "full_rebuild_external_scope_preservation_completed": true,
+    "completion_task": "FORUM-20BM",
+    "completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json"
+  },
   "compatibility": {
     "legacy_br1_trusted_owner_methods_removed": false,
     "legacy_br1_used_by_public_bulk_transports": false,
@@ -100,17 +106,16 @@
     "crate_api_updated": false,
     "canonical_plan_updated": false,
     "central_readiness_status_updated": false,
-    "synchronization_debt": "Advance the canonical FORUM-16/FORUM-20 ledger and CRATE_API through FORUM-20BL with conflict-safe repository-local edits after maintainer validation; no FFA/FBA readiness status changes in this transport-only slice."
+    "synchronization_debt": "Advance the canonical FORUM-16/FORUM-20/FORUM-23 ledger, Search plan and CRATE_API through FORUM-20BM with conflict-safe repository-local edits after maintainer validation; no FFA/FBA readiness status changes."
   },
   "remaining_scope": [
-    "make full multi-source Search rebuild replacement atomic or preserve each prior external scope when a later source fails",
     "decide whether approved public replies become separate Search documents under FORUM-23",
     "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
     "capture maintainer-executed SQLite exact-visible bulk read and PostgreSQL cursor concurrency query-plan evidence",
-    "capture maintainer-executed PostgreSQL outbox projection cleanup and Search query runtime evidence",
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation projection cleanup and Search query runtime evidence",
     "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
   ],
-  "downstream_task": "FORUM-20BM",
+  "downstream_task": "FORUM-20BN",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
@@ -119,6 +124,8 @@
       "cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture",
       "cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture",
       "cargo test -p rustok-forum topic_read_transport -- --nocapture",
+      "cargo test -p rustok-search --test search_scope_preservation_contract -- --nocapture",
+      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
       "node scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
       "npm run verify:forum:storefront-boundary",
       "cargo xtask module validate forum"
