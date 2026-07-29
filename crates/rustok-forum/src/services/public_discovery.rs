@@ -2,13 +2,17 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::dto::{CategoryResponse, TopicResponse};
+use crate::dto::{CategoryResponse, ReplyResponse, TopicResponse};
 use crate::error::{ForumError, ForumResult};
+use crate::state_machine::ReplyStatus;
 
-use super::{ForumCategoryAudienceReadService, ForumTopicAudienceReadService};
+use super::{
+    ForumCategoryAudienceReadService, ForumReplyAudienceReadService,
+    ForumTopicAudienceReadService,
+};
 
 /// Canonical public discovery owner for cross-consumer surfaces such as SEO,
-/// route resolution and future Search projection materialization.
+/// route resolution and Search projection materialization.
 ///
 /// The owner deliberately exposes only the anonymous public decision. Content
 /// requiring authentication, trust, Groups, explicit users, roles, inherited
@@ -17,13 +21,15 @@ use super::{ForumCategoryAudienceReadService, ForumTopicAudienceReadService};
 pub struct ForumPublicDiscoveryService {
     categories: ForumCategoryAudienceReadService,
     topics: ForumTopicAudienceReadService,
+    replies: ForumReplyAudienceReadService,
 }
 
 impl ForumPublicDiscoveryService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             categories: ForumCategoryAudienceReadService::new(db.clone()),
-            topics: ForumTopicAudienceReadService::new(db, event_bus),
+            topics: ForumTopicAudienceReadService::new(db.clone(), event_bus.clone()),
+            replies: ForumReplyAudienceReadService::new(db, event_bus),
         }
     }
 
@@ -72,6 +78,30 @@ impl ForumPublicDiscoveryService {
                 locale,
                 fallback_locale,
                 channel_slug,
+            )
+            .await
+    }
+
+    /// Returns one reply only when its typed status is allowed and its parent
+    /// topic is exactly visible to an anonymous public consumer. The reply body
+    /// is loaded only after the parent decision succeeds.
+    pub async fn get_public_reply_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+        statuses: Option<&[ReplyStatus]>,
+    ) -> ForumResult<Option<ReplyResponse>> {
+        self.replies
+            .get_public_storefront_visible_with_locale_fallback(
+                tenant_id,
+                reply_id,
+                locale,
+                fallback_locale,
+                channel_slug,
+                statuses,
             )
             .await
     }
