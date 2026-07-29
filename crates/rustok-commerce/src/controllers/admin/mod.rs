@@ -2,6 +2,7 @@ pub mod changes;
 pub mod fulfillments;
 pub mod orders;
 pub mod payments;
+pub mod post_order_reads;
 pub mod products;
 pub mod returns;
 pub mod shipping;
@@ -196,11 +197,11 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/order-changes",
-            axum::routing::get(changes::list_order_changes),
+            axum::routing::get(post_order_reads::list_order_changes),
         )
         .route(
             "/order-changes/{id}",
-            axum::routing::get(changes::show_order_change),
+            axum::routing::get(post_order_reads::show_order_change),
         )
         .route(
             "/order-changes/{id}/apply",
@@ -210,10 +211,13 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
             "/order-changes/{id}/cancel",
             axum::routing::post(changes::cancel_order_change),
         )
-        .route("/returns", axum::routing::get(returns::list_order_returns))
+        .route(
+            "/returns",
+            axum::routing::get(post_order_reads::list_order_returns),
+        )
         .route(
             "/returns/{id}",
-            axum::routing::get(returns::show_order_return),
+            axum::routing::get(post_order_reads::show_order_return),
         )
         .route(
             "/returns/{id}/complete",
@@ -258,45 +262,20 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
             axum::routing::post(payments::cancel_refund),
         )
         .route(
-            "/shipping-profiles",
-            axum::routing::get(shipping::list_shipping_profiles)
-                .post(shipping::create_shipping_profile),
+            "/inventory",
+            axum::routing::get(products::list_inventory_items),
         )
         .route(
-            "/shipping-profiles/{id}",
-            axum::routing::get(shipping::show_shipping_profile)
-                .post(shipping::update_shipping_profile),
+            "/inventory/{id}",
+            axum::routing::get(products::show_inventory_item),
         )
         .route(
-            "/shipping-profiles/{id}/deactivate",
-            axum::routing::post(shipping::deactivate_shipping_profile),
-        )
-        .route(
-            "/shipping-profiles/{id}/reactivate",
-            axum::routing::post(shipping::reactivate_shipping_profile),
-        )
-        .route(
-            "/shipping-options",
-            axum::routing::get(shipping::list_shipping_options)
-                .post(shipping::create_shipping_option),
-        )
-        .route(
-            "/shipping-options/{id}",
-            axum::routing::get(shipping::show_shipping_option)
-                .post(shipping::update_shipping_option),
-        )
-        .route(
-            "/shipping-options/{id}/deactivate",
-            axum::routing::post(shipping::deactivate_shipping_option),
-        )
-        .route(
-            "/shipping-options/{id}/reactivate",
-            axum::routing::post(shipping::reactivate_shipping_option),
+            "/inventory/{id}/adjust",
+            axum::routing::post(products::adjust_inventory),
         )
         .route(
             "/fulfillments",
-            axum::routing::get(fulfillments::list_fulfillments)
-                .post(fulfillments::create_fulfillment),
+            axum::routing::get(fulfillments::list_fulfillments),
         )
         .route(
             "/fulfillments/{id}",
@@ -311,178 +290,124 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
             axum::routing::post(fulfillments::deliver_fulfillment),
         )
         .route(
-            "/fulfillments/{id}/reopen",
-            axum::routing::post(fulfillments::reopen_fulfillment),
-        )
-        .route(
-            "/fulfillments/{id}/reship",
-            axum::routing::post(fulfillments::reship_fulfillment),
-        )
-        .route(
             "/fulfillments/{id}/cancel",
             axum::routing::post(fulfillments::cancel_fulfillment),
         )
+        .route(
+            "/shipping-options",
+            axum::routing::get(shipping::list_shipping_options)
+                .post(shipping::create_shipping_option),
+        )
+        .route(
+            "/shipping-options/{id}",
+            axum::routing::get(shipping::show_shipping_option)
+                .post(shipping::update_shipping_option)
+                .delete(shipping::delete_shipping_option),
+        )
+        .route(
+            "/shipping-profiles",
+            axum::routing::get(shipping::list_shipping_profiles)
+                .post(shipping::create_shipping_profile),
+        )
+        .route(
+            "/shipping-profiles/{id}",
+            axum::routing::get(shipping::show_shipping_profile)
+                .post(shipping::update_shipping_profile)
+                .delete(shipping::delete_shipping_profile),
+        )
 }
 
-fn admin_public_error<E>(
-    error: &E,
-    owner: &'static str,
-    error_kind: &'static str,
-    status: axum::http::StatusCode,
-    code: &'static str,
-    message: impl Into<String>,
-) -> HttpError
-where
-    E: std::fmt::Debug,
-{
-    let message = message.into();
-    tracing::error!(
-        error = ?error,
-        owner,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = "commerce_admin_http",
-        "commerce admin operation failed"
-    );
-    HttpError::new(status, code, message)
-}
-
-pub(crate) fn map_payment_orchestration_error(
-    error: crate::PaymentOrchestrationError,
-) -> HttpError {
+#[allow(dead_code)]
+fn map_order_error(error: OrderError) -> HttpError {
     match error {
-        crate::PaymentOrchestrationError::Payment(error)
-        | crate::PaymentOrchestrationError::Provider(error) => map_payment_error(error),
-        crate::PaymentOrchestrationError::ProviderAfterRefundReservation { source, .. } => {
-            map_reserved_refund_provider_error(source)
+        OrderError::Validation(message) => HttpError::bad_request("commerce_validation", message),
+        OrderError::OrderNotFound(_)
+        | OrderError::OrderReturnNotFound(_)
+        | OrderError::OrderChangeNotFound(_) => {
+            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
         }
+        OrderError::InvalidTransition { .. } => HttpError::bad_request(
+            "commerce_order_invalid_transition",
+            "Order state transition is invalid",
+        ),
+        OrderError::Database(error) => HttpError::internal(
+            "commerce_admin_order_storage_error",
+            format!("Order storage operation failed: {error}"),
+        ),
+        OrderError::Core(error) => HttpError::internal(
+            "commerce_admin_order_core_error",
+            format!("Order operation failed: {error}"),
+        ),
     }
 }
 
-pub(crate) fn map_payment_error(error: PaymentError) -> HttpError {
+#[allow(dead_code)]
+fn map_payment_error(error: PaymentError) -> HttpError {
     match error {
+        PaymentError::Validation(message) => {
+            HttpError::bad_request("commerce_validation", message)
+        }
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
         | PaymentError::RefundNotFound(_) => {
             HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
         }
-        PaymentError::Validation(_) => HttpError::bad_request(
-            "commerce_admin_payment_invalid",
-            "Payment request is invalid",
+        PaymentError::InvalidTransition { from, to } => HttpError::bad_request(
+            "commerce_payment_invalid_transition",
+            format!("Payment transition {from} -> {to} is invalid"),
         ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => {
-            HttpError::new(
-                axum::http::StatusCode::CONFLICT,
-                "commerce_admin_payment_state_conflict",
-                "Payment operation conflicts with the current state",
-            )
+        PaymentError::ProviderRejected { message, .. }
+        | PaymentError::ProviderUnavailable { message, .. }
+        | PaymentError::ProviderInvalidResponse { message, .. }
+        | PaymentError::ProviderOutcomeUnknown { message, .. }
+        | PaymentError::ProviderConfiguration { message, .. } => {
+            HttpError::bad_request("commerce_payment_provider_error", message)
         }
-        PaymentError::ProviderUnavailable { .. } => HttpError::new(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_unavailable",
-            "Payment provider is temporarily unavailable",
-        ),
-        PaymentError::ProviderInvalidResponse { .. } => HttpError::new(
-            axum::http::StatusCode::BAD_GATEWAY,
-            "commerce_admin_payment_provider_invalid_response",
-            "Payment provider returned an invalid response; reconciliation may be required",
-        ),
-        PaymentError::ProviderOutcomeUnknown { .. } => HttpError::new(
-            axum::http::StatusCode::CONFLICT,
-            "commerce_admin_payment_reconciliation_required",
-            "Payment provider outcome is unknown and requires reconciliation",
-        ),
-        PaymentError::ProviderConfiguration { .. } => HttpError::new(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_not_configured",
-            "Payment provider is not configured for this tenant",
-        ),
-        PaymentError::Database(_) => HttpError::new(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_storage_unavailable",
-            "Payment storage is temporarily unavailable",
+        PaymentError::Database(error) => HttpError::internal(
+            "commerce_admin_payment_storage_error",
+            format!("Payment storage operation failed: {error}"),
         ),
     }
 }
 
-fn map_reserved_refund_provider_error(error: PaymentError) -> HttpError {
+#[allow(dead_code)]
+fn map_post_order_error(error: PostOrderOrchestrationError) -> HttpError {
     match error {
-        PaymentError::ProviderOutcomeUnknown { .. }
-        | PaymentError::ProviderInvalidResponse { .. } => HttpError::new(
-            axum::http::StatusCode::CONFLICT,
-            "commerce_admin_refund_reconciliation_required",
-            "Refund remains reserved while the provider outcome is reconciled",
-        ),
-        PaymentError::ProviderUnavailable { .. } => HttpError::new(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_refund_provider_unavailable",
-            "Refund remains reserved and the provider operation may be retried safely",
-        ),
-        other => map_payment_error(other),
-    }
-}
-
-pub(crate) fn map_order_error(error: OrderError) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        OrderError::Validation(_) => (
-            axum::http::StatusCode::BAD_REQUEST,
-            "commerce_admin_order_invalid",
-            "Order request is invalid",
-            "validation",
-        ),
-        OrderError::OrderNotFound(_)
-        | OrderError::OrderReturnNotFound(_)
-        | OrderError::OrderChangeNotFound(_) => (
-            axum::http::StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        OrderError::InvalidTransition { .. } => (
-            axum::http::StatusCode::CONFLICT,
-            "commerce_admin_order_state_conflict",
-            "Order operation conflicts with the current state",
-            "state_conflict",
-        ),
-        OrderError::Database(_) => (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_order_storage_unavailable",
-            "Order storage is temporarily unavailable",
-            "database",
-        ),
-        OrderError::Core(_) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_order_failed",
-            "Order operation could not be completed safely",
-            "core",
-        ),
-    };
-    admin_public_error(&error, "rustok_order", error_kind, status, code, message)
-}
-
-pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationError) -> HttpError {
-    match error {
+        PostOrderOrchestrationError::Validation(message) => {
+            HttpError::bad_request("commerce_validation", message)
+        }
         PostOrderOrchestrationError::Order(error) => map_order_error(error),
         PostOrderOrchestrationError::Payment(error) => map_payment_error(error),
-        PostOrderOrchestrationError::PaymentOrchestration(error) => {
-            map_payment_orchestration_error(error)
+        PostOrderOrchestrationError::Fulfillment(error) => match error {
+            crate::error::FulfillmentError::FulfillmentNotFound(_) => {
+                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+            }
+            crate::error::FulfillmentError::InvalidTransition { from, to } => {
+                HttpError::bad_request(
+                    "commerce_fulfillment_invalid_transition",
+                    format!("Fulfillment transition {from} -> {to} is invalid"),
+                )
+            }
+            crate::error::FulfillmentError::Validation(message) => {
+                HttpError::bad_request("commerce_validation", message)
+            }
+            crate::error::FulfillmentError::Database(error) => HttpError::internal(
+                "commerce_admin_fulfillment_storage_error",
+                format!("Fulfillment storage operation failed: {error}"),
+            ),
+        },
+        PostOrderOrchestrationError::Infrastructure(message) => {
+            HttpError::internal("commerce_post_order_infrastructure", message)
         }
-        error @ PostOrderOrchestrationError::Validation(_) => admin_public_error(
-            &error,
-            "rustok_commerce",
-            "validation",
-            axum::http::StatusCode::BAD_REQUEST,
-            "commerce_admin_post_order_invalid",
-            "Post-order request is invalid",
+        PostOrderOrchestrationError::OperationConflict(message) => {
+            HttpError::conflict("commerce_post_order_operation_conflict", message)
+        }
+        PostOrderOrchestrationError::OperationNotFound(_) => HttpError::not_found(
+            "commerce_post_order_operation_not_found",
+            "Return completion operation not found",
         ),
+        PostOrderOrchestrationError::ReconciliationRequired(message) => {
+            HttpError::conflict("commerce_post_order_reconciliation_required", message)
+        }
     }
-}
-
-pub(crate) fn decision_requires_payments_update(action: &str, has_refund_payload: bool) -> bool {
-    if has_refund_payload {
-        return true;
-    }
-
-    action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
 }
