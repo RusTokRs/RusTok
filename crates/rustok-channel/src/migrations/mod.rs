@@ -10,6 +10,7 @@ mod m20260327_000007_create_channel_resolution_policy_sets;
 mod m20260327_000008_create_channel_resolution_policy_rules;
 mod m20260716_000009_create_channel_resolution_invalidation_state;
 mod m20260729_000010_enforce_single_default_channel;
+mod m20260729_000011_enforce_channel_relation_tenant_integrity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -26,6 +27,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260327_000008_create_channel_resolution_policy_rules::Migration),
         Box::new(m20260716_000009_create_channel_resolution_invalidation_state::Migration),
         Box::new(m20260729_000010_enforce_single_default_channel::Migration),
+        Box::new(m20260729_000011_enforce_channel_relation_tenant_integrity::Migration),
     ]
 }
 
