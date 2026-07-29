@@ -19,10 +19,11 @@ function fixtureSources(options = {}) {
   return {
     "crates/rustok-product/admin/src/lib.rs": `
 mod catalog_controls;
-mod core;
+#[path = "catalog_transport.rs"]
 mod transport;
+mod core;
 mod ui;
-pub use ui::leptos::ProductAdmin;
+pub use ui::catalog_admin::ProductAdmin;
 `,
     "crates/rustok-product/admin/src/catalog_controls.rs": `
 pub(crate) struct ProductAdminListInput {
@@ -41,22 +42,20 @@ pub(crate) fn build_save_command() {}
 pub(crate) fn product_admin_selected_product_query_state() {}
 pub(crate) fn product_admin_products_load_view_from_result() {}
 `,
-    "crates/rustok-product/admin/src/ui/leptos.rs": options.missingCategoryUi ? `
-mod legacy;
+    "crates/rustok-product/admin/src/ui/catalog_admin.rs": options.missingCategoryUi ? `
 use crate::catalog_controls::build_product_admin_catalog_controls_labels;
 use crate::transport;
 pub fn ProductAdmin() { let _ = transport::fetch_catalog_search_options; }
 ` : `
-mod legacy;
 use crate::catalog_controls::build_product_admin_catalog_controls_labels;
 use crate::transport;
 pub fn ProductAdmin() {
  let _ = read_route_query_value(&route_context, "category_id");
- let _ = view! { <form><select name="category_id"></select><select name="sort_by"></select><select name="sort_direction"></select><legacy::ProductAdmin /></form> };
+ let _ = view! { <form><select name="category_id"></select><select name="sort_by"></select><select name="sort_direction"></select><super::leptos::ProductAdmin /></form> };
  let _ = transport::fetch_catalog_search_options;
 }
 `,
-    "crates/rustok-product/admin/src/ui/legacy_leptos.rs": options.missingLegacyEditor ? "pub fn ProductAdmin() {}" : `
+    "crates/rustok-product/admin/src/ui/leptos.rs": options.missingEditor ? "pub fn ProductAdmin() {}" : `
 pub fn ProductAdmin() {
  let _ = TypedProductAttributeField;
  let _ = build_save_command;
@@ -65,7 +64,9 @@ pub fn ProductAdmin() {
  let _ = save_product_attribute_values;
 }
 `,
-    "crates/rustok-product/admin/src/transport.rs": `
+    "crates/rustok-product/admin/src/catalog_transport.rs": `
+#[path = "transport.rs"]
+mod legacy;
 mod admin_catalog_graphql;
 mod admin_catalog_native;
 pub(crate) use legacy::*;
@@ -78,7 +79,7 @@ pub async fn fetch_products() {
  admin_catalog_graphql::fetch_products();
 }
 `,
-    "crates/rustok-product/admin/src/transport/legacy.rs": `
+    "crates/rustok-product/admin/src/transport.rs": `
 fn fetch_bootstrap() {} fn fetch_product() {} fn fetch_product_pricing() {}
 fn fetch_catalog_categories() {} fn fetch_effective_product_form() {}
 fn save_product_attribute_values() {} fn create_product() {}
@@ -105,7 +106,7 @@ pub struct AdminProductListQuery {
  pub status: Option<String>, pub category_id: Option<String>,
  sort_by: String, sort_direction: String,
 }
-const STATUS_ERROR: &str = "status must be \\`draft\\`, \\`active\\`, or \\`archived\\`";
+const STATUS_ERROR: &str = "status must be \`draft\`, \`active\`, or \`archived\`";
 `,
     "crates/rustok-product/src/services/catalog/admin_queries.rs": options.missingOwnerStatus ? `
 pub async fn list_admin_products_with_query() {
@@ -178,8 +179,8 @@ test("product admin boundary rejects missing category UI", () => {
   assertFixtureFails({ missingCategoryUi: true }, /composed admin UI marker/);
 });
 
-test("product admin boundary rejects missing legacy editor", () => {
-  assertFixtureFails({ missingLegacyEditor: true }, /preserved editor marker/);
+test("product admin boundary rejects missing editor", () => {
+  assertFixtureFails({ missingEditor: true }, /preserved editor marker/);
 });
 
 test("product admin boundary rejects missing native owner execution", () => {
