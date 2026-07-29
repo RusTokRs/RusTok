@@ -35,7 +35,7 @@ pub(crate) struct OrderService {
 
 impl OrderService {
     pub(crate) fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        let order_reads = crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
+        let order_reads = crate::graphql_runtime::order_read_runtime_for_current_graphql_scope(
             db.clone(),
             event_bus.clone(),
         )
