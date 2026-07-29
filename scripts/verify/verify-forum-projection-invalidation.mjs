@@ -82,12 +82,19 @@ for (const marker of [
   requireMarker(outboxBus, marker, outboxBusPath);
 }
 for (const marker of [
-  "pub async fn write_envelope_in_tx<C>",
+  "pub(crate) async fn write_envelope_in_tx<C>",
   "Self::model_from_envelope(envelope)?",
   "validate_registered_schema()",
-  "pub async fn write_contract_envelope_in_tx<C>",
+  "pub(crate) async fn write_contract_envelope_in_tx<C>",
+  "external domain code must publish through `TransactionalEventBus`",
 ]) {
   requireMarker(outboxTransport, marker, outboxTransportPath);
+}
+for (const forbidden of [
+  "pub async fn write_envelope_in_tx<C>",
+  "pub async fn write_contract_envelope_in_tx<C>",
+]) {
+  rejectMarker(outboxTransport, forbidden, outboxTransportPath);
 }
 
 for (const marker of [
