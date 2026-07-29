@@ -93,7 +93,9 @@ for (const marker of [
 
 for (const marker of [
   "build_product_admin_catalog_controls_labels",
+  "build_product_admin_list_input",
   'read_route_query_value(&route_context, "category_id")',
+  "provide_context(catalog_controls)",
   'name="category_id"',
   'name="sort_by"',
   'name="sort_direction"',
@@ -120,11 +122,12 @@ for (const marker of [
   "mod legacy;",
   "mod admin_catalog_graphql;",
   "mod admin_catalog_native;",
+  "pub use legacy::fetch_catalog_search_options;",
   "pub(crate) use legacy::*;",
-  "build_product_admin_list_input",
-  'browser_query_value("category_id")',
-  'browser_query_value("sort_by")',
-  'browser_query_value("sort_direction")',
+  "use_context::<ProductAdminListInput>()",
+  "route_controls.category_id",
+  "route_controls.sort_by",
+  "route_controls.sort_direction",
   "admin_catalog_native::fetch_products",
   "admin_catalog_graphql::fetch_products",
 ]) {
