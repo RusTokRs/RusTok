@@ -1,6 +1,7 @@
 mod cursor;
 mod planner;
 mod postgres_compiler;
+mod postgres_query_sql;
 mod registry;
 mod validation;
 
