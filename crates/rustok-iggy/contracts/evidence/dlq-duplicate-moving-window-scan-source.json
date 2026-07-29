@@ -1,13 +1,16 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "iggy",
   "packet": "dlq-duplicate-moving-window-scan-source",
-  "status": "source_complete_server_composition_runtime_pending",
+  "status": "source_complete_server_composed_runtime_pending",
   "owner": "rustok-iggy",
   "feature": "iggy",
   "source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
   "rolling_source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
   "classifier_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "server_observer_contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
+  "iggy_observer_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+  "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
   "verifier": "scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs",
   "documentation": "crates/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md",
   "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md",
@@ -106,12 +109,21 @@
     "incomplete_cycle_preserves_cursors_and_rolling_state",
     "explicit_reset_rewinds_cursors_and_clears_rolling_history"
   ],
-  "integration_boundary": {
-    "mode_aware_server_observer": "pending",
-    "configuration_surface": "pending",
-    "external_iggy_runtime_evidence": "pending",
-    "retained_execution_packet": "pending",
-    "telemetry_and_health_projection": "pending"
+  "server_composition": {
+    "status": "source_complete_runtime_pending",
+    "scan_mode": "moving_window",
+    "accepted_alias": "moving",
+    "default_mode": false,
+    "reviewed_configuration_required": true,
+    "initial_offset_required": true,
+    "per_partition_messages_required": true,
+    "batch_size_required": true,
+    "rolling_max_cycles_required": true,
+    "rolling_max_observations_per_cycle_required": true,
+    "moving_summary_reduced_to_count_only_alert_input": true,
+    "failed_cycle_retries_same_process_local_state": true,
+    "replacement_connection_resets_to_reviewed_initial_offset": true,
+    "runtime_execution_pending": true
   },
   "non_claims": [
     "persisted_progress",
@@ -119,17 +131,16 @@
     "current_tail_coverage",
     "complete_history",
     "production_retention_sufficiency",
-    "server_observer_integration",
     "external_iggy_execution",
     "exactly_once",
     "profiles_authorization"
   ],
   "remaining_work": [
-    "compose_explicit_opt_in_mode_aware_server_observer",
-    "define_reviewed_configuration_surface",
     "retain_external_iggy_cross_cycle_runtime_evidence",
+    "review_reset_frequency_and_initial_offset_per_deployment",
     "define_persisted_cursor_store_only_if_restart_continuity_is_required",
-    "define_identifier_free_telemetry_and_health_projection"
+    "define_identifier_free_telemetry_and_health_projection",
+    "retain_server_observer_execution_evidence"
   ],
   "execution_status": "source_not_run"
 }
