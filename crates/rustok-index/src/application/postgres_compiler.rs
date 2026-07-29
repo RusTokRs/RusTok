@@ -5,7 +5,7 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{FieldPath, IndexQuery, IndexValueType, LinkCardinality, Pagination};
+use crate::domain::{FieldPath, IndexQuery, LinkCardinality, Pagination};
 
 use super::{
     CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
