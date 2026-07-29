@@ -69,8 +69,8 @@ impl ForumTopicAudienceViewer {
     }
 }
 
-/// Exact topic visibility composition through the current storefront owner and
-/// every normalized richer category/topic audience layer.
+/// Exact topic visibility composition through the current owner and every
+/// normalized richer category/topic audience layer.
 pub struct ForumTopicAudienceVisibilityService {
     db: DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
@@ -114,6 +114,42 @@ impl ForumTopicAudienceVisibilityService {
             return Ok(false);
         }
 
+        self.policy_allows(tenant_id, topic_id, viewer).await
+    }
+
+    /// Exact owner-read visibility for a topic and resources owned by that topic.
+    ///
+    /// Unlike storefront visibility this intentionally does not require an open
+    /// topic or a matching route channel. It preserves owner/admin reads while
+    /// enforcing the inherited category floor and every richer category/topic
+    /// audience layer. Missing and denied topics both resolve to `false`.
+    pub async fn is_topic_owner_visible(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        viewer: &ForumTopicAudienceViewer,
+    ) -> ForumResult<bool> {
+        self.validate_viewer_context(tenant_id, viewer)?;
+        if !ForumTopicVisibilityService::new(self.db.clone())
+            .is_topic_category_visible_to_viewer(
+                tenant_id,
+                topic_id,
+                viewer.is_authenticated(),
+            )
+            .await?
+        {
+            return Ok(false);
+        }
+
+        self.policy_allows(tenant_id, topic_id, viewer).await
+    }
+
+    async fn policy_allows(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        viewer: &ForumTopicAudienceViewer,
+    ) -> ForumResult<bool> {
         let topic = match find_topic(&self.db, tenant_id, topic_id).await {
             Ok(topic) => topic,
             Err(ForumError::TopicNotFound(_)) => return Ok(false),
