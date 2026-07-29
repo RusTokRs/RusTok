@@ -29,7 +29,7 @@ A later SeaORM/PostgreSQL adapter converts returned driver rows into
 `CompiledPostgresRow`. Cells are intentionally limited to the shapes emitted by
 the compiler:
 
-- UUID or SQL null for relation identity columns;
+- UUID or SQL null for outer relation identity columns;
 - tagged `IndexValue` JSON or SQL null for projection and hidden order columns;
 - a PostgreSQL bigint for the optional exact-count row.
 
@@ -54,12 +54,16 @@ identity is absent. A present relation with a missing non-nullable field is a
 typed corruption error. Conversely, an absent relation identity paired with a
 non-null field value is also rejected.
 
+Many-link filter paths do not add result columns. Their joins are confined to
+correlated `EXISTS` subqueries, so `expected_columns` includes only the root and
+non-many outer joins plus projection and hidden ordering columns.
+
 ## Page output
 
 The decoder returns `IndexQueryPage` with:
 
 - root entity identities;
-- deterministic explicit-link relation identities;
+- deterministic projected one-link relation identities;
 - projection values in query selection order;
 - optional exact count;
 - `has_more` derived only from the one-row lookahead;
@@ -73,10 +77,11 @@ Offset pages report `has_more` but do not synthesize a cursor.
 
 ## Fail-closed boundaries
 
-Many-link semantics remain fail-closed in the compiler with
-`ManyLinkSemanticsPending`. This decoder handles only the already-supported root
-and explicit one-cardinality-link subset. It does not attempt to deduplicate
-roots or aggregate many-link projections after SQL execution.
+Many-link filtering is supported without changing the decoder result shape.
+Many-link projection remains rejected with `ManyLinkProjectionPending`; the
+decoder does not attempt to deduplicate roots or invent nested aggregation after
+SQL execution. Many-link ordering remains rejected until an aggregate policy is
+explicit.
 
 This slice also does not:
 
