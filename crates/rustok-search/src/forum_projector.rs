@@ -107,6 +107,9 @@ impl ForumSearchProjector {
     ) -> Result<()> {
         self.ensure_postgres()?;
         validate_entity_type(entity_type)?;
+        if entity_type == FORUM_TOPIC_ENTITY_TYPE {
+            return self.rebuild_tenant(tenant_id).await;
+        }
         let started_at = Instant::now();
         let documents = self
             .source
