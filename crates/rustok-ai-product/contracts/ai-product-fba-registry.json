@@ -19,7 +19,8 @@
       ],
       "required_profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "remote_adapter_placeholder",
+        "grpc_loopback"
       ],
       "fallback_profiles": [
         "embedded_native"
@@ -66,7 +67,24 @@
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-product-fba.mjs",
     "static_matrix": "crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json"
+    "runtime_fallback_smoke": "crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json",
+    "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs"
+  },
+  "remote_consumer_behavior": {
+    "status": "source_complete_execution_pending",
+    "profile": "grpc_loopback",
+    "source": "crates/rustok-ai/src/direct_product_attributes.rs",
+    "failure_profiles": [
+      "unavailable",
+      "timeout"
+    ],
+    "assertions": [
+      "generate_from_prompt_only",
+      "skip_catalog_enrichment",
+      "require_operator_review",
+      "persistence_none",
+      "typed_port_error_preserved"
+    ]
   },
   "contract_tests": {
     "status": "planned_cases_locked",
