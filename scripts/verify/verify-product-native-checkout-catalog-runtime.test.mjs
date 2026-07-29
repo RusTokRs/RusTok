@@ -20,12 +20,13 @@ function write(root, relativePath, content) {
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-native-checkout-"));
   const composedCatalog = options.composedCatalog ? "CatalogService::new" : "";
+  const compatibilityCatalog = options.compatibilityCatalog ? "CatalogService::new" : "";
   write(
     root,
     "crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
     `
     pub async fn complete_storefront_checkout_with_product_port(product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>) { complete_storefront_checkout_input_with_product_port(); }
-    pub async fn complete_storefront_checkout_input() { CatalogService::new; }
+    pub async fn complete_storefront_checkout_input() { product_catalog_read_runtime_for_current_graphql_scope; ${compatibilityCatalog} }
     pub async fn complete_storefront_checkout_input_with_product_port(product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>) { CheckoutPlanBuilder::new; product_catalog_read_port; ${composedCatalog} }
     `,
   );
@@ -45,10 +46,16 @@ function fixture(options = {}) {
   );
   const complete = options.registryPending
     ? ["ai-product", "marketplace-listing"]
-    : ["ai-product", "marketplace-listing", "order-storefront-native"];
+    : [
+        "ai-product",
+        "marketplace-listing",
+        "order-storefront-native",
+        "commerce-checkout-http",
+        "commerce-checkout-graphql",
+      ];
   const pending = options.registryPending
-    ? ["commerce-checkout-http", "commerce-checkout-graphql", "order-storefront-native"]
-    : ["commerce-checkout-http", "commerce-checkout-graphql"];
+    ? ["order-storefront-native", "commerce-checkout-http", "commerce-checkout-graphql"]
+    : [];
   write(
     root,
     "crates/rustok-product/contracts/product-fba-registry.json",
@@ -56,6 +63,9 @@ function fixture(options = {}) {
       runtime_composition: {
         source_complete_consumers: complete,
         pending_consumers: pending,
+        status: options.registryPending
+          ? "source_complete_consumer_cutover_partial"
+          : "source_complete_consumer_cutover_complete",
       },
     }),
   );
@@ -64,7 +74,7 @@ function fixture(options = {}) {
     "crates/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
-      : "Order storefront native checkout complete_storefront_checkout_with_product_port Commerce HTTP and GraphQL checkout verify-product-native-checkout-catalog-runtime.mjs",
+      : "Order storefront native checkout checkout consumer source cutover is complete verify-product-native-checkout-catalog-runtime.mjs",
   );
   return root;
 }
@@ -102,6 +112,10 @@ test("native checkout guard rejects Product construction in composed body", () =
   reject({ composedCatalog: true }, /must not construct CatalogService/);
 });
 
+test("native checkout guard rejects Product construction in compatibility wrapper", () => {
+  reject({ compatibilityCatalog: true }, /compatibility wrapper must not construct CatalogService/);
+});
+
 test("native checkout guard rejects direct native Product construction", () => {
   reject({ nativeDirect: true }, /Order native checkout/);
 });
@@ -111,7 +125,7 @@ test("native checkout guard rejects missing Product SSR dependency", () => {
 });
 
 test("native checkout guard rejects stale registry pending state", () => {
-  reject({ registryPending: true }, /order-storefront-native/);
+  reject({ registryPending: true }, /source-complete|pending checkout consumers/);
 });
 
 test("native checkout guard rejects missing plan handoff", () => {
