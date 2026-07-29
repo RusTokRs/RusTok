@@ -62,6 +62,8 @@
     "explicit_forum_topic_reindex_supported": true,
     "automatic_category_policy_change_reindex_added": false,
     "automatic_topic_policy_change_reindex_added": false,
+    "automatic_topic_content_translation_tag_solution_change_reindex_added": false,
+    "automatic_category_content_translation_tree_change_reindex_added": false,
     "reply_documents_projected": false
   },
   "compatibility": {
@@ -72,7 +74,8 @@
     "existing_forum_seo_targets_changed": false,
     "existing_forum_public_discovery_changed": false,
     "forum_to_search_workspace_dependency_added": true,
-    "forum_module_declares_core_search_dependency": true,
+    "forum_module_declares_core_search_dependency": false,
+    "forum_runtime_works_without_search_listener": true,
     "cargo_lock_regenerated": false,
     "cargo_lock_reason": "Cargo commands are intentionally not run by the implementation agent; the maintainer must regenerate the workspace lockfile before locked validation.",
     "migration_added": false,
@@ -88,7 +91,8 @@
     "synchronization_debt": "Advance CRATE_API, the Search owner plan and the canonical FORUM-20/FORUM-23 ledgers through FORUM-20BJ with conflict-safe repository-local edits after maintainer validation; regenerate Cargo.lock through the maintainer-owned Cargo workflow."
   },
   "remaining_scope": [
-    "publish owner-transactional category and topic visibility-policy change events and route them to bounded target or tenant projection reauthorization",
+    "publish owner-transactional projection invalidation events for category and topic content translations visibility policies tags solution state and tree or route changes",
+    "route those events to bounded category topic or tenant projection reauthorization with durable ordering",
     "decide whether approved public replies become separate Search documents under FORUM-23",
     "make full multi-source Search rebuild replacement atomic or preserve each prior external scope when a later source fails",
     "add visibility-scoped category and all-read commands",
