@@ -179,7 +179,7 @@ for (const marker of [
   "cycles: VecDeque<Vec<DlqDuplicateObservation>>",
   "pub fn push_cycle(",
   "let mut candidate_cycles = self.cycles.clone();",
-  "candidate_cycles.pop_front()",
+  ".pop_front()",
   "candidate_cycles.push_back(incoming);",
   "self.cycles = candidate_cycles;",
   "flat_map(|cycle| cycle.iter().cloned())",
