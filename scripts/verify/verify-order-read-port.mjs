@@ -18,6 +18,7 @@ const graphqlOrderShim = read(
 );
 const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
 const adminOrders = read('crates/rustok-commerce/src/controllers/admin/orders.rs');
+const storefrontOrders = read('crates/rustok-commerce/src/controllers/store/orders.rs');
 const serverRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
 const adminFixtures = read('crates/rustok-commerce/src/controllers/admin/tests/mod.rs');
 const storefrontFixtures = read('crates/rustok-commerce/src/controllers/store/tests/mod.rs');
@@ -117,11 +118,19 @@ for (const [source, value, label] of [
   [adminOrders, 'page.total,', 'admin owner total'],
   [adminOrders, 'find_latest_collection_by_order(tenant.id, id)', 'unchanged payment aggregation'],
   [adminOrders, 'find_by_order(tenant.id, id)', 'unchanged fulfillment aggregation'],
+  [storefrontOrders, 'fn storefront_order_read_port_context(', 'storefront PortContext builder'],
+  [storefrontOrders, 'PortActor::user(auth.user_id.to_string())', 'storefront actor propagation'],
+  [storefrontOrders, 'request_context.channel_slug.as_deref()', 'storefront channel propagation'],
+  [storefrontOrders, 'async fn read_storefront_order_projection(', 'storefront shared read helper'],
+  [storefrontOrders, 'runtime\n        .order_read_port()', 'storefront host-selected port'],
+  [storefrontOrders, '.read_order_projection(', 'storefront detail port call'],
+  [storefrontOrders, 'tenant_default_locale: Some(tenant_default_locale.to_string())', 'storefront locale fallback'],
+  [storefrontOrders, 'fn map_storefront_order_port_error(', 'storefront PortError mapper'],
   [adminFixtures, 'CommerceOrderReadRuntime::in_process(', 'admin fixture runtime'],
   [storefrontFixtures, 'CommerceOrderReadRuntime::in_process(', 'storefront fixture runtime'],
   [fulfillmentFailureContract, 'CommerceOrderReadRuntime::in_process(', 'manual host fixture runtime'],
   [fulfillmentFailureContract, '.with_shared_value(event_bus.clone())', 'manual host fixture shared event bus'],
-  [note, 'Status: owner port and host runtime published; admin REST and mounted GraphQL list/detail cut over with request context, unvalidated.', 'owner note status'],
+  [note, 'Status: owner port and host runtime published; admin REST, mounted GraphQL, and storefront HTTP detail/ownership cut over, unvalidated.', 'owner note status'],
   [orderPlan, 'CommerceOrderReadRuntime', 'order plan runtime checkpoint'],
   [commercePlan, 'CommerceOrderReadRuntime', 'commerce plan runtime checkpoint'],
 ]) requireText(source, value, label);
@@ -155,14 +164,42 @@ for (const [route, label] of [
   requireText(route, 'runtime\n        .order_read_port()', `${label} injected owner port`);
 }
 
+const storefrontOwnership = between(
+  storefrontOrders,
+  'async fn ensure_customer_owns_order(',
+  '/// Get current storefront customer',
+  'storefront ownership helper',
+);
+const storefrontDetail = between(
+  storefrontOrders,
+  'pub async fn get_order(',
+  '/// Create a return request',
+  'storefront detail route',
+);
+for (const [route, label] of [
+  [storefrontOwnership, 'storefront ownership helper'],
+  [storefrontDetail, 'storefront detail route'],
+]) {
+  forbidText(route, 'OrderService::new', `${label} concrete owner construction`);
+  forbidText(route, '.get_order(', `${label} concrete detail call`);
+  forbidText(route, '.get_order_with_locale_fallback(', `${label} concrete locale detail call`);
+  requireText(route, 'read_storefront_order_projection(', `${label} shared owner read`);
+}
+
 for (const [value, label] of [
   ['.mark_paid(', 'mark-paid mutation remains owner service'],
   ['.ship_order(', 'ship mutation remains owner service'],
   ['.deliver_order(', 'deliver mutation remains owner service'],
   ['.cancel_order(', 'cancel mutation remains owner service'],
 ]) requireText(adminOrders, value, label);
+for (const [value, label] of [
+  ['.create_return(tenant.id, id, input)', 'storefront return mutation remains owner service'],
+  ['.list_returns(', 'storefront return list remains owner service'],
+  ['.list_order_changes(', 'storefront order-change list remains owner service'],
+  ['PaymentService::new(runtime.db_clone())', 'storefront refund list remains payment service'],
+]) requireText(storefrontOrders, value, label);
 
-if (evidence.status !== 'graphql_request_context_scoped_unvalidated') {
+if (evidence.status !== 'storefront_http_cutover_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 if (evidence.owner?.port !== 'OrderReadPort') {
@@ -201,11 +238,20 @@ if (evidence.context?.graphql_channel_source !== 'resolved_request_context_chann
 if (evidence.context?.graphql_embedded_context_fallback !== 'service_actor_without_channel') {
   failures.push('GraphQL embedded context fallback must not invent actor or channel attribution');
 }
+if (evidence.context?.storefront_actor_source !== 'validated_auth_context_user') {
+  failures.push('storefront actor source must remain validated AuthContext user');
+}
+if (evidence.context?.storefront_channel_source !== 'resolved_request_context_channel_slug') {
+  failures.push('storefront channel source must remain the resolved request channel slug');
+}
 if (evidence.errors?.owner_message_control_flow !== false) {
   failures.push('evidence must forbid owner-message control flow');
 }
 if (evidence.errors?.all_current_order_error_variants_mapped !== true) {
   failures.push('evidence must record complete current OrderError mapping');
+}
+if (evidence.errors?.storefront_public_envelopes_preserved !== true) {
+  failures.push('storefront public envelopes must be preserved');
 }
 if (evidence.consumer_inventory?.commerce_admin_rest_list_detail !== 'order_read_port') {
   failures.push('admin REST list/detail must be recorded on order_read_port');
@@ -219,14 +265,20 @@ if (evidence.consumer_inventory?.commerce_graphql_order_list_detail !== 'order_r
 if (evidence.consumer_inventory?.commerce_graphql_order_list_detail_cutover_completed !== true) {
   failures.push('GraphQL list/detail source cutover must be complete');
 }
+if (evidence.consumer_inventory?.commerce_storefront_detail_and_ownership !== 'order_read_port_host_runtime') {
+  failures.push('storefront detail/ownership must use the host-selected runtime');
+}
+if (evidence.consumer_inventory?.commerce_storefront_detail_and_ownership_cutover_completed !== true) {
+  failures.push('storefront detail/ownership source cutover must be complete');
+}
 if (evidence.consumer_inventory?.runtime_composition_published !== true) {
   failures.push('runtime composition must be published');
 }
-if (evidence.consumer_inventory?.all_consumer_cutover_completed !== false) {
-  failures.push('all-consumer cutover must remain incomplete');
+if (evidence.consumer_inventory?.all_consumer_cutover_completed !== true) {
+  failures.push('complete order projection consumer cutover must be recorded');
 }
-if (evidence.consumer_inventory?.cutover_required !== true) {
-  failures.push('evidence must retain pending storefront cutover');
+if (evidence.consumer_inventory?.cutover_required !== false) {
+  failures.push('complete order projection consumer cutover must no longer be pending');
 }
 if (evidence.decision?.status_promotion !== false) {
   failures.push('source cutover must not promote status');
@@ -252,5 +304,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Order read runtime is host-composed and admin REST plus mounted GraphQL list/detail use typed owner ports with validated actor and resolved channel context while storefront and runtime evidence remain pending',
+  '✔ Order read runtime is host-composed and admin REST, mounted GraphQL, and storefront detail/ownership use typed owner ports while runtime evidence remains pending',
 );

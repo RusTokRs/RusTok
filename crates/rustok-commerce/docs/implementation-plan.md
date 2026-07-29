@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-28
+Last reviewed: 2026-07-29
 
 ## Source of truth
 
@@ -199,8 +199,16 @@ These are source-contract defects, not verification-only tasks.
   explicit unvalidated source evidence.
 - [x] Host-compose `CommerceOrderReadRuntime`, require it in Commerce HTTP and GraphQL
   schema data, and cut admin REST order list/detail to the owner port while preserving
-  public envelopes and payment/fulfillment detail aggregation. GraphQL resolvers and
-  storefront order reads remain open.
+  public envelopes and payment/fulfillment detail aggregation.
+- [x] Cut mounted GraphQL order list/detail to the host-selected runtime with validated
+  actor, resolved channel, locale fallback, deadline, and embedded-schema fallback.
+- [x] Cut storefront HTTP order detail and shared ownership reads to the host-selected
+  runtime while preserving customer resolution, locale fallback, public envelopes,
+  and the concrete return/change/payment operations after ownership validation.
+- [ ] Publish wider typed owner ports for storefront return and order-change reads;
+  their current concrete services remain after typed order ownership validation.
+- [ ] Retain compile, mounted parity, deadline/failure, restart, and remote-adapter
+  evidence for the complete order projection cutover before status promotion.
 - [ ] Correct Product's declared dependency contract or extract its direct
   inventory/pricing persistence operations behind owner ports; the current manifest
   declares only Taxonomy while production code uses Inventory and Pricing persistence.
@@ -558,6 +566,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - [ ] `node scripts/verify/verify-order-read-port.mjs`
+- [ ] `node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`
 - [ ] `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 - [ ] `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - [ ] `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
@@ -595,8 +604,8 @@ Source inspection is not execution evidence.
 - [x] Extend the public-error guard to pricing and `PaymentCollectionPort`, including
   correlation, tenant, operation, stable code, and raw-cause bans.
 - [x] Add static source guards for host-selected order read runtime composition and
-  admin REST order list/detail cutover without changing mutation or detail-aggregation
-  ownership.
+  admin REST, mounted GraphQL, and storefront HTTP detail/list/ownership cutover without
+  changing mutation, payment, fulfillment, return, or order-change ownership.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, and order-read
   static guards against a repository checkout and retain their output.
 
@@ -607,7 +616,7 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-order --all-features`
 - [ ] `cargo check -p rustok-server --features mod-commerce`
 - [ ] Targeted `OrderReadPort` detail/list, locale fallback, context, typed-error,
-  host-composition, and admin REST transport tests.
+  host-composition, admin REST, mounted GraphQL, and storefront HTTP transport tests.
 - [ ] `cargo test -p rustok-order --test order_checkout_identity`
 - [ ] `cargo test -p rustok-order --test checkout_order_identity_port`
 - [ ] `cargo test -p rustok-order --test checkout_completion_port`
@@ -693,19 +702,24 @@ Source inspection is not execution evidence.
     recovery/settlement/compensation, typed fulfillment recovery, and cart
     atomic/finalization/compensation all use staged or canonical typed paths.
     Compatibility source removal and execution evidence remain separate open tasks.
-12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
-13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
-14. [x] Mount authenticated request-scoped listing native composition.
-15. [x] Publish listing GraphQL roots and replace the declared-unmounted adapter.
-16. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
+12. [x] Cut complete order projection consumers over to `CommerceOrderReadRuntime`:
+    admin REST list/detail, mounted GraphQL list/detail with request context, and
+    storefront HTTP detail/shared ownership now use the typed owner port.
+13. [ ] Publish wider owner read ports for storefront returns and order changes without
+    moving mutations or payment policy.
+14. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
+15. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
+16. [x] Mount authenticated request-scoped listing native composition.
+17. [x] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+18. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
     reconciliation surfaces.
-17. [ ] Run static verifiers and fix remaining source drift.
-18. [ ] Compile remaining commerce/order/payment/Marketplace packages and server features.
-19. [ ] Apply clean/upgraded migrations and targeted regression tests.
-20. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
+19. [ ] Run static verifiers and fix remaining source drift.
+20. [ ] Compile remaining commerce/order/payment/Marketplace packages and server features.
+21. [ ] Apply clean/upgraded migrations and targeted regression tests.
+22. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
     transfer, and mounted transport scenarios.
-21. [ ] Execute production-like payment and payout provider evidence.
-22. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+23. [ ] Execute production-like payment and payout provider evidence.
+24. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
 
 ## Completed source waves retained for history
 
@@ -746,9 +760,10 @@ Source inspection is not execution evidence.
 - [x] Harden pricing and payment collection owner-port errors with stable public
   messages plus correlation-aware internal logging.
 - [x] Publish `OrderReadPort` for complete order detail/list projections.
-- [x] Host-compose `CommerceOrderReadRuntime` and cut admin REST order list/detail to the
-  owner port while preserving public envelopes and unchanged mutation/detail aggregation
-  ownership; GraphQL/storefront reads and execution evidence remain open.
+- [x] Host-compose `CommerceOrderReadRuntime` and cut admin REST, mounted GraphQL, and
+  storefront HTTP complete detail/list/ownership projection reads to the owner port
+  while preserving context, public envelopes, and unchanged mutation/payment/
+  fulfillment/return/order-change ownership; execution evidence remains open.
 
 ## Change rules
 
