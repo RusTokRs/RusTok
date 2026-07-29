@@ -1,3 +1,5 @@
+mod admin_queries;
+mod attribute_filters;
 mod commands;
 pub mod helpers;
 mod projection;
@@ -5,7 +7,11 @@ mod queries;
 mod tags;
 pub mod types;
 
-pub use types::{ProductTagState, StorefrontProductList, StorefrontProductListItem};
+pub use types::{
+    AdminProductList, AdminProductListItem, AdminProductListQuery, ProductAttributeFilter,
+    ProductTagState, StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
+    StorefrontProductSortBy, StorefrontProductSortDirection,
+};
 
 use chrono::Utc;
 use sea_orm::{

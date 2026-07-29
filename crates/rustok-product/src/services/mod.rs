@@ -3,6 +3,10 @@ pub mod catalog_schema;
 pub mod catalog_schema_service;
 mod write_transaction;
 
-pub use catalog::{CatalogService, StorefrontProductList, StorefrontProductListItem};
+pub use catalog::{
+    AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
+    ProductAttributeFilter, StorefrontProductList, StorefrontProductListItem,
+    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+};
 pub use catalog_schema::*;
 pub use catalog_schema_service::*;

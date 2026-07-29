@@ -9,6 +9,8 @@ const contractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json";
 const runtimeContractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
+const serverContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
 const runtimeTestPath = "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs";
 const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
 const classifierPath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
@@ -21,18 +23,24 @@ const expectedRuntimeCase =
   "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset";
 const expectedExports = [
   "IggyDlqDuplicateScanRequest",
+  "IggyDlqDuplicateScanWindowPolicy",
   "IggyDlqDuplicateScanner",
   "IggyDlqDuplicateScanError",
 ];
 const expectedTests = [
   "bounded_request_requires_unique_positive_partitions",
   "bounded_request_rejects_unbounded_counts",
+  "fair_window_policy_bounds_each_partition_and_total",
+  "fair_window_policy_rejects_unbounded_total",
   "stable_errors_do_not_expose_broker_coordinates",
 ];
 
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));
 const runtimeContract = JSON.parse(
   readFileSync(resolve(repoRoot, runtimeContractPath), "utf8"),
+);
+const serverContract = JSON.parse(
+  readFileSync(resolve(repoRoot, serverContractPath), "utf8"),
 );
 const runtimeTest = readFileSync(resolve(repoRoot, runtimeTestPath), "utf8");
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
@@ -61,7 +69,7 @@ function countText(text, marker) {
 }
 
 if (
-  contract.schema_version !== 1 ||
+  contract.schema_version !== 2 ||
   contract.module !== "iggy" ||
   contract.packet !== "dlq-duplicate-external-scan-source" ||
   contract.status !== "source_complete_runtime_pending" ||
@@ -86,14 +94,17 @@ if (
 ) {
   fail("external DLQ duplicate scan verifier or documentation path drift");
 }
+
 if (
-  contract.runtime_harness?.status !== "source_complete_execution_pending" ||
+  contract.runtime_harness?.status !==
+    "global_request_source_complete_execution_pending" ||
   contract.runtime_harness?.contract !== runtimeContractPath ||
   contract.runtime_harness?.test !== runtimeTestPath ||
   contract.runtime_harness?.case !== expectedRuntimeCase ||
   contract.runtime_harness?.reviewed_dedup_disabled_broker_required !== true ||
   contract.runtime_harness?.two_identical_scans !== true ||
   contract.runtime_harness?.three_absent_offset_checks !== true ||
+  contract.runtime_harness?.fair_window_execution_evidence !== false ||
   runtimeContract.packet !== "dlq-duplicate-external-scan-runtime-source" ||
   runtimeContract.status !== "source_complete_runtime_pending" ||
   runtimeContract.test !== runtimeTestPath ||
@@ -102,6 +113,21 @@ if (
 ) {
   fail("external DLQ duplicate scan runtime harness relationship drift");
 }
+
+if (
+  contract.server_integration?.contract !== serverContractPath ||
+  contract.server_integration?.default_mode !== "global_budget" ||
+  contract.server_integration?.fair_window_mode !== "explicit_opt_in" ||
+  contract.server_integration?.per_partition_limit_required !== true ||
+  contract.server_integration?.profiles_authorization !== false ||
+  contract.server_integration?.runtime_execution_pending !== true ||
+  serverContract.packet !== "dlq-duplicate-alert-server-observer-source" ||
+  serverContract.scan?.default_scan_mode !== "global_budget" ||
+  serverContract.scan?.fair_window_mode?.equal_per_partition_message_budget !== true
+) {
+  fail("fair-window server observer integration drift");
+}
+
 if (
   contract.iggy_poll_boundary?.client !== "already_connected_IggyClient_borrow" ||
   contract.iggy_poll_boundary?.topic !== "dlq" ||
@@ -116,15 +142,46 @@ if (
 ) {
   fail("external DLQ duplicate scan Iggy polling boundary drift");
 }
+
+const globalRequest = contract.global_request_boundary ?? {};
 if (
-  contract.request_boundary?.maximum_partitions !== 128 ||
-  contract.request_boundary?.maximum_messages !== 10000 ||
-  contract.request_boundary?.maximum_batch_messages !== 1000 ||
-  contract.request_boundary?.same_start_offset_for_each_partition !== true ||
-  contract.request_boundary?.batch_not_greater_than_scan_limit !== true
+  globalRequest.maximum_partitions !== 128 ||
+  globalRequest.maximum_messages !== 10000 ||
+  globalRequest.maximum_batch_messages !== 1000 ||
+  globalRequest.same_start_offset_for_each_partition !== true ||
+  globalRequest.one_global_message_budget !== true ||
+  globalRequest.later_partition_starvation_possible !== true ||
+  globalRequest.batch_not_greater_than_scan_limit !== true ||
+  globalRequest.empty_partition_list_rejected !== true ||
+  globalRequest.zero_partition_rejected !== true ||
+  globalRequest.duplicate_partition_rejected !== true ||
+  globalRequest.zero_message_or_batch_limit_rejected !== true
 ) {
-  fail("external DLQ duplicate scan bounded request contract drift");
+  fail("external DLQ duplicate global request contract drift");
 }
+
+const fairWindow = contract.fair_window_policy ?? {};
+if (
+  fairWindow.type !== "IggyDlqDuplicateScanWindowPolicy" ||
+  fairWindow.method !== "IggyDlqDuplicateScanner::summarize_window" ||
+  fairWindow.same_explicit_start_offset_for_every_partition !== true ||
+  fairWindow.equal_per_partition_message_budget !== true ||
+  fairWindow.every_partition_attempted_on_successful_scan !== true ||
+  fairWindow.total_message_budget_checked !== true ||
+  fairWindow.maximum_total_messages !== 10000 ||
+  fairWindow.maximum_partitions !== 128 ||
+  fairWindow.maximum_batch_messages !== 1000 ||
+  fairWindow.all_partition_observations_combined_before_classification !== true ||
+  fairWindow.cross_partition_identity_conflict_preserved !== true ||
+  fairWindow.moving_cursor !== false ||
+  fairWindow.offset_persistence !== false ||
+  fairWindow.cross_cycle_duplicate_accumulation !== false ||
+  fairWindow.current_tail_coverage_claimed !== false ||
+  fairWindow.complete_history_claimed !== false
+) {
+  fail("external DLQ duplicate fair-window policy drift");
+}
+
 for (const [operation, allowed] of Object.entries(contract.mutation_boundary ?? {})) {
   if (allowed !== false) fail(`external DLQ duplicate scan mutation became allowed: ${operation}`);
 }
@@ -138,8 +195,7 @@ if (
   fail("external DLQ duplicate scan result projection drift");
 }
 
-const expectedSourceFiles = [sourcePath, classifierPath, libPath];
-if (!sameValue(contract.source_files, expectedSourceFiles)) {
+if (!sameValue(contract.source_files, [sourcePath, classifierPath, libPath])) {
   fail("external DLQ duplicate scan source file allowlist drift");
 }
 
@@ -150,12 +206,15 @@ for (const marker of [
   "const MAX_BATCH_MESSAGES: u32 = 1_000;",
   "const MAX_SCAN_PARTITIONS: usize = 128;",
   "pub struct IggyDlqDuplicateScanRequest",
-  "validate_partitions(&partitions)?;",
-  "batch_size > max_messages",
+  "pub struct IggyDlqDuplicateScanWindowPolicy",
+  "Equal per-partition budget",
+  "checked_mul(partition_count)",
+  ".filter(|total| *total <= MAX_SCAN_MESSAGES)",
   "pub struct IggyDlqDuplicateScanner<'a>",
   "client: &'a IggyClient",
-  "kind: ConsumerKind::Consumer",
   "pub async fn summarize(",
+  "pub async fn summarize_window(",
+  "observations.extend(self.collect_observations(&request).await?);",
   ".poll_messages(",
   "Some(partition_id)",
   "&PollingStrategy::offset(next_offset)",
@@ -181,7 +240,7 @@ for (const testName of expectedTests) {
   requireText("external DLQ duplicate scan source tests", source, `fn ${testName}()`);
 }
 if (countText(source, "#[test]") !== expectedTests.length) {
-  fail("external DLQ duplicate scan source must contain exactly three focused unit tests");
+  fail("external DLQ duplicate scan source must contain exactly five focused unit tests");
 }
 
 for (const marker of [
@@ -280,8 +339,10 @@ if (requiredPrivacyExclusions.size > 0) {
 }
 
 const requiredRemaining = new Set([
+  "fair_window_external_iggy_execution_evidence",
+  "moving_window_or_per_partition_cursor_policy",
+  "cross_cycle_duplicate_accumulation_policy",
   "retained_external_iggy_duplicate_scan_evidence",
-  "operator_alert_threshold_policy",
   "authorized_destructive_reconciliation_workflow",
   "aggregate_receipt_and_duplicate_health_correlation",
 ]);
@@ -297,5 +358,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy external DLQ duplicate scan source verified: borrowed client lifecycle, standalone explicit-offset polling, auto_commit=false, bounded partitions/messages/batches, strict response progress, count-only projection, stable identifier-free errors, no offset-store or destructive API, and the source-complete dedup-disabled external runtime harness with repeated scans and absent-offset checks are locked; runtime execution remains pending.",
+  "Iggy external DLQ duplicate scan source verified: borrowed client lifecycle, standalone explicit-offset polling, auto_commit=false, compatibility global budgets, bounded fair per-partition windows, strict response progress, count-only projection, stable identifier-free errors, explicit server fair-window integration, no offset-store or destructive API, and the source-complete global runtime harness are locked; runtime execution remains pending.",
 );

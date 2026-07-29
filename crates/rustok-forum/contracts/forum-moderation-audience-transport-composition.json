@@ -11,6 +11,8 @@
   "owner_service": "crates/rustok-forum/src/services/moderation.rs",
   "crate_root": "crates/rustok-forum/src/lib.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20az-moderation-audience-transport-composition.md",
+  "downstream_plan_sync_task": "FORUM-20BA",
+  "downstream_plan_sync_contract": "crates/rustok-forum/contracts/forum-audience-plan-sync.json",
   "composition": {
     "existing_graphql_mark_solution_composed": true,
     "existing_graphql_clear_solution_composed": true,

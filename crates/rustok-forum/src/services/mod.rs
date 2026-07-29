@@ -31,6 +31,7 @@ pub mod moderation;
 mod moderation_audience_authorization;
 mod posting_policy;
 mod posting_policy_approved_facts;
+mod posting_policy_create_window_facts;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
@@ -64,6 +65,7 @@ mod topic_audience {
     include!("topic_audience.rs");
     include!("topic_audience_visibility.rs");
 }
+mod topic_audience_read;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_owner {
@@ -117,6 +119,9 @@ pub use posting_policy::{
     MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
 };
 pub use posting_policy_approved_facts::ForumApprovedPostsFactPort;
+pub use posting_policy_create_window_facts::{
+    ForumReplyCreatesWindowFactPort, ForumTopicCreatesWindowFactPort,
+};
 pub use posting_policy_evaluator::{
     ForumPostingPolicyEvaluator, ForumPostingPolicyRules, ForumPostingWindowLimit,
     FORUM_POSTING_POLICY_PRECEDENCE,
@@ -151,6 +156,7 @@ pub use topic_audience::{
     ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, ForumTopicAudienceViewer,
     ForumTopicAudienceVisibilityService, SetForumTopicAudiencePolicyInput,
 };
+pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };

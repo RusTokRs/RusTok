@@ -7,8 +7,9 @@ use rustok_forum::{
     ForumApprovedPostsFactPort, ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer,
     ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
     ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
-    ForumPostingTrustFactPort, ForumTopicReadPostingFactPort, SharedForumAudienceFactsPort,
-    SharedForumPostingPolicyOwnerFactPort,
+    ForumPostingTrustFactPort, ForumReplyCreatesWindowFactPort,
+    ForumTopicCreatesWindowFactPort, ForumTopicReadPostingFactPort,
+    SharedForumAudienceFactsPort, SharedForumPostingPolicyOwnerFactPort,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
@@ -129,8 +130,9 @@ impl ForumPostingPolicyOwnerFactPort for ServerForumAccountAgeFactPort {
 }
 
 /// Stable host facade that publishes authoritative Forum trust, server-owned
-/// account age, Forum-owned topic reading activity and current approved posts.
-/// Other fact kinds remain explicitly unavailable until their owners are added.
+/// account age, Forum-owned topic reading, approved posts and exact topic/reply
+/// create-window activity. Other fact kinds remain explicitly unavailable until
+/// their owners are added.
 pub(crate) struct ServerForumPostingPolicyFactsComposer;
 
 impl ServerForumPostingPolicyFactsComposer {
@@ -142,6 +144,8 @@ impl ServerForumPostingPolicyFactsComposer {
             ForumPostingTrustFactPort::shared(audience_facts),
             ServerForumAccountAgeFactPort::shared(db.clone()),
             ForumApprovedPostsFactPort::shared(db.clone()),
+            ForumTopicCreatesWindowFactPort::shared(db.clone()),
+            ForumReplyCreatesWindowFactPort::shared(db.clone()),
             ForumTopicReadPostingFactPort::shared(db),
         ])?;
         Ok(Arc::new(composer))

@@ -95,6 +95,7 @@ pub use dlq::{DlqEntry, DlqManager};
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_alert_observer::{
     IggyDlqDuplicateAlertObserver, IggyDlqDuplicateAlertObserverError,
+    IggyDlqDuplicateAlertScanMode,
 };
 pub use dlq_duplicate_alert_policy::{
     DlqDuplicateAlertEvaluation, DlqDuplicateAlertLevel, DlqDuplicateAlertPolicy,
@@ -106,7 +107,8 @@ pub use dlq_duplicate_alert_runtime::{
 };
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_external_scan::{
-    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest, IggyDlqDuplicateScanner,
+    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest,
+    IggyDlqDuplicateScanWindowPolicy, IggyDlqDuplicateScanner,
 };
 pub use dlq_duplicate_inspection::{
     DlqDuplicateInspectionError, DlqDuplicateObservation, DlqDuplicateSummary,

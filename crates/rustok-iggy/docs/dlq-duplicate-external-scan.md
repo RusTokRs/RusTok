@@ -1,39 +1,42 @@
 # Bounded external-Iggy DLQ duplicate scan
 
-Status: **scanner and disposable-broker harness source-complete; runtime execution pending**.
+Status: **global and fair-window source harnesses complete; runtime execution and retained evidence pending**.
 
 ## Purpose
 
-`IggyDlqDuplicateScanner` adapts the transport-neutral physical duplicate classifier to an already connected external `IggyClient`.
+`IggyDlqDuplicateScanner` adapts the transport-neutral physical duplicate
+classifier to an already connected external `IggyClient`.
 
-It answers one bounded operational question:
+It supports two explicit bounded questions:
 
 ```text
-Within these explicit DLQ partitions, starting at this explicit offset,
-what is the count-only physical duplicate summary for at most N messages?
+global request:
+  within these ordered DLQ partitions, starting at one explicit offset,
+  what is the count-only summary for at most N messages total?
+
+fair snapshot window:
+  within every selected DLQ partition, starting at one explicit offset,
+  what is the count-only summary for at most N messages per partition?
 ```
 
-It does not discover the broker, own credentials, create topology, persist a cursor, or perform reconciliation.
+It does not discover the broker, own credentials, create topology, persist a
+cursor, or perform reconciliation.
 
 ## Public API
 
 ```text
 IggyDlqDuplicateScanRequest
+IggyDlqDuplicateScanWindowPolicy
 IggyDlqDuplicateScanner
 IggyDlqDuplicateScanError
 ```
 
-The result is the existing identifier-free:
+The result remains the identifier-free `DlqDuplicateSummary`.
 
-```text
-DlqDuplicateSummary
-```
-
-Connection and authentication lifecycle remain owned by the caller. The scanner borrows an already connected `IggyClient` and never calls shutdown.
+Connection and authentication lifecycle remain caller-owned. The scanner borrows
+an already connected `IggyClient` and never calls shutdown.
 
 ## Polling boundary
-
-The adapter is deliberately lower level than an `IggyConsumer` stream:
 
 ```text
 consumer kind: standalone Consumer
@@ -44,58 +47,96 @@ strategy: PollingStrategy::offset(explicit_offset)
 auto_commit: false
 ```
 
-A regular consumer requires the partition to be supplied explicitly. The scanner does not use a consumer group and does not use `PollingStrategy::next`, because `next` depends on stored consumer offsets.
+The scanner does not use a consumer group or stored-offset `next` polling. It
+also avoids topic discovery. Operators supply the reviewed partition allowlist.
 
-The scanner also avoids `get_topic` and `get_topics`. Operators must supply the intended partition allowlist, so the account needs message-poll permission rather than topic-management or topic-discovery behavior from this adapter.
+## Compatibility global request
 
-## Request bounds
-
-One request requires:
+`IggyDlqDuplicateScanRequest` requires:
 
 - 1 to 128 unique positive partition IDs;
-- one explicit start offset applied independently to every selected partition;
-- `max_messages` between 1 and 10,000;
-- `batch_size` between 1 and 1,000;
+- one explicit start offset;
+- `max_messages` from 1 through 10,000;
+- `batch_size` from 1 through 1,000;
 - `batch_size <= max_messages`.
 
-The message budget is global across all partitions. Partitions are scanned in caller-provided order until the global budget is exhausted.
+The message budget is shared across the ordered allowlist. A busy earlier
+partition can consume the cap before later partitions are polled.
 
-A caller that needs different offsets per partition must submit separate requests. This avoids silently inventing or retaining a partition cursor map.
+## Fair snapshot window
+
+`IggyDlqDuplicateScanWindowPolicy` requires:
+
+- 1 to 128 unique positive partition IDs;
+- one explicit start offset;
+- one positive `per_partition_messages`;
+- `batch_size` from 1 through 1,000;
+- `batch_size <= per_partition_messages`;
+- checked `partition_count * per_partition_messages <= 10,000`.
+
+A successful fair scan attempts every configured partition under the same cap
+and combines all observations before classification.
+
+The scanner can classify repeated IDs found in any combined observation set.
+The production deterministic DLQ publisher, however, routes by the broker UUID:
+
+```text
+partition = (broker_message_id_as_u128 mod partition_count) + 1
+```
+
+Production copies with the same deterministic ID are therefore colocated in one
+partition. Runtime evidence must distinguish the scanner's aggregate capability
+from the production-reachable partition invariant; it must not claim that
+`IggyTransport::move_to_dlq` split one ID across partitions.
+
+The fair policy is one fixed snapshot. It does not add a moving cursor, stored
+progress, cross-cycle identity/digest accumulation, current-tail coverage, or
+complete-history proof.
 
 ## Response validation
 
-Each physical poll response must satisfy all of the following:
+Each physical poll response must satisfy:
 
-- returned partition equals the requested partition;
-- reported count equals the number of returned messages;
-- reported count does not exceed the requested batch;
-- every message offset is at or after the explicit requested offset;
+- returned partition equals the request;
+- reported count equals the returned messages;
+- count does not exceed the requested batch;
+- offsets are at or after the requested offset;
 - offsets in one batch are strictly increasing;
-- advancing `last_offset + 1` does not overflow;
+- `last_offset + 1` does not overflow;
 - every physical header ID is a non-nil UUID accepted by the classifier.
 
-Any mismatch fails closed. Raw client errors and broker coordinates are not copied into the public error.
+Any mismatch fails closed. Public errors do not copy raw client errors or broker
+coordinates.
+
+## Server integration
+
+The mode-aware event-delivery observer supports:
+
+```text
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=global_budget
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=fair_window
+```
+
+`global_budget` remains the compatibility default. `fair_window` is explicit
+opt-in and requires:
+
+```text
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES
+```
+
+The integration changes neither `memory` nor `outbox_local`, creates no second
+transport, and cannot become a Profiles authorization input.
 
 ## Privacy boundary
 
-The scanner temporarily passes only these values to the in-memory classifier:
+The scanner temporarily passes physical header UUIDs and exact bytes to the
+in-memory classifier. Exact bytes are immediately reduced to a domain-separated
+SHA-256 value.
 
-```text
-physical Iggy header UUID
-exact physical payload bytes
-```
+The returned summary exposes no broker address, stream/topic/partition/offset,
+message UUID, payload/digest, credentials, or raw Iggy error.
 
-The classifier immediately reduces payload bytes to a domain-separated SHA-256 value. The returned summary contains only counts and exposes no:
-
-- broker address;
-- stream or topic name;
-- partition or offset;
-- message UUID;
-- payload or payload digest;
-- credentials;
-- raw Iggy error.
-
-The scanner error codes are bounded and identifier-free:
+Stable scanner codes:
 
 ```text
 iggy.dlq_duplicate.scan_invalid
@@ -104,87 +145,83 @@ iggy.dlq_duplicate.scan_response_invalid
 iggy.dlq_duplicate.scan_offset_overflow
 ```
 
-Classifier identity/count errors retain their existing stable codes.
-
 ## Mutation boundary
 
-The adapter contains no call to:
+The scanner contains no automatic offset commit, offset storage,
+acknowledgement, topology deletion/purge, publication, replay/retry, receipt
+mutation, or caller-client shutdown.
 
-- automatic offset commit;
-- consumer offset storage;
-- acknowledgement or high-level cursor offset storage;
-- stream/topic deletion or purge;
-- message publication;
-- DLQ replay or retry;
-- poison receipt claim, release, publish, or acknowledgement transitions;
-- client shutdown.
+## Compatibility-global source harness
 
-Polling uses `auto_commit = false`. The fixed consumer identifier is therefore only the request identity supplied to Iggy; the adapter does not persist progress for later `next` polling.
-
-## Source-complete runtime harness
-
-The opt-in `dlq_duplicate_external_scan` test target now defines one exact case against a reviewed disposable external broker with message-ID deduplication disabled.
-
-It publishes through production `IggyTransport::move_to_dlq`:
+The existing `dlq_duplicate_external_scan` target publishes four messages through
+production `IggyTransport::move_to_dlq` on one partition:
 
 ```text
-A, A: same header UUID and same exact bytes
-B1, B2: same header UUID and different exact bytes
+A, A: same deterministic ID and same bytes
+B1, B2: same deterministic ID and different bytes
 ```
 
-The same `[partition 1, offset 0, max 4, batch 4]` scan is executed twice. Both summaries must equal:
+The same `[partition 1, offset 0, max 4, batch 4]` request runs twice. Both
+identifier-free summaries contain two duplicate groups, one conflicting group,
+and no stored standalone-consumer offset.
+
+Runtime execution remains pending.
+
+## Fair-window multi-partition source harness
+
+The new `dlq_duplicate_fair_window_external_scan` target uses two partitions and
+five production-published messages:
 
 ```text
-total_messages = 4
-unique_message_ids = 2
-duplicate_messages = 2
-duplicate_groups = 2
-conflicting_payload_groups = 1
-max_copies_per_message_id = 2
+partition 1: A/A ordinary duplicate, then one unique overflow message
+partition 2: B1/B2 conflicting-payload duplicate
 ```
 
-Read-only `get_consumer_offset` must return `None` before publication, after the first scan, and after the second scan. The test contains no direct SDK producer or offset mutation.
-
-See `dlq-duplicate-external-scan-runtime-evidence.md` for prerequisites and the exact command.
-
-## Suggested caller flow
+Fair policy:
 
 ```text
-1. Operator selects one external service and an explicit DLQ stream.
-2. Operator supplies an explicit partition allowlist and bounded offset/count window.
-3. A separately configured component connects and authenticates IggyClient.
-4. IggyDlqDuplicateScanner borrows the connected client.
-5. Scanner polls explicit offsets with auto_commit=false.
-6. Scanner returns DlqDuplicateSummary only.
-7. Caller closes the client through its own lifecycle.
+partitions = [1, 2]
+per_partition_messages = 2
+batch_size = 2
 ```
 
-Do not present this scanner as a complete historical inventory unless the selected partitions, offsets, retention window, and message cap cover the intended history.
+It must observe both duplicate groups and the conflict. The compatibility global
+request with `max_messages = 4` must instead consume three partition-1 messages
+and only one partition-2 message, producing a different summary.
+
+Both fair scans reuse offset zero. Stored offsets must remain absent for both
+partitions before publication and after every scan.
+
+The harness preserves production same-ID colocation and contains no direct SDK
+producer.
+
+Detailed evidence contract:
+
+```text
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-fair-window-external-scan-runtime-source.json
+```
 
 ## Source verification
-
-Machine contracts:
-
-```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json
-```
-
-Static source guards:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs
+node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 ```
 
-Focused source tests are embedded in `dlq_duplicate_external_scan.rs` for request bounds and stable error projection. The opt-in integration target defines the physical duplicate/conflict and absent-offset case.
-
-No test, Cargo command, formatter, verifier, external Iggy connection, or runtime scan was executed while defining these slices.
+No test, Cargo command, formatter, verifier, broker connection, or runtime scan
+was executed while defining these slices.
 
 ## Remaining work
 
-1. execute the exact runtime case against a reviewed dedup-disabled disposable broker;
-2. retain a privacy-safe runtime packet without addresses, credentials, identifiers, payloads, offsets, or raw logs;
-3. define alert thresholds outside the scanner;
-4. keep acknowledgement/delete/replay reconciliation in a separately authorized workflow;
-5. preserve identifier-free aggregate correlation with poison receipt health.
+1. execute the compatibility-global case on a reviewed dedup-disabled broker;
+2. execute the two-partition fair-window case;
+3. add and execute clean-commit retained capture for the fair-window case;
+4. retain privacy-safe packets without addresses, identifiers, payloads, offsets,
+   credentials, or raw logs;
+5. design moving windows with bounded cross-cycle duplicate state, or keep fixed
+   snapshots;
+6. keep destructive reconciliation separately authorized;
+7. preserve identifier-free correlation with poison receipt health.

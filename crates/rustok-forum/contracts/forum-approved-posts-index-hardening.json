@@ -12,6 +12,8 @@
   "owner_note": "crates/rustok-forum/docs/forum-26i-approved-posts-index-hardening.md",
   "upstream_contract": "crates/rustok-forum/contracts/forum-approved-posts-posting-facts.json",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "downstream_create_window_task": "FORUM-26J",
+  "downstream_create_window_contract": "crates/rustok-forum/contracts/forum-create-window-posting-facts.json",
   "indexes": {
     "topics": {
       "name": "idx_forum_topics_tenant_author_retained",

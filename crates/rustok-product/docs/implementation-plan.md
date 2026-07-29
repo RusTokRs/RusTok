@@ -24,7 +24,19 @@ bounded consumer proof only and does not close the module transport gate.
 Product runtime contract, commerce transport, and module metadata remain synchronized.
 The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
-The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, optional catalog filters/sorts, detached-value marker contract, and no-compile schema guardrail are source-locked.
+The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, catalog
+search-option discovery, detached-value marker contract, and no-compile schema
+guardrail are source-locked. The complete storefront/admin catalog-controls
+contract now carries snake_case `search`, `category_id`, `sort_by`,
+`sort_direction`, and `attribute_filters` through typed UI state, native and
+GraphQL adapters, Product-owned request models, and shared server-side
+execution. Storefront and admin accept at most eight semicolon-separated
+`code=value` attribute predicates. Product resolves each code against an active,
+product-scoped, filterable definition and executes exact typed EAV equality for
+localized/plain text, integer, decimal, boolean, date, datetime, select, and
+multiselect storage while excluding detached values. JSON attributes are
+explicitly rejected because this contract does not claim unindexed JSON
+comparison semantics. Recheck on 2026-07-29.
 Product write GraphQL derives tenant and actor exclusively from authenticated
 contexts. Product-owned `map_product_public_error` is shared by GraphQL and
 native admin/storefront transports; it keeps internal errors in structured logs
@@ -66,8 +78,9 @@ promoting the transport status.
 specialized published/global-visibility index is used at all three page scales;
 the count path uses it at 100k and 1M.
 `CatalogService` is separated by responsibility across
-`services/catalog/commands.rs`, `queries.rs`, `projection.rs`, and `tags.rs`
-while the public service contract remains unchanged. Inventory state uses the owner-owned native
+`services/catalog/commands.rs`, `admin_queries.rs`, `attribute_filters.rs`,
+`queries.rs`, `projection.rs`, and `tags.rs` while the public service contract
+remains unchanged. Inventory state uses the owner-owned native
 `rustok_inventory::BootstrapService` inside product's transaction for variant
 initialization, cleanup, and available-quantity reads; this is a
 documented bootstrap exception because no GraphQL/REST bootstrap contract exists
@@ -95,7 +108,11 @@ rustok-pricing` dependency cycle.
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
-  `scripts/verify/verify-product-storefront-boundary.mjs`, and
+  `scripts/verify/verify-product-admin-category-sort.mjs`,
+  `scripts/verify/verify-product-storefront-boundary.mjs`,
+  `scripts/verify/verify-product-storefront-category-sort.mjs`,
+  `scripts/verify/verify-product-catalog-attribute-filters.mjs`,
+  `scripts/verify/verify-product-catalog-controls-plan-sync.mjs`, and
   `scripts/verify/verify-ai-product-fba.mjs` for the AI consumer contract.
 
 ## Open results
@@ -116,6 +133,18 @@ rustok-pricing` dependency cycle.
 ## Verification
 
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
+- [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
+- [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
+- [x] Connect admin search/status/category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
+- [x] Connect typed attribute_filters through storefront/admin UI state, native/GraphQL transports, filterable-definition validation, and Product-owned typed EAV execution.
+- `node scripts/verify/verify-product-catalog-attribute-filters.mjs`
+- `node scripts/verify/verify-product-catalog-attribute-filters.test.mjs`
+- `node scripts/verify/verify-product-admin-category-sort.mjs`
+- `node scripts/verify/verify-product-admin-category-sort.test.mjs`
+- `node scripts/verify/verify-product-storefront-category-sort.mjs`
+- `node scripts/verify/verify-product-storefront-category-sort.test.mjs`
+- `node scripts/verify/verify-product-catalog-controls-plan-sync.mjs`
+- `node scripts/verify/verify-product-catalog-controls-plan-sync.test.mjs`
 - `npm run verify:product:runtime-fallback-smoke`
 - `npm run verify:product:admin-boundary`
 - `npm run verify:product:storefront-boundary`

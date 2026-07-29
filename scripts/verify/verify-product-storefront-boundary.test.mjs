@@ -17,11 +17,20 @@ function writeFixtureFile(root, relativePath, content) {
 
 function libSource() {
   return `
+mod catalog_controls;
 mod core;
 mod transport;
 mod ui;
 
 pub use ui::leptos::ProductView;
+`;
+}
+
+function catalogControlsSource() {
+  return `
+use rustok_ui_core::normalize_optional_ui_text;
+pub struct CatalogListInput { pub search: Option<String> }
+pub fn build_catalog_search_labels() {}
 `;
 }
 
@@ -48,13 +57,17 @@ function uiSource({
   metadataSeparator = false,
   routeSegmentFallback = false,
   catalogEmptyBranch = false,
+  omitSearchControl = false,
 } = {}) {
   return `
+use crate::catalog_controls::build_catalog_list_input;
 use crate::core::{build_product_catalog_rail_labels, build_catalog_rail_view_model, resolve_route_segment};
 use crate::transport;
 
 pub fn ProductView() {
-    let _transport = transport::fetch_products;
+    ${omitSearchControl ? "" : 'let controls = build_catalog_list_input(read_route_query_value(&route_context, "search"));'}
+    ${omitSearchControl ? "" : 'let _search = view! { <input name="search" /> };'}
+    ${omitSearchControl ? "" : "let _transport = transport::fetch_products(request, controls);"}
     let _labels = build_product_catalog_rail_labels;
     let _rail = build_catalog_rail_view_model;
     let _route_segment = resolve_route_segment;
@@ -69,16 +82,34 @@ pub fn ProductView() {
 
 function transportSource() {
   return `
+mod catalog_list_native;
 mod graphql_adapter;
 mod native_server_adapter;
-pub async fn fetch_products() {}
+use crate::catalog_controls::CatalogListInput;
+pub async fn fetch_products(request: FetchRequest, controls: CatalogListInput) {
+    catalog_list_native::fetch_products(request, controls);
+}
 `;
 }
 
-function graphqlAdapterSource() {
+function catalogListNativeSource({ omitNativeSearch = false } = {}) {
+  return `
+#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-list")]
+async fn storefront_catalog_list_native(search: Option<String>) {
+  ${omitNativeSearch ? "" : "let query = StorefrontProductListQuery::try_from_transport(search, category_id, sort_by, sort_direction);"}
+  ${omitNativeSearch ? "" : "service.list_published_products_with_query(query);"}
+}
+`;
+}
+
+function graphqlAdapterSource({ omitGraphqlSearch = false } = {}) {
   return `
 use rustok_graphql::GraphqlRequest;
-pub async fn fetch_storefront_products() {}
+pub async fn fetch_storefront_products(controls: CatalogListInput) {
+  let filter = StorefrontProductsFilter {
+    ${omitGraphqlSearch ? "search: None," : "search: controls.search,"}
+  };
+}
 `;
 }
 
@@ -95,14 +126,26 @@ async fn storefront_products_native() {
 `;
 }
 
+function catalogQueriesSource() {
+  return `
+pub async fn list_published_products_with_query() {
+  let condition = product_title_search_condition(backend, search);
+}
+fn product_title_search_condition() {}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-storefront-boundary-"));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/lib.rs", libSource());
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/catalog_controls.rs", catalogControlsSource());
   writeFixtureFile(root, "crates/rustok-product/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", transportSource());
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/graphql_adapter.rs", graphqlAdapterSource());
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/catalog_list_native.rs", catalogListNativeSource(options));
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs", nativeServerAdapterSource());
+  writeFixtureFile(root, "crates/rustok-product/src/services/catalog/queries.rs", catalogQueriesSource());
   writeFixtureFile(root, "crates/rustok-product/storefront/Cargo.toml", "[package]\nname = \"rustok-product-storefront\"\n");
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-product/storefront/src/api.rs", nativeServerAdapterSource());
   writeFixtureFile(root, "crates/rustok-product/docs/implementation-plan.md", "verify-product-storefront-boundary.mjs");
@@ -125,6 +168,17 @@ function runVerifier(root) {
   });
 }
 
+function assertFixtureFails(options, pattern, message) {
+  const root = withFixture(options);
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, message);
+    assert.match(result.stderr, pattern);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 test("product storefront boundary verifier passes canonical fixture", () => {
   const root = withFixture();
   try {
@@ -136,90 +190,90 @@ test("product storefront boundary verifier passes canonical fixture", () => {
   }
 });
 
+test("product storefront boundary verifier rejects missing search control", () => {
+  assertFixtureFails(
+    { omitSearchControl: true },
+    /snake_case search query key|search query control|typed controls/,
+    "Expected missing storefront search control fixture to fail",
+  );
+});
+
+test("product storefront boundary verifier rejects missing GraphQL search mapping", () => {
+  assertFixtureFails(
+    { omitGraphqlSearch: true },
+    /GraphQL storefront list must carry typed search state/,
+    "Expected missing GraphQL search mapping fixture to fail",
+  );
+});
+
+test("product storefront boundary verifier rejects missing native owner search", () => {
+  assertFixtureFails(
+    { omitNativeSearch: true },
+    /native catalog list must validate typed controls|execute the owner service query/,
+    "Expected missing native owner search fixture to fail",
+  );
+});
+
 test("product storefront boundary verifier rejects Leptos-specific core", () => {
-  const root = withFixture({ includeLeptos: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected Leptos core fixture to fail");
-    assert.match(result.stderr, /core must stay Leptos\/server-function free/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { includeLeptos: true },
+    /core must stay Leptos\/server-function free/,
+    "Expected Leptos core fixture to fail",
+  );
 });
 
 test("product storefront boundary verifier rejects missing catalog labels helper", () => {
-  const root = withFixture({ omitCatalogLabels: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected missing catalog labels fixture to fail");
-    assert.match(result.stderr, /build_product_catalog_rail_labels/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { omitCatalogLabels: true },
+    /build_product_catalog_rail_labels/,
+    "Expected missing catalog labels fixture to fail",
+  );
 });
 
 test("product storefront boundary verifier rejects catalog copy in UI", () => {
-  const root = withFixture({ directCatalogLabels: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected direct catalog copy fixture to fail");
-    assert.match(result.stderr, /catalog rail copy\/label policy must stay in core/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { directCatalogLabels: true },
+    /catalog rail copy\/label policy must stay in core/,
+    "Expected direct catalog copy fixture to fail",
+  );
 });
 
 test("product storefront boundary verifier rejects selected metadata separators in UI", () => {
-  const root = withFixture({ metadataSeparator: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected direct metadata separator fixture to fail");
-    assert.match(result.stderr, /selected-product metadata display policy must stay in core/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { metadataSeparator: true },
+    /selected-product metadata display policy must stay in core/,
+    "Expected direct metadata separator fixture to fail",
+  );
 });
 
 test("product storefront boundary verifier rejects route segment fallback in UI", () => {
-  const root = withFixture({ routeSegmentFallback: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected route segment fallback fixture to fail");
-    assert.match(result.stderr, /route segment fallback policy must stay in core/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { routeSegmentFallback: true },
+    /route segment fallback policy must stay in core/,
+    "Expected route segment fallback fixture to fail",
+  );
 });
 
 test("product storefront boundary verifier rejects catalog empty-state policy in UI", () => {
-  const root = withFixture({ catalogEmptyBranch: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected catalog empty-state fixture to fail");
-    assert.match(result.stderr, /catalog rail empty-state policy must stay in core/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { catalogEmptyBranch: true },
+    /catalog rail empty-state policy must stay in core/,
+    "Expected catalog empty-state fixture to fail",
+  );
 });
 
 test("product storefront boundary verifier rejects raw api calls from UI", () => {
-  const root = withFixture({ rawApiCall: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected raw UI api fixture to fail");
-    assert.match(result.stderr, /UI adapter must not call raw transport or services/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { rawApiCall: true },
+    /UI adapter must not call raw transport or services/,
+    "Expected raw UI api fixture to fail",
+  );
 });
 
 test("product storefront boundary verifier rejects legacy api module", () => {
-  const root = withFixture({ legacyApi: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected legacy api fixture to fail");
-    assert.match(result.stderr, /legacy api\.rs/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  assertFixtureFails(
+    { legacyApi: true },
+    /legacy api\.rs/,
+    "Expected legacy api fixture to fail",
+  );
 });

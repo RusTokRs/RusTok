@@ -1,5 +1,6 @@
 mod marketplace_financial;
 mod mutations;
+mod product_catalog;
 #[path = "safe_query.rs"]
 mod query;
 mod types;
@@ -23,6 +24,7 @@ pub use types::*;
 #[derive(MergedObject, Default)]
 pub struct CommerceQueryRoot(
     query::CommerceQuery,
+    product_catalog::ProductCatalogQuery,
     marketplace_financial::MarketplaceFinancialQuery,
 );
 
@@ -31,6 +33,7 @@ pub type CommerceQuery = CommerceQueryRoot;
 #[allow(non_upper_case_globals)]
 pub const CommerceQuery: CommerceQueryRoot = CommerceQueryRoot(
     query::CommerceQuery,
+    product_catalog::ProductCatalogQuery,
     marketplace_financial::MarketplaceFinancialQuery,
 );
 

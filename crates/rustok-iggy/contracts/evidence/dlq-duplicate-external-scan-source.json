@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "iggy",
   "packet": "dlq-duplicate-external-scan-source",
   "status": "source_complete_runtime_pending",
@@ -9,6 +9,7 @@
   "classifier_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
   "public_exports": [
     "IggyDlqDuplicateScanRequest",
+    "IggyDlqDuplicateScanWindowPolicy",
     "IggyDlqDuplicateScanner",
     "IggyDlqDuplicateScanError"
   ],
@@ -23,8 +24,10 @@
     "topic_metadata_read": false,
     "connection_lifecycle_owned_by_caller": true
   },
-  "request_boundary": {
+  "global_request_boundary": {
     "same_start_offset_for_each_partition": true,
+    "one_global_message_budget": true,
+    "later_partition_starvation_possible": true,
     "maximum_partitions": 128,
     "maximum_messages": 10000,
     "maximum_batch_messages": 1000,
@@ -33,6 +36,39 @@
     "zero_partition_rejected": true,
     "duplicate_partition_rejected": true,
     "zero_message_or_batch_limit_rejected": true
+  },
+  "fair_window_policy": {
+    "type": "IggyDlqDuplicateScanWindowPolicy",
+    "method": "IggyDlqDuplicateScanner::summarize_window",
+    "same_explicit_start_offset_for_every_partition": true,
+    "equal_per_partition_message_budget": true,
+    "every_partition_attempted_on_successful_scan": true,
+    "total_message_budget_checked": true,
+    "maximum_total_messages": 10000,
+    "maximum_partitions": 128,
+    "maximum_batch_messages": 1000,
+    "all_partition_observations_combined_before_classification": true,
+    "cross_partition_identity_conflict_preserved": true,
+    "moving_cursor": false,
+    "offset_persistence": false,
+    "cross_cycle_duplicate_accumulation": false,
+    "current_tail_coverage_claimed": false,
+    "complete_history_claimed": false
+  },
+  "production_partition_invariant": {
+    "publisher": "IggyDlqPublisher",
+    "formula": "(broker_message_id_as_u128 mod partition_count) + 1",
+    "same_broker_message_id_colocated": true,
+    "production_fixture_can_split_same_id_across_partitions": false,
+    "scanner_still_combines_all_partition_observations": true
+  },
+  "server_integration": {
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
+    "default_mode": "global_budget",
+    "fair_window_mode": "explicit_opt_in",
+    "per_partition_limit_required": true,
+    "profiles_authorization": false,
+    "runtime_execution_pending": true
   },
   "response_validation": {
     "partition_must_match_request": true,
@@ -95,16 +131,32 @@
   "required_source_tests": [
     "bounded_request_requires_unique_positive_partitions",
     "bounded_request_rejects_unbounded_counts",
+    "fair_window_policy_bounds_each_partition_and_total",
+    "fair_window_policy_rejects_unbounded_total",
     "stable_errors_do_not_expose_broker_coordinates"
   ],
   "runtime_harness": {
-    "status": "source_complete_execution_pending",
+    "status": "global_request_source_complete_execution_pending",
     "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json",
     "test": "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
     "case": "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
     "reviewed_dedup_disabled_broker_required": true,
     "two_identical_scans": true,
-    "three_absent_offset_checks": true
+    "three_absent_offset_checks": true,
+    "fair_window_execution_evidence": false
+  },
+  "fair_window_runtime_harness": {
+    "status": "source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json",
+    "test": "crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs",
+    "case": "fair_window_scans_each_partition_and_differs_from_global_budget",
+    "reviewed_dedup_disabled_broker_required": true,
+    "domain_partitions": 2,
+    "per_partition_messages": 2,
+    "physical_messages": 5,
+    "production_same_id_colocation_preserved": true,
+    "direct_sdk_producer": false,
+    "execution_status": "not_run"
   },
   "source_files": [
     "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
@@ -112,8 +164,10 @@
     "crates/rustok-iggy/src/lib.rs"
   ],
   "remaining_work": [
+    "fair_window_external_iggy_execution_evidence",
+    "moving_window_or_per_partition_cursor_policy",
+    "cross_cycle_duplicate_accumulation_policy",
     "retained_external_iggy_duplicate_scan_evidence",
-    "operator_alert_threshold_policy",
     "authorized_destructive_reconciliation_workflow",
     "aggregate_receipt_and_duplicate_health_correlation"
   ],

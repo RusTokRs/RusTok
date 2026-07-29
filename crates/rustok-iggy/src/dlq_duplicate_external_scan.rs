@@ -21,8 +21,9 @@ const MAX_STREAM_NAME_BYTES: usize = 255;
 /// Bounded explicit-offset request for a read-only physical Iggy DLQ scan.
 ///
 /// The request contains no broker address, credentials, payload, message ID, or
-/// mutation policy. Every partition starts at the same explicit offset. A caller
-/// that needs partition-specific windows must issue separate requests.
+/// mutation policy. Every partition starts at the same explicit offset. The one
+/// global message budget is consumed in partition order and can stop before a
+/// later partition is polled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IggyDlqDuplicateScanRequest {
     partitions: Vec<u32>,
@@ -39,15 +40,7 @@ impl IggyDlqDuplicateScanRequest {
         batch_size: u32,
     ) -> Result<Self, IggyDlqDuplicateScanError> {
         validate_partitions(&partitions)?;
-        if max_messages == 0 || max_messages > MAX_SCAN_MESSAGES {
-            return Err(IggyDlqDuplicateScanError::InvalidRequest);
-        }
-        if batch_size == 0
-            || batch_size > MAX_BATCH_MESSAGES
-            || batch_size > max_messages
-        {
-            return Err(IggyDlqDuplicateScanError::InvalidRequest);
-        }
+        validate_message_bounds(max_messages, batch_size)?;
         Ok(Self {
             partitions,
             start_offset,
@@ -70,6 +63,67 @@ impl IggyDlqDuplicateScanRequest {
 
     pub const fn batch_size(&self) -> u32 {
         self.batch_size
+    }
+}
+
+/// Equal per-partition budget for one bounded read-only snapshot window.
+///
+/// Every configured partition starts at the same explicit offset and receives
+/// the same maximum message budget. The total across all partitions is capped
+/// at 10,000. This policy does not own a moving cursor, persisted progress,
+/// current-tail coverage, or complete-history semantics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IggyDlqDuplicateScanWindowPolicy {
+    partitions: Vec<u32>,
+    start_offset: u64,
+    per_partition_messages: u32,
+    batch_size: u32,
+    total_message_budget: u32,
+}
+
+impl IggyDlqDuplicateScanWindowPolicy {
+    pub fn new(
+        partitions: Vec<u32>,
+        start_offset: u64,
+        per_partition_messages: u32,
+        batch_size: u32,
+    ) -> Result<Self, IggyDlqDuplicateScanError> {
+        validate_partitions(&partitions)?;
+        validate_message_bounds(per_partition_messages, batch_size)?;
+        let partition_count =
+            u32::try_from(partitions.len()).map_err(|_| IggyDlqDuplicateScanError::InvalidRequest)?;
+        let total_message_budget = per_partition_messages
+            .checked_mul(partition_count)
+            .filter(|total| *total <= MAX_SCAN_MESSAGES)
+            .ok_or(IggyDlqDuplicateScanError::InvalidRequest)?;
+
+        Ok(Self {
+            partitions,
+            start_offset,
+            per_partition_messages,
+            batch_size,
+            total_message_budget,
+        })
+    }
+
+    pub fn partitions(&self) -> &[u32] {
+        &self.partitions
+    }
+
+    pub const fn start_offset(&self) -> u64 {
+        self.start_offset
+    }
+
+    pub const fn per_partition_messages(&self) -> u32 {
+        self.per_partition_messages
+    }
+
+    pub const fn batch_size(&self) -> u32 {
+        self.batch_size
+    }
+
+    pub const fn total_message_budget(&self) -> u32 {
+        self.total_message_budget
     }
 }
 
@@ -117,10 +171,43 @@ impl<'a> IggyDlqDuplicateScanner<'a> {
         })
     }
 
+    /// Scans one ordered partition allowlist under a single global message cap.
     pub async fn summarize(
         &self,
         request: &IggyDlqDuplicateScanRequest,
     ) -> Result<DlqDuplicateSummary, IggyDlqDuplicateScanError> {
+        let observations = self.collect_observations(request).await?;
+        summarize_dlq_duplicates(observations).map_err(Into::into)
+    }
+
+    /// Scans every partition under an equal per-partition budget.
+    ///
+    /// Observations from every partition are combined before classification so
+    /// an invalid repeated deterministic ID in distinct partitions is not hidden.
+    /// Cursor movement and persistence remain caller-owned and are not added here.
+    pub async fn summarize_window(
+        &self,
+        policy: &IggyDlqDuplicateScanWindowPolicy,
+    ) -> Result<DlqDuplicateSummary, IggyDlqDuplicateScanError> {
+        let mut observations = Vec::with_capacity(policy.total_message_budget as usize);
+
+        for &partition_id in &policy.partitions {
+            let request = IggyDlqDuplicateScanRequest {
+                partitions: vec![partition_id],
+                start_offset: policy.start_offset,
+                max_messages: policy.per_partition_messages,
+                batch_size: policy.batch_size,
+            };
+            observations.extend(self.collect_observations(&request).await?);
+        }
+
+        summarize_dlq_duplicates(observations).map_err(Into::into)
+    }
+
+    async fn collect_observations(
+        &self,
+        request: &IggyDlqDuplicateScanRequest,
+    ) -> Result<Vec<DlqDuplicateObservation>, IggyDlqDuplicateScanError> {
         let mut remaining = request.max_messages;
         let mut observations = Vec::with_capacity(request.max_messages as usize);
 
@@ -187,7 +274,7 @@ impl<'a> IggyDlqDuplicateScanner<'a> {
             }
         }
 
-        summarize_dlq_duplicates(observations).map_err(Into::into)
+        Ok(observations)
     }
 }
 
@@ -226,6 +313,21 @@ fn validate_partitions(partitions: &[u32]) -> Result<(), IggyDlqDuplicateScanErr
         if partition == 0 || !unique.insert(partition) {
             return Err(IggyDlqDuplicateScanError::InvalidRequest);
         }
+    }
+    Ok(())
+}
+
+fn validate_message_bounds(
+    max_messages: u32,
+    batch_size: u32,
+) -> Result<(), IggyDlqDuplicateScanError> {
+    if max_messages == 0
+        || max_messages > MAX_SCAN_MESSAGES
+        || batch_size == 0
+        || batch_size > MAX_BATCH_MESSAGES
+        || batch_size > max_messages
+    {
+        return Err(IggyDlqDuplicateScanError::InvalidRequest);
     }
     Ok(())
 }
@@ -275,6 +377,29 @@ mod tests {
                 Err(IggyDlqDuplicateScanError::InvalidRequest)
             ));
         }
+    }
+
+    #[test]
+    fn fair_window_policy_bounds_each_partition_and_total() {
+        let policy = IggyDlqDuplicateScanWindowPolicy::new(vec![1, 2, 3], 50, 100, 25)
+            .unwrap();
+        assert_eq!(policy.partitions(), &[1, 2, 3]);
+        assert_eq!(policy.start_offset(), 50);
+        assert_eq!(policy.per_partition_messages(), 100);
+        assert_eq!(policy.batch_size(), 25);
+        assert_eq!(policy.total_message_budget(), 300);
+    }
+
+    #[test]
+    fn fair_window_policy_rejects_unbounded_total() {
+        assert!(matches!(
+            IggyDlqDuplicateScanWindowPolicy::new(vec![1, 2], 0, 5_001, 100),
+            Err(IggyDlqDuplicateScanError::InvalidRequest)
+        ));
+        assert!(matches!(
+            IggyDlqDuplicateScanWindowPolicy::new(vec![1, 2], 0, 100, 101),
+            Err(IggyDlqDuplicateScanError::InvalidRequest)
+        ));
     }
 
     #[test]

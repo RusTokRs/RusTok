@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "event-delivery",
   "packet": "dlq-duplicate-alert-server-observer-source",
   "status": "source_complete_runtime_execution_pending",
@@ -13,7 +13,8 @@
   "service_registry_source": "apps/server/src/services/mod.rs",
   "public_iggy_exports": [
     "IggyDlqDuplicateAlertObserver",
-    "IggyDlqDuplicateAlertObserverError"
+    "IggyDlqDuplicateAlertObserverError",
+    "IggyDlqDuplicateAlertScanMode"
   ],
   "delivery_profiles": {
     "memory": "not_applicable",
@@ -40,15 +41,39 @@
   "scan": {
     "topic": "dlq",
     "configured_domain_partition_allowlist": true,
-    "global_message_budget_may_stop_before_later_partitions": true,
-    "partition_fairness_claimed": false,
+    "scan_mode_env": "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE",
+    "default_scan_mode": "global_budget",
+    "global_budget_mode": {
+      "accepted_values": [
+        "global",
+        "global_budget"
+      ],
+      "max_messages_env": "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES",
+      "default_max_messages": 1000,
+      "one_global_message_budget": true,
+      "later_partition_starvation_possible": true
+    },
+    "fair_window_mode": {
+      "accepted_values": [
+        "fair",
+        "fair_window"
+      ],
+      "per_partition_messages_env": "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES",
+      "per_partition_messages_required": true,
+      "equal_per_partition_message_budget": true,
+      "every_partition_attempted_on_successful_scan": true,
+      "total_message_budget_checked_by_scanner": true,
+      "maximum_total_messages": 10000,
+      "all_partition_observations_combined_before_classification": true
+    },
+    "batch_size_env": "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE",
+    "default_batch_size": 100,
     "explicit_start_offset": true,
     "same_configured_start_offset_reused_each_poll": true,
     "moving_cursor": false,
+    "cross_cycle_duplicate_accumulation": false,
     "current_tail_coverage_claimed": false,
     "complete_history_claimed": false,
-    "bounded_max_messages": true,
-    "bounded_batch_size": true,
     "auto_commit": false,
     "stored_offset_polling": false
   },
@@ -117,12 +142,14 @@
   "required_iggy_tests": [
     "bundled_mode_requires_matching_loopback_address",
     "all_configured_partitions_are_included_in_request",
+    "global_and_fair_scan_modes_remain_explicit",
     "invalid_partition_count_fails_closed",
     "stable_errors_expose_no_connection_details"
   ],
   "required_server_tests": [
     "every_event_delivery_profile_has_an_explicit_observer_mode",
     "startup_unavailable_state_has_no_task_or_snapshot",
+    "scan_mode_parser_preserves_global_default_and_explicit_fair_window",
     "boolean_parser_is_bounded"
   ],
   "verifier": "scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs",
@@ -130,8 +157,9 @@
   "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md",
   "execution_status": "source_not_run",
   "remaining_work": [
-    "partition_fairness_or_per_partition_budget_policy",
+    "fair_window_external_iggy_execution_evidence",
     "moving_window_or_per_partition_cursor_policy",
+    "cross_cycle_duplicate_accumulation_policy",
     "telemetry_projection_outside_observer",
     "health_projection_without_readiness_coupling",
     "notification_delivery_and_suppression",

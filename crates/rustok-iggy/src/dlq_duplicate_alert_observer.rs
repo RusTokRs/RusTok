@@ -3,9 +3,31 @@ use thiserror::Error;
 
 use crate::config::{ExternalConfig, IggyConfig, IggyMode};
 use crate::dlq_duplicate_external_scan::{
-    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest, IggyDlqDuplicateScanner,
+    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest,
+    IggyDlqDuplicateScanWindowPolicy, IggyDlqDuplicateScanner,
 };
 use crate::dlq_duplicate_inspection::DlqDuplicateSummary;
+
+/// Active bounded physical DLQ scan policy for the connected observer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IggyDlqDuplicateAlertScanMode {
+    GlobalBudget,
+    FairWindow,
+}
+
+enum IggyDlqDuplicateAlertScan {
+    Global(IggyDlqDuplicateScanRequest),
+    FairWindow(IggyDlqDuplicateScanWindowPolicy),
+}
+
+impl IggyDlqDuplicateAlertScan {
+    const fn mode(&self) -> IggyDlqDuplicateAlertScanMode {
+        match self {
+            Self::Global(_) => IggyDlqDuplicateAlertScanMode::GlobalBudget,
+            Self::FairWindow(_) => IggyDlqDuplicateAlertScanMode::FairWindow,
+        }
+    }
+}
 
 /// Connected read-only source for bounded physical DLQ duplicate summaries.
 ///
@@ -15,10 +37,11 @@ use crate::dlq_duplicate_inspection::DlqDuplicateSummary;
 pub struct IggyDlqDuplicateAlertObserver {
     client: IggyClient,
     stream_name: String,
-    request: IggyDlqDuplicateScanRequest,
+    scan: IggyDlqDuplicateAlertScan,
 }
 
 impl IggyDlqDuplicateAlertObserver {
+    /// Connect with the compatibility global-budget scan.
     pub async fn connect(
         config: &IggyConfig,
         start_offset: u64,
@@ -33,6 +56,31 @@ impl IggyDlqDuplicateAlertObserver {
             batch_size,
         )
         .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+        Self::connect_with_scan(config, IggyDlqDuplicateAlertScan::Global(request)).await
+    }
+
+    /// Connect with one equal per-partition snapshot budget.
+    pub async fn connect_fair_window(
+        config: &IggyConfig,
+        start_offset: u64,
+        per_partition_messages: u32,
+        batch_size: u32,
+    ) -> Result<Self, IggyDlqDuplicateAlertObserverError> {
+        let partitions = configured_partitions(config)?;
+        let policy = IggyDlqDuplicateScanWindowPolicy::new(
+            partitions,
+            start_offset,
+            per_partition_messages,
+            batch_size,
+        )
+        .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+        Self::connect_with_scan(config, IggyDlqDuplicateAlertScan::FairWindow(policy)).await
+    }
+
+    async fn connect_with_scan(
+        config: &IggyConfig,
+        scan: IggyDlqDuplicateAlertScan,
+    ) -> Result<Self, IggyDlqDuplicateAlertObserverError> {
         let external = read_only_connection_config(config)?;
         let connection_strings = connection_strings(&external)?;
         let mut connected = None;
@@ -54,28 +102,53 @@ impl IggyDlqDuplicateAlertObserver {
         Ok(Self {
             client,
             stream_name,
-            request,
+            scan,
         })
+    }
+
+    pub const fn scan_mode(&self) -> IggyDlqDuplicateAlertScanMode {
+        self.scan.mode()
     }
 
     pub async fn summarize(
         &self,
     ) -> Result<DlqDuplicateSummary, IggyDlqDuplicateAlertObserverError> {
-        IggyDlqDuplicateScanner::new(&self.client, &self.stream_name)?
-            .summarize(&self.request)
-            .await
-            .map_err(Into::into)
+        let scanner = IggyDlqDuplicateScanner::new(&self.client, &self.stream_name)?;
+        match &self.scan {
+            IggyDlqDuplicateAlertScan::Global(request) => {
+                scanner.summarize(request).await.map_err(Into::into)
+            }
+            IggyDlqDuplicateAlertScan::FairWindow(policy) => scanner
+                .summarize_window(policy)
+                .await
+                .map_err(Into::into),
+        }
     }
 }
 
 impl std::fmt::Debug for IggyDlqDuplicateAlertObserver {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("IggyDlqDuplicateAlertObserver")
-            .field("partition_count", &self.request.partitions().len())
-            .field("max_messages", &self.request.max_messages())
-            .field("batch_size", &self.request.batch_size())
-            .finish_non_exhaustive()
+        let mut debug = formatter.debug_struct("IggyDlqDuplicateAlertObserver");
+        debug.field("scan_mode", &self.scan.mode());
+        match &self.scan {
+            IggyDlqDuplicateAlertScan::Global(request) => {
+                debug
+                    .field("partition_count", &request.partitions().len())
+                    .field("max_messages", &request.max_messages())
+                    .field("batch_size", &request.batch_size());
+            }
+            IggyDlqDuplicateAlertScan::FairWindow(policy) => {
+                debug
+                    .field("partition_count", &policy.partitions().len())
+                    .field(
+                        "per_partition_messages",
+                        &policy.per_partition_messages(),
+                    )
+                    .field("total_message_budget", &policy.total_message_budget())
+                    .field("batch_size", &policy.batch_size());
+            }
+        }
+        debug.finish_non_exhaustive()
     }
 }
 
@@ -225,6 +298,18 @@ mod tests {
         let mut config = IggyConfig::default();
         config.topology.domain_partitions = 3;
         assert_eq!(configured_partitions(&config).unwrap(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn global_and_fair_scan_modes_remain_explicit() {
+        let global = IggyDlqDuplicateAlertScan::Global(
+            IggyDlqDuplicateScanRequest::new(vec![1, 2], 0, 100, 25).unwrap(),
+        );
+        let fair = IggyDlqDuplicateAlertScan::FairWindow(
+            IggyDlqDuplicateScanWindowPolicy::new(vec![1, 2], 0, 50, 25).unwrap(),
+        );
+        assert_eq!(global.mode(), IggyDlqDuplicateAlertScanMode::GlobalBudget);
+        assert_eq!(fair.mode(), IggyDlqDuplicateAlertScanMode::FairWindow);
     }
 
     #[test]

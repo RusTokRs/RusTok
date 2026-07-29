@@ -11,6 +11,29 @@ impl CatalogService {
         page: u64,
         per_page: u64,
     ) -> CommerceResult<StorefrontProductList> {
+        self.list_published_products_with_query(
+            tenant_id,
+            locale,
+            fallback_locale,
+            public_channel_slug,
+            StorefrontProductListQuery::default(),
+            page,
+            per_page,
+        )
+        .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn list_published_products_with_query(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+        list_query: StorefrontProductListQuery,
+        page: u64,
+        per_page: u64,
+    ) -> CommerceResult<StorefrontProductList> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         if page == 0 || per_page == 0 || per_page > 48 {
             return Err(CommerceError::Validation(
@@ -19,7 +42,7 @@ impl CatalogService {
         }
         let offset = (page.saturating_sub(1)) * per_page;
 
-        let query = entities::product::Entity::find()
+        let mut query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
             .filter(entities::product::Column::PublishedAt.is_not_null())
@@ -27,10 +50,63 @@ impl CatalogService {
                 self.db.get_database_backend(),
                 public_channel_slug,
             ));
+        if let Some(category_id) = list_query.category_id {
+            query = query.filter(entities::product::Column::PrimaryCategoryId.eq(category_id));
+        }
+        if let Some(search) = list_query
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            query = query.filter(product_title_search_condition(
+                self.db.get_database_backend(),
+                search,
+            ));
+        }
+        for condition in attribute_filters::load_catalog_attribute_filter_conditions(
+            &self.db,
+            tenant_id,
+            locale,
+            fallback_locale,
+            list_query.attribute_filters.as_slice(),
+        )
+        .await?
+        {
+            query = query.filter(condition);
+        }
         let total = query.clone().count(&self.db).await?;
+        let query = match (list_query.sort_by, list_query.sort_direction) {
+            (
+                StorefrontProductSortBy::PublishedAt,
+                StorefrontProductSortDirection::Asc,
+            ) => query
+                .order_by_asc(entities::product::Column::PublishedAt)
+                .order_by_asc(entities::product::Column::CreatedAt)
+                .order_by_asc(entities::product::Column::Id),
+            (
+                StorefrontProductSortBy::PublishedAt,
+                StorefrontProductSortDirection::Desc,
+            ) => query
+                .order_by_desc(entities::product::Column::PublishedAt)
+                .order_by_desc(entities::product::Column::CreatedAt)
+                .order_by_desc(entities::product::Column::Id),
+            (
+                StorefrontProductSortBy::CreatedAt,
+                StorefrontProductSortDirection::Asc,
+            ) => query
+                .order_by_asc(entities::product::Column::CreatedAt)
+                .order_by_asc(entities::product::Column::PublishedAt)
+                .order_by_asc(entities::product::Column::Id),
+            (
+                StorefrontProductSortBy::CreatedAt,
+                StorefrontProductSortDirection::Desc,
+            ) => query
+                .order_by_desc(entities::product::Column::CreatedAt)
+                .order_by_desc(entities::product::Column::PublishedAt)
+                .order_by_desc(entities::product::Column::Id),
+        };
         let products = query
-            .order_by_desc(entities::product::Column::PublishedAt)
-            .order_by_desc(entities::product::Column::CreatedAt)
             .offset(offset)
             .limit(per_page)
             .all(&self.db)
@@ -147,4 +223,31 @@ impl CatalogService {
             fallback_locale,
         )))
     }
+}
+
+fn product_title_search_condition(backend: sea_orm::DbBackend, search: &str) -> sea_orm::Condition {
+    let pattern = format!("%{search}%");
+    let exists_sql = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "EXISTS (
+                SELECT 1
+                FROM product_translations pt
+                WHERE pt.product_id = products.id
+                  AND pt.title LIKE ?
+            )"
+        }
+        _ => {
+            "EXISTS (
+                SELECT 1
+                FROM product_translations pt
+                WHERE pt.product_id = products.id
+                  AND pt.title LIKE $1
+            )"
+        }
+    };
+
+    sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust_with_values(
+        exists_sql,
+        vec![sea_orm::Value::from(pattern)],
+    ))
 }

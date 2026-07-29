@@ -1,0 +1,196 @@
+{
+  "schema_version": 2,
+  "module": "iggy",
+  "packet": "dlq-duplicate-fair-window-external-scan-runtime-source",
+  "status": "source_complete_runtime_pending",
+  "owner": "rustok-iggy",
+  "feature": "iggy",
+  "test_target": "dlq_duplicate_fair_window_external_scan",
+  "test": "crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs",
+  "case": "fair_window_scans_each_partition_and_differs_from_global_budget",
+  "command": {
+    "program": "cargo",
+    "args": [
+      "test",
+      "-p",
+      "rustok-iggy",
+      "--features",
+      "iggy",
+      "--test",
+      "dlq_duplicate_fair_window_external_scan",
+      "--",
+      "fair_window_scans_each_partition_and_differs_from_global_budget",
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
+  "environment": {
+    "address": "RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_ADDRESS",
+    "optional_username": "RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_USERNAME",
+    "optional_password": "RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_PASSWORD",
+    "default_address": false,
+    "default_credentials": false
+  },
+  "reviewed_broker_requirement": {
+    "mode": "external_disposable_or_operator_cleaned",
+    "message_deduplication_enabled": false,
+    "configuration_readback_by_test": false,
+    "reason": "the test requires repeated deterministic header UUIDs to remain as separate physical messages"
+  },
+  "topology": {
+    "unique_stream_per_run": true,
+    "topic": "dlq",
+    "domain_partitions": 2,
+    "replication_factor": 1,
+    "stream_deletion_by_test": false
+  },
+  "production_partitioning": {
+    "publisher": "IggyDlqPublisher",
+    "formula": "(broker_message_id_as_u128 mod partition_count) + 1",
+    "one_based": true,
+    "same_broker_message_id_colocated": true,
+    "same_broker_message_id_split_across_partitions_claimed": false,
+    "direct_sdk_fixture_publisher": false
+  },
+  "fixture_publication": {
+    "api": "IggyTransport::move_to_dlq",
+    "direct_sdk_producer": false,
+    "physical_messages": 5,
+    "partition_1": {
+      "ordinary_duplicate_copies": 2,
+      "ordinary_duplicate_same_exact_bytes": true,
+      "overflow_unique_messages": 1
+    },
+    "partition_2": {
+      "identity_conflict_copies": 2,
+      "identity_conflict_different_exact_bytes": true
+    }
+  },
+  "fair_window": {
+    "partitions": [
+      1,
+      2
+    ],
+    "start_offset": 0,
+    "per_partition_messages": 2,
+    "batch_size": 2,
+    "runs": 2,
+    "same_policy_reused": true,
+    "required_summary": {
+      "total_messages": 4,
+      "unique_message_ids": 2,
+      "duplicate_messages": 2,
+      "duplicate_groups": 2,
+      "conflicting_payload_groups": 1,
+      "max_copies_per_message_id": 2,
+      "has_physical_duplicates": true,
+      "has_identity_conflicts": true,
+      "requires_manual_review": true
+    }
+  },
+  "compatibility_global_request": {
+    "partitions": [
+      1,
+      2
+    ],
+    "start_offset": 0,
+    "max_messages": 4,
+    "batch_size": 2,
+    "runs": 1,
+    "required_summary": {
+      "total_messages": 4,
+      "unique_message_ids": 3,
+      "duplicate_messages": 1,
+      "duplicate_groups": 1,
+      "conflicting_payload_groups": 0,
+      "max_copies_per_message_id": 2,
+      "has_physical_duplicates": true,
+      "has_identity_conflicts": false,
+      "requires_manual_review": false
+    },
+    "must_differ_from_fair_window": true
+  },
+  "offset_non_mutation": {
+    "consumer_kind": "standalone_consumer",
+    "consumer_name": "rustok-dlq-duplicate-readonly-v1",
+    "partitions": [
+      1,
+      2
+    ],
+    "checks": [
+      "before_fixture_publication",
+      "after_first_fair_window",
+      "after_global_request",
+      "after_second_fair_window"
+    ],
+    "required_stored_offset": null,
+    "second_fair_summary_equals_first": true,
+    "auto_commit": false
+  },
+  "retained_execution": {
+    "status": "capture_source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution-contract.json",
+    "runner": "scripts/evidence/capture-iggy-dlq-duplicate-fair-window-external-scan.mjs",
+    "verifier": "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs",
+    "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution.json",
+    "canonical_packet_present": false,
+    "no_clobber_write": true
+  },
+  "sdk_observer_boundary": {
+    "allowed": [
+      "connect",
+      "IggyDlqDuplicateScanner_explicit_offset_poll",
+      "get_consumer_offset",
+      "shutdown"
+    ],
+    "forbidden": [
+      "send_messages",
+      "store_consumer_offset",
+      "delete_consumer_offset",
+      "consumer_group_cursor",
+      "acknowledge",
+      "store_offset",
+      "delete_stream",
+      "delete_topic",
+      "purge_topic",
+      "configuration_mutation"
+    ]
+  },
+  "privacy_boundary": {
+    "summary_only": true,
+    "no_logs_of": [
+      "address",
+      "credential",
+      "stream_name",
+      "partition_offset",
+      "header_uuid",
+      "payload"
+    ]
+  },
+  "source_files": [
+    "crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+    "crates/rustok-iggy/src/dlq_publisher.rs",
+    "crates/rustok-iggy/src/transport.rs"
+  ],
+  "non_claims": [
+    "runtime_executed",
+    "retained_runtime_evidence",
+    "active_server_configuration_readback",
+    "production_history_complete",
+    "production_dedup_window_sufficiency",
+    "same_broker_message_id_split_across_partitions",
+    "moving_cursor",
+    "cross_cycle_duplicate_accumulation",
+    "bundled_iggy",
+    "tls_auth_failover",
+    "destructive_reconciliation",
+    "profiles_authorization"
+  ],
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-fair-window-external-runtime-checkpoint.md",
+  "execution_status": "not_run"
+}

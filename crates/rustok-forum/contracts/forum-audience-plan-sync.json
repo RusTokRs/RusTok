@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BA",
+  "upstream_task": "FORUM-20AZ",
+  "scope": "Conflict-safe synchronization of the canonical Forum roadmap and FORUM-20AV through FORUM-20AZ owner notes after reply-create, topic-local narrowing, moderation policy, and existing moderation transport composition were delivered",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "crate_api": "crates/rustok-forum/CRATE_API.md",
+  "owner_note": "crates/rustok-forum/docs/forum-20ba-audience-plan-sync.md",
+  "source_verifier": "scripts/verify/verify-forum-audience-plan-sync.mjs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-moderation-audience-transport-composition.json",
+  "required_ledger_through": "FORUM-20BA",
+  "delivered_task_notes": [
+    "crates/rustok-forum/docs/forum-20av-reply-create-audience-enforcement.md",
+    "crates/rustok-forum/docs/forum-20aw-reply-create-audience-transport-composition.md",
+    "crates/rustok-forum/docs/forum-20ax-topic-reply-create-audience.md",
+    "crates/rustok-forum/docs/forum-20ay-moderation-audience-policy.md",
+    "crates/rustok-forum/docs/forum-20az-moderation-audience-transport-composition.md"
+  ],
+  "delivered_task_contracts": [
+    "crates/rustok-forum/contracts/forum-reply-create-audience-enforcement.json",
+    "crates/rustok-forum/contracts/forum-reply-create-audience-transport-composition.json",
+    "crates/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json",
+    "crates/rustok-forum/contracts/forum-moderation-audience-policy.json",
+    "crates/rustok-forum/contracts/forum-moderation-audience-transport-composition.json"
+  ],
+  "synchronization": {
+    "canonical_ledger_advanced_through_forum_20az": true,
+    "documentation_sync_recorded_as_forum_20ba": true,
+    "reply_create_enforcement_removed_from_remaining_scope": true,
+    "reply_create_transport_composition_removed_from_remaining_scope": true,
+    "topic_local_reply_narrowing_removed_from_remaining_scope": true,
+    "category_moderation_audience_removed_from_remaining_scope": true,
+    "existing_solution_transport_composition_removed_from_remaining_scope": true,
+    "authoritative_forum_trust_status_corrected": true,
+    "owner_note_plan_debt_marked_resolved": true,
+    "latest_handoff_updated": true,
+    "runtime_behavior_changed": false,
+    "migration_changed": false,
+    "dependency_changed": false,
+    "public_contract_changed": false
+  },
+  "preserved_residuals": [
+    "remaining Forum read transport list reply and category authorization migration",
+    "search index SEO and deep-link policy migration",
+    "visibility-scoped category and all-read commands",
+    "future moderation transports must reuse context-aware owner methods",
+    "tenant-wide scheduled reconciliation and payload redaction",
+    "channel delivery enqueue and transports",
+    "delivery-time target authorization",
+    "PostgreSQL concurrency lease contention inheritance and cross-consumer runtime evidence"
+  ],
+  "downstream_task": "FORUM-20BB",
+  "downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-exact-read.json",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "node scripts/verify/verify-forum-audience-plan-sync.mjs",
+      "node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs",
+      "node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs",
+      "node scripts/verify/verify-forum-topic-reply-create-audience-policy.mjs",
+      "node scripts/verify/verify-forum-moderation-audience-policy.mjs",
+      "node scripts/verify/verify-forum-moderation-audience-transport-composition.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
