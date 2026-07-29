@@ -105,15 +105,16 @@ impl CommerceOrderReadRuntime {
     }
 }
 
-/// Request-owned identity and channel facts used to build order read `PortContext` values.
+/// Request-owned identity, channel, and locale facts used to build order read `PortContext` values.
 ///
 /// Mounted GraphQL requests derive the actor only from validated `AuthContext` data. An absent
-/// principal uses a stable service actor. The channel is the host-resolved request channel slug;
-/// caller-supplied identity headers are never consulted here.
+/// principal uses a stable service actor. Channel and locale come from the host-resolved request
+/// context; caller-supplied identity headers are never consulted here.
 #[derive(Clone)]
 pub(crate) struct CommerceOrderReadCallContext {
     actor: PortActor,
     channel: Option<String>,
+    locale: Option<String>,
 }
 
 impl CommerceOrderReadCallContext {
@@ -122,10 +123,14 @@ impl CommerceOrderReadCallContext {
             .data_opt::<AuthContext>()
             .map(|auth| PortActor::user(auth.user_id.to_string()))
             .unwrap_or_else(|| PortActor::service("rustok-commerce.graphql-order-query"));
-        let channel = ctx
-            .data_opt::<RequestContext>()
-            .and_then(|request| request.channel_slug.clone());
-        Self { actor, channel }
+        let request = ctx.data_opt::<RequestContext>();
+        let channel = request.and_then(|request| request.channel_slug.clone());
+        let locale = request.map(|request| request.locale.clone());
+        Self {
+            actor,
+            channel,
+            locale,
+        }
     }
 
     pub(crate) fn actor(&self) -> PortActor {
@@ -135,6 +140,10 @@ impl CommerceOrderReadCallContext {
     pub(crate) fn channel(&self) -> Option<&str> {
         self.channel.as_deref()
     }
+
+    pub(crate) fn locale(&self) -> Option<&str> {
+        self.locale.as_deref()
+    }
 }
 
 impl Default for CommerceOrderReadCallContext {
@@ -142,6 +151,7 @@ impl Default for CommerceOrderReadCallContext {
         Self {
             actor: PortActor::service("rustok-commerce.graphql-order-query"),
             channel: None,
+            locale: None,
         }
     }
 }
@@ -157,8 +167,8 @@ tokio::task_local! {
 /// Resolver-scoped bridge from schema runtime data to private compatibility facades.
 ///
 /// The mounted extension carries shipping-option, fulfillment-lifecycle, order, and Product catalog
-/// owner ports plus validated order actor/channel facts so every included Commerce resolver uses
-/// host-selected adapters and request-owned context for the current async task.
+/// owner ports plus validated order actor/channel/locale facts so every included Commerce resolver
+/// uses host-selected adapters and request-owned context for the current async task.
 #[derive(Default)]
 pub struct CommerceShippingOptionReadScope;
 
