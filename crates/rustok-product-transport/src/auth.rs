@@ -1,5 +1,6 @@
 use std::fmt;
 
+use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tonic::metadata::{Ascii, MetadataValue};
@@ -7,6 +8,7 @@ use tonic::metadata::{Ascii, MetadataValue};
 pub(crate) const AUTHORIZATION_METADATA: &str = "authorization";
 pub(crate) const TENANT_ID_METADATA: &str = "x-rustok-tenant-id";
 const MAX_BEARER_TOKEN_BYTES: usize = 4_096;
+const AUTHORIZATION_DIGEST_BYTES: usize = 32;
 
 /// Deployment-provided service credential for the Product catalog gRPC boundary.
 ///
@@ -16,6 +18,7 @@ const MAX_BEARER_TOKEN_BYTES: usize = 4_096;
 #[derive(Clone, Eq, PartialEq)]
 pub struct ProductCatalogGrpcBearerToken {
     authorization: MetadataValue<Ascii>,
+    authorization_digest: [u8; AUTHORIZATION_DIGEST_BYTES],
 }
 
 impl ProductCatalogGrpcBearerToken {
@@ -33,9 +36,13 @@ impl ProductCatalogGrpcBearerToken {
         }
 
         let authorization = format!("Bearer {secret}");
+        let authorization_digest = authorization_digest(authorization.as_bytes());
         let authorization = MetadataValue::try_from(authorization.as_str())
             .map_err(|_| ProductCatalogGrpcAuthenticationError::InvalidBearerToken)?;
-        Ok(Self { authorization })
+        Ok(Self {
+            authorization,
+            authorization_digest,
+        })
     }
 
     pub(crate) fn authorization_value(&self) -> MetadataValue<Ascii> {
@@ -43,8 +50,16 @@ impl ProductCatalogGrpcBearerToken {
     }
 
     pub(crate) fn matches_authorization(&self, candidate: &[u8]) -> bool {
-        bool::from(self.authorization.as_bytes().ct_eq(candidate))
+        let candidate_digest = authorization_digest(candidate);
+        bool::from(self.authorization_digest.ct_eq(&candidate_digest))
     }
+}
+
+fn authorization_digest(value: &[u8]) -> [u8; AUTHORIZATION_DIGEST_BYTES] {
+    let digest = Sha256::digest(value);
+    let mut output = [0_u8; AUTHORIZATION_DIGEST_BYTES];
+    output.copy_from_slice(&digest);
+    output
 }
 
 impl fmt::Debug for ProductCatalogGrpcBearerToken {
@@ -93,5 +108,6 @@ mod tests {
             .expect("valid bearer token should be accepted");
         assert!(token.matches_authorization(b"Bearer catalog-secret"));
         assert!(!token.matches_authorization(b"Bearer catalog-other"));
+        assert!(!token.matches_authorization(b"short"));
     }
 }
