@@ -26,7 +26,8 @@ impl OutboxTransport {
     /// Writes one validated root event through an owner-supplied transaction.
     ///
     /// This static boundary is used by the validated transactional bus. Keeping
-    /// it crate-private avoids adding a second public raw-envelope entry point;
+    /// it crate-private avoids adding a second public raw-envelope entry point.
+    /// New external domain code must publish through `TransactionalEventBus`;
     /// the existing instance compatibility API remains unchanged.
     pub(crate) async fn write_envelope_in_tx<C>(
         txn: &C,
