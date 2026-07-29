@@ -36,7 +36,7 @@ pub async fn fetch_storefront_replies_graphql(
         return Ok(empty_replies());
     };
 
-    let response = execute_graphql(
+    let response: StorefrontForumAudienceRepliesResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
             STOREFRONT_FORUM_AUDIENCE_REPLIES_QUERY,
@@ -57,7 +57,6 @@ pub async fn fetch_storefront_replies_graphql(
     .await
     .map_err(|error| ApiError::Graphql(error.to_string()))?;
 
-    let response: StorefrontForumAudienceRepliesResponse = response;
     Ok(response.forum_storefront_audience_replies)
 }
 
