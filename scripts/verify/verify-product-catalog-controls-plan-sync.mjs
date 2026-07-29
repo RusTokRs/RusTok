@@ -28,6 +28,10 @@ function requireText(source, marker, message) {
   if (!source.includes(marker)) failures.push(message);
 }
 
+function forbidText(source, marker, message) {
+  if (source.includes(marker)) failures.push(message);
+}
+
 const planPath = "crates/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/implementation-plans-registry.md";
 const plan = read(planPath);
@@ -70,8 +74,10 @@ const adminSliceComplete = [
     'name="category_id"',
     'name="sort_by"',
     'name="sort_direction"',
+    "provide_context(catalog_controls)",
   ]),
   complete("crates/rustok-product/admin/src/catalog_transport.rs", [
+    "use_context::<ProductAdminListInput>()",
     "admin_catalog_native::fetch_products",
     "admin_catalog_graphql::fetch_products",
   ]),
@@ -122,6 +128,11 @@ if (adminSliceComplete) requireText(plan, adminMarker, `${planPath}: completed a
 if (!storefrontSliceComplete && plan.includes(storefrontMarker)) failures.push(`${planPath}: storefront category/sort marker is complete without source parity`);
 if (!adminSliceComplete && plan.includes(adminMarker)) failures.push(`${planPath}: admin category/sort marker is complete without source parity`);
 
+forbidText(
+  plan,
+  "optional catalog filters/sorts, detached-value marker contract",
+  `${planPath}: catalog controls must not be described as source-locked before end-to-end execution exists`,
+);
 for (const marker of [
   "Recheck on 2026-07-29",
   "typed `attribute_filters`",
