@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use chrono::{Duration, Utc};
 use rustok_api::{PortActor, PortContext};
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_forum::entities::forum_topic_read_state;
+use rustok_forum::entities::{forum_topic, forum_topic_read_state};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumCategoryAudiencePolicyService, ForumError, ForumModule,
@@ -12,7 +13,8 @@ use rustok_forum::{
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, Database,
+    DatabaseConnection, EntityTrait, QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -105,6 +107,26 @@ async fn create_topic(
         .id
 }
 
+async fn set_topic_cursor_time(
+    db: &DatabaseConnection,
+    topic_id: Uuid,
+    seconds_before_now: i64,
+) {
+    let model = forum_topic::Entity::find_by_id(topic_id)
+        .one(db)
+        .await
+        .expect("topic cursor row should load")
+        .expect("topic cursor row should exist");
+    let timestamp = Utc::now() - Duration::seconds(seconds_before_now);
+    let mut active: forum_topic::ActiveModel = model.into();
+    active.created_at = Set(timestamp.into());
+    active.updated_at = Set(timestamp.into());
+    active
+        .update(db)
+        .await
+        .expect("topic cursor timestamp should update");
+}
+
 fn read_context(tenant_id: Uuid, user_id: Uuid, channel_slug: &str) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
@@ -144,6 +166,8 @@ async fn visible_bulk_read_advances_raw_cursor_without_marking_denied_topics() {
         "web",
     )
     .await;
+    set_topic_cursor_time(&db, hidden_topic, 2).await;
+    set_topic_cursor_time(&db, visible_topic, 1).await;
 
     let service = ForumVisibilityScopedReadStateService::new(db.clone());
     let first = service
