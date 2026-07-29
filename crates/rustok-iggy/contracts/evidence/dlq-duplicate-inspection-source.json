@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "iggy",
   "packet": "dlq-duplicate-inspection-source",
   "status": "source_complete_runtime_evidence_pending",
@@ -86,7 +86,7 @@
     "result": "DlqDuplicateSummary"
   },
   "rolling_window": {
-    "status": "source_complete_moving_scan_integrated_server_pending",
+    "status": "source_complete_server_composed_runtime_pending",
     "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json",
     "source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
     "result": "DlqDuplicateRollingWindowSnapshot",
@@ -94,7 +94,7 @@
     "history_truncated_after_eviction": true,
     "identifier_export": false,
     "moving_scanner": {
-      "status": "source_complete_server_composition_runtime_pending",
+      "status": "source_complete_server_composed_runtime_pending",
       "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
       "source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
       "independent_process_local_partition_cursors": true,
@@ -139,15 +139,22 @@
       "external"
     ],
     "startup_failure_non_fatal": true,
-    "moving_window_mode": "pending_explicit_opt_in",
+    "scan_modes": [
+      "global_budget",
+      "fair_window",
+      "moving_window"
+    ],
+    "default_scan_mode": "global_budget",
+    "moving_window_explicit_opt_in": true,
+    "moving_configuration_fail_closed": true,
+    "moving_scan_failure_preserves_process_local_state": true,
     "readiness_dependency": false,
     "profiles_authorization": false
   },
   "remaining_work": [
     "retained_external_iggy_duplicate_scan_evidence",
-    "compose_moving_window_server_observer",
-    "define_reviewed_moving_window_configuration",
     "retain_moving_window_external_runtime_evidence",
+    "review_reset_frequency_and_initial_offset_per_deployment",
     "define_persistent_cursor_owner_only_if_restart_continuity_is_required",
     "telemetry_and_health_projection",
     "alert_delivery_and_suppression_outside_policy",

@@ -5,7 +5,8 @@ use std::time::Duration;
 use rustok_iggy::{
     DlqDuplicateAlertPolicy, DlqDuplicateAlertRuntimePublisher,
     DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeSubscriber,
-    IggyDlqDuplicateAlertObserver, IggyMode, IggyTransport,
+    IggyDlqDuplicateAlertMovingWindowConfig, IggyDlqDuplicateAlertObserver, IggyMode,
+    IggyTransport,
 };
 use tokio::task::JoinHandle;
 
@@ -23,6 +24,10 @@ const MAX_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES";
 const PER_PARTITION_MESSAGES_ENV: &str =
     "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES";
 const BATCH_SIZE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE";
+const ROLLING_MAX_CYCLES_ENV: &str =
+    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_CYCLES";
+const ROLLING_MAX_OBSERVATIONS_PER_CYCLE_ENV: &str =
+    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_OBSERVATIONS_PER_CYCLE";
 const WARNING_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_WARNING_MESSAGES";
 const CRITICAL_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_CRITICAL_MESSAGES";
 const WARNING_GROUPS_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_WARNING_GROUPS";
@@ -48,15 +53,20 @@ pub enum EventDlqDuplicateAlertObserverMode {
     IggyExternal,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum EventDlqDuplicateAlertScanConfig {
     GlobalBudget {
+        start_offset: u64,
         max_messages: u32,
         batch_size: u32,
     },
     FairWindow {
+        start_offset: u64,
         per_partition_messages: u32,
         batch_size: u32,
+    },
+    MovingWindow {
+        moving: IggyDlqDuplicateAlertMovingWindowConfig,
     },
 }
 
@@ -82,7 +92,6 @@ impl EventDlqDuplicateAlertObserverHandle {
 
 struct EventDlqDuplicateAlertObserverConfig {
     poll: Duration,
-    start_offset: u64,
     scan: EventDlqDuplicateAlertScanConfig,
     policy: DlqDuplicateAlertPolicy,
 }
@@ -143,7 +152,7 @@ pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext
         return;
     };
     let iggy_config = transport.config().clone();
-    let config = match EventDlqDuplicateAlertObserverConfig::from_env() {
+    let config = match EventDlqDuplicateAlertObserverConfig::from_env(&iggy_config) {
         Ok(config) => config,
         Err(_) => {
             record_startup_unavailable(ctx, STARTUP_CONFIGURATION_INVALID);
@@ -204,28 +213,37 @@ async fn observer_loop(
         }
 
         if observer.is_none() {
-            let connection = match config.scan {
+            let connection = match &config.scan {
                 EventDlqDuplicateAlertScanConfig::GlobalBudget {
+                    start_offset,
                     max_messages,
                     batch_size,
                 } => {
                     IggyDlqDuplicateAlertObserver::connect(
                         &iggy_config,
-                        config.start_offset,
-                        max_messages,
-                        batch_size,
+                        *start_offset,
+                        *max_messages,
+                        *batch_size,
                     )
                     .await
                 }
                 EventDlqDuplicateAlertScanConfig::FairWindow {
+                    start_offset,
                     per_partition_messages,
                     batch_size,
                 } => {
                     IggyDlqDuplicateAlertObserver::connect_fair_window(
                         &iggy_config,
-                        config.start_offset,
-                        per_partition_messages,
-                        batch_size,
+                        *start_offset,
+                        *per_partition_messages,
+                        *batch_size,
+                    )
+                    .await
+                }
+                EventDlqDuplicateAlertScanConfig::MovingWindow { moving } => {
+                    IggyDlqDuplicateAlertObserver::connect_moving_window(
+                        &iggy_config,
+                        moving.clone(),
                     )
                     .await
                 }
@@ -242,7 +260,7 @@ async fn observer_loop(
             }
         }
 
-        if let Some(connected) = observer.take() {
+        if let Some(mut connected) = observer.take() {
             match connected.summarize().await {
                 Ok(summary) => {
                     match publisher.publish(&summary) {
@@ -258,11 +276,16 @@ async fn observer_loop(
                     observer = Some(connected);
                 }
                 Err(error) => {
+                    let preserve_state = connected.preserves_process_local_state_after_scan_error();
                     let _ = publisher.mark_unavailable();
                     tracing::warn!(
                         error_code = error.stable_code(),
-                        "Physical DLQ duplicate scan failed; reconnecting without affecting event delivery"
+                        preserves_process_local_state = preserve_state,
+                        "Physical DLQ duplicate scan failed; retry remains isolated from event delivery"
                     );
+                    if preserve_state {
+                        observer = Some(connected);
+                    }
                 }
             }
         }
@@ -293,16 +316,18 @@ fn record_snapshot(snapshot: DlqDuplicateAlertRuntimeSnapshot) {
 }
 
 impl EventDlqDuplicateAlertObserverConfig {
-    fn from_env() -> Result<Self> {
+    fn from_env(iggy_config: &rustok_iggy::IggyConfig) -> Result<Self> {
         let poll_ms = optional_u64_env(POLL_ENV, DEFAULT_POLL_MS)?;
         if poll_ms == 0 || poll_ms > MAX_POLL_MS {
             return Err(Error::Message(format!(
                 "{POLL_ENV} must be between 1 and {MAX_POLL_MS}"
             )));
         }
+
         let scan = match optional_scan_mode_env()? {
             EventDlqDuplicateAlertScanMode::GlobalBudget => {
                 EventDlqDuplicateAlertScanConfig::GlobalBudget {
+                    start_offset: optional_u64_env(START_OFFSET_ENV, 0)?,
                     max_messages: optional_u32_env(MAX_MESSAGES_ENV, DEFAULT_MAX_MESSAGES)?,
                     batch_size: optional_u32_env(BATCH_SIZE_ENV, DEFAULT_BATCH_SIZE)?,
                 }
@@ -310,6 +335,7 @@ impl EventDlqDuplicateAlertObserverConfig {
             EventDlqDuplicateAlertScanMode::FairWindow => {
                 let per_partition_messages = required_u32_env(PER_PARTITION_MESSAGES_ENV)?;
                 EventDlqDuplicateAlertScanConfig::FairWindow {
+                    start_offset: optional_u64_env(START_OFFSET_ENV, 0)?,
                     per_partition_messages,
                     batch_size: optional_u32_env(
                         BATCH_SIZE_ENV,
@@ -317,7 +343,16 @@ impl EventDlqDuplicateAlertObserverConfig {
                     )?,
                 }
             }
+            EventDlqDuplicateAlertScanMode::MovingWindow => moving_window_scan_config(
+                iggy_config,
+                required_u64_env(START_OFFSET_ENV)?,
+                required_u32_env(PER_PARTITION_MESSAGES_ENV)?,
+                required_u32_env(BATCH_SIZE_ENV)?,
+                required_u32_env(ROLLING_MAX_CYCLES_ENV)?,
+                required_u32_env(ROLLING_MAX_OBSERVATIONS_PER_CYCLE_ENV)?,
+            )?,
         };
+
         let policy = DlqDuplicateAlertPolicy::new(
             required_u64_env(WARNING_MESSAGES_ENV)?,
             required_u64_env(CRITICAL_MESSAGES_ENV)?,
@@ -330,17 +365,37 @@ impl EventDlqDuplicateAlertObserverConfig {
 
         Ok(Self {
             poll: Duration::from_millis(poll_ms),
-            start_offset: optional_u64_env(START_OFFSET_ENV, 0)?,
             scan,
             policy,
         })
     }
 }
 
+fn moving_window_scan_config(
+    iggy_config: &rustok_iggy::IggyConfig,
+    initial_offset: u64,
+    per_partition_messages: u32,
+    batch_size: u32,
+    rolling_max_cycles: u32,
+    rolling_max_observations_per_cycle: u32,
+) -> Result<EventDlqDuplicateAlertScanConfig> {
+    let moving = IggyDlqDuplicateAlertMovingWindowConfig::new(
+        iggy_config,
+        initial_offset,
+        per_partition_messages,
+        batch_size,
+        rolling_max_cycles,
+        rolling_max_observations_per_cycle,
+    )
+    .map_err(|error| Error::Message(error.stable_code().to_string()))?;
+    Ok(EventDlqDuplicateAlertScanConfig::MovingWindow { moving })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EventDlqDuplicateAlertScanMode {
     GlobalBudget,
     FairWindow,
+    MovingWindow,
 }
 
 fn optional_scan_mode_env() -> Result<EventDlqDuplicateAlertScanMode> {
@@ -359,8 +414,9 @@ fn parse_scan_mode(
     match value.trim().to_ascii_lowercase().as_str() {
         "global" | "global_budget" => Ok(EventDlqDuplicateAlertScanMode::GlobalBudget),
         "fair" | "fair_window" => Ok(EventDlqDuplicateAlertScanMode::FairWindow),
+        "moving" | "moving_window" => Ok(EventDlqDuplicateAlertScanMode::MovingWindow),
         _ => Err(format!(
-            "{SCAN_MODE_ENV} must be global_budget or fair_window"
+            "{SCAN_MODE_ENV} must be global_budget, fair_window, or moving_window"
         )),
     }
 }
@@ -482,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_mode_parser_preserves_global_default_and_explicit_fair_window() {
+    fn scan_mode_parser_preserves_global_default_and_explicit_opt_in_modes() {
         assert_eq!(
             parse_scan_mode("global_budget").unwrap(),
             EventDlqDuplicateAlertScanMode::GlobalBudget
@@ -491,7 +547,26 @@ mod tests {
             parse_scan_mode("fair_window").unwrap(),
             EventDlqDuplicateAlertScanMode::FairWindow
         );
+        assert_eq!(
+            parse_scan_mode("moving_window").unwrap(),
+            EventDlqDuplicateAlertScanMode::MovingWindow
+        );
         assert!(parse_scan_mode("moving_cursor").is_err());
+    }
+
+    #[test]
+    fn moving_window_configuration_is_explicit_and_fail_closed() {
+        let mut iggy_config = rustok_iggy::IggyConfig::default();
+        iggy_config.topology.domain_partitions = 2;
+        assert!(moving_window_scan_config(&iggy_config, 10, 2, 1, 3, 3).is_err());
+        let valid = moving_window_scan_config(&iggy_config, 10, 2, 1, 3, 4).unwrap();
+        let EventDlqDuplicateAlertScanConfig::MovingWindow { moving } = valid else {
+            panic!("expected moving-window configuration");
+        };
+        assert_eq!(moving.partition_count(), 2);
+        assert_eq!(moving.total_message_budget(), 4);
+        assert!(!moving.progress_persisted());
+        assert!(moving.restart_resets_to_initial_offset());
     }
 
     #[test]

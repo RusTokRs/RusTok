@@ -1,124 +1,62 @@
 # Profiles checkpoint: bounded physical DLQ duplicate rolling window
 
-Status: **cross-cycle rolling-window state and moving scanner integration source-complete; server composition and runtime evidence pending**.
+Status: **cross-cycle rolling state plus moving scanner and server integration source-complete; external runtime evidence pending**.
 
 ## Why this belongs in the Profiles improvement trail
 
-Profiles never authorizes presentation from broker, receipt, metric, evidence, or duplicate-inspection state. However, downstream processing reliability must not hide a physical duplicate merely because its copies were observed in adjacent scan cycles.
-
-The fixed scanners classify one bounded result. `DlqDuplicateRollingWindow` adds bounded cross-cycle identity retention, and the feature-gated moving scanner now supplies complete fair cycles with private process-local per-partition cursors. Neither exports message identity or turns operational state into profile policy.
-
-## Delivered source boundary
-
-Owner sources:
+Profiles never authorizes presentation from broker, receipt, metric, evidence, duplicate, cursor, or rolling state. Downstream reliability still must not hide a physical duplicate merely because copies were observed in adjacent advancing scan cycles.
 
 ```text
-crates/rustok-iggy/src/
-  dlq_duplicate_rolling_window.rs
-  dlq_duplicate_moving_window_scan.rs
-```
-
-Public rolling API:
-
-```text
-DlqDuplicateRollingWindowPolicy
-DlqDuplicateRollingWindow
-DlqDuplicateRollingWindowSnapshot
-DlqDuplicateRollingWindowError
-```
-
-Moving integration API:
-
-```text
-IggyDlqDuplicateMovingWindowPolicy
-IggyDlqDuplicateMovingWindowState
-IggyDlqDuplicateMovingWindowSnapshot
-IggyDlqDuplicateMovingWindowScanner
-IggyDlqDuplicateMovingWindowError
-```
-
-Machine contracts:
-
-```text
-crates/rustok-iggy/contracts/evidence/
-  dlq-duplicate-rolling-window-source.json
-  dlq-duplicate-moving-window-scan-source.json
-```
-
-Verifiers:
-
-```text
-scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
-scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs
-```
-
-Owner guides:
-
-```text
-crates/rustok-iggy/docs/dlq-duplicate-rolling-window.md
-crates/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md
+complete cross-cycle observations
+  -> bounded rolling classification
+  -> count-only alert summary
+  -> identifier-free server snapshot
 ```
 
 ## Bounded semantics
 
-The caller explicitly supplies a positive cycle count and positive per-cycle observation bound. Their checked product cannot exceed 10,000, and no production default is provided.
+`DlqDuplicateRollingWindowPolicy` requires explicit positive cycle and per-cycle observation bounds. Their checked product cannot exceed 10,000, and no production default is provided.
 
-One successful `push_cycle` represents one complete scan cycle. The state:
+One `push_cycle` represents one complete cycle. The state:
 
-- detects an ordinary duplicate split across retained cycles;
-- detects conflicting exact bytes for one deterministic ID split across retained cycles;
-- rejects an oversized cycle without changing prior state;
+- detects ordinary or conflicting copies split across retained cycles;
+- rejects oversized input without changing prior state;
 - evicts only the oldest complete cycle;
 - exposes only aggregate summary and retention counts.
 
-## Moving scanner integration
-
-The moving scanner integration is source-complete.
-
-Each selected partition has one private process-local per-partition cursor. Every cycle applies an equal bounded message budget, polls with explicit offsets and `auto_commit=false`, and advances all cursors only after every partition succeeds and the rolling state accepts the combined cycle.
-
-An incomplete, invalid, or failed cycle preserves all cursors and the previous rolling snapshot. Public results expose only partition count, advanced-partition count, reset generation, and the existing identifier-free rolling snapshot.
-
-Restart semantics are explicit reset:
-
-- no cursor or observation persistence;
-- new state starts from one reviewed initial offset;
-- `reset_to_initial_offset()` rewinds every cursor and clears rolling history;
-- no restart-safe progress, current-tail, or complete-history claim.
-
-A persistent cursor owner remains separate work and is not implied.
-
 ## Truncation boundary
 
-After an eviction, every snapshot reports:
+After any eviction, every later snapshot reports `history_truncated = true`. An evicted copy can remove a relationship from the retained summary, so the result is never complete-history or current-tail evidence.
 
-```text
-history_truncated = true
-```
+## Moving scanner and server composition
 
-An older copy may have been removed, so a later retained summary may no longer show the original duplicate relationship. The snapshot is therefore not complete history, current-tail proof, or evidence that production retention is sufficient.
+The moving scanner and server integration are source-complete.
+
+Each selected partition owns one private process-local per-partition cursor. A complete equal-budget all-partition candidate is collected before mutation. Cursors and rolling state update together only after the combined cycle is accepted.
+
+The server mode is explicit opt-in through `moving_window`. Reviewed fail-closed configuration supplies initial offset, per-partition cap, batch size, rolling cycle count, and per-cycle observation capacity. Moving results are reduced to the existing identifier-free duplicate summary before alert policy evaluation.
+
+Failed moving cycles preserve connected process-local state. A replacement connection or process restart resets to the reviewed initial offset with empty rolling history. No restart-safe progress or current-tail claim is made.
 
 ## Profiles authorization boundary
 
 Profiles never authorizes visibility, `followers_only`, follow controls, search inclusion, storefront presentation, GraphQL output, or author cards from:
 
-- rolling-window summary counts;
-- retained or evicted cycle counts;
+- rolling summary or retention counts;
 - `history_truncated`;
-- scan cadence, private cursor position, or reset generation;
+- private cursor position, advancement, or reset;
+- moving observer mode or availability;
 - Iggy deployment mode;
 - receipt state or retained evidence.
 
-Privacy remains resolved through authoritative owner ports before localized and Media-backed presentation. Operational state remains operational only.
+Privacy remains resolved through authoritative owner ports before localized and Media-backed presentation.
 
-## Remaining integration
+## Remaining work
 
-Moving scanner integration is source-complete. Remaining work is:
+1. retain external-Iggy cross-cycle execution evidence;
+2. review initial offset and reset frequency per deployment;
+3. add persistent cursor ownership only if restart continuity is required;
+4. retain server observer execution evidence;
+5. add identifier-free telemetry and optional operational health.
 
-1. compose it as an explicit opt-in mode in the mode-aware server observer;
-2. define reviewed configuration and fail-closed startup validation;
-3. retain external-Iggy cross-cycle runtime evidence;
-4. add a persistent cursor owner only if restart continuity is required;
-5. define identifier-free telemetry and health projection.
-
-Tests, Cargo commands, formatters, source verifiers, broker scans, server composition, telemetry registration, and retained capture were not run by the implementation agent.
+Tests, Cargo commands, formatters, verifiers, broker scans, server composition execution, telemetry registration, and retained capture were not run by the implementation agent.

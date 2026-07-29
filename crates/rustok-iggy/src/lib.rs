@@ -103,8 +103,8 @@ pub use dedup_recovery_window_policy::{
 pub use dlq::{DlqEntry, DlqManager};
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_alert_observer::{
-    IggyDlqDuplicateAlertObserver, IggyDlqDuplicateAlertObserverError,
-    IggyDlqDuplicateAlertScanMode,
+    IggyDlqDuplicateAlertMovingWindowConfig, IggyDlqDuplicateAlertObserver,
+    IggyDlqDuplicateAlertObserverError, IggyDlqDuplicateAlertScanMode,
 };
 pub use dlq_duplicate_alert_policy::{
     DlqDuplicateAlertEvaluation, DlqDuplicateAlertLevel, DlqDuplicateAlertPolicy,

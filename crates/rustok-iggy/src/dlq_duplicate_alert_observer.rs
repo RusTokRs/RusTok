@@ -7,17 +7,103 @@ use crate::dlq_duplicate_external_scan::{
     IggyDlqDuplicateScanWindowPolicy, IggyDlqDuplicateScanner,
 };
 use crate::dlq_duplicate_inspection::DlqDuplicateSummary;
+use crate::dlq_duplicate_moving_window_scan::{
+    IggyDlqDuplicateMovingWindowError, IggyDlqDuplicateMovingWindowPolicy,
+    IggyDlqDuplicateMovingWindowScanner, IggyDlqDuplicateMovingWindowState,
+};
+use crate::dlq_duplicate_rolling_window::DlqDuplicateRollingWindowPolicy;
 
 /// Active bounded physical DLQ scan policy for the connected observer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IggyDlqDuplicateAlertScanMode {
     GlobalBudget,
     FairWindow,
+    MovingWindow,
+}
+
+/// Reviewed fail-closed configuration for an opt-in moving observer.
+///
+/// The initial offset and private per-partition cursors remain encapsulated. The
+/// public debug projection includes only bounded counts and retention limits.
+#[derive(Clone, PartialEq, Eq)]
+pub struct IggyDlqDuplicateAlertMovingWindowConfig {
+    policy: IggyDlqDuplicateMovingWindowPolicy,
+}
+
+impl IggyDlqDuplicateAlertMovingWindowConfig {
+    pub fn new(
+        config: &IggyConfig,
+        initial_offset: u64,
+        per_partition_messages: u32,
+        batch_size: u32,
+        rolling_max_cycles: u32,
+        rolling_max_observations_per_cycle: u32,
+    ) -> Result<Self, IggyDlqDuplicateAlertObserverError> {
+        let partitions = configured_partitions(config)?;
+        let rolling_policy = DlqDuplicateRollingWindowPolicy::new(
+            rolling_max_cycles,
+            rolling_max_observations_per_cycle,
+        )
+        .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+        let policy = IggyDlqDuplicateMovingWindowPolicy::new(
+            partitions,
+            initial_offset,
+            per_partition_messages,
+            batch_size,
+            rolling_policy,
+        )
+        .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+        Ok(Self { policy })
+    }
+
+    pub fn partition_count(&self) -> usize {
+        self.policy.partitions().len()
+    }
+
+    pub const fn total_message_budget(&self) -> u32 {
+        self.policy.total_message_budget()
+    }
+
+    pub const fn rolling_max_cycles(&self) -> u32 {
+        self.policy.rolling_policy().max_cycles()
+    }
+
+    pub const fn rolling_max_observations_per_cycle(&self) -> u32 {
+        self.policy
+            .rolling_policy()
+            .max_observations_per_cycle()
+    }
+
+    pub const fn progress_persisted(&self) -> bool {
+        false
+    }
+
+    pub const fn restart_resets_to_initial_offset(&self) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for IggyDlqDuplicateAlertMovingWindowConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("IggyDlqDuplicateAlertMovingWindowConfig")
+            .field("partition_count", &self.partition_count())
+            .field("total_message_budget", &self.total_message_budget())
+            .field("rolling_max_cycles", &self.rolling_max_cycles())
+            .field(
+                "rolling_max_observations_per_cycle",
+                &self.rolling_max_observations_per_cycle(),
+            )
+            .field("progress_persisted", &false)
+            .field("restart_resets_to_initial_offset", &true)
+            .finish_non_exhaustive()
+    }
 }
 
 enum IggyDlqDuplicateAlertScan {
     Global(IggyDlqDuplicateScanRequest),
     FairWindow(IggyDlqDuplicateScanWindowPolicy),
+    MovingWindow(IggyDlqDuplicateMovingWindowState),
 }
 
 impl IggyDlqDuplicateAlertScan {
@@ -25,15 +111,20 @@ impl IggyDlqDuplicateAlertScan {
         match self {
             Self::Global(_) => IggyDlqDuplicateAlertScanMode::GlobalBudget,
             Self::FairWindow(_) => IggyDlqDuplicateAlertScanMode::FairWindow,
+            Self::MovingWindow(_) => IggyDlqDuplicateAlertScanMode::MovingWindow,
         }
+    }
+
+    const fn preserves_process_local_state_after_scan_error(&self) -> bool {
+        matches!(self, Self::MovingWindow(_))
     }
 }
 
 /// Connected read-only source for bounded physical DLQ duplicate summaries.
 ///
 /// This adapter connects to an already-running Iggy deployment. It never starts
-/// or stops a bundled broker, mutates offsets, publishes, acknowledges, deletes,
-/// purges, replays, or changes broker configuration.
+/// or stops a bundled broker, mutates stored consumer offsets, publishes,
+/// acknowledges, deletes, purges, replays, or changes broker configuration.
 pub struct IggyDlqDuplicateAlertObserver {
     client: IggyClient,
     stream_name: String,
@@ -59,7 +150,7 @@ impl IggyDlqDuplicateAlertObserver {
         Self::connect_with_scan(config, IggyDlqDuplicateAlertScan::Global(request)).await
     }
 
-    /// Connect with one equal per-partition snapshot budget.
+    /// Connect with one equal per-partition fixed snapshot budget.
     pub async fn connect_fair_window(
         config: &IggyConfig,
         start_offset: u64,
@@ -75,6 +166,19 @@ impl IggyDlqDuplicateAlertObserver {
         )
         .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
         Self::connect_with_scan(config, IggyDlqDuplicateAlertScan::FairWindow(policy)).await
+    }
+
+    /// Connect with an explicit process-local moving window.
+    pub async fn connect_moving_window(
+        config: &IggyConfig,
+        moving: IggyDlqDuplicateAlertMovingWindowConfig,
+    ) -> Result<Self, IggyDlqDuplicateAlertObserverError> {
+        let partitions = configured_partitions(config)?;
+        if moving.policy.partitions() != partitions.as_slice() {
+            return Err(IggyDlqDuplicateAlertObserverError::InvalidConfiguration);
+        }
+        let state = IggyDlqDuplicateMovingWindowState::new(moving.policy);
+        Self::connect_with_scan(config, IggyDlqDuplicateAlertScan::MovingWindow(state)).await
     }
 
     async fn connect_with_scan(
@@ -96,8 +200,16 @@ impl IggyDlqDuplicateAlertObserver {
 
         let client = connected.ok_or(IggyDlqDuplicateAlertObserverError::ConnectionUnavailable)?;
         let stream_name = config.topology.stream_name.clone();
-        IggyDlqDuplicateScanner::new(&client, &stream_name)
-            .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+        match &scan {
+            IggyDlqDuplicateAlertScan::Global(_) | IggyDlqDuplicateAlertScan::FairWindow(_) => {
+                IggyDlqDuplicateScanner::new(&client, &stream_name)
+                    .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+            }
+            IggyDlqDuplicateAlertScan::MovingWindow(_) => {
+                IggyDlqDuplicateMovingWindowScanner::new(&client, &stream_name)
+                    .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+            }
+        }
 
         Ok(Self {
             client,
@@ -110,18 +222,34 @@ impl IggyDlqDuplicateAlertObserver {
         self.scan.mode()
     }
 
+    /// Moving mode preserves its private cursors and rolling history after a
+    /// failed complete-cycle attempt. Fixed modes remain reconnectable snapshots.
+    pub const fn preserves_process_local_state_after_scan_error(&self) -> bool {
+        self.scan.preserves_process_local_state_after_scan_error()
+    }
+
     pub async fn summarize(
-        &self,
+        &mut self,
     ) -> Result<DlqDuplicateSummary, IggyDlqDuplicateAlertObserverError> {
-        let scanner = IggyDlqDuplicateScanner::new(&self.client, &self.stream_name)?;
-        match &self.scan {
+        let client = &self.client;
+        let stream_name = &self.stream_name;
+        match &mut self.scan {
             IggyDlqDuplicateAlertScan::Global(request) => {
+                let scanner = IggyDlqDuplicateScanner::new(client, stream_name)?;
                 scanner.summarize(request).await.map_err(Into::into)
             }
-            IggyDlqDuplicateAlertScan::FairWindow(policy) => scanner
-                .summarize_window(policy)
-                .await
-                .map_err(Into::into),
+            IggyDlqDuplicateAlertScan::FairWindow(policy) => {
+                let scanner = IggyDlqDuplicateScanner::new(client, stream_name)?;
+                scanner
+                    .summarize_window(policy)
+                    .await
+                    .map_err(Into::into)
+            }
+            IggyDlqDuplicateAlertScan::MovingWindow(state) => {
+                let scanner = IggyDlqDuplicateMovingWindowScanner::new(client, stream_name)?;
+                let snapshot = scanner.scan_cycle(state).await?;
+                Ok(*snapshot.rolling().summary())
+            }
         }
     }
 }
@@ -147,6 +275,19 @@ impl std::fmt::Debug for IggyDlqDuplicateAlertObserver {
                     .field("total_message_budget", &policy.total_message_budget())
                     .field("batch_size", &policy.batch_size());
             }
+            IggyDlqDuplicateAlertScan::MovingWindow(state) => {
+                let policy = state.policy();
+                debug
+                    .field("partition_count", &policy.partitions().len())
+                    .field("total_message_budget", &policy.total_message_budget())
+                    .field("rolling_max_cycles", &policy.rolling_policy().max_cycles())
+                    .field(
+                        "rolling_max_observations_per_cycle",
+                        &policy.rolling_policy().max_observations_per_cycle(),
+                    )
+                    .field("progress_persisted", &false)
+                    .field("restart_resets_to_initial_offset", &true);
+            }
         }
         debug.finish_non_exhaustive()
     }
@@ -160,6 +301,8 @@ pub enum IggyDlqDuplicateAlertObserverError {
     ConnectionUnavailable,
     #[error(transparent)]
     Scan(#[from] IggyDlqDuplicateScanError),
+    #[error(transparent)]
+    MovingScan(#[from] IggyDlqDuplicateMovingWindowError),
 }
 
 impl IggyDlqDuplicateAlertObserverError {
@@ -172,6 +315,7 @@ impl IggyDlqDuplicateAlertObserverError {
                 "iggy.dlq_duplicate.alert_observer_connection_unavailable"
             }
             Self::Scan(error) => error.stable_code(),
+            Self::MovingScan(error) => error.stable_code(),
         }
     }
 }
@@ -301,15 +445,46 @@ mod tests {
     }
 
     #[test]
-    fn global_and_fair_scan_modes_remain_explicit() {
+    fn global_fair_and_moving_scan_modes_remain_explicit() {
         let global = IggyDlqDuplicateAlertScan::Global(
             IggyDlqDuplicateScanRequest::new(vec![1, 2], 0, 100, 25).unwrap(),
         );
         let fair = IggyDlqDuplicateAlertScan::FairWindow(
             IggyDlqDuplicateScanWindowPolicy::new(vec![1, 2], 0, 50, 25).unwrap(),
         );
+        let mut config = IggyConfig::default();
+        config.topology.domain_partitions = 2;
+        let moving = IggyDlqDuplicateAlertMovingWindowConfig::new(
+            &config, 0, 2, 1, 3, 4,
+        )
+        .unwrap();
+        let moving = IggyDlqDuplicateAlertScan::MovingWindow(
+            IggyDlqDuplicateMovingWindowState::new(moving.policy),
+        );
+
         assert_eq!(global.mode(), IggyDlqDuplicateAlertScanMode::GlobalBudget);
         assert_eq!(fair.mode(), IggyDlqDuplicateAlertScanMode::FairWindow);
+        assert_eq!(moving.mode(), IggyDlqDuplicateAlertScanMode::MovingWindow);
+        assert!(!global.preserves_process_local_state_after_scan_error());
+        assert!(moving.preserves_process_local_state_after_scan_error());
+    }
+
+    #[test]
+    fn moving_window_requires_complete_cycle_capacity() {
+        let mut config = IggyConfig::default();
+        config.topology.domain_partitions = 2;
+        assert_eq!(
+            IggyDlqDuplicateAlertMovingWindowConfig::new(&config, 0, 2, 1, 3, 3)
+                .unwrap_err(),
+            IggyDlqDuplicateAlertObserverError::InvalidConfiguration
+        );
+        let valid =
+            IggyDlqDuplicateAlertMovingWindowConfig::new(&config, 0, 2, 1, 3, 4)
+                .unwrap();
+        assert_eq!(valid.partition_count(), 2);
+        assert_eq!(valid.total_message_budget(), 4);
+        assert!(!valid.progress_persisted());
+        assert!(valid.restart_resets_to_initial_offset());
     }
 
     #[test]

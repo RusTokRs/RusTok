@@ -1,8 +1,8 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "iggy",
   "packet": "dlq-duplicate-rolling-window-source",
-  "status": "source_complete_moving_scan_integrated_server_pending",
+  "status": "source_complete_server_composed_runtime_pending",
   "owner": "rustok-iggy",
   "source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
   "classifier_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
@@ -91,15 +91,17 @@
     "oversized_cycle_rejection_preserves_existing_state"
   ],
   "moving_scan_integration": {
-    "status": "source_complete_server_composition_runtime_pending",
+    "status": "source_complete_server_composed_runtime_pending",
     "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
     "source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
+    "server_observer_contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
     "complete_cycle_feeding": true,
     "independent_process_local_partition_cursors": true,
     "cursor_values_exported": false,
     "progress_persisted": false,
     "restart_semantics": "reset_to_reviewed_initial_offset",
-    "server_observer_composition": "pending",
+    "server_observer_composition": "source_complete",
+    "moving_mode_default": false,
     "runtime_evidence": "pending"
   },
   "non_claims": [
@@ -108,15 +110,15 @@
     "current_tail_coverage",
     "complete_history",
     "production_retention_sufficiency",
-    "server_observer_integration",
+    "external_iggy_execution",
     "profiles_authorization"
   ],
   "remaining_work": [
-    "compose_mode_aware_server_observer",
-    "define_reviewed_moving_scan_configuration",
     "retain_external_iggy_cross_cycle_runtime_evidence",
+    "review_reset_frequency_and_initial_offset_per_deployment",
     "define_persistent_cursor_owner_only_if_restart_continuity_is_required",
-    "define_identifier_free_telemetry_and_health_projection"
+    "define_identifier_free_telemetry_and_health_projection",
+    "retain_server_observer_execution_evidence"
   ],
   "execution_status": "source_not_run"
 }
