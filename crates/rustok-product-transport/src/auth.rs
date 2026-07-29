@@ -32,7 +32,8 @@ impl ProductCatalogGrpcBearerToken {
             return Err(ProductCatalogGrpcAuthenticationError::InvalidBearerToken);
         }
 
-        let authorization = MetadataValue::try_from(format!("Bearer {secret}"))
+        let authorization = format!("Bearer {secret}");
+        let authorization = MetadataValue::try_from(authorization.as_str())
             .map_err(|_| ProductCatalogGrpcAuthenticationError::InvalidBearerToken)?;
         Ok(Self { authorization })
     }
@@ -42,10 +43,7 @@ impl ProductCatalogGrpcBearerToken {
     }
 
     pub(crate) fn matches_authorization(&self, candidate: &[u8]) -> bool {
-        self.authorization
-            .as_bytes()
-            .ct_eq(candidate)
-            .into()
+        bool::from(self.authorization.as_bytes().ct_eq(candidate))
     }
 }
 
