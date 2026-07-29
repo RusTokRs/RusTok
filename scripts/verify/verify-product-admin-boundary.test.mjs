@@ -43,14 +43,16 @@ pub(crate) fn product_admin_selected_product_query_state() {}
 pub(crate) fn product_admin_products_load_view_from_result() {}
 `,
     "crates/rustok-product/admin/src/ui/catalog_admin.rs": options.missingCategoryUi ? `
-use crate::catalog_controls::build_product_admin_catalog_controls_labels;
+use crate::catalog_controls::{build_product_admin_catalog_controls_labels, build_product_admin_list_input};
 use crate::transport;
 pub fn ProductAdmin() { let _ = transport::fetch_catalog_search_options; }
 ` : `
-use crate::catalog_controls::build_product_admin_catalog_controls_labels;
+use crate::catalog_controls::{build_product_admin_catalog_controls_labels, build_product_admin_list_input};
 use crate::transport;
 pub fn ProductAdmin() {
+ let catalog_controls = build_product_admin_list_input();
  let _ = read_route_query_value(&route_context, "category_id");
+ provide_context(catalog_controls);
  let _ = view! { <form><select name="category_id"></select><select name="sort_by"></select><select name="sort_direction"></select><super::leptos::ProductAdmin /></form> };
  let _ = transport::fetch_catalog_search_options;
 }
@@ -64,17 +66,29 @@ pub fn ProductAdmin() {
  let _ = save_product_attribute_values;
 }
 `,
-    "crates/rustok-product/admin/src/catalog_transport.rs": `
+    "crates/rustok-product/admin/src/catalog_transport.rs": options.missingContext ? `
 #[path = "transport.rs"]
 mod legacy;
 mod admin_catalog_graphql;
 mod admin_catalog_native;
+pub use legacy::fetch_catalog_search_options;
 pub(crate) use legacy::*;
 pub async fn fetch_products() {
- build_product_admin_list_input();
- let _ = browser_query_value("category_id");
- let _ = browser_query_value("sort_by");
- let _ = browser_query_value("sort_direction");
+ admin_catalog_native::fetch_products();
+ admin_catalog_graphql::fetch_products();
+}
+` : `
+#[path = "transport.rs"]
+mod legacy;
+mod admin_catalog_graphql;
+mod admin_catalog_native;
+pub use legacy::fetch_catalog_search_options;
+pub(crate) use legacy::*;
+pub async fn fetch_products() {
+ let route_controls = use_context::<ProductAdminListInput>();
+ let _ = route_controls.category_id;
+ let _ = route_controls.sort_by;
+ let _ = route_controls.sort_direction;
  admin_catalog_native::fetch_products();
  admin_catalog_graphql::fetch_products();
 }
@@ -181,6 +195,10 @@ test("product admin boundary rejects missing category UI", () => {
 
 test("product admin boundary rejects missing editor", () => {
   assertFixtureFails({ missingEditor: true }, /preserved editor marker/);
+});
+
+test("product admin boundary rejects missing SSR-safe context", () => {
+  assertFixtureFails({ missingContext: true }, /typed catalog facade marker/);
 });
 
 test("product admin boundary rejects missing native owner execution", () => {
