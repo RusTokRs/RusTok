@@ -50,7 +50,7 @@ impl OrderService {
         fallback_locale: Option<&str>,
     ) -> OrderResult<OrderResponse> {
         const OPERATION: &str = "read_order_projection";
-        let context = graphql_order_read_context(tenant_id, locale, OPERATION, order_id);
+        let context = graphql_order_read_context(tenant_id, Some(locale), OPERATION, order_id);
         self.order_reads
             .read_order_projection(
                 context.clone(),
@@ -78,7 +78,7 @@ impl OrderService {
         fallback_locale: Option<&str>,
     ) -> OrderResult<(Vec<OrderResponse>, u64)> {
         const OPERATION: &str = "list_order_projections";
-        let context = graphql_order_read_context(tenant_id, locale, OPERATION, tenant_id);
+        let context = graphql_order_read_context(tenant_id, Some(locale), OPERATION, tenant_id);
         let page = self
             .order_reads
             .list_order_projections(
@@ -109,7 +109,7 @@ impl OrderService {
         change_id: Uuid,
     ) -> OrderResult<OrderChangeResponse> {
         const OPERATION: &str = "read_order_change_projection";
-        let context = graphql_order_read_context(tenant_id, "und", OPERATION, change_id);
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, change_id);
         self.order_reads
             .read_order_change_projection(
                 context.clone(),
@@ -132,7 +132,7 @@ impl OrderService {
         input: ListOrderChangesInput,
     ) -> OrderResult<(Vec<OrderChangeResponse>, u64)> {
         const OPERATION: &str = "list_order_change_projections";
-        let context = graphql_order_read_context(tenant_id, "und", OPERATION, tenant_id);
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, tenant_id);
         let page = self
             .order_reads
             .list_order_change_projections(
@@ -163,7 +163,7 @@ impl OrderService {
         return_id: Uuid,
     ) -> OrderResult<OrderReturnResponse> {
         const OPERATION: &str = "read_order_return_projection";
-        let context = graphql_order_read_context(tenant_id, "und", OPERATION, return_id);
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, return_id);
         self.order_reads
             .read_order_return_projection(
                 context.clone(),
@@ -186,7 +186,7 @@ impl OrderService {
         input: ListOrderReturnsInput,
     ) -> OrderResult<(Vec<OrderReturnResponse>, u64)> {
         const OPERATION: &str = "list_order_return_projections";
-        let context = graphql_order_read_context(tenant_id, "und", OPERATION, tenant_id);
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, tenant_id);
         let page = self
             .order_reads
             .list_order_return_projections(
@@ -221,12 +221,15 @@ enum GraphqlOrderReadResource {
 
 fn graphql_order_read_context(
     tenant_id: Uuid,
-    locale: &str,
+    explicit_locale: Option<&str>,
     operation: &'static str,
     resource_id: Uuid,
 ) -> PortContext {
     let call_context =
         crate::graphql_runtime::order_read_call_context_for_current_graphql_scope();
+    let locale = explicit_locale
+        .or_else(|| call_context.locale())
+        .unwrap_or("und");
     let context = PortContext::new(
         tenant_id.to_string(),
         call_context.actor(),
