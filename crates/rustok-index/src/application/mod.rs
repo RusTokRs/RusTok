@@ -3,6 +3,7 @@ mod planner;
 mod postgres_compiler;
 mod postgres_query_result;
 mod postgres_query_sql;
+mod query_port;
 mod registry;
 mod validation;
 
@@ -34,6 +35,9 @@ pub use postgres_query_result::{
     IndexNestedRelationItem, IndexNestedRelationProjection, IndexProjectedValue, IndexQueryItem,
     IndexQueryPage, IndexRelationIdentity, PostgresQueryDecodeError,
     PostgresQueryPageBuildError,
+};
+pub use query_port::{
+    IndexQueryExecutionError, IndexQueryPort, PersistedSchemaReadinessFailure,
 };
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
