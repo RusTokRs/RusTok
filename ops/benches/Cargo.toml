@@ -27,6 +27,7 @@ rust_decimal = "1.42"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+hex = { workspace = true }
 futures = "0.3"
 
 [[bin]]
