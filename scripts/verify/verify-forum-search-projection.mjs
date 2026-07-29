@@ -132,7 +132,7 @@ for (const marker of [
   "mod search_projection;",
   "register_search_projection_source",
   "ForumSearchProjectionSourceFactory",
-  '&["content", "taxonomy", "search"]',
+  '&["content", "taxonomy"]',
 ]) {
   requireMarker(forumLib, marker, forumLibPath);
 }
@@ -142,8 +142,9 @@ for (const marker of [
   "temporary staging table",
   "explicit Forum reindex",
   "FORUM-20BK",
-  "policy-change events",
+  "projection invalidation events",
   "Cargo.lock",
+  "does not declare a hard module runtime dependency",
 ]) {
   requireMarker(note, marker, notePath);
 }
@@ -198,11 +199,21 @@ if (contract) {
       failures.push(`${contractPath}: ingestion boundary must lock ${key}`);
     }
   }
-  if (contract.ingestion_boundary?.automatic_category_policy_change_reindex_added !== false) {
-    failures.push(`${contractPath}: category policy event must remain explicit downstream scope`);
+  for (const key of [
+    "automatic_category_policy_change_reindex_added",
+    "automatic_topic_policy_change_reindex_added",
+    "automatic_topic_content_translation_tag_solution_change_reindex_added",
+    "automatic_category_content_translation_tree_change_reindex_added",
+  ]) {
+    if (contract.ingestion_boundary?.[key] !== false) {
+      failures.push(`${contractPath}: ${key} must remain explicit downstream scope`);
+    }
   }
-  if (contract.ingestion_boundary?.automatic_topic_policy_change_reindex_added !== false) {
-    failures.push(`${contractPath}: topic policy event must remain explicit downstream scope`);
+  if (contract.compatibility?.forum_module_declares_core_search_dependency !== false) {
+    failures.push(`${contractPath}: Search must remain an optional runtime consumer`);
+  }
+  if (contract.compatibility?.forum_runtime_works_without_search_listener !== true) {
+    failures.push(`${contractPath}: Forum runtime independence must be locked`);
   }
   if (contract.compatibility?.cargo_lock_regenerated !== false) {
     failures.push(`${contractPath}: lockfile handoff must remain explicit`);
