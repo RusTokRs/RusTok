@@ -70,6 +70,7 @@ impl ReplyService {
             )
             .await?;
 
+        let topic_id = existing.topic_id;
         let txn = self.db.begin().await?;
         super::relation_quote_input::lock_source_and_assert_latest_in_tx(
             &txn,
@@ -101,8 +102,8 @@ impl ReplyService {
                 tenant_id,
                 security.user_id,
                 DomainEvent::ReindexRequested {
-                    target_type: "forum_reply".to_string(),
-                    target_id: Some(reply_id),
+                    target_type: "forum_topic".to_string(),
+                    target_id: Some(topic_id),
                 },
             )
             .await?;
