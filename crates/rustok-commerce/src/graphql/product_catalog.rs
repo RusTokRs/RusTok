@@ -19,6 +19,7 @@ pub struct StorefrontProductCatalogFilter {
     pub category_id: Option<Uuid>,
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
+    pub attribute_filters: Option<Vec<String>>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
 }
@@ -30,6 +31,7 @@ pub struct AdminProductCatalogFilter {
     pub category_id: Option<Uuid>,
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
+    pub attribute_filters: Option<Vec<String>>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
 }
@@ -90,11 +92,12 @@ impl ProductCatalogQuery {
         let filter = filter.unwrap_or_default();
         let page = filter.page.unwrap_or(1);
         let per_page = filter.per_page.unwrap_or(12);
-        let list_query = StorefrontProductListQuery::try_new(
+        let list_query = StorefrontProductListQuery::try_new_with_attribute_filters(
             filter.search,
             filter.category_id,
             filter.sort_by,
             filter.sort_direction,
+            filter.attribute_filters.unwrap_or_default(),
         )
         .map_err(|error| map_product_service_error(error, "storefront_product_catalog_input"))?;
         let products = CatalogService::new(db.clone(), event_bus.clone())
@@ -162,12 +165,13 @@ impl ProductCatalogQuery {
         let filter = filter.unwrap_or_default();
         let page = filter.page.unwrap_or(1);
         let per_page = filter.per_page.unwrap_or(24);
-        let list_query = AdminProductListQuery::try_from_transport(
+        let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             filter.search,
             filter.status,
             filter.category_id.map(|value| value.to_string()),
             filter.sort_by,
             filter.sort_direction,
+            filter.attribute_filters.unwrap_or_default(),
         )
         .map_err(|error| map_product_service_error(error, "admin_product_catalog_input"))?;
         let products = CatalogService::new(db.clone(), event_bus.clone())

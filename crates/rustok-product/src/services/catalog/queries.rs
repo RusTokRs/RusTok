@@ -64,6 +64,17 @@ impl CatalogService {
                 search,
             ));
         }
+        for condition in attribute_filters::load_catalog_attribute_filter_conditions(
+            &self.db,
+            tenant_id,
+            locale,
+            fallback_locale,
+            list_query.attribute_filters.as_slice(),
+        )
+        .await?
+        {
+            query = query.filter(condition);
+        }
         let total = query.clone().count(&self.db).await?;
         let query = match (list_query.sort_by, list_query.sort_direction) {
             (

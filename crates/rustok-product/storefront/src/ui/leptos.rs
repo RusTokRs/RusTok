@@ -1,4 +1,6 @@
-use crate::catalog_controls::{build_catalog_list_input, build_catalog_search_labels};
+use crate::catalog_controls::{
+    build_catalog_list_input, build_catalog_search_labels, serialize_attribute_filters,
+};
 use crate::core::{
     build_catalog_rail_view_model, build_fetch_request, build_product_catalog_rail_labels,
     build_route_input, build_selected_product_empty_view_model, build_selected_product_view_model,
@@ -31,10 +33,13 @@ pub fn ProductView() -> impl IntoView {
         read_route_query_value(&route_context, "category_id"),
         read_route_query_value(&route_context, "sort_by"),
         read_route_query_value(&route_context, "sort_direction"),
+        read_route_query_value(&route_context, "attribute_filters"),
     );
     let control_labels = build_catalog_search_labels(route_input.locale.as_deref());
     let current_search = catalog_input.search.clone().unwrap_or_default();
     let current_category_id = catalog_input.category_id.clone().unwrap_or_default();
+    let current_attribute_filters =
+        serialize_attribute_filters(catalog_input.attribute_filters.as_slice());
     let current_sort_by = catalog_input
         .sort_by
         .clone()
@@ -56,6 +61,9 @@ pub fn ProductView() -> impl IntoView {
     let search_placeholder = control_labels.search_placeholder;
     let category_label = control_labels.category_label;
     let all_categories = control_labels.all_categories;
+    let attribute_filters_label = control_labels.attribute_filters_label;
+    let attribute_filters_placeholder = control_labels.attribute_filters_placeholder;
+    let attribute_filters_help = control_labels.attribute_filters_help;
     let sort_by_label = control_labels.sort_by_label;
     let sort_by_published_at = control_labels.sort_by_published_at;
     let sort_by_created_at = control_labels.sort_by_created_at;
@@ -90,7 +98,7 @@ pub fn ProductView() -> impl IntoView {
                 <h2 class="text-3xl font-semibold text-card-foreground">{shell.title}</h2>
                 <p class="text-sm text-muted-foreground">{shell.subtitle}</p>
             </div>
-            <form method="get" class="mt-6 grid gap-3 rounded-2xl border border-border bg-background p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] xl:items-end">
+            <form method="get" class="mt-6 grid gap-3 rounded-2xl border border-border bg-background p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] xl:items-end">
                 <div class="min-w-0 space-y-2">
                     <label for="product-catalog-search" class="text-sm font-medium text-foreground">
                         {search_label}
@@ -141,6 +149,20 @@ pub fn ProductView() -> impl IntoView {
                             })
                         }}
                     </Suspense>
+                </div>
+                <div class="min-w-0 space-y-2">
+                    <label for="product-catalog-attribute-filters" class="text-sm font-medium text-foreground">
+                        {attribute_filters_label}
+                    </label>
+                    <input
+                        id="product-catalog-attribute-filters"
+                        name="attribute_filters"
+                        type="text"
+                        value=current_attribute_filters
+                        placeholder=attribute_filters_placeholder
+                        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    />
+                    <p class="text-xs text-muted-foreground">{attribute_filters_help}</p>
                 </div>
                 <div class="min-w-0 space-y-2">
                     <label for="product-catalog-sort-by" class="text-sm font-medium text-foreground">
