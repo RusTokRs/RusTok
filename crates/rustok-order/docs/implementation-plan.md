@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-order`
 
-Last reviewed: 2026-07-28
+Last reviewed: 2026-07-29
 
 ## Current state
 
@@ -58,8 +58,9 @@ Complete order detail and filtered-list projection reads are published through
 port through the default server, `HostRuntimeContext`, Commerce HTTP, and Commerce
 GraphQL schema data. Mounted admin REST list/detail reads use the port with locale,
 channel, deadline, filters, ordering, pagination total, public error envelopes,
-and payment/fulfillment detail aggregation preserved. GraphQL resolvers and
-storefront order reads remain open and unvalidated.
+and payment/fulfillment detail aggregation preserved. Mounted GraphQL detail/list
+reads consume the same host-selected runtime through resolver scope. GraphQL
+actor/channel propagation and storefront order reads remain open and unvalidated.
 
 ## FFA/FBA boundary
 
@@ -166,7 +167,9 @@ storefront order reads remain open and unvalidated.
 - [x] Cut admin REST order list/detail over to the owner port while preserving
   locale, channel, deadline, filters, pagination total, detail aggregation, and
   public envelopes.
-- [ ] Cut GraphQL order list/detail over to the host-selected runtime.
+- [x] Cut GraphQL order list/detail over to the host-selected runtime through the
+  mounted resolver scope while retaining an embedded-schema in-process fallback.
+- [ ] Propagate authenticated actor and request channel into GraphQL order reads.
 - [ ] Cut storefront order detail/ownership reads over in a separate atomic change.
 - [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
   evidence before status promotion.
@@ -222,9 +225,10 @@ storefront order reads remain open and unvalidated.
    **Done when:** the contract-test matrix has executable remote evidence and
    fallback behavior supports a justified status promotion.
 
-7. **Finish mounted order projection read cutover.** Admin REST list/detail now use
-   the host-selected `CommerceOrderReadRuntime`; cut GraphQL next and storefront
-   reads separately without changing order mutations or payment/fulfillment detail
+7. **Finish mounted order projection read cutover.** Admin REST and mounted
+   GraphQL list/detail now use the host-selected `CommerceOrderReadRuntime`;
+   propagate GraphQL actor/channel context next, then cut storefront reads
+   separately without changing order mutations or payment/fulfillment detail
    ownership.
    **Depends on:** the published runtime and current public transport envelope
    inventory.
