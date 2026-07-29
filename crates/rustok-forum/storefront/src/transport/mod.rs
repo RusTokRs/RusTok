@@ -1,5 +1,8 @@
 mod graphql_adapter;
-mod native_server_adapter;
+mod native_server_adapter {
+    include!("native_server_adapter.rs");
+    include!("native_server_adapter_bulk.rs");
+}
 
 use crate::model::StorefrontForumData;
 use serde::{Deserialize, Serialize};
