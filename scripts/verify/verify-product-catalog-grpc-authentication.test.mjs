@@ -22,14 +22,16 @@ function fixture(options = {}) {
   write(
     root,
     "crates/rustok-product-transport/Cargo.toml",
-    `subtle = "2"\nuuid.workspace = true`,
+    `sha2.workspace = true\nsubtle = "2"\nuuid.workspace = true`,
   );
   write(
     root,
     "crates/rustok-product-transport/src/lib.rs",
     `pub mod auth; ProductCatalogGrpcAuthenticationError ProductCatalogGrpcBearerToken ProductCatalogGrpcBearerAuthenticator ProductCatalogGrpcBearerInterceptor`,
   );
-  const compare = options.missingConstantTime ? "" : ".ct_eq(candidate)";
+  const compare = options.missingConstantTime
+    ? ""
+    : "Sha256::digest(value) Sha256::digest(candidate) .ct_eq(&candidate_digest)";
   const redaction = options.leakedCredential
     ? `field("authorization", &self.authorization)`
     : `field("authorization", &"[REDACTED]")`;
@@ -96,7 +98,7 @@ function fixture(options = {}) {
     "crates/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
-      : "service-to-service bearer authentication RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN constant-time trusted service actor authentication source is complete Product remains `boundary_ready` Implement a standalone Product catalog service host verify-product-catalog-grpc-authentication.mjs",
+      : "service-to-service bearer authentication RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN constant-time trusted service actor authentication source Product remains `boundary_ready` Implement a standalone Product catalog service host verify-product-catalog-grpc-authentication.mjs",
   );
   return root;
 }
