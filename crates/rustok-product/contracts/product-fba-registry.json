@@ -59,6 +59,7 @@
     "graphql_checkout_runtime_verifier": "scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs",
     "grpc_transport_verifier": "scripts/verify/verify-product-catalog-grpc-transport.mjs",
     "grpc_deployment_verifier": "scripts/verify/verify-product-catalog-grpc-deployment.mjs",
+    "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
     "runtime_fallback_smoke": "crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
@@ -97,6 +98,24 @@
     "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
     "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
     "status": "runtime_wired_execution_pending"
+  },
+  "remote_consumer_behavior": {
+    "status": "source_complete_execution_pending",
+    "transport_profile": "grpc_loopback_external_runtime",
+    "commerce_test": "crates/rustok-commerce/tests/product_remote_consumer_behavior.rs",
+    "ai_source_test": "crates/rustok-ai/src/direct_product_attributes.rs",
+    "failure_profiles": [
+      "unavailable",
+      "timeout"
+    ],
+    "assertions": [
+      "commerce_hard_dependency_no_cart_snapshot_fallback",
+      "commerce_typed_boundary_error_preserved",
+      "ai_catalog_enrichment_skipped",
+      "ai_typed_degraded_error_preserved",
+      "ai_operator_review_required",
+      "ai_persistence_none"
+    ]
   },
   "in_process_provider_impl": {
     "service": "CatalogService",

@@ -91,4 +91,7 @@ uuid.workspace = true
 [dev-dependencies]
 rust_decimal.workspace = true
 rustok-test-utils.workspace = true
+rustok-product-transport = { path = "../rustok-product-transport" }
 tokio.workspace = true
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic.workspace = true

@@ -27,7 +27,9 @@ for complete tenant, locale, and persistence validation.
 - Evidence: `crates/rustok-ai-product/contracts/ai-product-fba-registry.json`,
   `crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json`,
   `crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json`,
-  and `scripts/verify/verify-ai-product-fba.mjs`.
+  `crates/rustok-ai/src/direct_product_attributes.rs`,
+  `scripts/verify/verify-product-remote-consumer-behavior.mjs`, and
+  `scripts/verify/verify-ai-product-fba.mjs`.
 
 ## Completed direct-execution evidence
 
@@ -49,13 +51,25 @@ typed degraded reason, skips catalog enrichment, and still cannot write product
 data. Applying an attribute remains an explicit owner-owned operator action
 rather than an implicit AI write.
 
+A source-complete gRPC loopback harness now exercises the same product-context
+function through `GrpcProductCatalogReadProvider` and an external
+`ProductCatalogReadRuntime`. Remote `Unavailable` and `Timeout` errors preserve
+their typed code and retryability while catalog enrichment is skipped. The
+production result remains review-required and non-persistent. This harness has
+not been executed by the implementation agent, so it is recorded as
+`source_complete_execution_pending` rather than new runtime evidence.
+
 ## Next results
 
 1. **Keep generated-output safety covered.** Product-copy has direct
    owner-persistence evidence that preserves a non-target locale; product
    attributes are explicitly review-only and cannot write a product. Extend
    these tests whenever a product-owned apply command is introduced.
-2. **Composed product-agent workflow evidence is covered.**
+2. **Execute the remote Product consumer harness.** Run
+   `cargo test -p rustok-ai --features server --lib remote_product_` and retain
+   the result with Product transport evidence. Do not promote the remote profile
+   based on source completeness alone.
+3. **Composed product-agent workflow evidence is covered.**
    `service::product_agent_workflow_persistence_tests::product_enrichment_workflow_persists_owner_bindings_and_approval_gates`
    creates the product-owned principals and capability-compatible model
    assignments, validates both owner inputs, and proves the durable approval,
@@ -77,8 +91,11 @@ keeps product AI as an adapter and prevents a second product-owned AI route.
 
 - `npm run verify:ai-product:fba`
 - `npm run verify:ai:domain-verticals`
+- `node scripts/verify/verify-product-remote-consumer-behavior.mjs`
+- `node scripts/verify/verify-product-remote-consumer-behavior.test.mjs`
 - `cargo test -p rustok-ai-product --lib`
 - `cargo test -p rustok-ai --features server --lib direct_product_attributes_`
+- `cargo test -p rustok-ai --features server --lib remote_product_`
 
 ## References
 

@@ -172,3 +172,202 @@ impl DirectTaskHandler for ProductAttributesHandler {
         })
     }
 }
+
+#[cfg(test)]
+mod remote_profile_tests {
+    use std::{sync::Arc, time::Duration};
+
+    use async_trait::async_trait;
+    use rustok_api::{PortActor, PortContext, PortError};
+    use rustok_core::ModuleRegistry;
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use rustok_product::{
+        ProductCatalogReadPort, ProductCatalogReadProfile, ProductCatalogReadRuntime,
+        ProductProjectionRequest, PublishedProductsRequest, StorefrontProductList,
+        VariantProductProjectionRequest, dto::ProductResponse,
+    };
+    use rustok_product_transport::{
+        GrpcProductCatalogReadProvider, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
+        TrustedProductCatalogAuthority,
+        proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
+    };
+    use rustok_secrets::SecretResolverRegistry;
+    use sea_orm::Database;
+    use tokio::sync::oneshot;
+    use tokio_stream::wrappers::TcpListenerStream;
+    use tonic::transport::{Endpoint, Server};
+    use uuid::Uuid;
+
+    use super::product_context;
+    use crate::engine::{AiProviderTargetCatalog, ProviderEgressPolicy};
+    use crate::service::{AiHostRuntime, AiOperatorContext};
+
+    #[derive(Clone, Copy)]
+    enum RemoteFailure {
+        Unavailable,
+        Timeout,
+    }
+
+    impl RemoteFailure {
+        fn port_error(self) -> PortError {
+            match self {
+                Self::Unavailable => PortError::unavailable(
+                    "product.remote_unavailable",
+                    "remote Product catalog is unavailable",
+                ),
+                Self::Timeout => PortError::timeout(
+                    "product.remote_timeout",
+                    "remote Product catalog deadline was exceeded",
+                ),
+            }
+        }
+
+        const fn expected_kind(self) -> &'static str {
+            match self {
+                Self::Unavailable => "unavailable",
+                Self::Timeout => "timeout",
+            }
+        }
+
+        const fn expected_code(self) -> &'static str {
+            match self {
+                Self::Unavailable => "product.remote_unavailable",
+                Self::Timeout => "product.remote_timeout",
+            }
+        }
+    }
+
+    struct FailingProductCatalogReadPort {
+        failure: RemoteFailure,
+    }
+
+    #[async_trait]
+    impl ProductCatalogReadPort for FailingProductCatalogReadPort {
+        async fn read_product_projection(
+            &self,
+            _context: PortContext,
+            _request: ProductProjectionRequest,
+        ) -> Result<ProductResponse, PortError> {
+            Err(self.failure.port_error())
+        }
+
+        async fn read_variant_product_projection(
+            &self,
+            _context: PortContext,
+            _request: VariantProductProjectionRequest,
+        ) -> Result<ProductResponse, PortError> {
+            Err(self.failure.port_error())
+        }
+
+        async fn list_published_products(
+            &self,
+            _context: PortContext,
+            _request: PublishedProductsRequest,
+        ) -> Result<StorefrontProductList, PortError> {
+            Err(self.failure.port_error())
+        }
+    }
+
+    async fn runtime_with_remote_failure(
+        tenant_id: Uuid,
+        failure: RemoteFailure,
+    ) -> (
+        AiHostRuntime,
+        oneshot::Sender<()>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("loopback Product listener should bind");
+        let address = listener
+            .local_addr()
+            .expect("loopback Product listener address should exist");
+        let incoming = TcpListenerStream::new(listener);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let authority = TrustedProductCatalogAuthority::new(
+            tenant_id.to_string(),
+            PortActor::service("trusted-ai-remote-profile"),
+        )
+        .allow_operation(ProductCatalogGrpcOperation::ReadProductProjection);
+        let service = ProductCatalogReadServiceServer::with_interceptor(
+            ProductCatalogGrpcService::new(Arc::new(FailingProductCatalogReadPort { failure })),
+            move |mut request: tonic::Request<()>| {
+                request.extensions_mut().insert(authority.clone());
+                Ok(request)
+            },
+        );
+        let server = tokio::spawn(async move {
+            Server::builder()
+                .add_service(service)
+                .serve_with_incoming_shutdown(incoming, async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .expect("loopback Product gRPC server should run");
+        });
+        let provider = GrpcProductCatalogReadProvider::connect(
+            Endpoint::from_shared(format!("http://{address}"))
+                .expect("loopback Product endpoint should parse")
+                .connect_timeout(Duration::from_secs(5)),
+        )
+        .await
+        .expect("loopback Product gRPC client should connect");
+        let product_runtime = ProductCatalogReadRuntime::external(Arc::new(provider));
+        assert_eq!(
+            product_runtime.profile(),
+            ProductCatalogReadProfile::External
+        );
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory AI database should connect");
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let runtime = AiHostRuntime::new(
+            db,
+            event_bus,
+            ModuleRegistry::default(),
+            SecretResolverRegistry::builder().build(),
+            ProviderEgressPolicy::default(),
+            AiProviderTargetCatalog::default(),
+        )
+        .with_product_catalog_read_port(Some(product_runtime.read_port()));
+        (runtime, shutdown_tx, server)
+    }
+
+    async fn assert_remote_failure_degrades_ai_enrichment(failure: RemoteFailure) {
+        let tenant_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let (runtime, shutdown_tx, server) = runtime_with_remote_failure(tenant_id, failure).await;
+        let operator = AiOperatorContext {
+            tenant_id,
+            user_id: Uuid::new_v4(),
+            permissions: Vec::new(),
+            role_slugs: vec!["ai-operator".to_string()],
+            preferred_locale: Some("en".to_string()),
+        };
+
+        let (product, metadata) = product_context(&runtime, &operator, "en", product_id).await;
+        let _ = shutdown_tx.send(());
+        server
+            .await
+            .expect("loopback Product gRPC server task should stop");
+
+        assert!(product.is_none());
+        assert_eq!(metadata["source"], "degraded");
+        assert_eq!(metadata["catalog_enrichment"], "skipped");
+        assert_eq!(metadata["errors"][0]["kind"], failure.expected_kind());
+        assert_eq!(metadata["errors"][0]["code"], failure.expected_code());
+        assert_eq!(metadata["errors"][0]["retryable"], true);
+        assert_eq!(metadata["deadline_ms"], 3_000);
+    }
+
+    #[tokio::test]
+    async fn remote_product_unavailable_degrades_ai_enrichment() {
+        assert_remote_failure_degrades_ai_enrichment(RemoteFailure::Unavailable).await;
+    }
+
+    #[tokio::test]
+    async fn remote_product_timeout_degrades_ai_enrichment() {
+        assert_remote_failure_degrades_ai_enrichment(RemoteFailure::Timeout).await;
+    }
+}

@@ -56,6 +56,9 @@ proptest = "1.11"
 rust_decimal_macros = "1.36"
 rustok-taxonomy.workspace = true
 sea-orm-migration.workspace = true
+rustok-product-transport = { path = "../rustok-product-transport" }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic.workspace = true
 
 # `autotests = false` in [package] combined with explicit test targets below prevents
 # support/mod.rs from being auto-discovered as a standalone integration-test root. Without this
@@ -132,6 +135,10 @@ path = "tests/pricing_service_test/main.rs"
 [[test]]
 name = "product_event_index_integration_test"
 path = "tests/product_event_index_integration_test.rs"
+
+[[test]]
+name = "product_remote_consumer_behavior"
+path = "tests/product_remote_consumer_behavior.rs"
 
 [[test]]
 name = "product_taxonomy_tags"

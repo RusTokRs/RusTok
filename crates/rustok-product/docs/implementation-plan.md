@@ -42,12 +42,24 @@ WebPKI TLS roots. The server connects before `bootstrap_app_runtime`, inserts
 `ProductCatalogReadRuntime::external(...)` into `ServerRuntimeContext`, and lets
 all existing composition surfaces reuse that same runtime. Invalid remote
 configuration or connection failure aborts startup and never silently falls back
-to embedded execution. Adapter and production-wiring source are complete, but
-neither the loopback harness nor a configured remote server execution has been
-run by the implementation agent, so Product remains `boundary_ready` rather than
-`transport_verified`.
+to embedded execution.
 
-The composed `rustok-ai` consumer has live unavailable/deadline degraded-path
+Remote consumer behavior is now source-complete through executable loopback
+harnesses. Commerce builds checkout plans with a real external gRPC runtime and
+asserts that remote `Unavailable` and `Timeout` errors remain typed, retryable
+`read_checkout_product_projection` boundary failures; it never substitutes the
+cart line snapshot for current Product authority. AI uses the same real gRPC
+adapter and asserts that both failures skip catalog enrichment while preserving
+typed degraded metadata. The production handler still requires operator review
+and performs no persistence. These harnesses have not been executed by the
+implementation agent.
+
+Adapter and production-wiring source are complete. Consumer-behavior source is
+also complete, but the loopback conformance and remote consumer harnesses have
+not been run by the implementation agent, so Product remains `boundary_ready`
+rather than `transport_verified`.
+
+The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
 claim a cart-snapshot fallback that does not exist. The port resolves
 variant-first consumer input to the owning product projection, so consumers do
@@ -139,13 +151,16 @@ rustok-pricing` dependency cycle.
   the core/transport/UI split and native/GraphQL parity.
 - FBA status: `boundary_ready` — the owner port, in-process profile, host runtime,
   declared consumer source cutovers, external gRPC adapter, validated connection
-  policy, and production host wiring are source-complete. Loopback and configured
-  remote-profile execution evidence remain open.
+  policy, production host wiring, and Commerce/AI remote behavior harnesses are
+  source-complete. Loopback and configured remote-profile execution evidence
+  remain open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
   `crates/rustok-product-transport/tests/port_conformance.rs`,
+  `crates/rustok-commerce/tests/product_remote_consumer_behavior.rs`,
+  `crates/rustok-ai/src/direct_product_attributes.rs`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-catalog-read-runtime-composition.mjs`,
   `scripts/verify/verify-product-native-checkout-catalog-runtime.mjs`,
@@ -153,6 +168,7 @@ rustok-pricing` dependency cycle.
   `scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`,
   `scripts/verify/verify-product-catalog-grpc-transport.mjs`,
   `scripts/verify/verify-product-catalog-grpc-deployment.mjs`,
+  `scripts/verify/verify-product-remote-consumer-behavior.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
   `scripts/verify/verify-product-storefront-boundary.mjs`,
@@ -163,12 +179,15 @@ rustok-pricing` dependency cycle.
 
 ## Open results
 
-1. Execute `cargo test -p rustok-product-transport --test port_conformance` and
-   retain its result plus the generated `Cargo.lock` package entry as external
-   transport evidence. Then start the server with the gRPC deployment variables
-   against a real Product catalog service and execute Commerce hard-dependency
-   plus AI degraded behavior through the selected remote runtime. Promote above
-   `boundary_ready` only with retained runtime evidence for those paths.
+1. Execute and retain the external runtime evidence:
+   - `cargo test -p rustok-product-transport --test port_conformance`;
+   - `cargo test -p rustok-commerce --test product_remote_consumer_behavior`;
+   - `cargo test -p rustok-ai --features server --lib remote_product_`.
+   Retain the generated `Cargo.lock` package entry with the first successful Cargo
+   execution. Then start the server with the gRPC deployment variables against a
+   separately running Product catalog service and retain end-to-end Commerce and
+   AI evidence through the selected runtime. Promote above `boundary_ready` only
+   with those retained results.
 2. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
@@ -185,8 +204,10 @@ rustok-pricing` dependency cycle.
 - [x] Cut mounted Commerce GraphQL checkout over to the composed Product runtime.
 - [x] Implement the concrete Product catalog gRPC adapter and loopback conformance harness.
 - [x] Wire a fail-closed production external Product runtime profile.
+- [x] Add executable Commerce hard-dependency and AI degraded-behavior gRPC harnesses.
 - [ ] Execute the Product catalog gRPC loopback conformance harness.
-- [ ] Execute Commerce and AI behavior through a configured remote Product runtime.
+- [ ] Execute the Commerce and AI remote consumer behavior harnesses.
+- [ ] Retain end-to-end Commerce and AI behavior through a separately configured Product service.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
@@ -204,7 +225,11 @@ rustok-pricing` dependency cycle.
 - `node scripts/verify/verify-product-catalog-grpc-transport.test.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-deployment.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-deployment.test.mjs`
+- `node scripts/verify/verify-product-remote-consumer-behavior.mjs`
+- `node scripts/verify/verify-product-remote-consumer-behavior.test.mjs`
 - `cargo test -p rustok-product-transport --test port_conformance`
+- `cargo test -p rustok-commerce --test product_remote_consumer_behavior`
+- `cargo test -p rustok-ai --features server --lib remote_product_`
 - `node scripts/verify/verify-product-catalog-attribute-filters.mjs`
 - `node scripts/verify/verify-product-catalog-attribute-filters.test.mjs`
 - `node scripts/verify/verify-product-admin-category-sort.mjs`
@@ -231,6 +256,11 @@ rustok-pricing` dependency cycle.
   connection, and insertion of the selected runtime. It must fail closed for an
   invalid or unavailable configured remote provider and must not silently select
   embedded execution.
+- Commerce owns hard-dependency checkout behavior: a Product timeout or
+  unavailable result blocks planning and cannot be replaced by the cart snapshot.
+- AI owns advisory degradation: Product transport failures skip enrichment,
+  preserve typed degraded metadata, require operator review, and never persist
+  generated suggestions automatically.
 - The host selects and shares one Product read runtime; consumers receive the
   public port and must not construct parallel owner services.
 - Order native checkout, Commerce HTTP checkout, mounted Commerce GraphQL
