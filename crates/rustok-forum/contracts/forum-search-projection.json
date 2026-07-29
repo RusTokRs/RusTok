@@ -53,7 +53,7 @@
     "earlier_successful_scope_may_commit_before_later_failure": true,
     "target_refresh_deletes_and_reinserts_in_one_transaction": true,
     "denied_closed_missing_or_deleted_target_removes_stale_documents": true,
-    "foreign_or_non_public_source_document_rejected": true,
+    "foreign_or_non_public_document_rejected": true,
     "source_entity_and_storage_bounds_validated": true,
     "search_vector_remains_search_owned_trigger_output": true,
     "search_schema_migration_added": false,
@@ -86,11 +86,11 @@
     "visibility_completion_task": "FORUM-20BL",
     "visibility_completion_contract": "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
     "full_rebuild_external_scope_preservation_completed": true,
-    "rebuild_completion_task": "FORUM-20BM",
-    "rebuild_completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
+    "completion_task": "FORUM-20BM",
+    "completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
     "legacy_graphql_snapshot_cleanup_completed": true,
-    "completion_task": "FORUM-20BN",
-    "completion_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json"
+    "snapshot_cleanup_task": "FORUM-20BN",
+    "snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json"
   },
   "compatibility": {
     "existing_search_product_content_blog_projection_changed": false,
