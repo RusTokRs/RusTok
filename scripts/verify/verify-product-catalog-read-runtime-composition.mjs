@@ -32,10 +32,12 @@ function forbid(source, marker, description) {
 const runtimePath = "crates/rustok-product/src/runtime.rs";
 const libPath = "crates/rustok-product/src/lib.rs";
 const hostPath = "apps/server/src/services/commerce_provider_runtime.rs";
+const registryPath = "crates/rustok-product/contracts/product-fba-registry.json";
 const planPath = "crates/rustok-product/docs/implementation-plan.md";
 const runtime = read(runtimePath);
 const lib = read(libPath);
 const host = read(hostPath);
+const registry = read(registryPath);
 const plan = read(planPath);
 
 requireAll(runtime, [
@@ -72,6 +74,18 @@ forbid(
   "rustok_product::CatalogService::new(server.db_clone(), event_bus)",
   "host composition must not construct a parallel AI Product provider",
 );
+requireAll(registry, [
+  '"runtime_composition"',
+  '"runtime": "ProductCatalogReadRuntime"',
+  '"embedded_native"',
+  '"external"',
+  '"ai-product"',
+  '"marketplace-listing"',
+  '"commerce-checkout-http"',
+  '"commerce-checkout-graphql"',
+  '"order-storefront-native"',
+  '"status": "source_complete_consumer_cutover_partial"',
+], "Product FBA registry");
 requireAll(plan, [
   "ProductCatalogReadRuntime",
   "AI and Marketplace Listing",
