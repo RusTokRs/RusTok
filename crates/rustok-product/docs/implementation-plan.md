@@ -86,16 +86,28 @@ asserts that remote `Unavailable` and `Timeout` errors remain typed, retryable
 cart line snapshot for current Product authority. AI uses the same real gRPC
 adapter and asserts that both failures skip catalog enrichment while preserving
 typed degraded metadata. The production handler still requires operator review
-and performs no persistence. These harnesses have not been executed by the
-implementation agent.
+and performs no persistence.
+
+On 2026-07-29 the repository maintainer-attested that the nine requested Product
+gRPC verifier, service-host, authentication, loopback conformance, Commerce, and
+AI commands passed. The exact maintainer-local Git revision was not independently
+observed by the implementation agent and raw logs were not retained. The bounded
+attestation is stored in
+`crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`.
+It closes the requested unit, loopback, and remote-consumer harness commands only;
+it does not prove standalone PostgreSQL provider startup or authenticated
+separate-process Commerce and AI execution.
 
 Adapter and production-wiring source are complete. Consumer-behavior,
-authentication, provider-host, and schema-preflight source are complete, but the
-service-host unit, PostgreSQL schema preflight, loopback conformance,
-authenticated transport, and remote consumer harnesses have not been run by the
-implementation agent, so Product remains `boundary_ready` rather than
-`transport_verified`. Configured remote-profile execution evidence remain open.
-Provider-host execution evidence remains open. Schema-preflight execution evidence remains open.
+authentication, provider-host, and schema-preflight source are complete, and the
+requested unit, authentication, loopback, Commerce, and AI harnesses are
+maintainer-attested as passed. They were not independently run by the
+implementation agent and raw logs were not retained, so Product remains
+`boundary_ready` rather than `transport_verified`. Configured remote-profile
+execution evidence remain open. Provider-host execution evidence remains open.
+Schema-preflight execution evidence remains open. The standalone PostgreSQL
+schema-preflight runtime evidence remains open. Authenticated separate-process
+Commerce and AI end-to-end evidence remains open.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
@@ -191,12 +203,15 @@ rustok-pricing` dependency cycle.
   declared consumer source cutovers, external gRPC adapter, validated connection
   policy, production client wiring, service-to-service authentication, standalone
   provider host, startup schema preflight, and Commerce/AI remote behavior
-  harnesses are source-complete. Provider-host, schema-preflight, and authenticated
+  harnesses are source-complete. The requested unit, authentication, loopback,
+  Commerce, and AI harnesses are maintainer-attested as passed without retained
+  raw logs. Provider-host schema-preflight and authenticated separate-process
   end-to-end execution evidence remain open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
+  `crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`,
   `crates/rustok-product-transport/tests/port_conformance.rs`,
   `crates/rustok-product-catalog-service/src/main.rs`,
   `crates/rustok-commerce/tests/product_remote_consumer_behavior.rs`,
@@ -210,6 +225,7 @@ rustok-pricing` dependency cycle.
   `scripts/verify/verify-product-catalog-grpc-deployment.mjs`,
   `scripts/verify/verify-product-catalog-grpc-authentication.mjs`,
   `scripts/verify/verify-product-catalog-grpc-service-host.mjs`,
+  `scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs`,
   `scripts/verify/verify-product-remote-consumer-behavior.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
@@ -221,20 +237,16 @@ rustok-pricing` dependency cycle.
 
 ## Open results
 
-1. Execute and retain the external runtime evidence:
-   - `cargo test -p rustok-product-catalog-service`;
-   - `cargo test -p rustok-product-transport --lib`;
-   - `cargo test -p rustok-product-transport --test port_conformance`;
-   - `cargo test -p rustok-commerce --test product_remote_consumer_behavior`;
-   - `cargo test -p rustok-ai --features server --lib remote_product_`.
-   Retain the generated `Cargo.lock` package entry with the first successful Cargo
-   execution. Run `cargo run -p rustok-product-catalog-service` against the
-   migrated PostgreSQL schema and retain the successful `products`,
-   `product_variants`, and `sys_events` preflight evidence. Then start the server
-   with the matching authenticated gRPC deployment variables and retain end-to-end
-   Commerce and AI evidence through the selected runtime. Promote above
-   `boundary_ready` only with those retained results.
-2. Keep Product richtext adoption explicitly deferred until the owner approves
+1. Execute `cargo run -p rustok-product-catalog-service` against the migrated
+   PostgreSQL schema and retain sanitized runtime logs proving the successful
+   `products`, `product_variants`, and `sys_events` preflight before listener
+   startup.
+2. Start the consumer server with matching authenticated gRPC deployment
+   variables and retain authenticated separate-process Commerce and AI
+   end-to-end evidence through the selected runtime. Promote above
+   `boundary_ready` only after these runtime results and their logs or CI
+   artifacts are retained.
+3. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
    their textarea alone would create a false contract. When approved, use the
@@ -254,9 +266,10 @@ rustok-pricing` dependency cycle.
 - [x] Add executable Commerce hard-dependency and AI degraded-behavior gRPC harnesses.
 - [x] Implement a standalone Product catalog service host.
 - [x] Fail closed on missing Product/outbox schema before owner composition or listener startup.
-- [ ] Execute the Product catalog service-host, schema preflight, authentication, and loopback conformance harnesses.
-- [ ] Execute the Commerce and AI remote consumer behavior harnesses.
-- [ ] Retain end-to-end Commerce and AI behavior through a separately configured Product service.
+- [x] Execute the Product catalog service-host unit, authentication, and loopback conformance test suites.
+- [x] Execute the Commerce and AI remote consumer behavior harnesses.
+- [ ] Execute the standalone PostgreSQL schema preflight and retain runtime logs.
+- [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
@@ -278,6 +291,8 @@ rustok-pricing` dependency cycle.
 - `node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-service-host.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-service-host.test.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.test.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.test.mjs`
 - `cargo test -p rustok-product-catalog-service`
