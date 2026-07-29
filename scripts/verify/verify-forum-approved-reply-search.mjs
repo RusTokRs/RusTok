@@ -30,6 +30,10 @@ const replyUpdatePath = "crates/rustok-forum/src/services/reply_inline.rs";
 const projectorPath = "crates/rustok-search/src/forum_projector.rs";
 const ingestionPath = "crates/rustok-search/src/ingestion.rs";
 const enginePath = "crates/rustok-search/src/engine.rs";
+const pgEnginePath = "crates/rustok-search/src/pg_engine.rs";
+const storefrontNativePath = "crates/rustok-search/storefront/src/transport/native_server_adapter.rs";
+const adminPreviewPath = "crates/rustok-search/admin/src/transport/native_server_adapter/mapping.rs";
+const adminGlobalPath = "apps/admin/src/widgets/app_shell/native_server_adapter.rs";
 const rustTestPath = "crates/rustok-search/tests/forum_approved_reply_projection_contract.rs";
 const canonicalEvidencePath = "crates/rustok-search/contracts/evidence/search-canonical-url-contract.json";
 const contractPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
@@ -45,6 +49,10 @@ const replyUpdate = read(replyUpdatePath);
 const projector = read(projectorPath);
 const ingestion = read(ingestionPath);
 const engine = read(enginePath);
+const pgEngine = read(pgEnginePath);
+const storefrontNative = read(storefrontNativePath);
+const adminPreview = read(adminPreviewPath);
+const adminGlobal = read(adminGlobalPath);
 const rustTest = read(rustTestPath);
 const note = read(notePath);
 let canonicalEvidence = null;
@@ -77,7 +85,7 @@ for (const marker of [
   ".get_public_topic_with_locale_fallback(",
   ".get_public_category_with_locale_fallback(",
   'document_key: format!("forum_reply:{reply_id}:{locale}")',
-  'entity_type: FORUM_REPLY_ENTITY_TYPE.to_string()',
+  "entity_type: FORUM_REPLY_ENTITY_TYPE.to_string()",
   '"kind": "forum_reply"',
   '"reply_id": reply_id',
   '"topic_id": topic.id',
@@ -103,9 +111,7 @@ for (const marker of [
 ]) {
   requireMarker(replyUpdate, marker, replyUpdatePath);
 }
-for (const forbidden of ['target_type: "forum_reply"']) {
-  rejectMarker(replyUpdate, forbidden, replyUpdatePath);
-}
+rejectMarker(replyUpdate, 'target_type: "forum_reply"', replyUpdatePath);
 
 for (const marker of [
   'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
@@ -139,10 +145,34 @@ for (const marker of [
 ]) {
   requireMarker(engine, marker, enginePath);
 }
+
+requireMarker(pgEngine, 'clauses.push("is_public = TRUE".to_string())', pgEnginePath);
+rejectMarker(pgEngine, "status = 'approved'", pgEnginePath);
+for (const [consumer, label, marker] of [
+  [storefrontNative, storefrontNativePath, "rustok_search::canonical_search_result_url(&value)"],
+  [adminPreview, adminPreviewPath, "rustok_search::canonical_search_result_url(&item)"],
+  [adminGlobal, adminGlobalPath, "rustok_search::canonical_search_result_url(&item)"],
+]) {
+  requireMarker(consumer, marker, label);
+  rejectMarker(consumer, "canonical_forum_reply_result_url", label);
+}
+for (const marker of [
+  '("forum_category", "forum" | "rustok-forum")',
+  "Permission::FORUM_CATEGORIES_READ",
+  '("forum_topic", "forum" | "rustok-forum")',
+  "Permission::FORUM_TOPICS_READ",
+  '("forum_reply", "forum" | "rustok-forum")',
+  "Permission::FORUM_REPLIES_READ",
+  'required_admin_search_permission("forum_reply", "content")',
+]) {
+  requireMarker(adminGlobal, marker, adminGlobalPath);
+}
+
 for (const marker of [
   "forum_source_publishes_only_exact_public_approved_reply_documents",
   "reply_edits_reuse_topic_invalidation_and_topic_refresh_rebuilds_child_scope",
   "canonical_reply_route_is_bound_to_result_and_parent_topic_identity",
+  "admin_global_search_maps_forum_results_to_domain_permissions",
 ]) {
   requireMarker(rustTest, marker, rustTestPath);
 }
@@ -154,6 +184,8 @@ for (const marker of [
   "topic and all child replies together",
   "No new root event or reindex target string",
   "/modules/forum?topic={topic_id}&reply={reply_id}",
+  "Published storefront searches filter on `is_public = TRUE`",
+  "`FORUM_REPLIES_READ`",
   "FORUM-20BP",
 ]) {
   requireMarker(note, marker, notePath);
@@ -225,6 +257,24 @@ if (contract) {
     "transport_local_url_fallback_added",
   ]) {
     if (contract.canonical_url_boundary?.[key] !== false) failures.push(`${contractPath}: URL ${key} must remain false`);
+  }
+  for (const key of [
+    "published_only_search_filters_by_is_public",
+    "graphql_result_mapping_is_entity_generic",
+    "storefront_native_result_mapping_is_entity_generic",
+    "search_admin_preview_mapping_is_entity_generic",
+    "admin_global_category_requires_forum_categories_read",
+    "admin_global_topic_requires_forum_topics_read",
+    "admin_global_reply_requires_forum_replies_read",
+    "admin_global_wrong_source_fails_closed",
+  ]) {
+    if (contract.consumer_boundary?.[key] !== true) failures.push(`${contractPath}: consumer ${key} drift`);
+  }
+  for (const key of [
+    "published_only_search_filters_by_fixed_status_allowlist",
+    "consumer_local_reply_url_added",
+  ]) {
+    if (contract.consumer_boundary?.[key] !== false) failures.push(`${contractPath}: consumer ${key} must remain false`);
   }
   for (const key of [
     "workspace_dependency_changed",
