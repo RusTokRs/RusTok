@@ -4,9 +4,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{IndexQuery, IndexValue, LocaleKey, SchemaFingerprint, SchemaRef};
+use crate::domain::{
+    FieldPath, IndexQuery, IndexValue, IndexValueType, LocaleKey, SchemaFingerprint, SchemaRef,
+};
 
-use super::{SchemaRegistry, SchemaRegistryError};
+use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
 
 const CURSOR_VERSION: u8 = 1;
 const CHECKSUM_LEN: usize = 16;
@@ -45,6 +47,8 @@ pub enum CursorValidationError {
     #[error(transparent)]
     Codec(#[from] CursorCodecError),
     #[error(transparent)]
+    Query(#[from] QueryValidationError),
+    #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
     #[error("cursor tenant does not match query tenant")]
     TenantMismatch,
@@ -56,6 +60,16 @@ pub enum CursorValidationError {
     LocaleMismatch,
     #[error("cursor contains {actual} order values but query defines {expected} order expressions")]
     OrderArityMismatch { expected: usize, actual: usize },
+    #[error("cursor order field contract is missing at position {index}")]
+    OrderFieldContractMissing { index: usize },
+    #[error(
+        "cursor order value at position {index} has type {actual:?}, expected {expected:?}"
+    )]
+    OrderValueTypeMismatch {
+        index: usize,
+        expected: IndexValueType,
+        actual: Option<IndexValueType>,
+    },
     #[error("cursor entity id must not be nil")]
     NilEntityId,
 }
@@ -100,6 +114,7 @@ impl CursorCodec {
         query: &IndexQuery,
         registry: &SchemaRegistry,
     ) -> Result<IndexCursor, CursorValidationError> {
+        registry.validate_query(query)?;
         let cursor = Self::decode(encoded)?;
         if cursor.tenant_id != query.scope.tenant_id {
             return Err(CursorValidationError::TenantMismatch);
@@ -127,8 +142,51 @@ impl CursorCodec {
             });
         }
 
+        for (index, (order, value)) in query
+            .order_by
+            .iter()
+            .zip(&cursor.order_values)
+            .enumerate()
+        {
+            if matches!(value, IndexValue::Null) {
+                continue;
+            }
+            let expected = resolve_order_value_type(registry, &query.schema, &order.field)
+                .ok_or(CursorValidationError::OrderFieldContractMissing { index })?;
+            let actual = value.value_type();
+            if actual != Some(expected) {
+                return Err(CursorValidationError::OrderValueTypeMismatch {
+                    index,
+                    expected,
+                    actual,
+                });
+            }
+        }
+
         Ok(cursor)
     }
+}
+
+fn resolve_order_value_type(
+    registry: &SchemaRegistry,
+    root: &SchemaRef,
+    path: &FieldPath,
+) -> Option<IndexValueType> {
+    let mut registered = registry.get(root)?;
+    for link_name in path.links() {
+        let link = registered
+            .schema
+            .links
+            .iter()
+            .find(|link| link.name == *link_name)?;
+        registered = registry.get(&link.target_schema)?;
+    }
+    registered
+        .schema
+        .fields
+        .iter()
+        .find(|field| field.name == *path.field())
+        .map(|field| field.value_type)
 }
 
 #[cfg(test)]
@@ -138,8 +196,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         EntityName, FieldCardinality, FieldName, FieldPath, IndexField, IndexQueryScope,
-        IndexSchema, IndexValueType, LocaleMode, ModuleName, OrderDirection, OrderExpr, Pagination,
-        SchemaVersion,
+        IndexSchema, LocaleMode, ModuleName, OrderDirection, OrderExpr, Pagination, SchemaVersion,
     };
 
     fn schema() -> IndexSchema {
@@ -253,6 +310,32 @@ mod tests {
         assert!(matches!(
             CursorCodec::decode_for_query(&encoded, &query, &registry),
             Err(CursorValidationError::TenantMismatch)
+        ));
+    }
+
+    #[test]
+    fn rejects_wrong_cursor_order_value_type() {
+        let schema = schema();
+        let registry = registry_with_schema(&schema);
+        let tenant_id = Uuid::new_v4();
+        let query = query(&schema, tenant_id);
+        let cursor = IndexCursor {
+            tenant_id,
+            schema: schema.reference.clone(),
+            schema_fingerprint: schema.fingerprint().unwrap(),
+            locale: query.scope.locale.clone(),
+            order_values: vec![IndexValue::Integer(7)],
+            entity_id: Uuid::new_v4(),
+        };
+        let encoded = CursorCodec::encode(&cursor).unwrap();
+
+        assert!(matches!(
+            CursorCodec::decode_for_query(&encoded, &query, &registry),
+            Err(CursorValidationError::OrderValueTypeMismatch {
+                index: 0,
+                expected: IndexValueType::Uuid,
+                actual: Some(IndexValueType::Integer),
+            })
         ));
     }
 
