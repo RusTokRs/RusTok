@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BJ",
+  "upstream_task": "FORUM-20BI",
+  "scope": "Wire a Search-owned Forum projection consumer through a Forum-published exact public projection source without copying audience policy into Search persistence or query SQL",
+  "search_source_registry": "crates/rustok-search/src/projection_source.rs",
+  "forum_source_provider": "crates/rustok-forum/src/search_projection.rs",
+  "forum_source_registration": "crates/rustok-forum/src/lib.rs",
+  "search_projector": "crates/rustok-search/src/forum_projector.rs",
+  "search_ingestion": "crates/rustok-search/src/ingestion.rs",
+  "search_runtime_composition": "crates/rustok-search/src/lib.rs",
+  "search_storage": "search_documents",
+  "source_module": "forum",
+  "entity_types": [
+    "forum_category",
+    "forum_topic"
+  ],
+  "owner_note": "crates/rustok-forum/docs/forum-20bj-search-projection.md",
+  "source_verifier": "scripts/verify/verify-forum-search-projection.mjs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-public-discovery-seo.json",
+  "source_boundary": {
+    "module_published_factory_requires_no_database_at_registration": true,
+    "duplicate_source_module_registration_rejected": true,
+    "runtime_source_materialized_from_listener_database": true,
+    "raw_candidate_scan_is_bounded": true,
+    "cursor_advances_over_raw_candidates": true,
+    "sparse_or_empty_visible_pages_may_continue": true,
+    "category_candidates_use_exact_public_discovery": true,
+    "topic_candidates_use_exact_public_discovery": true,
+    "topic_category_is_reauthorized_for_subtitle": true,
+    "authentication_role_trust_group_explicit_user_targets_absent": true,
+    "route_channel_restricted_topics_absent_without_route_channel": true,
+    "cross_consumer_audience_policy_copy_added": false,
+    "per_entity_locale_fanout_bounded": true
+  },
+  "persistence_boundary": {
+    "search_owns_projection_storage": true,
+    "full_rebuild_uses_postgresql_temporary_stage": true,
+    "full_rebuild_replaces_forum_scope_after_successful_scan": true,
+    "partial_source_failure_keeps_previous_forum_scope": true,
+    "target_refresh_deletes_and_reinserts_in_one_transaction": true,
+    "denied_closed_missing_or_deleted_target_removes_stale_documents": true,
+    "foreign_or_non_public_source_document_rejected": true,
+    "source_entity_and_storage_bounds_validated": true,
+    "search_vector_remains_search_owned_trigger_output": true,
+    "search_schema_migration_added": false,
+    "forum_owner_storage_changed": false
+  },
+  "ingestion_boundary": {
+    "forum_topic_created_refreshes_topic": true,
+    "forum_topic_replied_refreshes_topic": true,
+    "forum_topic_status_changed_refreshes_topic": true,
+    "forum_topic_pinned_refreshes_topic": true,
+    "forum_reply_status_changed_refreshes_topic": true,
+    "forum_module_enable_rebuilds_scope": true,
+    "forum_module_disable_deletes_scope": true,
+    "tenant_locale_and_full_search_rebuild_include_forum": true,
+    "explicit_forum_scope_reindex_supported": true,
+    "explicit_forum_category_reindex_supported": true,
+    "explicit_forum_topic_reindex_supported": true,
+    "automatic_category_policy_change_reindex_added": false,
+    "automatic_topic_policy_change_reindex_added": false,
+    "reply_documents_projected": false
+  },
+  "compatibility": {
+    "existing_search_product_content_blog_projection_changed": false,
+    "existing_search_query_contract_changed": false,
+    "existing_forum_rest_routes_changed": false,
+    "existing_forum_graphql_fields_changed": false,
+    "existing_forum_seo_targets_changed": false,
+    "existing_forum_public_discovery_changed": false,
+    "forum_to_search_workspace_dependency_added": true,
+    "forum_module_declares_core_search_dependency": true,
+    "migration_added": false,
+    "public_response_dto_changed": false,
+    "legacy_graphql_snapshot_changed": false
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "upstream_contract_updated": true,
+    "crate_api_updated": false,
+    "canonical_plan_updated": false,
+    "synchronization_debt": "Advance CRATE_API, the Search owner plan and the canonical FORUM-20/FORUM-23 ledgers through FORUM-20BJ with conflict-safe repository-local edits after maintainer validation."
+  },
+  "remaining_scope": [
+    "publish owner-transactional category and topic visibility-policy change events and route them to bounded target or tenant projection reauthorization",
+    "decide whether approved public replies become separate Search documents under FORUM-23",
+    "add visibility-scoped category and all-read commands",
+    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
+    "capture maintainer-executed PostgreSQL projection event cleanup and query runtime evidence"
+  ],
+  "downstream_task": "FORUM-20BK",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-search projection_source -- --nocapture",
+      "cargo test -p rustok-search forum_projector -- --nocapture",
+      "cargo test -p rustok-forum search_projection -- --nocapture",
+      "node scripts/verify/verify-forum-public-discovery-seo.mjs",
+      "node scripts/verify/verify-forum-search-projection.mjs",
+      "node scripts/verify/verify-search-canonical-url-contract.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
