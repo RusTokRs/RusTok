@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -12,6 +10,7 @@ use crate::domain::{FieldPath, IndexQuery, LinkCardinality, LinkName, Pagination
 use super::{
     CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
     PlannedManyProjection, QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
+    planner::derive_many_projections,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,36 +277,12 @@ impl ExecutableQueryPlan {
 fn validate_many_projection_contract(
     plan: &ExecutableQueryPlan,
 ) -> Result<(), PostgresQueryCompileError> {
-    let expected_fields = plan
-        .projection
-        .iter()
-        .filter(|field| field.traverses_many)
-        .collect::<Vec<_>>();
-    let actual_fields = plan
-        .many_projections
-        .iter()
-        .flat_map(|projection| projection.fields.iter())
-        .collect::<Vec<_>>();
-    if actual_fields != expected_fields {
+    if plan.many_projections != derive_many_projections(&plan.projection) {
         return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
     }
 
-    let mut paths = BTreeSet::new();
     for projection in &plan.many_projections {
-        if projection.path.is_empty()
-            || projection.fields.is_empty()
-            || !paths.insert(projection.path.clone())
-        {
-            return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
-        }
-        let expected_identity_paths = (1..=projection.path.len())
-            .map(|depth| projection.path[..depth].to_vec())
-            .collect::<Vec<_>>();
-        if projection.identity_paths != expected_identity_paths
-            || projection.fields.iter().any(|field| {
-                !field.traverses_many || field.path.links() != projection.path.as_slice()
-            })
-        {
+        if projection.path.is_empty() || projection.fields.is_empty() {
             return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
         }
         for path in &projection.identity_paths {
