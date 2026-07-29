@@ -18,5 +18,11 @@
     "crates/rustok-blog/src/graphql/mutation.rs"
   ],
   "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
+  "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
+  "test_coverage": [
+    "canonical RichTextDocument/RichTextView fields are required",
+    "new legacy aliases are rejected",
+    "legacy field removal requires evidence and guardrail tightening"
+  ],
   "exit_condition": "Remove legacy adapter fields atomically with storage, Leptos, storefront, Search, AI, and SEO cutover; then tighten the guardrail to require their absence."
 }
