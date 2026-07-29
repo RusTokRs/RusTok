@@ -26,7 +26,7 @@ pull requests record checks and PostgreSQL runs that were not executed.
 ## Current state
 
 - Rewrite status: `in_progress`
-- Current milestone: `M4 - Query engine v1 (controlled SQL compiler added; M3 retained packet owner gate remains open)`
+- Current milestone: `M4 - Query engine v1 (typed root/one-link semantics added; M3 retained packet owner gate remains open)`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
@@ -53,19 +53,22 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - M4 deterministic executable query planning: `complete`
 - M4 stable explicit-link relation aliases: `complete`
 - M4 controlled PostgreSQL query compilation: `complete`
+- M4 typed root/one-link query semantics: `complete`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
   partition admission, snapshot/query/mutation/maintenance/cutover evidence tooling,
   full-capture orchestration, exact-byte packet assembly, retained bundle review,
   admitted archive manifest generation, saved-manifest verification, recursive
-  filesystem integrity checks, database-independent query planning, and controlled
-  projection SQL compilation are implemented; one retained admitted packet, typed
-  query execution adapter, and production partition lifecycle remain open
+  filesystem integrity checks, typed executable query planning, controlled projection,
+  filtering, ordering, exact-count, keyset, and bounded-offset SQL compilation are
+  implemented; one retained admitted packet, many-link semantics, query execution/row
+  decoding, and production partition lifecycle remain open
 
 The production crate contains the generic domain/application core, seven canonical
 M3 tables, an atomic mutation adapter, durable schema leases, secondary-index
 lifecycle management, measured partition admission that emits shadow bootstrap
-plans only, an M4 structural query planner with deterministic relation aliases, and
-a controlled PostgreSQL compiler for the explicitly supported projection subset.
+plans only, an M4 typed structural query planner with deterministic relation aliases,
+and a controlled PostgreSQL compiler for root and one-cardinality-link filtering,
+projection, ordering, exact count, keyset, and bounded offset semantics.
 Owner-operated evidence tools live under `ops/benches`; they do not become runtime
 storage code.
 
@@ -99,6 +102,7 @@ crates/rustok-index/src/
   application/
     planner.rs
     postgres_compiler.rs
+    postgres_query_sql.rs
   migrations/
   infrastructure/postgres/
     mutation_store.rs
@@ -253,7 +257,7 @@ relations.
    repeatable-read baseline, attaches shadow integrity, records parity/size/catch-up,
    and publishes `baseline.json` plus `shadow.json` without touching canonical DDL.
 9. The query runner validates the shadow catalog, executes exact tenant-scoped runs
-   read-only, proves result parity and one-child pruning, retains full EXPLAIN JSON,
+   read-only, proves semantic parity and one-child pruning, retains full EXPLAIN JSON,
    calculates p95 and normalized plan digests, and publishes `query.json` once.
 10. The mutation/WAL runner validates the same manifest and catalog, requires count
     parity and matching generic anchors, executes rollback-only mutation samples,
@@ -292,29 +296,33 @@ relations.
 
 - [x] Produce deterministic executable plans from validated queries.
 - [x] Resolve explicit link paths and assign stable aliases.
+- [x] Capture typed referenced-field contracts in executable plans.
 - [x] Compile plans through SeaQuery or controlled SQL.
-- [ ] Support nested projection, filtering, sorting, exact count, and keyset
-      pagination.
-- [ ] Keep offset pagination bounded and compatibility-only.
-- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.
+- [x] Support root and one-cardinality-link projection, filtering, sorting, exact
+      count, and keyset pagination.
+- [x] Keep offset pagination bounded and compatibility-only.
+- [ ] Add explicit many-link `EXISTS` filtering and nested projection aggregation.
+- [ ] Add result decoding, plan/SQL snapshots, and PostgreSQL/reference-engine
+      equivalence tests.
 
 The first M4 slice is database independent. `SchemaRegistry::plan_query` validates
 before planning, assigns stable `t0`, `t1`, ... aliases from sorted explicit link
-prefixes, binds projection and ordering to those aliases, retains typed filters and
-pagination for the compiler, and publishes a versioned SHA-256 plan fingerprint.
+prefixes, and captures every referenced field with type, cardinality, nullability,
+path, and alias. The typed plan fingerprint uses the versioned
+`rustok-index-query-plan-v2` domain.
 
-The second M4 slice adds `ExecutableQueryPlan::compile_postgres`. It emits one
-controlled PostgreSQL statement, ordered typed bind values, deterministic root/link
-identity columns, projected tagged JSONB values, exact tenant/schema/locale/live-row
-scope, and projection-only one-cardinality `LEFT JOIN` traversal. Caller values,
-link/schema identities, field names, and page limits remain bind parameters. The
-compiler also revalidates the complete path-to-alias mapping before SQL construction.
+The controlled compiler emits ordered typed binds, deterministic identity/projection/
+order columns, exact tenant/schema/locale/live-row scope, all current typed filters,
+reference-compatible null ordering, validated lexicographic keyset predicates with an
+ascending root `entity_id` tie-breaker, bounded offset pagination, and an optional
+separate exact-count statement without pagination leakage. Opaque continuation tokens
+must pass `SchemaRegistry::compile_postgres_query`, which validates checksum, scope,
+schema fingerprint, order arity, and order-value types before SQL emission.
 
-Filters, explicit ordering, exact count, cursor continuation, bounded offset, and
-many-link aggregation return typed pending errors rather than guessed semantics.
-Typed filter/order/count/keyset compilation remains the next bounded M4 slice.
-SQL execution, result decoding, persisted-schema readiness, query-port composition,
-and consumer cutover remain open.
+Many-cardinality paths remain fail-closed with `ManyLinkSemanticsPending`; ordinary
+joins would duplicate roots and corrupt negative filters, count, projection, and
+pagination. SQL execution, result decoding, persisted-schema readiness, query-port
+composition, consumer cutover, and PostgreSQL/reference-engine equivalence remain open.
 
 ### M5 - Incremental ingestion
 
@@ -439,10 +447,11 @@ node scripts/verify/verify-index-postgres-query-compiler.mjs
   owner orchestration with PostgreSQL identity-bound capture finalization, read-only
   retained bundle review, admitted archive manifest generation, saved-manifest
   verification receipts, and exact recursive filesystem snapshot enforcement.
-- 2026-07-29: rechecked the merged M3 source boundary, completed deterministic M4
-  structural planning and aliases, then added controlled projection SQL compilation
-  with ordered typed binds, alias-map revalidation, and fail-closed pending semantics.
-  Typed filter/order/count/keyset compilation remains the next bounded source slice.
+- 2026-07-29: rechecked the merged M3 source boundary, completed deterministic typed
+  M4 planning, controlled projection SQL, root/one-link filters, ordering, separate
+  exact count, validated lexicographic keyset continuation, and bounded offset
+  compatibility. Many-link planning, result decoding, execution composition, and
+  PostgreSQL/reference equivalence remain open.
 - Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
   packet remain for the owner to execute and admit before production partition
   lifecycle work begins.

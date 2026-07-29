@@ -1,12 +1,15 @@
-use std::{collections::{BTreeMap, BTreeSet}, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::domain::{
-    FieldName, FieldPath, FilterExpr, IndexQuery, IndexQueryScope, LinkCardinality, LinkName,
-    OrderDirection, Pagination, SchemaRef,
+    FieldCardinality, FieldName, FieldPath, FilterExpr, IndexQuery, IndexQueryScope,
+    IndexValueType, LinkCardinality, LinkName, OrderDirection, Pagination, SchemaRef,
 };
 
 use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
@@ -18,13 +21,18 @@ const ROOT_ALIAS: &str = "t0";
 pub struct QueryPlanFingerprint([u8; 32]);
 
 impl QueryPlanFingerprint {
-    pub fn as_bytes(&self) -> &[u8; 32] { &self.0 }
-    pub fn to_hex(self) -> String { hex::encode(self.0) }
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    pub fn to_hex(self) -> String {
+        hex::encode(self.0)
+    }
 }
 
 impl fmt::Display for QueryPlanFingerprint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&hex::encode(self.0))
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&hex::encode(self.0))
     }
 }
 
@@ -45,6 +53,9 @@ pub struct PlannedJoin {
 pub struct PlannedField {
     pub path: FieldPath,
     pub relation_alias: String,
+    pub value_type: IndexValueType,
+    pub cardinality: FieldCardinality,
+    pub nullable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +71,7 @@ pub struct ExecutableQueryPlan {
     pub root_alias: String,
     pub path_aliases: BTreeMap<Vec<LinkName>, String>,
     pub joins: Vec<PlannedJoin>,
+    pub referenced_fields: BTreeMap<FieldPath, PlannedField>,
     pub projection: Vec<PlannedField>,
     pub filter: Option<FilterExpr>,
     pub order_by: Vec<PlannedOrder>,
@@ -72,10 +84,14 @@ impl ExecutableQueryPlan {
         self.path_aliases.get(path.links()).map(String::as_str)
     }
 
+    pub fn field(&self, path: &FieldPath) -> Option<&PlannedField> {
+        self.referenced_fields.get(path)
+    }
+
     pub fn fingerprint(&self) -> Result<QueryPlanFingerprint, postcard::Error> {
         let bytes = postcard::to_stdvec(self)?;
         let mut hasher = Sha256::new();
-        hasher.update(b"rustok-index-query-plan-v1");
+        hasher.update(b"rustok-index-query-plan-v2");
         hasher.update((bytes.len() as u64).to_be_bytes());
         hasher.update(bytes);
         Ok(QueryPlanFingerprint(hasher.finalize().into()))
@@ -88,6 +104,10 @@ pub enum QueryPlanError {
     Validation(#[from] QueryValidationError),
     #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
+    #[error("validated query path has no relation alias: {0:?}")]
+    ValidatedAliasMissing(FieldPath),
+    #[error("validated query field {field} disappeared from schema {schema}")]
+    ValidatedFieldMissing { schema: SchemaRef, field: FieldName },
 }
 
 impl SchemaRegistry {
@@ -104,16 +124,22 @@ impl SchemaRegistry {
         let mut joins = Vec::with_capacity(paths.len());
         for path in &paths {
             let parent = path[..path.len() - 1].to_vec();
-            let source_schema = schemas.get(&parent).cloned().ok_or_else(|| {
-                SchemaRegistryError::SchemaNotFound(query.schema.clone())
-            })?;
-            let registered = self.get(&source_schema).ok_or_else(|| {
-                SchemaRegistryError::SchemaNotFound(source_schema.clone())
-            })?;
-            let link_name = path.last().cloned().ok_or_else(|| {
-                SchemaRegistryError::SchemaNotFound(source_schema.clone())
-            })?;
-            let link = registered.schema.links.iter().find(|item| item.name == link_name)
+            let source_schema = schemas
+                .get(&parent)
+                .cloned()
+                .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.schema.clone()))?;
+            let registered = self
+                .get(&source_schema)
+                .ok_or_else(|| SchemaRegistryError::SchemaNotFound(source_schema.clone()))?;
+            let link_name = path
+                .last()
+                .cloned()
+                .ok_or_else(|| SchemaRegistryError::SchemaNotFound(source_schema.clone()))?;
+            let link = registered
+                .schema
+                .links
+                .iter()
+                .find(|item| item.name == link_name)
                 .ok_or_else(|| SchemaRegistryError::UnknownTargetSchema {
                     source_schema: source_schema.clone(),
                     link: link_name.clone(),
@@ -134,17 +160,61 @@ impl SchemaRegistry {
             schemas.insert(path.clone(), target_schema);
         }
 
-        let projection = query.fields.iter().cloned().map(|path| PlannedField {
-            relation_alias: aliases[path.links()].clone(),
-            path,
-        }).collect();
-        let order_by = query.order_by.iter().cloned().map(|order| PlannedOrder {
-            field: PlannedField {
-                relation_alias: aliases[order.field.links()].clone(),
-                path: order.field,
-            },
-            direction: order.direction,
-        }).collect();
+        let referenced_paths = query
+            .referenced_paths()
+            .into_iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut referenced_fields = BTreeMap::new();
+        for path in referenced_paths {
+            let link_path = path.links().to_vec();
+            let schema = schemas
+                .get(&link_path)
+                .cloned()
+                .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))?;
+            let registered = self
+                .get(&schema)
+                .ok_or_else(|| SchemaRegistryError::SchemaNotFound(schema.clone()))?;
+            let field = registered
+                .schema
+                .fields
+                .iter()
+                .find(|field| field.name == *path.field())
+                .ok_or_else(|| QueryPlanError::ValidatedFieldMissing {
+                    schema: schema.clone(),
+                    field: path.field().clone(),
+                })?;
+            let relation_alias = aliases
+                .get(&link_path)
+                .cloned()
+                .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))?;
+            referenced_fields.insert(
+                path.clone(),
+                PlannedField {
+                    path,
+                    relation_alias,
+                    value_type: field.value_type,
+                    cardinality: field.cardinality,
+                    nullable: field.nullable,
+                },
+            );
+        }
+
+        let projection = query
+            .fields
+            .iter()
+            .map(|path| planned_field(&referenced_fields, path))
+            .collect::<Result<Vec<_>, _>>()?;
+        let order_by = query
+            .order_by
+            .iter()
+            .map(|order| {
+                Ok(PlannedOrder {
+                    field: planned_field(&referenced_fields, &order.field)?,
+                    direction: order.direction,
+                })
+            })
+            .collect::<Result<Vec<_>, QueryPlanError>>()?;
 
         Ok(ExecutableQueryPlan {
             scope: query.scope.clone(),
@@ -152,6 +222,7 @@ impl SchemaRegistry {
             root_alias: ROOT_ALIAS.to_owned(),
             path_aliases: aliases,
             joins,
+            referenced_fields,
             projection,
             filter: query.filter.clone(),
             order_by,
@@ -159,6 +230,16 @@ impl SchemaRegistry {
             include_exact_count: query.include_exact_count,
         })
     }
+}
+
+fn planned_field(
+    referenced_fields: &BTreeMap<FieldPath, PlannedField>,
+    path: &FieldPath,
+) -> Result<PlannedField, QueryPlanError> {
+    referenced_fields
+        .get(path)
+        .cloned()
+        .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))
 }
 
 fn collect_link_prefixes(query: &IndexQuery) -> Vec<Vec<LinkName>> {

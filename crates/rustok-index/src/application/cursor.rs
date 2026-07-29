@@ -1,21 +1,25 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{IndexQuery, IndexValue, LocaleKey, SchemaFingerprint, SchemaRef};
+use crate::domain::{
+    FieldPath, FilterExpr, IndexQuery, IndexValue, IndexValueType, LocaleKey, OrderExpr,
+    SchemaFingerprint, SchemaRef,
+};
 
-use super::{SchemaRegistry, SchemaRegistryError};
+use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
 
 const CURSOR_VERSION: u8 = 1;
+const SCOPED_CURSOR_VERSION: u8 = 2;
 const CHECKSUM_LEN: usize = 16;
 
 /// Stable keyset cursor payload.
 ///
-/// The schema fingerprint prevents a cursor from silently crossing a schema
-/// contract change. Tenant and locale remain explicit so a cursor cannot be
-/// reused in another scope by accident.
+/// Tenant, schema, locale, order values, and entity identity remain explicit.
+/// Production continuation tokens must be encoded with `encode_for_query`, which
+/// adds a separate filter/order query fingerprint around this payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexCursor {
     pub tenant_id: Uuid,
@@ -24,6 +28,21 @@ pub struct IndexCursor {
     pub locale: Option<LocaleKey>,
     pub order_values: Vec<IndexValue>,
     pub entity_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ScopedCursorEnvelope {
+    query_fingerprint: [u8; 32],
+    cursor: IndexCursor,
+}
+
+#[derive(Serialize)]
+struct CursorQueryIdentity<'a> {
+    tenant_id: Uuid,
+    schema: &'a SchemaRef,
+    locale: &'a Option<LocaleKey>,
+    filter: &'a Option<FilterExpr>,
+    order_by: &'a [OrderExpr],
 }
 
 #[derive(Debug, Error)]
@@ -45,6 +64,8 @@ pub enum CursorValidationError {
     #[error(transparent)]
     Codec(#[from] CursorCodecError),
     #[error(transparent)]
+    Query(#[from] QueryValidationError),
+    #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
     #[error("cursor tenant does not match query tenant")]
     TenantMismatch,
@@ -54,8 +75,20 @@ pub enum CursorValidationError {
     SchemaFingerprintMismatch,
     #[error("cursor locale does not match query locale")]
     LocaleMismatch,
+    #[error("cursor query fingerprint does not match filter/order semantics")]
+    QueryFingerprintMismatch,
     #[error("cursor contains {actual} order values but query defines {expected} order expressions")]
     OrderArityMismatch { expected: usize, actual: usize },
+    #[error("cursor order field contract is missing at position {index}")]
+    OrderFieldContractMissing { index: usize },
+    #[error(
+        "cursor order value at position {index} has type {actual:?}, expected {expected:?}"
+    )]
+    OrderValueTypeMismatch {
+        index: usize,
+        expected: IndexValueType,
+        actual: Option<IndexValueType>,
+    },
     #[error("cursor entity id must not be nil")]
     NilEntityId,
 }
@@ -63,72 +96,187 @@ pub enum CursorValidationError {
 pub struct CursorCodec;
 
 impl CursorCodec {
+    /// Encode the raw cursor payload for storage/round-trip tests.
+    ///
+    /// Query continuation APIs must use `encode_for_query` instead.
     pub fn encode(cursor: &IndexCursor) -> Result<String, CursorCodecError> {
-        let payload = postcard::to_stdvec(cursor)?;
-        let checksum = Sha256::digest(&payload);
-        let mut envelope = Vec::with_capacity(1 + payload.len() + CHECKSUM_LEN);
-        envelope.push(CURSOR_VERSION);
-        envelope.extend_from_slice(&payload);
-        envelope.extend_from_slice(&checksum[..CHECKSUM_LEN]);
-        Ok(URL_SAFE_NO_PAD.encode(envelope))
+        encode_payload(CURSOR_VERSION, cursor)
     }
 
     pub fn decode(encoded: &str) -> Result<IndexCursor, CursorCodecError> {
-        let envelope = URL_SAFE_NO_PAD.decode(encoded)?;
-        if envelope.len() < 1 + CHECKSUM_LEN {
-            return Err(CursorCodecError::TooShort);
-        }
-
-        let version = envelope[0];
-        if version != CURSOR_VERSION {
-            return Err(CursorCodecError::UnsupportedVersion(version));
-        }
-
-        let payload_end = envelope.len() - CHECKSUM_LEN;
-        let payload = &envelope[1..payload_end];
-        let checksum = &envelope[payload_end..];
-        let expected = Sha256::digest(payload);
-        if checksum != &expected[..CHECKSUM_LEN] {
-            return Err(CursorCodecError::InvalidChecksum);
-        }
-
-        Ok(postcard::from_bytes(payload)?)
+        decode_payload(encoded, CURSOR_VERSION)
     }
 
+    /// Encode a production continuation token bound to filter and order semantics.
+    pub fn encode_for_query(
+        cursor: &IndexCursor,
+        query: &IndexQuery,
+        registry: &SchemaRegistry,
+    ) -> Result<String, CursorValidationError> {
+        validate_cursor(cursor, query, registry)?;
+        let envelope = ScopedCursorEnvelope {
+            query_fingerprint: query_fingerprint(query)?,
+            cursor: cursor.clone(),
+        };
+        Ok(encode_payload(SCOPED_CURSOR_VERSION, &envelope)?)
+    }
+
+    /// Decode the legacy raw envelope and validate scope/type fields.
+    ///
+    /// This remains for the test-only reference engine. SQL continuation paths
+    /// require `decode_scoped_for_query`.
     pub fn decode_for_query(
         encoded: &str,
         query: &IndexQuery,
         registry: &SchemaRegistry,
     ) -> Result<IndexCursor, CursorValidationError> {
         let cursor = Self::decode(encoded)?;
-        if cursor.tenant_id != query.scope.tenant_id {
-            return Err(CursorValidationError::TenantMismatch);
-        }
-        if cursor.schema != query.schema {
-            return Err(CursorValidationError::SchemaMismatch);
-        }
-        if cursor.locale != query.scope.locale {
-            return Err(CursorValidationError::LocaleMismatch);
-        }
-        if cursor.entity_id.is_nil() {
-            return Err(CursorValidationError::NilEntityId);
-        }
-
-        let registered = registry
-            .get(&query.schema)
-            .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.schema.clone()))?;
-        if cursor.schema_fingerprint != registered.fingerprint {
-            return Err(CursorValidationError::SchemaFingerprintMismatch);
-        }
-        if cursor.order_values.len() != query.order_by.len() {
-            return Err(CursorValidationError::OrderArityMismatch {
-                expected: query.order_by.len(),
-                actual: cursor.order_values.len(),
-            });
-        }
-
+        validate_cursor(&cursor, query, registry)?;
         Ok(cursor)
     }
+
+    /// Decode a query-scoped continuation token for PostgreSQL keyset compilation.
+    pub fn decode_scoped_for_query(
+        encoded: &str,
+        query: &IndexQuery,
+        registry: &SchemaRegistry,
+    ) -> Result<IndexCursor, CursorValidationError> {
+        let envelope: ScopedCursorEnvelope = decode_payload(encoded, SCOPED_CURSOR_VERSION)?;
+        if envelope.query_fingerprint != query_fingerprint(query)? {
+            return Err(CursorValidationError::QueryFingerprintMismatch);
+        }
+        validate_cursor(&envelope.cursor, query, registry)?;
+        Ok(envelope.cursor)
+    }
+}
+
+fn encode_payload<T: Serialize>(version: u8, value: &T) -> Result<String, CursorCodecError> {
+    let payload = postcard::to_stdvec(value)?;
+    let checksum = Sha256::digest(&payload);
+    let mut envelope = Vec::with_capacity(1 + payload.len() + CHECKSUM_LEN);
+    envelope.push(version);
+    envelope.extend_from_slice(&payload);
+    envelope.extend_from_slice(&checksum[..CHECKSUM_LEN]);
+    Ok(URL_SAFE_NO_PAD.encode(envelope))
+}
+
+fn decode_payload<T: DeserializeOwned>(
+    encoded: &str,
+    expected_version: u8,
+) -> Result<T, CursorCodecError> {
+    let envelope = URL_SAFE_NO_PAD.decode(encoded)?;
+    if envelope.len() < 1 + CHECKSUM_LEN {
+        return Err(CursorCodecError::TooShort);
+    }
+
+    let version = envelope[0];
+    if version != expected_version {
+        return Err(CursorCodecError::UnsupportedVersion(version));
+    }
+
+    let payload_end = envelope.len() - CHECKSUM_LEN;
+    let payload = &envelope[1..payload_end];
+    let checksum = &envelope[payload_end..];
+    let expected = Sha256::digest(payload);
+    if checksum != &expected[..CHECKSUM_LEN] {
+        return Err(CursorCodecError::InvalidChecksum);
+    }
+
+    Ok(postcard::from_bytes(payload)?)
+}
+
+fn query_fingerprint(query: &IndexQuery) -> Result<[u8; 32], CursorCodecError> {
+    let identity = CursorQueryIdentity {
+        tenant_id: query.scope.tenant_id,
+        schema: &query.schema,
+        locale: &query.scope.locale,
+        filter: &query.filter,
+        order_by: &query.order_by,
+    };
+    let bytes = postcard::to_stdvec(&identity)?;
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok-index-cursor-query-v1");
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
+    Ok(hasher.finalize().into())
+}
+
+fn validate_cursor(
+    cursor: &IndexCursor,
+    query: &IndexQuery,
+    registry: &SchemaRegistry,
+) -> Result<(), CursorValidationError> {
+    registry.validate_query(query)?;
+    if cursor.tenant_id != query.scope.tenant_id {
+        return Err(CursorValidationError::TenantMismatch);
+    }
+    if cursor.schema != query.schema {
+        return Err(CursorValidationError::SchemaMismatch);
+    }
+    if cursor.locale != query.scope.locale {
+        return Err(CursorValidationError::LocaleMismatch);
+    }
+    if cursor.entity_id.is_nil() {
+        return Err(CursorValidationError::NilEntityId);
+    }
+
+    let registered = registry
+        .get(&query.schema)
+        .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.schema.clone()))?;
+    if cursor.schema_fingerprint != registered.fingerprint {
+        return Err(CursorValidationError::SchemaFingerprintMismatch);
+    }
+    if cursor.order_values.len() != query.order_by.len() {
+        return Err(CursorValidationError::OrderArityMismatch {
+            expected: query.order_by.len(),
+            actual: cursor.order_values.len(),
+        });
+    }
+
+    for (index, (order, value)) in query
+        .order_by
+        .iter()
+        .zip(&cursor.order_values)
+        .enumerate()
+    {
+        if matches!(value, IndexValue::Null) {
+            continue;
+        }
+        let expected = resolve_order_value_type(registry, &query.schema, &order.field)
+            .ok_or(CursorValidationError::OrderFieldContractMissing { index })?;
+        let actual = value.value_type();
+        if actual != Some(expected) {
+            return Err(CursorValidationError::OrderValueTypeMismatch {
+                index,
+                expected,
+                actual,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_order_value_type(
+    registry: &SchemaRegistry,
+    root: &SchemaRef,
+    path: &FieldPath,
+) -> Option<IndexValueType> {
+    let mut registered = registry.get(root)?;
+    for link_name in path.links() {
+        let link = registered
+            .schema
+            .links
+            .iter()
+            .find(|link| link.name == *link_name)?;
+        registered = registry.get(&link.target_schema)?;
+    }
+    registered
+        .schema
+        .fields
+        .iter()
+        .find(|field| field.name == *path.field())
+        .map(|field| field.value_type)
 }
 
 #[cfg(test)]
@@ -138,8 +286,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         EntityName, FieldCardinality, FieldName, FieldPath, IndexField, IndexQueryScope,
-        IndexSchema, IndexValueType, LocaleMode, ModuleName, OrderDirection, OrderExpr, Pagination,
-        SchemaVersion,
+        IndexSchema, LocaleMode, ModuleName, OrderDirection, Pagination, SchemaVersion,
     };
 
     fn schema() -> IndexSchema {
@@ -214,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn validates_cursor_against_query_scope() {
+    fn validates_scoped_cursor_against_query() {
         let schema = schema();
         let registry = registry_with_schema(&schema);
         let tenant_id = Uuid::new_v4();
@@ -227,32 +374,60 @@ mod tests {
             order_values: vec![IndexValue::Uuid(Uuid::new_v4())],
             entity_id: Uuid::new_v4(),
         };
-        let encoded = CursorCodec::encode(&cursor).unwrap();
+        let encoded = CursorCodec::encode_for_query(&cursor, &query, &registry).unwrap();
 
         assert_eq!(
-            CursorCodec::decode_for_query(&encoded, &query, &registry).unwrap(),
+            CursorCodec::decode_scoped_for_query(&encoded, &query, &registry).unwrap(),
             cursor
         );
     }
 
     #[test]
-    fn rejects_cross_tenant_cursor() {
+    fn rejects_cursor_reuse_across_order_semantics() {
         let schema = schema();
         let registry = registry_with_schema(&schema);
-        let query = query(&schema, Uuid::new_v4());
+        let tenant_id = Uuid::new_v4();
+        let original = query(&schema, tenant_id);
         let cursor = IndexCursor {
-            tenant_id: Uuid::new_v4(),
+            tenant_id,
             schema: schema.reference.clone(),
             schema_fingerprint: schema.fingerprint().unwrap(),
-            locale: query.scope.locale.clone(),
+            locale: original.scope.locale.clone(),
             order_values: vec![IndexValue::Uuid(Uuid::new_v4())],
             entity_id: Uuid::new_v4(),
         };
-        let encoded = CursorCodec::encode(&cursor).unwrap();
+        let encoded = CursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
+        let mut changed = original.clone();
+        changed.order_by[0].direction = OrderDirection::Desc;
 
         assert!(matches!(
-            CursorCodec::decode_for_query(&encoded, &query, &registry),
-            Err(CursorValidationError::TenantMismatch)
+            CursorCodec::decode_scoped_for_query(&encoded, &changed, &registry),
+            Err(CursorValidationError::QueryFingerprintMismatch)
+        ));
+    }
+
+    #[test]
+    fn rejects_wrong_cursor_order_value_type_during_scoped_encoding() {
+        let schema = schema();
+        let registry = registry_with_schema(&schema);
+        let tenant_id = Uuid::new_v4();
+        let query = query(&schema, tenant_id);
+        let cursor = IndexCursor {
+            tenant_id,
+            schema: schema.reference.clone(),
+            schema_fingerprint: schema.fingerprint().unwrap(),
+            locale: query.scope.locale.clone(),
+            order_values: vec![IndexValue::Integer(7)],
+            entity_id: Uuid::new_v4(),
+        };
+
+        assert!(matches!(
+            CursorCodec::encode_for_query(&cursor, &query, &registry),
+            Err(CursorValidationError::OrderValueTypeMismatch {
+                index: 0,
+                expected: IndexValueType::Uuid,
+                actual: Some(IndexValueType::Integer),
+            })
         ));
     }
 
