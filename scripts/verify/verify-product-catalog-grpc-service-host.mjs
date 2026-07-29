@@ -176,7 +176,7 @@ requireAll(plan, [
   "rustok-product-catalog-service",
   "OutboxTransport",
   "TLS-by-default",
-  "provider-host execution evidence remains open",
+  "host execution evidence remains open",
   "Product remains `boundary_ready`",
   "cargo run -p rustok-product-catalog-service",
   "verify-product-catalog-grpc-service-host.mjs",
