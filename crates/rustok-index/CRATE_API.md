@@ -35,6 +35,13 @@ scheduler modules remain deleted.
 - `SchemaRegistryError`, `LinkPathStep`
 - `RecordValidationError`, `QueryValidationError`
 - `IndexCursor`, `CursorCodec`, `CursorCodecError`, `CursorValidationError`
+- `ExecutableQueryPlan`, `PlannedJoin`, `PlannedField`, `PlannedOrder`
+- `QueryPlanFingerprint`, `QueryPlanError`
+- `PostgresBindValue`, `CompiledQueryColumn`, `CompiledPostgresCount`
+- `CompiledPostgresQuery`, `PostgresQueryBuildError`, `PostgresQueryCompileError`
+- `CompiledPostgresCell`, `CompiledPostgresRow`, `CompiledPostgresPageQuery`
+- `IndexProjectedValue`, `IndexRelationIdentity`, `IndexQueryItem`, `IndexQueryPage`
+- `PostgresQueryPageBuildError`, `PostgresQueryDecodeError`
 
 ### Infrastructure
 
@@ -101,8 +108,16 @@ Partition admission requires an exact retained evidence identifier, complete
 query/mutation/maintenance/cutover measurement coverage, and an explicit policy
 before producing deterministic tenant-hash shadow relation names and bootstrap
 SQL. It does not execute copy, constraint/index attachment, dual-write/replay,
-cutover, or rollback. Multi-source catalog composition, batch ingestion, rebuild,
-query-port, partition cutover, and operator APIs remain later work.
+cutover, or rollback.
+
+M4 now provides validated typed executable plans, controlled PostgreSQL SQL and bind
+DTOs for root and explicit one-cardinality-link query semantics, query-scoped cursor
+continuation, one-row page lookahead, strict compiled-column/result decoding,
+exact-count decoding, `has_more`, and next-cursor construction. It still does not
+execute statements, adapt SeaORM rows directly, implement many-link semantics,
+publish `IndexQueryPort`, or claim PostgreSQL/reference-engine equivalence.
+Multi-source catalog composition, batch ingestion, rebuild, query-port, partition
+cutover, and operator APIs remain later work.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -130,9 +145,13 @@ APIs.
 - Reintroducing a catch-all JSON document as the public contract.
 - Implementing rebuild by collecting every source ID before processing.
 - Publishing unvalidated JSON filters instead of the typed query AST.
-- Accepting a cursor without checking tenant, schema, fingerprint, locale, and
-  order arity.
-- Sorting through a `many` link without an explicit aggregate policy.
+- Accepting a cursor without checking tenant, schema, fingerprint, locale, filter,
+  ordered fields/directions, order arity, and order-value types.
+- Executing a page query through raw `compile_postgres_query` instead of the
+  one-row-lookahead `compile_postgres_page_query` handoff.
+- Decoding rows without rechecking the plan fingerprint and exact compiled column
+  contract.
+- Sorting or projecting through a `many` link without an explicit aggregate policy.
 - Completing or heartbeating schema/index work without exact worker and attempt
   fencing.
 - Building expression indexes against `payload ->> field`; stored `IndexValue`
@@ -154,6 +173,10 @@ APIs.
 - `IndexSchema`, `IndexRecord`, `IndexMutation`, and `IndexQuery` are the current
   input contracts.
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
+- `SchemaRegistry::compile_postgres_page_query` is the page-execution compiler
+  handoff; it preserves SQL and increases only the validated limit bind by one.
+- `CompiledPostgresRow` is the narrow adapter handoff for compiler-owned UUID,
+  tagged JSON, SQL-null, and exact-count cells.
 - `PostgresSchemaRegistrationStore::register(tenant_id, schema)` binds one non-nil
   tenant to one validated exact schema contract and calculated fingerprint.
 - `SchemaApplicationLeaseRequest` binds one tenant, exact schema reference,
@@ -266,13 +289,34 @@ APIs.
 - Copy, constraints, indexes, replay/dual-write, cutover, rollback, durable global
   ownership, and PostgreSQL evidence remain mandatory future work.
 
+### Query Planning, Compilation, and Result Decoding
+
+- `SchemaRegistry::plan_query` validates first and captures deterministic aliases,
+  joins, typed referenced fields, projection, filters, ordering, pagination, and a
+  versioned plan fingerprint.
+- `compile_postgres_query` accepts only the supported root/one-link subset and emits
+  controlled SQL plus ordered bind DTOs; caller values and contract names remain
+  binds.
+- `compile_postgres_page_query` changes only the validated main-statement page-limit
+  bind from `N` to `N + 1`; offset and exact-count binds are preserved.
+- `decode_postgres_query_page` re-plans the query, compares the plan fingerprint and
+  complete column metadata, validates every tagged field value, and rejects more
+  than `N + 1` rows.
+- The lookahead row is removed. Cursor pages produce `has_more` and a scoped next
+  cursor from the last retained entity/order tuple; offset pages produce
+  `has_more` without a cursor.
+- SQL execution, SeaORM row adaptation, many-link semantics, and live equivalence
+  evidence remain separate future boundaries.
+
 ### Cursor Contract
 
-- Cursor format is explicitly versioned.
-- Payload uses postcard and URL-safe Base64.
+- Cursor formats are explicitly versioned.
+- Payloads use postcard and URL-safe Base64.
 - A checksum detects corruption.
-- Cursor application validates tenant, schema, schema fingerprint, locale,
-  ordering arity, and entity tie-breaker identity.
+- Production continuation tokens bind tenant, schema, locale, filter, ordered
+  fields, and directions through a query fingerprint.
+- Cursor application validates schema fingerprint, ordering arity, order-value
+  types, and non-nil entity tie-breaker identity.
 - Cursor integrity is not an authorization substitute; transport and query
   policy still enforce caller access.
 
@@ -299,7 +343,13 @@ APIs.
 - `RecordValidationError` and `QueryValidationError` define registry-backed data
   and query failures.
 - `CursorCodecError` and `CursorValidationError` separate malformed cursors from
-  scope/schema mismatches.
+  scope/schema/query-fingerprint/type mismatches.
+- `QueryPlanError`, `PostgresQueryBuildError`, and `PostgresQueryCompileError`
+  separate validation/planning failures from unsupported or corrupted compiler
+  contracts.
+- `PostgresQueryPageBuildError` rejects missing or mismatched pagination binds;
+  `PostgresQueryDecodeError` rejects plan/column/count mismatches, malformed cells,
+  invalid tagged values, unexpected nulls, and oversized result batches.
 - `MutationStorageError` separates validation, delivery identity conflict,
   in-progress/rejected replay, stored-version corruption, backend limits, and
   database failure. Its public display is generic; transport adapters must still
@@ -312,4 +362,5 @@ APIs.
 - `PartitionAdmissionError` separates invalid policy, invalid evidence, metric
   overflow, and unsupported hash modulus. Typed admission reasons explain every
   rejected evidence gate without exposing storage internals.
-- Later milestones add source catalog, retry, cancellation, and rebuild errors.
+- Later milestones add source catalog, retry, cancellation, rebuild, and query-port
+  execution errors.
