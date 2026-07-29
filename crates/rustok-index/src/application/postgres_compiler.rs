@@ -101,7 +101,9 @@ impl SchemaRegistry {
             Pagination::Cursor {
                 after: Some(encoded),
                 ..
-            } => Some(CursorCodec::decode_for_query(encoded, query, self)?),
+            } => Some(CursorCodec::decode_scoped_for_query(
+                encoded, query, self,
+            )?),
             _ => None,
         };
         Ok(plan.compile_postgres_with_cursor(cursor.as_ref())?)
@@ -112,8 +114,8 @@ impl ExecutableQueryPlan {
     /// Compile a plan that does not carry an opaque continuation cursor.
     ///
     /// Plans with `after` must use `SchemaRegistry::compile_postgres_query` so
-    /// cursor checksum, scope, schema fingerprint, arity, and value types are
-    /// validated before keyset SQL is emitted.
+    /// cursor checksum, query fingerprint, scope, schema fingerprint, arity,
+    /// and value types are validated before keyset SQL is emitted.
     pub fn compile_postgres(&self) -> Result<CompiledPostgresQuery, PostgresQueryCompileError> {
         if matches!(
             &self.pagination,
