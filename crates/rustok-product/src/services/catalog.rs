@@ -1,4 +1,5 @@
 mod admin_queries;
+mod attribute_filters;
 mod commands;
 pub mod helpers;
 mod projection;
@@ -7,8 +8,8 @@ mod tags;
 pub mod types;
 
 pub use types::{
-    AdminProductList, AdminProductListItem, AdminProductListQuery, ProductTagState,
-    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
+    AdminProductList, AdminProductListItem, AdminProductListQuery, ProductAttributeFilter,
+    ProductTagState, StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 
