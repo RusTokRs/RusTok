@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BG",
+  "upstream_task": "FORUM-20BF",
+  "scope": "Cut existing GraphQL reply fields and canonical storefront transports over to the exact parent-topic audience owner while removing duplicate reply fetches",
+  "reply_owner": "crates/rustok-forum/src/services/reply_audience_read.rs",
+  "transport_context": "crates/rustok-forum/src/reply_read_transport.rs",
+  "legacy_graphql_query": "crates/rustok-forum/src/graphql/query.rs",
+  "graphql_runtime": "crates/rustok-forum/src/graphql/runtime_data.rs",
+  "graphql_storefront_adapter": "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
+  "native_storefront_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter.rs",
+  "transport_selector": "crates/rustok-forum/storefront/src/transport/mod.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bg-reply-legacy-cutover.md",
+  "source_verifier": "scripts/verify/verify-forum-reply-legacy-cutover.mjs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-reply-audience-read.json",
+  "cutover_boundary": {
+    "legacy_forum_replies_field_preserved": true,
+    "legacy_forum_replies_uses_exact_owner": true,
+    "legacy_forum_replies_uses_trusted_graphql_context": true,
+    "legacy_storefront_replies_field_preserved": true,
+    "legacy_storefront_replies_uses_exact_owner": true,
+    "legacy_storefront_replies_public_path_is_exact": true,
+    "legacy_storefront_replies_authenticated_path_is_exact": true,
+    "legacy_storefront_replies_approved_only": true,
+    "graphql_base_adapter_uses_single_reply_fetch": true,
+    "native_base_adapter_uses_single_reply_fetch": true,
+    "native_base_adapter_reuses_host_audience_facts": true,
+    "native_base_adapter_uses_trusted_reply_context": true,
+    "transport_selector_does_not_replace_reply_results": true,
+    "temporary_graphql_reply_adapter_removed": true,
+    "temporary_native_reply_adapter_removed": true,
+    "additive_exact_graphql_fields_preserved": true,
+    "category_owner_read_changed": false,
+    "search_index_changed": false,
+    "seo_changed": false,
+    "deep_link_changed": false,
+    "migration_added": false,
+    "dependency_changed": false,
+    "public_response_dto_changed": false
+  },
+  "compatibility": {
+    "existing_graphql_field_names_changed": false,
+    "existing_rest_routes_changed": false,
+    "native_server_fn_endpoint_changed": false,
+    "storefront_model_changed": false,
+    "mark_read_paths_changed": false,
+    "selected_topic_gate_preserved": true,
+    "profile_enrichment_preserved": true,
+    "approved_reply_filter_preserved": true
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "upstream_contract_updated": true,
+    "crate_api_updated": false,
+    "canonical_plan_updated": false,
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BG through a conflict-safe repository-local edit."
+  },
+  "remaining_scope": [
+    "migrate remaining category owner and storefront reads through exact audience authorization",
+    "migrate search index SEO and deep-link authorization",
+    "add visibility-scoped category and all-read commands",
+    "capture maintainer-executed SQLite PostgreSQL REST native and GraphQL runtime evidence"
+  ],
+  "downstream_task": "FORUM-20BH",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-forum reply_read_transport -- --nocapture",
+      "cargo test -p rustok-forum --test topic_audience_exact_read_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-reply-audience-read.mjs",
+      "node scripts/verify/verify-forum-reply-legacy-cutover.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
