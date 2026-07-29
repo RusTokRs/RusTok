@@ -1,4 +1,5 @@
 pub mod consumer_poison_metrics;
+pub mod dlq_duplicate_alert_metrics;
 pub mod metrics;
 pub mod otel;
 pub mod runtime_consumer_metrics;
@@ -226,6 +227,7 @@ fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, Tele
     registry.register(Box::new(HTTP_REQUESTS_TOTAL.clone()))?;
     registry.register(Box::new(HTTP_REQUEST_DURATION_SECONDS.clone()))?;
 
+    dlq_duplicate_alert_metrics::register(registry)?;
     metrics::register_all(registry)?;
 
     let _ = REGISTRY.set(registry.clone());
