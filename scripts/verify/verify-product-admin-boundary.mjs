@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // RusTok product admin FFA boundary guardrails.
-// Checks the composed catalog-controls wrapper together with the preserved editor.
+// Fast source-level checks for the module-owned core/transport/ui split.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -17,197 +17,304 @@ function repoPath(relativePath) {
 }
 
 function readRepo(relativePath) {
-  if (!existsSync(repoPath(relativePath))) {
-    failures.push(`${relativePath}: required product admin boundary file is missing`);
-    return "";
-  }
   return readFileSync(repoPath(relativePath), "utf8");
 }
 
-function requireText(source, marker, message) {
-  const found = typeof marker === "string" ? source.includes(marker) : marker.test(source);
-  if (!found) failures.push(message);
+function fail(message) {
+  failures.push(message);
 }
 
-function forbidText(source, marker, message) {
-  const found = typeof marker === "string" ? source.includes(marker) : marker.test(source);
-  if (found) failures.push(message);
+function assertExists(relativePath, description) {
+  if (!existsSync(repoPath(relativePath))) fail(description);
 }
 
-const paths = {
-  lib: "crates/rustok-product/admin/src/lib.rs",
-  controls: "crates/rustok-product/admin/src/catalog_controls.rs",
-  core: "crates/rustok-product/admin/src/core.rs",
-  ui: "crates/rustok-product/admin/src/ui/catalog_admin.rs",
-  editorUi: "crates/rustok-product/admin/src/ui/leptos.rs",
-  transport: "crates/rustok-product/admin/src/catalog_transport.rs",
-  preservedTransport: "crates/rustok-product/admin/src/transport.rs",
-  graphql: "crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs",
-  native: "crates/rustok-product/admin/src/transport/admin_catalog_native.rs",
-  ownerTypes: "crates/rustok-product/src/services/catalog/types.rs",
-  ownerQuery: "crates/rustok-product/src/services/catalog/admin_queries.rs",
-  graphqlRoot: "crates/rustok-commerce/src/graphql/product_catalog.rs",
-  plan: "crates/rustok-product/docs/implementation-plan.md",
-  registry: "docs/modules/registry.md",
-  package: "package.json",
-};
+function assertContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (!found) fail(description);
+}
 
-const source = Object.fromEntries(
-  Object.entries(paths).map(([key, relativePath]) => [key, readRepo(relativePath)]),
+function assertNotContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (found) fail(description);
+}
+
+const libPath = "crates/rustok-product/admin/src/lib.rs";
+const corePath = "crates/rustok-product/admin/src/core.rs";
+const uiPath = "crates/rustok-product/admin/src/ui/leptos.rs";
+const transportPath = "crates/rustok-product/admin/src/transport.rs";
+const legacyApiPath = "crates/rustok-product/admin/src/api.rs";
+const graphqlAdapterPath = "crates/rustok-product/admin/src/transport/graphql_adapter.rs";
+const nativeAdapterPath = "crates/rustok-product/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/rustok-product/admin/Cargo.toml";
+const commerceQueryPath = "crates/rustok-commerce/src/graphql/query.rs";
+const commerceCatalogMutationPath = "crates/rustok-commerce/src/graphql/mutations/catalog.rs";
+const commerceTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
+const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
+const registryPath = "docs/modules/registry.md";
+const packagePath = "package.json";
+
+for (const filePath of [
+  libPath,
+  corePath,
+  uiPath,
+  transportPath,
+  graphqlAdapterPath,
+  nativeAdapterPath,
+  cargoPath,
+  commerceQueryPath,
+  commerceCatalogMutationPath,
+  commerceTypesPath,
+  implementationPlanPath,
+  registryPath,
+  packagePath,
+]) {
+  assertExists(filePath, `${filePath}: expected product admin FFA boundary file`);
+}
+if (existsSync(repoPath(legacyApiPath))) {
+  fail(`${legacyApiPath}: product admin legacy api.rs must stay removed; transport/graphql_adapter.rs owns GraphQL operations`);
+}
+
+const lib = readRepo(libPath);
+const core = readRepo(corePath);
+const ui = readRepo(uiPath);
+const transport = readRepo(transportPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
+const nativeAdapter = readRepo(nativeAdapterPath);
+const cargo = readRepo(cargoPath);
+const commerceQuery = readRepo(commerceQueryPath);
+const commerceCatalogMutation = readRepo(commerceCatalogMutationPath);
+const commerceTypes = readRepo(commerceTypesPath);
+const implementationPlan = readRepo(implementationPlanPath);
+const registry = readRepo(registryPath);
+const packageJson = readRepo(packagePath);
+
+assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
+assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
+assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
+assertContains(
+  lib,
+  /pub use ui::(?:leptos|catalog_admin)::ProductAdmin;/,
+  `${libPath}: crate root must re-export ProductAdmin`,
 );
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
 
-for (const marker of [
-  "mod catalog_controls;",
-  '#[path = "catalog_transport.rs"]',
-  "mod transport;",
-  "mod core;",
-  "mod ui;",
-  "pub use ui::catalog_admin::ProductAdmin;",
-]) {
-  requireText(source.lib, marker, `${paths.lib}: missing crate composition marker ${marker}`);
-}
-
-for (const marker of [
-  "pub(crate) struct ProductAdminListInput",
-  "pub category_id: Option<String>",
-  "pub sort_by: Option<String>",
-  "pub sort_direction: Option<String>",
-  "build_product_admin_list_input",
-  "build_product_admin_catalog_controls_labels",
-]) {
-  requireText(source.controls, marker, `${paths.controls}: missing typed admin catalog control ${marker}`);
-}
-for (const marker of ["leptos::", "#[component]", "#[server", "LocalResource", "web_sys::"]) {
-  forbidText(source.core, marker, `${paths.core}: neutral admin core must stay framework-free (${marker})`);
+for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
+  assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
 }
 for (const marker of [
+  "SaveCommand",
+  "ProductAdminEditorFormState",
+  "StatusResultViewModel",
+  "DeleteResultViewModel",
+  "ProductAdminSeoPanelCopy",
+  "ProductAdminSummaryPanelCopy",
+  "parse_product_admin_inventory_quantity_input",
   "ProductAdminOpenProductViewModel",
-  "ProductAdminProductsLoadViewModel",
-  "ProductAttributeEditorState",
-  "build_save_command",
+  "pricing_preview_state_from_result",
+  "ProductAdminRouteQueryIntent",
+  "ProductAdminSelectedProductQueryState",
   "product_admin_selected_product_query_state",
+  "ProductAdminProductsLoadViewModel",
   "product_admin_products_load_view_from_result",
+  "ShippingProfilesLoadViewModel",
+  "ProductAttributeEditorState",
+  "shipping_profiles_load_view_from_result",
+  "show_shipping_profile",
 ]) {
-  requireText(source.core, marker, `${paths.core}: preserved editor core marker is missing (${marker})`);
+  assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
 }
 
-for (const marker of [
-  "build_product_admin_catalog_controls_labels",
-  "build_product_admin_list_input",
-  'read_route_query_value(&route_context, "category_id")',
-  "provide_context(catalog_controls)",
-  'name="category_id"',
-  'name="sort_by"',
-  'name="sort_direction"',
-  "transport::fetch_catalog_search_options",
-  "<super::leptos::ProductAdmin />",
-]) {
-  requireText(source.ui, marker, `${paths.ui}: missing composed admin UI marker ${marker}`);
+assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
+assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
+assertContains(ui, "build_save_command", `${uiPath}: UI must use core-owned save command preparation`);
+assertContains(ui, "ProductAdminOpenProductViewModel", `${uiPath}: UI must consume core-owned open-product outcomes`);
+assertContains(ui, "pricing_preview_state_from_result", `${uiPath}: UI must use core-owned pricing preview state mapping`);
+assertContains(ui, "build_product_admin_summary_panel_copy", `${uiPath}: UI must consume core-owned selected-summary panel copy`);
+assertContains(ui, "product_admin_selected_product_query_state", `${uiPath}: UI must use core-owned selected product query state`);
+assertContains(ui, "product_admin_products_load_view_from_result", `${uiPath}: UI must use core-owned products load-result normalization`);
+assertContains(ui, "shipping_profiles_load_view_from_result", `${uiPath}: UI must use core-owned shipping-profiles load-result normalization`);
+for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "ProductService", "PricingService"] ) {
+  assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport or services (${marker})`);
 }
-for (const marker of [
-  "TypedProductAttributeField",
-  "build_save_command",
-  "product_admin_products_load_view_from_result",
-  "transport::fetch_products",
-  "save_product_attribute_values",
-]) {
-  requireText(source.editorUi, marker, `${paths.editorUi}: preserved editor marker is missing (${marker})`);
+for (const marker of ["product.summary.title", "Selected product"]) {
+  assertNotContains(ui, marker, `${uiPath}: selected-summary panel copy must stay in core (${marker})`);
 }
-for (const marker of ["crate::api", "ProductService", "PricingService", "#[server"]) {
-  forbidText(source.ui, marker, `${paths.ui}: catalog wrapper must not call raw services or endpoints (${marker})`);
+for (const marker of ["item_shipping_profile_label.is_some", "item_shipping_profile_label.clone().unwrap_or_default"]) {
+  assertNotContains(ui, marker, `${uiPath}: shipping-profile chip display policy must stay in core (${marker})`);
 }
+for (const marker of ["product_id.trim().is_empty()", "selected_product_query.get() {"]) {
+  assertNotContains(ui, marker, `${uiPath}: selected product query normalization must stay in core (${marker})`);
+}
+for (const marker of ["list.items.is_empty()", "list.items.into_iter().map"] ) {
+  assertNotContains(ui, marker, `${uiPath}: products load-result normalization must stay in core (${marker})`);
+}
+assertNotContains(ui, "match shipping_profiles.get()", `${uiPath}: shipping-profile consumers must share core-owned load-result normalization`);
+assertContains(ui, "TypedProductAttributeField", `${uiPath}: effective product form must render typed attribute editors`);
+assertContains(ui, "save_product_attribute_values", `${uiPath}: product submit flow must persist typed attribute patches`);
 
-for (const marker of [
-  '#[path = "transport.rs"]',
-  "mod legacy;",
-  "mod admin_catalog_graphql;",
-  "mod admin_catalog_native;",
-  "pub use legacy::fetch_catalog_search_options;",
-  "pub(crate) use legacy::*;",
-  "use_context::<ProductAdminListInput>()",
-  "route_controls.category_id",
-  "route_controls.sort_by",
-  "route_controls.sort_direction",
-  "admin_catalog_native::fetch_products",
-  "admin_catalog_graphql::fetch_products",
-]) {
-  requireText(source.transport, marker, `${paths.transport}: missing native-first typed catalog facade marker ${marker}`);
-}
 for (const marker of [
   "fetch_bootstrap",
+  "fetch_products",
   "fetch_product",
   "fetch_product_pricing",
+  "fetch_shipping_profiles",
+  "fetch_product_attributes",
   "fetch_catalog_categories",
+  "fetch_attribute_schemas",
   "fetch_effective_product_form",
-  "save_product_attribute_values",
+  "fetch_product_attribute_values",
   "create_product",
+  "create_product_attribute",
+  "create_product_attribute_option",
+  "create_catalog_category",
+  "create_attribute_schema",
+  "create_product_attribute_schema_group",
+  "create_category_attribute_group",
+  "set_category_schema_mode",
+  "bind_schema_attribute",
+  "bind_category_attribute",
+  "save_product_attribute_values",
+  "clear_detached_product_attribute_values",
   "update_product",
+  "change_product_status",
   "delete_product",
 ]) {
-  requireText(source.preservedTransport, marker, `${paths.preservedTransport}: preserved admin transport operation is missing (${marker})`);
+  assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
+}
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
+assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must wire native server adapter`);
+assertContains(transport, "graphql_adapter::fetch_products", `${transportPath}: transport facade must delegate through GraphQL adapter`);
+assertContains(transport, "graphql_adapter::fetch_effective_product_form", `${transportPath}: catalog schema operations must delegate through GraphQL adapter`);
+assertContains(transport, "native_server_adapter::fetch_effective_product_form", `${transportPath}: catalog schema operations must try native server adapter first`);
+assertContains(transport, "native_server_adapter::save_product_attribute_values", `${transportPath}: typed attribute writes must try native server adapter first`);
+assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
+assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the product admin transport facade`);
+assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: product admin GraphQL adapter must keep the GraphQL transport contract`);
+for (const marker of [
+  "#[server",
+  "ProductCatalogSchemaService",
+  "product_admin_attributes_native",
+  "product_admin_categories_native",
+  "product_admin_attribute_schemas_native",
+  "product_admin_effective_form_native",
+  "product_admin_attribute_values_native",
+  "product_admin_save_attribute_values_native",
+  "product_admin_clear_detached_attribute_values_native",
+  "product_admin_create_attribute_native",
+  "product_admin_create_attribute_option_native",
+  "product_admin_create_category_native",
+  "product_admin_create_schema_native",
+  "product_admin_create_schema_group_native",
+  "product_admin_create_category_group_native",
+  "product_admin_set_category_schema_mode_native",
+  "product_admin_bind_schema_attribute_native",
+  "product_admin_bind_category_attribute_native",
+  "locale: String",
+  "leptos_axum::extract::<rustok_api::AuthContext>",
+  "leptos_axum::extract::<rustok_api::TenantContext>",
+  "expect_context::<rustok_api::HostRuntimeContext>()",
+  "shared_get::<rustok_outbox::TransactionalEventBus>()",
+  "runtime_ctx.db_clone()",
+]) {
+  assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native server adapter must expose category-bound server function contract (${marker})`);
+}
+for (const marker of [/locale: Option<String>/, /unwrap_or_else\(\|\| "en"/, /PLATFORM_FALLBACK_LOCALE/]) {
+  assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native category-bound adapter must not invent optional/fallback locale`);
+}
+for (const marker of [
+  "ProductAdminAttributes($tenantId: UUID!, $locale: String!)",
+  "ProductAdminCatalogCategories($tenantId: UUID!, $locale: String!)",
+  "ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!)",
+  "ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!)",
+  "ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!)",
+  "ProductAdminSaveAttributeValues($productId: UUID!, $locale: String!",
+  "ProductAdminClearDetachedAttributeValues($productId: UUID!, $locale: String!",
+  "ProductAdminCreateAttribute($locale: String!",
+  "ProductAdminCreateAttributeOption($locale: String!",
+  "ProductAdminCreateCatalogCategory($locale: String!",
+  "ProductAdminCreateAttributeSchema($locale: String!",
+  "ProductAdminCreateSchemaGroup($locale: String!",
+  "ProductAdminCreateCategoryGroup($locale: String!",
+  "options { id code label position } groupCode groupLabel",
+  "struct LocaleVariables",
+  "struct LocaleMutationVariables",
+]) {
+  assertContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute contract must use explicit host-provided locale (${marker})`);
+}
+assertNotContains(graphqlAdapter, "$userId:", `${graphqlAdapterPath}: GraphQL mutations must derive the actor from authenticated server context, not client input`);
+for (const marker of [
+  /fn fetch_product_attributes\([^)]*locale: Option<String>/,
+  /fn fetch_catalog_categories\([^)]*locale: Option<String>/,
+  /fn fetch_attribute_schemas\([^)]*locale: Option<String>/,
+  /fn fetch_effective_product_form\([^)]*locale: Option<String>/,
+  /fn fetch_product_attribute_values\([^)]*locale: Option<String>/,
+  /fn save_product_attribute_values\([^)]*locale: Option<String>/,
+  /fn create_product_attribute\([^)]*locale: Option<String>/,
+  /fn create_catalog_category\([^)]*locale: Option<String>/,
+  /fn create_attribute_schema\([^)]*locale: Option<String>/,
+  /unwrap_or_else\(\|\| "en"/,
+  /PLATFORM_FALLBACK_LOCALE/,
+]) {
+  assertNotContains(transport, marker, `${transportPath}: new catalog attribute facade must not invent optional/fallback locale`);
+  assertNotContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute GraphQL adapter must not invent optional/fallback locale`);
+}
+for (const marker of [
+  "ProductCatalogSchemaService",
+  "async fn product_attributes(",
+  "async fn catalog_categories(",
+  "async fn product_attribute_schemas(",
+  "async fn product_effective_form(",
+  "async fn product_attribute_values(",
+  "locale: String",
+]) {
+  assertContains(commerceQuery, marker, `${commerceQueryPath}: server GraphQL query surface must expose category-bound catalog schema reads (${marker})`);
+}
+for (const marker of [
+  "ProductCatalogSchemaService",
+  "async fn create_product_attribute(",
+  "async fn create_product_attribute_option(",
+  "async fn create_catalog_category(",
+  "async fn create_product_attribute_schema(",
+  "async fn create_product_attribute_schema_group(",
+  "async fn create_catalog_category_attribute_group(",
+  "async fn set_catalog_category_schema_mode(",
+  "async fn bind_product_attribute_schema_attribute(",
+  "async fn bind_catalog_category_attribute(",
+  "async fn save_product_attribute_values(",
+  "async fn clear_detached_product_attribute_values(",
+  "locale: String",
+]) {
+  assertContains(commerceCatalogMutation, marker, `${commerceCatalogMutationPath}: server GraphQL mutation surface must expose category-bound catalog schema writes (${marker})`);
+}
+for (const marker of [
+  "GqlProductAttributeList",
+  "GqlCatalogCategoryList",
+  "GqlProductAttributeSchemaList",
+  "GqlProductEffectiveForm",
+  "GqlProductAttributeOption",
+  "group_label",
+  "GqlProductAttributeValue",
+  "ProductAttributeValuePatchInput",
+  "CreateProductAttributeInput",
+  "CreateProductAttributeOptionInput",
+  "CreateCatalogCategoryInput",
+  "CreateProductAttributeSchemaInput",
+  "CreateProductAttributeSchemaGroupInput",
+  "CreateCategoryAttributeGroupInput",
+  "SetCategorySchemaModeInput",
+  "BindSchemaAttributeInput",
+  "BindCategoryAttributeInput",
+]) {
+  assertContains(commerceTypes, marker, `${commerceTypesPath}: server GraphQL type surface must include category-bound catalog schema DTO/input ${marker}`);
 }
 
-for (const marker of [
-  "ProductAdminCatalog",
-  "adminProductCatalog",
-  "AdminProductCatalogFilter",
-  "categoryId",
-  "sortBy",
-  "sortDirection",
-  "primaryCategoryId",
-  "GraphqlRequest",
-]) {
-  requireText(source.graphql, marker, `${paths.graphql}: missing typed admin GraphQL mapping ${marker}`);
-}
-for (const marker of [
-  'endpoint = "product/admin/catalog-list"',
-  "HostRuntimeContext",
-  "TransactionalEventBus",
-  "PRODUCTS_LIST",
-  "AdminProductListQuery::try_from_transport",
-  ".list_admin_products_with_query(",
-  "primary_category_id",
-]) {
-  requireText(source.native, marker, `${paths.native}: missing Product-owned native admin list marker ${marker}`);
-}
-for (const marker of [
-  "pub struct AdminProductListQuery",
-  "pub status:",
-  "pub category_id:",
-  "sort_by:",
-  "sort_direction:",
-  "status must be `draft`, `active`, or `archived`",
-]) {
-  requireText(source.ownerTypes, marker, `${paths.ownerTypes}: missing owner request validation marker ${marker}`);
-}
-for (const marker of [
-  "pub async fn list_admin_products_with_query",
-  "TenantId.eq(tenant_id)",
-  "Status.eq(status)",
-  "PrimaryCategoryId.eq(category_id)",
-  "admin_product_title_search_condition",
-  "order_by_asc",
-  "order_by_desc",
-  "shipping_profile_slug",
-  "primary_category_id",
-]) {
-  requireText(source.ownerQuery, marker, `${paths.ownerQuery}: missing owner-side admin list execution marker ${marker}`);
-}
-for (const marker of [
-  "AdminProductCatalogFilter",
-  "async fn admin_product_catalog",
-  "require_commerce_permission",
-  "product_query_tenant",
-  "AdminProductListQuery::try_from_transport",
-  ".list_admin_products_with_query(",
-]) {
-  requireText(source.graphqlRoot, marker, `${paths.graphqlRoot}: missing Product-backed admin GraphQL root marker ${marker}`);
-}
-
-requireText(source.plan, "verify-product-admin-boundary.mjs", `${paths.plan}: implementation plan must retain the admin boundary guard`);
-requireText(source.registry, "verify-product-admin-boundary.mjs", `${paths.registry}: central registry must retain the admin boundary guard`);
-requireText(source.package, "verify:product:admin-boundary", `${paths.package}: package scripts must expose admin boundary verification`);
-requireText(source.package, "test:verify:product:admin-boundary", `${paths.package}: package scripts must expose admin boundary fixture tests`);
+assertContains(implementationPlan, "verify-product-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the product fast boundary guardrail`);
+assertContains(implementationPlan, "category-bound admin transport", `${implementationPlanPath}: local plan must record category-bound admin transport evidence`);
+assertContains(registry, "verify-product-admin-boundary.mjs", `${registryPath}: central readiness board must mention the product fast boundary guardrail`);
+assertContains(registry, "category-bound admin transport", `${registryPath}: central readiness board must record category-bound admin transport evidence`);
+assertContains(packageJson, "verify:product:admin-boundary", `${packagePath}: package scripts must expose product admin boundary verification`);
+assertContains(packageJson, "test:verify:product:admin-boundary", `${packagePath}: package scripts must expose product admin boundary fixture tests`);
+assertContains(packageJson, "npm run test:verify:product:admin-boundary", `${packagePath}: aggregate FFA fixture coverage must include product admin boundary tests`);
 
 if (failures.length > 0) {
   console.error("product admin boundary verification failed:");
