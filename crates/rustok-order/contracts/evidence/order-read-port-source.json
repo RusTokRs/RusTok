@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-29",
-  "status": "storefront_post_order_reads_cutover_unvalidated",
-  "source_base_revision": "f0a6799a536b369dbffc3ab5f48946fb3825302b",
+  "status": "graphql_post_order_reads_cutover_unvalidated",
+  "source_base_revision": "246dde3e152a4f56f446d577e11108305a679fde",
   "scope": "complete order, return, and order-change projections for mounted Commerce query consumers",
   "owner": {
     "crate": "rustok-order",
@@ -83,7 +83,8 @@
     "admin_deadline_seconds": 2,
     "graphql_actor_source": "validated_auth_context_or_service_actor",
     "graphql_channel_source": "resolved_request_context_channel_slug",
-    "graphql_embedded_context_fallback": "service_actor_without_channel",
+    "graphql_locale_source": "explicit_order_locale_or_resolved_request_context_locale",
+    "graphql_embedded_context_fallback": "service_actor_without_channel_or_resolved_locale",
     "storefront_actor_source": "validated_auth_context_user",
     "storefront_channel_source": "resolved_request_context_channel_slug",
     "storefront_deadline_seconds": 2
@@ -111,7 +112,8 @@
     "database_retryable": true,
     "core_retryable": false,
     "admin_public_envelopes_preserved": true,
-    "storefront_public_envelopes_preserved": true
+    "storefront_public_envelopes_preserved": true,
+    "graphql_order_error_shapes_preserved": true
   },
   "consumer_inventory": {
     "commerce_admin_rest_list_detail": "order_read_port",
@@ -124,9 +126,11 @@
     "commerce_storefront_order_change_list_cutover_completed": true,
     "commerce_graphql_order_list_detail": "order_read_port_host_runtime_with_request_context",
     "commerce_graphql_order_list_detail_cutover_completed": true,
-    "commerce_graphql_return_and_order_change_reads": "concrete_order_service",
+    "commerce_graphql_return_and_order_change_reads": "order_read_port_host_runtime_with_request_context",
+    "commerce_graphql_return_and_order_change_reads_cutover_completed": true,
     "commerce_admin_return_and_order_change_reads": "concrete_order_service",
     "complete_order_projection_consumer_cutover_completed": true,
+    "graphql_post_order_consumer_cutover_completed": true,
     "post_order_consumer_cutover_completed": false,
     "runtime_composition_published": true,
     "all_consumer_cutover_completed": false,
@@ -138,11 +142,10 @@
     "admin_detail_fulfillment_lookup": "concrete_fulfillment_service",
     "storefront_return_mutation": "concrete_order_service",
     "storefront_refund_reads": "concrete_payment_service",
-    "graphql_return_and_order_change_reads": "concrete_order_service",
     "admin_return_and_order_change_reads": "concrete_order_service"
   },
   "decision": {
-    "next_slice": "cut GraphQL post-order reads to the host-selected OrderReadPort, then audit admin post-order reads separately; execute compile and mounted parity evidence before status promotion",
+    "next_slice": "audit and cut admin post-order reads to the host-selected OrderReadPort without moving mutations or payment and fulfillment policy; execute compile and mounted parity evidence before status promotion",
     "mutation_scope": "unchanged",
     "status_promotion": false
   },
