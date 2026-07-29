@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+const movingContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
 const iggySourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+const movingSourcePath =
+  "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
 const serverSourcePath =
   "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
@@ -15,22 +19,39 @@ const servicesPath = "apps/server/src/services/mod.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
 const runtimeSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
 const scannerSourcePath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
+const documentationPath =
+  "crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md";
+const profilesCheckpointPath =
+  "crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md";
+const planPath = "crates/rustok-profiles/docs/implementation-plan.md";
+const verifierPath =
+  "scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs";
 
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));
+const movingContract = JSON.parse(
+  readFileSync(resolve(repoRoot, movingContractPath), "utf8"),
+);
 const iggySource = readFileSync(resolve(repoRoot, iggySourcePath), "utf8");
+const movingSource = readFileSync(resolve(repoRoot, movingSourcePath), "utf8");
 const serverSource = readFileSync(resolve(repoRoot, serverSourcePath), "utf8");
 const bootstrap = readFileSync(resolve(repoRoot, bootstrapPath), "utf8");
 const services = readFileSync(resolve(repoRoot, servicesPath), "utf8");
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
 const runtimeSource = readFileSync(resolve(repoRoot, runtimeSourcePath), "utf8");
 const scannerSource = readFileSync(resolve(repoRoot, scannerSourcePath), "utf8");
+const documentation = readFileSync(resolve(repoRoot, documentationPath), "utf8");
+const profilesCheckpoint = readFileSync(
+  resolve(repoRoot, profilesCheckpointPath),
+  "utf8",
+);
+const plan = readFileSync(resolve(repoRoot, planPath), "utf8");
 const failures = [];
 
 function fail(message) {
   failures.push(message);
 }
 
-function sameValue(actual, expected) {
+function same(actual, expected) {
   return JSON.stringify(actual) === JSON.stringify(expected);
 }
 
@@ -47,27 +68,41 @@ function countText(text, marker) {
 }
 
 if (
-  contract.schema_version !== 2 ||
+  contract.schema_version !== 3 ||
   contract.module !== "event-delivery" ||
   contract.packet !== "dlq-duplicate-alert-server-observer-source" ||
   contract.status !== "source_complete_runtime_execution_pending" ||
-  !sameValue(contract.owners, ["rustok-server", "rustok-iggy"]) ||
+  !same(contract.owners, ["rustok-server", "rustok-iggy"]) ||
   contract.iggy_source !== iggySourcePath ||
+  contract.moving_scan_source !== movingSourcePath ||
+  contract.moving_scan_contract !== movingContractPath ||
   contract.server_source !== serverSourcePath ||
   contract.bootstrap_source !== bootstrapPath ||
   contract.service_registry_source !== servicesPath ||
+  contract.verifier !== verifierPath ||
+  contract.documentation !== documentationPath ||
+  contract.profiles_checkpoint !== profilesCheckpointPath ||
   contract.execution_status !== "source_not_run"
 ) {
   fail("DLQ duplicate alert server observer identity or status drift");
 }
 
 if (
-  !sameValue(contract.delivery_profiles, {
+  movingContract.packet !== "dlq-duplicate-moving-window-scan-source" ||
+  movingContract.status !== "source_complete_server_composed_runtime_pending" ||
+  movingContract.source !== movingSourcePath ||
+  movingContract.server_composition?.status !== "source_complete_runtime_pending"
+) {
+  fail("moving-window source contract relationship drift");
+}
+
+if (
+  !same(contract.delivery_profiles, {
     memory: "not_applicable",
     outbox_local: "not_applicable",
     outbox_iggy: "iggy_observer",
   }) ||
-  !sameValue(contract.iggy_modes, {
+  !same(contract.iggy_modes, {
     bundled: "connect_to_existing_loopback_broker",
     external: "connect_to_reviewed_external_addresses",
   })
@@ -92,34 +127,61 @@ if (
 }
 
 const scan = contract.scan ?? {};
+const globalMode = scan.global_budget_mode ?? {};
+const fairMode = scan.fair_window_mode ?? {};
+const movingMode = scan.moving_window_mode ?? {};
 if (
   scan.topic !== "dlq" ||
   scan.configured_domain_partition_allowlist !== true ||
   scan.scan_mode_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE" ||
   scan.default_scan_mode !== "global_budget" ||
-  !sameValue(scan.global_budget_mode?.accepted_values, ["global", "global_budget"]) ||
-  scan.global_budget_mode?.max_messages_env !==
-    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES" ||
-  scan.global_budget_mode?.default_max_messages !== 1000 ||
-  scan.global_budget_mode?.one_global_message_budget !== true ||
-  scan.global_budget_mode?.later_partition_starvation_possible !== true ||
-  !sameValue(scan.fair_window_mode?.accepted_values, ["fair", "fair_window"]) ||
-  scan.fair_window_mode?.per_partition_messages_env !==
+  !same(globalMode.accepted_values, ["global", "global_budget"]) ||
+  globalMode.start_offset_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET" ||
+  globalMode.start_offset_default !== 0 ||
+  globalMode.max_messages_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES" ||
+  globalMode.default_max_messages !== 1000 ||
+  globalMode.one_global_message_budget !== true ||
+  globalMode.later_partition_starvation_possible !== true ||
+  globalMode.cross_cycle_accumulation !== false ||
+  !same(fairMode.accepted_values, ["fair", "fair_window"]) ||
+  fairMode.start_offset_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET" ||
+  fairMode.start_offset_default !== 0 ||
+  fairMode.per_partition_messages_env !==
     "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES" ||
-  scan.fair_window_mode?.per_partition_messages_required !== true ||
-  scan.fair_window_mode?.equal_per_partition_message_budget !== true ||
-  scan.fair_window_mode?.every_partition_attempted_on_successful_scan !== true ||
-  scan.fair_window_mode?.total_message_budget_checked_by_scanner !== true ||
-  scan.fair_window_mode?.maximum_total_messages !== 10000 ||
-  scan.fair_window_mode?.all_partition_observations_combined_before_classification !== true ||
+  fairMode.per_partition_messages_required !== true ||
+  fairMode.equal_per_partition_message_budget !== true ||
+  fairMode.every_partition_attempted_on_successful_scan !== true ||
+  fairMode.total_message_budget_checked_by_scanner !== true ||
+  fairMode.maximum_total_messages !== 10000 ||
+  fairMode.all_partition_observations_combined_before_classification !== true ||
+  fairMode.cross_cycle_accumulation !== false ||
+  !same(movingMode.accepted_values, ["moving", "moving_window"]) ||
+  movingMode.explicit_opt_in !== true ||
+  movingMode.initial_offset_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET" ||
+  movingMode.initial_offset_required !== true ||
+  movingMode.per_partition_messages_env !==
+    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES" ||
+  movingMode.per_partition_messages_required !== true ||
+  movingMode.batch_size_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE" ||
+  movingMode.batch_size_required !== true ||
+  movingMode.rolling_max_cycles_env !==
+    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_CYCLES" ||
+  movingMode.rolling_max_cycles_required !== true ||
+  movingMode.rolling_max_observations_per_cycle_env !==
+    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_OBSERVATIONS_PER_CYCLE" ||
+  movingMode.rolling_max_observations_per_cycle_required !== true ||
+  movingMode.production_defaults !== false ||
+  movingMode.one_private_next_offset_per_partition !== true ||
+  movingMode.complete_all_partition_cycle_before_mutation !== true ||
+  movingMode.rolling_cycle_capacity_must_cover_fair_cycle !== true ||
+  movingMode.cross_cycle_duplicate_accumulation !== true ||
+  movingMode.failed_cycle_preserves_process_local_state !== true ||
+  movingMode.progress_persisted !== false ||
+  movingMode.new_connection_or_process_starts_at_reviewed_initial_offset !== true ||
+  movingMode.current_tail_coverage_claimed !== false ||
+  movingMode.complete_history_claimed !== false ||
   scan.batch_size_env !== "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE" ||
-  scan.default_batch_size !== 100 ||
-  scan.explicit_start_offset !== true ||
-  scan.same_configured_start_offset_reused_each_poll !== true ||
-  scan.moving_cursor !== false ||
-  scan.cross_cycle_duplicate_accumulation !== false ||
-  scan.current_tail_coverage_claimed !== false ||
-  scan.complete_history_claimed !== false ||
+  scan.fixed_mode_default_batch_size !== 100 ||
   scan.auto_commit !== false ||
   scan.stored_offset_polling !== false
 ) {
@@ -130,18 +192,20 @@ if (
   contract.runtime?.publisher !== "DlqDuplicateAlertRuntimePublisher" ||
   contract.runtime?.initial_snapshot_unavailable !== true ||
   contract.runtime?.success_publishes_identifier_free_evaluation !== true ||
+  contract.runtime?.moving_snapshot_reduced_to_dlq_duplicate_summary !== true ||
   contract.runtime?.startup_failure_records_unavailable_without_task !== true ||
   contract.runtime?.connection_failure_marks_unavailable !== true ||
   contract.runtime?.scan_failure_marks_unavailable !== true ||
+  contract.runtime?.fixed_scan_failure_reconnects !== true ||
+  contract.runtime?.moving_scan_failure_retries_same_state !== true ||
   contract.runtime?.shutdown_marks_unavailable !== true ||
-  contract.runtime?.reconnect_after_failure !== true ||
   contract.runtime?.event_delivery_remains_active !== true
 ) {
   fail("DLQ duplicate observer runtime boundary drift");
 }
 
 if (
-  !sameValue(contract.startup_stable_codes, {
+  !same(contract.startup_stable_codes, {
     configuration_invalid:
       "iggy.dlq_duplicate.alert_server_observer_configuration_invalid",
     runtime_unavailable:
@@ -170,20 +234,22 @@ if (
 const expectedIggyTests = [
   "bundled_mode_requires_matching_loopback_address",
   "all_configured_partitions_are_included_in_request",
-  "global_and_fair_scan_modes_remain_explicit",
+  "global_fair_and_moving_scan_modes_remain_explicit",
+  "moving_window_requires_complete_cycle_capacity",
   "invalid_partition_count_fails_closed",
   "stable_errors_expose_no_connection_details",
 ];
 const expectedServerTests = [
   "every_event_delivery_profile_has_an_explicit_observer_mode",
   "startup_unavailable_state_has_no_task_or_snapshot",
-  "scan_mode_parser_preserves_global_default_and_explicit_fair_window",
+  "scan_mode_parser_preserves_global_default_and_explicit_opt_in_modes",
+  "moving_window_configuration_is_explicit_and_fail_closed",
   "boolean_parser_is_bounded",
 ];
-if (!sameValue(contract.required_iggy_tests, expectedIggyTests)) {
+if (!same(contract.required_iggy_tests, expectedIggyTests)) {
   fail("Iggy observer source test allowlist drift");
 }
-if (!sameValue(contract.required_server_tests, expectedServerTests)) {
+if (!same(contract.required_server_tests, expectedServerTests)) {
   fail("server observer source test allowlist drift");
 }
 for (const testName of expectedIggyTests) {
@@ -193,26 +259,31 @@ for (const testName of expectedServerTests) {
   requireText("server observer tests", serverSource, `fn ${testName}()`);
 }
 if (countText(iggySource, "#[test]") !== expectedIggyTests.length) {
-  fail("Iggy observer source must contain exactly five focused tests");
+  fail("Iggy observer source must contain exactly six focused tests");
 }
 if (countText(serverSource, "#[test]") !== expectedServerTests.length) {
-  fail("server observer source must contain exactly four focused tests");
+  fail("server observer source must contain exactly five focused tests");
 }
 
 for (const marker of [
   "pub enum IggyDlqDuplicateAlertScanMode",
   "GlobalBudget",
   "FairWindow",
+  "MovingWindow",
+  "pub struct IggyDlqDuplicateAlertMovingWindowConfig",
+  "DlqDuplicateRollingWindowPolicy::new(",
+  "IggyDlqDuplicateMovingWindowPolicy::new(",
   "pub struct IggyDlqDuplicateAlertObserver",
   "scan: IggyDlqDuplicateAlertScan",
   "pub async fn connect(",
-  "IggyDlqDuplicateScanRequest::new(",
   "pub async fn connect_fair_window(",
-  "IggyDlqDuplicateScanWindowPolicy::new(",
-  "Self::connect_with_scan(",
-  "IggyDlqDuplicateScanner::new(&self.client, &self.stream_name)?",
-  "scanner.summarize(request)",
-  ".summarize_window(policy)",
+  "pub async fn connect_moving_window(",
+  "IggyDlqDuplicateMovingWindowState::new(",
+  "pub const fn preserves_process_local_state_after_scan_error",
+  "pub async fn summarize(",
+  "IggyDlqDuplicateMovingWindowScanner::new(client, stream_name)?",
+  "scanner.scan_cycle(state).await?",
+  "Ok(*snapshot.rolling().summary())",
   "config.mode == IggyMode::Bundled",
   "is_bundled_loopback_address(",
   "config.topology.domain_partitions > 128",
@@ -226,6 +297,8 @@ for (const marker of [
   'const ENABLE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED";',
   'const SCAN_MODE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE";',
   '"RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES"',
+  '"RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_CYCLES"',
+  '"RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ROLLING_MAX_OBSERVATIONS_PER_CYCLE"',
   '"iggy.dlq_duplicate.alert_server_observer_configuration_invalid"',
   '"iggy.dlq_duplicate.alert_server_observer_runtime_unavailable"',
   "pub enum EventDlqDuplicateAlertObserverMode",
@@ -235,16 +308,23 @@ for (const marker of [
   "IggyExternal",
   "EventDlqDuplicateAlertScanConfig::GlobalBudget",
   "EventDlqDuplicateAlertScanConfig::FairWindow",
+  "EventDlqDuplicateAlertScanConfig::MovingWindow",
   "IggyDlqDuplicateAlertObserver::connect(",
   "IggyDlqDuplicateAlertObserver::connect_fair_window(",
+  "IggyDlqDuplicateAlertObserver::connect_moving_window(",
   '"global" | "global_budget"',
   '"fair" | "fair_window"',
-  "required_u32_env(PER_PARTITION_MESSAGES_ENV)",
+  '"moving" | "moving_window"',
+  "required_u64_env(START_OFFSET_ENV)",
+  "required_u32_env(ROLLING_MAX_CYCLES_ENV)",
+  "required_u32_env(ROLLING_MAX_OBSERVATIONS_PER_CYCLE_ENV)",
   "connected.summarize().await",
+  "connected.preserves_process_local_state_after_scan_error()",
+  "preserves_process_local_state = preserve_state",
   "publisher.publish(&summary)",
   "publisher.mark_unavailable()",
   "event delivery remains active",
-  "reconnecting without affecting event delivery",
+  "retry remains isolated from event delivery",
 ]) {
   requireText("mode-aware server observer", serverSource, marker);
 }
@@ -287,6 +367,8 @@ for (const marker of [
   "broker_address",
   "payload_sha256",
   "raw_client_error",
+  "pub initial_offset:",
+  "pub cursors:",
 ]) {
   forbidText("runtime observer structs", `${iggySource}\n${serverSource}`, marker);
 }
@@ -298,11 +380,20 @@ requireText(
 );
 requireText("runtime composition", runtimeSource, "pub fn mark_unavailable(");
 requireText(
-  "bounded scanner",
+  "bounded fixed scanner",
   scannerSource,
   "pub struct IggyDlqDuplicateScanWindowPolicy",
 );
-requireText("bounded scanner", scannerSource, "pub async fn summarize_window(");
+requireText(
+  "moving scanner",
+  movingSource,
+  "pub struct IggyDlqDuplicateMovingWindowState",
+);
+requireText(
+  "moving scanner",
+  movingSource,
+  "pub async fn scan_cycle(",
+);
 requireText(
   "Iggy module registry",
   lib,
@@ -336,6 +427,8 @@ const requiredPrivacyExclusions = new Set([
   "raw_client_error",
   "raw_threshold_values",
   "source_counts",
+  "private_cursor_values",
+  "rolling_observations",
 ]);
 for (const field of contract.privacy_boundary?.logs_and_snapshots_exclude ?? []) {
   requiredPrivacyExclusions.delete(field);
@@ -348,6 +441,7 @@ if (requiredPrivacyExclusions.size > 0) {
   );
 }
 if (
+  contract.privacy_boundary?.moving_configuration_debug_excludes_initial_offset !== true ||
   contract.privacy_boundary?.stable_error_codes_only !== true ||
   contract.privacy_boundary?.serialization_added !== false ||
   contract.privacy_boundary?.persistence_added !== false
@@ -355,21 +449,39 @@ if (
   fail("observer privacy flags drift");
 }
 
-if (
-  contract.verifier !==
-    "scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs" ||
-  contract.documentation !==
-    "crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md" ||
-  contract.profiles_checkpoint !==
-    "crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md"
-) {
-  fail("observer verifier or documentation path drift");
+for (const marker of [
+  "moving_window",
+  "ROLLING_MAX_CYCLES",
+  "process-local",
+  "complete cycle",
+  "global_budget remains the default",
+  "runtime execution pending",
+]) {
+  requireText("observer documentation", documentation, marker);
+}
+for (const marker of [
+  "moving_window",
+  "Profiles authorization",
+  "private cursor",
+  "restart",
+  "source complete",
+]) {
+  requireText("Profiles observer checkpoint", profilesCheckpoint, marker);
+}
+for (const marker of [
+  "moving-window server observer composition is source-complete",
+  "reviewed fail-closed configuration",
+  "external-Iggy cross-cycle",
+  "Execute moving duplicate observer evidence",
+]) {
+  requireText("canonical Profiles plan", plan, marker);
 }
 
 const requiredRemaining = new Set([
   "fair_window_external_iggy_execution_evidence",
-  "moving_window_or_per_partition_cursor_policy",
-  "cross_cycle_duplicate_accumulation_policy",
+  "moving_window_external_iggy_cross_cycle_execution_evidence",
+  "review_reset_frequency_and_initial_offset_per_deployment",
+  "persisted_cursor_owner_only_if_restart_continuity_is_required",
   "telemetry_projection_outside_observer",
   "health_projection_without_readiness_coupling",
   "notification_delivery_and_suppression",
@@ -388,5 +500,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, non-fatal Unavailable startup state, fail-closed OutboxIggy mode selection, compatibility global-budget scans, explicit fair-window per-partition scans, bounded total budget, auto_commit=false, identifier-free latest-value publication, unavailable/reconnect lifecycle, and no event-delivery/readiness/Profile mutation are locked; runtime execution remains pending.",
+  "Event DLQ duplicate alert server observer source verified: default-off activation, explicit Memory/OutboxLocal not-applicable handling, non-fatal Unavailable startup, compatibility global and fixed fair scans, explicit moving-window configuration with independent process-local cursors and atomic rolling cycles, identifier-free summary publication, moving-state preservation after failed cycles, and no event-delivery/readiness/Profile mutation are locked; external runtime execution remains pending.",
 );
