@@ -4,6 +4,7 @@ use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextResolve, ResolveInfo,
 };
 use async_graphql::{Context, ServerResult, Value};
+use rustok_api::{AuthContext, PortActor, RequestContext};
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_fulfillment::{
     FulfillmentReadPort, ShippingOptionAdminReadPort, ShippingOptionReadPort,
@@ -104,18 +105,60 @@ impl CommerceOrderReadRuntime {
     }
 }
 
+/// Request-owned identity and channel facts used to build order read `PortContext` values.
+///
+/// Mounted GraphQL requests derive the actor only from validated `AuthContext` data. An absent
+/// principal uses a stable service actor. The channel is the host-resolved request channel slug;
+/// caller-supplied identity headers are never consulted here.
+#[derive(Clone)]
+pub(crate) struct CommerceOrderReadCallContext {
+    actor: PortActor,
+    channel: Option<String>,
+}
+
+impl CommerceOrderReadCallContext {
+    fn from_extension_context(ctx: &ExtensionContext<'_>) -> Self {
+        let actor = ctx
+            .data_opt::<AuthContext>()
+            .map(|auth| PortActor::user(auth.user_id.to_string()))
+            .unwrap_or_else(|| PortActor::service("rustok-commerce.graphql-order-query"));
+        let channel = ctx
+            .data_opt::<RequestContext>()
+            .and_then(|request| request.channel_slug.clone());
+        Self { actor, channel }
+    }
+
+    pub(crate) fn actor(&self) -> PortActor {
+        self.actor.clone()
+    }
+
+    pub(crate) fn channel(&self) -> Option<&str> {
+        self.channel.as_deref()
+    }
+}
+
+impl Default for CommerceOrderReadCallContext {
+    fn default() -> Self {
+        Self {
+            actor: PortActor::service("rustok-commerce.graphql-order-query"),
+            channel: None,
+        }
+    }
+}
+
 tokio::task_local! {
     static CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME: CommerceShippingOptionReadRuntime;
     static CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME: CommerceFulfillmentLifecycleReadRuntime;
     static CURRENT_COMMERCE_ORDER_READ_RUNTIME: CommerceOrderReadRuntime;
+    static CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT: CommerceOrderReadCallContext;
     static CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME: ProductCatalogReadRuntime;
 }
 
 /// Resolver-scoped bridge from schema runtime data to private compatibility facades.
 ///
 /// The mounted extension carries shipping-option, fulfillment-lifecycle, order, and Product catalog
-/// owner ports so every included Commerce resolver uses host-selected adapters for the current async
-/// task.
+/// owner ports plus validated order actor/channel facts so every included Commerce resolver uses
+/// host-selected adapters and request-owned context for the current async task.
 #[derive(Default)]
 pub struct CommerceShippingOptionReadScope;
 
@@ -138,16 +181,20 @@ impl Extension for CommerceShippingOptionReadScopeExtension {
         let Some(runtime_data) = ctx.data_opt::<CommerceGraphqlRuntimeData>() else {
             return next.run(ctx, info).await;
         };
+        let order_call_context = CommerceOrderReadCallContext::from_extension_context(ctx);
         CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME
             .scope(
                 runtime_data.shipping_option_read_runtime(),
                 CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME.scope(
                     runtime_data.fulfillment_lifecycle_read_runtime(),
-                    CURRENT_COMMERCE_ORDER_READ_RUNTIME.scope(
-                        runtime_data.order_read_runtime(),
-                        CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME.scope(
-                            runtime_data.product_catalog_read_runtime(),
-                            next.run(ctx, info),
+                    CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT.scope(
+                        order_call_context,
+                        CURRENT_COMMERCE_ORDER_READ_RUNTIME.scope(
+                            runtime_data.order_read_runtime(),
+                            CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME.scope(
+                                runtime_data.product_catalog_read_runtime(),
+                                next.run(ctx, info),
+                            ),
                         ),
                     ),
                 ),
@@ -179,6 +226,12 @@ pub(crate) fn order_read_runtime_for_current_graphql_scope(
     CURRENT_COMMERCE_ORDER_READ_RUNTIME
         .try_with(Clone::clone)
         .unwrap_or_else(|_| CommerceOrderReadRuntime::in_process(db, event_bus))
+}
+
+pub(crate) fn order_read_call_context_for_current_graphql_scope() -> CommerceOrderReadCallContext {
+    CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT
+        .try_with(Clone::clone)
+        .unwrap_or_default()
 }
 
 pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope(
