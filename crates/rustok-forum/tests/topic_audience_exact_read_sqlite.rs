@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 struct RecordingFactsPort {
-    trusted_user_id: Uuid,
+    low_trust_user_id: Uuid,
     requests: Arc<Mutex<Vec<ForumAudienceFactsRequest>>>,
 }
 
@@ -39,10 +39,10 @@ impl ForumAudienceFactsPort for RecordingFactsPort {
             user_id: request.user_id,
             trust_level: request
                 .include_trust_level
-                .then_some(if request.user_id == self.trusted_user_id {
-                    8
-                } else {
+                .then_some(if request.user_id == self.low_trust_user_id {
                     1
+                } else {
+                    8
                 }),
             channel_memberships: Vec::new(),
             group_memberships: Vec::new(),
@@ -244,7 +244,7 @@ async fn exact_topic_read_enforces_inherited_and_topic_audience_before_hydration
         db.clone(),
         event_bus.clone(),
         Arc::new(RecordingFactsPort {
-            trusted_user_id: allowed_user_id,
+            low_trust_user_id,
             requests: requests.clone(),
         }),
     );
