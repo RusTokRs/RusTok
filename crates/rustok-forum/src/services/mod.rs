@@ -44,11 +44,10 @@ mod mention_relation_tests {
 }
 #[path = "moderation.rs"]
 mod moderation_legacy;
-#[doc(hidden)]
-pub use moderation_legacy::ModerationService as __ModerationServiceLegacyTarget;
 mod moderation_owner;
+mod moderation_public_owner;
 pub mod moderation {
-    pub use super::moderation_owner::ModerationService;
+    pub use super::moderation_public_owner::ModerationService;
 }
 mod moderation_audience_authorization;
 mod posting_policy;
@@ -186,7 +185,8 @@ pub use storefront_read_state::{
 };
 pub use subscription::SubscriptionService;
 pub use topic_audience::{
-    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
+    ForumTopicAudiencePolicy,
+    ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
     SetForumTopicAudiencePolicyInput,
 };
 pub use topic_audience_visibility::{
