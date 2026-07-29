@@ -61,6 +61,8 @@
     "grpc_deployment_verifier": "scripts/verify/verify-product-catalog-grpc-deployment.mjs",
     "grpc_authentication_verifier": "scripts/verify/verify-product-catalog-grpc-authentication.mjs",
     "grpc_service_host_verifier": "scripts/verify/verify-product-catalog-grpc-service-host.mjs",
+    "grpc_maintainer_test_attestation": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
+    "grpc_maintainer_test_attestation_verifier": "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
     "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
@@ -132,6 +134,10 @@
     "provider_host_schema_preflight_order": "after_connect_before_owner_and_listener",
     "provider_host_schema_preflight_status": "source_complete_execution_pending",
     "provider_host_status": "source_complete_execution_pending",
+    "maintainer_test_status": "passed_no_raw_logs_end_to_end_pending",
+    "provider_host_unit_test_status": "maintainer_attested_passed_no_raw_logs",
+    "authentication_test_status": "maintainer_attested_passed_no_raw_logs",
+    "port_conformance_test_status": "maintainer_attested_passed_no_raw_logs",
     "status": "runtime_wired_execution_pending"
   },
   "remote_consumer_behavior": {
@@ -150,6 +156,26 @@
       "ai_typed_degraded_error_preserved",
       "ai_operator_review_required",
       "ai_persistence_none"
+    ],
+    "maintainer_harness_status": "passed_no_raw_logs_end_to_end_pending",
+    "attested_at": "2026-07-29T16:33:00+03:00",
+    "separate_process_end_to_end_status": "pending"
+  },
+  "maintainer_test_attestation": {
+    "status": "passed_no_raw_logs_end_to_end_pending",
+    "source": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
+    "verifier": "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
+    "attested_at": "2026-07-29T16:33:00+03:00",
+    "observed_repository_head": "6655bda2068911bf010be2d950638a4473f953f1",
+    "executed_command_count": 9,
+    "cargo_lock_package_entry": "present",
+    "raw_logs_retained": false,
+    "agent_independently_verified": false,
+    "remaining_gates": [
+      "standalone_provider_postgresql_schema_preflight_runtime_evidence",
+      "authenticated_separate_process_commerce_end_to_end_evidence",
+      "authenticated_separate_process_ai_end_to_end_evidence",
+      "retained_runtime_logs_or_ci_artifacts_for_transport_promotion"
     ]
   },
   "in_process_provider_impl": {
@@ -163,6 +189,7 @@
     "status": "planned_cases_locked",
     "source": "crates/rustok-product/contracts/product-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "execution_attestation": "maintainer_attested_passed_no_raw_logs",
     "profiles": [
       "in_process",
       "remote_adapter_placeholder",

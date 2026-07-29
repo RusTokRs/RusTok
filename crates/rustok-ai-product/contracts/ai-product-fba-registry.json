@@ -68,7 +68,8 @@
     "verifier": "scripts/verify/verify-ai-product-fba.mjs",
     "static_matrix": "crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json",
     "runtime_fallback_smoke": "crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json",
-    "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs"
+    "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
+    "product_grpc_maintainer_test_attestation": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json"
   },
   "remote_consumer_behavior": {
     "status": "source_complete_execution_pending",
@@ -84,12 +85,16 @@
       "require_operator_review",
       "persistence_none",
       "typed_port_error_preserved"
-    ]
+    ],
+    "maintainer_harness_status": "passed_no_raw_logs_end_to_end_pending",
+    "attested_at": "2026-07-29T16:33:00+03:00",
+    "separate_process_end_to_end_status": "pending"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
     "source": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
     "runner": "scripts/verify/verify-ai-product-fba.mjs",
+    "execution_attestation": "maintainer_attested_passed_no_raw_logs",
     "profiles": [
       "in_process",
       "remote_adapter_placeholder"

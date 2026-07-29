@@ -27,6 +27,7 @@ for complete tenant, locale, and persistence validation.
 - Evidence: `crates/rustok-ai-product/contracts/ai-product-fba-registry.json`,
   `crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json`,
   `crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json`,
+  `crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`,
   `crates/rustok-ai/src/direct_product_attributes.rs`,
   `scripts/verify/verify-product-remote-consumer-behavior.mjs`, and
   `scripts/verify/verify-ai-product-fba.mjs`.
@@ -55,9 +56,13 @@ A source-complete gRPC loopback harness now exercises the same product-context
 function through `GrpcProductCatalogReadProvider` and an external
 `ProductCatalogReadRuntime`. Remote `Unavailable` and `Timeout` errors preserve
 their typed code and retryability while catalog enrichment is skipped. The
-production result remains review-required and non-persistent. This harness has
-not been executed by the implementation agent, so it is recorded as
-`source_complete_execution_pending` rather than new runtime evidence.
+production result remains review-required and non-persistent. On 2026-07-29 the
+repository maintainer-attested that
+`cargo test -p rustok-ai --features server --lib remote_product_` passed. The
+implementation agent did not independently execute it and raw logs were not
+retained. The registry keeps the base `source_complete_execution_pending`
+production status while `maintainer_harness_status` records the bounded harness
+result; authenticated separate-process Product provider execution remains open.
 
 ## Next results
 
@@ -65,11 +70,15 @@ not been executed by the implementation agent, so it is recorded as
    owner-persistence evidence that preserves a non-target locale; product
    attributes are explicitly review-only and cannot write a product. Extend
    these tests whenever a product-owned apply command is introduced.
-2. **Execute the remote Product consumer harness.** Run
-   `cargo test -p rustok-ai --features server --lib remote_product_` and retain
-   the result with Product transport evidence. Do not promote the remote profile
-   based on source completeness alone.
-3. **Composed product-agent workflow evidence is covered.**
+2. **Execute the remote Product consumer harness — maintainer-attested complete.**
+   The command `cargo test -p rustok-ai --features server --lib remote_product_`
+   is retained in the Product gRPC attestation packet as passed without raw logs.
+   Do not promote the remote profile from this bounded result alone.
+3. **Retain authenticated separate-process Product execution.** Run the AI
+   consumer through a separately started PostgreSQL-backed Product catalog
+   service using the production bearer and tenant metadata path, and retain logs
+   or CI artifacts before changing the production remote status.
+4. **Composed product-agent workflow evidence is covered.**
    `service::product_agent_workflow_persistence_tests::product_enrichment_workflow_persists_owner_bindings_and_approval_gates`
    creates the product-owned principals and capability-compatible model
    assignments, validates both owner inputs, and proves the durable approval,
@@ -93,6 +102,8 @@ keeps product AI as an adapter and prevents a second product-owned AI route.
 - `npm run verify:ai:domain-verticals`
 - `node scripts/verify/verify-product-remote-consumer-behavior.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.test.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.test.mjs`
 - `cargo test -p rustok-ai-product --lib`
 - `cargo test -p rustok-ai --features server --lib direct_product_attributes_`
 - `cargo test -p rustok-ai --features server --lib remote_product_`
