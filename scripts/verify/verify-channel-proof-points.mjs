@@ -110,12 +110,14 @@ assertAll('crates/rustok-commerce/README.md', [
   'without introducing a second sales-channel domain',
 ]);
 
-assertAll('crates/rustok-forum/src/graphql/query.rs', [
+assertAll('crates/rustok-forum/src/graphql/query_runtime.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'public_channel_slug(ctx)',
   'is_topic_visible_for_channel',
-  'storefront_replies_return_empty_for_channel_ineligible_topic',
+  'async fn forum_storefront_replies(',
+  'list_public_storefront_visible_with_locale_fallback',
+  'Some(&PUBLIC_REPLY_STATUSES)',
 ]);
 assertAll('crates/rustok-forum/src/services/topic.rs', [
   'apply_public_topic_channel_filter',

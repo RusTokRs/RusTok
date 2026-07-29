@@ -12,6 +12,7 @@
   "source_contract_test": "crates/rustok-search/tests/search_scope_preservation_contract.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md",
   "source_verifier": "scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
+  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
   "upstream_contracts": [
     "crates/rustok-forum/contracts/forum-search-projection.json",
     "crates/rustok-forum/contracts/forum-projection-invalidation.json",
@@ -56,6 +57,11 @@
     "blog_documents_count_as_core_bootstrap": false,
     "forum_documents_count_as_core_bootstrap": false
   },
+  "downstream_handoff": {
+    "legacy_graphql_snapshot_cleanup_completed": true,
+    "completion_task": "FORUM-20BN",
+    "completion_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json"
+  },
   "compatibility": {
     "search_projector_public_type_changed": false,
     "search_projector_public_method_names_changed": false,
@@ -70,7 +76,7 @@
     "migration_added": false,
     "ffa_status_changed": false,
     "fba_status_changed": false,
-    "legacy_graphql_snapshot_changed": false
+    "legacy_graphql_snapshot_removed": true
   },
   "documentation": {
     "owner_note_added": true,
@@ -80,11 +86,10 @@
     "crate_api_updated": false,
     "search_plan_updated": false,
     "canonical_forum_plan_updated": false,
-    "synchronization_debt": "Advance Search CRATE_API/local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BM with conflict-safe repository-local edits after maintainer validation."
+    "synchronization_debt": "Advance Search CRATE_API/local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BN with conflict-safe repository-local edits after maintainer validation."
   },
   "remaining_scope": [
     "decide whether approved public replies become separate Search documents under FORUM-23",
-    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
     "capture maintainer-executed PostgreSQL full-rebuild failure preservation and Forum projection cleanup evidence",
     "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
     "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
@@ -100,6 +105,7 @@
       "node scripts/verify/verify-forum-search-projection.mjs",
       "node scripts/verify/verify-forum-projection-invalidation.mjs",
       "node scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
+      "node scripts/verify/verify-forum-graphql-query-snapshot-cleanup.mjs",
       "cargo xtask module validate forum"
     ]
   }

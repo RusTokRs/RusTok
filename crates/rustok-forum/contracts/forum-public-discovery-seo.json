@@ -13,6 +13,7 @@
   "owner_note": "crates/rustok-forum/docs/forum-20bi-public-discovery-seo.md",
   "source_verifier": "scripts/verify/verify-forum-public-discovery-seo.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-category-audience-read.json",
+  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
   "discovery_boundary": {
     "anonymous_public_only": true,
     "category_inherited_base_floor_enforced": true,
@@ -61,7 +62,7 @@
     "dependency_changed_in_forum_20bj": false,
     "cargo_lock_changed_in_forum_20bj": false,
     "public_response_dto_changed": false,
-    "legacy_graphql_snapshot_changed": false
+    "legacy_graphql_snapshot_removed": true
   },
   "documentation": {
     "owner_note_added": true,
@@ -69,13 +70,12 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BJ through a conflict-safe repository-local edit after maintainer validation."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BN through a conflict-safe repository-local edit after maintainer validation."
   },
   "remaining_scope": [
     "publish owner-transactional projection invalidation events for every category and topic content translation visibility tag solution tree and route change",
     "route projection invalidations through durable ordered category topic or tenant reauthorization",
     "add visibility-scoped category and all-read commands",
-    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
     "capture maintainer-executed PostgreSQL SQLite SEO Search and route runtime evidence"
   ],
   "downstream_task": "FORUM-20BK",
@@ -87,6 +87,7 @@
       "cargo test -p rustok-forum search_projection -- --nocapture",
       "node scripts/verify/verify-forum-public-discovery-seo.mjs",
       "node scripts/verify/verify-forum-search-projection.mjs",
+      "node scripts/verify/verify-forum-graphql-query-snapshot-cleanup.mjs",
       "node scripts/verify/verify-search-canonical-url-contract.mjs",
       "cargo xtask module validate forum"
     ]
