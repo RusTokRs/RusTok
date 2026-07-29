@@ -7,6 +7,7 @@ mod admin_catalog_graphql;
 #[path = "transport/admin_catalog_native.rs"]
 mod admin_catalog_native;
 
+pub use legacy::fetch_catalog_search_options;
 pub(crate) use legacy::*;
 
 use crate::catalog_controls::build_product_admin_list_input;
