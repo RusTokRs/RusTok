@@ -40,9 +40,10 @@
     "public_dto_changed": false
   },
   "documentation": {
-    "crate_api_updated": true,
+    "owner_note_updated": true,
+    "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "canonical_plan_debt": "Advance the FORUM-20 ledger through FORUM-20BB and record FORUM-20BC transport composition after a safe repository-local edit; the contents API requires complete replacement of the multi-thousand-line roadmap."
+    "synchronization_debt": "Advance CRATE_API and the FORUM-20 ledger through FORUM-20BB, then record FORUM-20BC transport composition through a safe repository-local edit; the contents API requires complete replacement of both owner documents and the implementation plan is multi-thousand-line."
   },
   "compatibility": {
     "existing_topic_service_methods_changed": false,
@@ -58,7 +59,7 @@
     "migrate topic list pagination through an exact bounded richer-audience scope without count drift",
     "migrate exact reply and reply-list reads through parent-topic richer authorization",
     "migrate remaining category reads, search/index, SEO, and deep-link authorization",
-    "synchronize the canonical Forum plan through FORUM-20BB with a safe repository-local edit",
+    "synchronize CRATE_API and the canonical Forum plan through FORUM-20BB with a safe repository-local edit",
     "capture maintainer-executed SQLite, PostgreSQL, and transport runtime evidence"
   ],
   "downstream_task": "FORUM-20BC",
