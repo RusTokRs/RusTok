@@ -85,7 +85,16 @@ for (const [source, value, label] of [
   [graphqlRuntime, 'runtime_data.order_read_runtime()', 'GraphQL scoped runtime'],
   [graphqlRuntime, 'ctx.data_opt::<AuthContext>()', 'GraphQL actor source'],
   [graphqlRuntime, 'ctx.data_opt::<RequestContext>()', 'GraphQL request source'],
+  [graphqlRuntime, 'request.locale.clone()', 'GraphQL resolved locale source'],
   [graphqlOrderShim, 'order_read_runtime_for_current_graphql_scope(', 'GraphQL runtime lookup'],
+  [graphqlOrderShim, '.read_order_projection(', 'GraphQL order detail port call'],
+  [graphqlOrderShim, '.list_order_projections(', 'GraphQL order list port call'],
+  [graphqlOrderShim, '.read_order_return_projection(', 'GraphQL return detail port call'],
+  [graphqlOrderShim, '.list_order_return_projections(', 'GraphQL return list port call'],
+  [graphqlOrderShim, '.read_order_change_projection(', 'GraphQL change detail port call'],
+  [graphqlOrderShim, '.list_order_change_projections(', 'GraphQL change list port call'],
+  [graphqlOrderShim, 'OrderError::OrderReturnNotFound(id)', 'GraphQL return error compatibility'],
+  [graphqlOrderShim, 'OrderError::OrderChangeNotFound(id)', 'GraphQL change error compatibility'],
   [httpRuntime, 'fn order_read_port(&self)', 'HTTP port getter'],
   [serverRuntime, 'CommerceOrderReadRuntime::in_process(', 'server composition'],
   [adminOrders, '.list_order_projections(', 'admin list port call'],
@@ -93,13 +102,9 @@ for (const [source, value, label] of [
   [storefrontOrders, '.read_order_projection(', 'storefront detail port call'],
   [storefrontOrders, '.list_order_return_projections(', 'storefront return port call'],
   [storefrontOrders, '.list_order_change_projections(', 'storefront change port call'],
-  [storefrontOrders, 'ListOrderReturnProjectionsRequest {', 'storefront return request'],
-  [storefrontOrders, 'ListOrderChangeProjectionsRequest {', 'storefront change request'],
-  [storefrontOrders, 'data: page.items,', 'storefront typed page items'],
-  [storefrontOrders, 'page.total', 'storefront typed page total'],
-  [note, 'complete order projections plus storefront return/change lists cut over', 'owner note status'],
-  [orderPlan, 'OrderReadPort', 'order plan checkpoint'],
-  [commercePlan, 'OrderReadPort', 'commerce plan checkpoint'],
+  [note, 'GraphQL complete-order and post-order reads use the port', 'owner note status'],
+  [orderPlan, 'GraphQL return/order-change detail and list reads', 'order plan checkpoint'],
+  [commercePlan, 'GraphQL return/order-change detail and list reads', 'commerce plan checkpoint'],
 ]) requireText(source, value, label);
 
 for (const [value, label] of [
@@ -108,6 +113,14 @@ for (const [value, label] of [
   ['format!("{error}")', 'formatted owner error control flow'],
   ['PortError::new(kind, code, error', 'raw owner error publication'],
 ]) forbidText(owner, value, label);
+for (const [value, label] of [
+  ['fn concrete_owner_service(&self)', 'GraphQL concrete service factory'],
+  ['::rustok_order::OrderService::new', 'GraphQL concrete owner construction'],
+  ['.get_return(tenant_id, return_id)', 'GraphQL concrete return detail'],
+  ['.list_returns(tenant_id, input)', 'GraphQL concrete return list'],
+  ['.get_order_change(tenant_id, change_id)', 'GraphQL concrete change detail'],
+  ['.list_order_changes(tenant_id, input)', 'GraphQL concrete change list'],
+]) forbidText(graphqlOrderShim, value, label);
 
 const adminList = between(
   adminOrders,
@@ -167,14 +180,10 @@ for (const [source, value, label] of [
   [adminOrders, '.cancel_order(', 'cancel mutation remains owner service'],
   [storefrontOrders, '.create_return(tenant.id, id, input)', 'return mutation remains owner service'],
   [storefrontOrders, 'PaymentService::new(runtime.db_clone())', 'refund list remains payment service'],
-  [graphqlOrderShim, '.get_return(tenant_id, return_id)', 'GraphQL return detail remains concrete'],
-  [graphqlOrderShim, '.list_returns(tenant_id, input)', 'GraphQL return list remains concrete'],
-  [graphqlOrderShim, '.get_order_change(tenant_id, change_id)', 'GraphQL change detail remains concrete'],
-  [graphqlOrderShim, '.list_order_changes(tenant_id, input)', 'GraphQL change list remains concrete'],
 ]) requireText(source, value, label);
 
 const operationNames = evidence.operations?.map((operation) => operation.name).join(',');
-if (evidence.status !== 'storefront_post_order_reads_cutover_unvalidated') {
+if (evidence.status !== 'graphql_post_order_reads_cutover_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 if (operationNames !==
@@ -205,7 +214,9 @@ for (const [key, expected] of [
   ['commerce_storefront_return_list_cutover_completed', true],
   ['commerce_storefront_order_change_list_cutover_completed', true],
   ['commerce_graphql_order_list_detail_cutover_completed', true],
+  ['commerce_graphql_return_and_order_change_reads_cutover_completed', true],
   ['complete_order_projection_consumer_cutover_completed', true],
+  ['graphql_post_order_consumer_cutover_completed', true],
   ['post_order_consumer_cutover_completed', false],
   ['all_consumer_cutover_completed', false],
   ['cutover_required', true],
@@ -214,9 +225,14 @@ for (const [key, expected] of [
     failures.push(`evidence consumer_inventory.${key} must be ${expected}`);
   }
 }
+if (evidence.context?.graphql_locale_source !==
+    'explicit_order_locale_or_resolved_request_context_locale') {
+  failures.push('GraphQL locale source mismatch');
+}
 if (evidence.errors?.owner_message_control_flow !== false ||
     evidence.errors?.all_current_order_error_variants_mapped !== true ||
-    evidence.errors?.storefront_public_envelopes_preserved !== true) {
+    evidence.errors?.storefront_public_envelopes_preserved !== true ||
+    evidence.errors?.graphql_order_error_shapes_preserved !== true) {
   failures.push('evidence error policy mismatch');
 }
 if (evidence.decision?.status_promotion !== false) {
@@ -243,5 +259,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ OrderReadPort publishes six typed projections; storefront order, return, and change reads are cut over while GraphQL/admin post-order reads and runtime evidence remain open',
+  '✔ OrderReadPort publishes six typed projections; storefront and GraphQL order/return/change reads are cut over while admin post-order reads and runtime evidence remain open',
 );
