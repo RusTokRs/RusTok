@@ -161,7 +161,7 @@ for (const forbidden of [
 for (const marker of [
   "rustok-core",
   "temporary staging table",
-  "explicit Forum reindex",
+  "Explicit reindex requests support",
   "FORUM-20BK",
   "projection invalidation events",
   "Cargo.lock is unchanged",
