@@ -24,6 +24,7 @@ source work to remain idle.
 - M4 typed referenced-field contracts: `source_complete_execution_pending`.
 - M4 controlled PostgreSQL query compilation: `source_complete_execution_pending`.
 - M4 root/one-link filter/order/count/keyset/offset semantics: `source_complete_execution_pending`.
+- M4 query-scoped cursor envelopes: `source_complete_execution_pending`.
 - M4 many-link query semantics: `open`.
 - M4 PostgreSQL/reference-engine equivalence: `open`.
 
@@ -51,8 +52,8 @@ one-cardinality-link subset:
 
 - tagged JSONB projection and hidden order-value columns;
 - all current typed filter operators;
-- deterministic ordering and null placement;
-- checksum/scope/schema/type validated keyset continuation;
+- deterministic ordering and explicit null placement;
+- query-scoped, checksum/scope/schema/type validated keyset continuation;
 - an ascending root `entity_id` tie-breaker;
 - bounded offset compatibility;
 - a separate exact-count statement without pagination leakage.
@@ -64,8 +65,12 @@ logical `Not`, `And`, or `Or` semantics.
 
 `ExecutableQueryPlan::compile_postgres` only accepts plans without an opaque
 continuation token. Continuation queries use
-`SchemaRegistry::compile_postgres_query`, which decodes and validates the cursor
-before any keyset SQL is emitted.
+`SchemaRegistry::compile_postgres_query`, which requires a scoped v2 envelope.
+The envelope carries a `rustok-index-cursor-query-v1` fingerprint over tenant,
+schema, locale, filter, and ordered field/direction semantics. Changing filter
+or order semantics produces `QueryFingerprintMismatch` before any keyset SQL is
+emitted. Legacy raw v1 envelopes remain limited to codec round trips and the
+test-only reference engine.
 
 ## Remaining bounded M4 work
 
@@ -75,7 +80,7 @@ an explicit semantic plan for:
 - `EXISTS`-based many-link filtering;
 - nested aggregation for many-link projection;
 - duplicate-free exact count and root pagination;
-- result decoding and cursor construction;
+- result decoding and scoped cursor construction;
 - SQL/parameter snapshots and PostgreSQL/reference-engine equivalence fixtures.
 
 Production query-port composition and consumer cutover remain later slices.
