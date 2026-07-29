@@ -6,6 +6,7 @@ mod connection;
 mod content_commands;
 mod error_extension;
 mod mutation;
+#[path = "query_runtime.rs"]
 mod query;
 mod quote_commands;
 mod read_state;
