@@ -5,10 +5,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{
     ListTopicsFilter, MAX_FORUM_READ_LIMIT, TopicListItem, TopicUnreadSummaryReadModel,
 };
@@ -19,6 +20,7 @@ use crate::services::read_model::ForumReadModelService;
 use crate::services::read_tracking::{
     ForumTopicReadState, ForumTopicReadStateService, MarkForumTopicReadInput,
 };
+use crate::services::topic_audience_read::ForumTopicAudienceReadService;
 use crate::services::topic_facade::TopicService;
 use crate::state_machine::ReplyStatus;
 
@@ -45,11 +47,32 @@ pub struct ForumStorefrontUnreadTopicPage {
 pub struct ForumStorefrontReadStateService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    audience_facts: Option<SharedForumAudienceFactsPort>,
 }
 
 impl ForumStorefrontReadStateService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self::with_optional_audience_facts(db, event_bus, None)
+    }
+
+    pub fn with_audience_facts(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        audience_facts: SharedForumAudienceFactsPort,
+    ) -> Self {
+        Self::with_optional_audience_facts(db, event_bus, Some(audience_facts))
+    }
+
+    fn with_optional_audience_facts(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        audience_facts: Option<SharedForumAudienceFactsPort>,
+    ) -> Self {
+        Self {
+            db,
+            event_bus,
+            audience_facts,
+        }
     }
 
     /// Selects the storefront-visible topic page before enriching those exact IDs
@@ -110,8 +133,43 @@ impl ForumStorefrontReadStateService {
         Ok(ForumStorefrontUnreadTopicPage { items, total })
     }
 
-    /// Rechecks storefront visibility before marking the latest approved reply
-    /// position and immutable topic revision observed by the owner service.
+    /// Rechecks the exact richer audience decision before marking the latest
+    /// approved reply position and immutable topic revision observed by the owner.
+    pub async fn mark_topic_read_current_audience_visible(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<ForumTopicReadState> {
+        let service = match self.audience_facts.clone() {
+            Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
+                self.db.clone(),
+                self.event_bus.clone(),
+                facts,
+            ),
+            None => ForumTopicAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
+        };
+        let visible = service
+            .get_authenticated_storefront_visible_with_audience_context(
+                tenant_id,
+                security.clone(),
+                context,
+                topic_id,
+                fallback_locale,
+            )
+            .await?;
+        if visible.is_none() {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+        self.mark_topic_read_current(tenant_id, topic_id, security)
+            .await
+    }
+
+    /// Compatibility path for consumers not yet migrated to richer audience
+    /// composition. New public transports must use
+    /// `mark_topic_read_current_audience_visible`.
     pub async fn mark_topic_read_current_visible(
         &self,
         tenant_id: Uuid,
