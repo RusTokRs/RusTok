@@ -70,15 +70,16 @@ requireMarkers('crates/rustok-index/src/application/postgres_compiler_tests.rs',
   'assert!(!count.sql.contains("ORDER BY"))',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-many-link-filtering.md', [
-  'nested correlated `EXISTS` chain',
+  'correlated `EXISTS` chain',
   'Independent atomic subqueries are intentional.',
   '`Ne` is deliberately not compiled as `NOT EXISTS(Eq)`',
   'does not execute SQL',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-many-link-projection.md', [
-  'correlated JSONB aggregate',
-  'does not enter the outer root rowset',
-  'Many-link ordering remains fail-closed',
+  'correlated JSONB aggregate subquery',
+  'never become joins in the outer page rowset',
+  'Ordering through a many link remains rejected',
+  'CompiledManyRelationColumn',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   'M4 many-link `EXISTS` filtering: `complete`',
