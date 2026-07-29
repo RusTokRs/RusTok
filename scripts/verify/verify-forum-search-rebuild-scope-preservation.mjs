@@ -77,17 +77,13 @@ for (const marker of [
 for (const forbidden of [
   "self.legacy.rebuild_tenant",
   '"DELETE FROM search_documents WHERE tenant_id = $1"',
-  "blog_post",
-  "forum_category",
-  "forum_topic",
 ]) {
-  rejectMarker(
-    forbidden === "blog_post" || forbidden.startsWith("forum_")
-      ? active.split("const CORE_SCOPE_COUNT_SQL")[1]?.split('"#;')[0] ?? ""
-      : active,
-    forbidden,
-    activePath,
-  );
+  rejectMarker(active, forbidden, activePath);
+}
+const coreCountSection = active.split("const CORE_SCOPE_COUNT_SQL")[1] ?? "";
+const coreCountSql = coreCountSection.split('"#;')[0] ?? "";
+for (const forbidden of ["blog_post", "forum_category", "forum_topic"]) {
+  rejectMarker(coreCountSql, forbidden, activePath);
 }
 
 for (const marker of [
@@ -109,9 +105,8 @@ for (const marker of [
 rejectMarker(lib, "pub mod projector_legacy;", libPath);
 rejectMarker(lib, "pub use projector_legacy", libPath);
 
-const rebuild = ingestion
-  .split("async fn rebuild_tenant")[1]
-  ?.split("async fn handle_reindex_request")[0] ?? "";
+const rebuildSection = ingestion.split("async fn rebuild_tenant")[1] ?? "";
+const rebuild = rebuildSection.split("async fn handle_reindex_request")[0] ?? "";
 const coreIndex = rebuild.indexOf("self.projector.rebuild_tenant");
 const blogIndex = rebuild.indexOf("self.blog_projector.rebuild_tenant");
 const forumIndex = rebuild.lastIndexOf("projector.rebuild_tenant");
