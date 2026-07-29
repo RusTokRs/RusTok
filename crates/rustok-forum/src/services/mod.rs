@@ -6,7 +6,10 @@ mod category {
     include!("category_visibility_list.rs");
 }
 mod category_audience;
-mod category_audience_read;
+mod category_audience_read {
+    include!("category_audience_read.rs");
+    include!("category_audience_read_inline.rs");
+}
 mod category_audience_visibility;
 mod category_moderation_audience;
 mod category_reply_create_audience;
