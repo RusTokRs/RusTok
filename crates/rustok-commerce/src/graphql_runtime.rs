@@ -79,9 +79,9 @@ impl CommerceFulfillmentLifecycleReadRuntime {
 
 /// Host-selected complete order projection read port.
 ///
-/// HTTP admin routes consume this runtime in the current source wave. GraphQL schema data carries
-/// the same host-selected value so later resolver cutover cannot silently construct a different
-/// owner adapter.
+/// HTTP admin routes and mounted GraphQL resolvers consume this runtime. GraphQL schema data carries
+/// the host-selected value through the resolver scope so compatibility facades cannot silently
+/// construct a different owner adapter.
 #[derive(Clone)]
 pub struct CommerceOrderReadRuntime {
     order_reads: Arc<dyn OrderReadPort>,
@@ -107,13 +107,15 @@ impl CommerceOrderReadRuntime {
 tokio::task_local! {
     static CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME: CommerceShippingOptionReadRuntime;
     static CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME: CommerceFulfillmentLifecycleReadRuntime;
+    static CURRENT_COMMERCE_ORDER_READ_RUNTIME: CommerceOrderReadRuntime;
     static CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME: ProductCatalogReadRuntime;
 }
 
 /// Resolver-scoped bridge from schema runtime data to private compatibility facades.
 ///
-/// The mounted extension carries shipping-option, fulfillment-lifecycle, and Product catalog owner
-/// ports so every included Commerce resolver uses host-selected adapters for the current async task.
+/// The mounted extension carries shipping-option, fulfillment-lifecycle, order, and Product catalog
+/// owner ports so every included Commerce resolver uses host-selected adapters for the current async
+/// task.
 #[derive(Default)]
 pub struct CommerceShippingOptionReadScope;
 
@@ -141,9 +143,12 @@ impl Extension for CommerceShippingOptionReadScopeExtension {
                 runtime_data.shipping_option_read_runtime(),
                 CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME.scope(
                     runtime_data.fulfillment_lifecycle_read_runtime(),
-                    CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME.scope(
-                        runtime_data.product_catalog_read_runtime(),
-                        next.run(ctx, info),
+                    CURRENT_COMMERCE_ORDER_READ_RUNTIME.scope(
+                        runtime_data.order_read_runtime(),
+                        CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME.scope(
+                            runtime_data.product_catalog_read_runtime(),
+                            next.run(ctx, info),
+                        ),
                     ),
                 ),
             )
@@ -165,6 +170,15 @@ pub(crate) fn fulfillment_lifecycle_read_runtime_for_current_graphql_scope(
     CURRENT_COMMERCE_FULFILLMENT_LIFECYCLE_READ_RUNTIME
         .try_with(Clone::clone)
         .unwrap_or_else(|_| CommerceFulfillmentLifecycleReadRuntime::in_process(db))
+}
+
+pub(crate) fn order_read_runtime_for_current_graphql_scope(
+    db: DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
+) -> CommerceOrderReadRuntime {
+    CURRENT_COMMERCE_ORDER_READ_RUNTIME
+        .try_with(Clone::clone)
+        .unwrap_or_else(|_| CommerceOrderReadRuntime::in_process(db, event_bus))
 }
 
 pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope(
