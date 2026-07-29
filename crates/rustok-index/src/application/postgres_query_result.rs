@@ -57,7 +57,11 @@ impl CompiledPostgresRow {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Opaque page-execution contract produced only by `SchemaRegistry`.
+///
+/// The wrapper deliberately has no serde implementation so untrusted bytes cannot
+/// replace controlled SQL, bind values, or the requested page size before execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledPostgresPageQuery {
     compiled: CompiledPostgresQuery,
     requested_page_size: u32,
@@ -378,7 +382,7 @@ fn decode_row(
         }
     }
 
-    let root_entity_id = root_entity_id.ok_or_else(|| {
+    let root_entity_id = root_entity_id.flatten().ok_or_else(|| {
         PostgresQueryDecodeError::MissingColumn(identity_alias(&plan.root_alias))
     })?;
     let mut fields = Vec::with_capacity(plan.projection.len());
