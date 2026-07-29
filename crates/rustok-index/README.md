@@ -19,6 +19,7 @@ a rewrite goal.
 - Validate and plan cross-module queries.
 - Compile projection, filtering, sorting, count, and pagination to Index storage
   queries.
+- Execute compiled queries through an Index-owned PostgreSQL port.
 - Publish stable query, source, rebuild, and operator contracts.
 - Keep product-facing relevance and ranking in `rustok-search`.
 
@@ -37,7 +38,7 @@ a rewrite goal.
 
 ## Rewrite status
 
-- Current milestone: `M3 - PostgreSQL storage engine`
+- Current milestone: `M4 - Query engine v1`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: complete
@@ -53,18 +54,28 @@ a rewrite goal.
 - M3 partition evidence capture and packet assembly: complete
 - M3 retained packet owner orchestration: complete
 - M3 retained bundle review and archive verification: complete
+- M4 deterministic query planning and controlled SQL compilation: complete
+- M4 root/one and many-link query result semantics: complete
+- M4 PostgreSQL query port and row adapter: source complete
 - Real retained PostgreSQL packet execution: open
+- Query-port server/consumer composition and live equivalence evidence: open
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted. M3
 registers the canonical production schema, publishes an Index-owned transactional
 mutation adapter, owns durable schema-application leases, manages deterministic
 schema-derived secondary indexes, and rejects partition rollout until measured
-shadow evidence passes an explicit policy. Owner-operated tooling now captures and
+shadow evidence passes an explicit policy. Owner-operated tooling captures and
 validates the nine-file retained bundle, renders a read-only review, emits an
 admitted-only archive manifest outside the bundle, and verifies the saved manifest
-against an exact recursive filesystem snapshot. Query execution and production
-partition cutover remain absent.
+against an exact recursive filesystem snapshot.
+
+M4 now provides deterministic typed planning, controlled PostgreSQL compilation,
+correlated many-link filtering, nested many-link projection aggregation, strict
+result decoding, lookahead pagination, exact count, scoped cursors, and an
+Index-owned PostgreSQL execution port. Server/storefront/admin/search composition,
+many-link aggregate ordering policy, live PostgreSQL/reference equivalence, and
+production partition cutover remain open.
 
 The module-owned migration source creates:
 
@@ -130,6 +141,16 @@ metadata drift, inventory drift, or byte drift. Public manifest and receipt sche
 remain stable, and every successful receipt keeps
 `production_lifecycle_authorized: false`.
 
+`IndexQueryPort` is the transport-neutral query execution boundary.
+`PostgresIndexQueryPort` owns a PostgreSQL connection and immutable
+`Arc<SchemaRegistry>`. Each call compiles through the registry, starts one read-only
+repeatable-read transaction, verifies every root/source/target schema against the
+query tenant's exact active `index_schemas` fingerprint and JSON contract, executes
+the page and optional exact-count statements in the same snapshot, maps only
+compiler-declared UUID/JSONB/bigint aliases, and delegates semantic validation and
+cursor construction to `decode_postgres_query_page`. Authentication and transport
+policy remain caller responsibilities.
+
 ## Current entry points
 
 - `IndexModule`
@@ -145,6 +166,9 @@ remain stable, and every successful receipt keeps
   `PartitionShadowPlan`, and `evaluate_partition_admission`
 - `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
 - `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
+- `ExecutableQueryPlan`, `CompiledPostgresQuery`, and `CompiledPostgresPageQuery`
+- `IndexQueryPort`, `PostgresIndexQueryPort`, `IndexQueryExecutionError`, and
+  `IndexQueryPage`
 - `CursorCodec`, `IndexCursor`, and query-scope cursor validation
 
 ## Implemented invariants
@@ -173,7 +197,13 @@ remain stable, and every successful receipt keeps
   limits, deterministic tenant-hash shadow names, and no destructive cutover SQL;
 - exact-byte retained review and admitted archive verification bound to stable file
   and directory identities, metadata fingerprints, and recursive inventory without
-  production lifecycle authorization.
+  production lifecycle authorization;
+- deterministic typed plans, controlled ordered binds, duplicate-free many-link
+  `EXISTS` filtering, row-preserving nested many-link JSONB aggregation, strict
+  decoded column contracts, exact count, lookahead, and scoped cursor construction;
+- PostgreSQL-only query execution with exact persisted schema preflight, one
+  read-only repeatable-read page/count snapshot, exhaustive bind conversion, and
+  compiler-metadata-driven row mapping.
 
 ## M2 benchmark
 
@@ -192,6 +222,8 @@ DDL remains benchmark-only and must not be copied into production migrations.
 
 - [Module documentation](./docs/README.md)
 - [Live implementation plan](./docs/implementation-plan.md)
+- [M4 PostgreSQL query port contract](./docs/m4-postgres-query-port.md)
+- [M4 many-link projection contract](./docs/m4-many-link-projection.md)
 - [M2 storage benchmark contract](./docs/storage-benchmark.md)
 - [M2 replacement evidence runbook](./docs/storage-evidence-runbook.md)
 - [M3 retained partition capture runbook](./docs/partition-full-capture.md)
