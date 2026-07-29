@@ -19,6 +19,7 @@
   "owner_note": "crates/rustok-forum/docs/forum-20bh-category-audience-read.md",
   "source_verifier": "scripts/verify/verify-forum-category-audience-read.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json",
+  "downstream_completion": "crates/rustok-forum/contracts/forum-public-discovery-seo.json",
   "read_boundary": {
     "base_public_authenticated_floor_preserved": true,
     "inherited_richer_category_layers_enforced": true,
@@ -40,9 +41,9 @@
     "native_storefront_categories_use_exact_owner": true,
     "native_requested_category_uses_exact_single_owner": true,
     "native_requested_category_is_not_limited_to_first_page": true,
-    "search_index_changed": false,
-    "seo_changed": false,
-    "deep_link_changed": false,
+    "search_index_changed": true,
+    "seo_changed": true,
+    "deep_link_changed": true,
     "bulk_read_commands_changed": false,
     "migration_added": false,
     "dependency_changed": false,
@@ -57,7 +58,9 @@
     "topic_reply_read_paths_changed": false,
     "mark_read_paths_changed": false,
     "canonical_graphql_runtime_uses_query_runtime": true,
-    "legacy_query_snapshot_is_uncompiled": true
+    "legacy_query_snapshot_is_uncompiled": true,
+    "search_change_is_route_contract_only": true,
+    "forum_search_projection_consumer_wired": false
   },
   "documentation": {
     "owner_note_added": true,
@@ -65,13 +68,14 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BH through a conflict-safe repository-local edit; delete the legacy query.rs snapshot only after source verifiers no longer depend on it."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BI through a conflict-safe repository-local edit; delete the legacy query.rs snapshot only after source verifiers no longer depend on it."
   },
   "remaining_scope": [
-    "migrate search index SEO and deep-link authorization through exact category and topic audience owners",
+    "wire a Search-owned Forum projection consumer through exact public discovery without copying audience policy into Search SQL",
+    "reauthorize or remove projected Forum documents after current visibility policy changes",
     "add visibility-scoped category and all-read commands",
     "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
-    "capture maintainer-executed SQLite PostgreSQL REST native and GraphQL runtime evidence"
+    "capture maintainer-executed PostgreSQL SQLite SEO Search and route runtime evidence"
   ],
   "downstream_task": "FORUM-20BI",
   "verification": {
@@ -80,8 +84,8 @@
       "cargo test -p rustok-forum category_read_transport -- --nocapture",
       "cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture",
       "cargo test -p rustok-forum --test category_owner_visibility_sqlite -- --nocapture",
-      "node scripts/verify/verify-forum-reply-legacy-cutover.mjs",
       "node scripts/verify/verify-forum-category-audience-read.mjs",
+      "node scripts/verify/verify-forum-public-discovery-seo.mjs",
       "cargo xtask module validate forum"
     ]
   }
