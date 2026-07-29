@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BO",
+  "upstream_task": "FORUM-20BN",
+  "scope": "Publish approved anonymous-public Forum replies as independent Search-owned documents while preserving exact parent-topic and category discovery authorization",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md#forum-23--searchindex-integration",
+  "forum_projection_source": "crates/rustok-forum/src/search_projection.rs",
+  "reply_update_owner": "crates/rustok-forum/src/services/reply_inline.rs",
+  "search_projector": "crates/rustok-search/src/forum_projector.rs",
+  "search_ingestion": "crates/rustok-search/src/ingestion.rs",
+  "canonical_url_owner": "crates/rustok-search/src/engine.rs",
+  "source_contract_test": "crates/rustok-search/tests/forum_approved_reply_projection_contract.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bo-approved-reply-search.md",
+  "source_verifier": "scripts/verify/verify-forum-approved-reply-search.mjs",
+  "upstream_contracts": [
+    "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+    "crates/rustok-forum/contracts/forum-search-projection.json",
+    "crates/rustok-forum/contracts/forum-projection-invalidation.json",
+    "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
+    "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json"
+  ],
+  "projection_boundary": {
+    "entity_type": "forum_reply",
+    "source_module": "forum",
+    "raw_candidates_are_reply_locale_bodies": true,
+    "raw_candidate_order_is_reply_id_then_locale": true,
+    "cursor_phase_order": [
+      "forum_category",
+      "forum_topic",
+      "forum_reply"
+    ],
+    "cursor_advances_over_hidden_or_unapproved_replies": true,
+    "approved_status_required_from_typed_forum_owner": true,
+    "parent_topic_exact_public_discovery_required": true,
+    "parent_category_exact_public_discovery_required": true,
+    "route_channel_restricted_parent_absent_without_route_channel": true,
+    "missing_exact_locale_body_emits_document": false,
+    "pending_rejected_deleted_or_hidden_reply_emits_document": false,
+    "reply_body_is_search_document_body": true,
+    "topic_title_is_search_document_title": true,
+    "category_name_is_search_document_subtitle": true,
+    "safe_author_summary_added": false,
+    "vote_score_projected": false,
+    "reply_search_storage_added_to_forum": false,
+    "audience_policy_copied_into_search": false
+  },
+  "persistence_boundary": {
+    "search_owns_reply_document_storage": true,
+    "existing_search_documents_table_reused": true,
+    "forum_scope_stage_includes_reply_documents": true,
+    "forum_scope_delete_includes_reply_documents": true,
+    "targeted_reply_document_replace_supported": true,
+    "topic_refresh_rebuilds_atomic_forum_scope": true,
+    "topic_refresh_and_child_reply_refresh_are_one_search_transaction": true,
+    "topic_visibility_change_removes_child_reply_documents": true,
+    "topic_copy_or_category_context_change_refreshes_child_reply_documents": true,
+    "reply_create_and_status_events_reuse_existing_topic_refresh": true,
+    "reply_edit_publishes_owner_transactional_topic_invalidation": true,
+    "new_root_domain_event_added": false,
+    "new_reindex_target_string_added": false,
+    "out_of_order_owner_revision_guard_added": false,
+    "search_schema_migration_added": false
+  },
+  "canonical_url_boundary": {
+    "canonical_pair_required": true,
+    "reply_id_payload_must_match_result_id": true,
+    "topic_id_payload_must_be_non_nil_uuid": true,
+    "route": "/modules/forum?topic={topic_id}&reply={reply_id}",
+    "reply_query_is_additive_topic_open_hint": true,
+    "standalone_reply_storefront_page_added": false,
+    "storefront_reply_anchor_behavior_added": false,
+    "spoofed_or_malformed_payload_is_non_navigable": true,
+    "transport_local_url_fallback_added": false
+  },
+  "compatibility": {
+    "existing_search_category_and_topic_documents_changed": false,
+    "existing_search_query_contract_changed": false,
+    "existing_forum_rest_routes_changed": false,
+    "existing_forum_graphql_fields_changed": false,
+    "existing_forum_storefront_query_keys_removed": false,
+    "public_response_dto_changed": false,
+    "workspace_dependency_changed": false,
+    "cargo_lock_changed": false,
+    "migration_added": false,
+    "ffa_status_changed": false,
+    "fba_status_changed": false,
+    "legacy_graphql_snapshot_removed": true
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "source_contract_test_added": true,
+    "source_verifier_added": true,
+    "upstream_contracts_updated": true,
+    "canonical_plan_updated": false,
+    "crate_api_updated": false,
+    "search_plan_updated": false,
+    "synchronization_debt": "Advance Forum CRATE_API, Search local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BO with conflict-safe repository-local edits after maintainer validation."
+  },
+  "remaining_scope": [
+    "add owner revision ordering and durable inbox reconciliation for category topic reply and future member projections under FORUM-23",
+    "add safe author summaries and the planned category subtree author tag locale date solved kind channel group and attachment filters under FORUM-23",
+    "add storefront reply-anchor or focused-reply behavior only through a separate UI and route contract",
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation projection cleanup and approved-reply runtime evidence",
+    "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
+    "add an explicit Forum translation target invalidation adapter if Forum categories topics or replies are later registered with the translation control plane"
+  ],
+  "downstream_task": "FORUM-20BP",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-search --test forum_approved_reply_projection_contract -- --nocapture",
+      "cargo test -p rustok-search canonical_url_derives_forum_category_topic_and_reply_routes -- --nocapture",
+      "cargo test -p rustok-search forum_projector -- --nocapture",
+      "node scripts/verify/verify-forum-approved-reply-search.mjs",
+      "node scripts/verify/verify-forum-search-projection.mjs",
+      "node scripts/verify/verify-forum-projection-invalidation.mjs",
+      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
+      "node scripts/verify/verify-search-canonical-url-contract.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
