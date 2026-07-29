@@ -91,7 +91,11 @@ const packageJson = readRepo(packagePath);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
-assertContains(lib, "pub use ui::leptos::ProductAdmin;", `${libPath}: crate root must re-export ProductAdmin`);
+assertContains(
+  lib,
+  /pub use ui::(?:leptos|catalog_admin)::ProductAdmin;/,
+  `${libPath}: crate root must re-export ProductAdmin`,
+);
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {

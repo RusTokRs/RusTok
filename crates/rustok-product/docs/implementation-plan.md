@@ -30,9 +30,14 @@ guardrail are source-locked. Storefront title search, exact primary-category
 filtering, and deterministic publication/creation-date sorting use typed
 `CatalogListInput`, a Product-owned `StorefrontProductListQuery`, owner-side
 validation and SQL, the native owner endpoint, a merged GraphQL resolver backed
-by the same service, and snake_case UI controls. The broader storefront/admin
-catalog result remains open until typed attribute filters and matching admin
-controls are connected end to end.
+by the same service, and snake_case UI controls. Admin search, status, exact
+primary-category filtering, and deterministic publication/creation-date sorting
+now use `ProductAdminListInput`, a Product-owned `AdminProductListQuery`, the
+shared `CatalogService` execution path, a native-first facade, the parallel
+Product-backed GraphQL root, and snake_case category/sort controls composed
+around the preserved editor. The broader storefront/admin catalog result remains
+open only for typed `attribute_filters` connected through both UI surfaces and
+both selected transports. Recheck on 2026-07-29.
 Product write GraphQL derives tenant and actor exclusively from authenticated
 contexts. Product-owned `map_product_public_error` is shared by GraphQL and
 native admin/storefront transports; it keeps internal errors in structured logs
@@ -74,8 +79,9 @@ promoting the transport status.
 specialized published/global-visibility index is used at all three page scales;
 the count path uses it at 100k and 1M.
 `CatalogService` is separated by responsibility across
-`services/catalog/commands.rs`, `queries.rs`, `projection.rs`, and `tags.rs`
-while the public service contract remains unchanged. Inventory state uses the owner-owned native
+`services/catalog/commands.rs`, `admin_queries.rs`, `queries.rs`,
+`projection.rs`, and `tags.rs` while the public service contract remains
+unchanged. Inventory state uses the owner-owned native
 `rustok_inventory::BootstrapService` inside product's transaction for variant
 initialization, cleanup, and available-quantity reads; this is a
 documented bootstrap exception because no GraphQL/REST bootstrap contract exists
@@ -103,6 +109,7 @@ rustok-pricing` dependency cycle.
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
+  `scripts/verify/verify-product-admin-category-sort.mjs`,
   `scripts/verify/verify-product-storefront-boundary.mjs`,
   `scripts/verify/verify-product-storefront-category-sort.mjs`,
   `scripts/verify/verify-product-catalog-controls-plan-sync.mjs`, and
@@ -124,19 +131,24 @@ rustok-pricing` dependency cycle.
    descriptions plain text.
 3. Complete the product-owned catalog controls contract. The 2026-07-28
    storefront slices close title search, exact primary-category filtering, and
-   deterministic `published_at` / `created_at` sorting through typed UI state,
-   both selected transports, and Product-owned server-side execution. The task
-   stays open for typed attribute filters and matching admin controls. The
-   completed marker must not return until the full snake_case query contract
-   (`search`, `category_id`, `sort_by`, `sort_direction`, `attribute_filters`)
-   is carried through core request models, native and GraphQL adapters,
-   server-side semantics, and both UI surfaces.
+   deterministic `published_at` / `created_at` sorting. The 2026-07-29 admin
+   slice closes search/status, exact primary-category filtering, and the same
+   deterministic date sorting through typed UI state, native/GraphQL transports,
+   and Product-owned server-side execution. The task stays open only for typed
+   `attribute_filters` on storefront and admin. The completed marker must not
+   return until the full snake_case query contract (`search`, `category_id`,
+   `sort_by`, `sort_direction`, `attribute_filters`) is carried through core
+   request models, native and GraphQL adapters, server-side semantics, and both
+   UI surfaces.
 
 ## Verification
 
 - [ ] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
+- [x] Connect admin search/status/category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
+- `node scripts/verify/verify-product-admin-category-sort.mjs`
+- `node scripts/verify/verify-product-admin-category-sort.test.mjs`
 - `node scripts/verify/verify-product-storefront-category-sort.mjs`
 - `node scripts/verify/verify-product-storefront-category-sort.test.mjs`
 - `node scripts/verify/verify-product-catalog-controls-plan-sync.mjs`

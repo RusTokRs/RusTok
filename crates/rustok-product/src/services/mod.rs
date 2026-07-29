@@ -4,8 +4,9 @@ pub mod catalog_schema_service;
 mod write_transaction;
 
 pub use catalog::{
-    CatalogService, StorefrontProductList, StorefrontProductListItem,
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+    AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
+    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
+    StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 pub use catalog_schema::*;
 pub use catalog_schema_service::*;
