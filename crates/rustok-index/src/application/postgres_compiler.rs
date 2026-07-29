@@ -36,14 +36,16 @@ pub enum CompiledQueryColumn {
         output_alias: String,
         field: PlannedField,
     },
-    ManyRelation {
-        output_alias: String,
-        projection: PlannedManyProjection,
-    },
     OrderValue {
         output_alias: String,
         field: PlannedField,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompiledManyRelationColumn {
+    pub output_alias: String,
+    pub projection: PlannedManyProjection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +59,7 @@ pub struct CompiledPostgresQuery {
     pub sql: String,
     pub binds: Vec<PostgresBindValue>,
     pub columns: Vec<CompiledQueryColumn>,
+    pub many_relations: Vec<CompiledManyRelationColumn>,
     pub exact_count: Option<CompiledPostgresCount>,
     pub plan_fingerprint: QueryPlanFingerprint,
 }
