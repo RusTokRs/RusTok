@@ -28,6 +28,7 @@ const forbidText = (value, text, label) => {
 for (const [value, text, label] of [
   [source, 'mod rustok_order_shim;', 'safe-query order shim module'],
   [source, 'use self::rustok_order_shim as rustok_order;', 'safe-query order alias'],
+  [shim, 'pub(crate) mod dto {', 'order DTO passthrough'],
   [shim, 'order_reads: Arc<dyn OrderReadPort>', 'typed owner read dependency'],
   [shim, 'CommerceOrderReadRuntime::in_process(', 'explicit compatibility runtime'],
   [shim, '.read_order_projection(', 'detail owner port call'],
@@ -35,18 +36,19 @@ for (const [value, text, label] of [
   [shim, 'ReadOrderProjectionRequest {', 'detail typed request'],
   [shim, 'ListOrderProjectionsRequest {', 'list typed request'],
   [shim, '.with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
-  [shim, 'self.inner.get_order_change(', 'unchanged order-change delegate'],
-  [shim, 'self.inner.list_order_changes(', 'unchanged order-change list delegate'],
-  [shim, 'self.inner.get_return(', 'unchanged return delegate'],
-  [shim, 'self.inner.list_returns(', 'unchanged return list delegate'],
+  [shim, 'fn concrete_owner_service(&self)', 'deferred concrete compatibility factory'],
+  [shim, '.get_order_change(tenant_id, change_id)', 'unchanged order-change delegate'],
+  [shim, '.list_order_changes(tenant_id, input)', 'unchanged order-change list delegate'],
+  [shim, '.get_return(tenant_id, return_id)', 'unchanged return delegate'],
+  [shim, '.list_returns(tenant_id, input)', 'unchanged return list delegate'],
   [query, 'use rustok_order::OrderService;', 'legacy included source import'],
   [note, 'Status: source-ready, unvalidated.', 'checkpoint status'],
   [note, 'scope the host-selected `CommerceOrderReadRuntime`', 'remaining runtime handoff'],
 ]) requireText(value, text, label);
 
 for (const [text, label] of [
-  ['self.inner.get_order_with_locale_fallback(', 'concrete detail delegation'],
-  ['self.inner.list_orders_with_locale_fallback(', 'concrete list delegation'],
+  ['.get_order_with_locale_fallback(tenant_id, order_id', 'concrete detail delegation'],
+  ['.list_orders_with_locale_fallback(tenant_id, input', 'concrete list delegation'],
 ]) forbidText(shim, text, label);
 
 if (failures.length > 0) {
