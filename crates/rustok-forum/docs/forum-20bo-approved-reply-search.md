@@ -68,6 +68,18 @@ The result URL is:
 
 The `reply` query parameter is an additive topic-open hint. This slice does not add a standalone reply page, scrolling or focus behavior, or any storefront UI. A future UI route contract may consume the hint without changing the Search document identity.
 
+## Consumer boundary
+
+Published storefront searches filter on `is_public = TRUE`; they do not maintain a fixed status allowlist, so the typed `approved` status is not discarded after projection. GraphQL, native storefront and Search admin preview mappings are entity-generic and delegate URL construction to `canonical_search_result_url`.
+
+Admin global search keeps its fail-closed domain allowlist. FORUM-20BO adds explicit mappings:
+
+- `forum_category` requires `FORUM_CATEGORIES_READ`;
+- `forum_topic` requires `FORUM_TOPICS_READ`;
+- `forum_reply` requires `FORUM_REPLIES_READ`.
+
+The canonical source must be `forum` or `rustok-forum`; spoofed source/entity pairs remain filtered out before display. No consumer creates a local reply URL fallback.
+
 ## Compatibility
 
 This slice reuses `search_documents` and the existing staged Forum replacement. It adds no migration, workspace dependency, Cargo.lock change, REST or GraphQL field change, public DTO change, transport-local URL fallback, or FFA/FBA status promotion.
