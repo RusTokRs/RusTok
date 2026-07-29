@@ -102,12 +102,8 @@ Adapter and production-wiring source are complete. Consumer-behavior,
 authentication, provider-host, and schema-preflight source are complete, and the
 requested unit, authentication, loopback, Commerce, and AI harnesses are
 maintainer-attested as passed. They were not independently run by the
-implementation agent and raw logs were not retained, so Product remains
-`boundary_ready` rather than `transport_verified`. Configured remote-profile
-execution evidence remain open. Provider-host execution evidence remains open.
-Schema-preflight execution evidence remains open. The standalone PostgreSQL
-schema-preflight runtime evidence remains open. Authenticated separate-process
-Commerce and AI end-to-end evidence remains open.
+implementation agent and raw logs were not retained.
+Product remains `boundary_ready` rather than `transport_verified`; configured remote-profile execution evidence remain open; provider-host execution evidence remains open; schema-preflight execution evidence remains open; the standalone PostgreSQL schema-preflight runtime evidence remains open; authenticated separate-process Commerce and AI end-to-end evidence remains open.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
