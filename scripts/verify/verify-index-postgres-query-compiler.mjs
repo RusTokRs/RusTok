@@ -137,7 +137,9 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
 requireMarkers('crates/rustok-index/docs/m4-postgres-query-compiler.md', [
   '## Supported query semantics',
   'Atomic predicates are compiled into total booleans.',
-  'Ascending order uses `NULLS LAST`; descending order uses `NULLS FIRST`.',
+  'Ascending order uses `NULLS LAST`; descending order uses `NULLS FIRST`',
+  'rustok-index-cursor-query-v1',
+  'QueryFingerprintMismatch',
   'CompiledPostgresCount',
   'ManyLinkSemanticsPending',
   'does not connect to PostgreSQL',
