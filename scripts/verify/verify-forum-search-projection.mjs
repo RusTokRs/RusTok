@@ -33,6 +33,7 @@ const searchLibPath = "crates/rustok-search/src/lib.rs";
 const providerPath = "crates/rustok-forum/src/search_projection.rs";
 const forumLibPath = "crates/rustok-forum/src/lib.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
+const invalidationPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
 const upstreamPath = "crates/rustok-forum/contracts/forum-public-discovery-seo.json";
 const notePath = "crates/rustok-forum/docs/forum-20bj-search-projection.md";
 
@@ -45,11 +46,17 @@ const provider = read(providerPath);
 const forumLib = read(forumLibPath);
 const note = read(notePath);
 let contract = null;
+let invalidation = null;
 let upstream = null;
 try {
   contract = JSON.parse(read(contractPath));
 } catch (error) {
   failures.push(`${contractPath}: invalid JSON: ${error.message}`);
+}
+try {
+  invalidation = JSON.parse(read(invalidationPath));
+} catch (error) {
+  failures.push(`${invalidationPath}: invalid JSON: ${error.message}`);
 }
 try {
   upstream = JSON.parse(read(upstreamPath));
@@ -175,8 +182,11 @@ if (contract) {
   if (contract.upstream_task !== "FORUM-20BI") {
     failures.push(`${contractPath}: unexpected upstream task`);
   }
-  if (contract.downstream_task !== "FORUM-20BK") {
+  if (contract.downstream_task !== "FORUM-20BL") {
     failures.push(`${contractPath}: unexpected downstream task`);
+  }
+  if (contract.invalidation_contract !== invalidationPath) {
+    failures.push(`${contractPath}: invalidation contract handoff drift`);
   }
   for (const key of [
     "neutral_capability_has_no_forum_dependency",
@@ -219,20 +229,22 @@ if (contract) {
     "explicit_forum_scope_reindex_supported",
     "explicit_forum_category_reindex_supported",
     "explicit_forum_topic_reindex_supported",
-  ]) {
-    if (!contract.ingestion_boundary?.[key]) {
-      failures.push(`${contractPath}: ingestion boundary must lock ${key}`);
-    }
-  }
-  for (const key of [
     "automatic_category_policy_change_reindex_added",
     "automatic_topic_policy_change_reindex_added",
     "automatic_topic_content_translation_tag_solution_change_reindex_added",
     "automatic_category_content_translation_tree_change_reindex_added",
+    "automatic_category_and_reply_count_reindex_added",
+    "owner_transactional_outbox_delivery_added",
   ]) {
-    if (contract.ingestion_boundary?.[key] !== false) {
-      failures.push(`${contractPath}: ${key} must remain explicit downstream scope`);
+    if (contract.ingestion_boundary?.[key] !== true) {
+      failures.push(`${contractPath}: ingestion boundary ${key} drift`);
     }
+  }
+  if (contract.ingestion_boundary?.root_reindex_event_schema_changed !== false) {
+    failures.push(`${contractPath}: root reindex event schema must remain unchanged`);
+  }
+  if (contract.ingestion_boundary?.completion_contract !== invalidationPath) {
+    failures.push(`${contractPath}: completion contract drift`);
   }
   for (const [key, expected] of Object.entries({
     forum_to_search_workspace_dependency_added: false,
@@ -245,6 +257,21 @@ if (contract) {
     if (contract.compatibility?.[key] !== expected) {
       failures.push(`${contractPath}: compatibility ${key} drift`);
     }
+  }
+}
+
+if (invalidation) {
+  if (invalidation.task !== "FORUM-20BK") {
+    failures.push(`${invalidationPath}: unexpected task`);
+  }
+  if (invalidation.upstream_task !== "FORUM-20BJ") {
+    failures.push(`${invalidationPath}: unexpected upstream task`);
+  }
+  if (invalidation.downstream_task !== "FORUM-20BL") {
+    failures.push(`${invalidationPath}: unexpected downstream task`);
+  }
+  if (invalidation.upstream_contract !== contractPath) {
+    failures.push(`${invalidationPath}: upstream contract drift`);
   }
 }
 
@@ -262,7 +289,7 @@ if (upstream) {
     failures.push(`${upstreamPath}: workspace dependency handoff drift`);
   }
   if (upstream.downstream_task !== "FORUM-20BK") {
-    failures.push(`${upstreamPath}: downstream task drift`);
+    failures.push(`${upstreamPath}: historical downstream task drift`);
   }
 }
 

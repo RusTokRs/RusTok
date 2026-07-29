@@ -114,6 +114,14 @@ impl TopicService {
                 },
             )
             .await?;
+        super::projection_invalidation::publish_forum_category_projection_in_tx(
+            &self.event_bus,
+            &txn,
+            tenant_id,
+            security.user_id,
+            input.category_id,
+        )
+        .await?;
 
         txn.commit().await?;
         self.get(tenant_id, security, topic_id, &locale).await
@@ -272,6 +280,14 @@ impl TopicService {
                 .await?;
         }
 
+        super::projection_invalidation::publish_forum_topic_projection_in_tx(
+            &self.event_bus,
+            &txn,
+            tenant_id,
+            security.user_id,
+            topic_id,
+        )
+        .await?;
         txn.commit().await?;
         self.get(tenant_id, security, topic_id, &locale).await
     }

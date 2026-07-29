@@ -19,6 +19,9 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category::CategoryService;
+use super::projection_invalidation::{
+    publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
+};
 use super::rbac::enforce_owned_scope;
 use super::topic;
 use super::user_stats::UserStatsService;
@@ -157,6 +160,22 @@ impl TopicService {
                 )
                 .await?;
         }
+        publish_forum_topic_projection_in_tx(
+            &self.event_bus,
+            &txn,
+            tenant_id,
+            security.user_id,
+            topic_id,
+        )
+        .await?;
+        publish_forum_category_projection_in_tx(
+            &self.event_bus,
+            &txn,
+            tenant_id,
+            security.user_id,
+            topic.category_id,
+        )
+        .await?;
 
         txn.commit().await?;
         Ok(())
@@ -250,7 +269,7 @@ async fn redact_topic_content_in_tx(
         format!(
             "UPDATE forum_topic_translations \
              SET title = '[deleted]', slug = NULL, body = '[deleted]', \
-                 body_format = 'markdown', updated_at = CURRENT_TIMESTAMP \
+                  body_format = 'markdown', updated_at = CURRENT_TIMESTAMP \
              WHERE tenant_id = '{tenant_id}' AND topic_id = '{topic_id}'"
         ),
         format!(
