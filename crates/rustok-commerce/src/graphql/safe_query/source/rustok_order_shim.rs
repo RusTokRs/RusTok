@@ -30,9 +30,11 @@ pub(crate) struct OrderService {
 
 impl OrderService {
     pub(crate) fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        let order_reads =
-            crate::graphql_runtime::CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone())
-                .order_read_port();
+        let order_reads = crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
+            db.clone(),
+            event_bus.clone(),
+        )
+        .order_read_port();
         Self {
             inner: ::rustok_order::OrderService::new(db, event_bus),
             order_reads,
@@ -46,12 +48,8 @@ impl OrderService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> OrderResult<OrderResponse> {
-        let context = graphql_order_read_context(
-            tenant_id,
-            locale,
-            "read_order_projection",
-            order_id,
-        );
+        let context =
+            graphql_order_read_context(tenant_id, locale, "read_order_projection", order_id);
         self.order_reads
             .read_order_projection(
                 context.clone(),
@@ -147,7 +145,7 @@ fn map_order_read_port_error(
     context: &PortContext,
     order_id: Option<Uuid>,
 ) -> OrderError {
-    let error_kind = match error.kind {
+    let error_kind = match &error.kind {
         PortErrorKind::Validation => "validation",
         PortErrorKind::NotFound => "not_found",
         PortErrorKind::Conflict => "conflict",
