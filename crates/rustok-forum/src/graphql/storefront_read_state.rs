@@ -9,12 +9,15 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumError, ForumStorefrontUnreadTopic,
-    ForumTopicReadOperation, ForumTopicReadState, ForumTopicReadTransport, ListTopicsFilter,
-    topic_read_audience_port_context,
+    ForumError, ForumStorefrontUnreadTopic, ForumTopicReadOperation, ForumTopicReadState,
+    ForumTopicReadTransport, ListTopicsFilter, MarkForumTopicsReadBatchInput,
+    MarkForumTopicsReadBatchResult, topic_read_audience_port_context,
 };
 
-use super::ForumGraphqlRuntimeData;
+use super::{
+    ForumGraphqlRuntimeData, GqlForumTopicsReadBatchResult,
+    MarkForumTopicsReadBatchGraphqlInput,
+};
 
 const MODULE_SLUG: &str = "forum";
 const DEFAULT_STOREFRONT_UNREAD_LIMIT: u64 = 20;
@@ -175,6 +178,103 @@ impl ForumStorefrontReadStateMutation {
         };
         Ok(map_read_state(state))
     }
+
+    async fn mark_forum_storefront_category_read(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        category_id: Uuid,
+        input: Option<MarkForumTopicsReadBatchGraphqlInput>,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopicsReadBatchResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::MarkCategoryRead,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+
+        let result = match runtime
+            .storefront_read_state_service(db.clone(), event_bus.clone())
+            .mark_category_read_audience_visible(
+                tenant_id,
+                category_id,
+                forum_security(&auth),
+                audience_context,
+                storefront_batch_input(input.unwrap_or_default())?,
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(ForumError::CategoryNotFound(_)) => {
+                return Err(<FieldError as GraphQLError>::not_found(
+                    "Forum category is unavailable",
+                ));
+            }
+            Err(error) => return Err(error.into()),
+        };
+        Ok(map_batch_result(result))
+    }
+
+    async fn mark_all_forum_storefront_topics_read(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        input: Option<MarkForumTopicsReadBatchGraphqlInput>,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopicsReadBatchResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::MarkAllRead,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+
+        let result = runtime
+            .storefront_read_state_service(db.clone(), event_bus.clone())
+            .mark_all_read_audience_visible(
+                tenant_id,
+                forum_security(&auth),
+                audience_context,
+                storefront_batch_input(input.unwrap_or_default())?,
+            )
+            .await?;
+        Ok(map_batch_result(result))
+    }
 }
 
 fn require_forum_permission(
@@ -223,6 +323,25 @@ fn storefront_limit(limit: Option<i32>) -> Result<u64> {
     Ok(limit)
 }
 
+fn storefront_batch_input(
+    input: MarkForumTopicsReadBatchGraphqlInput,
+) -> Result<MarkForumTopicsReadBatchInput> {
+    let limit = input
+        .limit
+        .map(|value| {
+            u64::try_from(value).map_err(|_| {
+                <FieldError as GraphQLError>::bad_user_input(
+                    "Forum storefront bulk read limit must be nonnegative",
+                )
+            })
+        })
+        .transpose()?;
+    Ok(MarkForumTopicsReadBatchInput {
+        cursor: input.cursor,
+        limit,
+    })
+}
+
 fn map_topic(item: ForumStorefrontUnreadTopic) -> GqlForumStorefrontUnreadTopic {
     GqlForumStorefrontUnreadTopic {
         id: item.topic.id,
@@ -251,5 +370,14 @@ fn map_read_state(state: ForumTopicReadState) -> GqlForumStorefrontTopicReadStat
         last_read_revision: state.last_read_revision,
         explicit: state.explicit,
         updated_at: state.updated_at,
+    }
+}
+
+fn map_batch_result(result: MarkForumTopicsReadBatchResult) -> GqlForumTopicsReadBatchResult {
+    GqlForumTopicsReadBatchResult {
+        processed: result.processed as i64,
+        next_cursor: result.next_cursor,
+        has_more: result.has_more,
+        snapshot_at: result.snapshot_at,
     }
 }

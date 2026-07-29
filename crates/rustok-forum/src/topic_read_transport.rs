@@ -11,6 +11,7 @@ const FORUM_TOPIC_READ_FACTS_DEADLINE: Duration = Duration::from_secs(5);
 pub enum ForumTopicReadTransport {
     Graphql,
     NativeServer,
+    Rest,
 }
 
 impl ForumTopicReadTransport {
@@ -18,6 +19,7 @@ impl ForumTopicReadTransport {
         match self {
             Self::Graphql => "graphql",
             Self::NativeServer => "native",
+            Self::Rest => "rest",
         }
     }
 }
@@ -27,6 +29,8 @@ pub enum ForumTopicReadOperation {
     TopicList,
     SelectedTopic,
     MarkRead,
+    MarkCategoryRead,
+    MarkAllRead,
 }
 
 impl ForumTopicReadOperation {
@@ -35,6 +39,8 @@ impl ForumTopicReadOperation {
             Self::TopicList => "topic-list",
             Self::SelectedTopic => "selected-topic",
             Self::MarkRead => "mark-read",
+            Self::MarkCategoryRead => "mark-category-read",
+            Self::MarkAllRead => "mark-all-read",
         }
     }
 }
@@ -208,6 +214,45 @@ mod tests {
 
         assert!(context.correlation_id.starts_with("forum-graphql-topic-list-"));
         assert_eq!(context.deadline_ms, Some(5_000));
+    }
+
+    #[test]
+    fn bulk_contexts_bind_transport_operation_and_route_channel() {
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let auth = auth(tenant_id, user_id);
+        let request = request(tenant_id, user_id);
+
+        let category = topic_read_audience_port_context(
+            ForumTopicReadTransport::Rest,
+            ForumTopicReadOperation::MarkCategoryRead,
+            tenant_id,
+            &auth,
+            Some(&request),
+            "en",
+        )
+        .expect("REST category bulk context should compose");
+        let all = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::MarkAllRead,
+            tenant_id,
+            &auth,
+            Some(&request),
+            "en",
+        )
+        .expect("GraphQL all-read context should compose");
+
+        assert!(
+            category
+                .correlation_id
+                .starts_with("forum-rest-mark-category-read-")
+        );
+        assert!(
+            all.correlation_id
+                .starts_with("forum-graphql-mark-all-read-")
+        );
+        assert_eq!(category.channel.as_deref(), Some("members"));
+        assert_eq!(all.channel.as_deref(), Some("members"));
     }
 
     #[test]

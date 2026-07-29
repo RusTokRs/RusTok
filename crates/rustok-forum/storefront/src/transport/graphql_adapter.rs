@@ -7,6 +7,8 @@ use crate::model::{
     StorefrontForumData,
 };
 
+use super::StorefrontForumBulkReadResult;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
     Graphql(String),
@@ -30,6 +32,8 @@ const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadT
 const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontAudienceTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId title slug body bodyFormat status tags isPinned isLocked replyCount createdAt updatedAt } }";
 const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale topicId content contentFormat status parentReplyId createdAt updatedAt } } }";
 const MARK_STOREFRONT_FORUM_TOPIC_READ_MUTATION: &str = "mutation MarkStorefrontForumTopicRead($tenantId: UUID, $topicId: UUID!, $locale: String) { markForumStorefrontTopicRead(tenantId: $tenantId, topicId: $topicId, locale: $locale) { topicId } }";
+const MARK_STOREFRONT_FORUM_CATEGORY_READ_MUTATION: &str = "mutation MarkStorefrontForumCategoryRead($tenantId: UUID, $categoryId: UUID!, $input: MarkForumTopicsReadBatchGraphqlInput, $locale: String) { markForumStorefrontCategoryRead(tenantId: $tenantId, categoryId: $categoryId, input: $input, locale: $locale) { processed nextCursor hasMore snapshotAt } }";
+const MARK_ALL_STOREFRONT_FORUM_TOPICS_READ_MUTATION: &str = "mutation MarkAllStorefrontForumTopicsRead($tenantId: UUID, $input: MarkForumTopicsReadBatchGraphqlInput, $locale: String) { markAllForumStorefrontTopicsRead(tenantId: $tenantId, input: $input, locale: $locale) { processed nextCursor hasMore snapshotAt } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontForumCategoriesResponse {
@@ -71,6 +75,18 @@ struct MarkStorefrontForumTopicReadResponse {
 struct MarkStorefrontForumTopicReadPayload {
     #[serde(rename = "topicId")]
     topic_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarkStorefrontForumCategoryReadResponse {
+    #[serde(rename = "markForumStorefrontCategoryRead")]
+    result: StorefrontForumBulkReadResult,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarkAllStorefrontForumTopicsReadResponse {
+    #[serde(rename = "markAllForumStorefrontTopicsRead")]
+    result: StorefrontForumBulkReadResult,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,6 +147,30 @@ struct MarkTopicReadVariables {
     tenant_id: Option<String>,
     #[serde(rename = "topicId")]
     topic_id: String,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct BulkReadInput {
+    cursor: Option<String>,
+    limit: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+struct MarkCategoryReadVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    #[serde(rename = "categoryId")]
+    category_id: String,
+    input: BulkReadInput,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct MarkAllReadVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    input: BulkReadInput,
     locale: Option<String>,
 }
 
@@ -353,6 +393,58 @@ pub async fn mark_storefront_topic_read_graphql(
         ));
     }
     Ok(())
+}
+
+pub async fn mark_storefront_category_read_graphql(
+    category_id: String,
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<StorefrontForumBulkReadResult, ApiError> {
+    let response: MarkStorefrontForumCategoryReadResponse = request(
+        MARK_STOREFRONT_FORUM_CATEGORY_READ_MUTATION,
+        MarkCategoryReadVariables {
+            tenant_id: None,
+            category_id,
+            input: BulkReadInput {
+                cursor,
+                limit: graphql_bulk_limit(limit)?,
+            },
+            locale,
+        },
+    )
+    .await?;
+    Ok(response.result)
+}
+
+pub async fn mark_all_storefront_topics_read_graphql(
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<StorefrontForumBulkReadResult, ApiError> {
+    let response: MarkAllStorefrontForumTopicsReadResponse = request(
+        MARK_ALL_STOREFRONT_FORUM_TOPICS_READ_MUTATION,
+        MarkAllReadVariables {
+            tenant_id: None,
+            input: BulkReadInput {
+                cursor,
+                limit: graphql_bulk_limit(limit)?,
+            },
+            locale,
+        },
+    )
+    .await?;
+    Ok(response.result)
+}
+
+fn graphql_bulk_limit(limit: Option<u64>) -> Result<Option<i32>, ApiError> {
+    limit
+        .map(|value| {
+            i32::try_from(value).map_err(|_| {
+                ApiError::Graphql("Forum bulk read limit exceeds GraphQL Int range".to_string())
+            })
+        })
+        .transpose()
 }
 
 fn empty_replies() -> ForumReplyConnection {

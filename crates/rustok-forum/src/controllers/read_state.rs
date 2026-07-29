@@ -9,9 +9,10 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ForumReadModelService, ForumTopicReadState, ForumTopicReadStateService,
+    ForumReadModelService, ForumTopicReadOperation, ForumTopicReadState,
+    ForumTopicReadStateService, ForumTopicReadTransport, ForumVisibilityScopedReadStateService,
     MarkForumTopicReadInput, MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
-    TopicUnreadCursorPage, TopicUnreadCursorQuery,
+    TopicUnreadCursorPage, TopicUnreadCursorQuery, topic_read_audience_port_context,
 };
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
@@ -134,17 +135,18 @@ pub async fn mark_topic_read(
     params(("id" = Uuid, Path, description = "Root category ID")),
     request_body = MarkForumTopicsReadBatchInput,
     responses(
-        (status = 200, description = "Bounded category-subtree read batch", body = MarkForumTopicsReadBatchResult),
-        (status = 400, description = "Invalid batch cursor or limit"),
+        (status = 200, description = "Bounded exact-visible category-subtree read batch", body = MarkForumTopicsReadBatchResult),
+        (status = 400, description = "Invalid batch cursor, scope or limit"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
-        (status = 404, description = "Category not found")
+        (status = 404, description = "Category unavailable")
     )
 )]
 pub async fn mark_category_read(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(category_id): Path<Uuid>,
     Json(input): Json<MarkForumTopicsReadBatchInput>,
 ) -> HttpResult<Json<MarkForumTopicsReadBatchResult>> {
@@ -154,8 +156,23 @@ pub async fn mark_category_read(
         "Permission denied: forum_topics:read required",
     )?;
 
-    let result = ForumTopicReadStateService::new(runtime.db_clone())
-        .mark_category_read(tenant.id, category_id, forum_security(&auth), input)
+    let context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::MarkCategoryRead,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let result = visibility_scoped_read_service(&runtime)
+        .mark_category_read_with_audience_context(
+            tenant.id,
+            category_id,
+            forum_security(&auth),
+            context,
+            input,
+        )
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(result))
@@ -167,8 +184,8 @@ pub async fn mark_category_read(
     tag = "forum",
     request_body = MarkForumTopicsReadBatchInput,
     responses(
-        (status = 200, description = "Bounded tenant-wide read batch", body = MarkForumTopicsReadBatchResult),
-        (status = 400, description = "Invalid batch cursor or limit"),
+        (status = 200, description = "Bounded exact-visible tenant-wide read batch", body = MarkForumTopicsReadBatchResult),
+        (status = 400, description = "Invalid batch cursor, scope or limit"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -177,6 +194,7 @@ pub async fn mark_all_topics_read(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Json(input): Json<MarkForumTopicsReadBatchInput>,
 ) -> HttpResult<Json<MarkForumTopicsReadBatchResult>> {
     ensure_forum_permission(
@@ -185,11 +203,36 @@ pub async fn mark_all_topics_read(
         "Permission denied: forum_topics:read required",
     )?;
 
-    let result = ForumTopicReadStateService::new(runtime.db_clone())
-        .mark_all_read(tenant.id, forum_security(&auth), input)
+    let context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::MarkAllRead,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let result = visibility_scoped_read_service(&runtime)
+        .mark_all_read_with_audience_context(
+            tenant.id,
+            forum_security(&auth),
+            context,
+            input,
+        )
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(result))
+}
+
+fn visibility_scoped_read_service(
+    runtime: &crate::controllers::ForumHttpRuntime,
+) -> ForumVisibilityScopedReadStateService {
+    match runtime.audience_facts.clone() {
+        Some(facts) => {
+            ForumVisibilityScopedReadStateService::with_audience_facts(runtime.db_clone(), facts)
+        }
+        None => ForumVisibilityScopedReadStateService::new(runtime.db_clone()),
+    }
 }
 
 fn ensure_forum_permission(
