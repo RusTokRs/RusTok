@@ -1,5 +1,6 @@
 mod mutation_store;
 mod partition_admission;
+mod query_port;
 mod schema_lease;
 mod schema_registration;
 mod secondary_index;
@@ -24,6 +25,7 @@ pub use partition_admission::{
     PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
     PartitionShadowEvidence, PartitionShadowPlan, PartitionStrategy,
 };
+pub use query_port::PostgresIndexQueryPort;
 pub use schema_lease::{
     PostgresSchemaLeaseStore, SchemaApplicationLease, SchemaApplicationLeaseRequest,
     SchemaLeaseAcquireOutcome, SchemaLeaseError,
