@@ -26,35 +26,25 @@ function rejectMarker(source, marker, label) {
 }
 
 const ownerPath = "crates/rustok-forum/src/services/read_tracking_audience.rs";
-const storefrontOwnerPath =
-  "crates/rustok-forum/src/services/storefront_read_state_bulk.rs";
+const storefrontOwnerPath = "crates/rustok-forum/src/services/storefront_read_state_bulk.rs";
 const servicesPath = "crates/rustok-forum/src/services/mod.rs";
 const libPath = "crates/rustok-forum/src/lib.rs";
 const contextPath = "crates/rustok-forum/src/topic_read_transport.rs";
 const restPath = "crates/rustok-forum/src/controllers/read_state.rs";
 const graphqlPath = "crates/rustok-forum/src/graphql/read_state.rs";
 const runtimePath = "crates/rustok-forum/src/graphql/runtime_data.rs";
-const storefrontGraphqlPath =
-  "crates/rustok-forum/src/graphql/storefront_read_state.rs";
-const storefrontSelectorPath =
-  "crates/rustok-forum/storefront/src/transport/mod.rs";
-const storefrontGraphqlAdapterPath =
-  "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs";
-const storefrontNativeAdapterPath =
-  "crates/rustok-forum/storefront/src/transport/native_server_adapter_bulk.rs";
-const sqliteTestPath =
-  "crates/rustok-forum/tests/topic_visibility_bulk_read_state_sqlite.rs";
+const storefrontGraphqlPath = "crates/rustok-forum/src/graphql/storefront_read_state.rs";
+const storefrontSelectorPath = "crates/rustok-forum/storefront/src/transport/mod.rs";
+const storefrontGraphqlAdapterPath = "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs";
+const storefrontNativeAdapterPath = "crates/rustok-forum/storefront/src/transport/native_server_adapter_bulk.rs";
+const sqliteTestPath = "crates/rustok-forum/tests/topic_visibility_bulk_read_state_sqlite.rs";
 const transportTestPath = "crates/rustok-forum/tests/read_state_transport_contract.rs";
-const storefrontTestPath =
-  "crates/rustok-forum/tests/storefront_read_state_contract.rs";
-const contractPath =
-  "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
-const upstreamPath =
-  "crates/rustok-forum/contracts/forum-projection-invalidation.json";
-const rebuildPath =
-  "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
-const notePath =
-  "crates/rustok-forum/docs/forum-20bl-visibility-scoped-bulk-read.md";
+const storefrontTestPath = "crates/rustok-forum/tests/storefront_read_state_contract.rs";
+const contractPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
+const upstreamPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
+const rebuildPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
+const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
+const notePath = "crates/rustok-forum/docs/forum-20bl-visibility-scoped-bulk-read.md";
 
 const owner = read(ownerPath);
 const storefrontOwner = read(storefrontOwnerPath);
@@ -76,10 +66,12 @@ const note = read(notePath);
 let contract = null;
 let upstream = null;
 let rebuild = null;
+let approvedReply = null;
 for (const [label, source, assign] of [
   [contractPath, read(contractPath), (value) => { contract = value; }],
   [upstreamPath, read(upstreamPath), (value) => { upstream = value; }],
   [rebuildPath, read(rebuildPath), (value) => { rebuild = value; }],
+  [approvedReplyPath, read(approvedReplyPath), (value) => { approvedReply = value; }],
 ]) {
   try {
     assign(JSON.parse(source));
@@ -152,9 +144,7 @@ for (const marker of [
 ]) {
   requireMarker(rest, marker, restPath);
 }
-for (const forbidden of [".mark_category_read(\n", ".mark_all_read(\n"]) {
-  rejectMarker(rest, forbidden, restPath);
-}
+for (const forbidden of [".mark_category_read(\n", ".mark_all_read(\n"]) rejectMarker(rest, forbidden, restPath);
 
 for (const marker of [
   "visibility_scoped_read_state_service",
@@ -165,9 +155,7 @@ for (const marker of [
 ]) {
   requireMarker(graphql, marker, graphqlPath);
 }
-for (const forbidden of [".mark_category_read(\n", ".mark_all_read(\n"]) {
-  rejectMarker(graphql, forbidden, graphqlPath);
-}
+for (const forbidden of [".mark_category_read(\n", ".mark_all_read(\n"]) rejectMarker(graphql, forbidden, graphqlPath);
 requireMarker(runtime, "visibility_scoped_read_state_service", runtimePath);
 
 for (const marker of [
@@ -222,11 +210,7 @@ for (const marker of [
 ]) {
   requireMarker(sqliteTest, marker, sqliteTestPath);
 }
-requireMarker(
-  transportTest,
-  "category_and_all_read_transports_use_exact_visibility_owner",
-  transportTestPath,
-);
+requireMarker(transportTest, "category_and_all_read_transports_use_exact_visibility_owner", transportTestPath);
 for (const marker of [
   "markForumStorefrontCategoryRead",
   "markAllForumStorefrontTopicsRead",
@@ -234,7 +218,6 @@ for (const marker of [
 ]) {
   requireMarker(storefrontTest, marker, storefrontTestPath);
 }
-
 for (const marker of [
   "processed = 0",
   "has_more = true",
@@ -247,34 +230,22 @@ for (const marker of [
 
 if (contract) {
   if (contract.task !== "FORUM-20BL") failures.push(`${contractPath}: unexpected task`);
-  if (contract.upstream_task !== "FORUM-20BK") {
-    failures.push(`${contractPath}: unexpected upstream task`);
-  }
-  if (contract.downstream_task !== "FORUM-20BN") {
-    failures.push(`${contractPath}: unexpected downstream task`);
-  }
-  if (contract.rebuild_scope_preservation_contract !== rebuildPath) {
-    failures.push(`${contractPath}: rebuild preservation handoff drift`);
-  }
-  if (contract.downstream_handoff?.completion_contract !== rebuildPath) {
-    failures.push(`${contractPath}: downstream completion contract drift`);
-  }
-  if (contract.downstream_handoff?.full_rebuild_external_scope_preservation_completed !== true) {
-    failures.push(`${contractPath}: rebuild preservation completion not recorded`);
-  }
+  if (contract.upstream_task !== "FORUM-20BK") failures.push(`${contractPath}: unexpected upstream task`);
+  if (contract.downstream_task !== "FORUM-20BP") failures.push(`${contractPath}: unexpected downstream task`);
+  if (contract.rebuild_scope_preservation_contract !== rebuildPath) failures.push(`${contractPath}: rebuild handoff drift`);
+  if (contract.approved_reply_search_contract !== approvedReplyPath) failures.push(`${contractPath}: approved reply handoff drift`);
+  if (contract.downstream_handoff?.rebuild_completion_contract !== rebuildPath) failures.push(`${contractPath}: historical rebuild completion drift`);
+  if (contract.downstream_handoff?.completion_contract !== approvedReplyPath) failures.push(`${contractPath}: reply completion drift`);
+  if (contract.downstream_handoff?.approved_public_reply_documents_completed !== true) failures.push(`${contractPath}: reply completion not recorded`);
   for (const key of [
     "category_root_uses_exact_category_audience_owner",
     "each_raw_topic_uses_exact_topic_audience_owner",
     "route_channel_applied",
     "missing_required_owner_facts_fail_closed",
   ]) {
-    if (contract.owner_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: owner boundary ${key} drift`);
-    }
+    if (contract.owner_boundary?.[key] !== true) failures.push(`${contractPath}: owner ${key} drift`);
   }
-  if (contract.owner_boundary?.transport_local_policy_copy_added !== false) {
-    failures.push(`${contractPath}: transport-local policy copy must remain absent`);
-  }
+  if (contract.owner_boundary?.transport_local_policy_copy_added !== false) failures.push(`${contractPath}: transport-local policy copy must remain absent`);
   for (const key of [
     "raw_candidate_query_uses_limit_plus_one",
     "cursor_advances_over_raw_candidates",
@@ -284,13 +255,9 @@ if (contract) {
     "cross_channel_resume_rejected",
     "visibility_reauthorized_on_each_resumed_page",
   ]) {
-    if (contract.bounded_cursor_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: cursor boundary ${key} drift`);
-    }
+    if (contract.bounded_cursor_boundary?.[key] !== true) failures.push(`${contractPath}: cursor ${key} drift`);
   }
-  if (contract.bounded_cursor_boundary?.maximum_raw_candidates_per_page !== 100) {
-    failures.push(`${contractPath}: raw candidate maximum drift`);
-  }
+  if (contract.bounded_cursor_boundary?.maximum_raw_candidates_per_page !== 100) failures.push(`${contractPath}: raw candidate maximum drift`);
   for (const key of [
     "rest_routes_use_exact_owner",
     "graphql_fields_use_exact_owner",
@@ -300,16 +267,10 @@ if (contract) {
     "storefront_native_all_command_added",
     "storefront_compile_profile_selects_one_transport",
   ]) {
-    if (contract.transport_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: transport boundary ${key} drift`);
-    }
+    if (contract.transport_boundary?.[key] !== true) failures.push(`${contractPath}: transport ${key} drift`);
   }
-  if (contract.transport_boundary?.cross_transport_fallback_added !== false) {
-    failures.push(`${contractPath}: cross-transport fallback must remain absent`);
-  }
-  if (contract.compatibility?.legacy_br1_used_by_public_bulk_transports !== false) {
-    failures.push(`${contractPath}: public transports must not use legacy br1 owner`);
-  }
+  if (contract.transport_boundary?.cross_transport_fallback_added !== false) failures.push(`${contractPath}: cross-transport fallback must remain absent`);
+  if (contract.compatibility?.legacy_br1_used_by_public_bulk_transports !== false) failures.push(`${contractPath}: public transports must not use legacy br1`);
   for (const [key, expected] of Object.entries({
     workspace_dependency_changed: false,
     cargo_lock_changed: false,
@@ -317,45 +278,31 @@ if (contract) {
     ffa_status_changed: false,
     fba_status_changed: false,
   })) {
-    if (contract.compatibility?.[key] !== expected) {
-      failures.push(`${contractPath}: compatibility ${key} drift`);
-    }
+    if (contract.compatibility?.[key] !== expected) failures.push(`${contractPath}: compatibility ${key} drift`);
   }
-  if (contract.remaining_scope?.includes(
-    "make full multi-source Search rebuild replacement atomic or preserve each prior external scope when a later source fails",
-  )) {
-    failures.push(`${contractPath}: completed rebuild preservation remains listed`);
+  if (contract.remaining_scope?.includes("decide whether approved public replies become separate Search documents under FORUM-23")) {
+    failures.push(`${contractPath}: completed reply decision remains open`);
   }
 }
 
 if (upstream) {
-  if (upstream.visibility_scoped_bulk_read_contract !== contractPath) {
-    failures.push(`${upstreamPath}: visible bulk contract handoff drift`);
-  }
-  if (upstream.rebuild_scope_preservation_contract !== rebuildPath) {
-    failures.push(`${upstreamPath}: rebuild preservation handoff drift`);
-  }
-  if (upstream.downstream_task !== "FORUM-20BN") {
-    failures.push(`${upstreamPath}: downstream task drift`);
-  }
-  if (upstream.remaining_scope?.includes("add visibility-scoped category and all-read commands")) {
-    failures.push(`${upstreamPath}: completed bulk read scope remains listed`);
-  }
+  if (upstream.visibility_scoped_bulk_read_contract !== contractPath) failures.push(`${upstreamPath}: visible bulk handoff drift`);
+  if (upstream.rebuild_scope_preservation_contract !== rebuildPath) failures.push(`${upstreamPath}: rebuild handoff drift`);
+  if (upstream.approved_reply_search_contract !== approvedReplyPath) failures.push(`${upstreamPath}: approved reply handoff drift`);
+  if (upstream.downstream_task !== "FORUM-20BP") failures.push(`${upstreamPath}: downstream task drift`);
 }
-
 if (rebuild) {
   if (rebuild.task !== "FORUM-20BM") failures.push(`${rebuildPath}: unexpected task`);
-  if (rebuild.upstream_task !== "FORUM-20BL") {
-    failures.push(`${rebuildPath}: unexpected upstream task`);
-  }
-  if (rebuild.downstream_task !== "FORUM-20BN") {
-    failures.push(`${rebuildPath}: downstream task drift`);
-  }
-  if (rebuild.replacement_boundary?.failed_forum_rebuild_keeps_previous_forum_scope !== true) {
-    failures.push(`${rebuildPath}: failed Forum rebuild must preserve previous scope`);
-  }
-  if (rebuild.replacement_boundary?.global_cross_source_atomicity_claimed !== false) {
-    failures.push(`${rebuildPath}: global atomicity must remain explicitly unclaimed`);
+  if (rebuild.upstream_task !== "FORUM-20BL") failures.push(`${rebuildPath}: unexpected upstream task`);
+  if (rebuild.downstream_task !== "FORUM-20BP") failures.push(`${rebuildPath}: downstream task drift`);
+  if (rebuild.approved_reply_search_contract !== approvedReplyPath) failures.push(`${rebuildPath}: approved reply handoff drift`);
+  if (rebuild.replacement_boundary?.failed_forum_rebuild_keeps_previous_forum_scope !== true) failures.push(`${rebuildPath}: failed Forum rebuild must preserve scope`);
+  if (rebuild.replacement_boundary?.global_cross_source_atomicity_claimed !== false) failures.push(`${rebuildPath}: global atomicity must remain unclaimed`);
+}
+if (approvedReply) {
+  if (approvedReply.task !== "FORUM-20BO") failures.push(`${approvedReplyPath}: unexpected task`);
+  if (approvedReply.compatibility?.ffa_status_changed !== false || approvedReply.compatibility?.fba_status_changed !== false) {
+    failures.push(`${approvedReplyPath}: reply Search must not promote UI readiness`);
   }
 }
 
