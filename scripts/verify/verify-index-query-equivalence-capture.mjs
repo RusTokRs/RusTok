@@ -85,7 +85,7 @@ requireMarkers('ops/benches/Cargo.toml', [
   'path = "src/bin/index_query_equivalence_capture.rs"',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
-  'Status: `fixture_and_capture_source_complete_owner_execution_pending`',
+  'Status: `fixture_capture_and_admission_source_complete_owner_execution_pending`',
   '`index-query-equivalence-capture`',
   'descriptor-last no-clobber bundle',
   'does not retain the PostgreSQL URL',

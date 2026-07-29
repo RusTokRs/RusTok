@@ -70,6 +70,10 @@ path = "src/bin/index_partition_capture_finalize.rs"
 name = "index-query-equivalence-capture"
 path = "src/bin/index_query_equivalence_capture.rs"
 
+[[bin]]
+name = "index-query-equivalence-admission"
+path = "src/bin/index_query_equivalence_admission.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false
