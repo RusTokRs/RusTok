@@ -24,7 +24,7 @@ function requireText(source, marker, description) {
 }
 
 function findFunctionBody(source, functionName) {
-  const signature = new RegExp(`pub\\s+async\\s+fn\\s+${functionName}\\s*\\(`, "g");
+  const signature = new RegExp(`pub\s+async\s+fn\s+${functionName}\s*\(`, "g");
   const match = signature.exec(source);
   if (!match) return null;
   const openBrace = source.indexOf("{", match.index);
@@ -72,8 +72,17 @@ if (!composedBody) {
   }
 }
 const compatibilityBody = findFunctionBody(staged, "complete_storefront_checkout_input");
-if (!compatibilityBody?.includes("CatalogService::new")) {
-  failures.push("Commerce compatibility wrapper must remain explicit until HTTP/GraphQL cutover");
+if (!compatibilityBody) {
+  failures.push("Commerce checkout compatibility wrapper is missing");
+} else {
+  requireText(
+    compatibilityBody,
+    "product_catalog_read_runtime_for_current_graphql_scope",
+    "Commerce checkout compatibility wrapper",
+  );
+  if (compatibilityBody.includes("CatalogService::new")) {
+    failures.push("Commerce checkout compatibility wrapper must not construct CatalogService");
+  }
 }
 for (const marker of [
   "shared_get::<ProductCatalogReadRuntime>()",
@@ -107,22 +116,25 @@ if (registry) {
   const composition = registry.runtime_composition ?? {};
   const complete = composition.source_complete_consumers ?? [];
   const pending = composition.pending_consumers ?? [];
-  if (!complete.includes("order-storefront-native")) {
-    failures.push("Product FBA registry must mark order-storefront-native source-complete");
-  }
-  if (pending.includes("order-storefront-native")) {
-    failures.push("Product FBA registry must remove order-storefront-native from pending consumers");
-  }
-  for (const consumer of ["commerce-checkout-http", "commerce-checkout-graphql"]) {
-    if (!pending.includes(consumer)) {
-      failures.push(`Product FBA registry must keep ${consumer} pending`);
+  for (const consumer of [
+    "order-storefront-native",
+    "commerce-checkout-http",
+    "commerce-checkout-graphql",
+  ]) {
+    if (!complete.includes(consumer)) {
+      failures.push(`Product FBA registry must mark ${consumer} source-complete`);
     }
+  }
+  if (pending.length !== 0) {
+    failures.push("Product FBA registry must have no pending checkout consumers");
+  }
+  if (composition.status !== "source_complete_consumer_cutover_complete") {
+    failures.push("Product FBA registry must record completed consumer cutover");
   }
 }
 for (const marker of [
   "Order storefront native checkout",
-  "complete_storefront_checkout_with_product_port",
-  "Commerce HTTP and GraphQL checkout",
+  "checkout consumer source cutover is complete",
   "verify-product-native-checkout-catalog-runtime.mjs",
 ]) {
   requireText(plan, marker, "Product implementation plan");
