@@ -16,6 +16,7 @@ pub async fn fetch_products(
         controls.category_id,
         controls.sort_by,
         controls.sort_direction,
+        controls.attribute_filters,
     )
     .await
     .map_err(ApiError::from)?;
@@ -103,6 +104,7 @@ async fn storefront_catalog_list_native(
     category_id: Option<String>,
     sort_by: Option<String>,
     sort_direction: Option<String>,
+    attribute_filters: Vec<String>,
 ) -> Result<ProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -133,11 +135,12 @@ async fn storefront_catalog_list_native(
         let public_channel_slug = request_context
             .as_ref()
             .and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref()));
-        let list_query = StorefrontProductListQuery::try_from_transport(
+        let list_query = StorefrontProductListQuery::try_from_transport_with_attribute_filters(
             search,
             category_id,
             sort_by,
             sort_direction,
+            attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "storefront_catalog_list_input"))?;
         let products = CatalogService::new(runtime_ctx.db_clone(), event_bus)
@@ -157,7 +160,14 @@ async fn storefront_catalog_list_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (locale, search, category_id, sort_by, sort_direction);
+        let _ = (
+            locale,
+            search,
+            category_id,
+            sort_by,
+            sort_direction,
+            attribute_filters,
+        );
         Err(ServerFnError::new(
             "product/storefront/catalog-list requires the `ssr` feature",
         ))
