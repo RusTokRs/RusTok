@@ -65,6 +65,7 @@ mod topic_audience {
     include!("topic_audience.rs");
     include!("topic_audience_visibility.rs");
 }
+mod topic_audience_list;
 mod topic_audience_read;
 mod topic_create_audience_authorization;
 mod topic_facade;
@@ -156,6 +157,7 @@ pub use topic_audience::{
     ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, ForumTopicAudienceViewer,
     ForumTopicAudienceVisibilityService, SetForumTopicAudiencePolicyInput,
 };
+pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
 pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
