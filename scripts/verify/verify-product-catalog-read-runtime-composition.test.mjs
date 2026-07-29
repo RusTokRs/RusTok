@@ -47,14 +47,28 @@ function fixture(options = {}) {
     "crates/rustok-product/contracts/product-fba-registry.json",
     options.omitRegistry
       ? "{}"
-      : `{"runtime_composition":{"runtime":"ProductCatalogReadRuntime","profiles":["embedded_native","external"],"source_complete_consumers":["ai-product","marketplace-listing"],"pending_consumers":["commerce-checkout-http","commerce-checkout-graphql","order-storefront-native"],"status":"source_complete_consumer_cutover_partial"}}`,
+      : JSON.stringify({
+          runtime_composition: {
+            runtime: "ProductCatalogReadRuntime",
+            profiles: ["embedded_native", "external"],
+            source_complete_consumers: [
+              "ai-product",
+              "marketplace-listing",
+              "order-storefront-native",
+              "commerce-checkout-http",
+              "commerce-checkout-graphql",
+            ],
+            pending_consumers: [],
+            status: "source_complete_consumer_cutover_complete",
+          },
+        }, null, 2),
   );
   write(
     root,
     "crates/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
-      : "ProductCatalogReadRuntime AI and Marketplace Listing checkout transport cutover remains open verify-product-catalog-read-runtime-composition.mjs",
+      : "ProductCatalogReadRuntime AI, checkout consumer source cutover is complete Concrete external transport execution remains open verify-product-catalog-read-runtime-composition.mjs",
   );
   return root;
 }
