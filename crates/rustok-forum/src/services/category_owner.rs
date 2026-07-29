@@ -23,9 +23,9 @@ use super::{category, category_command, category_lifecycle, category_policy, cat
 /// kept crate-private so callers cannot bypass placement, lifecycle or policy
 /// commands through `Deref`.
 pub struct CategoryService {
-    inner: category::CategoryService,
-    commands: category_command::CategoryCommandService,
-    lifecycle: category_lifecycle::CategoryLifecycleService,
+    inner: category::CategoryProjectionOwnerService,
+    commands: category_command::CategoryCommandProjectionOwnerService,
+    lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService,
     policy: category_policy::CategoryTopicPolicyService,
     tree: category_tree::CategoryTreeService,
     visibility: ForumCategoryVisibilityPolicyService,
@@ -34,9 +34,9 @@ pub struct CategoryService {
 impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            inner: category::CategoryService::new(db.clone()),
-            commands: category_command::CategoryCommandService::new(db.clone()),
-            lifecycle: category_lifecycle::CategoryLifecycleService::new(db.clone()),
+            inner: category::CategoryProjectionOwnerService::new(db.clone()),
+            commands: category_command::CategoryCommandProjectionOwnerService::new(db.clone()),
+            lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService::new(db.clone()),
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
             tree: category_tree::CategoryTreeService::new(db.clone()),
             visibility: ForumCategoryVisibilityPolicyService::new(db),
