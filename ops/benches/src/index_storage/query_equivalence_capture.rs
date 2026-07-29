@@ -1,6 +1,5 @@
 use std::{
     env,
-    ffi::OsStr,
     fs::{self, OpenOptions},
     io::Write as _,
     path::{Path, PathBuf},
@@ -81,7 +80,10 @@ impl QueryEquivalenceCaptureConfig {
         );
 
         let commit = env::var(COMMIT_ENV).context(format!("{COMMIT_ENV} is required"))?;
-        ensure!(is_lower_hex_commit(&commit), "{COMMIT_ENV} must be a 40-character lowercase Git commit");
+        ensure!(
+            is_lower_hex_commit(&commit),
+            "{COMMIT_ENV} must be a 40-character lowercase Git commit"
+        );
         let run_key = env::var(RUN_KEY_ENV).context(format!("{RUN_KEY_ENV} is required"))?;
         validate_run_key(&run_key)?;
         let repository = env::var(REPOSITORY_ENV).unwrap_or_else(|_| "RusTokRs/RusTok".to_owned());
@@ -106,7 +108,10 @@ impl QueryEquivalenceCaptureConfig {
             "query equivalence output root must have a final path component"
         );
         let cargo_program = env::var(CARGO_ENV).unwrap_or_else(|_| "cargo".to_owned());
-        ensure!(!cargo_program.trim().is_empty(), "{CARGO_ENV} must not be empty");
+        ensure!(
+            !cargo_program.trim().is_empty(),
+            "{CARGO_ENV} must not be empty"
+        );
 
         Ok(Self {
             database_url,
@@ -200,6 +205,7 @@ pub async fn capture_query_equivalence(
         output.stderr.len() <= MAX_LOG_BYTES,
         "query equivalence stderr exceeds the {MAX_LOG_BYTES}-byte retained limit"
     );
+    verify_source_identity(config)?;
 
     let database_after = read_database_identity(&db).await?;
     ensure!(
@@ -210,7 +216,7 @@ pub async fn capture_query_equivalence(
     let execution = QueryEquivalenceExecution {
         package: TEST_PACKAGE,
         test_filter: TEST_FILTER,
-        command: equivalence_command(),
+        command: equivalence_command(config),
         scenarios: &SCENARIOS,
         scenario_contract_sha256: sha256_json(&SCENARIOS)?,
         exit_code: output.status.code().unwrap_or(-1),
@@ -247,11 +253,11 @@ pub async fn capture_query_equivalence(
         execution,
     };
 
-    publish_bundle(config, &descriptor, &output)?;
+    let output_root = publish_bundle(config, &descriptor, &output)?;
     Ok(QueryEquivalenceCapture {
         commit: config.commit.clone(),
         run_key: config.run_key.clone(),
-        output_root: config.output_root.clone(),
+        output_root,
     })
 }
 
@@ -340,9 +346,9 @@ fn validate_test_output(output: &Output) -> Result<()> {
     Ok(())
 }
 
-fn equivalence_command() -> Vec<String> {
+fn equivalence_command(config: &QueryEquivalenceCaptureConfig) -> Vec<String> {
     vec![
-        "cargo".to_owned(),
+        config.cargo_program.clone(),
         "test".to_owned(),
         "-p".to_owned(),
         TEST_PACKAGE.to_owned(),
@@ -403,7 +409,7 @@ fn publish_bundle(
     config: &QueryEquivalenceCaptureConfig,
     descriptor: &QueryEquivalenceDescriptor,
     output: &Output,
-) -> Result<()> {
+) -> Result<PathBuf> {
     ensure_output_absent(&config.output_root)?;
     let parent = config
         .output_root
@@ -435,7 +441,7 @@ fn publish_bundle(
     fs::create_dir(&staged_root)
         .with_context(|| format!("failed to create staged query equivalence root {staged_root:?}"))?;
 
-    let result: Result<()> = (|| {
+    let result: Result<PathBuf> = (|| {
         write_new_file(&staged_root.join(STDOUT_FILE), &output.stdout)?;
         write_new_file(&staged_root.join(STDERR_FILE), &output.stderr)?;
         let mut descriptor_bytes = serde_json::to_vec_pretty(descriptor)?;
@@ -446,7 +452,7 @@ fn publish_bundle(
                 "failed to publish query equivalence bundle from {staged_root:?} to {final_root:?}"
             )
         })?;
-        Ok(())
+        Ok(final_root.clone())
     })();
     if staged_root.exists() {
         let _ = fs::remove_dir_all(&staged_root);
@@ -486,7 +492,10 @@ fn validate_run_key(value: &str) -> Result<()> {
         }),
         "{RUN_KEY_ENV} may contain only ASCII letters, digits, dash, underscore, and dot"
     );
-    ensure!(value != "." && value != "..", "{RUN_KEY_ENV} must not be dot traversal");
+    ensure!(
+        value != "." && value != "..",
+        "{RUN_KEY_ENV} must not be dot traversal"
+    );
     Ok(())
 }
 
@@ -518,8 +527,4 @@ fn tail(value: &str, max_chars: usize) -> String {
         .nth(max_chars)
         .map_or(0, |(index, _)| index);
     value[start..].to_owned()
-}
-
-fn _os_str_is_non_empty(value: &OsStr) -> bool {
-    !value.is_empty()
 }
