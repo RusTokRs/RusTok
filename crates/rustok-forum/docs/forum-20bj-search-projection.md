@@ -7,9 +7,14 @@ projection without moving Forum visibility policy into Search SQL.
 
 Forum remains the only owner of category and topic visibility. The module
 publishes `ForumSearchProjectionSourceFactory` through the neutral
-`SearchProjectionSourceRegistry`. Registration carries no database handle; the
-Search event listener materializes the source from its runtime database only
-after all module runtime extensions have been assembled.
+`SearchProjectionSourceRegistry`. The capability and registry live in
+`rustok-core`; they contain no Search persistence, query, ranking or Forum
+policy implementation. `rustok-search` re-exports that contract and remains the
+only owner of projection writes and retrieval.
+
+Registration carries no database handle. The Search event listener materializes
+the source from its runtime database only after all module runtime extensions
+have been assembled.
 
 The Forum source scans category/topic translation identities in bounded raw
 pages. Every candidate is then re-read through `ForumPublicDiscoveryService`,
@@ -86,15 +91,10 @@ reauthorization.
 
 Existing Search content, product and Blog projectors and query contracts are
 unchanged. Existing Forum REST, GraphQL, storefront, SEO and public-discovery
-contracts are unchanged. Forum has a compile-time dependency on the core Search
-crate for the neutral projection-source contract, but does not declare a hard
+contracts are unchanged. Forum uses its existing `rustok-core` dependency for
+the neutral projection capability and does not gain a Search crate or hard
 module runtime dependency. When no Search listener consumes the registered
-factory, Forum reads and commands continue normally.
-
-The workspace `Cargo.lock` is intentionally not regenerated in this slice,
-because the implementation agent was instructed not to run Cargo commands. The
-maintainer-owned Cargo validation workflow must regenerate and review the one
-workspace dependency-edge update before locked validation.
+factory, Forum reads and commands continue normally. `Cargo.lock` is unchanged.
 
 Tests, Cargo commands, formatting, verifiers, workflows and CI were not run by
 the implementation agent. The maintainer commands are recorded in
