@@ -31,24 +31,26 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
         return Ok(Vec::new());
     }
 
+    let backend = db.get_database_backend();
     let mut values = vec![tenant_id.into()];
     let placeholders = filters
         .iter()
         .enumerate()
         .map(|(index, filter)| {
             values.push(filter.code.to_ascii_lowercase().into());
-            format!("${}", index + 2)
+            sql_placeholder(backend, index + 2)
         })
         .collect::<Vec<_>>()
         .join(", ");
+    let tenant_placeholder = sql_placeholder(backend, 1);
     let definitions = CatalogAttributeFilterDefinitionRow::find_by_statement(
         Statement::from_sql_and_values(
-            db.get_database_backend(),
+            backend,
             format!(
                 r#"
                 SELECT id, code, value_type, is_localized
                 FROM product_attributes
-                WHERE tenant_id = $1
+                WHERE tenant_id = {tenant_placeholder}
                   AND archived_at IS NULL
                   AND is_filterable = TRUE
                   AND scope IN ('product', 'both')
@@ -82,7 +84,7 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
                 ))
             })?;
         conditions.push(build_attribute_filter_condition(
-            db.get_database_backend(),
+            backend,
             tenant_id,
             definition,
             value_type,
@@ -109,29 +111,13 @@ fn build_attribute_filter_condition(
         | AttributeValueType::Richtext
             if definition.is_localized =>
         {
-            custom_condition(
+            localized_text_condition(
                 backend,
-                r#"
-                EXISTS (
-                    SELECT 1
-                    FROM product_attribute_values pav
-                    JOIN product_attribute_value_translations pavt
-                      ON pavt.value_id = pav.id
-                    WHERE pav.product_id = products.id
-                      AND pav.tenant_id = {p1}
-                      AND pav.attribute_id = {p2}
-                      AND pav.detached_at IS NULL
-                      AND pavt.locale IN ({p3}, {p4})
-                      AND pavt.value_text = {p5}
-                )
-                "#,
-                vec![
-                    tenant_id.into(),
-                    definition.id.into(),
-                    locale.trim().into(),
-                    fallback_locale.trim().into(),
-                    raw_value.into(),
-                ],
+                tenant_id,
+                definition.id,
+                locale.trim(),
+                fallback_locale.trim(),
+                raw_value,
             )
         }
         AttributeValueType::Text
@@ -208,6 +194,86 @@ fn build_attribute_filter_condition(
         }
     };
     Ok(condition)
+}
+
+fn localized_text_condition(
+    backend: DbBackend,
+    tenant_id: Uuid,
+    attribute_id: Uuid,
+    locale: &str,
+    fallback_locale: &str,
+    raw_value: &str,
+) -> Condition {
+    if locale == fallback_locale {
+        return custom_condition(
+            backend,
+            r#"
+            EXISTS (
+                SELECT 1
+                FROM product_attribute_values pav
+                JOIN product_attribute_value_translations pavt
+                  ON pavt.value_id = pav.id
+                WHERE pav.product_id = products.id
+                  AND pav.tenant_id = {p1}
+                  AND pav.attribute_id = {p2}
+                  AND pav.detached_at IS NULL
+                  AND pavt.locale = {p3}
+                  AND pavt.value_text = {p4}
+            )
+            "#,
+            vec![
+                tenant_id.into(),
+                attribute_id.into(),
+                locale.into(),
+                raw_value.into(),
+            ],
+        );
+    }
+
+    custom_condition(
+        backend,
+        r#"
+        EXISTS (
+            SELECT 1
+            FROM product_attribute_values pav
+            WHERE pav.product_id = products.id
+              AND pav.tenant_id = {p1}
+              AND pav.attribute_id = {p2}
+              AND pav.detached_at IS NULL
+              AND (
+                  EXISTS (
+                      SELECT 1
+                      FROM product_attribute_value_translations requested
+                      WHERE requested.value_id = pav.id
+                        AND requested.locale = {p3}
+                        AND requested.value_text = {p4}
+                  )
+                  OR (
+                      NOT EXISTS (
+                          SELECT 1
+                          FROM product_attribute_value_translations requested_any
+                          WHERE requested_any.value_id = pav.id
+                            AND requested_any.locale = {p3}
+                      )
+                      AND EXISTS (
+                          SELECT 1
+                          FROM product_attribute_value_translations fallback_value
+                          WHERE fallback_value.value_id = pav.id
+                            AND fallback_value.locale = {p5}
+                            AND fallback_value.value_text = {p4}
+                      )
+                  )
+              )
+        )
+        "#,
+        vec![
+            tenant_id.into(),
+            attribute_id.into(),
+            locale.into(),
+            raw_value.into(),
+            fallback_locale.into(),
+        ],
+    )
 }
 
 fn scalar_condition(
@@ -292,13 +358,19 @@ fn custom_condition(
         .iter()
         .enumerate()
         .fold(sql_template.to_string(), |sql, (index, _)| {
-            let placeholder = match backend {
-                DbBackend::Sqlite => "?".to_string(),
-                _ => format!("${}", index + 1),
-            };
-            sql.replace(format!("{{p{}}}", index + 1).as_str(), placeholder.as_str())
+            sql.replace(
+                format!("{{p{}}}", index + 1).as_str(),
+                sql_placeholder(backend, index + 1).as_str(),
+            )
         });
     Condition::all().add(Expr::cust_with_values(sql, values))
+}
+
+fn sql_placeholder(backend: DbBackend, index: usize) -> String {
+    match backend {
+        DbBackend::Sqlite => "?".to_string(),
+        _ => format!("${index}"),
+    }
 }
 
 fn invalid_typed_value(code: &str, expected: &str, value: &str) -> CommerceError {
