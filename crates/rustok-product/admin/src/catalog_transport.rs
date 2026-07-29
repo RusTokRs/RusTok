@@ -22,12 +22,18 @@ pub(crate) async fn fetch_products(
     status: Option<String>,
 ) -> Result<ProductList, rustok_graphql::GraphqlHttpError> {
     let route_controls = leptos::prelude::use_context::<ProductAdminListInput>().unwrap_or_default();
+    let attribute_filters = if route_controls.attribute_filters.is_empty() {
+        None
+    } else {
+        Some(route_controls.attribute_filters.join(";"))
+    };
     let controls = build_product_admin_list_input(
         search,
         status,
         route_controls.category_id,
         route_controls.sort_by,
         route_controls.sort_direction,
+        attribute_filters,
     );
     let native_controls = controls.clone();
     match admin_catalog_native::fetch_products(
