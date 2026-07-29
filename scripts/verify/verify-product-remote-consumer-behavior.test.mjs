@@ -98,6 +98,49 @@ function fixture(options = {}) {
       : "Remote consumer behavior is now source-complete through executable loopback harnesses. Commerce it never substitutes the cart line snapshot for current Product authority. AI both failures skip catalog enrichment, requires operator review, and performs no persistence. Product remains `boundary_ready`. Add executable Commerce hard-dependency and AI degraded-behavior gRPC harnesses. Execute the Commerce and AI remote consumer behavior harnesses. cargo test -p rustok-commerce --test product_remote_consumer_behavior cargo test -p rustok-ai --features server --lib remote_product_ verify-product-remote-consumer-behavior.mjs",
   );
 
+  const aiProductProfiles = options.missingGrpcProfile
+    ? ["in_process", "remote_adapter_placeholder"]
+    : ["in_process", "remote_adapter_placeholder", "grpc_loopback"];
+  write(
+    root,
+    "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+    JSON.stringify({
+      status: "boundary_ready",
+      provider_dependencies: [
+        {
+          module: "product",
+          required_profiles: aiProductProfiles,
+        },
+      ],
+      evidence: {
+        remote_consumer_behavior_verifier:
+          "scripts/verify/verify-product-remote-consumer-behavior.mjs",
+      },
+      remote_consumer_behavior: {
+        status: options.staleAiStatus
+          ? "runtime_verified"
+          : "source_complete_execution_pending",
+        profile: "grpc_loopback",
+        source: "crates/rustok-ai/src/direct_product_attributes.rs",
+        failure_profiles: ["unavailable", "timeout"],
+        assertions: [
+          "generate_from_prompt_only",
+          "skip_catalog_enrichment",
+          "require_operator_review",
+          "persistence_none",
+          "typed_port_error_preserved",
+        ],
+      },
+    }),
+  );
+  write(
+    root,
+    "crates/rustok-ai-product/docs/implementation-plan.md",
+    options.missingAiProductPlan
+      ? "AI-product plan"
+      : "A source-complete gRPC loopback harness now exercises the same product-context function. Remote `Unavailable` and `Timeout` errors preserve typed behavior. The production result remains review-required and non-persistent. source_complete_execution_pending. Execute the remote Product consumer harness. cargo test -p rustok-ai --features server --lib remote_product_. verify-product-remote-consumer-behavior.mjs",
+  );
+
   return root;
 }
 
@@ -154,6 +197,18 @@ test("guard rejects false Product promotion", () => {
   reject({ falsePromotion: true }, /remain boundary_ready/);
 });
 
-test("guard rejects missing implementation-plan handoff", () => {
+test("guard rejects missing AI-product gRPC profile", () => {
+  reject({ missingGrpcProfile: true }, /must include grpc_loopback/);
+});
+
+test("guard rejects false AI-product runtime evidence", () => {
+  reject({ staleAiStatus: true }, /AI-product remote behavior must remain/);
+});
+
+test("guard rejects missing Product implementation-plan handoff", () => {
   reject({ missingPlan: true }, /Product remote consumer implementation plan/);
+});
+
+test("guard rejects missing AI-product implementation-plan handoff", () => {
+  reject({ missingAiProductPlan: true }, /AI-product remote consumer implementation plan/);
 });
