@@ -7,9 +7,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 /// Attach the host-composed commerce provider registries and owner read runtimes to a capability
 /// runtime.
 ///
-/// Values already installed in `ServerRuntimeContext` are always preserved so external adapters
-/// registered by the host remain visible to every transport. When no provider runtime exists, the
-/// process composes the deterministic built-in baseline once.
+/// Values already installed in `ServerRuntimeContext` or `HostRuntimeContext` are always preserved
+/// so external adapters registered by the host remain visible to every transport. When no provider
+/// runtime exists, the process composes the deterministic built-in baseline once.
 pub fn attach_commerce_provider_registries(
     host: HostRuntimeContext,
     server: &ServerRuntimeContext,
@@ -128,6 +128,30 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
+    #[cfg(feature = "mod-product")]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_product::ProductCatalogReadRuntime>()
+            .or_else(|| server.shared_get::<rustok_product::ProductCatalogReadRuntime>())
+            .or_else(|| {
+                server
+                    .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .map(|event_bus| {
+                        rustok_product::ProductCatalogReadRuntime::in_process(
+                            server.db_clone(),
+                            event_bus,
+                        )
+                    })
+            });
+        match runtime {
+            Some(runtime) => {
+                server.shared_insert(runtime.clone());
+                host.with_shared_value(runtime)
+            }
+            None => host,
+        }
+    };
+
     #[cfg(all(
         feature = "mod-marketplace_listing",
         feature = "mod-marketplace_seller",
@@ -146,9 +170,12 @@ pub fn attach_commerce_provider_registries(
                         "MarketplaceSellerRuntime must be initialized before marketplace listing",
                     )
                     .shared_read_port();
-                let product_reader: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(
-                    rustok_product::CatalogService::new(server.db_clone(), event_bus.clone()),
-                );
+                let product_reader = server
+                    .shared_get::<rustok_product::ProductCatalogReadRuntime>()
+                    .expect(
+                        "ProductCatalogReadRuntime must be initialized before marketplace listing",
+                    )
+                    .read_port();
                 let ports = Arc::new(rustok_marketplace_listing::MarketplaceListingService::new(
                     server.db_clone(),
                     event_bus,
@@ -189,12 +216,10 @@ pub fn attach_commerce_provider_registries(
     };
 
     #[cfg(all(feature = "mod-ai", feature = "mod-product"))]
-    let host = if let Some(event_bus) = server.shared_get::<rustok_outbox::TransactionalEventBus>()
+    let host = if let Some(runtime) =
+        server.shared_get::<rustok_product::ProductCatalogReadRuntime>()
     {
-        let port: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(
-            rustok_product::CatalogService::new(server.db_clone(), event_bus),
-        );
-        host.with_shared_value(rustok_ai::SharedAiProductCatalogReadPort(port))
+        host.with_shared_value(rustok_ai::SharedAiProductCatalogReadPort(runtime.read_port()))
     } else {
         host
     };
@@ -302,12 +327,43 @@ mod order_status_port_tests {
 mod product_catalog_read_port_tests {
     use std::sync::Arc;
 
+    use async_trait::async_trait;
+    use rustok_api::{PortContext, PortError};
     use rustok_outbox::{OutboxTransport, TransactionalEventBus};
     use sea_orm::Database;
 
     use super::attach_commerce_provider_registries;
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    struct ExternalProductCatalogReadPort;
+
+    #[async_trait]
+    impl rustok_product::ProductCatalogReadPort for ExternalProductCatalogReadPort {
+        async fn read_product_projection(
+            &self,
+            _context: PortContext,
+            _request: rustok_product::ProductProjectionRequest,
+        ) -> Result<rustok_product::dto::ProductResponse, PortError> {
+            Err(PortError::unavailable("external.test", "external test provider"))
+        }
+
+        async fn read_variant_product_projection(
+            &self,
+            _context: PortContext,
+            _request: rustok_product::VariantProductProjectionRequest,
+        ) -> Result<rustok_product::dto::ProductResponse, PortError> {
+            Err(PortError::unavailable("external.test", "external test provider"))
+        }
+
+        async fn list_published_products(
+            &self,
+            _context: PortContext,
+            _request: rustok_product::PublishedProductsRequest,
+        ) -> Result<rustok_product::StorefrontProductList, PortError> {
+            Err(PortError::unavailable("external.test", "external test provider"))
+        }
+    }
 
     #[tokio::test]
     async fn attaches_product_catalog_read_port_for_ai_runtime() {
@@ -322,7 +378,37 @@ mod product_catalog_read_port_tests {
         let host =
             attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
         assert!(
+            host.shared_get::<rustok_product::ProductCatalogReadRuntime>()
+                .is_some()
+        );
+        assert!(
             host.shared_get::<rustok_ai::SharedAiProductCatalogReadPort>()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn preserves_host_selected_external_product_catalog_runtime() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory database");
+        let server = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let external = rustok_product::ProductCatalogReadRuntime::external(Arc::new(
+            ExternalProductCatalogReadPort,
+        ));
+        let host = rustok_api::HostRuntimeContext::new(db).with_shared_value(external);
+
+        let attached = attach_commerce_provider_registries(host, &server);
+        let runtime = attached
+            .shared_get::<rustok_product::ProductCatalogReadRuntime>()
+            .expect("external product runtime should remain attached");
+        assert_eq!(
+            runtime.profile(),
+            rustok_product::ProductCatalogReadProfile::External
+        );
+        assert!(
+            attached
+                .shared_get::<rustok_ai::SharedAiProductCatalogReadPort>()
                 .is_some()
         );
     }
