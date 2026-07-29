@@ -15,7 +15,7 @@ Completed execution history does not belong here.
 - Domain-specific cache identity and recovery stay in the owner module plan. This plan coordinates
   the reusable capability and host adoption only.
 
-Last reconciled with `main`: 2026-07-17.
+Last reconciled with `main`: 2026-07-29.
 
 ## Ownership boundary
 
@@ -66,7 +66,7 @@ Last reconciled with `main`: 2026-07-17.
 - [x] Never serve an ordinary mirrored local value for a healthy Redis miss.
 - [x] Warm local fallback after a successful shared-primary read.
 - [x] Use pending-delete tombstones so a failed Redis invalidation cannot immediately resurrect an
-  older shared value.
+  older shared value while tracker capacity remains available.
 - [x] Fail closed for fallback CAS while the shared primary is unavailable.
 - [x] Keep Redis degradation visible to health/readiness while eligible reads use bounded fallback.
 - [x] Retain a unit scenario where shared health is degraded while an eligible bounded local write is
@@ -232,6 +232,15 @@ The detailed active-cache contract is maintained in
   CAS outage/recovery scenarios.
 - [ ] Execute and record the source-complete degraded-health plus eligible-local-read scenario.
 
+### P1. Fail-closed pending-invalidation saturation
+
+- [ ] When a Redis invalidation fails after the bounded tombstone tracker reaches capacity, enter an
+  explicit fail-closed recovery state instead of leaving the new key untracked. Health/readiness must
+  remain degraded, reads must not return shared values that may be stale, and recovery must require a
+  deliberate namespace or owner-source reconciliation step.
+- [ ] Add regression coverage proving that a second failed invalidation at capacity cannot become a
+  stale Redis hit after the primary recovers.
+
 ### P1. Load, chaos and tuning evidence
 
 - [ ] Exercise synchronized expiry, oversized payloads, hot-key contention, refresh saturation,
@@ -251,6 +260,12 @@ The detailed active-cache contract is maintained in
 - [x] Permanent gate is wired to execute expiry, eviction, exactly-one-winner contention and
   concurrent invalidation/CAS stress coverage.
 - [ ] Record a successful execution of the full local CAS suite on the verified revision.
+
+### P3. Remove the empty core compatibility feature
+
+- [ ] Delete the empty `rustok-core/redis-cache` feature and update every script, documentation and
+  workflow command atomically. Do not replace it with an alias or another compatibility feature.
+  The workflow edit requires explicit CI/CD authorization under `AGENTS.md` rule 7.
 
 ## Verification commands
 
@@ -343,3 +358,16 @@ RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server \
 3. Update the crate README, inventory, operations runbook and module plan with contract changes.
 4. Update the central implementation-plan registry only for status and nearest priority.
 5. Prefer a correctness-preserving miss over serving unversioned stale data.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `blocked`
+- Last verified at (UTC): `2026-07-29`
+- Scope inspected: `cache ownership and documentation; Redis and in-memory backend contracts; degraded fallback and pending invalidation behavior; atomic CAS; durable invalidation and generation recovery; permanent workflow coverage`
+- Findings: `P0=0, P1=1, P2=0, P3=2`
+- Fixed in this pass: `added the missing current-cycle handoff and reconciled the plan date with main`
+- Remaining risks or blockers: `P1 a failed Redis invalidation is not retained when PendingInvalidationTracker is at capacity, so a recovered primary can serve stale shared bytes for the untracked key; Cache hardening run 30489244186 and Cache feature matrix run 30489244207 remain queued and therefore provide no compiled/live evidence; the empty rustok-core redis-cache compatibility feature remains P3 removal debt and requires an explicitly authorized workflow edit`
+- Evidence: `crates/rustok-cache/src/fallback.rs invalidation failure path logs tracker insertion failure but leaves the key untracked; the existing pending_invalidation_tracker_is_bounded_and_never_evicts_live_tombstones test asserts that the second key is absent at capacity; source inspection confirms CAS, generation regression, service-owner and durable acknowledgement paths fail closed in their covered states; PR #2466 triggered both mandatory cache workflows on commit 2b797144e69186cfd8be0684d98b70f4878c4126, but both were still queued at the handoff`
+- Next action: `implement a bounded global fail-closed saturation/recovery state with regression coverage, then rerun the permanent cache workflows and live Redis evidence before revisiting this item in the closing gate`
+- Resume command: `cargo test -p rustok-cache pending_invalidation_tracker_is_bounded_and_never_evicts_live_tombstones --lib && cargo xtask module validate cache && cargo xtask module test cache`
