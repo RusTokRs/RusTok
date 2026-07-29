@@ -12,7 +12,11 @@ mod planner_tests;
 #[cfg(test)]
 mod postgres_compiler_tests;
 #[cfg(test)]
+mod postgres_many_projection_tests;
+#[cfg(test)]
 mod postgres_query_result_tests;
+#[cfg(test)]
+mod query_snapshot_tests;
 #[cfg(test)]
 mod reference;
 

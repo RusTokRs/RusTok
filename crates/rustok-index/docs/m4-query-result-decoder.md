@@ -1,95 +1,102 @@
 # M4 PostgreSQL query result decoding
 
-This slice closes the database-independent handoff between the controlled M4
-PostgreSQL compiler and a later execution adapter. It does not execute SQL,
-prepare statements, own a database connection, or expose `IndexQueryPort`.
+This boundary defines the strict handoff between the controlled M4 compiler,
+`PostgresIndexQueryPort`, and the public typed page result. The decoder itself does not
+execute SQL, prepare statements, own a database connection, or authorize callers.
 
 ## Page compilation contract
 
-`SchemaRegistry::compile_postgres_page_query` first calls the existing validated
-`compile_postgres_query` path. It then wraps the compiled statement in
-`CompiledPostgresPageQuery` and changes only the validated page-limit bind from
-`N` to `N + 1`.
+`SchemaRegistry::compile_postgres_page_query` first calls the validated
+`compile_postgres_query` path. It wraps the compiled statement in the opaque,
+non-serde `CompiledPostgresPageQuery` and changes only the validated page-limit bind
+from `N` to `N + 1`.
 
-The page wrapper is opaque and deliberately does not implement serde. External
-bytes therefore cannot replace its controlled SQL, bind values, column metadata,
-or requested page size before execution.
+The SQL text, plan fingerprint, scalar and many-relation metadata, filters, ordering,
+cursor predicate, offset, and optional exact-count statement remain unchanged. Cursor
+and bounded-offset pages use the same lookahead rule; the original offset bind is
+rechecked and preserved.
 
-The SQL text, plan fingerprint, column metadata, scope predicates, filters,
-ordering, cursor predicates, and exact-count statement remain unchanged. The
-one-row lookahead is an execution detail used to determine `has_more`; it is not
-part of the public query semantics.
+## PostgreSQL row handoff
 
-Cursor and bounded-offset pages use the same lookahead rule. The original
-offset bind is rechecked and preserved.
+`PostgresIndexQueryPort` performs exact persisted-schema preflight, executes the page
+and optional count inside one read-only repeatable-read transaction, and converts
+SeaORM driver rows into `CompiledPostgresRow`. Cells are limited to compiler-owned
+shapes:
 
-## Adapter row handoff
+- UUID or SQL null for outer relation identities;
+- tagged `IndexValue` JSON or SQL null for scalar projection and hidden order columns;
+- JSON arrays for `CompiledManyRelationColumn` aggregates;
+- PostgreSQL bigint for the optional exact-count row.
 
-A later SeaORM/PostgreSQL adapter converts returned driver rows into
-`CompiledPostgresRow`. Cells are intentionally limited to the shapes emitted by
-the compiler:
-
-- UUID or SQL null for outer relation identity columns;
-- tagged `IndexValue` JSON or SQL null for projection and hidden order columns;
-- a PostgreSQL bigint for the optional exact-count row.
-
-This DTO is not a generic SQL row abstraction. It is a narrow handoff for the
-controlled Index compiler output.
+The adapter reads only compiler-declared aliases. `CompiledPostgresRow` is not a generic
+SQL row abstraction, and semantic validation remains owned by the decoder.
 
 ## Decoder validation
 
-`SchemaRegistry::decode_postgres_query_page` re-plans the supplied query and
-fails closed unless all of the following match:
+`SchemaRegistry::decode_postgres_query_page` re-plans the query and fails closed unless
+all of the following match:
 
-1. the compiled plan fingerprint;
-2. the complete compiled column contract and deterministic output aliases;
-3. the requested page size;
-4. the optional exact-count contract;
-5. the maximum `requested + 1` result-row count.
+1. the executable-plan v4 fingerprint;
+2. unique deterministic scalar and many-relation output aliases;
+3. complete `CompiledQueryColumn` and `CompiledManyRelationColumn` metadata;
+4. requested page size and maximum `N + 1` row count;
+5. optional exact-count contract.
 
-Every tagged projection/order value is deserialized back into `IndexValue` and
-validated against the planned type, cardinality, and nullability. A non-nullable
-linked field may decode as null only when that explicit one-cardinality relation
-identity is absent. A present relation with a missing non-nullable field is a
-typed corruption error. Conversely, an absent relation identity paired with a
-non-null field value is also rejected.
+Scalar and hidden order values are deserialized into `IndexValue` and checked against
+planned type, cardinality, and nullability. Missing optional one-link identities may
+produce null; present relations with invalid or missing required values are rejected.
 
-Many-link filter paths do not add result columns. Their joins are confined to
-correlated `EXISTS` subqueries, so `expected_columns` includes only the root and
-non-many outer joins plus projection and hidden ordering columns.
+## Nested many-relation decoding
+
+Each many aggregate item contains:
+
+- `entity_ids`: one non-nil UUID for every planned relation identity prefix;
+- `values`: one tagged `IndexValue` for every selected field grouped under the
+  terminal relation path.
+
+The decoder verifies exact identity and field arity, rejects nil identities, rejects
+duplicate complete identity chains, validates every tagged value, and reconstructs:
+
+- `IndexNestedRelationProjection` for the grouped path;
+- `IndexNestedRelationItem` for each reachable relation chain;
+- ordered `IndexRelationIdentity` entries for every path prefix;
+- ordered `IndexProjectedValue` entries aligned with the original selection.
+
+Many-filter-only paths add no output columns because their joins remain inside
+correlated `EXISTS` predicates.
 
 ## Page output
 
-The decoder returns `IndexQueryPage` with:
+`IndexQueryPage` contains root items with:
 
-- root entity identities;
-- deterministic projected one-link relation identities;
-- projection values in query selection order;
+- root entity identity;
+- projected outer one-link relation identities;
+- flat scalar fields;
+- deterministic nested many-relation projections;
 - optional exact count;
-- `has_more` derived only from the one-row lookahead;
-- an optional query-scoped continuation cursor.
+- `has_more` from the one-row lookahead;
+- optional query-scoped continuation cursor.
 
-The lookahead row is never exposed. When a cursor page has an extra row, the
-last retained item and its hidden order values produce an `IndexCursor`, which
-is encoded through `CursorCodec::encode_for_query`. The resulting token remains
-bound to tenant, schema, locale, filter, ordered fields, and directions.
-Offset pages report `has_more` but do not synthesize a cursor.
+The lookahead row is never exposed. Cursor pages encode the last retained root and
+hidden order tuple through `CursorCodec::encode_for_query`. Offset pages do not
+synthesize cursors.
 
-## Fail-closed boundaries
+## Retained source evidence
 
-Many-link filtering is supported without changing the decoder result shape.
-Many-link projection remains rejected with `ManyLinkProjectionPending`; the
-decoder does not attempt to deduplicate roots or invent nested aggregation after
-SQL execution. Many-link ordering remains rejected until an aggregate policy is
-explicit.
+`postgres_many_projection_tests` covers valid aligned nested arrays and fail-closed
+identity arity, field arity, nil identity, and duplicate-chain cases.
+`query_snapshot_tests` retains the exact compiled many-relation metadata beside the
+v4 plan and SQL fixtures.
 
-This slice also does not:
+## Remaining boundaries
 
-- execute SQL or convert bind DTOs into driver parameters;
-- decode directly from SeaORM `QueryResult`;
-- verify persisted schema/index readiness;
+The query execution path still does not:
+
+- define aggregate many-link ordering;
+- compose into server/storefront/admin/search consumers;
 - authorize callers;
-- provide PostgreSQL/reference-engine equivalence evidence;
+- provide live PostgreSQL/reference-engine equivalence evidence;
 - change migrations or production partition lifecycle state.
 
-The repository owner runs formatting, compilation, tests, and static verifiers.
+The repository owner runs formatting, compilation, tests, static verifiers, and later
+live equivalence evidence. None were run by the implementation agent.
