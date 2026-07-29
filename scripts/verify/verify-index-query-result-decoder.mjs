@@ -23,6 +23,7 @@ const decoder = requireMarkers(decoderPath, [
   'pub enum CompiledPostgresCell',
   'pub struct CompiledPostgresRow',
   'pub struct CompiledPostgresPageQuery',
+  'The wrapper deliberately has no serde implementation',
   'pub struct IndexQueryPage',
   'pub enum PostgresQueryPageBuildError',
   'pub enum PostgresQueryDecodeError',
@@ -34,9 +35,18 @@ const decoder = requireMarkers(decoderPath, [
   'PlanFingerprintMismatch',
   'rows.len() > requested_page_size as usize',
   'CursorCodec::encode_for_query(&cursor, query, self)?',
+  'root_entity_id.flatten()',
+  'if missing_relation {',
   'ExactCountContractMismatch',
   'InvalidTaggedValue',
 ]);
+
+const pageWrapper = decoder.match(
+  /#\[derive\(([^)]*)\)\]\s*pub struct CompiledPostgresPageQuery/u,
+);
+if (!pageWrapper || pageWrapper[1].includes('Serialize') || pageWrapper[1].includes('Deserialize')) {
+  fail('CompiledPostgresPageQuery must remain an opaque non-serde execution contract');
+}
 
 const compilePosition = decoder.indexOf('let mut compiled = self.compile_postgres_query(query)?;');
 const lookaheadPosition = decoder.indexOf('apply_lookahead_bind(&mut compiled, &query.pagination)?;');
