@@ -27,12 +27,14 @@ The live runtime retains the existing exact owner boundaries:
 
 ## Migrated source locks
 
-The following consumers now read only `query_runtime.rs`:
+The following consumers now read only `query_runtime.rs` as GraphQL implementation source:
 
 - Forum reply audience verifier;
 - Forum reply legacy cutover verifier;
 - Forum category audience verifier;
 - Channel proof-point verifier.
+
+The reply cutover and category verifiers may retain an explicit filesystem absence check for `query.rs`; they must not read it as a source fixture.
 
 The Channel proof-point verifier now locks the real public reply path rather than a test name inside an uncompiled snapshot: `public_channel_slug`, `is_topic_visible_for_channel`, the exact public reply owner call and `PUBLIC_REPLY_STATUSES`.
 
@@ -44,7 +46,8 @@ The FORUM-11 diagnostics workflow no longer patches `query.rs` or includes it in
 
 - the snapshot returns;
 - `mod.rs` stops selecting `query_runtime.rs`;
-- any migrated verifier or diagnostics workflow references `query.rs`;
+- any migrated verifier reads `query.rs` as an implementation source;
+- the diagnostics workflow references `query.rs`;
 - exact category/reply owner markers disappear from the live runtime;
 - historical and current contracts stop recording the cleanup completion.
 
