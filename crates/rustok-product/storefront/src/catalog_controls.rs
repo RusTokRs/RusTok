@@ -6,7 +6,6 @@ const SORT_BY_PUBLISHED_AT: &str = "published_at";
 const SORT_BY_CREATED_AT: &str = "created_at";
 const SORT_DIRECTION_ASC: &str = "asc";
 const SORT_DIRECTION_DESC: &str = "desc";
-const MAX_ATTRIBUTE_FILTERS: usize = 8;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CatalogListInput {
@@ -124,7 +123,6 @@ fn normalize_attribute_filters(value: Option<String>) -> Vec<String> {
                 .split(';')
                 .map(str::trim)
                 .filter(|entry| !entry.is_empty())
-                .take(MAX_ATTRIBUTE_FILTERS)
                 .map(ToOwned::to_owned)
                 .collect()
         })
