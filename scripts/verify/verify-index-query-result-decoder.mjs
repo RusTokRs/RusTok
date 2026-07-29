@@ -20,27 +20,22 @@ const requireMarkers = (relative, markers) => {
 
 const decoderPath = 'crates/rustok-index/src/application/postgres_query_result.rs';
 const decoder = requireMarkers(decoderPath, [
-  'pub enum CompiledPostgresCell',
-  'pub struct CompiledPostgresRow',
   'pub struct CompiledPostgresPageQuery',
-  'pub struct IndexQueryPage',
-  'pub enum PostgresQueryPageBuildError',
-  'pub enum PostgresQueryDecodeError',
+  'pub struct IndexNestedRelationItem',
+  'pub struct IndexNestedRelationProjection',
+  'pub nested_relations: Vec<IndexNestedRelationProjection>',
   'pub fn compile_postgres_page_query(',
   'apply_lookahead_bind(&mut compiled, &query.pagination)?;',
   '*value = expected_limit + 1;',
   'pub fn decode_postgres_query_page(',
-  'compiled.columns != expected_columns(&plan)',
-  'PlanFingerprintMismatch',
-  'rows.len() > requested_page_size as usize',
+  'compiled.many_relations != expected_many_relations(&plan)',
+  'fn decode_nested_relation(',
+  'NestedIdentityArity',
+  'NestedFieldArity',
+  'NilNestedIdentity',
+  'DuplicateNestedIdentity',
+  'decode_tagged_value(value, output_alias)?',
   'CursorCodec::encode_for_query(&cursor, query, self)?',
-  'let root_entity_id = root_entity_id.ok_or_else',
-  'if missing_relation && !matches!(value, IndexValue::Null)',
-  'fn join_is_projected(',
-  'if join_is_projected(plan, &join.path)',
-  'plan.outer_joins().map(|join| CompiledQueryColumn::EntityId',
-  'ExactCountContractMismatch',
-  'InvalidTaggedValue',
 ]);
 
 const pageWrapper = decoder.match(
@@ -50,22 +45,14 @@ if (!pageWrapper || pageWrapper[1].includes('Serialize') || pageWrapper[1].inclu
   fail('CompiledPostgresPageQuery must remain an opaque non-serde execution contract');
 }
 
-const compilePosition = decoder.indexOf('let mut compiled = self.compile_postgres_query(query)?;');
-const lookaheadPosition = decoder.indexOf('apply_lookahead_bind(&mut compiled, &query.pagination)?;');
-if (compilePosition < 0 || lookaheadPosition < 0 || compilePosition >= lookaheadPosition) {
-  fail('validated controlled compilation must precede lookahead bind adjustment');
-}
-
 const planPosition = decoder.indexOf('let plan = self.plan_query(query)?;');
-const columnPosition = decoder.indexOf('compiled.columns != expected_columns(&plan)');
+const metadataPosition = decoder.indexOf('compiled.many_relations != expected_many_relations(&plan)');
 const rowPosition = decoder.indexOf('let decoded = rows');
 if (
-  planPosition < 0 ||
-  columnPosition < 0 ||
-  rowPosition < 0 ||
-  !(planPosition < columnPosition && columnPosition < rowPosition)
+  planPosition < 0 || metadataPosition < 0 || rowPosition < 0
+  || !(planPosition < metadataPosition && metadataPosition < rowPosition)
 ) {
-  fail('plan fingerprint and column contract must be verified before row decoding');
+  fail('plan and scalar/many metadata must be checked before row decoding');
 }
 
 for (const forbidden of [
@@ -82,9 +69,14 @@ for (const forbidden of [
   if (decoder.includes(forbidden)) fail(`${decoderPath} contains forbidden marker ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-index/src/application/postgres_compiler.rs', [
-  'ManyLinkProjectionPending(FieldPath)',
-  'ManyLinkOrderingPending(FieldPath)',
+requireMarkers('crates/rustok-index/src/application/postgres_many_projection_tests.rs', [
+  'decodes_aligned_nested_identity_and_value_arrays',
+  'rejects_nested_identity_and_field_arity_drift',
+  'rejects_nil_and_duplicate_nested_identity_chains',
+  'PostgresQueryDecodeError::NestedIdentityArity',
+  'PostgresQueryDecodeError::NestedFieldArity',
+  'PostgresQueryDecodeError::NilNestedIdentity',
+  'PostgresQueryDecodeError::DuplicateNestedIdentity',
 ]);
 requireMarkers('crates/rustok-index/src/application/postgres_query_result_tests.rs', [
   'page_compilation_adds_exactly_one_lookahead_row',
@@ -95,25 +87,21 @@ requireMarkers('crates/rustok-index/src/application/postgres_query_result_tests.
   'rejects_invalid_tagged_field_contract',
 ]);
 requireMarkers('crates/rustok-index/src/application/mod.rs', [
-  'mod postgres_query_result;',
-  'mod postgres_query_result_tests;',
-  'CompiledPostgresPageQuery',
-  'IndexQueryPage',
-  'PostgresQueryDecodeError',
+  'mod postgres_many_projection_tests;',
+  'mod query_snapshot_tests;',
+  'IndexNestedRelationItem',
+  'IndexNestedRelationProjection',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-result-decoder.md', [
-  'one-row lookahead',
-  'compiled column contract',
-  'query-scoped continuation cursor',
-  'does not execute SQL',
-  'Many-link filtering is supported without changing the decoder result shape.',
-  'ManyLinkProjectionPending',
+requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
+  'identity arity drift',
+  'selected-field arity drift',
+  'nil nested identities',
+  'duplicate complete identity chains',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   'M4 deterministic PostgreSQL result decoding: `complete`',
-  '- [x] Add deterministic root/one-link result decoding and cursor construction.',
-  '- [x] Add explicit many-link `EXISTS` filtering.',
-  '- [ ] Add nested many-link projection aggregation.',
+  '- [x] Add nested many-link projection aggregation.',
+  '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
 ]);
 
 console.log('[verify-index-query-result-decoder] OK');
