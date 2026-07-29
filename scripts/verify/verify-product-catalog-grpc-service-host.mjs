@@ -25,6 +25,18 @@ function requireAll(source, markers, description) {
   }
 }
 
+function requireOrder(source, markers, description) {
+  let cursor = -1;
+  for (const marker of markers) {
+    const index = source.indexOf(marker, cursor + 1);
+    if (index < 0) {
+      failures.push(`${description}: missing or out-of-order ${marker}`);
+      return;
+    }
+    cursor = index;
+  }
+}
+
 function forbidAll(source, markers, description) {
   for (const marker of markers) {
     if (source.includes(marker)) failures.push(`${description}: forbidden ${marker}`);
@@ -83,6 +95,27 @@ requireAll(source, [
   "Product catalog service TLS is required unless explicit loopback plaintext is enabled",
 ], "Product service fail-closed configuration");
 requireAll(source, [
+  "SysEvents",
+  "entities::{Product, ProductVariant}",
+  "EntityTrait",
+  'REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_events"]',
+  "async fn verify_required_schema(database: &DatabaseConnection)",
+  "Product::find()",
+  "ProductVariant::find()",
+  "SysEvents::find()",
+  'schema_preflight_error("products")',
+  'schema_preflight_error("product_variants")',
+  'schema_preflight_error("sys_events")',
+  "run platform migrations before starting the service",
+  "Product catalog database schema preflight passed",
+], "Product service schema preflight");
+requireOrder(source, [
+  "let database = connect_database(&config).await?;",
+  "verify_required_schema(&database).await?;",
+  "let outbox = Arc::new(OutboxTransport::new(database.clone()));",
+  "let mut server = Server::builder();",
+], "Product service startup preflight order");
+requireAll(source, [
   "struct RedactedSecret(String)",
   'formatter.write_str("[REDACTED]")',
   "database_target = %config.database_target",
@@ -102,6 +135,7 @@ requireAll(source, [
 requireAll(source, [
   "secrets_are_redacted_from_debug_output",
   "database_must_be_postgresql_and_debug_target_excludes_credentials",
+  "required_schema_tables_are_owner_and_outbox_tables",
   "plaintext_requires_explicit_loopback_bind",
   "tls_requires_certificate_and_key_as_a_pair",
   "trusted_service_actor_is_server_configured_and_bounded",
@@ -111,6 +145,8 @@ forbidAll(source, [
   "ProductCatalogReadRuntime::in_process",
   "MigrationTrait",
   "Migrator::up",
+  "CREATE TABLE",
+  "ALTER TABLE",
   "axum::",
   "async_graphql",
   "NoopEvent",
@@ -129,6 +165,12 @@ requireAll(readme, [
   "OutboxTransport",
   "read-only",
   "does not run migrations at startup",
+  "## Schema preflight",
+  "products",
+  "product_variants",
+  "sys_events",
+  "before tonic starts listening",
+  "does not silently continue with partial readiness",
   "RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH",
   "RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true",
   "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR",
@@ -156,12 +198,18 @@ if (registry) {
     provider_host_transport_security: "tls_or_explicit_loopback",
     provider_host_authenticator: "ProductCatalogGrpcBearerInterceptor",
     provider_host_trusted_actor_env: "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR",
+    provider_host_schema_preflight_order: "after_connect_before_owner_and_listener",
+    provider_host_schema_preflight_status: "source_complete_execution_pending",
     provider_host_status: "source_complete_execution_pending",
   };
   for (const [key, value] of Object.entries(expected)) {
     if (external[key] !== value) {
       failures.push(`Product registry ${key} must be ${value}`);
     }
+  }
+  const expectedTables = ["products", "product_variants", "sys_events"];
+  if (JSON.stringify(external.provider_host_schema_preflight_tables) !== JSON.stringify(expectedTables)) {
+    failures.push("Product registry provider_host_schema_preflight_tables drift");
   }
   if (
     registry.evidence?.grpc_service_host_verifier !==
@@ -176,6 +224,11 @@ requireAll(plan, [
   "rustok-product-catalog-service",
   "OutboxTransport",
   "TLS-by-default",
+  "schema preflight is source-complete",
+  "products",
+  "product_variants",
+  "sys_events",
+  "Schema-preflight execution evidence remains open",
   "host execution evidence remains open",
   "Product remains `boundary_ready`",
   "cargo run -p rustok-product-catalog-service",

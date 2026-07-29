@@ -71,6 +71,14 @@ server-side, SQL logging is disabled, and tonic shutdown is coordinated with
 Ctrl-C / `SIGTERM` plus platform telemetry shutdown. Provider schema migration
 remains an external deployment precondition.
 
+The provider schema preflight is source-complete. After the PostgreSQL pool
+connects and before `CatalogService`, outbox composition, or tonic listener
+creation, the host performs canonical SeaORM read probes for `products`,
+`product_variants`, and `sys_events`. A missing table, incompatible schema, or
+insufficient read permission aborts startup with a sanitized migration-precondition
+error. The host never creates or repairs schema and never enters a partially ready
+serving state.
+
 Remote consumer behavior is now source-complete through executable loopback
 harnesses. Commerce builds checkout plans with a real external gRPC runtime and
 asserts that remote `Unavailable` and `Timeout` errors remain typed, retryable
@@ -82,11 +90,13 @@ and performs no persistence. These harnesses have not been executed by the
 implementation agent.
 
 Adapter and production-wiring source are complete. Consumer-behavior,
-authentication, and provider-host source are complete, but the service-host unit,
-loopback conformance, authenticated transport, and remote consumer harnesses have
-not been run by the implementation agent, so Product remains `boundary_ready`
-rather than `transport_verified`. Configured remote-profile execution evidence
-remain open. Provider-host execution evidence remains open.
+authentication, provider-host, and schema-preflight source are complete, but the
+service-host unit, PostgreSQL schema preflight, loopback conformance,
+authenticated transport, and remote consumer harnesses have not been run by the
+implementation agent, so Product remains `boundary_ready` rather than
+`transport_verified`. Configured remote-profile execution evidence remain open.
+Provider-host execution evidence remains open. Schema-preflight execution evidence
+remains open.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
@@ -181,8 +191,9 @@ rustok-pricing` dependency cycle.
 - FBA status: `boundary_ready` — the owner port, in-process profile, host runtime,
   declared consumer source cutovers, external gRPC adapter, validated connection
   policy, production client wiring, service-to-service authentication, standalone
-  provider host, and Commerce/AI remote behavior harnesses are source-complete.
-  Provider-host and authenticated end-to-end execution evidence remain open.
+  provider host, startup schema preflight, and Commerce/AI remote behavior
+  harnesses are source-complete. Provider-host, schema-preflight, and authenticated
+  end-to-end execution evidence remain open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
@@ -219,10 +230,11 @@ rustok-pricing` dependency cycle.
    - `cargo test -p rustok-ai --features server --lib remote_product_`.
    Retain the generated `Cargo.lock` package entry with the first successful Cargo
    execution. Run `cargo run -p rustok-product-catalog-service` against the
-   migrated PostgreSQL schema, then start the server with the matching authenticated
-   gRPC deployment variables and retain end-to-end Commerce and AI evidence through
-   the selected runtime. Promote above `boundary_ready` only with those retained
-   results.
+   migrated PostgreSQL schema and retain the successful `products`,
+   `product_variants`, and `sys_events` preflight evidence. Then start the server
+   with the matching authenticated gRPC deployment variables and retain end-to-end
+   Commerce and AI evidence through the selected runtime. Promote above
+   `boundary_ready` only with those retained results.
 2. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
@@ -242,7 +254,8 @@ rustok-pricing` dependency cycle.
 - [x] Add service-to-service bearer authentication and trusted tenant metadata.
 - [x] Add executable Commerce hard-dependency and AI degraded-behavior gRPC harnesses.
 - [x] Implement a standalone Product catalog service host.
-- [ ] Execute the Product catalog service-host, authentication, and loopback conformance harnesses.
+- [x] Fail closed on missing Product/outbox schema before owner composition or listener startup.
+- [ ] Execute the Product catalog service-host, schema preflight, authentication, and loopback conformance harnesses.
 - [ ] Execute the Commerce and AI remote consumer behavior harnesses.
 - [ ] Retain end-to-end Commerce and AI behavior through a separately configured Product service.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
@@ -302,11 +315,13 @@ rustok-pricing` dependency cycle.
   or an unavailable configured remote provider and must not silently select
   embedded execution.
 - The standalone provider host owns only deployment composition: PostgreSQL pool,
-  canonical `CatalogService`, `OutboxTransport`, tonic TLS/listener lifecycle,
-  bearer interceptor configuration, telemetry, and graceful shutdown. It does not
-  run migrations, expose write RPCs, relay outbox rows, or duplicate Product
-  policy/persistence. It configures the trusted service actor server-side and
-  never trusts actor/claims/roles supplied in `PortContext`.
+  required-schema read probes, canonical `CatalogService`, `OutboxTransport`,
+  tonic TLS/listener lifecycle, bearer interceptor configuration, telemetry, and
+  graceful shutdown. It does not run migrations, issue DDL, expose write RPCs,
+  relay outbox rows, or duplicate Product policy/persistence. It configures the
+  trusted service actor server-side, verifies `products`, `product_variants`, and
+  `sys_events` before serving, and never trusts actor/claims/roles supplied in
+  `PortContext`.
 - Commerce owns hard-dependency checkout behavior: a Product timeout or
   unavailable result blocks planning and cannot be replaced by the cart snapshot.
 - AI owns advisory degradation: Product transport failures skip enrichment,
