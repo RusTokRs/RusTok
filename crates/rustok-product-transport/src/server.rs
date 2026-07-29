@@ -265,6 +265,6 @@ mod tests {
         )
         .expect("trusted authority should be accepted");
         assert_eq!(trusted.tenant_id, "tenant-a");
-        assert_ne!(format!("{:?}", trusted.actor), "Service { id: \"untrusted-client\" }");
+        assert_eq!(trusted.actor, PortActor::service("trusted-product-service"));
     }
 }
