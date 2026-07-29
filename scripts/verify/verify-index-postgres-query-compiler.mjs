@@ -28,6 +28,7 @@ const compiler = requireMarkers(compilerPath, [
   'PostgresBindValue::Uuid(self.scope.tenant_id)',
   'PostgresBindValue::Text(join.link.as_str().to_owned())',
   'PostgresBindValue::Text(field.path.field().as_str().to_owned())',
+  'format!("${}", self.values.len())',
   'LEFT JOIN index_links AS',
   '.source_version =',
   '.target_schema_version =',
@@ -48,9 +49,31 @@ const compiler = requireMarkers(compilerPath, [
 ]);
 
 const validatePosition = compiler.indexOf('self.validate_compiler_subset()?;');
+const tenantBindPosition = compiler.indexOf('PostgresBindValue::Uuid(self.scope.tenant_id)');
+const joinBindPosition = compiler.indexOf('PostgresBindValue::Text(join.link.as_str().to_owned())');
+const fieldBindPosition = compiler.indexOf(
+  'PostgresBindValue::Text(\n                field.path.field().as_str().to_owned()',
+);
+const limitBindPosition = compiler.indexOf(
+  'bindings.push(PostgresBindValue::Integer(i64::from(*first)))',
+);
 const sqlPosition = compiler.indexOf('let mut sql = format!(');
 if (validatePosition < 0 || sqlPosition < 0 || validatePosition >= sqlPosition) {
   fail('compiler subset validation must precede SQL construction');
+}
+if (
+  tenantBindPosition < 0 ||
+  joinBindPosition < 0 ||
+  fieldBindPosition < 0 ||
+  limitBindPosition < 0 ||
+  !(
+    tenantBindPosition < joinBindPosition &&
+    joinBindPosition < fieldBindPosition &&
+    fieldBindPosition < limitBindPosition &&
+    limitBindPosition < sqlPosition
+  )
+) {
+  fail('scope, join, projection, and limit binds must remain deterministically ordered');
 }
 
 for (const forbidden of [
@@ -58,7 +81,6 @@ for (const forbidden of [
   'rustok_content',
   'rustok_flex',
   'SELECT *',
-  'format!("${',
   'query_one(',
   'query_all(',
   'execute(',
