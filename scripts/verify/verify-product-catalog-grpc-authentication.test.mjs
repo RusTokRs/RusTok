@@ -31,7 +31,7 @@ function fixture(options = {}) {
   );
   const compare = options.missingConstantTime
     ? ""
-    : "Sha256::digest(value) Sha256::digest(candidate) .ct_eq(&candidate_digest)";
+    : "Sha256::digest(value) authorization_digest(candidate) .ct_eq(&candidate_digest)";
   const redaction = options.leakedCredential
     ? `field("authorization", &self.authorization)`
     : `field("authorization", &"[REDACTED]")`;
