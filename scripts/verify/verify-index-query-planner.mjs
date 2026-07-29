@@ -23,37 +23,28 @@ const planner = requireMarkers(plannerPath, [
   'pub struct ExecutableQueryPlan',
   'pub struct PlannedJoin',
   'pub struct PlannedField',
-  'pub value_type: IndexValueType',
-  'pub cardinality: FieldCardinality',
-  'pub nullable: bool',
+  'pub struct PlannedManyProjection',
+  'pub many_projections: Vec<PlannedManyProjection>',
   'pub traverses_many: bool',
-  'pub referenced_fields: BTreeMap<FieldPath, PlannedField>',
   'pub fn plan_query(&self, query: &IndexQuery)',
   'self.validate_query(query)?;',
   'collect_link_prefixes(query)',
-  'collect::<BTreeSet<_>>()',
-  'BTreeMap::from([(Vec::new(), ROOT_ALIAS.to_owned())])',
   'let mut many_paths = BTreeMap::from([(Vec::new(), false)]);',
-  'link.cardinality == LinkCardinality::Many',
-  'many_paths.insert(path.clone(), traverses_many);',
-  'pub(crate) fn outer_joins(&self)',
-  'format!("t{}", index + 1)',
-  'postcard::to_stdvec(self)?',
-  'rustok-index-query-plan-v3',
+  'let many_projections = derive_many_projections(&projection);',
+  'pub(crate) fn derive_many_projections(',
+  'pub(crate) fn outer_projection(&self)',
+  'rustok-index-query-plan-v4',
 ]);
 
 const validation = planner.indexOf('self.validate_query(query)?;');
 const aliasing = planner.indexOf('collect_link_prefixes(query)');
-const manyPlanning = planner.indexOf('let mut many_paths = BTreeMap::from([(Vec::new(), false)]);');
-const fieldContracts = planner.indexOf('let referenced_paths = query');
+const fields = planner.indexOf('let referenced_paths = query');
+const grouping = planner.indexOf('let many_projections = derive_many_projections(&projection);');
 if (
-  validation < 0 ||
-  aliasing < 0 ||
-  manyPlanning < 0 ||
-  fieldContracts < 0 ||
-  !(validation < aliasing && aliasing < manyPlanning && manyPlanning < fieldContracts)
+  validation < 0 || aliasing < 0 || fields < 0 || grouping < 0
+  || !(validation < aliasing && aliasing < fields && fields < grouping)
 ) {
-  fail('query validation, aliases, and many-path propagation must precede field contracts');
+  fail('validation, aliases, typed fields, and many projection grouping must remain ordered');
 }
 
 for (const forbidden of [
@@ -74,32 +65,27 @@ requireMarkers('crates/rustok-index/src/application/planner_tests.rs', [
   'many_traversal_propagates_through_descendant_joins_and_fields',
   'validation_precedes_plan_construction',
   'fingerprint_changes_with_order_semantics',
-  'assert_eq!(first.referenced_fields, second.referenced_fields)',
-  'assert_eq!(first.order_by[0].field.value_type, IndexValueType::Uuid)',
-  'assert!(plan.joins.iter().all(|join| join.traverses_many))',
-  'assert_eq!(plan.outer_joins().count(), 0)',
 ]);
-
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
-  'mod planner;',
-  'mod planner_tests;',
-  'ExecutableQueryPlan',
-  'QueryPlanFingerprint',
+requireMarkers('crates/rustok-index/src/application/query_snapshot_tests.rs', [
+  'retained_v4_plan_and_sql_snapshots_are_stable',
+  'render_plan(&plan)',
+  'PLAN_SNAPSHOT',
+  'many:{}|identities={}|fields={}',
 ]);
-
-requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
-  'M4 typed referenced-field contracts: `source_complete_execution_pending`',
-  'rustok-index-query-plan-v3',
-  'M4 many-link `EXISTS` filtering: `source_complete_execution_pending`',
-  'Many-cardinality projection remains fail-closed with',
-  'Not run by the implementation agent',
+requireMarkers('crates/rustok-index/src/application/snapshots/m4_many_projection.plan.snap', [
+  'root=rustok-product::product@1',
+  'join:variants|t0->t1|rustok-product::variant@1|many|traverses_many=true',
+  'many:variants|identities=variants|fields=variants.id',
 ]);
-
+requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
+  'Status: `source_complete_owner_execution_pending`',
+  'executable-plan v4',
+  'does not claim PostgreSQL/reference-engine equivalence',
+]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '### M4 - Query engine v1',
-  '- [x] Compile plans through SeaQuery or controlled SQL.',
-  '- [x] Add explicit many-link `EXISTS` filtering.',
-  '- [ ] Add nested many-link projection aggregation.',
+  '- [x] Add nested many-link projection aggregation.',
+  '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
   'Partition cutover remains forbidden until one retained real',
 ]);
 
