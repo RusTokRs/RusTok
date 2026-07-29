@@ -49,8 +49,7 @@ Positive operators use existential semantics over all reachable terminal values:
 `Ne` is deliberately not compiled as `NOT EXISTS(Eq)`. It requires both:
 
 1. at least one reachable stored field value; and
-2. no reachable stored value that is tagged null, malformed, or equal to the requested
-   value.
+2. no reachable stored value that is tagged null or equal to the requested value.
 
 This matches the reference contract: an empty path is false, any null disqualifies the
 result, and every present value must differ.
