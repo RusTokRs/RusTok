@@ -1,0 +1,377 @@
+diff --git a/crates/rustok-commerce/src/graphql/query.rs b/crates/rustok-commerce/src/graphql/query.rs
+index a0b6aef..0000000 100644
+--- a/crates/rustok-commerce/src/graphql/query.rs
++++ b/crates/rustok-commerce/src/graphql/query.rs
+@@ -10,7 +10,9 @@ use rustok_api::{
+ use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
+ use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
+ use rustok_fulfillment::FulfillmentService;
+-use rustok_order::OrderService;
++use rustok_order::{
++    ListOrderProjectionsRequest, OrderService, ReadOrderProjectionRequest,
++};
+ use rustok_outbox::TransactionalEventBus;
+ use rustok_payment::PaymentService;
+ use rustok_pricing::{
+@@ -784,18 +786,31 @@ impl CommerceQuery {
+         let event_bus = ctx.data::<TransactionalEventBus>()?;
+         let tenant = ctx.data::<TenantContext>()?;
+         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
+-
+-        let order = match OrderService::new(db.clone(), event_bus.clone())
+-            .get_order_with_locale_fallback(
+-                tenant_id,
+-                id,
+-                locale.as_str(),
+-                Some(tenant.default_locale.as_str()),
+-            )
++        let order_read_runtime = ctx
++            .data_opt::<crate::graphql_runtime::CommerceGraphqlRuntimeData>()
++            .map(crate::graphql_runtime::CommerceGraphqlRuntimeData::order_read_runtime)
++            .unwrap_or_else(|| {
++                crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
++                    db.clone(),
++                    event_bus.clone(),
++                )
++            });
++        let read_context =
++            graphql_order_read_port_context(ctx, tenant_id, locale.as_str(), "order", id);
++        let order = match order_read_runtime
++            .order_read_port()
++            .read_order_projection(
++                read_context,
++                ReadOrderProjectionRequest {
++                    order_id: id,
++                    tenant_default_locale: Some(tenant.default_locale.clone()),
++                },
++            )
+             .await
+         {
+             Ok(order) => order,
+-            Err(rustok_order::error::OrderError::OrderNotFound(_)) => return Ok(None),
+-            Err(err) => return Err(err.to_string().into()),
++            Err(error) if error.kind == rustok_api::PortErrorKind::NotFound => return Ok(None),
++            Err(error) => return Err(async_graphql::Error::new(error.message)),
+         };
+         let payment_collection = PaymentService::new(db.clone())
+             .find_latest_collection_by_order(tenant_id, id)
+@@ -841,22 +856,37 @@ impl CommerceQuery {
+         });
+         let page = filter.page.unwrap_or(1).max(1);
+         let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+-        let (orders, total) = OrderService::new(db.clone(), event_bus.clone())
+-            .list_orders_with_locale_fallback(
+-                tenant_id,
+-                crate::dto::ListOrdersInput {
++        let order_read_runtime = ctx
++            .data_opt::<crate::graphql_runtime::CommerceGraphqlRuntimeData>()
++            .map(crate::graphql_runtime::CommerceGraphqlRuntimeData::order_read_runtime)
++            .unwrap_or_else(|| {
++                crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
++                    db.clone(),
++                    event_bus.clone(),
++                )
++            });
++        let read_context =
++            graphql_order_read_port_context(ctx, tenant_id, locale.as_str(), "orders", tenant_id);
++        let orders = order_read_runtime
++            .order_read_port()
++            .list_order_projections(
++                read_context,
++                ListOrderProjectionsRequest {
+                     page,
+                     per_page,
+                     status: filter.status,
+                     customer_id: filter.customer_id,
++                    tenant_default_locale: Some(tenant.default_locale.clone()),
+                 },
+-                locale.as_str(),
+-                Some(tenant.default_locale.as_str()),
+             )
+             .await
+-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
++            .map_err(|error| async_graphql::Error::new(error.message))?;
+ 
+         Ok(GqlOrderList {
+-            items: orders.into_iter().map(Into::into).collect(),
+-            total,
++            items: orders.items.into_iter().map(Into::into).collect(),
++            total: orders.total,
+             page,
+             per_page,
+-            has_next: page * per_page < total,
++            has_next: page * per_page < orders.total,
+         })
+     }
+@@ -2423,6 +2453,29 @@ async fn resolve_optional_storefront_customer_id(
+     }
+ }
+ 
++fn graphql_order_read_port_context(
++    ctx: &Context<'_>,
++    tenant_id: Uuid,
++    locale: &str,
++    operation: &'static str,
++    resource_id: Uuid,
++) -> rustok_api::PortContext {
++    let actor = ctx
++        .data_opt::<AuthContext>()
++        .map(|auth| rustok_api::PortActor::user(auth.user_id.to_string()))
++        .unwrap_or_else(|| rustok_api::PortActor::service("rustok-commerce.graphql-orders"));
++    let context = rustok_api::PortContext::new(
++        tenant_id.to_string(),
++        actor,
++        locale,
++        format!("commerce-graphql-order:{operation}:{resource_id}"),
++    )
++    .with_deadline(std::time::Duration::from_secs(2));
++    match ctx
++        .data_opt::<RequestContext>()
++        .and_then(|request_context| request_context.channel_slug.as_deref())
++    {
++        Some(channel) => context.with_channel(channel),
++        None => context,
++    }
++}
++
+ fn graphql_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> rustok_api::PortContext {
+     rustok_api::PortContext::new(
+         tenant_id.to_string(),
+diff --git a/crates/rustok-order/contracts/evidence/order-read-port-source.json b/crates/rustok-order/contracts/evidence/order-read-port-source.json
+index fbc53ca..0000000 100644
+--- a/crates/rustok-order/contracts/evidence/order-read-port-source.json
++++ b/crates/rustok-order/contracts/evidence/order-read-port-source.json
+@@ -2,9 +2,9 @@
+   "schema_version": 1,
+-  "generated_at": "2026-07-28",
+-  "status": "admin_rest_cutover_unvalidated",
+-  "source_base_revision": "4ec8abcff51f30d3c949cf49705f8e0d402dff9f",
++  "generated_at": "2026-07-29",
++  "status": "graphql_cutover_unvalidated",
++  "source_base_revision": "65afbe32033e09d5a9796f6446f6c7a67efbe2ac",
+@@ -54,7 +54,8 @@
+     "host_runtime_attachment": true,
+     "commerce_http_required": true,
+     "commerce_graphql_schema_data_required": true,
+-    "graphql_resolver_scope_published": false
++    "graphql_resolver_scope_published": false,
++    "commerce_graphql_direct_runtime_consumption": true
+@@ -72,11 +73,12 @@
+   "consumer_inventory": {
+     "commerce_admin_rest_list_detail": "order_read_port",
+     "commerce_admin_rest_cutover_completed": true,
+     "commerce_storefront_detail_and_ownership": "concrete_order_service",
+-    "commerce_graphql_order_list_detail": "concrete_order_service",
++    "commerce_graphql_order_list_detail": "order_read_port",
++    "commerce_graphql_cutover_completed": true,
+     "runtime_composition_published": true,
+     "all_consumer_cutover_completed": false,
+     "cutover_required": true
+@@ -84,7 +86,7 @@
+   },
+   "decision": {
+-    "next_slice": "cut mounted GraphQL order list/detail to the host-selected CommerceOrderReadRuntime, then cut storefront detail and ownership reads separately",
++    "next_slice": "cut storefront order detail and ownership reads to the host-selected CommerceOrderReadRuntime",
+     "mutation_scope": "unchanged",
+     "status_promotion": false
+   },
+diff --git a/crates/rustok-order/docs/order-read-port.md b/crates/rustok-order/docs/order-read-port.md
+index e2246a9..0000000 100644
+--- a/crates/rustok-order/docs/order-read-port.md
++++ b/crates/rustok-order/docs/order-read-port.md
+@@ -2,7 +2,7 @@
+ 
+-Status: owner port and host runtime published; admin REST list/detail cut over, unvalidated.
++Status: owner port and host runtime published; admin REST and GraphQL list/detail cut over, unvalidated.
+@@ -17,8 +17,8 @@ needed by mounted Commerce REST and GraphQL query consumers. It is separate from:
+ 
+ The owner boundary and host-selected runtime are now published. Mounted admin REST
+-order list/detail reads use the port. GraphQL and storefront order reads remain
+-explicit later cutovers.
++and GraphQL order list/detail reads use the port. Storefront order reads remain an
++explicit later cutover.
+@@ -73,9 +73,9 @@ The default application host:
+ 
+ `CommerceHttpRuntime` now requires this value. Commerce GraphQL schema-data
+-composition also requires it, preventing a later resolver cutover from silently
+-constructing a different adapter. This wave does not add a GraphQL resolver scope
+-or change any GraphQL order resolver.
++composition also requires it. Mounted GraphQL order list/detail resolvers consume
++that host-selected value directly, while explicitly embedded schemas retain the
++in-process compatibility runtime. No task-local resolver scope is needed for these direct resolvers.
+@@ -114,6 +114,20 @@ messages into public envelopes.
+ 
++## GraphQL cutover
++
++Mounted `order` and `orders` resolvers now consume the host-selected
++`CommerceOrderReadRuntime` and preserve detail not-found behavior, filters, owner
++pagination totals, requested locale, tenant-default fallback, payment/fulfillment
++detail aggregation, and the existing GraphQL result shapes. Each owner call uses a
++two-second read context with tenant identity, authenticated user actor when present,
++request channel, locale, and a resource-scoped correlation id.
++
++Directly embedded schemas without `CommerceGraphqlRuntimeData` retain an explicit
++in-process compatibility runtime. Return, order-change, mutation, payment, and
++fulfillment paths remain unchanged.
++
+ ## Unchanged behavior
+@@ -122,7 +136,6 @@ This source wave deliberately leaves these paths unchanged:
+ - admin order detail fulfillment lookup still constructs `FulfillmentService`;
+ - storefront order detail and ownership checks still construct `OrderService`;
+-- GraphQL order detail and list still construct their current concrete service;
+ - return and order-change paths still require wider owner contracts.
+@@ -140,9 +153,8 @@ messages into public envelopes.
+ 
+-1. cut mounted GraphQL order detail/list reads to the host-selected runtime;
+-2. cut storefront order detail and ownership checks in a separate atomic change;
+-3. publish wider owner contracts before moving return/order-change reads or order
++1. cut storefront order detail and ownership checks in a separate atomic change;
++2. publish wider owner contracts before moving return/order-change reads or order
+    mutations;
+-4. retain compile, mounted parity, deadline/failure, restart, and remote-adapter
++3. retain compile, mounted parity, deadline/failure, restart, and remote-adapter
+    evidence before any status promotion.
+@@ -153,8 +165,8 @@ Source evidence is retained at:
+ 
+-Its status is `admin_rest_cutover_unvalidated`. Host composition and admin REST
+-source cutover are recorded as complete. GraphQL/storefront consumer cutover,
++Its status is `graphql_cutover_unvalidated`. Host composition plus admin REST and
++GraphQL source cutover are recorded as complete. Storefront consumer cutover,
+ compile evidence, mounted parity, deadline/failure execution, restart, and
+ remote-adapter evidence remain false or open.
+diff --git a/crates/rustok-order/docs/implementation-plan.md b/crates/rustok-order/docs/implementation-plan.md
+index 89da6a1..0000000 100644
+--- a/crates/rustok-order/docs/implementation-plan.md
++++ b/crates/rustok-order/docs/implementation-plan.md
+@@ -2,7 +2,7 @@
+ 
+-Last reviewed: 2026-07-28
++Last reviewed: 2026-07-29
+@@ -58,10 +58,10 @@ typed identity exclusively.
+ Complete order detail and filtered-list projection reads are published through
+ `OrderReadPort`. `CommerceOrderReadRuntime` now carries one host-selected owner
+ port through the default server, `HostRuntimeContext`, Commerce HTTP, and Commerce
+-GraphQL schema data. Mounted admin REST list/detail reads use the port with locale,
+-channel, deadline, filters, ordering, pagination total, public error envelopes,
+-and payment/fulfillment detail aggregation preserved. GraphQL resolvers and
+-storefront order reads remain open and unvalidated.
++GraphQL schema data. Mounted admin REST and GraphQL list/detail reads use the port
++with locale, channel, deadline, filters, ordering, pagination total, public error
++envelopes, and payment/fulfillment detail aggregation preserved. Storefront order
++reads remain open and all runtime evidence remains unvalidated.
+@@ -168,7 +168,7 @@ source.
+ - [x] Cut admin REST order list/detail over to the owner port while preserving
+   locale, channel, deadline, filters, pagination total, detail aggregation, and
+   public envelopes.
+-- [ ] Cut GraphQL order list/detail over to the host-selected runtime.
++- [x] Cut GraphQL order list/detail over to the host-selected runtime.
+ - [ ] Cut storefront order detail/ownership reads over in a separate atomic change.
+ - [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
+   evidence before status promotion.
+diff --git a/crates/rustok-commerce/docs/implementation-plan.md b/crates/rustok-commerce/docs/implementation-plan.md
+index b2387a1..0000000 100644
+--- a/crates/rustok-commerce/docs/implementation-plan.md
++++ b/crates/rustok-commerce/docs/implementation-plan.md
+@@ -2,7 +2,7 @@
+ 
+-Last reviewed: 2026-07-28
++Last reviewed: 2026-07-29
+@@ -199,10 +199,10 @@ These are source-contract defects, not verification-only tasks.
+ - [x] Publish the order-owned `OrderReadPort` for complete detail/list projections with
+   locale fallback, canonical read context/deadline policy, stable typed errors, and
+   explicit unvalidated source evidence.
+ - [x] Host-compose `CommerceOrderReadRuntime`, require it in Commerce HTTP and GraphQL
+-  schema data, and cut admin REST order list/detail to the owner port while preserving
+-  public envelopes and payment/fulfillment detail aggregation. GraphQL resolvers and
+-  storefront order reads remain open.
++  schema data, and cut admin REST plus mounted GraphQL order list/detail to the owner
++  port while preserving public envelopes and payment/fulfillment detail aggregation.
++  Storefront order reads remain open.
+diff --git a/scripts/verify/verify-order-read-port.mjs b/scripts/verify/verify-order-read-port.mjs
+index ce8755e..0000000 100755
+--- a/scripts/verify/verify-order-read-port.mjs
++++ b/scripts/verify/verify-order-read-port.mjs
+@@ -15,6 +15,7 @@ const owner = read('crates/rustok-order/src/order_read.rs');
+ const exports = read('crates/rustok-order/src/lib.rs');
+ const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
++const graphqlQuery = read('crates/rustok-commerce/src/graphql/query.rs');
+ const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
+@@ -83,6 +84,11 @@ for (const [source, value, label] of [
+   [graphqlRuntime, 'order_read_runtime: CommerceOrderReadRuntime,', 'GraphQL runtime data field'],
+   [graphqlRuntime, '.shared_get::<CommerceOrderReadRuntime>()', 'GraphQL host runtime requirement'],
+   [graphqlRuntime, 'commerce GraphQL requires CommerceOrderReadRuntime in host composition', 'GraphQL fail-closed message'],
++  [graphqlQuery, 'ListOrderProjectionsRequest', 'GraphQL list request'],
++  [graphqlQuery, 'ReadOrderProjectionRequest', 'GraphQL detail request'],
++  [graphqlQuery, 'CommerceGraphqlRuntimeData::order_read_runtime', 'GraphQL host runtime consumption'],
++  [graphqlQuery, '.list_order_projections(', 'GraphQL list port call'],
++  [graphqlQuery, '.read_order_projection(', 'GraphQL detail port call'],
++  [graphqlQuery, 'fn graphql_order_read_port_context(', 'GraphQL PortContext builder'],
+@@ -107,7 +113,7 @@ for (const [source, value, label] of [
+   [storefrontFixtures, 'CommerceOrderReadRuntime::in_process(', 'storefront fixture runtime'],
+   [fulfillmentFailureContract, 'CommerceOrderReadRuntime::in_process(', 'manual host fixture runtime'],
+   [fulfillmentFailureContract, '.with_shared_value(event_bus.clone())', 'manual host fixture shared event bus'],
+-  [note, 'Status: owner port and host runtime published; admin REST list/detail cut over, unvalidated.', 'owner note status'],
++  [note, 'Status: owner port and host runtime published; admin REST and GraphQL list/detail cut over, unvalidated.', 'owner note status'],
+@@ -140,6 +146,28 @@ for (const [route, label] of [
+   requireText(route, 'runtime\n        .order_read_port()', `${label} injected owner port`);
+ }
+ 
++const graphqlOrderRoute = between(
++  graphqlQuery,
++  '    async fn order(',
++  '    async fn orders(',
++  'GraphQL order route',
++);
++const graphqlOrdersRoute = between(
++  graphqlQuery,
++  '    async fn orders(',
++  '    async fn order_change(',
++  'GraphQL orders route',
++);
++for (const [route, label] of [
++  [graphqlOrderRoute, 'GraphQL order route'],
++  [graphqlOrdersRoute, 'GraphQL orders route'],
++]) {
++  forbidText(route, 'OrderService::new', `${label} concrete owner construction`);
++  forbidText(route, '.list_orders_with_locale_fallback(', `${label} concrete list call`);
++  forbidText(route, '.get_order_with_locale_fallback(', `${label} concrete detail call`);
++  requireText(route, 'order_read_runtime', `${label} host-selected runtime`);
++  requireText(route, '.order_read_port()', `${label} injected owner port`);
++}
++
+@@ -148,8 +176,8 @@ for (const [value, label] of [
+ ]) requireText(adminOrders, value, label);
+ 
+-if (evidence.status !== 'admin_rest_cutover_unvalidated') {
++if (evidence.status !== 'graphql_cutover_unvalidated') {
+   failures.push(`evidence status mismatch: ${evidence.status}`);
+ }
+@@ -177,7 +205,10 @@ for (const key of [
+ if (evidence.runtime_composition?.graphql_resolver_scope_published !== false) {
+   failures.push('GraphQL resolver scope must remain unpublished in this wave');
+ }
++if (evidence.runtime_composition?.commerce_graphql_direct_runtime_consumption !== true) {
++  failures.push('GraphQL resolvers must consume the schema runtime directly');
++}
+@@ -190,6 +221,12 @@ if (evidence.consumer_inventory?.commerce_admin_rest_cutover_completed !== true) {
+   failures.push('admin REST source cutover must be complete');
+ }
++if (evidence.consumer_inventory?.commerce_graphql_order_list_detail !== 'order_read_port') {
++  failures.push('GraphQL order list/detail must be recorded on order_read_port');
++}
++if (evidence.consumer_inventory?.commerce_graphql_cutover_completed !== true) {
++  failures.push('GraphQL source cutover must be complete');
++}
+@@ -197,7 +234,7 @@ if (evidence.consumer_inventory?.all_consumer_cutover_completed !== false) {
+ }
+ if (evidence.consumer_inventory?.cutover_required !== true) {
+-  failures.push('evidence must retain pending GraphQL/storefront cutover');
++  failures.push('evidence must retain pending storefront cutover');
+ }
+@@ -223,5 +260,5 @@ if (failures.length > 0) {
+ }
+ 
+ console.log(
+-  '✔ Order read runtime is host-composed and admin REST list/detail use the typed owner port while GraphQL/storefront cutover and runtime evidence remain pending',
++  '✔ Order read runtime is host-composed and admin REST plus GraphQL list/detail use the typed owner port while storefront cutover and runtime evidence remain pending',
+ );
