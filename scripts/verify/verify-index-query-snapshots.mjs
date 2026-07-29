@@ -100,7 +100,7 @@ requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',
-  'plan/SQL snapshots, and PostgreSQL/reference-engine',
+  'plan/SQL snapshots',
 ]);
 
 console.log('[verify-index-query-snapshots] OK');
