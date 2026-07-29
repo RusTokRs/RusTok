@@ -27,8 +27,8 @@ category audience layer before category content reaches a transport.
   `forumStorefrontCategories`, and `forumCategoryTree` fields use the exact
   owner without changing their names or response types.
 - Native storefront categories use the exact owner and reuse the host facts
-  port. A requested category is accepted only when it appears in the exact
-  allowed category page.
+  port. A requested or topic-derived category is checked through the exact
+  selected-category owner independently of the first rendered category page.
 - The canonical GraphQL query module is now `query_runtime.rs`. The previous
   `query.rs` remains uncompiled as a temporary source-verifier compatibility
   snapshot.
