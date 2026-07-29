@@ -10,10 +10,10 @@ use crate::domain::{
 };
 
 use super::{
-    CompiledPostgresQuery, CompiledQueryColumn, CursorCodec, CursorValidationError,
-    ExecutableQueryPlan, IndexCursor, PlannedField, PlannedManyProjection, PostgresBindValue,
-    PostgresQueryBuildError, QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
-    SchemaRegistryError,
+    CompiledManyRelationColumn, CompiledPostgresQuery, CompiledQueryColumn, CursorCodec,
+    CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
+    PlannedManyProjection, PostgresBindValue, PostgresQueryBuildError, QueryPlanError,
+    QueryPlanFingerprint, SchemaRegistry, SchemaRegistryError,
 };
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
@@ -245,9 +245,16 @@ impl SchemaRegistry {
             .columns
             .iter()
             .map(column_output_alias)
+            .chain(
+                compiled
+                    .many_relations
+                    .iter()
+                    .map(|column| column.output_alias.as_str()),
+            )
             .collect::<BTreeSet<_>>();
-        if unique_aliases.len() != compiled.columns.len()
+        if unique_aliases.len() != compiled.columns.len() + compiled.many_relations.len()
             || compiled.columns != expected_columns(&plan)
+            || compiled.many_relations != expected_many_relations(&plan)
         {
             return Err(PostgresQueryDecodeError::ColumnContractMismatch);
         }
@@ -374,15 +381,6 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
             }),
     );
     columns.extend(
-        plan.many_projections
-            .iter()
-            .enumerate()
-            .map(|(index, projection)| CompiledQueryColumn::ManyRelation {
-                output_alias: format!("__many_{index}"),
-                projection: projection.clone(),
-            }),
-    );
-    columns.extend(
         plan.order_by
             .iter()
             .enumerate()
@@ -394,11 +392,21 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
     columns
 }
 
+fn expected_many_relations(plan: &ExecutableQueryPlan) -> Vec<CompiledManyRelationColumn> {
+    plan.many_projections
+        .iter()
+        .enumerate()
+        .map(|(index, projection)| CompiledManyRelationColumn {
+            output_alias: format!("__many_{index}"),
+            projection: projection.clone(),
+        })
+        .collect()
+}
+
 fn column_output_alias(column: &CompiledQueryColumn) -> &str {
     match column {
         CompiledQueryColumn::EntityId { output_alias, .. }
         | CompiledQueryColumn::Field { output_alias, .. }
-        | CompiledQueryColumn::ManyRelation { output_alias, .. }
         | CompiledQueryColumn::OrderValue { output_alias, .. } => output_alias,
     }
 }
@@ -460,7 +468,6 @@ fn decode_row(
         PostgresQueryDecodeError::MissingColumn(identity_alias(&plan.root_alias))
     })?;
     let mut fields = Vec::with_capacity(plan.outer_projection().count());
-    let mut nested_relations = Vec::with_capacity(plan.many_projections.len());
     let mut order_values = Vec::with_capacity(plan.order_by.len());
 
     for column in &compiled.columns {
@@ -472,14 +479,6 @@ fn decode_row(
                 path: field.path.clone(),
                 value: decode_field(row, output_alias, field, &identities)?,
             }),
-            CompiledQueryColumn::ManyRelation {
-                output_alias,
-                projection,
-            } => nested_relations.push(decode_nested_relation(
-                row,
-                output_alias,
-                projection,
-            )?),
             CompiledQueryColumn::OrderValue {
                 output_alias,
                 field,
@@ -487,6 +486,13 @@ fn decode_row(
             CompiledQueryColumn::EntityId { .. } => {}
         }
     }
+    let nested_relations = compiled
+        .many_relations
+        .iter()
+        .map(|column| {
+            decode_nested_relation(row, &column.output_alias, &column.projection)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(DecodedRow {
         item: IndexQueryItem {
