@@ -16,6 +16,7 @@ pub(super) async fn fetch_products(
         controls.category_id,
         controls.sort_by,
         controls.sort_direction,
+        controls.attribute_filters,
     )
     .await
 }
@@ -72,6 +73,7 @@ async fn product_admin_catalog_list_native(
     category_id: Option<String>,
     sort_by: Option<String>,
     sort_direction: Option<String>,
+    attribute_filters: Vec<String>,
 ) -> Result<ProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -117,12 +119,13 @@ async fn product_admin_catalog_list_native(
             .filter(|value| !value.is_empty())
             .or_else(|| request_context.map(|context| context.locale))
             .unwrap_or_else(|| tenant.default_locale.clone());
-        let list_query = AdminProductListQuery::try_from_transport(
+        let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             search,
             status,
             category_id,
             sort_by,
             sort_direction,
+            attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "admin_catalog_list_input"))?;
         let products = CatalogService::new(runtime_ctx.db_clone(), event_bus)
@@ -148,6 +151,7 @@ async fn product_admin_catalog_list_native(
             category_id,
             sort_by,
             sort_direction,
+            attribute_filters,
         );
         Err(ServerFnError::new(
             "product/admin/catalog-list requires the `ssr` feature",
