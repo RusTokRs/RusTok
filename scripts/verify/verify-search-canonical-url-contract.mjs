@@ -169,6 +169,7 @@ if (evidence) {
     "storefront_native_owner_projection",
     "admin_native_owner_projection",
     "admin_shell_owner_projection",
+    "admin_forum_permission_gate",
     "no_transport_fallback",
   ]) {
     if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
