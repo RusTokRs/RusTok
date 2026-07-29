@@ -201,7 +201,7 @@ unpartitioned until separate shadow evidence is retained and admitted.
 - [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.
 - [x] Add owner-operated PostgreSQL baseline/shadow query evidence capture.
 - [x] Add owner-operated PostgreSQL baseline/shadow mutation and WAL evidence capture.
-- [x] Add owner-operated PostgreSQL ordinary-VACUUM maintenance evidence capture.
+- [x] Add owner-operated PostgreSQL baseline/shadow ordinary-VACUUM maintenance evidence capture.
 - [x] Add owner-operated PostgreSQL cutover/rollback rehearsal evidence capture.
 - [x] Add owner-operated full retained packet orchestration and capture finalization.
 - [x] Add read-only retained bundle review with recalculated assembly and admission.
