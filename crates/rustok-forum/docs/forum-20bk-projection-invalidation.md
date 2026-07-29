@@ -1,9 +1,10 @@
 # FORUM-20BK — owner-transactional Search projection invalidation
 
 `FORUM-20BK` closes the canonical mutation-to-Search gap left by the initial
-Forum projection consumer. Forum owner transactions now insert durable
-`search.reindex_requested` events for every canonical mutation that can change
-an exact public category or topic document.
+Forum projection consumer. On the supported PostgreSQL Search runtime, Forum
+owner transactions now insert durable `search.reindex_requested` events for
+every canonical mutation that can change an exact public category or topic
+document.
 
 ## Existing event contract
 
@@ -25,6 +26,13 @@ entry point. It preserves both `DomainEvent::validate()` and registered envelope
 schema validation, then writes to the canonical `sys_events` outbox through the
 owner transaction. Domain services therefore do not create a second database
 connection and do not reproduce the event envelope in SQL.
+
+The Search-owned Forum projector is PostgreSQL-only. Direct invalidation helpers
+therefore persist to the outbox on PostgreSQL and perform event validation only
+on SQLite or another unsupported projector backend. This keeps standalone Forum
+SQLite domain fixtures independent from an unused Search/outbox schema rather
+than silently creating runtime tables. Existing owner paths that already carry
+a configured event bus keep their established transport behavior.
 
 ## Invalidation scopes
 
@@ -90,22 +98,24 @@ keeping read-only internal composers free to use private read implementations.
 
 ## Delivery and idempotency
 
-The canonical outbox is at-least-once. A command may legitimately produce both
-an existing lifecycle event and one `ReindexRequested` event, and dispatcher
-retries can redeliver either. Search target refresh and Forum scope replacement
-are idempotent: they derive current exact owner state rather than applying a
-projection delta.
+The canonical PostgreSQL outbox is at-least-once. A command may legitimately
+produce both an existing lifecycle event and one `ReindexRequested` event, and
+dispatcher retries can redeliver either. Search target refresh and Forum scope
+replacement are idempotent: they derive current exact owner state rather than
+applying a projection delta.
 
-An owner write and its invalidation either commit together or roll back
-together. A later Search failure leaves the outbox event retryable. The broader
-multi-source full Search rebuild is still not one transaction across all source
-modules; that limitation remains downstream.
+On PostgreSQL, an owner write and its invalidation either commit together or
+roll back together. A later Search failure leaves the outbox event retryable.
+The broader multi-source full Search rebuild is still not one transaction across
+all source modules; that limitation remains downstream.
 
 ## Compatibility and remaining work
 
 No route, GraphQL field, public DTO, workspace dependency, lockfile or migration
 changes are introduced. Forum remains usable without an active Search listener;
-its outbox events simply have no matching consumer when Search is absent.
+its PostgreSQL outbox events simply have no matching consumer when Search is
+absent. SQLite Forum domain fixtures do not require an outbox migration because
+there is no supported SQLite Forum Search projector.
 
 Forum categories and topics are not currently registered as translation-control
 plane targets. If that integration is added later, its owner transaction must
