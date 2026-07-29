@@ -25,6 +25,8 @@ source work to remain idle.
 - M4 controlled PostgreSQL query compilation: `source_complete_execution_pending`.
 - M4 root/one-link filter/order/count/keyset/offset semantics: `source_complete_execution_pending`.
 - M4 query-scoped cursor envelopes: `source_complete_execution_pending`.
+- M4 deterministic compiled-row decoding: `source_complete_execution_pending`.
+- M4 one-row lookahead and next-cursor construction: `source_complete_execution_pending`.
 - M4 many-link query semantics: `open`.
 - M4 PostgreSQL/reference-engine equivalence: `open`.
 
@@ -47,7 +49,7 @@ contracts are part of the executable plan identity.
 
 ## Completed M4 slices 2 and 3
 
-The controlled PostgreSQL compiler now supports the validated root and explicit
+The controlled PostgreSQL compiler supports the validated root and explicit
 one-cardinality-link subset:
 
 - tagged JSONB projection and hidden order-value columns;
@@ -72,6 +74,20 @@ or order semantics produces `QueryFingerprintMismatch` before any keyset SQL is
 emitted. Legacy raw v1 envelopes remain limited to codec round trips and the
 test-only reference engine.
 
+## Completed M4 slice 4
+
+`SchemaRegistry::compile_postgres_page_query` wraps the controlled compiler and
+changes only the validated page-limit bind from `N` to `N + 1`. The SQL string,
+plan fingerprint, column metadata, filters, ordering, cursor predicate, offset,
+and optional exact-count statement remain unchanged.
+
+`decode_postgres_query_page` re-plans the query and verifies the plan fingerprint,
+complete deterministic column contract, requested page size, maximum row count,
+tagged `IndexValue` type/cardinality/nullability, relation identities, and exact
+count. It removes the one-row lookahead, preserves projection order, reports
+`has_more`, and creates a scoped next cursor from the last retained root and hidden
+order values. Offset pages report `has_more` without synthesizing a cursor.
+
 ## Remaining bounded M4 work
 
 Many-cardinality link paths remain fail-closed. The next source slice must add
@@ -80,7 +96,7 @@ an explicit semantic plan for:
 - `EXISTS`-based many-link filtering;
 - nested aggregation for many-link projection;
 - duplicate-free exact count and root pagination;
-- result decoding and scoped cursor construction;
+- direct SeaORM bind/row adaptation and execution composition;
 - SQL/parameter snapshots and PostgreSQL/reference-engine equivalence fixtures.
 
 Production query-port composition and consumer cutover remain later slices.
@@ -96,8 +112,10 @@ Suggested commands:
 ```bash
 cargo test -p rustok-index planner_tests -- --nocapture
 cargo test -p rustok-index postgres_compiler_tests -- --nocapture
+cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo check -p rustok-index --all-targets
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
+node scripts/verify/verify-index-query-result-decoder.mjs
 cargo xtask module validate index
 ```
