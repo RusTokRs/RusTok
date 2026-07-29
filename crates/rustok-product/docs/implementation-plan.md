@@ -54,10 +54,10 @@ typed degraded metadata. The production handler still requires operator review
 and performs no persistence. These harnesses have not been executed by the
 implementation agent.
 
-Adapter, production-wiring, and consumer-behavior source are complete, but the
-loopback conformance and remote consumer harnesses have not been run by the
-implementation agent, so Product remains `boundary_ready` rather than
-`transport_verified`.
+Adapter and production-wiring source are complete. Consumer-behavior source is
+also complete, but the loopback conformance and remote consumer harnesses have
+not been run by the implementation agent, so Product remains `boundary_ready`
+rather than `transport_verified`.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
