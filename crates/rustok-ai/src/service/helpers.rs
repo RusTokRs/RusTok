@@ -477,10 +477,7 @@ pub fn locale_list_from_settings(settings: &serde_json::Value) -> Vec<String> {
 }
 
 pub fn task_allows_free_locale(task_slug: &str) -> bool {
-    matches!(
-        task_slug,
-        "operator_chat" | "alloy_code" | "summarization" | "translation"
-    )
+    matches!(task_slug, "operator_chat" | "alloy_code" | "summarization")
 }
 
 pub fn runtime_execution_target(execution_mode: ExecutionMode) -> &'static str {
@@ -1177,7 +1174,8 @@ mod tests {
     #[test]
     fn free_locale_tasks_stay_whitelisted() {
         assert!(task_allows_free_locale("alloy_code"));
-        assert!(task_allows_free_locale("translation"));
+        assert!(!task_allows_free_locale("translation"));
+        assert!(!task_allows_free_locale("machine_translation"));
         assert!(!task_allows_free_locale("product_copy"));
         assert_eq!(
             runtime_execution_target(ExecutionMode::Direct),

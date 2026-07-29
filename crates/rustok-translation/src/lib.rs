@@ -1,8 +1,18 @@
 pub mod entities;
 mod error;
+mod glossary;
+#[cfg(feature = "graphql")]
+pub mod graphql;
+#[cfg(feature = "graphql")]
+pub mod graphql_runtime;
 mod inventory;
+mod machine;
+mod memory;
 pub mod migrations;
+mod policy;
 mod progress;
+mod public_error;
+mod qa;
 mod workflow;
 
 use async_trait::async_trait;
@@ -11,13 +21,43 @@ use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use error::{TranslationError, TranslationResult};
+pub use glossary::{
+    CreateGlossaryInput, GlossaryBinding, GlossaryConcept, GlossaryMatchKind, GlossaryRecord,
+    GlossaryScope, GlossarySummaryRecord, GlossaryTermPolicy, GlossaryVariant,
+    ReplaceGlossaryTermsInput, SetGlossaryActiveInput, TranslationGlossaryService,
+    UpdateGlossaryInput,
+};
 pub use inventory::{
     TranslationInventoryRebuildResult, TranslationInventoryService, TranslationInventorySyncResult,
 };
+pub use machine::{
+    MAX_MACHINE_TRANSLATION_BATCH_CHARACTERS, MAX_MACHINE_TRANSLATION_BATCH_UNITS,
+    MAX_MACHINE_TRANSLATION_GLOSSARY_TERMS, MAX_MACHINE_TRANSLATION_MEMORY_SUGGESTIONS_PER_UNIT,
+    MAX_MACHINE_TRANSLATION_PROTECTED_TOKENS_PER_UNIT, MachineTranslationAttemptEvidence,
+    MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationDiagnostic,
+    MachineTranslationExecutionEvidence, MachineTranslationGlossaryTerm,
+    MachineTranslationMemorySuggestion, MachineTranslationPort,
+    MachineTranslationProviderDescriptor, MachineTranslationProviderHealth,
+    MachineTranslationProviderState, MachineTranslationResourceContext, MachineTranslationUnit,
+    MachineTranslationUnitResult, MachineTranslationUsage,
+};
+pub use memory::{
+    MemoryEntryRecord, MemoryListInput, MemoryLookupInput, MemoryMatchEvidence, MemoryMatchKind,
+    MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, PurgeMemoryEntryInput,
+    SetMemoryRetentionInput, TombstoneMemoryEntryInput, TranslationMemoryService,
+};
+pub use policy::{
+    ReplaceRequiredTargetLocalesInput, TranslationPolicyFreshness, TranslationPolicyRecord,
+    TranslationPolicyService,
+};
 pub use progress::{
     JobProgressRecord, ProviderProgressRecord, ProviderProjectionFreshness,
-    TranslationProgressService,
+    RequiredProviderProgressRecord, TranslationProgressService,
 };
+pub use public_error::{
+    TranslationPublicError, TranslationPublicErrorKind, map_translation_public_error,
+};
+pub use qa::evaluate_patch_qa;
 pub use workflow::{
     AddItemInput, ApplyProposalInput, ApplyRecord, ApproveProposalInput, AssignItemInput,
     AssignmentRecord, CancelJobInput, CancellationRecord, CreateJobInput, JobItemRecord, JobRecord,

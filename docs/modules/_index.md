@@ -75,6 +75,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-iggy-connector` | [docs](../../crates/rustok-iggy-connector/docs/README.md) | [plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md) |
 | `rustok-mcp` | [docs](../../crates/rustok-mcp/docs/README.md) | [plan](../../crates/rustok-mcp/docs/implementation-plan.md) |
 | `rustok-ai` | [docs](../../crates/rustok-ai/docs/README.md) | [plan](../../crates/rustok-ai/docs/implementation-plan.md) |
+| `rustok-ai-translation` | [docs](../../crates/rustok-ai-translation/docs/README.md) | [plan](../../crates/rustok-ai-translation/docs/implementation-plan.md) |
 | `rustok-ai-content` | [docs](../../crates/rustok-ai-content/docs/README.md) | [plan](../../crates/rustok-ai-content/docs/implementation-plan.md) |
 | `rustok-ai-product` | [docs](../../crates/rustok-ai-product/docs/README.md) | [plan](../../crates/rustok-ai-product/docs/implementation-plan.md) |
 | `rustok-ai-order` | [docs](../../crates/rustok-ai-order/docs/README.md) | [plan](../../crates/rustok-ai-order/docs/implementation-plan.md) |
@@ -119,6 +120,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-media` | [docs](../../crates/rustok-media/docs/README.md) | [plan](../../crates/rustok-media/docs/implementation-plan.md) |
 | `rustok-workflow` | [docs](../../crates/rustok-workflow/docs/README.md) | [plan](../../crates/rustok-workflow/docs/implementation-plan.md) |
 | `rustok-translation` | [docs](../../crates/rustok-translation/docs/README.md) | [plan](../../crates/rustok-translation/docs/implementation-plan.md) |
+| `rustok-translation-admin` | [admin UI package](../../crates/rustok-translation/admin/README.md) | [owner plan](../../crates/rustok-translation/docs/implementation-plan.md) |
 
 ## Module UI Packages
 
@@ -131,6 +133,9 @@ Module local documentation lives inside the crates themselves at
 - `rustok-forum`: [README](../../crates/rustok-forum/admin/README.md)
 - `rustok-notifications`: [README](../../crates/rustok-notifications/admin/README.md)
 - `rustok-commerce`: [README](../../crates/rustok-commerce/admin/README.md)
+- `rustok-translation`: [README](../../crates/rustok-translation/admin/README.md);
+  the manifest-mounted Leptos package and matching Next package share one
+  module-owned operation and URL-state contract.
 - `rustok-marketplace-seller`: module-owned package in
   [`admin/`](../../crates/rustok-marketplace-seller/admin/)
 - `rustok-marketplace-listing`: module-owned package in

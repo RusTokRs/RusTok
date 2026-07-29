@@ -5,19 +5,27 @@ edition.workspace = true
 license.workspace = true
 description = "Owner-safe translation workflow and inventory control plane for RusToK"
 
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]
+
 [dependencies]
 async-trait.workspace = true
+async-graphql = { workspace = true, optional = true }
 chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
+rustok-tenant.workspace = true
 rustok-translation-targets.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
+unicode-normalization.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

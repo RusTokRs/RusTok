@@ -11,14 +11,22 @@ use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use rustok_api::{Action, Permission, PortActor, PortContext, PortError, Resource, TenantLocale};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
+use rustok_tenant::{
+    ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyPort,
+    TenantLocalePolicyProjection,
+};
 use rustok_translation::{
     AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
-    CreateJobInput, ProposalOrigin, ProposalValue, RecoverApplyInput, RetryItemInput,
-    SaveProposalInput, SubmitProposalInput, TranslationError, TranslationProgressService,
+    CreateGlossaryInput, CreateJobInput, GlossaryBinding, GlossaryConcept, GlossaryMatchKind,
+    GlossaryScope, GlossaryTermPolicy, GlossaryVariant, MemoryListInput, MemoryLookupInput,
+    MemoryMatchKind, MemoryRetentionPolicy, ProposalOrigin, ProposalValue, PurgeMemoryEntryInput,
+    RecoverApplyInput, ReplaceGlossaryTermsInput, RetryItemInput, SaveProposalInput,
+    SetMemoryRetentionInput, SubmitProposalInput, TombstoneMemoryEntryInput, TranslationError,
+    TranslationGlossaryService, TranslationMemoryService, TranslationProgressService,
     TranslationWorkflowService, UnassignItemInput,
     entities::{
         apply_operation, apply_receipt, apply_recovery, assignment, cancellation, job, job_item,
-        job_progress, proposal, retry,
+        job_progress, memory_entry, memory_receipt, proposal, retry,
     },
     migrations,
 };
@@ -26,11 +34,11 @@ use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
     TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldSnapshot,
-    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
-    TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
-    TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationTargetRegistry,
-    TranslationValueProfile,
+    TranslationPatchIssue, TranslationPatchIssueSeverity, TranslationPatchRequest,
+    TranslationPatchValidation, TranslationResourceIdentity, TranslationResourceLifecycle,
+    TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
+    TranslationStrategy, TranslationTargetCapability, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationTargetRegistry, TranslationValueProfile,
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
@@ -50,6 +58,42 @@ struct ApplyProviderState {
 
 struct SnapshotProvider {
     apply_state: Arc<ApplyProviderState>,
+}
+
+struct TestTenantLocalePolicies;
+
+#[async_trait]
+impl TenantLocalePolicyPort for TestTenantLocalePolicies {
+    async fn read_locale_policy(
+        &self,
+        context: PortContext,
+    ) -> Result<TenantLocalePolicyProjection, PortError> {
+        let tenant_id = Uuid::parse_str(&context.tenant_id).unwrap();
+        Ok(TenantLocalePolicyProjection {
+            tenant_id,
+            revision: 7,
+            default_locale: TenantLocale::new("en").unwrap(),
+            locales: ["en", "de", "fr"]
+                .into_iter()
+                .map(|locale| TenantLocalePolicyEntry {
+                    locale: TenantLocale::new(locale).unwrap(),
+                    name: locale.to_string(),
+                    native_name: locale.to_string(),
+                    is_default: locale == "en",
+                    is_enabled: true,
+                    fallback_locale: (locale != "en").then(|| TenantLocale::new("en").unwrap()),
+                })
+                .collect(),
+        })
+    }
+
+    async fn replace_locale_policy(
+        &self,
+        _context: PortContext,
+        _request: ReplaceTenantLocalePolicyRequest,
+    ) -> Result<TenantLocalePolicyProjection, PortError> {
+        Err(unavailable())
+    }
 }
 
 #[async_trait]
@@ -109,6 +153,7 @@ impl TranslationTargetProvider for SnapshotProvider {
                 source_value: "Hero".to_string(),
                 exact_target_value: None,
                 source_hash: "sha256:hero".to_string(),
+                protected_tokens: Vec::new(),
             }],
         })
     }
@@ -207,7 +252,12 @@ async fn fixture_with_apply_state() -> (
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone())));
     (
         database.clone(),
-        TranslationWorkflowService::new(database, Arc::new(registry), event_bus),
+        TranslationWorkflowService::new(
+            database,
+            Arc::new(registry),
+            Arc::new(TestTenantLocalePolicies),
+            event_bus,
+        ),
         tenant_id,
         apply_state,
     )
@@ -286,6 +336,7 @@ fn job_input(target_locale: &str) -> CreateJobInput {
     CreateJobInput {
         source_locale: TenantLocale::new("en").unwrap(),
         target_locale: TenantLocale::new(target_locale).unwrap(),
+        glossary: None,
     }
 }
 
@@ -372,6 +423,339 @@ async fn create_approved_item(
         .await
         .unwrap();
     (item.id, proposal.id)
+}
+
+#[tokio::test]
+async fn applied_human_approved_segments_enter_tenant_scoped_deterministic_memory() {
+    let (database, service, tenant_id) = fixture().await;
+    let memory = TranslationMemoryService::new(database.clone());
+    let (item_id, proposal_id) = create_approved_item(&service, tenant_id, "memory").await;
+    let apply_context = write_context(tenant_id, "apply-memory");
+    let apply_input = ApplyProposalInput {
+        item_id,
+        proposal_id,
+    };
+    service
+        .apply_proposal(apply_context.clone(), apply_input.clone())
+        .await
+        .unwrap();
+    service
+        .apply_proposal(apply_context, apply_input)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        memory_entry::Entity::find()
+            .filter(memory_entry::Column::TenantId.eq(tenant_id))
+            .count(&database)
+            .await
+            .unwrap(),
+        1
+    );
+    let exact = memory
+        .lookup(
+            read_context(tenant_id),
+            MemoryLookupInput {
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("de").unwrap(),
+                identity: identity("another-asset"),
+                field_key: FieldKey::new("title").unwrap(),
+                source_text: "  HERO  ".to_string(),
+                minimum_similarity_basis_points: 10_000,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(exact.len(), 1);
+    assert_eq!(exact[0].target_text, "Held");
+    assert_eq!(exact[0].evidence.kind, MemoryMatchKind::Exact);
+    assert!(exact[0].evidence.context_match);
+    assert_eq!(exact[0].proposal_id, proposal_id);
+
+    let fuzzy = memory
+        .lookup(
+            read_context(tenant_id),
+            MemoryLookupInput {
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("de").unwrap(),
+                identity: identity("fuzzy-asset"),
+                field_key: FieldKey::new("title").unwrap(),
+                source_text: "Hero returns".to_string(),
+                minimum_similarity_basis_points: 7_000,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(fuzzy.len(), 1);
+    assert_eq!(fuzzy[0].evidence.kind, MemoryMatchKind::ContextualFuzzy);
+    assert_eq!(fuzzy[0].evidence.final_similarity_basis_points, 7_166);
+
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, other_tenant_id).await;
+    let isolated = memory
+        .lookup(
+            read_context(other_tenant_id),
+            MemoryLookupInput {
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("de").unwrap(),
+                identity: identity("other-tenant"),
+                field_key: FieldKey::new("title").unwrap(),
+                source_text: "Hero".to_string(),
+                minimum_similarity_basis_points: 0,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(isolated.is_empty());
+}
+
+#[tokio::test]
+async fn memory_retention_tombstone_and_purge_are_revisioned_and_replay_safe() {
+    let (database, service, tenant_id) = fixture().await;
+    let memory = TranslationMemoryService::new(database.clone());
+    let (item_id, proposal_id) =
+        create_approved_item(&service, tenant_id, "memory-lifecycle").await;
+    service
+        .apply_proposal(
+            write_context(tenant_id, "apply-memory-lifecycle"),
+            ApplyProposalInput {
+                item_id,
+                proposal_id,
+            },
+        )
+        .await
+        .unwrap();
+    let entry = memory
+        .list_entries(
+            read_context(tenant_id),
+            MemoryListInput {
+                source_locale: None,
+                target_locale: None,
+                include_tombstoned: false,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+
+    let legal_hold = memory
+        .set_retention(
+            write_context(tenant_id, "memory-legal-hold"),
+            SetMemoryRetentionInput {
+                entry_id: entry.id,
+                expected_revision: entry.revision,
+                policy: MemoryRetentionPolicy::LegalHold,
+                retain_until: None,
+            },
+        )
+        .await
+        .unwrap();
+    let replay = memory
+        .set_retention(
+            write_context(tenant_id, "memory-legal-hold"),
+            SetMemoryRetentionInput {
+                entry_id: entry.id,
+                expected_revision: entry.revision,
+                policy: MemoryRetentionPolicy::LegalHold,
+                retain_until: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(replay, legal_hold);
+    assert_eq!(legal_hold.revision, 2);
+
+    let legal_hold_error = memory
+        .tombstone_entry(
+            write_context(tenant_id, "memory-tombstone-held"),
+            TombstoneMemoryEntryInput {
+                entry_id: entry.id,
+                expected_revision: legal_hold.revision,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        legal_hold_error,
+        TranslationError::MemoryRetentionConflict(_)
+    ));
+
+    let owner_lifecycle = memory
+        .set_retention(
+            write_context(tenant_id, "memory-owner-lifecycle"),
+            SetMemoryRetentionInput {
+                entry_id: entry.id,
+                expected_revision: legal_hold.revision,
+                policy: MemoryRetentionPolicy::OwnerLifecycle,
+                retain_until: None,
+            },
+        )
+        .await
+        .unwrap();
+    let tombstoned = memory
+        .tombstone_entry(
+            write_context(tenant_id, "memory-tombstone"),
+            TombstoneMemoryEntryInput {
+                entry_id: entry.id,
+                expected_revision: owner_lifecycle.revision,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(tombstoned.state, "tombstoned");
+    assert!(
+        memory
+            .lookup(
+                read_context(tenant_id),
+                MemoryLookupInput {
+                    source_locale: TenantLocale::new("en").unwrap(),
+                    target_locale: TenantLocale::new("de").unwrap(),
+                    identity: identity("memory-after-tombstone"),
+                    field_key: FieldKey::new("title").unwrap(),
+                    source_text: "Hero".to_string(),
+                    minimum_similarity_basis_points: 0,
+                    limit: 10,
+                },
+            )
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        memory
+            .list_entries(
+                read_context(tenant_id),
+                MemoryListInput {
+                    source_locale: None,
+                    target_locale: None,
+                    include_tombstoned: true,
+                    limit: 10,
+                },
+            )
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let purge_input = PurgeMemoryEntryInput {
+        entry_id: entry.id,
+        expected_revision: tombstoned.revision,
+    };
+    let purge_context = write_context(tenant_id, "memory-purge");
+    let purged = memory
+        .purge_entry(purge_context.clone(), purge_input.clone())
+        .await
+        .unwrap();
+    let purge_replay = memory
+        .purge_entry(purge_context, purge_input)
+        .await
+        .unwrap();
+    assert_eq!(purge_replay, purged);
+    assert_eq!(purged.state, "purged");
+    assert!(matches!(
+        memory
+            .read_entry(read_context(tenant_id), entry.id)
+            .await
+            .unwrap_err(),
+        TranslationError::MemoryEntryNotFound
+    ));
+    assert_eq!(
+        memory_receipt::Entity::find()
+            .filter(memory_receipt::Column::TenantId.eq(tenant_id))
+            .count(&database)
+            .await
+            .unwrap(),
+        4
+    );
+}
+
+#[tokio::test]
+async fn jobs_reject_tenant_disabled_locales() {
+    let (_database, service, tenant_id) = fixture().await;
+    let error = service
+        .create_job(
+            write_context(tenant_id, "create-job-disabled-locale"),
+            job_input("es"),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        TranslationError::DisabledJobLocale {
+            role: "target",
+            locale
+        } if locale == "es"
+    ));
+}
+
+#[tokio::test]
+async fn deterministic_qa_is_persisted_on_save_and_blocks_review_submission() {
+    let (database, service, tenant_id) = fixture().await;
+    let job = service
+        .create_job(write_context(tenant_id, "qa-create-job"), job_input("de"))
+        .await
+        .unwrap();
+    let item = service
+        .add_item(
+            write_context(tenant_id, "qa-add-item"),
+            AddItemInput {
+                job_id: job.id,
+                identity: identity("qa-asset"),
+            },
+        )
+        .await
+        .unwrap();
+    let proposal_record = service
+        .save_proposal(
+            write_context(tenant_id, "qa-save-proposal"),
+            SaveProposalInput {
+                item_id: item.id,
+                origin: ProposalOrigin::Manual,
+                values: vec![ProposalValue {
+                    key: FieldKey::new("title").unwrap(),
+                    value: "x".repeat(201),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!proposal_record.qa_accepted);
+    assert!(proposal_record.qa_issues.iter().any(|issue| {
+        issue.severity == TranslationPatchIssueSeverity::Error
+            && issue.code == "translation.qa.max_characters_exceeded"
+    }));
+
+    let error = service
+        .submit_proposal(
+            write_context(tenant_id, "qa-submit-proposal"),
+            SubmitProposalInput {
+                item_id: item.id,
+                proposal_id: proposal_record.id,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, TranslationError::ProposalValidationFailed));
+
+    let persisted = proposal::Entity::find_by_id(proposal_record.id)
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(persisted.submitted_at.is_none());
+    let issues: Vec<TranslationPatchIssue> = serde_json::from_value(persisted.qa_issues).unwrap();
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == "translation.qa.max_characters_exceeded")
+    );
 }
 
 async fn event_count(database: &DatabaseConnection, event_type: &str) -> u64 {
@@ -917,6 +1301,7 @@ async fn successful_terminal_apply_completes_the_job_and_updates_progress_atomic
     let progress_service = TranslationProgressService::new(
         database.clone(),
         Arc::new(TranslationTargetRegistry::default()),
+        Arc::new(TestTenantLocalePolicies),
     );
     let (item_id, proposal_id) =
         create_approved_item(&service, tenant_id, "progress-completion").await;
@@ -978,6 +1363,7 @@ async fn progress_rebuild_repairs_drift_is_idempotent_and_tenant_isolated() {
     let progress_service = TranslationProgressService::new(
         database.clone(),
         Arc::new(TranslationTargetRegistry::default()),
+        Arc::new(TestTenantLocalePolicies),
     );
     let job = service
         .create_job(
@@ -1060,6 +1446,7 @@ async fn blocked_item_retry_is_explicit_actor_bound_and_does_not_retry_conflicts
     let progress_service = TranslationProgressService::new(
         database.clone(),
         Arc::new(TranslationTargetRegistry::default()),
+        Arc::new(TestTenantLocalePolicies),
     );
     let (item_id, proposal_id) = create_approved_item(&service, tenant_id, "retry-blocked").await;
     apply_state
@@ -1467,6 +1854,127 @@ async fn proposal_moves_through_draft_review_and_separated_approval() {
     assert_eq!(persisted_item.status, "approved");
     assert_eq!(persisted_item.revision, 3);
     assert_eq!(proposal::Entity::find().count(&database).await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn proposal_qa_uses_the_glossary_revision_captured_by_the_job() {
+    let (database, service, tenant_id) = fixture().await;
+    let glossary_service =
+        TranslationGlossaryService::new(database, Arc::new(TestTenantLocalePolicies));
+    let glossary = glossary_service
+        .create_glossary(
+            write_context(tenant_id, "create-glossary-snapshot"),
+            CreateGlossaryInput {
+                name: "Media terminology".to_string(),
+                description: String::new(),
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("de").unwrap(),
+                scope: GlossaryScope {
+                    owner_slug: Some(OwnerSlug::new("media").unwrap()),
+                    resource_kind: Some(ResourceKind::new("asset").unwrap()),
+                    field_key: Some(FieldKey::new("title").unwrap()),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let bound_revision = glossary_service
+        .replace_terms(
+            write_context(tenant_id, "terms-glossary-snapshot-2"),
+            ReplaceGlossaryTermsInput {
+                glossary_id: glossary.id,
+                expected_revision: glossary.revision,
+                concepts: vec![glossary_concept("Held")],
+            },
+        )
+        .await
+        .unwrap();
+    let job = service
+        .create_job(
+            write_context(tenant_id, "create-job-glossary-snapshot"),
+            CreateJobInput {
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("de").unwrap(),
+                glossary: Some(GlossaryBinding {
+                    glossary_id: glossary.id,
+                    revision: bound_revision.revision,
+                }),
+            },
+        )
+        .await
+        .unwrap();
+    glossary_service
+        .replace_terms(
+            write_context(tenant_id, "terms-glossary-snapshot-3"),
+            ReplaceGlossaryTermsInput {
+                glossary_id: glossary.id,
+                expected_revision: bound_revision.revision,
+                concepts: vec![glossary_concept("Hauptfigur")],
+            },
+        )
+        .await
+        .unwrap();
+    let item = service
+        .add_item(
+            write_context(tenant_id, "add-item-glossary-snapshot"),
+            AddItemInput {
+                job_id: job.id,
+                identity: identity("asset-glossary-snapshot"),
+            },
+        )
+        .await
+        .unwrap();
+
+    let captured_revision_proposal = service
+        .save_proposal(
+            write_context(tenant_id, "save-captured-glossary-revision"),
+            SaveProposalInput {
+                item_id: item.id,
+                origin: ProposalOrigin::Manual,
+                values: vec![ProposalValue {
+                    key: FieldKey::new("title").unwrap(),
+                    value: "Held".to_string(),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert!(captured_revision_proposal.qa_accepted);
+    assert!(captured_revision_proposal.qa_issues.is_empty());
+
+    let current_revision_proposal = service
+        .save_proposal(
+            write_context(tenant_id, "save-current-glossary-revision"),
+            SaveProposalInput {
+                item_id: item.id,
+                origin: ProposalOrigin::Manual,
+                values: vec![ProposalValue {
+                    key: FieldKey::new("title").unwrap(),
+                    value: "Hauptfigur".to_string(),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!current_revision_proposal.qa_accepted);
+    assert_eq!(
+        current_revision_proposal.qa_issues[0].code,
+        "translation.glossary.preferred_term_missing"
+    );
+}
+
+fn glossary_concept(preferred_term: &str) -> GlossaryConcept {
+    GlossaryConcept {
+        concept_key: "hero".to_string(),
+        source_term: "Hero".to_string(),
+        variants: vec![GlossaryVariant {
+            value: preferred_term.to_string(),
+            policy: GlossaryTermPolicy::Preferred,
+        }],
+        match_kind: GlossaryMatchKind::WholeWord,
+        case_sensitive: false,
+        notes: String::new(),
+    }
 }
 
 #[tokio::test]

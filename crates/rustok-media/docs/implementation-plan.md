@@ -19,7 +19,9 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
   root as `media/asset`. It exposes bounded UUID cursor discovery, exact
   locale-only snapshots, stable field identities and hashes, permission floors,
   validation, one-resource CAS apply, exact source/target aggregate coverage,
-  and a tenant-scoped owner change cursor. Aggregate reads use a stable
+  typed error severity, an explicit empty protected-token ledger for its
+  plain-text fields, and a tenant-scoped owner change cursor. Aggregate reads
+  use a stable
   before/after cursor window, count no locale fallback, and expose only
   source-eligible active assets.
 - Provider apply commits the exact target update, stable idempotency receipt,

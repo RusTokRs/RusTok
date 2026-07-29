@@ -12050,6 +12050,7 @@ dependencies = [
  "rustok-storage",
  "rustok-tenant",
  "rustok-tenant-admin",
+ "rustok-translation-admin",
  "rustok-ui-core",
  "rustok-ui-transport",
  "rustok-web",
@@ -12205,6 +12206,21 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "rustok-ai-translation"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-ai",
+ "rustok-api",
+ "rustok-translation",
+ "rustok-translation-targets",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -15312,18 +15328,50 @@ dependencies = [
 name = "rustok-translation"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
  "chrono",
  "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-tenant",
  "rustok-translation-targets",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "unicode-normalization",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-translation-admin"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "chrono",
+ "leptos 0.8.20",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-outbox",
+ "rustok-tenant",
+ "rustok-translation",
+ "rustok-translation-targets",
+ "rustok-ui-core",
+ "rustok-ui-i18n-leptos",
+ "rustok-ui-transport",
+ "sea-orm",
+ "serde",
+ "serde_json",
  "tokio",
  "uuid",
 ]

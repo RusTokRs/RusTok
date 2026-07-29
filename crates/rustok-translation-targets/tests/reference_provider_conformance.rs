@@ -10,11 +10,11 @@ use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
     TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldPatch,
-    TranslationFieldSnapshot, TranslationPatchIssue, TranslationPatchRequest,
-    TranslationPatchValidation, TranslationResourceIdentity, TranslationResourceLifecycle,
-    TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
-    TranslationStrategy, TranslationTargetCapability, TranslationTargetProvider,
-    TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationFieldSnapshot, TranslationPatchIssue, TranslationPatchIssueSeverity,
+    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
+    TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
+    TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
+    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
     validate_translation_apply_context, validate_translation_read_context,
 };
 
@@ -61,12 +61,14 @@ impl ReferenceProvider {
                             source_value: "Hello".to_string(),
                             exact_target_value: None,
                             source_hash: "sha256:title-v1".to_string(),
+                            protected_tokens: Vec::new(),
                         },
                         TranslationFieldSnapshot {
                             descriptor: field("summary", false),
                             source_value: "Reference summary".to_string(),
                             exact_target_value: None,
                             source_hash: "sha256:summary-v1".to_string(),
+                            protected_tokens: Vec::new(),
                         },
                     ],
                 },
@@ -378,6 +380,7 @@ fn field(key: &str, required: bool) -> TranslationFieldDescriptor {
 fn issue(code: &str, field: Option<FieldKey>) -> TranslationPatchIssue {
     TranslationPatchIssue {
         field,
+        severity: TranslationPatchIssueSeverity::Error,
         code: code.to_string(),
         message: code.replace('_', " "),
     }

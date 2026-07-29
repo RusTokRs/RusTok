@@ -81,6 +81,7 @@
     "@rustok/product-admin": "file:./packages/rustok-product",
     "@rustok/rbac-admin": "file:./packages/rbac",
     "@rustok/search-admin": "file:./packages/search",
+    "@rustok/translation-admin": "file:./packages/translation",
     "@rustok/workflow-admin": "file:./packages/workflow",
     "@sentry/nextjs": "^10.65.0",
     "@tabler/icons-react": "^3.44.0",

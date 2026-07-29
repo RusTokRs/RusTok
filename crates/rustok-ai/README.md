@@ -33,6 +33,10 @@ Current implementation includes:
   chunking, provider-owned ingestion publication, bounded embedding batches through the
   existing Rig entrypoint, lexical/structural retrieval, citations, and data-only context
   injection
+- the owner-neutral `AiStructuredTaskPort` contract for bounded billable
+  structured execution, health, durable execution/status identity, usage/cost
+  evidence, polling, and cancellation; its canonical durable implementation
+  remains an activation prerequisite for machine translation
 - owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
   host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
 - host-neutral `AiHostRuntime` for GraphQL mutations, direct execution, and in-process MCP
@@ -106,6 +110,8 @@ implementation plan.
 - `InferenceEngine`, `RigAgentDriver`, `inference_for_slug(...)`
 - `embed(...)`, `rerank(...)`
 - `AiRouter`
+- `AiStructuredTaskPort`, `AiStructuredTaskRequest`,
+  `AiStructuredTaskExecution`
 - `McpClientAdapter`
 - `ToolExecutionPolicy`
 - `ProviderProfile`, `TaskProfile`, `ExecutionMode`, `ExecutionOverride`

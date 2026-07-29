@@ -1,0 +1,147 @@
+use uuid::Uuid;
+
+use crate::TranslationError;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TranslationPublicErrorKind {
+    Forbidden,
+    NotFound,
+    BadInput,
+    Internal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TranslationPublicError {
+    pub kind: TranslationPublicErrorKind,
+    pub message: String,
+    pub code: &'static str,
+    pub retryable: bool,
+    pub correlation_id: Uuid,
+}
+
+impl std::fmt::Display for TranslationPublicError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} (code: {}; reference: {})",
+            self.message, self.code, self.correlation_id
+        )
+    }
+}
+
+pub fn map_translation_public_error(
+    error: &TranslationError,
+    operation: &'static str,
+    boundary: &'static str,
+) -> TranslationPublicError {
+    let (kind, message, code, retryable) = match error {
+        TranslationError::Forbidden => (
+            TranslationPublicErrorKind::Forbidden,
+            "Translation permission denied".to_string(),
+            "TRANSLATION_PERMISSION_DENIED",
+            false,
+        ),
+        TranslationError::JobNotFound
+        | TranslationError::ItemNotFound
+        | TranslationError::ProposalNotFound
+        | TranslationError::JobProgressNotFound
+        | TranslationError::GlossaryNotFound
+        | TranslationError::MemoryEntryNotFound => (
+            TranslationPublicErrorKind::NotFound,
+            error.to_string(),
+            "TRANSLATION_RESOURCE_NOT_FOUND",
+            false,
+        ),
+        TranslationError::InvalidRequest(_)
+        | TranslationError::IdempotencyConflict
+        | TranslationError::WorkflowRevisionConflict
+        | TranslationError::JobNotWritable(_)
+        | TranslationError::ItemNotWritable(_)
+        | TranslationError::ProposalNotCurrent
+        | TranslationError::ProposalValidationFailed
+        | TranslationError::ReviewerSeparationRequired
+        | TranslationError::IdempotencyActorMismatch
+        | TranslationError::ApplyRecoveryAttemptMismatch
+        | TranslationError::InvalidRecoveryReason
+        | TranslationError::AssignmentUnchanged
+        | TranslationError::ItemAssignedToAnotherActor
+        | TranslationError::JobCancellationInProgress
+        | TranslationError::JobNotCancellable(_)
+        | TranslationError::InvalidWorkflowActor
+        | TranslationError::InvalidCancellationReason
+        | TranslationError::ItemNotRetryable(_)
+        | TranslationError::RetryProposalNotApproved
+        | TranslationError::InvalidRetryReason
+        | TranslationError::TranslationPolicyConflict { .. }
+        | TranslationError::TranslationPolicyStale(_)
+        | TranslationError::RequiredTargetLocaleDisabled(_)
+        | TranslationError::DuplicateRequiredTargetLocale
+        | TranslationError::DisabledJobLocale { .. }
+        | TranslationError::GlossaryNameConflict
+        | TranslationError::GlossaryRevisionConflict { .. }
+        | TranslationError::GlossaryRevisionUnavailable { .. }
+        | TranslationError::GlossaryInactive
+        | TranslationError::GlossaryActiveStateUnchanged
+        | TranslationError::GlossaryLocaleMismatch
+        | TranslationError::GlossaryTermConflict(_)
+        | TranslationError::MemoryRevisionConflict { .. }
+        | TranslationError::MemoryLifecycleConflict(_)
+        | TranslationError::MemoryRetentionConflict(_) => (
+            TranslationPublicErrorKind::BadInput,
+            error.to_string(),
+            "TRANSLATION_REQUEST_INVALID",
+            false,
+        ),
+        TranslationError::Provider {
+            retryable: true, ..
+        }
+        | TranslationError::Database(_) => (
+            TranslationPublicErrorKind::Internal,
+            "Translation service is temporarily unavailable".to_string(),
+            "TRANSLATION_TEMPORARILY_UNAVAILABLE",
+            true,
+        ),
+        _ => (
+            TranslationPublicErrorKind::Internal,
+            "Translation operation could not be completed".to_string(),
+            "TRANSLATION_OPERATION_FAILED",
+            false,
+        ),
+    };
+    let correlation_id = Uuid::new_v4();
+    tracing::error!(
+        error = ?error,
+        operation,
+        boundary,
+        public_code = code,
+        retryable,
+        %correlation_id,
+        "Translation service operation failed"
+    );
+    TranslationPublicError {
+        kind,
+        message,
+        code,
+        retryable,
+        correlation_id,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn database_details_are_redacted() {
+        let error = TranslationError::Database(sea_orm::DbErr::Custom(
+            "password=private host=internal".to_string(),
+        ));
+        let public = map_translation_public_error(&error, "test", "translation_test");
+        let rendered = public.to_string();
+
+        assert_eq!(public.code, "TRANSLATION_TEMPORARILY_UNAVAILABLE");
+        assert!(public.retryable);
+        assert!(!rendered.contains("password=private"));
+        assert!(!rendered.contains("host=internal"));
+    }
+}

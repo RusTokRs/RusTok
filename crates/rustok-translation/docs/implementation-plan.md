@@ -71,19 +71,101 @@ selection.
   exact-locale aggregate coverage. Translation validates provider facts and
   reports tenant-scoped projection freshness as `current`, `behind`, or
   `unknown` by opaque cursor equality.
-- Policies, QA, memory, glossaries, interchange, transports, UI, and AI
-  integration are not implemented yet.
+- `TranslationPolicyService` owns a revisioned, tenant-scoped required-target
+  locale subset. It validates through `TenantLocalePolicyPort`, rejects
+  disabled/duplicate locales, stores the Tenant policy revision, and uses
+  expected revision CAS plus actor-bound durable idempotency receipts. Stale
+  policy remains readable for operator rebase, but required-target progress
+  fails closed until replacement.
+- Job creation rejects disabled source or target locales. Required-target
+  provider progress uses the policy as its cross-locale denominator, excludes
+  the source locale, uses checked totals, and reports worst-target freshness.
+- `TranslationGlossaryService` now owns bounded tenant-scoped glossary
+  list/read/create/update/term-replacement/lifecycle operations under the
+  separate Translation Glossaries permission resource. It enforces normalized
+  case-insensitive names, hierarchical owner/resource/field scope, locale
+  policy, compare-and-set revisions, actor-bound durable idempotency, one
+  preferred variant per concept, deterministic source/target conflict rules,
+  and exact do-not-translate invariants.
+- Glossary term rows are append-only across revision windows. Historical
+  snapshots remain readable, while job creation accepts only an active current
+  glossary revision owned by the same tenant and exact locale pair and stores
+  that immutable binding on the job. Integration tests cover tenant isolation,
+  replay/conflict behavior, revision snapshots, lifecycle, invalid terms, and
+  job binding rejection.
+- Save, submission, and approval QA now read the immutable glossary revision
+  captured by the job. Applicable owner/resource/field scopes enforce
+  preferred, allowed, forbidden, and do-not-translate policies with exact,
+  whole-word, or substring matching and deterministic severity.
+- The Translation Memory backend and operator lifecycle slice is implemented.
+  Successful owner
+  apply atomically ingests only user-reviewed public or tenant-private fields,
+  with proposal, reviewer, owner-resource, source-hash, and apply-receipt
+  provenance and replay-safe uniqueness. Tenant-scoped lookup supports exact
+  and context-aware fuzzy ranking with bounded candidates, Unicode
+  normalization, stable ordering, and explicit score evidence. Per-entry
+  owner-lifecycle, retain-until, and legal-hold policies plus revision-guarded
+  tombstone and purge use durable actor-bound idempotency receipts. Tombstoned
+  entries leave lookup immediately; purge removes content while preserving
+  content-free receipt evidence.
+- Deterministic QA is implemented for resource lifecycle, required fields,
+  empty required values, character limits, excluded fields, explicit protected
+  tokens, whitespace shape, and unchanged-value warnings. It runs on save,
+  review submission, and approval, combines typed owner validation evidence,
+  and persists blocking failures.
+- The module manifest now composes Translation-owned GraphQL query and mutation
+  roots plus a capability-owned runtime-data factory. GraphQL publishes target
+  discovery, policy, job/provider progress, inventory synchronization/rebuild,
+  and every implemented workflow command through authenticated tenant-scoped
+  `PortContext` values. The host remains provider-neutral.
+- `rustok-translation-admin` now provides the shared transport and Leptos UI
+  package for the same control plane: one typed operation/response contract, an
+  SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
+  CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
+  32 operations, including the six glossary and six memory operations; GraphQL
+  documents are validated against the module-owned schema, and every
+  idempotency-bound command carries its caller key into `PortContext`.
+- Translation exposes one redacted public-error classifier shared by GraphQL
+  and native adapters, so database/internal details never become client
+  messages and stable Translation error codes stay aligned across transports.
+- The manifest now publishes and mounts the Leptos workbench, and the matching
+  `@rustok/translation-admin` package owns the Next workbench over the same
+  GraphQL contract. Both workbenches expose six tabs and keep glossary and
+  memory selection in `glossary_id` and `memory_entry_id`. Live browser,
+  accessibility, module-disablement, and authenticated native/GraphQL runtime
+  evidence remain open, as do owner-deletion propagation and automated
+  retention enforcement, glossary prompt-context projection, bounded
+  interchange, and AI integration.
+- Translation now owns a bounded `MachineTranslationPort` SPI with explicit
+  source/target locales, stable unit/source identities, field
+  profile/strategy/classification, protected tokens, glossary and Translation
+  Memory context, provider health, execution/attempt/usage/cost evidence, and a
+  mandatory review-required result. `rustok-translation` imports no AI crate.
+- The stateless `rustok-ai-translation` support crate now maps that SPI to the
+  AI-owned `AiStructuredTaskPort`, owns the `machine_translation` policy and
+  typed schemas, and rejects stale policy, missing/extra units, placeholder
+  drift, length violations, and missing usage/attempt evidence. Live
+  registration remains blocked on the AI durable structured-execution gate.
 
 ## FFA/FBA status
 
-- FFA status: `not_started`
+- FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `core_no_ui`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - module-owned core and neutral provider dependency are separated;
-  - no transport or UI has been published;
-  - admin UI is planned for Leptos and Next with native/GraphQL parity.
-- Last verified at (UTC): 2026-07-28
+  - module-owned GraphQL roots and manifest runtime composition are compiled;
+  - the native/GraphQL admin transport compiles and has schema and idempotency
+    parity tests;
+  - the manifest publishes the module-owned Leptos `core/transport/ui`
+    workbench and both host composition roots select it without owning
+    Translation business UI;
+  - the matching Next package uses the host GraphQL executor, host locale, and
+    the same URL-owned `tab`, `glossary_id`, and `memory_entry_id` selection
+    contracts;
+  - live browser, accessibility, module-disablement, and authenticated
+    native/GraphQL runtime parity evidence remains required.
+- Last verified at (UTC): 2026-07-29
 - Owner: Translation module maintainers
 
 ## Milestones
@@ -91,24 +173,35 @@ selection.
 1. Complete Media multi-replica evidence for the implemented inventory replay,
    tenant isolation, stale-checkpoint conflict, provider outage, and
    full-rescan recovery contracts.
-2. Complete required-target-locale policy and QA orchestration.
-3. Publish operator recovery, assignment, cancellation, retry, and progress through
-   native/GraphQL transport parity.
-4. Add translation memory and versioned glossaries with separate permissions.
-5. Add bounded owner-aware import/export.
-6. Publish module-owned GraphQL and native server-function adapters.
-7. Add Leptos and Next admin surfaces in parity.
-8. Integrate `rustok-ai-translation` only after manual apply and structured AI
-   execution foundations pass their gates.
+2. Mount and runtime-verify the implemented native server-function parity for
+   recovery, assignment, cancellation, retry, policy, QA, progress, inventory,
+   and workflow operations.
+3. Complete owner-deletion propagation and automated retention enforcement for
+   Translation Memory; then project bounded memory suggestions and the
+   enforced glossary snapshot into the AI request context.
+4. Add bounded owner-aware import/export.
+5. Complete live native/GraphQL parity evidence, including tenant isolation and
+   host disablement.
+6. Complete Leptos/Next browser, accessibility, URL-state, and module
+   disablement evidence.
+7. Implement the durable `AiStructuredTaskPort` runtime ledger, replay,
+   budget, fallback, cancellation, and recovery gates, then register the
+   already contract-tested `rustok-ai-translation` adapter.
 
 ## Verification
 
 - `cargo check -p rustok-translation`
 - `cargo test -p rustok-translation`
+- `cargo test -p rustok-translation --features graphql`
+- `cargo test -p rustok-translation-admin`
+- `cargo check -p rustok-translation-admin --features ssr`
 - `cargo xtask module validate translation`
 - `cargo xtask validate-manifest`
 - `cargo check -p rustok-server --lib --no-default-features --features mod-translation`
 - `node scripts/verify/verify-translation-surface-registry.mjs`
+- `npm run verify:translation:admin-boundary`
+- `cargo test -p rustok-ai-translation`
+- `npm run verify:ai-translation:boundary`
 
 ## Update Rules
 

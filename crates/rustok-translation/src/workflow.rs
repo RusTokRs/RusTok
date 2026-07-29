@@ -8,11 +8,12 @@ use rustok_api::{
 use rustok_core::{PermissionScope, SecurityContext, generate_id};
 use rustok_events::TranslationWorkflowEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_tenant::TenantLocalePolicyPort;
 use rustok_translation_targets::{
     FieldKey, OpaqueRevision, ReadTranslationResourceRequest, TranslationApplicationReceipt,
-    TranslationFieldPatch, TranslationPatchIssue, TranslationPatchRequest,
-    TranslationResourceIdentity, TranslationResourceSnapshot, TranslationTargetCapability,
-    TranslationTargetProvider, TranslationTargetRegistry,
+    TranslationFieldPatch, TranslationPatchIssue, TranslationPatchIssueSeverity,
+    TranslationPatchRequest, TranslationResourceIdentity, TranslationResourceSnapshot,
+    TranslationTargetCapability, TranslationTargetProvider, TranslationTargetRegistry,
 };
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
@@ -27,7 +28,11 @@ use crate::{
         apply_operation, apply_receipt, apply_recovery, assignment, cancellation, job, job_item,
         proposal, retry,
     },
+    glossary::{GlossaryBinding, GlossaryRecord, read_bound_glossary, validate_glossary_binding},
+    memory::{AppliedMemorySegment, ingest_applied_segments},
+    policy::{read_validated_tenant_locale_policy, validate_job_locales},
     progress::refresh_job_progress,
+    qa::evaluate_patch_qa,
 };
 
 const MIN_APPLY_LEASE_SECONDS: i64 = 30;
@@ -38,6 +43,7 @@ const APPLY_LEASE_SAFETY_SECONDS: i64 = 5;
 pub struct CreateJobInput {
     pub source_locale: TenantLocale,
     pub target_locale: TenantLocale,
+    pub glossary: Option<GlossaryBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +142,7 @@ pub struct JobRecord {
     pub id: Uuid,
     pub source_locale: TenantLocale,
     pub target_locale: TenantLocale,
+    pub glossary: Option<GlossaryBinding>,
     pub status: String,
     pub revision: i64,
 }
@@ -159,6 +166,7 @@ pub struct ProposalRecord {
     pub origin: ProposalOrigin,
     pub values: Vec<TranslationFieldPatch>,
     pub qa_issues: Vec<TranslationPatchIssue>,
+    pub qa_accepted: bool,
     pub status: String,
     pub approval_receipt_id: Option<String>,
 }
@@ -201,6 +209,7 @@ pub struct RetryRecord {
 pub struct TranslationWorkflowService {
     database: DatabaseConnection,
     providers: Arc<TranslationTargetRegistry>,
+    tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
     event_bus: TransactionalEventBus,
 }
 
@@ -208,11 +217,13 @@ impl TranslationWorkflowService {
     pub fn new(
         database: DatabaseConnection,
         providers: Arc<TranslationTargetRegistry>,
+        tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
         event_bus: TransactionalEventBus,
     ) -> Self {
         Self {
             database,
             providers,
+            tenant_locale_policies,
             event_bus,
         }
     }
@@ -227,6 +238,27 @@ impl TranslationWorkflowService {
             return Err(TranslationError::InvalidRequest(
                 "source and target locale must differ".to_string(),
             ));
+        }
+        let tenant_locale_policy = read_validated_tenant_locale_policy(
+            self.tenant_locale_policies.as_ref(),
+            context.clone(),
+            tenant_id,
+        )
+        .await?;
+        validate_job_locales(
+            &tenant_locale_policy,
+            &input.source_locale,
+            &input.target_locale,
+        )?;
+        if let Some(binding) = input.glossary.as_ref() {
+            validate_glossary_binding(
+                &self.database,
+                &context,
+                binding,
+                &input.source_locale,
+                &input.target_locale,
+            )
+            .await?;
         }
         let idempotency_key = context
             .idempotency_key
@@ -248,6 +280,8 @@ impl TranslationWorkflowService {
             tenant_id: Set(tenant_id),
             source_locale: Set(input.source_locale.as_str().to_string()),
             target_locale: Set(input.target_locale.as_str().to_string()),
+            glossary_id: Set(input.glossary.as_ref().map(|binding| binding.glossary_id)),
+            glossary_revision: Set(input.glossary.as_ref().map(|binding| binding.revision)),
             status: Set("open".to_string()),
             created_by_actor_kind: Set(actor_kind(&context).to_string()),
             created_by_actor_id: Set(context.actor.id.clone()),
@@ -467,9 +501,11 @@ impl TranslationWorkflowService {
         let validation_receipt = format!("validation:{proposal_id}");
         let patch = build_patch(&snapshot, &input.values, proposal_id, &validation_receipt)?;
         let provider = proposal_provider(&self.providers, &patch.identity)?;
-        let validation = provider
+        let owner_validation = provider
             .validate_patch(context.clone(), patch.clone())
             .await?;
+        let glossary = job_glossary_snapshot(&self.database, tenant_id, item.job_id).await?;
+        let validation = evaluate_patch_qa(&snapshot, &patch, owner_validation, glossary.as_ref())?;
         let values_digest = hash_manifest(&patch.fields)?;
         let values = serde_json::to_value(&patch.fields)?;
         let qa_issues = serde_json::to_value(&validation.issues)?;
@@ -572,7 +608,11 @@ impl TranslationWorkflowService {
             &format!("validation:{}", proposal.id),
         )?;
         let provider = proposal_provider(&self.providers, &patch.identity)?;
-        let validation = provider.validate_patch(context.clone(), patch).await?;
+        let owner_validation = provider
+            .validate_patch(context.clone(), patch.clone())
+            .await?;
+        let glossary = job_glossary_snapshot(&self.database, tenant_id, item.job_id).await?;
+        let validation = evaluate_patch_qa(&snapshot, &patch, owner_validation, glossary.as_ref())?;
         if !validation.accepted {
             proposal::Entity::update_many()
                 .col_expr(
@@ -680,8 +720,25 @@ impl TranslationWorkflowService {
         let values: Vec<TranslationFieldPatch> = serde_json::from_value(proposal.values.clone())?;
         let patch = patch_from_persisted(&snapshot, values, proposal.id, &approval_receipt_id)?;
         let provider = proposal_provider(&self.providers, &patch.identity)?;
-        let validation = provider.validate_patch(context.clone(), patch).await?;
+        let owner_validation = provider
+            .validate_patch(context.clone(), patch.clone())
+            .await?;
+        let glossary = job_glossary_snapshot(&self.database, tenant_id, item.job_id).await?;
+        let validation = evaluate_patch_qa(&snapshot, &patch, owner_validation, glossary.as_ref())?;
         if !validation.accepted {
+            proposal::Entity::update_many()
+                .col_expr(
+                    proposal::Column::QaIssues,
+                    Expr::value(serde_json::to_value(validation.issues)?),
+                )
+                .col_expr(
+                    proposal::Column::UpdatedAt,
+                    Expr::value(Utc::now().fixed_offset()),
+                )
+                .filter(proposal::Column::Id.eq(proposal.id))
+                .filter(proposal::Column::TenantId.eq(tenant_id))
+                .exec(&self.database)
+                .await?;
             return Err(TranslationError::ProposalValidationFailed);
         }
 
@@ -1701,6 +1758,7 @@ impl TranslationWorkflowService {
             return apply_record(&operation, existing);
         }
 
+        let patch: TranslationPatchRequest = serde_json::from_value(operation.patch.clone())?;
         let now = Utc::now().fixed_offset();
         apply_receipt::Entity::insert(apply_receipt::ActiveModel {
             id: Set(generate_id()),
@@ -1709,10 +1767,7 @@ impl TranslationWorkflowService {
             proposal_id: Set(operation.proposal_id),
             idempotency_key: Set(operation.idempotency_key.clone()),
             request_hash: Set(operation.request_hash.clone()),
-            approval_receipt_id: Set(serde_json::from_value::<TranslationPatchRequest>(
-                operation.patch.clone(),
-            )?
-            .approval_receipt_id),
+            approval_receipt_id: Set(patch.approval_receipt_id.clone()),
             provider_receipt_id: Set(receipt.provider_receipt_id.clone()),
             resource_revision: Set(receipt.resource_revision.as_str().to_string()),
             target_revision: Set(receipt.target_revision.as_str().to_string()),
@@ -1810,6 +1865,58 @@ impl TranslationWorkflowService {
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let item = find_item(&transaction, operation.tenant_id, operation.item_id).await?;
+        let proposal = find_proposal(
+            &transaction,
+            operation.tenant_id,
+            operation.item_id,
+            operation.proposal_id,
+        )
+        .await?;
+        let snapshot: TranslationResourceSnapshot =
+            serde_json::from_value(item.source_snapshot.clone())?;
+        let reviewer_actor_kind = proposal
+            .approved_by_actor_kind
+            .clone()
+            .ok_or(TranslationError::WorkflowRevisionConflict)?;
+        let reviewer_actor_id = proposal
+            .approved_by_actor_id
+            .clone()
+            .ok_or(TranslationError::WorkflowRevisionConflict)?;
+        let applied_field_keys = receipt
+            .applied_field_keys
+            .iter()
+            .map(FieldKey::as_str)
+            .collect::<BTreeSet<_>>();
+        let patch_fields = patch
+            .fields
+            .iter()
+            .map(|field| (field.key.as_str(), field))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let memory_segments = snapshot
+            .fields
+            .iter()
+            .filter(|field| applied_field_keys.contains(field.descriptor.key.as_str()))
+            .filter_map(|field| {
+                patch_fields
+                    .get(field.descriptor.key.as_str())
+                    .map(|target| AppliedMemorySegment {
+                        source_locale: patch.source_locale.clone(),
+                        target_locale: patch.target_locale.clone(),
+                        identity: patch.identity.clone(),
+                        field_key: field.descriptor.key.clone(),
+                        classification: field.descriptor.classification,
+                        source_text: field.source_value.clone(),
+                        target_text: target.value.clone(),
+                        source_hash: field.source_hash.clone(),
+                        origin: proposal.origin.clone(),
+                        reviewer_actor_kind: reviewer_actor_kind.clone(),
+                        reviewer_actor_id: reviewer_actor_id.clone(),
+                        proposal_id: proposal.id,
+                        apply_receipt_id: persisted.id,
+                    })
+            })
+            .collect();
+        ingest_applied_segments(&transaction, operation.tenant_id, now, memory_segments).await?;
         self.event_bus
             .publish_contract_in_tx(
                 &transaction,
@@ -2512,6 +2619,38 @@ where
         .ok_or(TranslationError::JobNotFound)
 }
 
+async fn job_glossary_snapshot<C>(
+    database: &C,
+    tenant_id: Uuid,
+    job_id: Uuid,
+) -> TranslationResult<Option<GlossaryRecord>>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let job = find_job(database, tenant_id, job_id).await?;
+    let binding = match (job.glossary_id, job.glossary_revision) {
+        (None, None) => return Ok(None),
+        (Some(glossary_id), Some(revision)) => GlossaryBinding {
+            glossary_id,
+            revision,
+        },
+        _ => {
+            return Err(TranslationError::GlossaryInvariant(
+                "translation job contains a partial glossary binding".to_string(),
+            ));
+        }
+    };
+    let glossary = read_bound_glossary(database, tenant_id, &binding).await?;
+    if glossary.source_locale.as_str() != job.source_locale
+        || glossary.target_locale.as_str() != job.target_locale
+    {
+        return Err(TranslationError::GlossaryInvariant(
+            "bound glossary locales do not match the translation job locales".to_string(),
+        ));
+    }
+    Ok(Some(glossary))
+}
+
 async fn find_proposal<C>(
     database: &C,
     tenant_id: Uuid,
@@ -2745,6 +2884,18 @@ fn replay_job(model: job::Model, request_hash: &str) -> TranslationResult<JobRec
             .map_err(|error| TranslationError::InvalidRequest(error.to_string()))?,
         target_locale: TenantLocale::new(model.target_locale)
             .map_err(|error| TranslationError::InvalidRequest(error.to_string()))?,
+        glossary: match (model.glossary_id, model.glossary_revision) {
+            (Some(glossary_id), Some(revision)) => Some(GlossaryBinding {
+                glossary_id,
+                revision,
+            }),
+            (None, None) => None,
+            _ => {
+                return Err(TranslationError::GlossaryInvariant(
+                    "translation job contains a partial glossary binding".to_string(),
+                ));
+            }
+        },
         status: model.status,
         revision: model.revision,
     })
@@ -2827,13 +2978,18 @@ fn proposal_record(model: proposal::Model) -> TranslationResult<ProposalRecord> 
     } else {
         "draft"
     };
+    let qa_issues: Vec<TranslationPatchIssue> = serde_json::from_value(model.qa_issues)?;
+    let qa_accepted = !qa_issues
+        .iter()
+        .any(|issue| issue.severity == TranslationPatchIssueSeverity::Error);
     Ok(ProposalRecord {
         id: model.id,
         item_id: model.item_id,
         proposal_revision: model.proposal_revision,
         origin,
         values: serde_json::from_value(model.values)?,
-        qa_issues: serde_json::from_value(model.qa_issues)?,
+        qa_issues,
+        qa_accepted,
         status: status.to_string(),
         approval_receipt_id: model.approval_receipt_id,
     })

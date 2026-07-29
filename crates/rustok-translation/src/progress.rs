@@ -6,6 +6,7 @@ use std::{
 use chrono::{DateTime, FixedOffset, Utc};
 use rustok_api::{Action, PortCallPolicy, PortContext, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext, generate_id};
+use rustok_tenant::TenantLocalePolicyPort;
 use rustok_translation_targets::{
     FieldKey, OpaqueCursor, OwnerSlug, ResourceKind, TranslationFieldPatch,
     TranslationResourceSnapshot, TranslationTargetCapability, TranslationTargetProgressFacts,
@@ -20,7 +21,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    TranslationError, TranslationResult,
+    TranslationError, TranslationPolicyFreshness, TranslationPolicyService, TranslationResult,
     entities::{apply_receipt, job, job_item, job_progress, proposal, provider_checkpoint},
 };
 
@@ -75,16 +76,40 @@ pub struct ProviderProgressRecord {
     pub freshness: ProviderProjectionFreshness,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredProviderProgressRecord {
+    pub owner_slug: OwnerSlug,
+    pub resource_kind: ResourceKind,
+    pub source_locale: TenantLocale,
+    pub required_target_locales: Vec<TenantLocale>,
+    pub translation_policy_revision: i64,
+    pub tenant_locale_policy_revision: i64,
+    pub required_units: u64,
+    pub exact_required_units: u64,
+    pub optional_units: u64,
+    pub exact_optional_units: u64,
+    pub resource_locale_pairs: u64,
+    pub complete_resource_locale_pairs: u64,
+    pub freshness: ProviderProjectionFreshness,
+    pub targets: Vec<ProviderProgressRecord>,
+}
+
 pub struct TranslationProgressService {
     database: DatabaseConnection,
     providers: Arc<TranslationTargetRegistry>,
+    tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
 }
 
 impl TranslationProgressService {
-    pub fn new(database: DatabaseConnection, providers: Arc<TranslationTargetRegistry>) -> Self {
+    pub fn new(
+        database: DatabaseConnection,
+        providers: Arc<TranslationTargetRegistry>,
+        tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
+    ) -> Self {
         Self {
             database,
             providers,
+            tenant_locale_policies,
         }
     }
 
@@ -182,6 +207,103 @@ impl TranslationProgressService {
             checkpoint_updated_at: checkpoint.map(|checkpoint| checkpoint.updated_at),
             freshness,
         })
+    }
+
+    pub async fn read_required_provider_progress(
+        &self,
+        context: PortContext,
+        owner_slug: OwnerSlug,
+        resource_kind: ResourceKind,
+        source_locale: TenantLocale,
+    ) -> TranslationResult<RequiredProviderProgressRecord> {
+        let policy = TranslationPolicyService::new(
+            self.database.clone(),
+            Arc::clone(&self.tenant_locale_policies),
+        )
+        .read_policy(context.clone())
+        .await?;
+        if policy.freshness != TranslationPolicyFreshness::Current {
+            return Err(TranslationError::TranslationPolicyStale(
+                "required-target progress requires a policy validated against the current tenant locale revision"
+                    .to_string(),
+            ));
+        }
+        let required_target_locales = policy
+            .required_target_locales
+            .into_iter()
+            .filter(|locale| locale != &source_locale)
+            .collect::<Vec<_>>();
+        let mut targets = Vec::with_capacity(required_target_locales.len());
+        let mut required_units = 0_u64;
+        let mut exact_required_units = 0_u64;
+        let mut optional_units = 0_u64;
+        let mut exact_optional_units = 0_u64;
+        let mut resource_locale_pairs = 0_u64;
+        let mut complete_resource_locale_pairs = 0_u64;
+
+        for target_locale in &required_target_locales {
+            let progress = self
+                .read_provider_progress(
+                    context.clone(),
+                    owner_slug.clone(),
+                    resource_kind.clone(),
+                    source_locale.clone(),
+                    target_locale.clone(),
+                )
+                .await?;
+            required_units = checked_progress_add(required_units, progress.facts.required_units)?;
+            exact_required_units =
+                checked_progress_add(exact_required_units, progress.facts.exact_required_units)?;
+            optional_units = checked_progress_add(optional_units, progress.facts.optional_units)?;
+            exact_optional_units =
+                checked_progress_add(exact_optional_units, progress.facts.exact_optional_units)?;
+            resource_locale_pairs =
+                checked_progress_add(resource_locale_pairs, progress.facts.resources)?;
+            complete_resource_locale_pairs = checked_progress_add(
+                complete_resource_locale_pairs,
+                progress.facts.complete_resources,
+            )?;
+            targets.push(progress);
+        }
+        let freshness = aggregate_freshness(&targets);
+
+        Ok(RequiredProviderProgressRecord {
+            owner_slug,
+            resource_kind,
+            source_locale,
+            required_target_locales,
+            translation_policy_revision: policy.revision,
+            tenant_locale_policy_revision: policy.tenant_locale_policy_revision,
+            required_units,
+            exact_required_units,
+            optional_units,
+            exact_optional_units,
+            resource_locale_pairs,
+            complete_resource_locale_pairs,
+            freshness,
+            targets,
+        })
+    }
+}
+
+fn checked_progress_add(left: u64, right: u64) -> TranslationResult<u64> {
+    left.checked_add(right)
+        .ok_or(TranslationError::ProgressOverflow)
+}
+
+fn aggregate_freshness(targets: &[ProviderProgressRecord]) -> ProviderProjectionFreshness {
+    if targets
+        .iter()
+        .any(|target| target.freshness == ProviderProjectionFreshness::Behind)
+    {
+        ProviderProjectionFreshness::Behind
+    } else if targets
+        .iter()
+        .any(|target| target.freshness == ProviderProjectionFreshness::Unknown)
+    {
+        ProviderProjectionFreshness::Unknown
+    } else {
+        ProviderProjectionFreshness::Current
     }
 }
 

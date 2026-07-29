@@ -52,6 +52,8 @@ pub enum TranslationError {
     ProposalNotCurrent,
     #[error("translation proposal failed owner validation")]
     ProposalValidationFailed,
+    #[error("translation owner returned invalid patch-validation evidence: {0}")]
+    InvalidProviderValidation(String),
     #[error("translation proposal creator cannot approve their own proposal")]
     ReviewerSeparationRequired,
     #[error("translation workflow idempotency key belongs to another actor")]
@@ -94,6 +96,48 @@ pub enum TranslationError {
     ProgressOverflow,
     #[error("translation job progress changed concurrently")]
     ProgressRevisionConflict,
+    #[error("translation policy revision conflict: expected {expected}, actual {actual}")]
+    TranslationPolicyConflict { expected: i64, actual: i64 },
+    #[error("translation policy invariant failed: {0}")]
+    TranslationPolicyInvariant(String),
+    #[error("translation policy is stale against tenant locale policy: {0}")]
+    TranslationPolicyStale(String),
+    #[error("translation required target locale `{0}` is not enabled for the tenant")]
+    RequiredTargetLocaleDisabled(String),
+    #[error("translation required target locale is duplicated")]
+    DuplicateRequiredTargetLocale,
+    #[error("translation job {role} locale `{locale}` is not enabled for the tenant")]
+    DisabledJobLocale { role: &'static str, locale: String },
+    #[error("translation glossary was not found")]
+    GlossaryNotFound,
+    #[error("translation glossary name is already in use")]
+    GlossaryNameConflict,
+    #[error("translation glossary revision conflict: expected {expected}, actual {actual}")]
+    GlossaryRevisionConflict { expected: i64, actual: i64 },
+    #[error(
+        "translation glossary revision {requested} is unavailable; current revision is {current}"
+    )]
+    GlossaryRevisionUnavailable { requested: i64, current: i64 },
+    #[error("translation glossary is inactive")]
+    GlossaryInactive,
+    #[error("translation glossary active state is unchanged")]
+    GlossaryActiveStateUnchanged,
+    #[error("translation glossary locale pair does not match the job")]
+    GlossaryLocaleMismatch,
+    #[error("translation glossary term conflict: {0}")]
+    GlossaryTermConflict(String),
+    #[error("translation glossary invariant failed: {0}")]
+    GlossaryInvariant(String),
+    #[error("translation memory entry was not found")]
+    MemoryEntryNotFound,
+    #[error("translation memory revision conflict: expected {expected}, actual {actual}")]
+    MemoryRevisionConflict { expected: i64, actual: i64 },
+    #[error("translation memory lifecycle does not allow this operation: {0}")]
+    MemoryLifecycleConflict(String),
+    #[error("translation memory retention policy is invalid: {0}")]
+    MemoryRetentionConflict(String),
+    #[error("translation memory invariant failed: {0}")]
+    MemoryInvariant(String),
     #[error("translation workflow event error: {0}")]
     Event(#[from] rustok_core::Error),
     #[error("translation workflow serialization error: {0}")]

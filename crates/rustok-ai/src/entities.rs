@@ -388,3 +388,179 @@ pub mod ai_tool_traces {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+#[cfg(feature = "server")]
+pub mod ai_structured_executions {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_structured_executions")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub owner: String,
+        pub task_slug: String,
+        pub idempotency_key: String,
+        pub request_digest: String,
+        pub prompt_policy_digest: String,
+        pub input_schema_digest: String,
+        pub input_digest: String,
+        pub output_schema_digest: String,
+        pub classification: String,
+        pub evidence_digest: String,
+        pub max_output_bytes: i64,
+        pub max_attempts: i32,
+        pub status: String,
+        pub actor_kind: String,
+        pub actor_id: String,
+        pub correlation_id: String,
+        pub causation_id: Option<String>,
+        pub traceparent: Option<String>,
+        pub error_code: Option<String>,
+        pub retryable: bool,
+        pub retry_after_ms: Option<i64>,
+        pub lease_token: Option<Uuid>,
+        pub lease_expires_at: Option<DateTimeWithTimeZone>,
+        pub cancel_requested_at: Option<DateTimeWithTimeZone>,
+        pub cancel_idempotency_key: Option<String>,
+        pub cancel_request_digest: Option<String>,
+        pub cancel_actor_kind: Option<String>,
+        pub cancel_actor_id: Option<String>,
+        pub created_at: DateTimeWithTimeZone,
+        pub started_at: Option<DateTimeWithTimeZone>,
+        pub completed_at: Option<DateTimeWithTimeZone>,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_structured_attempts {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_structured_attempts")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub execution_id: Uuid,
+        pub attempt: i32,
+        pub provider_profile_id: Uuid,
+        pub provider_slug: String,
+        pub model: String,
+        pub fallback: bool,
+        pub status: String,
+        pub price_snapshot_digest: String,
+        pub currency_code: String,
+        pub input_cost_per_million_minor: i64,
+        pub output_cost_per_million_minor: i64,
+        pub input_tokens: Option<i64>,
+        pub output_tokens: Option<i64>,
+        pub total_tokens: Option<i64>,
+        pub cost_minor_units: Option<i64>,
+        pub error_code: Option<String>,
+        pub retryable: bool,
+        pub retry_after_ms: Option<i64>,
+        pub created_at: DateTimeWithTimeZone,
+        pub started_at: DateTimeWithTimeZone,
+        pub completed_at: Option<DateTimeWithTimeZone>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_structured_budgets {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_structured_budgets")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub currency_code: String,
+        pub limit_minor_units: i64,
+        pub reserved_minor_units: i64,
+        pub committed_minor_units: i64,
+        pub max_concurrent: i32,
+        pub in_flight: i32,
+        pub revision: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_structured_provider_policies {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_structured_provider_policies")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub provider_profile_id: Uuid,
+        pub currency_code: String,
+        pub input_cost_per_million_minor: i64,
+        pub output_cost_per_million_minor: i64,
+        pub max_concurrent: i32,
+        pub in_flight: i32,
+        pub is_active: bool,
+        pub revision: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_structured_reservations {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_structured_reservations")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub execution_id: Uuid,
+        pub budget_id: Uuid,
+        pub currency_code: String,
+        pub reserved_minor_units: i64,
+        pub committed_minor_units: i64,
+        pub state: String,
+        pub revision: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}

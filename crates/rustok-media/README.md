@@ -15,7 +15,8 @@
 - Publish `MediaTranslationTargetProvider` for bounded exact-locale discovery,
   exact reads, validation, CAS apply, exact aggregate coverage, and
   tenant-scoped change-cursor repair through the shared translation target
-  registry.
+  registry. Media metadata fields are plain text and therefore publish an
+  explicit empty protected-token ledger.
 - Commit every translation write with an append-only owner cursor record and
   content-free `translation.target.changed` outbox event in one owner
   transaction; provider apply also commits its stable idempotency receipt in

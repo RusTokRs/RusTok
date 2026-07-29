@@ -118,6 +118,12 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
 - `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
 - `rustok-workflow` admin UI: [README](../../crates/rustok-workflow/admin/README.md)
+- `rustok-translation` admin UI:
+  [README](../../crates/rustok-translation/admin/README.md). The
+  manifest-mounted six-tab Leptos workbench and matching Next package share
+  the typed 32-operation native/GraphQL contract, versioned glossary and
+  Translation Memory workflows, and URL-owned `tab`, `glossary_id`, and
+  `memory_entry_id` selection.
 
 ### Optional/Storefront Surfaces
 

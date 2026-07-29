@@ -26,6 +26,7 @@ csr = [
   "dep:console_log",
   "rustok-mcp-admin/csr",
   "rustok-pages-admin/csr",
+  "rustok-translation-admin/csr",
   "rustok-workflow-admin/csr",
   "rustok-auth-admin/csr",
   "rustok-page-builder-admin/csr",
@@ -65,6 +66,7 @@ hydrate = [
   "rustok-rbac-admin/hydrate",
   "rustok-search-admin/hydrate",
   "rustok-tenant-admin/hydrate",
+  "rustok-translation-admin/hydrate",
   "rustok-workflow-admin/hydrate",
   "rustok-auth-admin/hydrate",
 ]
@@ -118,6 +120,7 @@ ssr = [
   "rustok-rbac-admin/ssr",
   "rustok-search-admin/ssr",
   "rustok-tenant-admin/ssr",
+  "rustok-translation-admin/ssr",
   "rustok-workflow-admin/ssr",
   "rustok-auth-admin/ssr",
 ]
@@ -202,6 +205,7 @@ rustok-rbac-admin = { path = "../../crates/rustok-rbac/admin", default-features 
 rustok-search-admin = { path = "../../crates/rustok-search/admin", default-features = false }
 rustok-seo-admin = { path = "../../crates/rustok-seo/admin", default-features = false }
 rustok-tenant-admin = { path = "../../crates/rustok-tenant/admin", default-features = false }
+rustok-translation-admin = { path = "../../crates/rustok-translation/admin", default-features = false }
 rustok-workflow-admin = { path = "../../crates/rustok-workflow/admin", default-features = false }
 rustok-auth-admin = { path = "../../crates/rustok-auth/admin", default-features = false }
 
@@ -289,6 +293,7 @@ normal = [
   "rustok-rbac-admin",
   "rustok-search-admin",
   "rustok-tenant-admin",
+  "rustok-translation-admin",
   "rustok-workflow-admin",
   "rustok-auth-admin",
 ]

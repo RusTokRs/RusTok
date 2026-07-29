@@ -8,6 +8,7 @@ import '@rustok/events-admin';
 import '@rustok/iggy-connector-admin';
 import '../../packages/rbac/src';
 import '../../packages/rustok-product/src';
+import '../../packages/translation/src';
 import '../../packages/workflow/src';
 
 export type { AdminModule } from './types';

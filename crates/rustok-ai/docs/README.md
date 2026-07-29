@@ -18,6 +18,8 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
 - provide a capability-owned canonical service layer for the persisted control plane.
 - own generic AI agent principals and owner-contributed workflow contracts without
   taking ownership of domain operations or role-specific policy.
+- own the generic `AiStructuredTaskPort` contract used by domain adapters for
+  bounded, billable structured inference without exposing provider engines.
 
 ## What is already implemented
 
@@ -152,6 +154,10 @@ or default CI.
 
 ## What is not yet implemented
 
+- the canonical durable implementation of `AiStructuredTaskPort`, including
+  idempotent replay/conflict detection, attempt and token/price/cost ledgers,
+  budget reservation, concurrency, execution-time fallback, cancellation, and
+  restart recovery;
 - time-windowed diagnostics/trends on top of the current snapshot/history surface;
 - persisted provider fallback/error analytics beyond the current in-process snapshot;
 - additional provider families beyond those already implemented (`Anthropic`, `Gemini`, richer native adapters);

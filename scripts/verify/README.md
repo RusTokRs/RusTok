@@ -279,6 +279,30 @@ npm run verify:ai:domain-verticals
 
 ---
 
+### `verify-ai-translation-boundary.mjs`
+
+**AI Translation bridge guardrail** — checks the acyclic Translation/AI
+ownership boundary without compiling Rust.
+
+What it checks:
+
+- `rustok-translation` owns `MachineTranslationPort` and does not depend on
+  `rustok-ai`;
+- `rustok-ai` owns `AiStructuredTaskPort` and does not depend on
+  `rustok-translation`;
+- only `rustok-ai-translation` bridges both crates;
+- the adapter remains stateless, proposal-only, and free of owner services,
+  provider engines, GraphQL, and persistence imports;
+- the obsolete `translation` free-locale task alias remains removed.
+
+Example:
+
+```bash
+npm run verify:ai-translation:boundary
+```
+
+---
+
 ### `verify-ai-admin-boundary.mjs` / `verify-tenant-admin-boundary.mjs`
 **FFA admin guardrails** — fast source-level checks for module-owned admin UI splits without full Rust compilation.
 

@@ -10,11 +10,19 @@ work while each domain owner remains authoritative for localized business data.
 The module owns inventory projections, provider checkpoints, translation jobs,
 proposals, review and approval state, assignments, quality evidence, translation
 memory, glossaries, interchange operations, and owner-application receipts.
+It also owns the provider-neutral `MachineTranslationPort` SPI and bounded
+request/result evidence. AI routing and inference remain outside this module.
 
 The implemented persistence foundation owns:
 
 - `translation_inventory_resources`;
 - `translation_provider_checkpoints`;
+- `translation_policies`;
+- `translation_policy_receipts`;
+- `translation_glossaries`;
+- `translation_glossary_terms`;
+- `translation_glossary_receipts`;
+- `translation_memory_entries`;
 - `translation_jobs`;
 - `translation_job_items`;
 - `translation_proposals`;
@@ -32,9 +40,34 @@ The implemented persistence foundation owns:
   inventory only while its checkpoint remains unchanged;
 - idempotent job creation and owner-provider-backed immutable item snapshots
   with request hashes and job revision CAS;
+- tenant-scoped glossary metadata and lifecycle CAS, durable actor-bound
+  idempotency receipts, bounded concept/variant validation, and append-only term
+  rows whose revision windows preserve every job-readable terminology snapshot;
+- immutable optional job bindings to an active, current glossary revision with
+  the same source/target locale pair;
+- approved-and-applied translation-memory ingestion in the owner-apply
+  transaction. The default policy admits only user-reviewed public or
+  tenant-private owner fields, rejects `und`, and preserves proposal/reviewer/
+  resource/apply-receipt provenance;
+- bounded tenant-scoped exact and contextual-fuzzy memory lookup with Unicode
+  normalization and explainable deterministic basis-point scoring;
+- revision-guarded memory retention, legal hold, tombstone, and purge with
+  actor-bound durable idempotency receipts. Tombstoned entries are excluded
+  from lookup, while purge preserves content-free operation evidence;
 - owner-validated proposal drafts, review submission, and approval transitions
   with operation-specific idempotency bindings, item revision CAS, persisted QA
   evidence, and translator/reviewer separation;
+- revisioned required-target-locale policy validated against the current
+  Tenant-owned enabled-locale projection. Writes use expected-revision CAS,
+  actor-bound durable idempotency receipts, and retain the exact Tenant locale
+  policy revision used for validation;
+- deterministic platform QA on save, submission, and approval, combined with
+  typed owner warnings/errors. Blocking rules cover lifecycle, required fields,
+  empty required values, maximum character counts, excluded fields,
+  protected-token multiplicity, owner-declared whitespace shape, forbidden
+  glossary terms, missing preferred terms, and changed do-not-translate terms.
+  Allowed non-preferred terms produce warnings. Every pass reads the immutable
+  historical glossary revision captured by the job;
 - durable owner-apply intents that preserve the exact approved patch before the
   external call, reconcile retryable unknown outcomes under the same actor and
   idempotency key, and transition to `applied` only with a validated stable
@@ -63,6 +96,9 @@ The implemented persistence foundation owns:
   and compares the owner cursor with the tenant/provider inventory checkpoint,
   exposing only truthful `current`, `behind`, or `unknown` freshness. Opaque
   cursors are never treated as numeric distances;
+- required-target progress that reads the Translation policy, omits the current
+  source locale, sums every required source/target provider fact with checked
+  arithmetic, and reports the worst target freshness;
 - typed content-free workflow events for job, assignment, proposal, apply, and
   recovery transitions, including job completion and explicit item retry,
   persisted through the Core outbox in the same transaction as their state
@@ -78,6 +114,14 @@ Owner modules register `TranslationTargetProvider` implementations through
 `ModuleRuntimeExtensions`. The module consumes the resulting
 `TranslationTargetRegistry`; missing providers and missing capabilities fail
 explicitly.
+
+Translation policy and job creation consume
+`rustok-tenant::TenantLocalePolicyPort`. Translation never reads
+`tenant_locales`; disabled source/target job locales fail before persistence,
+and a stored required-target policy becomes explicitly stale when its bound
+Tenant locale-policy revision changes. Stale policy remains readable with its
+CAS revision and disabled-locale evidence, while required-target progress fails
+closed until an authorized replacement revalidates it.
 
 The first production aggregate is `media/asset`. Translation never reads Media
 tables: Media counts exact target values for source-eligible active assets and
@@ -101,12 +145,47 @@ workflow mutation. If the owner call already completed, durable apply
 reconciliation retries the same owner mutation identity before recording the
 Translation receipt and completion event.
 
+Every provider patch-validation response must carry typed warning/error
+severity and have acceptance consistent with that severity. Template-aware
+owners publish an explicit protected-token ledger in each field snapshot;
+Translation compares exact token multiplicity without guessing placeholder
+syntax.
+
+The module manifest publishes `graphql::TranslationQuery` and
+`graphql::TranslationMutation`. The GraphQL surface exposes target discovery,
+policy, versioned glossary list/read/create/update/term replacement/lifecycle,
+Translation Memory list/read/exact-or-contextual lookup and
+retention/tombstone/purge lifecycle, job and provider progress, inventory
+synchronization/rebuild, and the implemented workflow commands. Job creation
+accepts an optional immutable glossary revision binding. Authentication,
+tenant, locale, permission claims, deadlines, and caller-supplied idempotency
+keys are converted into the same transport-neutral `PortContext` used by
+native adapters. Runtime data is materialized by
+`graphql_runtime::attach_schema_data`; owner modules remain visible only
+through the neutral registry.
+
+The module-owned `rustok-translation-admin` package defines a single typed
+operation/response boundary over that service contract. SSR/hydrate selects a
+native `#[server]` adapter backed by `HostRuntimeContext`; CSR/headless selects
+the `rustok-graphql` adapter. The native endpoint reuses host auth, tenant,
+locale, permission, deadline, and idempotency evidence and never reads an owner
+table. Both adapters share Translation's redacted public-error classification.
+Its six-tab Leptos `core/transport/ui` workbench is manifest-mounted in
+`apps/admin`; the matching `@rustok/translation-admin` package is mounted by
+the Next host through a thin client wrapper and uses the same 32-operation
+GraphQL contract. Both clients use `memory_entry_id` for explicit memory
+selection and never auto-select the first entry.
+
 ## Verification
 
 - `cargo check -p rustok-translation`
 - `cargo test -p rustok-translation`
+- `cargo test -p rustok-translation --features graphql`
+- `cargo test -p rustok-translation-admin`
+- `cargo check -p rustok-translation-admin --features ssr`
 - `cargo xtask module validate translation`
 - `cargo xtask validate-manifest`
+- `npm run verify:translation:admin-boundary`
 
 ## Related Documents
 

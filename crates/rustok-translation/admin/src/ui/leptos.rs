@@ -1,0 +1,2253 @@
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_ui::{
+    Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
+    CardDescription, CardHeader, CardTitle, Checkbox, Input, Label, Select, SelectOption, Textarea,
+};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_ui_core::UiRouteContext;
+
+use crate::core::{self, ProposalCommand, TranslationAdminTab, operation_receipt_view_model};
+use crate::i18n::t;
+use crate::model::{
+    Glossary, GlossarySummary, MemoryEntry, MemorySuggestion, TranslationAdminOperation,
+    TranslationAdminResponse, TranslationAdminTransportContext, TranslationPolicy,
+    TranslationTarget,
+};
+use crate::transport;
+
+type OperationOutcome = Option<Result<TranslationAdminResponse, String>>;
+
+#[component]
+pub fn TranslationAdmin() -> impl IntoView {
+    let token = use_token();
+    let tenant = use_tenant();
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale.clone();
+    let tab_query = use_route_query_value(core::TAB_QUERY_KEY);
+    let glossary_query = use_route_query_value(core::GLOSSARY_ID_QUERY_KEY);
+    let memory_entry_query = use_route_query_value(core::MEMORY_ENTRY_ID_QUERY_KEY);
+    let query_writer = use_route_query_writer();
+    let active_tab = Signal::derive(move || core::tab_from_query(tab_query.get().as_deref()));
+
+    let title = t(
+        locale.as_deref(),
+        "translation.title",
+        "Translation control plane",
+    );
+    let subtitle = t(
+        locale.as_deref(),
+        "translation.subtitle",
+        "Exact-locale coverage, required-target policy, inventory repair, and reviewed owner-safe workflow.",
+    );
+    let badge = t(locale.as_deref(), "translation.badge", "admin only");
+    let tabs_aria_label = t(
+        locale.as_deref(),
+        "translation.tabs.label",
+        "Translation sections",
+    );
+    let locale_for_tabs = locale.clone();
+    let locale_for_content = locale.clone();
+
+    view! {
+        <div class="space-y-6" data-testid="translation-admin">
+            <header class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
+                <div class="space-y-2">
+                    <Badge variant=BadgeVariant::Outline>{badge}</Badge>
+                    <h1 class="text-2xl font-semibold text-card-foreground">{title}</h1>
+                    <p class="max-w-3xl text-sm text-muted-foreground">{subtitle}</p>
+                </div>
+            </header>
+
+            <nav
+                aria-label=tabs_aria_label
+                class="flex flex-wrap gap-2"
+            >
+                {move || {
+                    let selected = active_tab.get();
+                    let locale = locale_for_tabs.clone();
+                    TranslationAdminTab::ALL
+                        .into_iter()
+                        .map(|tab| {
+                            let writer = query_writer.clone();
+                            let label = tab_label(locale.as_deref(), tab);
+                            let is_selected = selected == tab;
+                            view! {
+                                <Button
+                                    variant=if is_selected {
+                                        ButtonVariant::Default
+                                    } else {
+                                        ButtonVariant::Outline
+                                    }
+                                    on_click=Box::new(move || {
+                                        writer.apply_query_intent(core::tab_query_intent(tab));
+                                    })
+                                >
+                                    {label}
+                                </Button>
+                            }
+                        })
+                        .collect_view()
+                }}
+            </nav>
+
+            {move || match active_tab.get() {
+                TranslationAdminTab::Overview => view! {
+                    <OverviewTab token tenant locale=locale_for_content.clone() />
+                }.into_any(),
+                TranslationAdminTab::Jobs => view! {
+                    <JobsTab token tenant locale=locale_for_content.clone() />
+                }.into_any(),
+                TranslationAdminTab::Glossaries => view! {
+                    <GlossariesTab
+                        token
+                        tenant
+                        locale=locale_for_content.clone()
+                        selected_glossary_id=glossary_query
+                    />
+                }.into_any(),
+                TranslationAdminTab::Memory => view! {
+                    <MemoryTab
+                        token
+                        tenant
+                        locale=locale_for_content.clone()
+                        selected_memory_entry_id=memory_entry_query
+                    />
+                }.into_any(),
+                TranslationAdminTab::Inventory => view! {
+                    <InventoryTab token tenant locale=locale_for_content.clone() />
+                }.into_any(),
+                TranslationAdminTab::Workflow => view! {
+                    <WorkflowTab token tenant locale=locale_for_content.clone() />
+                }.into_any(),
+            }}
+        </div>
+    }
+}
+
+fn tab_label(locale: Option<&str>, tab: TranslationAdminTab) -> String {
+    match tab {
+        TranslationAdminTab::Overview => t(locale, "translation.tabs.overview", "Overview"),
+        TranslationAdminTab::Jobs => t(locale, "translation.tabs.jobs", "Jobs"),
+        TranslationAdminTab::Glossaries => t(locale, "translation.tabs.glossaries", "Glossaries"),
+        TranslationAdminTab::Memory => t(locale, "translation.tabs.memory", "Memory"),
+        TranslationAdminTab::Inventory => t(locale, "translation.tabs.inventory", "Inventory"),
+        TranslationAdminTab::Workflow => t(locale, "translation.tabs.workflow", "Workflow"),
+    }
+}
+
+#[component]
+fn OverviewTab(
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    locale: Option<String>,
+) -> impl IntoView {
+    let locale_for_resource = locale.clone();
+    let bootstrap = LocalResource::new(move || {
+        let context =
+            core::transport_context(token.get(), tenant.get(), locale_for_resource.clone());
+        async move {
+            let policy = transport::execute(context.clone(), TranslationAdminOperation::ReadPolicy)
+                .await
+                .map_err(|error| error.to_string())?;
+            let targets = transport::execute(context, TranslationAdminOperation::ListTargets)
+                .await
+                .map_err(|error| error.to_string())?;
+
+            match (policy, targets) {
+                (
+                    TranslationAdminResponse::Policy(policy),
+                    TranslationAdminResponse::Targets(targets),
+                ) => Ok((policy, targets)),
+                _ => Err("Translation bootstrap returned an unexpected response".to_string()),
+            }
+        }
+    });
+
+    let loading = t(
+        locale.as_deref(),
+        "translation.loading",
+        "Loading Translation state…",
+    );
+
+    view! {
+        <Suspense fallback=move || view! {
+            <Card>
+                <CardContent>
+                    <p class="text-sm text-muted-foreground">{loading.clone()}</p>
+                </CardContent>
+            </Card>
+        }>
+            {move || {
+                let locale = locale.clone();
+                bootstrap.get().map(|result| match result {
+                    Ok((policy, targets)) => view! {
+                        <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+                            <PolicyCard policy token tenant locale=locale.clone() />
+                            <TargetsCard targets locale=locale.clone() />
+                        </div>
+                    }.into_any(),
+                    Err(error) => view! {
+                        <Alert
+                            variant=AlertVariant::Destructive
+                            title=t(locale.as_deref(), "translation.error.load", "Unable to load Translation")
+                        >
+                            {error}
+                        </Alert>
+                    }.into_any(),
+                })
+            }}
+        </Suspense>
+    }
+}
+
+#[component]
+fn PolicyCard(
+    policy: TranslationPolicy,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    locale: Option<String>,
+) -> impl IntoView {
+    let freshness_variant = if policy.freshness == "current" {
+        BadgeVariant::Success
+    } else {
+        BadgeVariant::Warning
+    };
+    let policy_freshness = policy.freshness.clone();
+    let policy_revision = policy.revision;
+    let policy_locales = policy.required_target_locales.clone();
+    let disabled_locales = policy.disabled_required_target_locales.clone();
+    let (expected_revision, set_expected_revision) = signal(policy_revision.to_string());
+    let (required_locales, set_required_locales) = signal(policy_locales.join(", "));
+    let (idempotency_key, set_idempotency_key) =
+        signal(core::new_idempotency_key("replace-policy"));
+    let (busy, set_busy) = signal(false);
+    let (outcome, set_outcome) = signal(OperationOutcome::None);
+    let title = t(
+        locale.as_deref(),
+        "translation.policy.title",
+        "Required-target policy",
+    );
+    let description = t(
+        locale.as_deref(),
+        "translation.policy.description",
+        "Locales that contribute to required Translation coverage.",
+    );
+    let revision_label = t(
+        locale.as_deref(),
+        "translation.field.revision",
+        "Expected revision",
+    );
+    let locales_label = t(
+        locale.as_deref(),
+        "translation.field.locales",
+        "Required locales",
+    );
+    let replace_label = t(
+        locale.as_deref(),
+        "translation.action.replacePolicy",
+        "Replace policy",
+    );
+    let policy_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::replace_policy_operation(
+                    &expected_revision.get_untracked(),
+                    &required_locales.get_untracked(),
+                    &idempotency_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::Policy(policy) = response {
+                        set_expected_revision.set(policy.revision.to_string());
+                        set_required_locales.set(policy.required_target_locales.join(", "));
+                    }
+                    set_idempotency_key.set(core::new_idempotency_key("replace-policy"));
+                }),
+            );
+        }
+    };
+
+    view! {
+        <Card>
+            <CardHeader>
+                <CardTitle>
+                    {title}
+                </CardTitle>
+                <CardDescription>
+                    {description}
+                </CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <Badge variant=freshness_variant>{policy_freshness}</Badge>
+                    <span class="text-xs text-muted-foreground">
+                        {format!("revision {}", policy_revision)}
+                    </span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    {policy_locales.into_iter().map(|locale| view! {
+                        <Badge variant=BadgeVariant::Secondary>{locale}</Badge>
+                    }).collect_view()}
+                </div>
+                {(!disabled_locales.is_empty()).then(|| view! {
+                    <Alert variant=AlertVariant::Warning>
+                        {format!(
+                            "Disabled required locales: {}",
+                            disabled_locales.join(", ")
+                        )}
+                    </Alert>
+                })}
+                <div class="grid gap-3">
+                    <div class="space-y-2">
+                        <Label required=true>{revision_label}</Label>
+                        <Input value=expected_revision set_value=set_expected_revision name="expected_revision" />
+                    </div>
+                    <div class="space-y-2">
+                        <Label required=true>{locales_label}</Label>
+                        <Input value=required_locales set_value=set_required_locales name="required_target_locales" />
+                    </div>
+                    <Button on_click=Box::new(policy_action)>{replace_label}</Button>
+                    <Show when=move || busy.get()>
+                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                    </Show>
+                    <OutcomePanel outcome locale=locale.clone() />
+                </div>
+            </CardContent>
+        </Card>
+    }
+}
+
+#[component]
+fn TargetsCard(targets: Vec<TranslationTarget>, locale: Option<String>) -> impl IntoView {
+    let title = t(
+        locale.as_deref(),
+        "translation.targets.title",
+        "Translation targets",
+    );
+    let description = t(
+        locale.as_deref(),
+        "translation.targets.description",
+        "Owner-provided resources currently available to the control plane.",
+    );
+    let empty = t(
+        locale.as_deref(),
+        "translation.targets.empty",
+        "No owner target providers are registered.",
+    );
+    let provider_label = t(
+        locale.as_deref(),
+        "translation.targets.provider",
+        "Provider",
+    );
+    let target_label = t(locale.as_deref(), "translation.targets.target", "Target");
+    let capabilities_label = t(
+        locale.as_deref(),
+        "translation.targets.capabilities",
+        "Capabilities",
+    );
+
+    view! {
+        <Card>
+            <CardHeader>
+                <CardTitle>
+                    {title}
+                </CardTitle>
+                <CardDescription>
+                    {description}
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {if targets.is_empty() {
+                    view! {
+                        <p class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                            {empty}
+                        </p>
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="overflow-x-auto rounded-xl border border-border">
+                            <table class="w-full text-sm">
+                                <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                    <tr>
+                                        <th class="px-4 py-3">{provider_label}</th>
+                                        <th class="px-4 py-3">{target_label}</th>
+                                        <th class="px-4 py-3">{capabilities_label}</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-border">
+                                    {targets.into_iter().map(|target| view! {
+                                        <tr>
+                                            <td class="px-4 py-3 font-medium text-foreground">{target.owner_slug}</td>
+                                            <td class="px-4 py-3">
+                                                <div class="font-medium text-foreground">{target.display_name}</div>
+                                                <div class="text-xs text-muted-foreground">{target.resource_kind}</div>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-wrap gap-1">
+                                                    {target.capabilities.into_iter().map(|capability| view! {
+                                                        <Badge variant=BadgeVariant::Outline>{capability}</Badge>
+                                                    }).collect_view()}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }).collect_view()}
+                                </tbody>
+                            </table>
+                        </div>
+                    }.into_any()
+                }}
+            </CardContent>
+        </Card>
+    }
+}
+
+#[component]
+fn JobsTab(
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    locale: Option<String>,
+) -> impl IntoView {
+    let (source_locale, set_source_locale) = signal("en".to_string());
+    let (target_locale, set_target_locale) = signal("de".to_string());
+    let (glossary_id, set_glossary_id) = signal(String::new());
+    let (glossary_revision, set_glossary_revision) = signal(String::new());
+    let (job_id, set_job_id) = signal(String::new());
+    let (busy, set_busy) = signal(false);
+    let (outcome, set_outcome) = signal(OperationOutcome::None);
+    let (create_key, set_create_key) = signal(core::new_idempotency_key("create-job"));
+    let (rebuild_key, set_rebuild_key) = signal(core::new_idempotency_key("rebuild-job-progress"));
+
+    let create_title = t(
+        locale.as_deref(),
+        "translation.jobs.create",
+        "Create translation job",
+    );
+    let create_description = t(
+        locale.as_deref(),
+        "translation.jobs.createDescription",
+        "Start a tenant-scoped manual workflow for one exact locale pair.",
+    );
+    let inspect_title = t(
+        locale.as_deref(),
+        "translation.jobs.inspect",
+        "Inspect or rebuild job progress",
+    );
+    let inspect_description = t(
+        locale.as_deref(),
+        "translation.jobs.inspectDescription",
+        "Job selection remains explicit until a list contract is available.",
+    );
+    let source_label = t(
+        locale.as_deref(),
+        "translation.field.sourceLocale",
+        "Source locale",
+    );
+    let target_label = t(
+        locale.as_deref(),
+        "translation.field.targetLocale",
+        "Target locale",
+    );
+    let job_id_label = t(locale.as_deref(), "translation.field.jobId", "Job ID");
+    let glossary_id_label = t(
+        locale.as_deref(),
+        "translation.field.glossaryId",
+        "Glossary ID",
+    );
+    let glossary_revision_label = t(
+        locale.as_deref(),
+        "translation.field.glossaryRevision",
+        "Glossary revision",
+    );
+    let create_label = t(
+        locale.as_deref(),
+        "translation.action.createJob",
+        "Create job",
+    );
+    let read_label = t(
+        locale.as_deref(),
+        "translation.action.readProgress",
+        "Read progress",
+    );
+    let rebuild_label = t(
+        locale.as_deref(),
+        "translation.action.rebuildProgress",
+        "Rebuild projection",
+    );
+
+    let create_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::create_job_with_glossary_operation(
+                    &source_locale.get_untracked(),
+                    &target_locale.get_untracked(),
+                    &glossary_id.get_untracked(),
+                    &glossary_revision.get_untracked(),
+                    &create_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_create_key.set(core::new_idempotency_key("create-job"));
+                }),
+            );
+        }
+    };
+    let read_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::read_job_progress_operation(&job_id.get_untracked()),
+                set_busy,
+                set_outcome,
+                Callback::new(|_| {}),
+            );
+        }
+    };
+    let rebuild_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::rebuild_job_progress_operation(
+                    &job_id.get_untracked(),
+                    &rebuild_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_rebuild_key.set(core::new_idempotency_key("rebuild-job-progress"));
+                }),
+            );
+        }
+    };
+
+    view! {
+        <div class="grid gap-6 xl:grid-cols-2">
+            <Card>
+                <CardHeader>
+                    <CardTitle>{create_title}</CardTitle>
+                    <CardDescription>{create_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="space-y-2">
+                            <Label required=true>{source_label}</Label>
+                            <Input value=source_locale set_value=set_source_locale name="source_locale" />
+                        </div>
+                        <div class="space-y-2">
+                            <Label required=true>{target_label}</Label>
+                            <Input value=target_locale set_value=set_target_locale name="target_locale" />
+                        </div>
+                        <div class="space-y-2">
+                            <Label>{glossary_id_label}</Label>
+                            <Input value=glossary_id set_value=set_glossary_id name="glossary_id" />
+                        </div>
+                        <div class="space-y-2">
+                            <Label>{glossary_revision_label}</Label>
+                            <Input value=glossary_revision set_value=set_glossary_revision name="glossary_revision" />
+                        </div>
+                    </div>
+                    <Button on_click=Box::new(create_action)>{create_label}</Button>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{inspect_title}</CardTitle>
+                    <CardDescription>{inspect_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="space-y-2">
+                        <Label required=true>{job_id_label}</Label>
+                        <Input value=job_id set_value=set_job_id name="job_id" />
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(read_action)>{read_label}</Button>
+                        <Button variant=ButtonVariant::Secondary on_click=Box::new(rebuild_action)>{rebuild_label}</Button>
+                    </div>
+                    <Show when=move || busy.get()>
+                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                    </Show>
+                </CardContent>
+            </Card>
+
+            <div class="xl:col-span-2">
+                <OutcomePanel outcome locale=locale.clone() />
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn GlossariesTab(
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    locale: Option<String>,
+    selected_glossary_id: Signal<Option<String>>,
+) -> impl IntoView {
+    let query_writer = use_route_query_writer();
+    let (refresh_revision, set_refresh_revision) = signal(0_u64);
+    let (busy, set_busy) = signal(false);
+    let (outcome, set_outcome) = signal(OperationOutcome::None);
+
+    let (name, set_name) = signal(String::new());
+    let (description, set_description) = signal(String::new());
+    let (source_locale, set_source_locale) = signal("en".to_string());
+    let (target_locale, set_target_locale) = signal("de".to_string());
+    let (owner_slug, set_owner_slug) = signal(String::new());
+    let (resource_kind, set_resource_kind) = signal(String::new());
+    let (field_key, set_field_key) = signal(String::new());
+    let (create_key, set_create_key) = signal(core::new_idempotency_key("create-glossary"));
+
+    let (selected_id, set_selected_id) = signal(String::new());
+    let (selected_revision, set_selected_revision) = signal("1".to_string());
+    let (selected_active, set_selected_active) = signal(true);
+    let (edit_name, set_edit_name) = signal(String::new());
+    let (edit_description, set_edit_description) = signal(String::new());
+    let (concepts_json, set_concepts_json) = signal("[]".to_string());
+    let (update_key, set_update_key) = signal(core::new_idempotency_key("update-glossary"));
+    let (terms_key, set_terms_key) = signal(core::new_idempotency_key("replace-glossary-terms"));
+    let (active_key, set_active_key) = signal(core::new_idempotency_key("set-glossary-active"));
+
+    let locale_for_resource = locale.clone();
+    let glossaries = LocalResource::new(move || {
+        refresh_revision.get();
+        let context =
+            core::transport_context(token.get(), tenant.get(), locale_for_resource.clone());
+        let selected = selected_glossary_id.get();
+        async move {
+            let list = transport::execute(
+                context.clone(),
+                TranslationAdminOperation::ListGlossaries { limit: 200 },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            let list = match list {
+                TranslationAdminResponse::Glossaries(glossaries) => glossaries,
+                _ => return Err("Glossary list returned an unexpected response".to_string()),
+            };
+            let selected = match selected {
+                Some(glossary_id) => {
+                    let response = transport::execute(
+                        context,
+                        TranslationAdminOperation::ReadGlossary {
+                            glossary_id,
+                            revision: None,
+                        },
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+                    match response {
+                        TranslationAdminResponse::Glossary(glossary) => Some(glossary),
+                        _ => {
+                            return Err("Glossary read returned an unexpected response".to_string());
+                        }
+                    }
+                }
+                None => None,
+            };
+            Ok::<(Vec<GlossarySummary>, Option<Glossary>), String>((list, selected))
+        }
+    });
+
+    Effect::new(move |_| {
+        if let Some(Ok((_, selected))) = glossaries.get() {
+            if let Some(glossary) = selected {
+                set_selected_id.set(glossary.id.clone());
+                set_selected_revision.set(glossary.revision.to_string());
+                set_selected_active.set(glossary.is_active);
+                set_edit_name.set(glossary.name.clone());
+                set_edit_description.set(glossary.description.clone());
+                set_concepts_json.set(
+                    serde_json::to_string_pretty(&glossary.concepts)
+                        .unwrap_or_else(|_| "[]".to_string()),
+                );
+            } else {
+                set_selected_id.set(String::new());
+                set_selected_revision.set("1".to_string());
+                set_selected_active.set(true);
+                set_edit_name.set(String::new());
+                set_edit_description.set(String::new());
+                set_concepts_json.set("[]".to_string());
+            }
+        }
+    });
+
+    let create_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::create_glossary_operation(
+                    &name.get_untracked(),
+                    &description.get_untracked(),
+                    &source_locale.get_untracked(),
+                    &target_locale.get_untracked(),
+                    &owner_slug.get_untracked(),
+                    &resource_kind.get_untracked(),
+                    &field_key.get_untracked(),
+                    &create_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_create_key.set(core::new_idempotency_key("create-glossary"));
+                    set_refresh_revision.update(|revision| *revision = revision.saturating_add(1));
+                }),
+            );
+        }
+    });
+    let update_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::update_glossary_operation(
+                    &selected_id.get_untracked(),
+                    &selected_revision.get_untracked(),
+                    &edit_name.get_untracked(),
+                    &edit_description.get_untracked(),
+                    &update_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_update_key.set(core::new_idempotency_key("update-glossary"));
+                    set_refresh_revision.update(|revision| *revision = revision.saturating_add(1));
+                }),
+            );
+        }
+    });
+    let terms_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::replace_glossary_terms_operation(
+                    &selected_id.get_untracked(),
+                    &selected_revision.get_untracked(),
+                    &concepts_json.get_untracked(),
+                    &terms_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_terms_key.set(core::new_idempotency_key("replace-glossary-terms"));
+                    set_refresh_revision.update(|revision| *revision = revision.saturating_add(1));
+                }),
+            );
+        }
+    });
+    let active_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::set_glossary_active_operation(
+                    &selected_id.get_untracked(),
+                    &selected_revision.get_untracked(),
+                    !selected_active.get_untracked(),
+                    &active_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_active_key.set(core::new_idempotency_key("set-glossary-active"));
+                    set_refresh_revision.update(|revision| *revision = revision.saturating_add(1));
+                }),
+            );
+        }
+    });
+
+    let loading = t(
+        locale.as_deref(),
+        "translation.glossary.loading",
+        "Loading glossaries…",
+    );
+    let create_title = t(
+        locale.as_deref(),
+        "translation.glossary.create",
+        "Create glossary",
+    );
+    let create_description = t(
+        locale.as_deref(),
+        "translation.glossary.createDescription",
+        "Create a tenant-scoped, locale-pair terminology policy.",
+    );
+    let name_label = t(locale.as_deref(), "translation.field.name", "Name");
+    let description_label = t(
+        locale.as_deref(),
+        "translation.field.description",
+        "Description",
+    );
+    let source_label = t(
+        locale.as_deref(),
+        "translation.field.sourceLocale",
+        "Source locale",
+    );
+    let target_label = t(
+        locale.as_deref(),
+        "translation.field.targetLocale",
+        "Target locale",
+    );
+    let owner_label = t(
+        locale.as_deref(),
+        "translation.field.ownerSlug",
+        "Owner slug",
+    );
+    let resource_label = t(
+        locale.as_deref(),
+        "translation.field.resourceKind",
+        "Resource kind",
+    );
+    let field_label = t(locale.as_deref(), "translation.field.fieldKey", "Field key");
+    let create_button_label = t(
+        locale.as_deref(),
+        "translation.action.createGlossary",
+        "Create glossary",
+    );
+    let list_title = t(locale.as_deref(), "translation.glossary.list", "Glossaries");
+    let list_description = t(
+        locale.as_deref(),
+        "translation.glossary.listDescription",
+        "Selection is URL-owned and no glossary is selected implicitly.",
+    );
+    let empty_label = t(
+        locale.as_deref(),
+        "translation.glossary.empty",
+        "No glossaries exist yet.",
+    );
+    let metadata_title = t(
+        locale.as_deref(),
+        "translation.glossary.metadata",
+        "Glossary metadata",
+    );
+    let metadata_description = t(
+        locale.as_deref(),
+        "translation.glossary.metadataDescription",
+        "Metadata and lifecycle changes use compare-and-set revisions.",
+    );
+    let update_label = t(
+        locale.as_deref(),
+        "translation.action.updateGlossary",
+        "Update metadata",
+    );
+    let deactivate_label = t(
+        locale.as_deref(),
+        "translation.action.deactivateGlossary",
+        "Deactivate",
+    );
+    let activate_label = t(
+        locale.as_deref(),
+        "translation.action.activateGlossary",
+        "Activate",
+    );
+    let clear_label = t(
+        locale.as_deref(),
+        "translation.action.clearSelection",
+        "Clear selection",
+    );
+    let terms_title = t(
+        locale.as_deref(),
+        "translation.glossary.terms",
+        "Versioned terms",
+    );
+    let terms_description = t(
+        locale.as_deref(),
+        "translation.glossary.termsDescription",
+        "Replace the complete concept snapshot; prior revisions remain readable by jobs.",
+    );
+    let concepts_label = t(
+        locale.as_deref(),
+        "translation.field.conceptsJson",
+        "Concepts JSON",
+    );
+    let replace_terms_label = t(
+        locale.as_deref(),
+        "translation.action.replaceGlossaryTerms",
+        "Replace term snapshot",
+    );
+    let error_title = t(
+        locale.as_deref(),
+        "translation.glossary.error",
+        "Unable to load glossaries",
+    );
+    let locale_for_view = locale.clone();
+
+    view! {
+        <div class="space-y-6">
+            <Suspense fallback=move || view! {
+                <Card>
+                    <CardContent>
+                        <p class="text-sm text-muted-foreground">{loading.clone()}</p>
+                    </CardContent>
+                </Card>
+            }>
+                {move || {
+                    let _locale = locale_for_view.clone();
+                    let create_action = create_action.clone();
+                    let update_action = update_action.clone();
+                    let terms_action = terms_action.clone();
+                    let active_action = active_action.clone();
+                    let query_writer_for_list = query_writer.clone();
+                    let query_writer_for_clear = query_writer.clone();
+                    let create_title = create_title.clone();
+                    let create_description = create_description.clone();
+                    let create_name_label = name_label.clone();
+                    let edit_name_label = name_label.clone();
+                    let create_description_label = description_label.clone();
+                    let edit_description_label = description_label.clone();
+                    let source_label = source_label.clone();
+                    let target_label = target_label.clone();
+                    let owner_label = owner_label.clone();
+                    let resource_label = resource_label.clone();
+                    let field_label = field_label.clone();
+                    let create_button_label = create_button_label.clone();
+                    let list_title = list_title.clone();
+                    let list_description = list_description.clone();
+                    let empty_label = empty_label.clone();
+                    let metadata_title = metadata_title.clone();
+                    let metadata_description = metadata_description.clone();
+                    let update_label = update_label.clone();
+                    let deactivate_label = deactivate_label.clone();
+                    let activate_label = activate_label.clone();
+                    let clear_label = clear_label.clone();
+                    let terms_title = terms_title.clone();
+                    let terms_description = terms_description.clone();
+                    let concepts_label = concepts_label.clone();
+                    let replace_terms_label = replace_terms_label.clone();
+                    let error_title = error_title.clone();
+                    glossaries.get().map(|result| match result {
+                        Ok((items, selected)) => view! {
+                            <div class="space-y-6">
+                                <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]">
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>{create_title}</CardTitle>
+                                            <CardDescription>{create_description}</CardDescription>
+                                        </CardHeader>
+                                        <CardContent class="space-y-4">
+                                            <div class="space-y-2"><Label required=true>{create_name_label}</Label><Input value=name set_value=set_name name="glossary_name" /></div>
+                                            <div class="space-y-2"><Label>{create_description_label}</Label><Textarea value=description set_value=set_description name="glossary_description" /></div>
+                                            <div class="grid gap-4 sm:grid-cols-2">
+                                                <div class="space-y-2"><Label required=true>{source_label}</Label><Input value=source_locale set_value=set_source_locale name="glossary_source_locale" /></div>
+                                                <div class="space-y-2"><Label required=true>{target_label}</Label><Input value=target_locale set_value=set_target_locale name="glossary_target_locale" /></div>
+                                                <div class="space-y-2"><Label>{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug name="glossary_owner_slug" /></div>
+                                                <div class="space-y-2"><Label>{resource_label}</Label><Input value=resource_kind set_value=set_resource_kind name="glossary_resource_kind" /></div>
+                                                <div class="space-y-2"><Label>{field_label}</Label><Input value=field_key set_value=set_field_key name="glossary_field_key" /></div>
+                                            </div>
+                                            <Button on_click=Box::new(move || create_action.run(()))>{create_button_label}</Button>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>{list_title}</CardTitle>
+                                            <CardDescription>{list_description}</CardDescription>
+                                        </CardHeader>
+                                        <CardContent class="space-y-3">
+                                            {if items.is_empty() {
+                                                view! {
+                                                    <p class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                                                        {empty_label}
+                                                    </p>
+                                                }.into_any()
+                                            } else {
+                                                items.into_iter().map(|item| {
+                                                    let writer = query_writer_for_list.clone();
+                                                    let item_id = item.id.clone();
+                                                    let is_selected = selected_glossary_id.get().as_deref() == Some(item.id.as_str());
+                                                    view! {
+                                                        <button
+                                                            type="button"
+                                                            class=if is_selected {
+                                                                "w-full rounded-xl border border-primary bg-primary/5 p-4 text-left"
+                                                            } else {
+                                                                "w-full rounded-xl border border-border p-4 text-left hover:bg-muted/50"
+                                                            }
+                                                            on:click=move |_| writer.apply_query_intent(core::glossary_selection_intent(Some(&item_id)))
+                                                        >
+                                                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                                                <span class="font-medium text-foreground">{item.name}</span>
+                                                                <div class="flex gap-2">
+                                                                    <Badge variant=if item.is_active { BadgeVariant::Success } else { BadgeVariant::Secondary }>
+                                                                        {if item.is_active { "active" } else { "inactive" }}
+                                                                    </Badge>
+                                                                    <Badge variant=BadgeVariant::Outline>{format!("v{}", item.revision)}</Badge>
+                                                                </div>
+                                                            </div>
+                                                            <p class="mt-2 text-xs text-muted-foreground">{format!("{} → {}", item.source_locale, item.target_locale)}</p>
+                                                        </button>
+                                                    }
+                                                }).collect_view().into_any()
+                                            }}
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                {selected.map(|selected| view! {
+                                    <div class="grid gap-6 xl:grid-cols-2">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle>{metadata_title}</CardTitle>
+                                                <CardDescription>{metadata_description}</CardDescription>
+                                            </CardHeader>
+                                            <CardContent class="space-y-4">
+                                                <div class="flex flex-wrap gap-2">
+                                                    <Badge variant=BadgeVariant::Outline>{format!("v{}", selected.revision)}</Badge>
+                                                    <Badge variant=if selected.is_active { BadgeVariant::Success } else { BadgeVariant::Secondary }>{if selected.is_active { "active" } else { "inactive" }}</Badge>
+                                                    <Badge variant=BadgeVariant::Outline>{format!("{} concepts", selected.concepts.len())}</Badge>
+                                                </div>
+                                                <div class="space-y-2"><Label required=true>{edit_name_label}</Label><Input value=edit_name set_value=set_edit_name name="edit_glossary_name" /></div>
+                                                <div class="space-y-2"><Label>{edit_description_label}</Label><Textarea value=edit_description set_value=set_edit_description name="edit_glossary_description" /></div>
+                                                <div class="flex flex-wrap gap-2">
+                                                    <Button on_click=Box::new(move || update_action.run(()))>{update_label}</Button>
+                                                    <Button variant=ButtonVariant::Secondary on_click=Box::new(move || active_action.run(()))>
+                                                        {if selected.is_active {
+                                                            deactivate_label
+                                                        } else {
+                                                            activate_label
+                                                        }}
+                                                    </Button>
+                                                    <Button
+                                                        variant=ButtonVariant::Outline
+                                                        on_click=Box::new({
+                                                            let writer = query_writer_for_clear.clone();
+                                                            move || writer.apply_query_intent(core::glossary_selection_intent(None))
+                                                        })
+                                                    >
+                                                        {clear_label}
+                                                    </Button>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle>{terms_title}</CardTitle>
+                                                <CardDescription>{terms_description}</CardDescription>
+                                            </CardHeader>
+                                            <CardContent class="space-y-4">
+                                                <div class="space-y-2">
+                                                    <Label required=true>{concepts_label}</Label>
+                                                    <Textarea value=concepts_json set_value=set_concepts_json name="glossary_concepts_json" />
+                                                </div>
+                                                <Button on_click=Box::new(move || terms_action.run(()))>{replace_terms_label}</Button>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                })}
+                            </div>
+                        }.into_any(),
+                        Err(error) => view! {
+                            <Alert
+                                variant=AlertVariant::Destructive
+                                title=error_title
+                            >
+                                {error}
+                            </Alert>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+            <Show when=move || busy.get()>
+                <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+            </Show>
+            <OutcomePanel outcome locale=locale.clone() />
+        </div>
+    }
+}
+
+#[component]
+fn MemoryTab(
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    locale: Option<String>,
+    selected_memory_entry_id: Signal<Option<String>>,
+) -> impl IntoView {
+    let query_writer = use_route_query_writer();
+    let query_writer_for_purge = query_writer.clone();
+    let (refresh_revision, set_refresh_revision) = signal(0_u64);
+    let (busy, set_busy) = signal(false);
+    let (outcome, set_outcome) = signal(OperationOutcome::None);
+    let (suggestions, set_suggestions) = signal(Vec::<MemorySuggestion>::new());
+
+    let (list_source_locale, set_list_source_locale) = signal(String::new());
+    let (list_target_locale, set_list_target_locale) = signal(String::new());
+    let (include_tombstoned, set_include_tombstoned) = signal(false);
+    let (list_limit, set_list_limit) = signal("200".to_string());
+
+    let (lookup_source_locale, set_lookup_source_locale) = signal("en".to_string());
+    let (lookup_target_locale, set_lookup_target_locale) = signal("de".to_string());
+    let (lookup_owner_slug, set_lookup_owner_slug) = signal("media".to_string());
+    let (lookup_resource_kind, set_lookup_resource_kind) = signal("asset".to_string());
+    let (lookup_resource_id, set_lookup_resource_id) = signal(String::new());
+    let (lookup_subresource_id, set_lookup_subresource_id) = signal(String::new());
+    let (lookup_field_key, set_lookup_field_key) = signal("alt".to_string());
+    let (lookup_source_text, set_lookup_source_text) = signal(String::new());
+    let (lookup_minimum_score, set_lookup_minimum_score) = signal("8500".to_string());
+    let (lookup_limit, set_lookup_limit) = signal("10".to_string());
+
+    let (selected_id, set_selected_id) = signal(String::new());
+    let (selected_revision, set_selected_revision) = signal("1".to_string());
+    let (retention_policy, set_retention_policy) = signal("owner_lifecycle".to_string());
+    let (retain_until, set_retain_until) = signal(String::new());
+    let (retention_key, set_retention_key) =
+        signal(core::new_idempotency_key("set-memory-retention"));
+    let (tombstone_key, set_tombstone_key) =
+        signal(core::new_idempotency_key("tombstone-memory-entry"));
+    let (purge_key, set_purge_key) = signal(core::new_idempotency_key("purge-memory-entry"));
+
+    let locale_for_resource = locale.clone();
+    let memory_entries = LocalResource::new(move || {
+        refresh_revision.get();
+        let context =
+            core::transport_context(token.get(), tenant.get(), locale_for_resource.clone());
+        let selected = selected_memory_entry_id.get();
+        let list_operation = core::list_memory_entries_operation(
+            &list_source_locale.get(),
+            &list_target_locale.get(),
+            include_tombstoned.get(),
+            &list_limit.get(),
+        );
+        async move {
+            let list = transport::execute(
+                context.clone(),
+                list_operation.map_err(|error| error.to_string())?,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            let list = match list {
+                TranslationAdminResponse::MemoryEntries(entries) => entries,
+                _ => return Err("Memory list returned an unexpected response".to_string()),
+            };
+            let selected = match selected {
+                Some(entry_id) => {
+                    let response = transport::execute(
+                        context,
+                        core::read_memory_entry_operation(&entry_id)
+                            .map_err(|error| error.to_string())?,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+                    match response {
+                        TranslationAdminResponse::MemoryEntry(entry) => Some(entry),
+                        _ => {
+                            return Err(
+                                "Memory entry read returned an unexpected response".to_string()
+                            );
+                        }
+                    }
+                }
+                None => None,
+            };
+            Ok::<(Vec<MemoryEntry>, Option<MemoryEntry>), String>((list, selected))
+        }
+    });
+
+    Effect::new(move |_| {
+        if let Some(Ok((_, selected))) = memory_entries.get() {
+            if let Some(entry) = selected {
+                set_selected_id.set(entry.id.clone());
+                set_selected_revision.set(entry.revision.to_string());
+                set_retention_policy.set(match entry.retention_policy {
+                    crate::model::MemoryRetentionPolicy::OwnerLifecycle => {
+                        "owner_lifecycle".to_string()
+                    }
+                    crate::model::MemoryRetentionPolicy::RetainUntil => "retain_until".to_string(),
+                    crate::model::MemoryRetentionPolicy::LegalHold => "legal_hold".to_string(),
+                });
+                set_retain_until.set(entry.retain_until.clone().unwrap_or_default());
+            } else {
+                set_selected_id.set(String::new());
+                set_selected_revision.set("1".to_string());
+                set_retention_policy.set("owner_lifecycle".to_string());
+                set_retain_until.set(String::new());
+            }
+        }
+    });
+
+    let lookup_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::lookup_memory_operation(
+                    &lookup_source_locale.get_untracked(),
+                    &lookup_target_locale.get_untracked(),
+                    &lookup_owner_slug.get_untracked(),
+                    &lookup_resource_kind.get_untracked(),
+                    &lookup_resource_id.get_untracked(),
+                    &lookup_subresource_id.get_untracked(),
+                    &lookup_field_key.get_untracked(),
+                    &lookup_source_text.get_untracked(),
+                    &lookup_minimum_score.get_untracked(),
+                    &lookup_limit.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::MemorySuggestions(values) = response {
+                        set_suggestions.set(values);
+                    }
+                }),
+            );
+        }
+    });
+    let retention_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::set_memory_retention_operation(
+                    &selected_id.get_untracked(),
+                    &selected_revision.get_untracked(),
+                    &retention_policy.get_untracked(),
+                    &retain_until.get_untracked(),
+                    &retention_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_retention_key.set(core::new_idempotency_key("set-memory-retention"));
+                    set_refresh_revision.update(|revision| *revision = revision.saturating_add(1));
+                }),
+            );
+        }
+    });
+    let tombstone_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::tombstone_memory_entry_operation(
+                    &selected_id.get_untracked(),
+                    &selected_revision.get_untracked(),
+                    &tombstone_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_tombstone_key.set(core::new_idempotency_key("tombstone-memory-entry"));
+                    set_refresh_revision.update(|revision| *revision = revision.saturating_add(1));
+                }),
+            );
+        }
+    });
+    let purge_action = Callback::new({
+        let locale = locale.clone();
+        move |_: ()| {
+            let writer = query_writer_for_purge.clone();
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::purge_memory_entry_operation(
+                    &selected_id.get_untracked(),
+                    &selected_revision.get_untracked(),
+                    &purge_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_purge_key.set(core::new_idempotency_key("purge-memory-entry"));
+                    writer.apply_query_intent(core::memory_selection_intent(None));
+                    set_refresh_revision.update(|revision| *revision = revision.saturating_add(1));
+                }),
+            );
+        }
+    });
+
+    let loading = t(
+        locale.as_deref(),
+        "translation.memory.loading",
+        "Loading translation memory...",
+    );
+    let load_error = t(
+        locale.as_deref(),
+        "translation.memory.error",
+        "Unable to load translation memory",
+    );
+    let list_title = t(
+        locale.as_deref(),
+        "translation.memory.list",
+        "Memory entries",
+    );
+    let list_description = t(
+        locale.as_deref(),
+        "translation.memory.listDescription",
+        "Entries are created only from reviewed owner applies; selection is URL-owned.",
+    );
+    let lookup_title = t(
+        locale.as_deref(),
+        "translation.memory.lookup",
+        "Context-aware lookup",
+    );
+    let lookup_description = t(
+        locale.as_deref(),
+        "translation.memory.lookupDescription",
+        "Find exact and deterministic fuzzy suggestions for one owner field.",
+    );
+    let lifecycle_title = t(
+        locale.as_deref(),
+        "translation.memory.lifecycle",
+        "Retention and lifecycle",
+    );
+    let lifecycle_description = t(
+        locale.as_deref(),
+        "translation.memory.lifecycleDescription",
+        "All mutations use compare-and-set revisions and replay-safe receipts.",
+    );
+    let empty_label = t(
+        locale.as_deref(),
+        "translation.memory.empty",
+        "No matching memory entries exist.",
+    );
+    let no_selection = t(
+        locale.as_deref(),
+        "translation.memory.select",
+        "Select an entry to inspect or manage it.",
+    );
+    let no_suggestions = t(
+        locale.as_deref(),
+        "translation.memory.noSuggestions",
+        "No suggestions have been requested.",
+    );
+    let source_locale_label = t(
+        locale.as_deref(),
+        "translation.field.sourceLocale",
+        "Source locale",
+    );
+    let target_locale_label = t(
+        locale.as_deref(),
+        "translation.field.targetLocale",
+        "Target locale",
+    );
+    let owner_slug_label = t(
+        locale.as_deref(),
+        "translation.field.ownerSlug",
+        "Owner slug",
+    );
+    let resource_kind_label = t(
+        locale.as_deref(),
+        "translation.field.resourceKind",
+        "Resource kind",
+    );
+    let resource_id_label = t(
+        locale.as_deref(),
+        "translation.field.resourceId",
+        "Resource ID",
+    );
+    let subresource_id_label = t(
+        locale.as_deref(),
+        "translation.field.subresourceId",
+        "Subresource ID",
+    );
+    let field_key_label = t(locale.as_deref(), "translation.field.fieldKey", "Field key");
+    let minimum_score_label = t(
+        locale.as_deref(),
+        "translation.field.minimumScore",
+        "Minimum score (basis points)",
+    );
+    let source_text_label = t(
+        locale.as_deref(),
+        "translation.field.sourceText",
+        "Source text",
+    );
+    let target_text_label = t(
+        locale.as_deref(),
+        "translation.field.targetText",
+        "Target text",
+    );
+    let lookup_limit_label = t(
+        locale.as_deref(),
+        "translation.field.lookupLimit",
+        "Lookup limit",
+    );
+    let list_limit_label = t(
+        locale.as_deref(),
+        "translation.field.listLimit",
+        "List limit",
+    );
+    let source_filter_label = t(
+        locale.as_deref(),
+        "translation.field.sourceLocaleFilter",
+        "Source locale filter",
+    );
+    let target_filter_label = t(
+        locale.as_deref(),
+        "translation.field.targetLocaleFilter",
+        "Target locale filter",
+    );
+    let include_tombstoned_label = t(
+        locale.as_deref(),
+        "translation.field.includeTombstoned",
+        "Include tombstoned",
+    );
+    let lookup_label = t(
+        locale.as_deref(),
+        "translation.action.lookupMemory",
+        "Find suggestions",
+    );
+    let refresh_label = t(
+        locale.as_deref(),
+        "translation.action.refreshMemory",
+        "Refresh entries",
+    );
+    let entries_title = t(locale.as_deref(), "translation.memory.entries", "Entries");
+    let selection_description = t(
+        locale.as_deref(),
+        "translation.memory.selectionDescription",
+        "No entry is selected implicitly.",
+    );
+    let selected_title = t(
+        locale.as_deref(),
+        "translation.memory.selected",
+        "Selected memory entry",
+    );
+    let active_label = t(locale.as_deref(), "translation.memory.active", "active");
+    let tombstoned_label = t(
+        locale.as_deref(),
+        "translation.memory.tombstoned",
+        "tombstoned",
+    );
+    let resource_label = t(locale.as_deref(), "translation.field.resource", "Resource");
+    let reviewer_label = t(locale.as_deref(), "translation.field.reviewer", "Reviewer");
+    let proposal_label = t(
+        locale.as_deref(),
+        "translation.field.proposalId",
+        "Proposal ID",
+    );
+    let apply_receipt_label = t(
+        locale.as_deref(),
+        "translation.field.providerReceipt",
+        "Apply receipt",
+    );
+    let retention_policy_label = t(
+        locale.as_deref(),
+        "translation.field.retentionPolicy",
+        "Retention policy",
+    );
+    let retain_until_label = t(
+        locale.as_deref(),
+        "translation.field.retainUntil",
+        "Retain until (RFC 3339)",
+    );
+    let owner_lifecycle_label = t(
+        locale.as_deref(),
+        "translation.memory.retention.ownerLifecycle",
+        "Owner lifecycle",
+    );
+    let retain_until_option_label = t(
+        locale.as_deref(),
+        "translation.memory.retention.retainUntil",
+        "Retain until",
+    );
+    let legal_hold_label = t(
+        locale.as_deref(),
+        "translation.memory.retention.legalHold",
+        "Legal hold",
+    );
+    let update_retention_label = t(
+        locale.as_deref(),
+        "translation.action.updateMemoryRetention",
+        "Update retention",
+    );
+    let tombstone_label = t(
+        locale.as_deref(),
+        "translation.action.tombstoneMemory",
+        "Tombstone",
+    );
+    let purge_label = t(
+        locale.as_deref(),
+        "translation.action.purgeMemory",
+        "Purge content",
+    );
+    let clear_label = t(
+        locale.as_deref(),
+        "translation.action.clearSelection",
+        "Clear selection",
+    );
+    let lookup_source_text_label = source_text_label.clone();
+
+    view! {
+        <div class="space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>{lookup_title}</CardTitle>
+                    <CardDescription>{lookup_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div class="space-y-2"><Label required=true>{source_locale_label}</Label><Input value=lookup_source_locale set_value=set_lookup_source_locale name="memory_lookup_source_locale" /></div>
+                        <div class="space-y-2"><Label required=true>{target_locale_label}</Label><Input value=lookup_target_locale set_value=set_lookup_target_locale name="memory_lookup_target_locale" /></div>
+                        <div class="space-y-2"><Label required=true>{owner_slug_label}</Label><Input value=lookup_owner_slug set_value=set_lookup_owner_slug name="memory_lookup_owner_slug" /></div>
+                        <div class="space-y-2"><Label required=true>{resource_kind_label}</Label><Input value=lookup_resource_kind set_value=set_lookup_resource_kind name="memory_lookup_resource_kind" /></div>
+                        <div class="space-y-2"><Label required=true>{resource_id_label}</Label><Input value=lookup_resource_id set_value=set_lookup_resource_id name="memory_lookup_resource_id" /></div>
+                        <div class="space-y-2"><Label>{subresource_id_label}</Label><Input value=lookup_subresource_id set_value=set_lookup_subresource_id name="memory_lookup_subresource_id" /></div>
+                        <div class="space-y-2"><Label required=true>{field_key_label}</Label><Input value=lookup_field_key set_value=set_lookup_field_key name="memory_lookup_field_key" /></div>
+                        <div class="space-y-2"><Label required=true>{minimum_score_label}</Label><Input value=lookup_minimum_score set_value=set_lookup_minimum_score name="memory_lookup_minimum_score" /></div>
+                    </div>
+                    <div class="space-y-2"><Label required=true>{lookup_source_text_label}</Label><Textarea value=lookup_source_text set_value=set_lookup_source_text name="memory_lookup_source_text" /></div>
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div class="w-32 space-y-2"><Label required=true>{lookup_limit_label}</Label><Input value=lookup_limit set_value=set_lookup_limit name="memory_lookup_limit" /></div>
+                        <Button on_click=Box::new(move || lookup_action.run(()))>{lookup_label}</Button>
+                    </div>
+                    {move || {
+                        let values = suggestions.get();
+                        if values.is_empty() {
+                            view! { <p class="text-sm text-muted-foreground">{no_suggestions.clone()}</p> }.into_any()
+                        } else {
+                            view! {
+                                <div class="grid gap-3">
+                                    {values.into_iter().map(|suggestion| view! {
+                                        <div class="rounded-xl border border-border p-4">
+                                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                                <span class="font-medium text-foreground">{suggestion.target_text}</span>
+                                                <Badge variant=BadgeVariant::Outline>{format!("{} bp", suggestion.evidence.final_similarity_basis_points)}</Badge>
+                                            </div>
+                                            <p class="mt-2 text-sm text-muted-foreground">{suggestion.source_text}</p>
+                                            <p class="mt-2 text-xs text-muted-foreground">{format!("{}/{} | {} | {:?}", suggestion.owner_slug, suggestion.resource_kind, suggestion.field_key, suggestion.evidence.kind)}</p>
+                                        </div>
+                                    }).collect_view()}
+                                </div>
+                            }.into_any()
+                        }
+                    }}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{list_title}</CardTitle>
+                    <CardDescription>{list_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div class="space-y-2"><Label>{source_filter_label}</Label><Input value=list_source_locale set_value=set_list_source_locale name="memory_source_locale_filter" /></div>
+                        <div class="space-y-2"><Label>{target_filter_label}</Label><Input value=list_target_locale set_value=set_list_target_locale name="memory_target_locale_filter" /></div>
+                        <div class="space-y-2"><Label required=true>{list_limit_label}</Label><Input value=list_limit set_value=set_list_limit name="memory_list_limit" /></div>
+                        <label class="flex items-center gap-2 pt-8 text-sm text-foreground">
+                            <Checkbox checked=include_tombstoned set_checked=set_include_tombstoned name="memory_include_tombstoned" />
+                            {include_tombstoned_label}
+                        </label>
+                    </div>
+                    <Button
+                        variant=ButtonVariant::Outline
+                        on_click=Box::new(move || set_refresh_revision.update(|revision| *revision = revision.saturating_add(1)))
+                    >
+                        {refresh_label}
+                    </Button>
+                </CardContent>
+            </Card>
+
+            <Suspense fallback=move || view! {
+                <Card><CardContent class="p-6"><p class="text-sm text-muted-foreground">{loading.clone()}</p></CardContent></Card>
+            }>
+                {move || {
+                    let empty_label = empty_label.clone();
+                    let no_selection = no_selection.clone();
+                    let load_error = load_error.clone();
+                    let lifecycle_title = lifecycle_title.clone();
+                    let lifecycle_description = lifecycle_description.clone();
+                    let entries_title = entries_title.clone();
+                    let selection_description = selection_description.clone();
+                    let selected_title = selected_title.clone();
+                    let active_label = active_label.clone();
+                    let tombstoned_label = tombstoned_label.clone();
+                    let source_text_label = source_text_label.clone();
+                    let target_text_label = target_text_label.clone();
+                    let resource_label = resource_label.clone();
+                    let reviewer_label = reviewer_label.clone();
+                    let proposal_label = proposal_label.clone();
+                    let apply_receipt_label = apply_receipt_label.clone();
+                    let retention_policy_label = retention_policy_label.clone();
+                    let retain_until_label = retain_until_label.clone();
+                    let owner_lifecycle_label = owner_lifecycle_label.clone();
+                    let retain_until_option_label = retain_until_option_label.clone();
+                    let legal_hold_label = legal_hold_label.clone();
+                    let update_retention_label = update_retention_label.clone();
+                    let tombstone_label = tombstone_label.clone();
+                    let purge_label = purge_label.clone();
+                    let clear_label = clear_label.clone();
+                    let list_query_writer = query_writer.clone();
+                    let clear_query_writer = query_writer.clone();
+                    memory_entries.get().map(move |result| match result {
+                        Ok((entries, selected)) => view! {
+                            <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>{entries_title}</CardTitle>
+                                        <CardDescription>{selection_description}</CardDescription>
+                                    </CardHeader>
+                                    <CardContent class="space-y-3">
+                                        {if entries.is_empty() {
+                                            view! { <p class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{empty_label.clone()}</p> }.into_any()
+                                        } else {
+                                            entries.into_iter().map(|entry| {
+                                                let entry_id = entry.id.clone();
+                                                let is_selected = selected_memory_entry_id.get().as_deref() == Some(entry.id.as_str());
+                                                let active_label = active_label.clone();
+                                                let tombstoned_label = tombstoned_label.clone();
+                                                view! {
+                                                    <button
+                                                        type="button"
+                                                        class=if is_selected {
+                                                            "w-full rounded-xl border border-primary bg-primary/5 p-4 text-left"
+                                                        } else {
+                                                            "w-full rounded-xl border border-border p-4 text-left hover:bg-muted/50"
+                                                        }
+                                                        on:click={
+                                                            let writer = list_query_writer.clone();
+                                                            move |_| writer.apply_query_intent(core::memory_selection_intent(Some(&entry_id)))
+                                                        }
+                                                    >
+                                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                                            <span class="font-medium text-foreground">{format!("{}/{} | {}", entry.owner_slug, entry.resource_kind, entry.field_key)}</span>
+                                                            <div class="flex gap-2">
+                                                                <Badge variant=if entry.tombstoned_at.is_some() { BadgeVariant::Secondary } else { BadgeVariant::Success }>
+                                                                    {if entry.tombstoned_at.is_some() { tombstoned_label.clone() } else { active_label.clone() }}
+                                                                </Badge>
+                                                                <Badge variant=BadgeVariant::Outline>{format!("v{}", entry.revision)}</Badge>
+                                                            </div>
+                                                        </div>
+                                                        <p class="mt-2 text-xs text-muted-foreground">{format!("{} -> {} | {}", entry.source_locale, entry.target_locale, entry.resource_id)}</p>
+                                                    </button>
+                                                }
+                                            }).collect_view().into_any()
+                                        }}
+                                    </CardContent>
+                                </Card>
+
+                                {match selected {
+                                    Some(entry) => {
+                                        let is_tombstoned = entry.tombstoned_at.is_some();
+                                        view! {
+                                        <div class="space-y-6">
+                                            <Card>
+                                                <CardHeader>
+                                                    <CardTitle>{selected_title}</CardTitle>
+                                                    <CardDescription>{entry.id.clone()}</CardDescription>
+                                                </CardHeader>
+                                                <CardContent class="space-y-4">
+                                                    <div class="flex flex-wrap gap-2">
+                                                        <Badge variant=BadgeVariant::Outline>{format!("{} -> {}", entry.source_locale, entry.target_locale)}</Badge>
+                                                        <Badge variant=BadgeVariant::Outline>{entry.quality_state}</Badge>
+                                                        <Badge variant=BadgeVariant::Outline>{format!("v{}", entry.revision)}</Badge>
+                                                    </div>
+                                                    <div>
+                                                        <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{source_text_label}</p>
+                                                        <p class="mt-1 whitespace-pre-wrap text-sm text-foreground">{entry.source_text}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{target_text_label}</p>
+                                                        <p class="mt-1 whitespace-pre-wrap text-sm text-foreground">{entry.target_text}</p>
+                                                    </div>
+                                                    <dl class="grid gap-3 text-xs sm:grid-cols-2">
+                                                        <div><dt class="text-muted-foreground">{resource_label}</dt><dd class="mt-1 break-all font-mono">{format!("{}/{}/{}", entry.owner_slug, entry.resource_kind, entry.resource_id)}</dd></div>
+                                                        <div><dt class="text-muted-foreground">{reviewer_label}</dt><dd class="mt-1 break-all font-mono">{format!("{}:{}", entry.reviewer_actor_kind, entry.reviewer_actor_id)}</dd></div>
+                                                        <div><dt class="text-muted-foreground">{proposal_label}</dt><dd class="mt-1 break-all font-mono">{entry.proposal_id}</dd></div>
+                                                        <div><dt class="text-muted-foreground">{apply_receipt_label}</dt><dd class="mt-1 break-all font-mono">{entry.apply_receipt_id}</dd></div>
+                                                    </dl>
+                                                </CardContent>
+                                            </Card>
+                                            <Card>
+                                                <CardHeader>
+                                                    <CardTitle>{lifecycle_title.clone()}</CardTitle>
+                                                    <CardDescription>{lifecycle_description.clone()}</CardDescription>
+                                                </CardHeader>
+                                                <CardContent class="space-y-4">
+                                                    <div class="grid gap-4 md:grid-cols-2">
+                                                        <div class="space-y-2">
+                                                            <Label required=true>{retention_policy_label}</Label>
+                                                            <Select
+                                                                options=vec![
+                                                                    SelectOption::new("owner_lifecycle", owner_lifecycle_label),
+                                                                    SelectOption::new("retain_until", retain_until_option_label),
+                                                                    SelectOption::new("legal_hold", legal_hold_label),
+                                                                ]
+                                                                value=retention_policy
+                                                                set_value=set_retention_policy
+                                                                name="memory_retention_policy"
+                                                            />
+                                                        </div>
+                                                        <div class="space-y-2"><Label>{retain_until_label}</Label><Input value=retain_until set_value=set_retain_until name="memory_retain_until" /></div>
+                                                    </div>
+                                                    <div class="flex flex-wrap gap-2">
+                                                        <Button on_click=Box::new(move || retention_action.run(()))>{update_retention_label}</Button>
+                                                        <Button variant=ButtonVariant::Secondary on_click=Box::new(move || tombstone_action.run(())) disabled=is_tombstoned>{tombstone_label}</Button>
+                                                        {is_tombstoned.then(|| view! {
+                                                            <Button variant=ButtonVariant::Destructive on_click=Box::new(move || purge_action.run(()))>{purge_label}</Button>
+                                                        })}
+                                                        <Button
+                                                            variant=ButtonVariant::Outline
+                                                            on_click=Box::new({
+                                                                let writer = clear_query_writer.clone();
+                                                                move || writer.apply_query_intent(core::memory_selection_intent(None))
+                                                            })
+                                                        >
+                                                            {clear_label}
+                                                        </Button>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        </div>
+                                        }.into_any()
+                                    }
+                                    None => view! {
+                                        <Card><CardContent class="p-8"><p class="text-sm text-muted-foreground">{no_selection.clone()}</p></CardContent></Card>
+                                    }.into_any(),
+                                }}
+                            </div>
+                        }.into_any(),
+                        Err(error) => view! {
+                            <Alert variant=AlertVariant::Destructive title=load_error.clone()>{error}</Alert>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+            <Show when=move || busy.get()>
+                <p class="text-xs text-muted-foreground">"Operation in progress..."</p>
+            </Show>
+            <OutcomePanel outcome locale=locale.clone() />
+        </div>
+    }
+}
+
+#[component]
+fn InventoryTab(
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    locale: Option<String>,
+) -> impl IntoView {
+    let (owner_slug, set_owner_slug) = signal("media".to_string());
+    let (resource_kind, set_resource_kind) = signal("asset".to_string());
+    let (source_locale, set_source_locale) = signal("en".to_string());
+    let (target_locale, set_target_locale) = signal("de".to_string());
+    let (limit, set_limit) = signal("100".to_string());
+    let (page_size, set_page_size) = signal("100".to_string());
+    let (busy, set_busy) = signal(false);
+    let (outcome, set_outcome) = signal(OperationOutcome::None);
+    let title = t(
+        locale.as_deref(),
+        "translation.inventory.title",
+        "Provider inventory and coverage",
+    );
+    let description = t(
+        locale.as_deref(),
+        "translation.inventory.description",
+        "Operate only through an owner-provided target contract; no owner tables are queried here.",
+    );
+    let owner_label = t(
+        locale.as_deref(),
+        "translation.field.ownerSlug",
+        "Owner slug",
+    );
+    let kind_label = t(
+        locale.as_deref(),
+        "translation.field.resourceKind",
+        "Resource kind",
+    );
+    let source_label = t(
+        locale.as_deref(),
+        "translation.field.sourceLocale",
+        "Source locale",
+    );
+    let target_label = t(
+        locale.as_deref(),
+        "translation.field.targetLocale",
+        "Target locale",
+    );
+    let limit_label = t(locale.as_deref(), "translation.field.limit", "Sync limit");
+    let page_size_label = t(
+        locale.as_deref(),
+        "translation.field.pageSize",
+        "Rebuild page size",
+    );
+    let sync_label = t(
+        locale.as_deref(),
+        "translation.action.syncInventory",
+        "Sync changes",
+    );
+    let rebuild_label = t(
+        locale.as_deref(),
+        "translation.action.rebuildInventory",
+        "Full rebuild",
+    );
+    let progress_label = t(
+        locale.as_deref(),
+        "translation.action.readCoverage",
+        "Read exact coverage",
+    );
+    let required_label = t(
+        locale.as_deref(),
+        "translation.action.readRequiredCoverage",
+        "Read required-target coverage",
+    );
+
+    let sync_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::sync_inventory_operation(
+                    &owner_slug.get_untracked(),
+                    &resource_kind.get_untracked(),
+                    &limit.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(|_| {}),
+            );
+        }
+    };
+    let rebuild_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::rebuild_inventory_operation(
+                    &owner_slug.get_untracked(),
+                    &resource_kind.get_untracked(),
+                    &source_locale.get_untracked(),
+                    &target_locale.get_untracked(),
+                    &page_size.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(|_| {}),
+            );
+        }
+    };
+    let progress_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::read_provider_progress_operation(
+                    &owner_slug.get_untracked(),
+                    &resource_kind.get_untracked(),
+                    &source_locale.get_untracked(),
+                    &target_locale.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(|_| {}),
+            );
+        }
+    };
+    let required_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::read_required_provider_progress_operation(
+                    &owner_slug.get_untracked(),
+                    &resource_kind.get_untracked(),
+                    &source_locale.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(|_| {}),
+            );
+        }
+    };
+
+    view! {
+        <div class="space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>{title}</CardTitle>
+                    <CardDescription>{description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div class="space-y-2"><Label required=true>{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug name="owner_slug" /></div>
+                        <div class="space-y-2"><Label required=true>{kind_label}</Label><Input value=resource_kind set_value=set_resource_kind name="resource_kind" /></div>
+                        <div class="space-y-2"><Label required=true>{source_label}</Label><Input value=source_locale set_value=set_source_locale name="source_locale" /></div>
+                        <div class="space-y-2"><Label required=true>{target_label}</Label><Input value=target_locale set_value=set_target_locale name="target_locale" /></div>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div class="space-y-2"><Label>{limit_label}</Label><Input value=limit set_value=set_limit name="limit" /></div>
+                        <div class="space-y-2"><Label>{page_size_label}</Label><Input value=page_size set_value=set_page_size name="page_size" /></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button on_click=Box::new(sync_action)>{sync_label}</Button>
+                        <Button variant=ButtonVariant::Secondary on_click=Box::new(rebuild_action)>{rebuild_label}</Button>
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(progress_action)>{progress_label}</Button>
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(required_action)>{required_label}</Button>
+                    </div>
+                    <Show when=move || busy.get()>
+                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                    </Show>
+                </CardContent>
+            </Card>
+            <OutcomePanel outcome locale=locale.clone() />
+        </div>
+    }
+}
+
+#[component]
+fn WorkflowTab(
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    locale: Option<String>,
+) -> impl IntoView {
+    let (job_id, set_job_id) = signal(String::new());
+    let (owner_slug, set_owner_slug) = signal("media".to_string());
+    let (resource_kind, set_resource_kind) = signal("asset".to_string());
+    let (resource_id, set_resource_id) = signal(String::new());
+    let (subresource_id, set_subresource_id) = signal(String::new());
+    let (item_id, set_item_id) = signal(String::new());
+    let (proposal_id, set_proposal_id) = signal(String::new());
+    let (field_key, set_field_key) = signal("alt".to_string());
+    let (field_value, set_field_value) = signal(String::new());
+    let (busy, set_busy) = signal(false);
+    let (outcome, set_outcome) = signal(OperationOutcome::None);
+    let (add_key, set_add_key) = signal(core::new_idempotency_key("add-item"));
+    let (save_key, set_save_key) = signal(core::new_idempotency_key("save-proposal"));
+    let (submit_key, set_submit_key) = signal(core::new_idempotency_key("submit-proposal"));
+    let (approve_key, set_approve_key) = signal(core::new_idempotency_key("approve-proposal"));
+    let (apply_key, set_apply_key) = signal(core::new_idempotency_key("apply-proposal"));
+
+    let admit_title = t(
+        locale.as_deref(),
+        "translation.workflow.admit",
+        "Admit owner resource",
+    );
+    let admit_description = t(
+        locale.as_deref(),
+        "translation.workflow.admitDescription",
+        "Snapshot one provider-authorized resource into an existing job.",
+    );
+    let proposal_title = t(
+        locale.as_deref(),
+        "translation.workflow.proposal",
+        "Manual proposal",
+    );
+    let proposal_description = t(
+        locale.as_deref(),
+        "translation.workflow.proposalDescription",
+        "Save one exact field value; deterministic and owner QA run before review.",
+    );
+    let review_title = t(
+        locale.as_deref(),
+        "translation.workflow.review",
+        "Review and owner apply",
+    );
+    let review_description = t(
+        locale.as_deref(),
+        "translation.workflow.reviewDescription",
+        "Each transition is explicit, idempotent, and never retries through another protocol.",
+    );
+    let job_id_label = t(locale.as_deref(), "translation.field.jobId", "Job ID");
+    let resource_id_label = t(
+        locale.as_deref(),
+        "translation.field.resourceId",
+        "Resource ID",
+    );
+    let owner_label = t(
+        locale.as_deref(),
+        "translation.field.ownerSlug",
+        "Owner slug",
+    );
+    let kind_label = t(
+        locale.as_deref(),
+        "translation.field.resourceKind",
+        "Resource kind",
+    );
+    let subresource_label = t(
+        locale.as_deref(),
+        "translation.field.subresourceId",
+        "Subresource ID",
+    );
+    let item_id_label = t(locale.as_deref(), "translation.field.itemId", "Item ID");
+    let review_item_id_label = item_id_label.clone();
+    let field_key_label = t(locale.as_deref(), "translation.field.fieldKey", "Field key");
+    let value_label = t(
+        locale.as_deref(),
+        "translation.field.value",
+        "Translated value",
+    );
+    let proposal_id_label = t(
+        locale.as_deref(),
+        "translation.field.proposalId",
+        "Proposal ID",
+    );
+    let add_label = t(locale.as_deref(), "translation.action.addItem", "Add item");
+    let save_label = t(
+        locale.as_deref(),
+        "translation.action.saveProposal",
+        "Save proposal",
+    );
+    let submit_label = t(
+        locale.as_deref(),
+        "translation.action.submitProposal",
+        "Submit for review",
+    );
+    let approve_label = t(
+        locale.as_deref(),
+        "translation.action.approveProposal",
+        "Approve",
+    );
+    let apply_label = t(
+        locale.as_deref(),
+        "translation.action.applyProposal",
+        "Apply through owner",
+    );
+
+    let add_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::add_item_operation(
+                    &job_id.get_untracked(),
+                    &owner_slug.get_untracked(),
+                    &resource_kind.get_untracked(),
+                    &resource_id.get_untracked(),
+                    &subresource_id.get_untracked(),
+                    &add_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_add_key.set(core::new_idempotency_key("add-item"));
+                }),
+            );
+        }
+    };
+    let save_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::save_proposal_operation(
+                    &item_id.get_untracked(),
+                    &field_key.get_untracked(),
+                    &field_value.get_untracked(),
+                    &save_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_save_key.set(core::new_idempotency_key("save-proposal"));
+                }),
+            );
+        }
+    };
+    let submit_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::proposal_command_operation(
+                    ProposalCommand::Submit,
+                    &item_id.get_untracked(),
+                    &proposal_id.get_untracked(),
+                    &submit_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_submit_key.set(core::new_idempotency_key("submit-proposal"));
+                }),
+            );
+        }
+    };
+    let approve_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::proposal_command_operation(
+                    ProposalCommand::Approve,
+                    &item_id.get_untracked(),
+                    &proposal_id.get_untracked(),
+                    &approve_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_approve_key.set(core::new_idempotency_key("approve-proposal"));
+                }),
+            );
+        }
+    };
+    let apply_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::proposal_command_operation(
+                    ProposalCommand::Apply,
+                    &item_id.get_untracked(),
+                    &proposal_id.get_untracked(),
+                    &apply_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_apply_key.set(core::new_idempotency_key("apply-proposal"));
+                }),
+            );
+        }
+    };
+
+    view! {
+        <div class="space-y-6">
+            <div class="grid gap-6 xl:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{admit_title}</CardTitle>
+                        <CardDescription>{admit_description}</CardDescription>
+                    </CardHeader>
+                    <CardContent class="space-y-4">
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="space-y-2"><Label required=true>{job_id_label}</Label><Input value=job_id set_value=set_job_id name="job_id" /></div>
+                            <div class="space-y-2"><Label required=true>{resource_id_label}</Label><Input value=resource_id set_value=set_resource_id name="resource_id" /></div>
+                            <div class="space-y-2"><Label required=true>{owner_label}</Label><Input value=owner_slug set_value=set_owner_slug name="owner_slug" /></div>
+                            <div class="space-y-2"><Label required=true>{kind_label}</Label><Input value=resource_kind set_value=set_resource_kind name="resource_kind" /></div>
+                            <div class="space-y-2 sm:col-span-2"><Label>{subresource_label}</Label><Input value=subresource_id set_value=set_subresource_id name="subresource_id" /></div>
+                        </div>
+                        <Button on_click=Box::new(add_action)>{add_label}</Button>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{proposal_title}</CardTitle>
+                        <CardDescription>{proposal_description}</CardDescription>
+                    </CardHeader>
+                    <CardContent class="space-y-4">
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="space-y-2"><Label required=true>{item_id_label}</Label><Input value=item_id set_value=set_item_id name="item_id" /></div>
+                            <div class="space-y-2"><Label required=true>{field_key_label}</Label><Input value=field_key set_value=set_field_key name="field_key" /></div>
+                            <div class="space-y-2 sm:col-span-2"><Label required=true>{value_label}</Label><Textarea value=field_value set_value=set_field_value name="field_value" rows=5 /></div>
+                        </div>
+                        <Button on_click=Box::new(save_action)>{save_label}</Button>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{review_title}</CardTitle>
+                    <CardDescription>{review_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="space-y-2"><Label required=true>{review_item_id_label}</Label><Input value=item_id set_value=set_item_id name="review_item_id" /></div>
+                        <div class="space-y-2"><Label required=true>{proposal_id_label}</Label><Input value=proposal_id set_value=set_proposal_id name="proposal_id" /></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <Button variant=ButtonVariant::Outline on_click=Box::new(submit_action)>{submit_label}</Button>
+                        <Button variant=ButtonVariant::Secondary on_click=Box::new(approve_action)>{approve_label}</Button>
+                        <Button on_click=Box::new(apply_action)>{apply_label}</Button>
+                    </div>
+                    <Show when=move || busy.get()>
+                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                    </Show>
+                </CardContent>
+            </Card>
+            <OutcomePanel outcome locale=locale.clone() />
+        </div>
+    }
+}
+
+#[component]
+fn OutcomePanel(outcome: ReadSignal<OperationOutcome>, locale: Option<String>) -> impl IntoView {
+    view! {
+        {move || {
+            let locale = locale.clone();
+            outcome.get().map(|result| match result {
+                Ok(response) => {
+                    let receipt = operation_receipt_view_model(&response);
+                    let title = t(
+                        locale.as_deref(),
+                        receipt.title_key,
+                        receipt.fallback_title,
+                    );
+                    let facts_locale = locale.clone();
+                    view! {
+                        <Alert variant=AlertVariant::Success title=title>
+                            <dl class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                {receipt.facts.into_iter().map(|fact| {
+                                    let label = t(
+                                        facts_locale.as_deref(),
+                                        fact.label_key,
+                                        fact.fallback_label,
+                                    );
+                                    view! {
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide opacity-70">
+                                                {label}
+                                            </dt>
+                                            <dd class="mt-1 break-all font-mono text-xs">{fact.value}</dd>
+                                        </div>
+                                    }
+                                }).collect_view()}
+                            </dl>
+                        </Alert>
+                    }.into_any()
+                }
+                Err(error) => {
+                    let title = t(
+                        locale.as_deref(),
+                        "translation.error.operation",
+                        "Operation failed",
+                    );
+                    view! {
+                        <Alert variant=AlertVariant::Destructive title=title>
+                            {error}
+                        </Alert>
+                    }.into_any()
+                }
+            })
+        }}
+    }
+}
+
+fn run_operation(
+    context: TranslationAdminTransportContext,
+    operation: Result<TranslationAdminOperation, core::CommandInputError>,
+    set_busy: WriteSignal<bool>,
+    set_outcome: WriteSignal<OperationOutcome>,
+    on_success: Callback<TranslationAdminResponse>,
+) {
+    let operation = match operation {
+        Ok(operation) => operation,
+        Err(error) => {
+            set_outcome.set(Some(Err(error.to_string())));
+            return;
+        }
+    };
+
+    if set_busy.try_update(|busy| {
+        if *busy {
+            false
+        } else {
+            *busy = true;
+            true
+        }
+    }) != Some(true)
+    {
+        return;
+    }
+
+    spawn_local(async move {
+        match transport::execute(context, operation).await {
+            Ok(response) => {
+                on_success.run(response.clone());
+                set_outcome.set(Some(Ok(response)));
+            }
+            Err(error) => set_outcome.set(Some(Err(error.to_string()))),
+        }
+        set_busy.set(false);
+    });
+}

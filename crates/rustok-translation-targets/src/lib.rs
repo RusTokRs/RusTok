@@ -101,6 +101,18 @@ pub enum TranslationTargetContractError {
     ExactOptionalUnitsOverflow,
     #[error("translation progress complete resources exceed resources")]
     CompleteResourcesOverflow,
+    #[error("translation field contains an empty protected token")]
+    EmptyProtectedToken,
+    #[error("translation field contains a duplicate protected token")]
+    DuplicateProtectedToken,
+    #[error("translation field protected token is absent from the source value")]
+    ProtectedTokenMissingFromSource,
+    #[error("translation patch validation issue code must not be empty")]
+    EmptyPatchIssueCode,
+    #[error("translation patch validation issue message must not be empty")]
+    EmptyPatchIssueMessage,
+    #[error("translation patch validation acceptance does not match issue severities")]
+    PatchValidationAcceptanceMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -227,6 +239,7 @@ pub struct TranslationFieldSnapshot {
     pub source_value: String,
     pub exact_target_value: Option<String>,
     pub source_hash: String,
+    pub protected_tokens: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -280,6 +293,18 @@ impl TranslationResourceSnapshot {
                 return Err(TranslationTargetContractError::UnsafeAiExport(
                     field.descriptor.key.clone(),
                 ));
+            }
+            let mut protected_tokens = BTreeSet::new();
+            for token in &field.protected_tokens {
+                if token.is_empty() {
+                    return Err(TranslationTargetContractError::EmptyProtectedToken);
+                }
+                if !protected_tokens.insert(token.as_str()) {
+                    return Err(TranslationTargetContractError::DuplicateProtectedToken);
+                }
+                if !field.source_value.contains(token) {
+                    return Err(TranslationTargetContractError::ProtectedTokenMissingFromSource);
+                }
             }
         }
         Ok(())
@@ -469,9 +494,38 @@ pub struct TranslationPatchValidation {
     pub issues: Vec<TranslationPatchIssue>,
 }
 
+impl TranslationPatchValidation {
+    pub fn validate(&self) -> Result<(), TranslationTargetContractError> {
+        for issue in &self.issues {
+            if issue.code.trim().is_empty() {
+                return Err(TranslationTargetContractError::EmptyPatchIssueCode);
+            }
+            if issue.message.trim().is_empty() {
+                return Err(TranslationTargetContractError::EmptyPatchIssueMessage);
+            }
+        }
+        let has_error = self
+            .issues
+            .iter()
+            .any(|issue| issue.severity == TranslationPatchIssueSeverity::Error);
+        if self.accepted == has_error {
+            return Err(TranslationTargetContractError::PatchValidationAcceptanceMismatch);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranslationPatchIssueSeverity {
+    Warning,
+    Error,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TranslationPatchIssue {
     pub field: Option<FieldKey>,
+    pub severity: TranslationPatchIssueSeverity,
     pub code: String,
     pub message: String,
 }
@@ -758,6 +812,7 @@ mod tests {
                 source_value: "Source".to_string(),
                 exact_target_value: None,
                 source_hash: "sha256:source".to_string(),
+                protected_tokens: Vec::new(),
             }],
         };
 
@@ -803,6 +858,86 @@ mod tests {
             facts.validate(),
             Err(TranslationTargetContractError::ExactRequiredUnitsOverflow)
         );
+    }
+
+    #[test]
+    fn snapshot_requires_a_unique_source_backed_protected_token_ledger() {
+        let mut snapshot = TranslationResourceSnapshot {
+            summary: TranslationResourceSummary {
+                identity: TranslationResourceIdentity {
+                    owner_slug: OwnerSlug::new("content").unwrap(),
+                    resource_kind: ResourceKind::new("template").unwrap(),
+                    resource_id: ResourceId::new("welcome").unwrap(),
+                    subresource_id: None,
+                },
+                display_label: "Welcome".to_string(),
+                lifecycle: TranslationResourceLifecycle::Active,
+                resource_revision: OpaqueRevision::new("1").unwrap(),
+                exact_locales: vec![TenantLocale::new("en").unwrap()],
+            },
+            source_locale: TenantLocale::new("en").unwrap(),
+            target_locale: TenantLocale::new("de").unwrap(),
+            rendered_fallback_locale: None,
+            source_revision: OpaqueRevision::new("1:en").unwrap(),
+            target_revision: None,
+            fields: vec![TranslationFieldSnapshot {
+                descriptor: TranslationFieldDescriptor {
+                    key: FieldKey::new("body").unwrap(),
+                    profile: TranslationValueProfile::TemplateText,
+                    strategy: TranslationStrategy::TranslateWithPlaceholders,
+                    classification: TranslationDataClassification::TenantPrivate,
+                    required: true,
+                    ai_export_allowed: true,
+                    max_characters: None,
+                    preserves_whitespace: true,
+                },
+                source_value: "Hello {name}".to_string(),
+                exact_target_value: None,
+                source_hash: "sha256:template".to_string(),
+                protected_tokens: vec!["{name}".to_string()],
+            }],
+        };
+        snapshot.validate().unwrap();
+
+        snapshot.fields[0].protected_tokens = vec!["{missing}".to_string()];
+        assert_eq!(
+            snapshot.validate(),
+            Err(TranslationTargetContractError::ProtectedTokenMissingFromSource)
+        );
+        snapshot.fields[0].protected_tokens = vec!["{name}".to_string(), "{name}".to_string()];
+        assert_eq!(
+            snapshot.validate(),
+            Err(TranslationTargetContractError::DuplicateProtectedToken)
+        );
+    }
+
+    #[test]
+    fn patch_validation_acceptance_matches_typed_issue_severity() {
+        let invalid = TranslationPatchValidation {
+            accepted: true,
+            issues: vec![TranslationPatchIssue {
+                field: None,
+                severity: TranslationPatchIssueSeverity::Error,
+                code: "owner.conflict".to_string(),
+                message: "owner state changed".to_string(),
+            }],
+        };
+        assert_eq!(
+            invalid.validate(),
+            Err(TranslationTargetContractError::PatchValidationAcceptanceMismatch)
+        );
+
+        TranslationPatchValidation {
+            accepted: true,
+            issues: vec![TranslationPatchIssue {
+                field: None,
+                severity: TranslationPatchIssueSeverity::Warning,
+                code: "owner.warning".to_string(),
+                message: "review this value".to_string(),
+            }],
+        }
+        .validate()
+        .unwrap();
     }
 
     #[test]

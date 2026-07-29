@@ -16,6 +16,8 @@ plane.
   re-authorization so unknown outcomes can be recovered safely.
 - Declare field value profiles, translation strategy, data classification, and
   AI-export eligibility.
+- Carry an explicit protected-token ledger and typed warning/error validation
+  evidence; consumers never infer placeholder syntax.
 - Register owner-contributed providers through `ModuleRuntimeExtensions`.
 - Provide contract validation and conformance fixtures.
 
@@ -36,6 +38,8 @@ plane.
 - `register_translation_target_provider`
 - `TranslationResourceSnapshot`
 - `TranslationPatchRequest`
+- `TranslationPatchIssueSeverity`
+- `TranslationPatchValidation`
 - `TranslationApplicationReceipt`
 - `TranslationTargetProgressRequest`
 - `TranslationTargetProgressFacts`

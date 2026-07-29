@@ -10,12 +10,12 @@ use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
     TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldPatch,
-    TranslationFieldSnapshot, TranslationPatchIssue, TranslationPatchRequest,
-    TranslationPatchValidation, TranslationResourceIdentity, TranslationResourceLifecycle,
-    TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
-    TranslationStrategy, TranslationTargetCapability, TranslationTargetChange,
-    TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProgressFacts,
-    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationFieldSnapshot, TranslationPatchIssue, TranslationPatchIssueSeverity,
+    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
+    TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
+    TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
+    TranslationTargetChange, TranslationTargetChangePage, TranslationTargetChangesRequest,
+    TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationValueProfile,
     validate_translation_apply_context, validate_translation_read_context,
 };
@@ -774,6 +774,7 @@ fn translation_fields(
             source_hash: field_hash(&source_value),
             source_value,
             exact_target_value: target_value.map(str::to_string),
+            protected_tokens: Vec::new(),
         }
     })
     .collect()
@@ -821,6 +822,7 @@ fn validate_patch_against_snapshot(
             Some(_) => {}
             None => issues.push(TranslationPatchIssue {
                 field: Some(patch.key.clone()),
+                severity: TranslationPatchIssueSeverity::Error,
                 code: "field_not_supported".to_string(),
                 message: "field is not exposed by the Media translation target".to_string(),
             }),
@@ -835,6 +837,7 @@ fn validate_patch_against_snapshot(
 fn conflict_issue(field: Option<FieldKey>, code: &str) -> TranslationPatchIssue {
     TranslationPatchIssue {
         field,
+        severity: TranslationPatchIssueSeverity::Error,
         code: code.to_string(),
         message: "live Media translation state no longer matches the proposal".to_string(),
     }

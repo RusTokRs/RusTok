@@ -16,6 +16,7 @@ pub mod metrics;
 pub mod migrations;
 pub mod model;
 pub mod policy;
+pub mod ports;
 pub mod rag;
 pub mod router;
 #[cfg(feature = "server")]
@@ -26,6 +27,8 @@ pub mod scheduler;
 pub mod service;
 #[cfg(feature = "server")]
 pub mod streaming;
+#[cfg(feature = "server")]
+mod structured;
 
 #[cfg(feature = "server")]
 pub use agent::agent_catalog;
@@ -74,6 +77,14 @@ pub use model::{
     ToolDefinition, ToolTrace, default_provider_capabilities,
 };
 pub use policy::ToolExecutionPolicy;
+pub use ports::{
+    AiStructuredTaskAttempt, AiStructuredTaskAvailability, AiStructuredTaskExecution,
+    AiStructuredTaskExecutionRef, AiStructuredTaskHealth, AiStructuredTaskLimits,
+    AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus, AiStructuredTaskUsage,
+    AiTaskDataClassification, MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES,
+    MAX_STRUCTURED_TASK_INPUT_BYTES, MAX_STRUCTURED_TASK_OUTPUT_BYTES,
+    MAX_STRUCTURED_TASK_SCHEMA_BYTES,
+};
 #[cfg(feature = "server")]
 pub use rag::RigRagEmbeddingProvider;
 pub use rag::{

@@ -9,6 +9,8 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub source_locale: String,
     pub target_locale: String,
+    pub glossary_id: Option<Uuid>,
+    pub glossary_revision: Option<i64>,
     pub status: String,
     pub created_by_actor_kind: String,
     pub created_by_actor_id: String,

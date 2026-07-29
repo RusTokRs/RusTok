@@ -9,15 +9,23 @@ machine-translation orchestration.
 ## Responsibilities
 
 - Maintain rebuildable tenant translation inventory and provider checkpoints.
+- Own a revisioned required-target-locale subset validated through the
+  Tenant-owned locale-policy port.
+- Own tenant-scoped, locale-pair glossaries with hierarchical owner/resource/
+  field scope, versioned concept snapshots, preferred/allowed/forbidden/
+  do-not-translate variants, compare-and-set lifecycle changes, and durable
+  actor-bound idempotency receipts.
 - Read validated exact-locale owner aggregates and expose projection freshness
-  by opaque cursor equality.
+  by opaque cursor equality, including required-target cross-locale totals.
 - Maintain a content-free, rebuildable per-job workflow progress projection.
 - Persist tenant-scoped jobs, immutable owner source snapshots, proposal and
   approval records, and owner-application receipts.
+- Run deterministic platform QA on every proposal save, submission, and
+  approval while preserving owner validation as the authoritative domain gate.
 - Call owner modules only through `rustok-translation-targets`; never read or
   write owner translation tables directly.
 - Keep machine-translation output review-required and route AI execution
-  through the future `rustok-ai-translation` adapter.
+  through the separate `rustok-ai-translation` adapter.
 - Remain fully usable for manual translation when the AI capability is absent.
 
 ## Entry points
@@ -27,10 +35,45 @@ machine-translation orchestration.
 - `TranslationInventoryRebuildResult`
 - `TranslationInventorySyncResult`
 - `TranslationWorkflowService`
+- `TranslationPolicyService`
 - `TranslationProgressService`
+- `TranslationGlossaryService`
+- `TranslationMemoryService`
+- `MachineTranslationPort` and bounded machine-translation request/result
+  contracts
+- `MemoryLookupInput`
+- `MemoryListInput`
+- `SetMemoryRetentionInput`
+- `TombstoneMemoryEntryInput`
+- `PurgeMemoryEntryInput`
+- `MemoryEntryRecord`
+- `MemoryMutationRecord`
+- `MemoryRetentionPolicy`
+- `MemorySuggestion`
+- `MemoryMatchEvidence`
+- `CreateGlossaryInput`
+- `UpdateGlossaryInput`
+- `ReplaceGlossaryTermsInput`
+- `SetGlossaryActiveInput`
+- `GlossaryBinding`
+- `GlossaryRecord`
+- `GlossarySummaryRecord`
+- `GlossaryConcept`
+- `GlossaryVariant`
 - `JobProgressRecord`
 - `ProviderProgressRecord`
 - `ProviderProjectionFreshness`
+- `RequiredProviderProgressRecord`
+- `ReplaceRequiredTargetLocalesInput`
+- `TranslationPolicyRecord`
+- `TranslationPolicyFreshness`
+- `evaluate_patch_qa`
+- `map_translation_public_error`
+- `TranslationPublicError`
+- `TranslationPublicErrorKind`
+- `graphql::TranslationQuery`
+- `graphql::TranslationMutation`
+- `graphql_runtime::TranslationGraphqlRuntimeData`
 - `CreateJobInput`
 - `AddItemInput`
 - `SaveProposalInput`
@@ -51,6 +94,11 @@ machine-translation orchestration.
 ## Interactions
 
 - Depends on `rustok-translation-targets` for the neutral owner-provider SPI.
+- Consumes `rustok-tenant::TenantLocalePolicyPort`; it never queries
+  `tenant_locales` directly. Policy writes use tenant-scoped revision CAS,
+  actor-bound durable idempotency receipts, and reject disabled locales. Reads
+  expose stale policy plus its current CAS revision so an operator can rebase
+  it safely.
 - Requires the Core transactional outbox for content-free, typed workflow
   events. A workflow state transition and its event always share one database
   transaction.
@@ -75,6 +123,32 @@ machine-translation orchestration.
 - Reads provider aggregates only through the neutral SPI, rejects impossible
   facts, and reports checkpoint freshness as `current`, `behind`, or `unknown`
   without interpreting opaque cursors as numeric distances.
+- Uses the required-target policy as the cross-locale progress denominator.
+  The current source locale is excluded from its own target set, totals use
+  checked arithmetic, and aggregate freshness is the worst target state.
+- Validates a job glossary binding against tenant ownership, active lifecycle,
+  current glossary revision, and the exact job locale pair before persisting
+  the job. The captured glossary ID and revision remain immutable workflow
+  evidence while later term replacements preserve old revision snapshots.
+- Ingests reusable owner-field segments atomically with successful apply, only
+  after user review and only for public or tenant-private data. Memory entries
+  retain proposal, reviewer, owner-resource, source-hash, and apply-receipt
+  provenance; replay cannot duplicate a proposal field.
+- Provides tenant-scoped exact and context-aware fuzzy lookup with Unicode
+  normalization, bounded candidates, stable ranking, and explicit score
+  evidence. Unknown-locale, sensitive, secret, personal, and immutable
+  transaction content does not enter the default memory path.
+- Provides revision-guarded owner-lifecycle, retain-until, and legal-hold
+  policies plus replay-safe tombstone and purge. Tombstoned entries leave
+  lookup immediately; purge removes content while retaining content-free
+  operation receipts.
+- Persists typed QA warnings/errors. Required-field presence, non-empty
+  required values, character bounds, protected-token multiplicity,
+  owner-declared whitespace shape, excluded fields, lifecycle, and unchanged
+  value warnings are deterministic. The same pass evaluates the job-captured
+  glossary revision for applicable owner/resource/field scope, enforcing
+  preferred, allowed, forbidden, and do-not-translate terminology. Any error
+  blocks review/approval.
 - Persists apply intent before invoking an owner and records `applied` only
   after validating and durably storing the owner's stable receipt.
 - Allows an operator with both Translation Manage and Publish permissions to
@@ -82,6 +156,19 @@ machine-translation orchestration.
   owner reauthorizes that operator and reconciles the original mutation key.
 - Does not own localized business data and has no dependency on Media, Product,
   Pages, Blog, Commerce, or other provider implementations.
+- Publishes its operator GraphQL roots through module-manifest composition.
+  The capability-owned runtime factory receives the provider registry and
+  transactional event bus through neutral typed host values and constructs the
+  Tenant locale-policy adapter inside Translation; the server does not contain
+  owner-specific Translation wiring.
+- Shares one redacted public-error classifier between GraphQL and native
+  adapters, preserving stable client codes without exposing database details.
+- Publishes the module-owned `rustok-translation-admin` package with one typed
+  32-operation contract, native `#[server]` execution for SSR/hydrate,
+  `rustok-graphql` execution for CSR/headless, and a six-tab Leptos workbench.
+  The manifest mounts that package in the Leptos host; the matching
+  `@rustok/translation-admin` package owns the parity Next admin workbench,
+  including Translation Memory lookup and lifecycle management.
 
 See the [local module contract](docs/README.md) and
 [implementation plan](docs/implementation-plan.md).

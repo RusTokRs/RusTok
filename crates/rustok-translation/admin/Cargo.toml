@@ -1,0 +1,54 @@
+[package]
+name = "rustok-translation-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-translation module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+csr = ["leptos/csr"]
+hydrate = ["leptos/hydrate", "leptos-auth/hydrate"]
+ssr = [
+  "dep:chrono",
+  "leptos/ssr",
+  "leptos-auth/ssr",
+  "rustok-api/server",
+  "dep:leptos_axum",
+  "dep:rustok-core",
+  "dep:rustok-outbox",
+  "dep:rustok-tenant",
+  "dep:rustok-translation",
+  "dep:rustok-translation-targets",
+  "dep:sea-orm",
+]
+
+[dependencies]
+chrono = { workspace = true, optional = true }
+leptos.workspace = true
+leptos-auth.workspace = true
+leptos_axum = { workspace = true, optional = true }
+rustok-api = { workspace = true, default-features = false }
+rustok-core = { workspace = true, optional = true }
+rustok-graphql.workspace = true
+rustok-outbox = { workspace = true, optional = true }
+rustok-tenant = { workspace = true, optional = true }
+rustok-translation = { workspace = true, optional = true }
+rustok-translation-targets = { workspace = true, optional = true }
+rustok-ui-core.workspace = true
+rustok-ui-i18n-leptos.workspace = true
+rustok-ui-transport.workspace = true
+leptos-ui.workspace = true
+leptos-ui-routing.workspace = true
+sea-orm = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+async-graphql.workspace = true
+rustok-translation = { workspace = true, features = ["graphql"] }
+tokio.workspace = true

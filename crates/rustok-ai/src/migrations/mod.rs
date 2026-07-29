@@ -3,6 +3,7 @@ mod m20260712_000001_provider_targets;
 mod m20260712_000002_approval_batches;
 mod m20260713_000001_agent_control_plane;
 mod m20260713_000002_agent_stage_leases;
+pub(crate) mod m20260729_000001_structured_execution;
 
 use rustok_core::MigrationSource;
 use sea_orm_migration::MigrationTrait;
@@ -24,5 +25,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260712_000002_approval_batches::Migration),
         Box::new(m20260713_000001_agent_control_plane::Migration),
         Box::new(m20260713_000002_agent_stage_leases::Migration),
+        Box::new(m20260729_000001_structured_execution::Migration),
     ]
 }

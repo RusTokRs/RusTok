@@ -1,0 +1,378 @@
+export type AdminGraphqlExecutor = <V, T>(
+  query: string,
+  variables?: V,
+  token?: string | null,
+  tenantSlug?: string | null,
+  options?: { graphqlUrl?: string; tenantId?: string | null }
+) => Promise<T>;
+
+export type TranslationAdminPageProps = {
+  graphql: AdminGraphqlExecutor;
+  token?: string | null;
+  tenantSlug?: string | null;
+  graphqlUrl?: string;
+};
+
+export type TranslationPolicy = {
+  tenantId: string;
+  requiredTargetLocales: string[];
+  tenantLocalePolicyRevision: number;
+  revision: number;
+  freshness: string;
+  disabledRequiredTargetLocales: string[];
+};
+
+export type TranslationTarget = {
+  ownerSlug: string;
+  resourceKind: string;
+  displayName: string;
+  capabilities: string[];
+  readPermissionFloor: string[];
+  applyPermissionFloor: string[];
+};
+
+export type GlossaryBinding = {
+  glossaryId: string;
+  revision: number;
+};
+
+export type GlossaryScope = {
+  ownerSlug?: string | null;
+  resourceKind?: string | null;
+  fieldKey?: string | null;
+};
+
+export type GlossaryTermPolicy =
+  'PREFERRED' | 'ALLOWED' | 'FORBIDDEN' | 'DO_NOT_TRANSLATE';
+
+export type GlossaryMatchKind = 'EXACT' | 'WHOLE_WORD' | 'SUBSTRING';
+
+export type GlossaryVariant = {
+  value: string;
+  policy: GlossaryTermPolicy;
+};
+
+export type GlossaryConcept = {
+  conceptKey: string;
+  sourceTerm: string;
+  variants: GlossaryVariant[];
+  matchKind: GlossaryMatchKind;
+  caseSensitive: boolean;
+  notes: string;
+};
+
+export type GlossarySummary = {
+  id: string;
+  name: string;
+  description: string;
+  sourceLocale: string;
+  targetLocale: string;
+  scope: GlossaryScope;
+  isActive: boolean;
+  revision: number;
+};
+
+export type Glossary = GlossarySummary & {
+  concepts: GlossaryConcept[];
+};
+
+export type MemoryRetentionPolicy =
+  'OWNER_LIFECYCLE' | 'RETAIN_UNTIL' | 'LEGAL_HOLD';
+
+export type MemoryMatchKind = 'EXACT' | 'CONTEXTUAL_FUZZY' | 'FUZZY';
+
+export type MemoryMatchEvidence = {
+  kind: MemoryMatchKind;
+  sourceExact: boolean;
+  contextMatch: boolean;
+  baseSimilarityBasisPoints: number;
+  contextBonusBasisPoints: number;
+  finalSimilarityBasisPoints: number;
+  segmentationVersion: string;
+};
+
+export type MemorySuggestion = {
+  entryId: string;
+  sourceText: string;
+  targetText: string;
+  sourceHash: string;
+  ownerSlug: string;
+  resourceKind: string;
+  resourceId: string;
+  fieldKey: string;
+  origin: string;
+  proposalId: string;
+  applyReceiptId: string;
+  evidence: MemoryMatchEvidence;
+};
+
+export type MemoryEntry = {
+  id: string;
+  tenantId: string;
+  sourceLocale: string;
+  targetLocale: string;
+  ownerSlug: string;
+  resourceKind: string;
+  resourceId: string;
+  subresourceId: string | null;
+  fieldKey: string;
+  sourceText: string;
+  targetText: string;
+  sourceHash: string;
+  targetHash: string;
+  contextFingerprint: string;
+  segmentationVersion: string;
+  origin: string;
+  qualityState: string;
+  reviewerActorKind: string;
+  reviewerActorId: string;
+  proposalId: string;
+  applyReceiptId: string;
+  retentionPolicy: MemoryRetentionPolicy;
+  retainUntil: string | null;
+  tombstonedAt: string | null;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MemoryMutation = {
+  entryId: string;
+  revision: number;
+  state: string;
+  retentionPolicy: MemoryRetentionPolicy;
+  retainUntil: string | null;
+  tombstonedAt: string | null;
+};
+
+export type Job = {
+  id: string;
+  sourceLocale: string;
+  targetLocale: string;
+  glossary: GlossaryBinding | null;
+  status: string;
+  revision: number;
+};
+
+export type JobProgress = {
+  jobId: string;
+  totalItems: number;
+  appliedItems: number;
+  blockedItems: number;
+  revision: number;
+  [key: string]: unknown;
+};
+
+export type ProviderProgress = {
+  ownerSlug: string;
+  resourceKind: string;
+  sourceLocale: string;
+  targetLocale: string;
+  resources: number;
+  completeResources: number;
+  freshness: string;
+  [key: string]: unknown;
+};
+
+export type RequiredProviderProgress = {
+  ownerSlug: string;
+  resourceKind: string;
+  sourceLocale: string;
+  requiredTargetLocales: string[];
+  resourceLocalePairs: number;
+  completeResourceLocalePairs: number;
+  freshness: string;
+  targets: ProviderProgress[];
+  [key: string]: unknown;
+};
+
+export type JobItem = {
+  id: string;
+  jobId: string;
+  ownerSlug: string;
+  resourceKind: string;
+  resourceId: string;
+  subresourceId: string | null;
+  status: string;
+  revision: number;
+  [key: string]: unknown;
+};
+
+export type Proposal = {
+  id: string;
+  itemId: string;
+  status: string;
+  qaIssues: Array<{ severity: string; code: string; message: string }>;
+  [key: string]: unknown;
+};
+
+export type ApplyResult = {
+  operationId: string;
+  itemId: string;
+  proposalId: string;
+  providerReceiptId: string;
+  targetRevision: string;
+  [key: string]: unknown;
+};
+
+export type InventoryResult = {
+  observedResources: number;
+  checkpoint: string | null;
+  checkpointRevision: number;
+};
+
+export type TranslationOperation =
+  | { kind: 'read_policy' }
+  | { kind: 'list_targets' }
+  | { kind: 'list_glossaries'; limit: number }
+  | { kind: 'read_glossary'; glossaryId: string; revision?: number }
+  | {
+      kind: 'list_memory_entries';
+      sourceLocale?: string;
+      targetLocale?: string;
+      includeTombstoned: boolean;
+      limit: number;
+    }
+  | { kind: 'read_memory_entry'; entryId: string }
+  | {
+      kind: 'lookup_memory';
+      sourceLocale: string;
+      targetLocale: string;
+      identity: {
+        ownerSlug: string;
+        resourceKind: string;
+        resourceId: string;
+        subresourceId?: string | null;
+      };
+      fieldKey: string;
+      sourceText: string;
+      minimumSimilarityBasisPoints: number;
+      limit: number;
+    }
+  | {
+      kind: 'replace_policy';
+      expectedRevision: number;
+      requiredTargetLocales: string[];
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'create_glossary';
+      name: string;
+      description: string;
+      sourceLocale: string;
+      targetLocale: string;
+      scope: GlossaryScope;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'update_glossary';
+      glossaryId: string;
+      expectedRevision: number;
+      name: string;
+      description: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'replace_glossary_terms';
+      glossaryId: string;
+      expectedRevision: number;
+      concepts: GlossaryConcept[];
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'set_glossary_active';
+      glossaryId: string;
+      expectedRevision: number;
+      isActive: boolean;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'set_memory_retention';
+      entryId: string;
+      expectedRevision: number;
+      policy: MemoryRetentionPolicy;
+      retainUntil?: string | null;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'tombstone_memory_entry' | 'purge_memory_entry';
+      entryId: string;
+      expectedRevision: number;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'create_job';
+      sourceLocale: string;
+      targetLocale: string;
+      glossary?: GlossaryBinding;
+      idempotencyKey: string;
+    }
+  | { kind: 'read_job_progress'; jobId: string }
+  | { kind: 'rebuild_job_progress'; jobId: string; idempotencyKey: string }
+  | {
+      kind: 'sync_inventory';
+      ownerSlug: string;
+      resourceKind: string;
+      limit: number;
+    }
+  | {
+      kind: 'rebuild_inventory';
+      ownerSlug: string;
+      resourceKind: string;
+      sourceLocale: string;
+      targetLocale: string;
+      pageSize: number;
+    }
+  | {
+      kind: 'read_provider_progress';
+      ownerSlug: string;
+      resourceKind: string;
+      sourceLocale: string;
+      targetLocale: string;
+    }
+  | {
+      kind: 'read_required_progress';
+      ownerSlug: string;
+      resourceKind: string;
+      sourceLocale: string;
+    }
+  | {
+      kind: 'add_item';
+      jobId: string;
+      ownerSlug: string;
+      resourceKind: string;
+      resourceId: string;
+      subresourceId?: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'save_proposal';
+      itemId: string;
+      fieldKey: string;
+      value: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'submit_proposal' | 'approve_proposal' | 'apply_proposal';
+      itemId: string;
+      proposalId: string;
+      idempotencyKey: string;
+    };
+
+export type TranslationResponse =
+  | { kind: 'policy'; value: TranslationPolicy }
+  | { kind: 'targets'; value: TranslationTarget[] }
+  | { kind: 'glossaries'; value: GlossarySummary[] }
+  | { kind: 'glossary'; value: Glossary }
+  | { kind: 'memory_entries'; value: MemoryEntry[] }
+  | { kind: 'memory_entry'; value: MemoryEntry }
+  | { kind: 'memory_suggestions'; value: MemorySuggestion[] }
+  | { kind: 'memory_mutation'; value: MemoryMutation }
+  | { kind: 'job'; value: Job }
+  | { kind: 'job_progress'; value: JobProgress }
+  | { kind: 'provider_progress'; value: ProviderProgress }
+  | { kind: 'required_progress'; value: RequiredProviderProgress }
+  | { kind: 'item'; value: JobItem }
+  | { kind: 'proposal'; value: Proposal }
+  | { kind: 'apply'; value: ApplyResult }
+  | { kind: 'inventory'; value: InventoryResult };

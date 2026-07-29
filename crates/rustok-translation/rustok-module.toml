@@ -5,10 +5,27 @@ version = "0.1.0"
 description = "Owner-safe translation workflow, inventory, memory, glossary, and machine-translation control plane"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "future_ui"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin", "next-admin"]
 
 [crate]
 entry_type = "TranslationModule"
+
+[provides.graphql]
+query = "graphql::TranslationQuery"
+mutation = "graphql::TranslationMutation"
+runtime_data_factory = "graphql_runtime::attach_schema_data"
+
+[provides.admin_ui]
+leptos_crate = "rustok-translation-admin"
+route_segment = "translation"
+nav_label = "Translation"
+next_package = "@rustok/translation-admin"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
 
 [marketplace]
 category = "content"

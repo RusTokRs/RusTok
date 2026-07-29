@@ -84,9 +84,13 @@ Local documents for applications and crates live in `apps/*/docs/`,
   - [Verification Guide](./backend/module-backend-verification.md) - fast guardrails, targeted Rust checks and FBA evidence
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
-- [Translation Module Implementation Plan](./modules/translation-implementation-plan.md)
+- [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) -
+  owner-safe inventory/workflow, required-target policy, deterministic QA,
+  versioned glossaries, Translation Memory lifecycle, 32-operation GraphQL
+  plus native admin parity, and the future AI adapter track
 - [Machine-readable Translation Surface Readiness Registry](./modules/translation-surfaces.json)
 - [`rustok-translation-targets` owner-provider contract](../crates/rustok-translation-targets/docs/README.md)
+- [`rustok-ai-translation` machine-translation bridge contract](../crates/rustok-ai-translation/docs/README.md)
 - AI support adapter plans for `rustok-ai-media` and `rustok-ai-alloy` are available through the [module documentation index](./modules/_index.md).
 
 ## UI and Client Surfaces

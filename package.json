@@ -19,6 +19,8 @@
     "verify:i18n:ui": "node scripts/verify/verify-ui-i18n-parity.mjs",
     "verify:i18n:contract": "node scripts/verify/verify-i18n-contract.mjs",
     "verify:translation:surfaces": "node scripts/verify/verify-translation-surface-registry.mjs",
+    "verify:translation:admin-boundary": "node scripts/verify/verify-translation-admin-boundary.mjs",
+    "verify:ai-translation:boundary": "node scripts/verify/verify-ai-translation-boundary.mjs",
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs",
     "verify:api:surface-contract": "node scripts/verify/verify-api-surface-contract.mjs",
     "verify:axum:runtime": "node scripts/verify/verify-axum-runtime.mjs",
