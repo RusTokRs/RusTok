@@ -13,6 +13,9 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const owner = read('crates/rustok-order/src/order_read.rs');
 const exports = read('crates/rustok-order/src/lib.rs');
 const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
+const graphqlOrderShim = read(
+  'crates/rustok-commerce/src/graphql/safe_query/source/rustok_order_shim.rs',
+);
 const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
 const adminOrders = read('crates/rustok-commerce/src/controllers/admin/orders.rs');
 const serverRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
@@ -80,6 +83,10 @@ for (const [source, value, label] of [
   [graphqlRuntime, 'pub fn order_read_port(&self)', 'runtime port getter'],
   [graphqlRuntime, 'order_read_runtime: CommerceOrderReadRuntime,', 'GraphQL runtime data field'],
   [graphqlRuntime, '.shared_get::<CommerceOrderReadRuntime>()', 'GraphQL host runtime requirement'],
+  [graphqlRuntime, 'static CURRENT_COMMERCE_ORDER_READ_RUNTIME:', 'GraphQL order task-local runtime'],
+  [graphqlRuntime, 'runtime_data.order_read_runtime()', 'GraphQL scoped host runtime'],
+  [graphqlRuntime, 'pub(crate) fn order_read_runtime_for_current_graphql_scope(', 'GraphQL runtime accessor'],
+  [graphqlOrderShim, 'order_read_runtime_for_current_graphql_scope(', 'GraphQL shim scoped runtime lookup'],
   [graphqlRuntime, 'commerce GraphQL requires CommerceOrderReadRuntime in host composition', 'GraphQL fail-closed message'],
   [httpRuntime, 'order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,', 'HTTP runtime field'],
   [httpRuntime, 'fn order_read_port(&self)', 'HTTP port getter'],
@@ -105,7 +112,7 @@ for (const [source, value, label] of [
   [storefrontFixtures, 'CommerceOrderReadRuntime::in_process(', 'storefront fixture runtime'],
   [fulfillmentFailureContract, 'CommerceOrderReadRuntime::in_process(', 'manual host fixture runtime'],
   [fulfillmentFailureContract, '.with_shared_value(event_bus.clone())', 'manual host fixture shared event bus'],
-  [note, 'Status: owner port and host runtime published; admin REST list/detail cut over, unvalidated.', 'owner note status'],
+  [note, 'Status: owner port and host runtime published; admin REST and mounted GraphQL list/detail cut over, unvalidated.', 'owner note status'],
   [orderPlan, 'CommerceOrderReadRuntime', 'order plan runtime checkpoint'],
   [commercePlan, 'CommerceOrderReadRuntime', 'commerce plan runtime checkpoint'],
 ]) requireText(source, value, label);
@@ -146,7 +153,7 @@ for (const [value, label] of [
   ['.cancel_order(', 'cancel mutation remains owner service'],
 ]) requireText(adminOrders, value, label);
 
-if (evidence.status !== 'admin_rest_cutover_unvalidated') {
+if (evidence.status !== 'graphql_host_runtime_scoped_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 if (evidence.owner?.port !== 'OrderReadPort') {
@@ -173,8 +180,11 @@ for (const key of [
     failures.push(`evidence runtime_composition.${key} must be true`);
   }
 }
-if (evidence.runtime_composition?.graphql_resolver_scope_published !== false) {
-  failures.push('GraphQL resolver scope must remain unpublished in this wave');
+if (evidence.runtime_composition?.graphql_resolver_scope_published !== true) {
+  failures.push('GraphQL resolver scope must be published');
+}
+if (evidence.runtime_composition?.graphql_embedded_fallback_retained !== true) {
+  failures.push('GraphQL embedded fallback must remain explicit');
 }
 if (evidence.errors?.owner_message_control_flow !== false) {
   failures.push('evidence must forbid owner-message control flow');
@@ -188,6 +198,12 @@ if (evidence.consumer_inventory?.commerce_admin_rest_list_detail !== 'order_read
 if (evidence.consumer_inventory?.commerce_admin_rest_cutover_completed !== true) {
   failures.push('admin REST source cutover must be complete');
 }
+if (evidence.consumer_inventory?.commerce_graphql_order_list_detail !== 'order_read_port_host_runtime') {
+  failures.push('GraphQL list/detail must use the host-selected order read runtime');
+}
+if (evidence.consumer_inventory?.commerce_graphql_order_list_detail_cutover_completed !== true) {
+  failures.push('GraphQL list/detail source cutover must be complete');
+}
 if (evidence.consumer_inventory?.runtime_composition_published !== true) {
   failures.push('runtime composition must be published');
 }
@@ -195,7 +211,7 @@ if (evidence.consumer_inventory?.all_consumer_cutover_completed !== false) {
   failures.push('all-consumer cutover must remain incomplete');
 }
 if (evidence.consumer_inventory?.cutover_required !== true) {
-  failures.push('evidence must retain pending GraphQL/storefront cutover');
+  failures.push('evidence must retain pending storefront cutover');
 }
 if (evidence.decision?.status_promotion !== false) {
   failures.push('source cutover must not promote status');
@@ -221,5 +237,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Order read runtime is host-composed and admin REST list/detail use the typed owner port while GraphQL/storefront cutover and runtime evidence remain pending',
+  '✔ Order read runtime is host-composed and admin REST plus mounted GraphQL list/detail use the typed owner port while storefront and runtime evidence remain pending',
 );
