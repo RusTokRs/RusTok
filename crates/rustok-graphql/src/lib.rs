@@ -138,10 +138,10 @@ where
         .await
         .map_err(|_| GraphqlHttpError::Network)?;
 
-    if let Some(errors) = body.errors {
-        if let Some(error) = errors.first() {
-            return Err(GraphqlHttpError::Graphql(error.message.clone()));
-        }
+    if let Some(errors) = body.errors
+        && let Some(error) = errors.first()
+    {
+        return Err(GraphqlHttpError::Graphql(error.message.clone()));
     }
 
     body.data

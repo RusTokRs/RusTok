@@ -4,6 +4,7 @@ import type {
   Glossary,
   GlossarySummary,
   InventoryResult,
+  InterchangeDocument,
   Job,
   JobItem,
   JobProgress,
@@ -48,6 +49,8 @@ const MEMORY_MUTATION_FIELDS =
   'entryId revision state retentionPolicy retainUntil tombstonedAt';
 const JOB_FIELDS =
   'id sourceLocale targetLocale glossary { glossaryId revision } status revision';
+const INTERCHANGE_DOCUMENT_FIELDS =
+  'schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue sourceHash required maxCharacters protectedTokens } }';
 
 type RequestContext = {
   graphql: AdminGraphqlExecutor;
@@ -340,6 +343,28 @@ export async function executeTranslationOperation(
       );
       return { kind: 'job_progress', value: data.translationJobProgress };
     }
+    case 'export_job': {
+      const input = {
+        jobId: operation.jobId,
+        maxItems: operation.maxItems
+      };
+      const data = await request<
+        { input: typeof input },
+        { exportTranslationJob: InterchangeDocument }
+      >(
+        context,
+        `query ExportTranslationJob($input: ExportTranslationJobInput!) {
+          exportTranslationJob(input: $input) {
+            ${INTERCHANGE_DOCUMENT_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'interchange_document',
+        value: data.exportTranslationJob
+      };
+    }
     case 'rebuild_job_progress': {
       const data = await request<
         { jobId: string; idempotencyKey: string },
@@ -500,6 +525,23 @@ export async function executeTranslationOperation(
         { input }
       );
       return { kind: 'proposal', value: data.saveTranslationProposal };
+    }
+    case 'import_item': {
+      const input = {
+        ...operation.input,
+        idempotencyKey: operation.idempotencyKey
+      };
+      const data = await request<
+        { input: typeof input },
+        { importTranslationItem: Proposal }
+      >(
+        context,
+        `mutation ImportTranslationItem($input: ImportTranslationItemInput!) {
+          importTranslationItem(input: $input) { ${PROPOSAL_FIELDS} }
+        }`,
+        { input }
+      );
+      return { kind: 'proposal', value: data.importTranslationItem };
     }
     case 'generate_machine_proposal': {
       const input = withoutKind(operation);

@@ -14,6 +14,8 @@ use crate::{
     MachineProposalRecord, MemoryEntryRecord, MemoryMatchEvidence, MemoryMatchKind,
     MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, ProposalOrigin, ProposalRecord,
     ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord,
+    TranslationInterchangeDocument as InterchangeDocument,
+    TranslationInterchangeField as InterchangeField, TranslationInterchangeItem as InterchangeItem,
     TranslationInventoryRebuildResult, TranslationInventorySyncResult, TranslationPolicyFreshness,
     TranslationPolicyRecord,
 };
@@ -47,6 +49,23 @@ impl TryFrom<TranslationResourceIdentityInput> for TranslationResourceIdentity {
 pub struct TranslationProposalValueInput {
     pub key: String,
     pub value: String,
+}
+
+#[derive(InputObject)]
+pub struct ExportTranslationJobInput {
+    pub job_id: Uuid,
+    pub max_items: u16,
+}
+
+#[derive(InputObject)]
+pub struct ImportTranslationItemInput {
+    pub schema_version: u16,
+    pub job_id: Uuid,
+    pub item_id: Uuid,
+    pub identity: TranslationResourceIdentityInput,
+    pub source_digest: String,
+    pub values: Vec<TranslationProposalValueInput>,
+    pub idempotency_key: String,
 }
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -588,6 +607,94 @@ pub struct TranslationJob {
     pub glossary: Option<TranslationGlossaryBinding>,
     pub status: String,
     pub revision: i64,
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeIdentity {
+    pub owner_slug: String,
+    pub resource_kind: String,
+    pub resource_id: String,
+    pub subresource_id: Option<String>,
+}
+
+impl From<TranslationResourceIdentity> for TranslationInterchangeIdentity {
+    fn from(value: TranslationResourceIdentity) -> Self {
+        Self {
+            owner_slug: value.owner_slug.to_string(),
+            resource_kind: value.resource_kind.to_string(),
+            resource_id: value.resource_id.to_string(),
+            subresource_id: value.subresource_id.map(|id| id.to_string()),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeField {
+    pub key: String,
+    pub source_value: String,
+    pub exact_target_value: Option<String>,
+    pub source_hash: String,
+    pub required: bool,
+    pub max_characters: Option<u32>,
+    pub protected_tokens: Vec<String>,
+}
+
+impl From<InterchangeField> for TranslationInterchangeField {
+    fn from(value: InterchangeField) -> Self {
+        Self {
+            key: value.key.to_string(),
+            source_value: value.source_value,
+            exact_target_value: value.exact_target_value,
+            source_hash: value.source_hash,
+            required: value.required,
+            max_characters: value.max_characters,
+            protected_tokens: value.protected_tokens,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeItem {
+    pub item_id: Uuid,
+    pub identity: TranslationInterchangeIdentity,
+    pub source_digest: String,
+    pub source_revision: String,
+    pub target_revision: Option<String>,
+    pub fields: Vec<TranslationInterchangeField>,
+}
+
+impl From<InterchangeItem> for TranslationInterchangeItem {
+    fn from(value: InterchangeItem) -> Self {
+        Self {
+            item_id: value.item_id,
+            identity: value.identity.into(),
+            source_digest: value.source_digest,
+            source_revision: value.source_revision.to_string(),
+            target_revision: value.target_revision.map(|revision| revision.to_string()),
+            fields: value.fields.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct TranslationInterchangeDocument {
+    pub schema_version: u16,
+    pub job_id: Uuid,
+    pub source_locale: String,
+    pub target_locale: String,
+    pub items: Vec<TranslationInterchangeItem>,
+}
+
+impl From<InterchangeDocument> for TranslationInterchangeDocument {
+    fn from(value: InterchangeDocument) -> Self {
+        Self {
+            schema_version: value.schema_version,
+            job_id: value.job_id,
+            source_locale: value.source_locale.as_str().to_string(),
+            target_locale: value.target_locale.as_str().to_string(),
+            items: value.items.into_iter().map(Into::into).collect(),
+        }
+    }
 }
 
 impl From<JobRecord> for TranslationJob {

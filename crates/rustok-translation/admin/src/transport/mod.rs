@@ -37,11 +37,12 @@ pub(crate) async fn execute(
 
 #[cfg(test)]
 mod tests {
-    use super::{selected_transport_path, UiTransportPath};
-
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     #[test]
     fn default_profile_selects_graphql() {
-        #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
-        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+        assert_eq!(
+            super::selected_transport_path(),
+            rustok_ui_transport::UiTransportPath::Graphql
+        );
     }
 }

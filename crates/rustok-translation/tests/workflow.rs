@@ -17,13 +17,14 @@ use rustok_tenant::{
 };
 use rustok_translation::{
     AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
-    CreateGlossaryInput, CreateJobInput, GlossaryBinding, GlossaryConcept, GlossaryMatchKind,
-    GlossaryScope, GlossaryTermPolicy, GlossaryVariant, MemoryListInput, MemoryLookupInput,
-    MemoryMatchKind, MemoryRetentionPolicy, ProposalOrigin, ProposalValue, PurgeMemoryEntryInput,
-    RecoverApplyInput, ReplaceGlossaryTermsInput, RetryItemInput, SaveProposalInput,
-    SetMemoryRetentionInput, SubmitProposalInput, TombstoneMemoryEntryInput, TranslationError,
-    TranslationGlossaryService, TranslationMemoryService, TranslationProgressService,
-    TranslationWorkflowService, UnassignItemInput,
+    CreateGlossaryInput, CreateJobInput, ExportTranslationJobInput, GlossaryBinding,
+    GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossaryTermPolicy, GlossaryVariant,
+    ImportTranslationItemInput, MemoryListInput, MemoryLookupInput, MemoryMatchKind,
+    MemoryRetentionPolicy, ProposalOrigin, ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput,
+    ReplaceGlossaryTermsInput, RetryItemInput, SaveProposalInput, SetMemoryRetentionInput,
+    SubmitProposalInput, TombstoneMemoryEntryInput, TranslationError, TranslationGlossaryService,
+    TranslationMemoryService, TranslationProgressService, TranslationWorkflowService,
+    UnassignItemInput,
     entities::{
         apply_operation, apply_receipt, apply_recovery, assignment, cancellation, job, job_item,
         job_progress, memory_entry, memory_receipt, proposal, retry,
@@ -423,6 +424,104 @@ async fn create_approved_item(
         .await
         .unwrap();
     (item.id, proposal.id)
+}
+
+#[tokio::test]
+async fn bounded_interchange_exports_owner_snapshot_and_imports_through_canonical_qa() {
+    let (_database, service, tenant_id) = fixture().await;
+    let job = service
+        .create_job(
+            write_context(tenant_id, "interchange-create-job"),
+            job_input("de"),
+        )
+        .await
+        .unwrap();
+    let item = service
+        .add_item(
+            write_context(tenant_id, "interchange-add-item"),
+            AddItemInput {
+                job_id: job.id,
+                identity: identity("asset-interchange"),
+            },
+        )
+        .await
+        .unwrap();
+    let interchange = service.interchange_service();
+    assert!(matches!(
+        interchange
+            .export_job(
+                read_context(tenant_id),
+                ExportTranslationJobInput {
+                    job_id: job.id,
+                    max_items: 0,
+                },
+            )
+            .await
+            .unwrap_err(),
+        TranslationError::InvalidRequest(_)
+    ));
+    let document = interchange
+        .export_job(
+            read_context(tenant_id),
+            ExportTranslationJobInput {
+                job_id: job.id,
+                max_items: 10,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(document.schema_version, 1);
+    assert_eq!(document.items.len(), 1);
+    assert_eq!(document.items[0].item_id, item.id);
+    assert_eq!(
+        document.items[0]
+            .fields
+            .iter()
+            .map(|field| field.key.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["title"])
+    );
+
+    assert!(matches!(
+        interchange
+            .import_item(
+                write_context(tenant_id, "interchange-import-stale"),
+                ImportTranslationItemInput {
+                    schema_version: document.schema_version,
+                    job_id: document.job_id,
+                    item_id: item.id,
+                    identity: document.items[0].identity.clone(),
+                    source_digest: "stale-source-digest".to_string(),
+                    values: vec![ProposalValue {
+                        key: FieldKey::new("title").unwrap(),
+                        value: "Titel".to_string(),
+                    }],
+                },
+            )
+            .await
+            .unwrap_err(),
+        TranslationError::WorkflowRevisionConflict
+    ));
+
+    let proposal = interchange
+        .import_item(
+            write_context(tenant_id, "interchange-import-item"),
+            ImportTranslationItemInput {
+                schema_version: document.schema_version,
+                job_id: document.job_id,
+                item_id: item.id,
+                identity: document.items[0].identity.clone(),
+                source_digest: document.items[0].source_digest.clone(),
+                values: vec![ProposalValue {
+                    key: FieldKey::new("title").unwrap(),
+                    value: "Titel".to_string(),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(proposal.origin, ProposalOrigin::Import);
+    assert_eq!(proposal.status, "draft");
 }
 
 #[tokio::test]

@@ -564,6 +564,8 @@ where
             apply_receipt_id: Set(segment.apply_receipt_id),
             retention_policy: Set(DEFAULT_RETENTION_POLICY.to_string()),
             retain_until: Set(None),
+            owner_lifecycle_revision: Set(None),
+            owner_deleted_at: Set(None),
             tombstoned_at: Set(None),
             revision: Set(1),
             created_at: Set(created_at),
@@ -586,6 +588,49 @@ where
         .exec_without_returning(database)
         .await?;
     Ok(())
+}
+
+pub(crate) async fn record_owner_deletion<C>(
+    database: &C,
+    tenant_id: Uuid,
+    identity: &TranslationResourceIdentity,
+    resource_revision: &str,
+    observed_at: DateTime<FixedOffset>,
+) -> TranslationResult<u64>
+where
+    C: ConnectionTrait,
+{
+    if resource_revision.trim().is_empty() || resource_revision.len() > 256 {
+        return Err(TranslationError::MemoryInvariant(
+            "owner deletion revision is invalid".to_string(),
+        ));
+    }
+    let mut update = memory_entry::Entity::update_many()
+        .col_expr(
+            memory_entry::Column::OwnerLifecycleRevision,
+            Expr::value(Some(resource_revision.to_string())),
+        )
+        .col_expr(
+            memory_entry::Column::OwnerDeletedAt,
+            Expr::value(Some(observed_at)),
+        )
+        .col_expr(
+            memory_entry::Column::Revision,
+            Expr::col(memory_entry::Column::Revision).add(1),
+        )
+        .col_expr(memory_entry::Column::UpdatedAt, Expr::value(observed_at))
+        .filter(memory_entry::Column::TenantId.eq(tenant_id))
+        .filter(memory_entry::Column::OwnerSlug.eq(identity.owner_slug.as_str()))
+        .filter(memory_entry::Column::ResourceKind.eq(identity.resource_kind.as_str()))
+        .filter(memory_entry::Column::ResourceId.eq(identity.resource_id.as_str()))
+        .filter(memory_entry::Column::OwnerDeletedAt.is_null());
+    update = match identity.subresource_id.as_ref() {
+        Some(subresource_id) => {
+            update.filter(memory_entry::Column::SubresourceId.eq(subresource_id.as_str()))
+        }
+        None => update.filter(memory_entry::Column::SubresourceId.is_null()),
+    };
+    Ok(update.exec(database).await?.rows_affected)
 }
 
 async fn find_entry<C>(

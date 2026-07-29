@@ -39,6 +39,7 @@ import type {
   Glossary,
   GlossaryConcept,
   GlossarySummary,
+  ImportItemInput,
   MemoryEntry,
   MemoryRetentionPolicy,
   MemorySuggestion,
@@ -99,6 +100,9 @@ export function TranslationAdminPage({
   const [sourceLocale, setSourceLocale] = React.useState('en');
   const [targetLocale, setTargetLocale] = React.useState('de');
   const [jobId, setJobId] = React.useState('');
+  const [maxExportItems, setMaxExportItems] = React.useState('200');
+  const [exportDocument, setExportDocument] = React.useState('');
+  const [importDocument, setImportDocument] = React.useState('');
   const [ownerSlug, setOwnerSlug] = React.useState('media');
   const [resourceKind, setResourceKind] = React.useState('asset');
   const [resourceId, setResourceId] = React.useState('');
@@ -236,6 +240,9 @@ export function TranslationAdminPage({
           setGlossaries((current) =>
             upsertGlossarySummary(current, response.value)
           );
+        }
+        if (response.kind === 'interchange_document') {
+          setExportDocument(JSON.stringify(response.value, null, 2));
         }
         if (keyName) delete idempotencyKeys.current[keyName];
       } catch (error: unknown) {
@@ -564,6 +571,86 @@ export function TranslationAdminPage({
                     }
                   >
                     {t('action.rebuildProgress')}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className='xl:col-span-2'>
+              <CardHeader>
+                <CardTitle>{t('jobs.interchange')}</CardTitle>
+                <CardDescription>
+                  {t('jobs.interchangeDescription')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='grid gap-6 lg:grid-cols-2'>
+                <div className='space-y-4'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='translation-max-export-items'>
+                      {t('field.maxExportItems')}
+                    </Label>
+                    <Input
+                      id='translation-max-export-items'
+                      value={maxExportItems}
+                      onChange={(event) =>
+                        setMaxExportItems(event.target.value)
+                      }
+                    />
+                  </div>
+                  <Button
+                    variant='outline'
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(() => ({
+                        kind: 'export_job',
+                        jobId: required(jobId, 'job_id'),
+                        maxItems: exportItemLimit(maxExportItems)
+                      }))
+                    }
+                  >
+                    {t('action.exportJob')}
+                  </Button>
+                  <div className='space-y-2'>
+                    <Label htmlFor='translation-export-document'>
+                      {t('field.exportDocument')}
+                    </Label>
+                    <Textarea
+                      id='translation-export-document'
+                      rows={14}
+                      value={exportDocument}
+                      onChange={(event) =>
+                        setExportDocument(event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+                <div className='space-y-4'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='translation-import-document'>
+                      {t('field.importDocument')}
+                    </Label>
+                    <Textarea
+                      id='translation-import-document'
+                      rows={18}
+                      value={importDocument}
+                      onChange={(event) =>
+                        setImportDocument(event.target.value)
+                      }
+                    />
+                  </div>
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      safeRun(
+                        () => ({
+                          kind: 'import_item',
+                          input: parseImportItem(importDocument),
+                          idempotencyKey: commandKey('import-item')
+                        }),
+                        'import-item'
+                      )
+                    }
+                  >
+                    {t('action.importItem')}
                   </Button>
                 </div>
               </CardContent>
@@ -2002,6 +2089,49 @@ function positiveInteger(value: string, field: string): number {
   return parsed;
 }
 
+function exportItemLimit(value: string): number {
+  const parsed = positiveInteger(value, 'max_items');
+  if (parsed > 200) throw new Error('max_items: must be between 1 and 200');
+  return parsed;
+}
+
+function parseImportItem(value: string): ImportItemInput {
+  const document = objectValue(
+    JSON.parse(required(value, 'import_document', false)),
+    'import_document'
+  );
+  const identity = objectValue(document.identity, 'identity');
+  if (!Array.isArray(document.values) || document.values.length === 0) {
+    throw new Error('values: must contain at least one translated field');
+  }
+  const schemaVersion = Number(document.schemaVersion);
+  if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 1) {
+    throw new Error('schemaVersion: must be a positive integer');
+  }
+  return {
+    schemaVersion,
+    jobId: stringValue(document.jobId, 'jobId'),
+    itemId: stringValue(document.itemId, 'itemId'),
+    identity: {
+      ownerSlug: stringValue(identity.ownerSlug, 'identity.ownerSlug'),
+      resourceKind: stringValue(identity.resourceKind, 'identity.resourceKind'),
+      resourceId: stringValue(identity.resourceId, 'identity.resourceId'),
+      subresourceId:
+        identity.subresourceId == null
+          ? null
+          : stringValue(identity.subresourceId, 'identity.subresourceId')
+    },
+    sourceDigest: stringValue(document.sourceDigest, 'sourceDigest'),
+    values: document.values.map((entry, index) => {
+      const item = objectValue(entry, `values[${index}]`);
+      return {
+        key: stringValue(item.key, `values[${index}].key`),
+        value: stringValue(item.value, `values[${index}].value`)
+      };
+    })
+  };
+}
+
 function positiveRevision(value: string, field: string): number {
   const parsed = integer(value, field);
   if (parsed < 1 || !Number.isSafeInteger(parsed)) {
@@ -2053,25 +2183,27 @@ function errorMessage(error: unknown): string {
 function receiptKey(kind: TranslationResponse['kind']): string {
   return kind === 'job_progress'
     ? 'jobProgress'
-    : kind === 'provider_progress'
-      ? 'providerProgress'
-      : kind === 'required_progress'
-        ? 'requiredProgress'
-        : kind === 'memory_entries'
-          ? 'memoryEntries'
-          : kind === 'memory_entry'
-            ? 'memoryEntry'
-            : kind === 'memory_suggestions'
-              ? 'memorySuggestions'
-              : kind === 'memory_mutation'
-                ? 'memoryMutation'
-                : kind === 'machine_proposal'
-                  ? 'machineProposal'
-                  : kind === 'machine_operation_status'
-                    ? 'machineOperationStatus'
-                  : kind === 'machine_cancellation'
-                    ? 'machineCancellation'
-                    : kind;
+    : kind === 'interchange_document'
+      ? 'interchangeExport'
+      : kind === 'provider_progress'
+        ? 'providerProgress'
+        : kind === 'required_progress'
+          ? 'requiredProgress'
+          : kind === 'memory_entries'
+            ? 'memoryEntries'
+            : kind === 'memory_entry'
+              ? 'memoryEntry'
+              : kind === 'memory_suggestions'
+                ? 'memorySuggestions'
+                : kind === 'memory_mutation'
+                  ? 'memoryMutation'
+                  : kind === 'machine_proposal'
+                    ? 'machineProposal'
+                    : kind === 'machine_operation_status'
+                      ? 'machineOperationStatus'
+                      : kind === 'machine_cancellation'
+                        ? 'machineCancellation'
+                        : kind;
 }
 
 function responseFacts(response: TranslationResponse): Array<[string, string]> {
@@ -2134,6 +2266,12 @@ function responseFacts(response: TranslationResponse): Array<[string, string]> {
         ['Total items', String(response.value.totalItems)],
         ['Applied items', String(response.value.appliedItems)],
         ['Blocked items', String(response.value.blockedItems)]
+      ];
+    case 'interchange_document':
+      return [
+        ['Job ID', response.value.jobId],
+        ['Schema version', String(response.value.schemaVersion)],
+        ['Total items', String(response.value.items.length)]
       ];
     case 'provider_progress':
       return [

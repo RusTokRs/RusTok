@@ -228,6 +228,15 @@ impl TranslationWorkflowService {
         }
     }
 
+    pub fn interchange_service(&self) -> crate::TranslationInterchangeService {
+        crate::TranslationInterchangeService::new(
+            self.database.clone(),
+            Arc::clone(&self.providers),
+            Arc::clone(&self.tenant_locale_policies),
+            self.event_bus.clone(),
+        )
+    }
+
     pub async fn create_job(
         &self,
         context: PortContext,
@@ -497,7 +506,12 @@ impl TranslationWorkflowService {
         input: SaveProposalInput,
         enforce_current_assignment: bool,
     ) -> TranslationResult<ProposalRecord> {
-        let tenant_id = authorize_write(&context, Action::Update)?;
+        let action = if input.origin == ProposalOrigin::Import {
+            Action::Import
+        } else {
+            Action::Update
+        };
+        let tenant_id = authorize_write(&context, action)?;
         let idempotency_key = operation_idempotency_key(&context);
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
@@ -1559,11 +1573,13 @@ impl TranslationWorkflowService {
                         &self.database,
                         &self.event_bus,
                         &operation,
-                        "invariant_violation",
-                        "translation.invalid_provider_receipt",
-                        true,
-                        lease_token,
-                        event_actor_id,
+                        PendingApplyError {
+                            kind: "invariant_violation",
+                            code: "translation.invalid_provider_receipt",
+                            retryable: true,
+                            lease_token,
+                            event_actor_id,
+                        },
                     )
                     .await?;
                     return Err(error);
@@ -1593,11 +1609,13 @@ impl TranslationWorkflowService {
                 &self.database,
                 &self.event_bus,
                 operation,
-                kind,
-                &code,
-                true,
-                lease_token,
-                event_actor_id,
+                PendingApplyError {
+                    kind,
+                    code: &code,
+                    retryable: true,
+                    lease_token,
+                    event_actor_id,
+                },
             )
             .await;
         }
@@ -2358,29 +2376,33 @@ where
     Ok(lease_token)
 }
 
+struct PendingApplyError<'a> {
+    kind: &'a str,
+    code: &'a str,
+    retryable: bool,
+    lease_token: Uuid,
+    event_actor_id: Option<Uuid>,
+}
+
 async fn record_pending_apply_error(
     database: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     operation: &apply_operation::Model,
-    kind: &str,
-    code: &str,
-    retryable: bool,
-    lease_token: Uuid,
-    event_actor_id: Option<Uuid>,
+    error: PendingApplyError<'_>,
 ) -> TranslationResult<()> {
     let transaction = database.begin().await?;
     let update = apply_operation::Entity::update_many()
         .col_expr(
             apply_operation::Column::LastErrorKind,
-            Expr::value(Some(kind.to_string())),
+            Expr::value(Some(error.kind.to_string())),
         )
         .col_expr(
             apply_operation::Column::LastErrorCode,
-            Expr::value(Some(bounded_error_code(code))),
+            Expr::value(Some(bounded_error_code(error.code))),
         )
         .col_expr(
             apply_operation::Column::LastErrorRetryable,
-            Expr::value(Some(retryable)),
+            Expr::value(Some(error.retryable)),
         )
         .col_expr(
             apply_operation::Column::LeaseToken,
@@ -2405,7 +2427,7 @@ async fn record_pending_apply_error(
         .filter(apply_operation::Column::Id.eq(operation.id))
         .filter(apply_operation::Column::TenantId.eq(operation.tenant_id))
         .filter(apply_operation::Column::Status.eq("pending"))
-        .filter(apply_operation::Column::LeaseToken.eq(lease_token))
+        .filter(apply_operation::Column::LeaseToken.eq(error.lease_token))
         .exec(&transaction)
         .await?;
     if update.rows_affected != 1 {
@@ -2415,14 +2437,14 @@ async fn record_pending_apply_error(
         .publish_contract_in_tx(
             &transaction,
             operation.tenant_id,
-            event_actor_id,
+            error.event_actor_id,
             TranslationWorkflowEvent::ApplyFailed {
                 operation_id: operation.id,
                 item_id: operation.item_id,
                 proposal_id: operation.proposal_id,
                 status: "pending".to_string(),
-                error_code: bounded_error_code(code),
-                retryable,
+                error_code: bounded_error_code(error.code),
+                retryable: error.retryable,
                 attempt_count: next_revision(operation.attempt_count)?,
             },
         )

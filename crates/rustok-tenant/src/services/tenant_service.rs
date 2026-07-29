@@ -86,7 +86,7 @@ impl TenantService {
             is_enabled: Set(true),
             fallback_locale: Set(None),
             policy_revision: Set(1),
-            created_at: Set(now.clone()),
+            created_at: Set(now),
             updated_at: Set(now),
         }
         .insert(&txn)
@@ -440,8 +440,8 @@ impl TenantService {
                     .as_ref()
                     .map(|fallback| fallback.as_str().to_string())),
                 policy_revision: Set(next_revision),
-                created_at: Set(now.clone()),
-                updated_at: Set(now.clone()),
+                created_at: Set(now),
+                updated_at: Set(now),
             })
             .collect::<Vec<_>>();
         tenant_locale::Entity::insert_many(locale_models)
@@ -450,7 +450,7 @@ impl TenantService {
 
         let mut active_tenant: tenant::ActiveModel = tenant.into();
         active_tenant.default_locale = Set(default_locale.as_str().to_string());
-        active_tenant.updated_at = Set(now.clone());
+        active_tenant.updated_at = Set(now);
         active_tenant.update(&txn).await?;
 
         let projection = TenantLocalePolicyProjection {

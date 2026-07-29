@@ -62,10 +62,10 @@ pub fn resolve_ui_message(
     let candidates = locale_candidates(locale, default_locale);
 
     for candidate in candidates {
-        if let Some(messages) = catalog.get(candidate.as_str()) {
-            if let Some(value) = messages.get(key) {
-                return Some(value.clone());
-            }
+        if let Some(messages) = catalog.get(candidate.as_str())
+            && let Some(value) = messages.get(key)
+        {
+            return Some(value.clone());
         }
     }
 

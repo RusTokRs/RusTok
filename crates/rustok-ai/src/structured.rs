@@ -32,7 +32,6 @@ pub(crate) struct RegisteredExecution {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ExecutionLease {
-    pub execution: ai_structured_executions::Model,
     pub token: Uuid,
 }
 
@@ -446,12 +445,7 @@ impl StructuredExecutionLedger {
         if claimed.rows_affected != 1 {
             return Ok(None);
         }
-        let execution = ai_structured_executions::Entity::find_by_id(execution_id)
-            .one(&self.database)
-            .await
-            .map_err(|_| database_unavailable())?
-            .ok_or_else(ledger_invariant)?;
-        Ok(Some(ExecutionLease { execution, token }))
+        Ok(Some(ExecutionLease { token }))
     }
 
     pub(crate) async fn request_cancel(

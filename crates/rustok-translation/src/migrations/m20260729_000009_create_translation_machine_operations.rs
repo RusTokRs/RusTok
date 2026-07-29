@@ -322,8 +322,8 @@ async fn create_memory_bindings(manager: &SchemaManager<'_>) -> Result<(), DbErr
             Index::create()
                 .name("idx_translation_machine_memory_entry")
                 .table(MachineMemoryBindings::Table)
-                .col(MachineMemoryBindings::TenantId)
                 .col(MachineMemoryBindings::MemoryEntryId)
+                .col(MachineMemoryBindings::TenantId)
                 .to_owned(),
         )
         .await

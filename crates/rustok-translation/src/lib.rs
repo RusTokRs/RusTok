@@ -5,6 +5,7 @@ mod glossary;
 pub mod graphql;
 #[cfg(feature = "graphql")]
 pub mod graphql_runtime;
+mod interchange;
 mod inventory;
 mod machine;
 mod machine_service;
@@ -14,6 +15,8 @@ mod policy;
 mod progress;
 mod public_error;
 mod qa;
+#[cfg(feature = "runtime")]
+mod scheduler;
 mod workflow;
 
 use async_trait::async_trait;
@@ -27,6 +30,10 @@ pub use glossary::{
     GlossaryScope, GlossarySummaryRecord, GlossaryTermPolicy, GlossaryVariant,
     ReplaceGlossaryTermsInput, SetGlossaryActiveInput, TranslationGlossaryService,
     UpdateGlossaryInput,
+};
+pub use interchange::{
+    ExportTranslationJobInput, ImportTranslationItemInput, TranslationInterchangeDocument,
+    TranslationInterchangeField, TranslationInterchangeItem, TranslationInterchangeService,
 };
 pub use inventory::{
     TranslationInventoryRebuildResult, TranslationInventoryService, TranslationInventorySyncResult,
@@ -130,6 +137,19 @@ impl RusToKModule for TranslationModule {
                 ]
             }))
             .collect()
+    }
+
+    fn register_runtime_extensions(
+        &self,
+        _extensions: &mut rustok_core::ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        #[cfg(feature = "runtime")]
+        _extensions
+            .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default)
+            .register(std::sync::Arc::new(
+                scheduler::TranslationMemoryRetentionWorkRegistration,
+            ));
+        Ok(())
     }
 }
 

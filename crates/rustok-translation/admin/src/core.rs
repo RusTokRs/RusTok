@@ -4,8 +4,8 @@ use rustok_ui_core::{UiRouteQueryIntent, normalize_ui_text, parse_ui_csv};
 use uuid::Uuid;
 
 use crate::model::{
-    GlossaryBinding, GlossaryConcept, GlossaryScope, MemoryRetentionPolicy, ProposalOrigin,
-    ProposalValueInput, TranslationAdminOperation, TranslationAdminResponse,
+    GlossaryBinding, GlossaryConcept, GlossaryScope, InterchangeDocument, MemoryRetentionPolicy,
+    ProposalOrigin, ProposalValueInput, TranslationAdminOperation, TranslationAdminResponse,
     TranslationAdminTransportContext, TranslationResourceIdentity,
 };
 
@@ -284,6 +284,23 @@ pub fn operation_receipt_view_model(
                 ),
             ],
         },
+        TranslationAdminResponse::InterchangeDocument(document) => OperationReceiptViewModel {
+            title_key: "translation.receipt.interchangeExport",
+            fallback_title: "Interchange document exported",
+            facts: vec![
+                fact("translation.field.jobId", "Job ID", document.job_id.clone()),
+                fact(
+                    "translation.field.interchangeSchema",
+                    "Schema version",
+                    document.schema_version.to_string(),
+                ),
+                fact(
+                    "translation.field.totalItems",
+                    "Total items",
+                    document.items.len().to_string(),
+                ),
+            ],
+        },
         TranslationAdminResponse::ProviderProgress(progress) => OperationReceiptViewModel {
             title_key: "translation.receipt.providerProgress",
             fallback_title: "Provider progress",
@@ -471,11 +488,7 @@ pub fn operation_receipt_view_model(
                     "Operation ID",
                     status.operation_id.clone(),
                 ),
-                fact(
-                    "translation.field.status",
-                    "Status",
-                    status.status.clone(),
-                ),
+                fact("translation.field.status", "Status", status.status.clone()),
                 fact(
                     "translation.field.providerStatus",
                     "Provider status",
@@ -607,23 +620,27 @@ pub fn create_job_with_glossary_operation(
     })
 }
 
+pub struct CreateGlossaryOperationInput<'a> {
+    pub name: &'a str,
+    pub description: &'a str,
+    pub source_locale: &'a str,
+    pub target_locale: &'a str,
+    pub owner_slug: &'a str,
+    pub resource_kind: &'a str,
+    pub field_key: &'a str,
+    pub idempotency_key: &'a str,
+}
+
 pub fn create_glossary_operation(
-    name: &str,
-    description: &str,
-    source_locale: &str,
-    target_locale: &str,
-    owner_slug: &str,
-    resource_kind: &str,
-    field_key: &str,
-    idempotency_key: &str,
+    input: CreateGlossaryOperationInput<'_>,
 ) -> Result<TranslationAdminOperation, CommandInputError> {
     Ok(TranslationAdminOperation::CreateGlossary {
-        name: required_text("name", name)?,
-        description: description.trim().to_string(),
-        source_locale: required_text("source_locale", source_locale)?,
-        target_locale: required_text("target_locale", target_locale)?,
-        scope: glossary_scope(owner_slug, resource_kind, field_key)?,
-        idempotency_key: required_text("idempotency_key", idempotency_key)?,
+        name: required_text("name", input.name)?,
+        description: input.description.trim().to_string(),
+        source_locale: required_text("source_locale", input.source_locale)?,
+        target_locale: required_text("target_locale", input.target_locale)?,
+        scope: glossary_scope(input.owner_slug, input.resource_kind, input.field_key)?,
+        idempotency_key: required_text("idempotency_key", input.idempotency_key)?,
     })
 }
 
@@ -840,6 +857,75 @@ pub fn read_job_progress_operation(
 ) -> Result<TranslationAdminOperation, CommandInputError> {
     Ok(TranslationAdminOperation::ReadJobProgress {
         job_id: required_text("job_id", job_id)?,
+    })
+}
+
+pub fn export_job_operation(
+    job_id: &str,
+    max_items: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let max_items = parse_u16("max_items", max_items)?;
+    if max_items > 200 {
+        return Err(CommandInputError {
+            field: "max_items",
+            message: "must be between 1 and 200".to_string(),
+        });
+    }
+    Ok(TranslationAdminOperation::ExportJob {
+        job_id: required_text("job_id", job_id)?,
+        max_items,
+    })
+}
+
+pub fn interchange_document_json(
+    document: &InterchangeDocument,
+) -> Result<String, CommandInputError> {
+    serde_json::to_string_pretty(document).map_err(|error| CommandInputError {
+        field: "export_document",
+        message: format!("could not serialize the interchange document: {error}"),
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportItemDraft {
+    schema_version: u16,
+    job_id: String,
+    item_id: String,
+    identity: TranslationResourceIdentity,
+    source_digest: String,
+    values: Vec<ProposalValueInput>,
+}
+
+pub fn import_item_operation(
+    draft_json: &str,
+    idempotency_key: &str,
+) -> Result<TranslationAdminOperation, CommandInputError> {
+    let draft =
+        serde_json::from_str::<ImportItemDraft>(draft_json).map_err(|error| CommandInputError {
+            field: "import_document",
+            message: format!("must be an interchange item import object: {error}"),
+        })?;
+    if draft.schema_version == 0 {
+        return Err(CommandInputError {
+            field: "schema_version",
+            message: "must be greater than zero".to_string(),
+        });
+    }
+    if draft.values.is_empty() {
+        return Err(CommandInputError {
+            field: "values",
+            message: "must contain at least one translated field".to_string(),
+        });
+    }
+    Ok(TranslationAdminOperation::ImportItem {
+        schema_version: draft.schema_version,
+        job_id: required_text("job_id", &draft.job_id)?,
+        item_id: required_text("item_id", &draft.item_id)?,
+        identity: draft.identity,
+        source_digest: required_text("source_digest", &draft.source_digest)?,
+        values: draft.values,
+        idempotency_key: required_text("idempotency_key", idempotency_key)?,
     })
 }
 
@@ -1155,6 +1241,47 @@ mod tests {
                 .unwrap_err()
                 .field,
             "glossary_revision"
+        );
+    }
+
+    #[test]
+    fn interchange_operations_are_typed_and_bounded_before_transport() {
+        assert!(matches!(
+            export_job_operation("job-1", "200").unwrap(),
+            TranslationAdminOperation::ExportJob { max_items: 200, .. }
+        ));
+        assert_eq!(
+            export_job_operation("job-1", "201").unwrap_err().field,
+            "max_items"
+        );
+        let operation = import_item_operation(
+            r#"{
+                "schemaVersion": 1,
+                "jobId": "job-1",
+                "itemId": "item-1",
+                "identity": {
+                    "ownerSlug": "media",
+                    "resourceKind": "asset",
+                    "resourceId": "asset-1",
+                    "subresourceId": null
+                },
+                "sourceDigest": "source-digest",
+                "values": [{"key": "alt", "value": "Beschreibung"}]
+            }"#,
+            "import-key",
+        )
+        .unwrap();
+        assert!(matches!(
+            operation,
+            TranslationAdminOperation::ImportItem {
+                schema_version: 1,
+                values,
+                ..
+            } if values.len() == 1
+        ));
+        assert_eq!(
+            import_item_operation("{}", "import-key").unwrap_err().field,
+            "import_document"
         );
     }
 

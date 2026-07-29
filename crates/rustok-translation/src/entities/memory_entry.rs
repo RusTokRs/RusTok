@@ -29,6 +29,8 @@ pub struct Model {
     pub apply_receipt_id: Uuid,
     pub retention_policy: String,
     pub retain_until: Option<DateTimeWithTimeZone>,
+    pub owner_lifecycle_revision: Option<String>,
+    pub owner_deleted_at: Option<DateTimeWithTimeZone>,
     pub tombstoned_at: Option<DateTimeWithTimeZone>,
     pub revision: i64,
     pub created_at: DateTimeWithTimeZone,

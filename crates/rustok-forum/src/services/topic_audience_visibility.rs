@@ -1,10 +1,14 @@
 use rustok_api::{PortActorKind, PortContext};
-use rustok_core::SecurityActorKind;
+use rustok_core::{SecurityActorKind, SecurityContext};
+use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
 use crate::audience::{
-    ForumAudienceEvaluator, ForumAudienceFacts, ForumAudienceFactsResolver,
-    SharedForumAudienceFactsPort,
+    ForumAudienceConstraints, ForumAudienceEvaluator, ForumAudienceFacts,
+    ForumAudienceFactsResolver, SharedForumAudienceFactsPort,
 };
+use crate::error::{ForumError, ForumResult};
+use crate::services::topic_audience::{find_topic, load_policy_for_topic};
 use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 
 /// Exact viewer identity used while composing persisted category/topic audience layers.

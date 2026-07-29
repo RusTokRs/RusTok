@@ -408,7 +408,7 @@ impl MetricsRegistry {
 
         // Counter snapshots
         if let Ok(counters) = self.counters.read() {
-            for (_, counter) in counters.iter() {
+            for counter in counters.values() {
                 snapshots.push(MetricSnapshot {
                     name: counter.name.clone(),
                     value: MetricValue::Counter(counter.get()),
@@ -420,7 +420,7 @@ impl MetricsRegistry {
 
         // Gauge snapshots
         if let Ok(gauges) = self.gauges.read() {
-            for (_, gauge) in gauges.iter() {
+            for gauge in gauges.values() {
                 snapshots.push(MetricSnapshot {
                     name: gauge.name.clone(),
                     value: MetricValue::Gauge(gauge.get()),
@@ -432,7 +432,7 @@ impl MetricsRegistry {
 
         // Histogram snapshots
         if let Ok(histograms) = self.histograms.read() {
-            for (_, histogram) in histograms.iter() {
+            for histogram in histograms.values() {
                 snapshots.push(MetricSnapshot {
                     name: histogram.name.clone(),
                     value: MetricValue::Histogram {
@@ -457,7 +457,7 @@ impl MetricsRegistry {
 
         // Counters
         if let Ok(counters) = self.counters.read() {
-            for (_, counter) in counters.iter() {
+            for counter in counters.values() {
                 output.push_str(&format!("# TYPE {} counter\n", counter.name));
                 output.push_str(&format_counter(counter));
             }
@@ -465,7 +465,7 @@ impl MetricsRegistry {
 
         // Gauges
         if let Ok(gauges) = self.gauges.read() {
-            for (_, gauge) in gauges.iter() {
+            for gauge in gauges.values() {
                 output.push_str(&format!("# TYPE {} gauge\n", gauge.name));
                 output.push_str(&format_gauge(gauge));
             }
@@ -473,7 +473,7 @@ impl MetricsRegistry {
 
         // Histograms
         if let Ok(histograms) = self.histograms.read() {
-            for (_, histogram) in histograms.iter() {
+            for histogram in histograms.values() {
                 output.push_str(&format!("# TYPE {} histogram\n", histogram.name));
                 output.push_str(&format_histogram(histogram));
             }

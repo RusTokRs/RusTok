@@ -51,11 +51,10 @@ where
     let mut futures = FuturesUnordered::new();
 
     for item in items {
-        if futures.len() >= concurrency {
-            if let Some(result) = futures.next().await {
+        if futures.len() >= concurrency
+            && let Some(result) = futures.next().await {
                 results.push(Ok(result));
             }
-        }
         futures.push(f(item));
     }
 

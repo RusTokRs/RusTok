@@ -32,6 +32,39 @@ pub struct ProposalValueInput {
     pub value: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeField {
+    pub key: String,
+    pub source_value: String,
+    pub exact_target_value: Option<String>,
+    pub source_hash: String,
+    pub required: bool,
+    pub max_characters: Option<u32>,
+    pub protected_tokens: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeItem {
+    pub item_id: String,
+    pub identity: TranslationResourceIdentity,
+    pub source_digest: String,
+    pub source_revision: String,
+    pub target_revision: Option<String>,
+    pub fields: Vec<InterchangeField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeDocument {
+    pub schema_version: u16,
+    pub job_id: String,
+    pub source_locale: String,
+    pub target_locale: String,
+    pub items: Vec<InterchangeItem>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActorKind {
@@ -220,6 +253,10 @@ pub enum TranslationAdminOperation {
     ReadJobProgress {
         job_id: String,
     },
+    ExportJob {
+        job_id: String,
+        max_items: u16,
+    },
     ReadProviderProgress {
         owner_slug: String,
         resource_kind: String,
@@ -294,6 +331,15 @@ pub enum TranslationAdminOperation {
     SaveProposal {
         item_id: String,
         origin: ProposalOrigin,
+        values: Vec<ProposalValueInput>,
+        idempotency_key: String,
+    },
+    ImportItem {
+        schema_version: u16,
+        job_id: String,
+        item_id: String,
+        identity: TranslationResourceIdentity,
+        source_digest: String,
         values: Vec<ProposalValueInput>,
         idempotency_key: String,
     },
@@ -422,6 +468,9 @@ impl TranslationAdminOperation {
             | Self::SaveProposal {
                 idempotency_key, ..
             }
+            | Self::ImportItem {
+                idempotency_key, ..
+            }
             | Self::GenerateMachineProposal {
                 idempotency_key, ..
             }
@@ -467,6 +516,7 @@ impl TranslationAdminOperation {
             | Self::ReadMemoryEntry { .. }
             | Self::LookupMemory { .. }
             | Self::ReadJobProgress { .. }
+            | Self::ExportJob { .. }
             | Self::ReadProviderProgress { .. }
             | Self::ReadRequiredProviderProgress { .. }
             | Self::SyncProviderInventory { .. }
@@ -487,6 +537,7 @@ pub enum TranslationAdminResponse {
     MemorySuggestions(Vec<MemorySuggestion>),
     MemoryMutation(MemoryMutation),
     JobProgress(JobProgress),
+    InterchangeDocument(InterchangeDocument),
     ProviderProgress(ProviderProgress),
     RequiredProviderProgress(RequiredProviderProgress),
     Job(Job),
@@ -873,6 +924,23 @@ mod tests {
                 }],
                 idempotency_key: "save-proposal".to_string(),
             },
+            TranslationAdminOperation::ImportItem {
+                schema_version: 1,
+                job_id: "job-1".to_string(),
+                item_id: "item-1".to_string(),
+                identity: TranslationResourceIdentity {
+                    owner_slug: "media".to_string(),
+                    resource_kind: "asset".to_string(),
+                    resource_id: "asset-1".to_string(),
+                    subresource_id: None,
+                },
+                source_digest: "source-digest".to_string(),
+                values: vec![ProposalValueInput {
+                    key: "alt".to_string(),
+                    value: "Beschreibung".to_string(),
+                }],
+                idempotency_key: "import-item".to_string(),
+            },
             TranslationAdminOperation::GenerateMachineProposal {
                 item_id: "item-1".to_string(),
                 field_keys: vec!["alt".to_string()],
@@ -974,6 +1042,10 @@ mod tests {
             },
             TranslationAdminOperation::ReadJobProgress {
                 job_id: "job-1".to_string(),
+            },
+            TranslationAdminOperation::ExportJob {
+                job_id: "job-1".to_string(),
+                max_items: 200,
             },
             TranslationAdminOperation::ReadProviderProgress {
                 owner_slug: "media".to_string(),

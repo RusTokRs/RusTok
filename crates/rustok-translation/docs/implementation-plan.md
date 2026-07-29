@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-29
 ---
 
 # Translation implementation plan
@@ -107,7 +107,24 @@ selection.
   owner-lifecycle, retain-until, and legal-hold policies plus revision-guarded
   tombstone and purge use durable actor-bound idempotency receipts. Tombstoned
   entries leave lookup immediately; purge removes content while preserving
-  content-free receipt evidence.
+  content-free receipt evidence. Incremental synchronization and full rebuild
+  now atomically project owner `Deleted` observations into matching memory
+  entries as content-free lifecycle revision/time evidence; `Unavailable`
+  never counts as deletion. The module-owned
+  `translation_memory_retention` work adapter uses entry revision CAS and the
+  existing receipts as its durable queue/completion boundary. It automatically
+  tombstones expired `retain_until` and deleted `owner_lifecycle` entries,
+  waits 24 hours before purge, and excludes legal hold and machine-operation
+  pins.
+- The bounded interchange core is implemented. Job export reads only immutable
+  workflow snapshots and enforces item, field, value-byte, and total-document
+  bounds. It exports only public or tenant-private non-excluded owner fields
+  with exact identity/revision/hash/protected-token evidence. Import is atomic
+  per item, binds schema/job/item/identity/source digest, rejects ineligible
+  fields, and creates an `import` proposal through canonical owner validation
+  and deterministic QA. Matching GraphQL export/import fields, native and
+  GraphQL admin operations, and Leptos/Next Jobs controls now expose the same
+  bounded interchange contract.
 - Deterministic QA is implemented for resource lifecycle, required fields,
   empty required values, character limits, excluded fields, explicit protected
   tokens, whitespace shape, and unchanged-value warnings. It runs on save,
@@ -122,7 +139,8 @@ selection.
   package for the same control plane: one typed operation/response contract, an
   SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
   CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
-  36 operations, including the six glossary and six memory operations plus
+  38 operations, including the six glossary and six memory operations,
+  bounded job export and atomic item import, plus
   machine-proposal generation, status, and cancellation; GraphQL
   documents are validated against the module-owned schema, and every
   idempotency-bound command carries its caller key into `PortContext`.
@@ -134,9 +152,8 @@ selection.
   GraphQL contract. Both workbenches expose six tabs and keep glossary and
   memory selection in `glossary_id` and `memory_entry_id`. Live browser,
   accessibility, module-disablement, and authenticated native/GraphQL runtime
-  evidence remain open, as do owner-deletion propagation and automated
-  retention enforcement, bounded interchange, production AI enablement, and
-  live AI/runtime evidence.
+  evidence remain open, as do production AI enablement and live AI/runtime
+  evidence.
 - Translation now owns a bounded `MachineTranslationPort` SPI with explicit
   source/target locales, stable unit/source identities, field
   profile/strategy/classification, protected tokens, glossary and Translation
@@ -217,10 +234,13 @@ selection.
 2. Mount and runtime-verify the implemented native server-function parity for
    recovery, assignment, cancellation, retry, policy, QA, progress, inventory,
    and workflow operations.
-3. Complete owner-deletion propagation and automated retention enforcement for
-   Translation Memory. The bounded memory and immutable glossary projections
-   into machine requests are implemented.
-4. Add bounded owner-aware import/export.
+3. Collect multi-replica and restart evidence for the implemented
+   owner-deletion propagation and automated Translation Memory retention
+   worker. The bounded memory and immutable glossary projections into machine
+   requests are implemented.
+4. Complete live native/GraphQL parity evidence for the implemented bounded
+   interchange operations, including tenant isolation and malformed/stale
+   document rejection.
 5. Complete live native/GraphQL parity evidence, including tenant isolation and
    host disablement.
 6. Complete Leptos/Next browser, accessibility, URL-state, and module

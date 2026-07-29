@@ -210,13 +210,12 @@ pub fn push_locale_candidate(
         candidates.push(normalized.clone());
     }
 
-    if include_language_fallback {
-        if let Some(language) = locale_primary_language(normalized.as_str()) {
-            if language != normalized && !candidates.iter().any(|candidate| candidate == &language)
-            {
-                candidates.push(language);
-            }
-        }
+    if include_language_fallback
+        && let Some(language) = locale_primary_language(normalized.as_str())
+        && language != normalized
+        && !candidates.iter().any(|candidate| candidate == &language)
+    {
+        candidates.push(language);
     }
 }
 

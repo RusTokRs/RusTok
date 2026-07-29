@@ -417,10 +417,14 @@ fn JobsTab(
     let (glossary_id, set_glossary_id) = signal(String::new());
     let (glossary_revision, set_glossary_revision) = signal(String::new());
     let (job_id, set_job_id) = signal(String::new());
+    let (max_export_items, set_max_export_items) = signal("200".to_string());
+    let (export_document, set_export_document) = signal(String::new());
+    let (import_document, set_import_document) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (outcome, set_outcome) = signal(OperationOutcome::None);
     let (create_key, set_create_key) = signal(core::new_idempotency_key("create-job"));
     let (rebuild_key, set_rebuild_key) = signal(core::new_idempotency_key("rebuild-job-progress"));
+    let (import_key, set_import_key) = signal(core::new_idempotency_key("import-item"));
 
     let create_title = t(
         locale.as_deref(),
@@ -478,6 +482,41 @@ fn JobsTab(
         "translation.action.rebuildProgress",
         "Rebuild projection",
     );
+    let interchange_title = t(
+        locale.as_deref(),
+        "translation.jobs.interchange",
+        "Bounded interchange",
+    );
+    let interchange_description = t(
+        locale.as_deref(),
+        "translation.jobs.interchangeDescription",
+        "Export immutable job snapshots and import one translated item through canonical QA.",
+    );
+    let max_items_label = t(
+        locale.as_deref(),
+        "translation.field.maxExportItems",
+        "Maximum export items",
+    );
+    let export_document_label = t(
+        locale.as_deref(),
+        "translation.field.exportDocument",
+        "Export document",
+    );
+    let import_document_label = t(
+        locale.as_deref(),
+        "translation.field.importDocument",
+        "Import item JSON",
+    );
+    let export_label = t(
+        locale.as_deref(),
+        "translation.action.exportJob",
+        "Export job",
+    );
+    let import_label = t(
+        locale.as_deref(),
+        "translation.action.importItem",
+        "Import item",
+    );
 
     let create_action = {
         let locale = locale.clone();
@@ -524,6 +563,45 @@ fn JobsTab(
                 set_outcome,
                 Callback::new(move |_| {
                     set_rebuild_key.set(core::new_idempotency_key("rebuild-job-progress"));
+                }),
+            );
+        }
+    };
+    let export_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::export_job_operation(
+                    &job_id.get_untracked(),
+                    &max_export_items.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |response| {
+                    if let TranslationAdminResponse::InterchangeDocument(document) = response {
+                        match core::interchange_document_json(&document) {
+                            Ok(json) => set_export_document.set(json),
+                            Err(error) => set_outcome.set(Some(Err(error.to_string()))),
+                        }
+                    }
+                }),
+            );
+        }
+    };
+    let import_action = {
+        let locale = locale.clone();
+        move || {
+            run_operation(
+                core::transport_context(token.get(), tenant.get(), locale.clone()),
+                core::import_item_operation(
+                    &import_document.get_untracked(),
+                    &import_key.get_untracked(),
+                ),
+                set_busy,
+                set_outcome,
+                Callback::new(move |_| {
+                    set_import_key.set(core::new_idempotency_key("import-item"));
                 }),
             );
         }
@@ -576,6 +654,35 @@ fn JobsTab(
                     <Show when=move || busy.get()>
                         <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
                     </Show>
+                </CardContent>
+            </Card>
+
+            <Card class="xl:col-span-2">
+                <CardHeader>
+                    <CardTitle>{interchange_title}</CardTitle>
+                    <CardDescription>{interchange_description}</CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="grid gap-4 lg:grid-cols-2">
+                        <div class="space-y-3">
+                            <div class="space-y-2">
+                                <Label>{max_items_label}</Label>
+                                <Input value=max_export_items set_value=set_max_export_items name="max_export_items" />
+                            </div>
+                            <Button variant=ButtonVariant::Outline on_click=Box::new(export_action)>{export_label}</Button>
+                            <div class="space-y-2">
+                                <Label>{export_document_label}</Label>
+                                <Textarea value=export_document set_value=set_export_document name="export_document" rows=14 />
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="space-y-2">
+                                <Label required=true>{import_document_label}</Label>
+                                <Textarea value=import_document set_value=set_import_document name="import_document" rows=18 />
+                            </div>
+                            <Button on_click=Box::new(import_action)>{import_label}</Button>
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -686,16 +793,16 @@ fn GlossariesTab(
         move |_: ()| {
             run_operation(
                 core::transport_context(token.get(), tenant.get(), locale.clone()),
-                core::create_glossary_operation(
-                    &name.get_untracked(),
-                    &description.get_untracked(),
-                    &source_locale.get_untracked(),
-                    &target_locale.get_untracked(),
-                    &owner_slug.get_untracked(),
-                    &resource_kind.get_untracked(),
-                    &field_key.get_untracked(),
-                    &create_key.get_untracked(),
-                ),
+                core::create_glossary_operation(core::CreateGlossaryOperationInput {
+                    name: &name.get_untracked(),
+                    description: &description.get_untracked(),
+                    source_locale: &source_locale.get_untracked(),
+                    target_locale: &target_locale.get_untracked(),
+                    owner_slug: &owner_slug.get_untracked(),
+                    resource_kind: &resource_kind.get_untracked(),
+                    field_key: &field_key.get_untracked(),
+                    idempotency_key: &create_key.get_untracked(),
+                }),
                 set_busy,
                 set_outcome,
                 Callback::new(move |_| {
@@ -893,10 +1000,10 @@ fn GlossariesTab(
             }>
                 {move || {
                     let _locale = locale_for_view.clone();
-                    let create_action = create_action.clone();
-                    let update_action = update_action.clone();
-                    let terms_action = terms_action.clone();
-                    let active_action = active_action.clone();
+                    let create_action = create_action;
+                    let update_action = update_action;
+                    let terms_action = terms_action;
+                    let active_action = active_action;
                     let query_writer_for_list = query_writer.clone();
                     let query_writer_for_clear = query_writer.clone();
                     let create_title = create_title.clone();

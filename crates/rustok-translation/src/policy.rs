@@ -300,7 +300,7 @@ pub(crate) fn validate_job_locales(
     Ok(())
 }
 
-fn normalize_required_target_locales(locales: &mut Vec<TenantLocale>) -> TranslationResult<()> {
+fn normalize_required_target_locales(locales: &mut [TenantLocale]) -> TranslationResult<()> {
     locales.sort();
     if locales.windows(2).any(|pair| pair[0] == pair[1]) {
         return Err(TranslationError::DuplicateRequiredTargetLocale);

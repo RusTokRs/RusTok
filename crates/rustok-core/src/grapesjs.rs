@@ -5,23 +5,20 @@ pub fn validate_grapesjs_project(value: &Value) -> Result<(), String> {
         .as_object()
         .ok_or_else(|| "content_json must be a JSON object for grapesjs format".to_string())?;
 
-    if let Some(pages) = object.get("pages") {
-        if !pages.is_array() {
+    if let Some(pages) = object.get("pages")
+        && !pages.is_array() {
             return Err("content_json.pages must be an array for grapesjs format".to_string());
         }
-    }
 
-    if let Some(styles) = object.get("styles") {
-        if !styles.is_array() {
+    if let Some(styles) = object.get("styles")
+        && !styles.is_array() {
             return Err("content_json.styles must be an array for grapesjs format".to_string());
         }
-    }
 
-    if let Some(assets) = object.get("assets") {
-        if !assets.is_array() {
+    if let Some(assets) = object.get("assets")
+        && !assets.is_array() {
             return Err("content_json.assets must be an array for grapesjs format".to_string());
         }
-    }
 
     Ok(())
 }

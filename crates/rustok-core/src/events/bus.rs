@@ -127,8 +127,8 @@ impl EventBus {
             .map_err(|error| crate::Error::Validation(error.to_string()))?;
 
         // Check backpressure if enabled
-        if let Some(backpressure) = &self.backpressure {
-            if let Err(e) = backpressure.try_acquire() {
+        if let Some(backpressure) = &self.backpressure
+            && let Err(e) = backpressure.try_acquire() {
                 tracing::warn!(
                     error = %e,
                     event_type = envelope.event.event_type(),
@@ -140,7 +140,6 @@ impl EventBus {
                     e
                 )));
             }
-        }
 
         if self.sender.receiver_count() == 0 {
             tracing::debug!(event = ?envelope.event, "Event published without subscribers");

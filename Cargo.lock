@@ -15388,6 +15388,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-runtime",
  "rustok-tenant",
  "rustok-translation-targets",
  "sea-orm",

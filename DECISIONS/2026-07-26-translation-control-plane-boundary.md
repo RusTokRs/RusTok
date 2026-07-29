@@ -99,6 +99,23 @@ Structured data is translated only through owner segmentation and reassembly.
 Raw HTML, secrets, identifiers, URLs, code, arbitrary JSON, and immutable
 transaction history are excluded.
 
+### Bounded interchange
+
+Job interchange uses the immutable owner snapshot already captured by the
+workflow. Export is bounded by item, field, field-byte, and total-document
+limits and carries the exact owner/resource identity, source digest, source and
+target revisions, source hashes, constraints, and protected tokens. Only
+`public` and `tenant_private` fields whose strategy is not `excluded` may leave
+the control plane; personal, sensitive, secret, and immutable transaction data
+are never inferred to be exportable.
+
+Import is atomic per job item. It binds schema version, job, item, owner
+identity, and source digest before accepting values. Imported values become an
+`import` proposal through the canonical proposal service, so owner validation,
+deterministic QA, assignment, actor, deadline, idempotency, and later
+review/approval/application rules remain unchanged. Interchange never applies
+owner data directly.
+
 ### Settings
 
 Settings are eligible only after their owner declares stable localized leaf
@@ -183,6 +200,28 @@ canonical proposal save without another billable execution.
 Automatic approval or publication requires a later accepted decision, explicit
 tenant policy, measured locale-pair evidence, and deterministic safety/quality
 thresholds.
+
+### Translation Memory retention
+
+Translation owns retention execution for its memory content. Owner providers
+remain the lifecycle authority: inventory synchronization records only the
+matching resource identity, opaque owner revision, and deletion observation
+time when the owner reports `Deleted`. `Unavailable` is not deletion evidence.
+The lifecycle evidence is committed in the same transaction as the inventory
+checkpoint and contains no source or translated text.
+
+The module publishes a `translation_memory_retention` adapter through the
+generic module-work registry. The memory entry itself is the durable work
+source; its revision is the optimistic claim boundary, and the existing
+actor-bound mutation receipt is completion evidence. This keeps Translation
+tables and retention rules out of the host scheduler and makes duplicate
+multi-replica claims harmless.
+
+Automatic execution tombstones expired `retain_until` entries and
+`owner_lifecycle` entries with owner-deletion evidence. It never tombstones or
+purges `legal_hold`. Purge waits at least 24 hours after tombstone, rechecks the
+entry revision and policy, excludes entries pinned by a registered machine
+translation operation, and preserves only the content-free purge receipt.
 
 ### UI and transport
 

@@ -325,12 +325,14 @@ impl TranslationGlossaryService {
         let transaction = self.database.begin().await?;
         update_model(
             &transaction,
-            tenant_id,
-            input.glossary_id,
-            input.expected_revision,
-            next_revision,
-            &context,
-            &request_hash,
+            GlossaryUpdateBinding {
+                tenant_id,
+                glossary_id: input.glossary_id,
+                expected_revision: input.expected_revision,
+                next_revision,
+                context: &context,
+                request_hash: &request_hash,
+            },
             [
                 (glossary::Column::Name, Expr::value(input.name)),
                 (glossary::Column::NameKey, Expr::value(new_name_key)),
@@ -388,12 +390,14 @@ impl TranslationGlossaryService {
         let transaction = self.database.begin().await?;
         update_model(
             &transaction,
-            tenant_id,
-            input.glossary_id,
-            input.expected_revision,
-            next_revision,
-            &context,
-            &request_hash,
+            GlossaryUpdateBinding {
+                tenant_id,
+                glossary_id: input.glossary_id,
+                expected_revision: input.expected_revision,
+                next_revision,
+                context: &context,
+                request_hash: &request_hash,
+            },
             [],
         )
         .await?;
@@ -465,12 +469,14 @@ impl TranslationGlossaryService {
         let transaction = self.database.begin().await?;
         update_model(
             &transaction,
-            tenant_id,
-            input.glossary_id,
-            input.expected_revision,
-            next_revision,
-            &context,
-            &request_hash,
+            GlossaryUpdateBinding {
+                tenant_id,
+                glossary_id: input.glossary_id,
+                expected_revision: input.expected_revision,
+                next_revision,
+                context: &context,
+                request_hash: &request_hash,
+            },
             [(glossary::Column::IsActive, Expr::value(input.is_active))],
         )
         .await?;
@@ -741,7 +747,7 @@ fn validate_scope(scope: &GlossaryScope) -> TranslationResult<()> {
     Ok(())
 }
 
-fn normalize_concepts(concepts: &mut Vec<GlossaryConcept>) -> TranslationResult<()> {
+fn normalize_concepts(concepts: &mut [GlossaryConcept]) -> TranslationResult<()> {
     if concepts.len() > MAX_CONCEPTS {
         return Err(TranslationError::GlossaryTermConflict(format!(
             "glossary exceeds the {MAX_CONCEPTS}-concept safety bound"
@@ -858,14 +864,18 @@ fn term_models(
         .collect()
 }
 
-async fn update_model<C, const N: usize>(
-    database: &C,
+struct GlossaryUpdateBinding<'a> {
     tenant_id: Uuid,
     glossary_id: Uuid,
     expected_revision: i64,
     next_revision: i64,
-    context: &PortContext,
-    request_hash: &str,
+    context: &'a PortContext,
+    request_hash: &'a str,
+}
+
+async fn update_model<C, const N: usize>(
+    database: &C,
+    binding: GlossaryUpdateBinding<'_>,
     changes: [(glossary::Column, SimpleExpr); N],
 ) -> TranslationResult<()>
 where
@@ -873,37 +883,40 @@ where
 {
     let now = Utc::now().fixed_offset();
     let mut update = glossary::Entity::update_many()
-        .col_expr(glossary::Column::Revision, Expr::value(next_revision))
+        .col_expr(
+            glossary::Column::Revision,
+            Expr::value(binding.next_revision),
+        )
         .col_expr(
             glossary::Column::LastIdempotencyKey,
-            Expr::value(idempotency_key(context).to_string()),
+            Expr::value(idempotency_key(binding.context).to_string()),
         )
         .col_expr(
             glossary::Column::LastRequestHash,
-            Expr::value(request_hash.to_string()),
+            Expr::value(binding.request_hash.to_string()),
         )
         .col_expr(
             glossary::Column::UpdatedByActorKind,
-            Expr::value(actor_kind(context).to_string()),
+            Expr::value(actor_kind(binding.context).to_string()),
         )
         .col_expr(
             glossary::Column::UpdatedByActorId,
-            Expr::value(context.actor.id.clone()),
+            Expr::value(binding.context.actor.id.clone()),
         )
         .col_expr(glossary::Column::UpdatedAt, Expr::value(now));
     for (column, value) in changes {
         update = update.col_expr(column, value);
     }
     let result = update
-        .filter(glossary::Column::TenantId.eq(tenant_id))
-        .filter(glossary::Column::Id.eq(glossary_id))
-        .filter(glossary::Column::Revision.eq(expected_revision))
+        .filter(glossary::Column::TenantId.eq(binding.tenant_id))
+        .filter(glossary::Column::Id.eq(binding.glossary_id))
+        .filter(glossary::Column::Revision.eq(binding.expected_revision))
         .exec(database)
         .await?;
     if result.rows_affected != 1 {
         return Err(TranslationError::GlossaryRevisionConflict {
-            expected: expected_revision,
-            actual: expected_revision.saturating_add(1),
+            expected: binding.expected_revision,
+            actual: binding.expected_revision.saturating_add(1),
         });
     }
     Ok(())

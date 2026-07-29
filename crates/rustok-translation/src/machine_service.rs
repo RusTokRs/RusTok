@@ -196,7 +196,7 @@ impl TranslationMachineService {
         let existing_operation =
             find_operation_by_idempotency(&self.database, tenant_id, &idempotency_key).await?;
         if let Some(existing) = existing_operation.as_ref() {
-            validate_operation_replay(&existing, &context, &command_hash)?;
+            validate_operation_replay(existing, &context, &command_hash)?;
             if existing.status == "completed" {
                 return machine_proposal_record(existing.clone());
             }
@@ -232,14 +232,16 @@ impl TranslationMachineService {
 
         let (operation, created) = register_operation(
             &self.database,
-            tenant_id,
-            &context,
-            &input,
-            &command_hash,
-            &machine_request_digest,
-            &request,
-            descriptor.slug.as_str(),
-            descriptor.policy_digest.as_str(),
+            RegisterMachineOperation {
+                tenant_id,
+                context: &context,
+                input: &input,
+                command_hash: &command_hash,
+                machine_request_digest: &machine_request_digest,
+                request: &request,
+                adapter_slug: descriptor.slug.as_str(),
+                provider_policy_digest: descriptor.policy_digest.as_str(),
+            },
         )
         .await?;
         validate_operation_replay(&operation, &context, &command_hash)?;
@@ -870,35 +872,43 @@ fn child_idempotency_key(parent_key: &str, operation: &str) -> TranslationResult
     Ok(format!("translation-machine:{operation}:{digest}"))
 }
 
+struct RegisterMachineOperation<'a> {
+    tenant_id: Uuid,
+    context: &'a PortContext,
+    input: &'a GenerateMachineProposalInput,
+    command_hash: &'a str,
+    machine_request_digest: &'a str,
+    request: &'a MachineTranslationBatchRequest,
+    adapter_slug: &'a str,
+    provider_policy_digest: &'a str,
+}
+
 async fn register_operation(
     database: &DatabaseConnection,
-    tenant_id: Uuid,
-    context: &PortContext,
-    input: &GenerateMachineProposalInput,
-    command_hash: &str,
-    machine_request_digest: &str,
-    request: &MachineTranslationBatchRequest,
-    adapter_slug: &str,
-    provider_policy_digest: &str,
+    registration: RegisterMachineOperation<'_>,
 ) -> TranslationResult<(machine_operation::Model, bool)> {
     let now = Utc::now().fixed_offset();
     let id = generate_id();
-    let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+    let idempotency_key = registration
+        .context
+        .idempotency_key
+        .clone()
+        .unwrap_or_default();
     let transaction = database.begin().await?;
     machine_operation::Entity::insert(machine_operation::ActiveModel {
         id: Set(id),
-        tenant_id: Set(tenant_id),
-        item_id: Set(input.item_id),
+        tenant_id: Set(registration.tenant_id),
+        item_id: Set(registration.input.item_id),
         proposal_id: Set(None),
         status: Set("registered".to_string()),
-        command_hash: Set(command_hash.to_string()),
-        machine_request_digest: Set(machine_request_digest.to_string()),
-        adapter_slug: Set(adapter_slug.to_string()),
+        command_hash: Set(registration.command_hash.to_string()),
+        machine_request_digest: Set(registration.machine_request_digest.to_string()),
+        adapter_slug: Set(registration.adapter_slug.to_string()),
         provider_slug: Set(None),
-        provider_policy_digest: Set(provider_policy_digest.to_string()),
-        glossary_revision: Set(request.glossary_revision.clone()),
-        glossary_digest: Set(request.glossary_digest.clone()),
-        memory_digest: Set(request.memory_digest.clone()),
+        provider_policy_digest: Set(registration.provider_policy_digest.to_string()),
+        glossary_revision: Set(registration.request.glossary_revision.clone()),
+        glossary_digest: Set(registration.request.glossary_digest.clone()),
+        memory_digest: Set(registration.request.memory_digest.clone()),
         execution_id: Set(None),
         execution_request_digest: Set(None),
         prompt_policy_digest: Set(None),
@@ -906,8 +916,8 @@ async fn register_operation(
         usage: Set(None),
         diagnostics: Set(serde_json::json!([])),
         review_required: Set(None),
-        requested_by_actor_kind: Set(actor_kind(context).to_string()),
-        requested_by_actor_id: Set(context.actor.id.clone()),
+        requested_by_actor_kind: Set(actor_kind(registration.context).to_string()),
+        requested_by_actor_id: Set(registration.context.actor.id.clone()),
         idempotency_key: Set(idempotency_key.clone()),
         created_at: Set(now),
         updated_at: Set(now),
@@ -922,16 +932,17 @@ async fn register_operation(
     )
     .exec_without_returning(&transaction)
     .await?;
-    let persisted = find_operation_by_idempotency(&transaction, tenant_id, &idempotency_key)
-        .await?
-        .ok_or(TranslationError::WorkflowRevisionConflict)?;
+    let persisted =
+        find_operation_by_idempotency(&transaction, registration.tenant_id, &idempotency_key)
+            .await?
+            .ok_or(TranslationError::WorkflowRevisionConflict)?;
     let created = persisted.id == id;
     if created {
         insert_memory_bindings(
             &transaction,
-            tenant_id,
+            registration.tenant_id,
             persisted.id,
-            &request.memory_suggestions,
+            &registration.request.memory_suggestions,
             now,
         )
         .await?;
@@ -2211,6 +2222,8 @@ mod tests {
             apply_receipt_id: Set(Uuid::new_v4()),
             retention_policy: Set("owner_lifecycle".to_string()),
             retain_until: Set(None),
+            owner_lifecycle_revision: Set(None),
+            owner_deleted_at: Set(None),
             tombstoned_at: Set(tombstoned.then_some(now)),
             revision: Set(1),
             created_at: Set(now),

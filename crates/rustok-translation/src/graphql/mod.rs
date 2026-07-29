@@ -35,13 +35,9 @@ mod tests {
         let inputs = rustok_api::graphql::GraphqlRuntimeInputs::new(host);
         let runtime =
             crate::graphql_runtime::attach_schema_data(&inputs).expect("translation runtime");
-        let schema = Schema::build(
-            TranslationQuery::default(),
-            TranslationMutation::default(),
-            EmptySubscription,
-        )
-        .data(runtime)
-        .finish();
+        let schema = Schema::build(TranslationQuery, TranslationMutation, EmptySubscription)
+            .data(runtime)
+            .finish();
         let sdl = schema.sdl();
 
         for field in [
@@ -54,6 +50,7 @@ mod tests {
             "translationMemorySuggestions",
             "machineTranslationOperationStatus",
             "translationJobProgress",
+            "exportTranslationJob",
             "translationRequiredProviderProgress",
             "replaceTranslationPolicy",
             "createTranslationGlossary",
@@ -65,6 +62,7 @@ mod tests {
             "purgeTranslationMemoryEntry",
             "createTranslationJob",
             "saveTranslationProposal",
+            "importTranslationItem",
             "generateMachineTranslationProposal",
             "cancelMachineTranslationOperation",
             "recoverMachineTranslationOperation",

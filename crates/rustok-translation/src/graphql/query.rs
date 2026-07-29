@@ -7,11 +7,12 @@ use crate::{MemoryListInput, MemoryLookupInput};
 use super::{
     context::{read_port_context, require_translation_permission, runtime, translation_error},
     types::{
-        LookupTranslationMemoryInput, MachineTranslationOperationStatus, TranslationGlossary,
-        TranslationGlossarySummary, TranslationJobProgress, TranslationMemoryEntry,
-        TranslationMemorySuggestion, TranslationPolicy, TranslationProviderProgress,
-        TranslationRequiredProviderProgress, TranslationTargetDescriptor, parse_field_key,
-        parse_locale, parse_owner_slug, parse_resource_kind,
+        ExportTranslationJobInput, LookupTranslationMemoryInput, MachineTranslationOperationStatus,
+        TranslationGlossary, TranslationGlossarySummary, TranslationInterchangeDocument,
+        TranslationJobProgress, TranslationMemoryEntry, TranslationMemorySuggestion,
+        TranslationPolicy, TranslationProviderProgress, TranslationRequiredProviderProgress,
+        TranslationTargetDescriptor, parse_field_key, parse_locale, parse_owner_slug,
+        parse_resource_kind,
     },
 };
 
@@ -160,6 +161,27 @@ impl TranslationQuery {
         runtime(ctx)?
             .progress_service()
             .read_job_progress(context, job_id)
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn export_translation_job(
+        &self,
+        ctx: &Context<'_>,
+        input: ExportTranslationJobInput,
+    ) -> Result<TranslationInterchangeDocument> {
+        let context = read_port_context(ctx, "export-job")?;
+        runtime(ctx)?
+            .workflow_service()
+            .interchange_service()
+            .export_job(
+                context,
+                crate::ExportTranslationJobInput {
+                    job_id: input.job_id,
+                    max_items: input.max_items,
+                },
+            )
             .await
             .map(Into::into)
             .map_err(translation_error)

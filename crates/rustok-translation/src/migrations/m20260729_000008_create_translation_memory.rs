@@ -109,6 +109,16 @@ impl MigrationTrait for Migration {
                             .null(),
                     )
                     .col(
+                        ColumnDef::new(MemoryEntries::OwnerLifecycleRevision)
+                            .string_len(256)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(MemoryEntries::OwnerDeletedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
                         ColumnDef::new(MemoryEntries::TombstonedAt)
                             .timestamp_with_time_zone()
                             .null(),
@@ -153,6 +163,9 @@ impl MigrationTrait for Migration {
                     .check(Expr::cust(
                         "(retention_policy = 'retain_until' AND retain_until IS NOT NULL) OR (retention_policy <> 'retain_until' AND retain_until IS NULL)",
                     ))
+                    .check(Expr::cust(
+                        "(owner_lifecycle_revision IS NULL AND owner_deleted_at IS NULL) OR (owner_lifecycle_revision IS NOT NULL AND owner_deleted_at IS NOT NULL)",
+                    ))
                     .check(Expr::cust("revision > 0"))
                     .to_owned(),
             )
@@ -191,6 +204,33 @@ impl MigrationTrait for Migration {
                     .col(MemoryEntries::OwnerSlug)
                     .col(MemoryEntries::ResourceKind)
                     .col(MemoryEntries::TombstonedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_translation_memory_retention_tombstone_work")
+                    .table(MemoryEntries::Table)
+                    .col(MemoryEntries::RetentionPolicy)
+                    .col(MemoryEntries::TombstonedAt)
+                    .col(MemoryEntries::OwnerDeletedAt)
+                    .col(MemoryEntries::RetainUntil)
+                    .col(MemoryEntries::UpdatedAt)
+                    .col(MemoryEntries::Id)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_translation_memory_retention_purge_work")
+                    .table(MemoryEntries::Table)
+                    .col(MemoryEntries::TombstonedAt)
+                    .col(MemoryEntries::RetentionPolicy)
+                    .col(MemoryEntries::OwnerDeletedAt)
+                    .col(MemoryEntries::RetainUntil)
+                    .col(MemoryEntries::Id)
                     .to_owned(),
             )
             .await?;
@@ -312,6 +352,8 @@ enum MemoryEntries {
     ApplyReceiptId,
     RetentionPolicy,
     RetainUntil,
+    OwnerLifecycleRevision,
+    OwnerDeletedAt,
     TombstonedAt,
     Revision,
     CreatedAt,

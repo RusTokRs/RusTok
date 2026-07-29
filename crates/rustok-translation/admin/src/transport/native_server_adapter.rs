@@ -6,12 +6,12 @@ use leptos::prelude::*;
 use crate::model::{
     Actor, ActorKind, ApplyResult, Assignment, Cancellation, Glossary, GlossaryBinding,
     GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossarySummary, GlossaryTermPolicy,
-    GlossaryVariant, InventoryResult, Job, JobItem, JobProgress, MachineCancellation,
-    MachineOperationStatus, MachineProposal, MachineTranslationAttempt,
-    MachineTranslationDiagnostic, MachineTranslationUsage, MemoryEntry, MemoryMatchEvidence,
-    MemoryMatchKind, MemoryMutation, MemoryRetentionPolicy, MemorySuggestion, Proposal,
-    ProposalOrigin, ProposalValue, ProviderProgress, QaIssue, RequiredProviderProgress, Retry,
-    TranslationPolicy, TranslationResourceIdentity, TranslationTarget,
+    GlossaryVariant, InterchangeDocument, InterchangeField, InterchangeItem, InventoryResult, Job,
+    JobItem, JobProgress, MachineCancellation, MachineOperationStatus, MachineProposal,
+    MachineTranslationAttempt, MachineTranslationDiagnostic, MachineTranslationUsage, MemoryEntry,
+    MemoryMatchEvidence, MemoryMatchKind, MemoryMutation, MemoryRetentionPolicy, MemorySuggestion,
+    Proposal, ProposalOrigin, ProposalValue, ProviderProgress, QaIssue, RequiredProviderProgress,
+    Retry, TranslationPolicy, TranslationResourceIdentity, TranslationTarget,
 };
 use crate::model::{TranslationAdminOperation, TranslationAdminResponse};
 
@@ -147,10 +147,11 @@ async fn dispatch(
     use rustok_translation::{
         AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
         CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput,
-        GenerateMachineProposalInput, MemoryListInput, MemoryLookupInput, ProposalValue,
-        PurgeMemoryEntryInput, RecoverApplyInput, RecoverMachineOperationInput,
-        ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, RetryItemInput,
-        SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
+        ExportTranslationJobInput, GenerateMachineProposalInput, ImportTranslationItemInput,
+        MemoryListInput, MemoryLookupInput, ProposalValue, PurgeMemoryEntryInput,
+        RecoverApplyInput, RecoverMachineOperationInput, ReplaceGlossaryTermsInput,
+        ReplaceRequiredTargetLocalesInput, RetryItemInput, SaveProposalInput,
+        SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
         TombstoneMemoryEntryInput, TranslationGlossaryService, TranslationInventoryService,
         TranslationMachineControlService, TranslationMachineService, TranslationMemoryService,
         TranslationPolicyService, TranslationProgressService, TranslationWorkflowService,
@@ -177,6 +178,7 @@ async fn dispatch(
             event_bus.clone(),
         )
     };
+    let interchange = || workflow().interchange_service();
     let machine = || {
         machine_port
             .as_ref()
@@ -299,6 +301,20 @@ async fn dispatch(
             TranslationAdminResponse::JobProgress(map_job_progress(
                 progress()
                     .read_job_progress(context, parse_uuid(&job_id, "job_id")?)
+                    .await
+                    .map_err(public_error)?,
+            ))
+        }
+        TranslationAdminOperation::ExportJob { job_id, max_items } => {
+            TranslationAdminResponse::InterchangeDocument(map_interchange_document(
+                interchange()
+                    .export_job(
+                        context,
+                        ExportTranslationJobInput {
+                            job_id: parse_uuid(&job_id, "job_id")?,
+                            max_items,
+                        },
+                    )
                     .await
                     .map_err(public_error)?,
             ))
@@ -537,6 +553,38 @@ async fn dispatch(
                     SaveProposalInput {
                         item_id: parse_uuid(&item_id, "item_id")?,
                         origin: map_origin_input(origin),
+                        values: values
+                            .into_iter()
+                            .map(|value| {
+                                Ok(ProposalValue {
+                                    key: parse_field_key(value.key)?,
+                                    value: value.value,
+                                })
+                            })
+                            .collect::<Result<Vec<_>, ServerFnError>>()?,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::ImportItem {
+            schema_version,
+            job_id,
+            item_id,
+            identity,
+            source_digest,
+            values,
+            ..
+        } => TranslationAdminResponse::Proposal(map_proposal(
+            interchange()
+                .import_item(
+                    context,
+                    ImportTranslationItemInput {
+                        schema_version,
+                        job_id: parse_uuid(&job_id, "job_id")?,
+                        item_id: parse_uuid(&item_id, "item_id")?,
+                        identity: parse_identity(identity)?,
+                        source_digest,
                         values: values
                             .into_iter()
                             .map(|value| {
@@ -1273,6 +1321,47 @@ fn map_job(value: rustok_translation::JobRecord) -> Job {
         }),
         status: value.status,
         revision: value.revision,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_interchange_document(
+    value: rustok_translation::TranslationInterchangeDocument,
+) -> InterchangeDocument {
+    InterchangeDocument {
+        schema_version: value.schema_version,
+        job_id: value.job_id.to_string(),
+        source_locale: value.source_locale.as_str().to_string(),
+        target_locale: value.target_locale.as_str().to_string(),
+        items: value
+            .items
+            .into_iter()
+            .map(|item| InterchangeItem {
+                item_id: item.item_id.to_string(),
+                identity: TranslationResourceIdentity {
+                    owner_slug: item.identity.owner_slug.to_string(),
+                    resource_kind: item.identity.resource_kind.to_string(),
+                    resource_id: item.identity.resource_id.to_string(),
+                    subresource_id: item.identity.subresource_id.map(|id| id.to_string()),
+                },
+                source_digest: item.source_digest,
+                source_revision: item.source_revision.to_string(),
+                target_revision: item.target_revision.map(|revision| revision.to_string()),
+                fields: item
+                    .fields
+                    .into_iter()
+                    .map(|field| InterchangeField {
+                        key: field.key.to_string(),
+                        source_value: field.source_value,
+                        exact_target_value: field.exact_target_value,
+                        source_hash: field.source_hash,
+                        required: field.required,
+                        max_characters: field.max_characters,
+                        protected_tokens: field.protected_tokens,
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 

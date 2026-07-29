@@ -353,11 +353,10 @@ fn is_valid_locale(locale: &str) -> bool {
     if lang.len() < 2 || lang.len() > 3 || !lang.chars().all(|c| c.is_ascii_lowercase()) {
         return false;
     }
-    if let Some(region) = parts.get(1) {
-        if region.len() != 2 || !region.chars().all(|c| c.is_ascii_uppercase()) {
+    if let Some(region) = parts.get(1)
+        && (region.len() != 2 || !region.chars().all(|c| c.is_ascii_uppercase())) {
             return false;
         }
-    }
     true
 }
 

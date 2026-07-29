@@ -229,7 +229,7 @@ async fn insert_users(
     Ok(())
 }
 
-async fn load_policy_for_topic<C>(
+pub(super) async fn load_policy_for_topic<C>(
     db: &C,
     tenant_id: Uuid,
     topic: &forum_topic::Model,
@@ -364,7 +364,11 @@ fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {
         && constraints.deny_user_ids.is_empty()
 }
 
-async fn find_topic<C>(db: &C, tenant_id: Uuid, topic_id: Uuid) -> ForumResult<forum_topic::Model>
+pub(super) async fn find_topic<C>(
+    db: &C,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+) -> ForumResult<forum_topic::Model>
 where
     C: ConnectionTrait,
 {

@@ -5,7 +5,7 @@ use chrono::Utc;
 use rustok_api::{PortActor, PortContext, PortError, TenantLocale};
 use rustok_translation::{
     TranslationError, TranslationInventoryService,
-    entities::{inventory_resource, provider_checkpoint},
+    entities::{inventory_resource, memory_entry, provider_checkpoint},
     migrations,
 };
 use rustok_translation_targets::{
@@ -28,6 +28,7 @@ use uuid::Uuid;
 #[derive(Clone, Copy)]
 enum ChangePageFixture {
     Valid,
+    Deleted,
     MissingCursor,
     WrongOwner,
     ProviderOutage,
@@ -94,7 +95,11 @@ impl TranslationTargetProvider for CursorProvider {
                     subresource_id: None,
                 },
                 display_label: resource_id.to_string(),
-                lifecycle: TranslationResourceLifecycle::Active,
+                lifecycle: if matches!(self.page, ChangePageFixture::Deleted) {
+                    TranslationResourceLifecycle::Deleted
+                } else {
+                    TranslationResourceLifecycle::Active
+                },
                 resource_revision: OpaqueRevision::new("scan-revision-1").unwrap(),
                 exact_locales: vec![request.source_locale],
             }],
@@ -141,7 +146,11 @@ impl TranslationTargetProvider for CursorProvider {
                 "provider is unavailable",
             ));
         }
-        if matches!(self.page, ChangePageFixture::Valid) && request.after.is_some() {
+        if matches!(
+            self.page,
+            ChangePageFixture::Valid | ChangePageFixture::Deleted
+        ) && request.after.is_some()
+        {
             return Ok(TranslationTargetChangePage {
                 changes: Vec::new(),
                 next_cursor: None,
@@ -150,6 +159,7 @@ impl TranslationTargetProvider for CursorProvider {
         let owner_slug = match self.page {
             ChangePageFixture::WrongOwner => OwnerSlug::new("product").unwrap(),
             ChangePageFixture::Valid
+            | ChangePageFixture::Deleted
             | ChangePageFixture::MissingCursor
             | ChangePageFixture::ProviderOutage => OwnerSlug::new("media").unwrap(),
         };
@@ -162,16 +172,66 @@ impl TranslationTargetProvider for CursorProvider {
                     subresource_id: None,
                 },
                 resource_revision: OpaqueRevision::new("revision-7").unwrap(),
-                lifecycle: TranslationResourceLifecycle::Active,
+                lifecycle: if matches!(self.page, ChangePageFixture::Deleted) {
+                    TranslationResourceLifecycle::Deleted
+                } else {
+                    TranslationResourceLifecycle::Active
+                },
             }],
             next_cursor: match self.page {
                 ChangePageFixture::MissingCursor => None,
                 ChangePageFixture::Valid
+                | ChangePageFixture::Deleted
                 | ChangePageFixture::WrongOwner
                 | ChangePageFixture::ProviderOutage => Some(OpaqueCursor::new("cursor-1").unwrap()),
             },
         })
     }
+}
+
+async fn insert_memory_entry(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    resource_id: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    let now = Utc::now().fixed_offset();
+    memory_entry::ActiveModel {
+        id: Set(id),
+        tenant_id: Set(tenant_id),
+        source_locale: Set("en".to_string()),
+        target_locale: Set("de".to_string()),
+        owner_slug: Set("media".to_string()),
+        resource_kind: Set("asset".to_string()),
+        resource_id: Set(resource_id.to_string()),
+        subresource_id: Set(None),
+        field_key: Set("title".to_string()),
+        source_text: Set("Source".to_string()),
+        target_text: Set("Target".to_string()),
+        source_key: Set(Uuid::new_v4().simple().to_string()),
+        source_hash: Set(Uuid::new_v4().simple().to_string()),
+        target_hash: Set(Uuid::new_v4().simple().to_string()),
+        context_fingerprint: Set(Uuid::new_v4().simple().to_string()),
+        segmentation_version: Set("owner-field-v1".to_string()),
+        origin: Set("manual".to_string()),
+        quality_state: Set("human_approved_applied".to_string()),
+        reviewer_actor_kind: Set("system".to_string()),
+        reviewer_actor_id: Set("inventory-test".to_string()),
+        proposal_id: Set(Uuid::new_v4()),
+        apply_receipt_id: Set(Uuid::new_v4()),
+        retention_policy: Set("owner_lifecycle".to_string()),
+        retain_until: Set(None),
+        owner_lifecycle_revision: Set(None),
+        owner_deleted_at: Set(None),
+        tombstoned_at: Set(None),
+        revision: Set(1),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(database)
+    .await
+    .unwrap();
+    id
 }
 
 fn unavailable() -> PortError {
@@ -265,6 +325,67 @@ async fn sync_replays_provider_cursor_without_losing_checkpoint() {
             .unwrap(),
         1
     );
+}
+
+#[tokio::test]
+async fn deleted_owner_resource_atomically_marks_matching_memory_for_retention() {
+    let (database, service, context) = fixture(ChangePageFixture::Deleted).await;
+    let tenant_id = Uuid::parse_str(&context.tenant_id).unwrap();
+    let entry_id = insert_memory_entry(&database, tenant_id, "asset-1").await;
+
+    service
+        .sync_provider_changes(
+            context,
+            OwnerSlug::new("media").unwrap(),
+            ResourceKind::new("asset").unwrap(),
+            10,
+        )
+        .await
+        .unwrap();
+
+    let entry = memory_entry::Entity::find_by_id(entry_id)
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        entry.owner_lifecycle_revision.as_deref(),
+        Some("revision-7")
+    );
+    assert!(entry.owner_deleted_at.is_some());
+    assert_eq!(entry.revision, 2);
+    assert!(entry.tombstoned_at.is_none());
+}
+
+#[tokio::test]
+async fn deleted_owner_resource_in_full_rebuild_marks_matching_memory() {
+    let (database, service, context) = fixture(ChangePageFixture::Deleted).await;
+    let tenant_id = Uuid::parse_str(&context.tenant_id).unwrap();
+    let entry_id = insert_memory_entry(&database, tenant_id, "scan-asset-1").await;
+
+    service
+        .rebuild_provider_inventory(
+            context,
+            OwnerSlug::new("media").unwrap(),
+            ResourceKind::new("asset").unwrap(),
+            TenantLocale::new("en").unwrap(),
+            TenantLocale::new("de").unwrap(),
+            1,
+        )
+        .await
+        .unwrap();
+
+    let entry = memory_entry::Entity::find_by_id(entry_id)
+        .one(&database)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        entry.owner_lifecycle_revision.as_deref(),
+        Some("scan-revision-1")
+    );
+    assert!(entry.owner_deleted_at.is_some());
+    assert_eq!(entry.revision, 2);
 }
 
 #[tokio::test]

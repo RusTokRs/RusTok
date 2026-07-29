@@ -163,6 +163,49 @@ export type JobProgress = {
   [key: string]: unknown;
 };
 
+export type TranslationResourceIdentity = {
+  ownerSlug: string;
+  resourceKind: string;
+  resourceId: string;
+  subresourceId: string | null;
+};
+
+export type InterchangeField = {
+  key: string;
+  sourceValue: string;
+  exactTargetValue: string | null;
+  sourceHash: string;
+  required: boolean;
+  maxCharacters: number | null;
+  protectedTokens: string[];
+};
+
+export type InterchangeItem = {
+  itemId: string;
+  identity: TranslationResourceIdentity;
+  sourceDigest: string;
+  sourceRevision: string;
+  targetRevision: string | null;
+  fields: InterchangeField[];
+};
+
+export type InterchangeDocument = {
+  schemaVersion: number;
+  jobId: string;
+  sourceLocale: string;
+  targetLocale: string;
+  items: InterchangeItem[];
+};
+
+export type ImportItemInput = {
+  schemaVersion: number;
+  jobId: string;
+  itemId: string;
+  identity: TranslationResourceIdentity;
+  sourceDigest: string;
+  values: Array<{ key: string; value: string }>;
+};
+
 export type ProviderProgress = {
   ownerSlug: string;
   resourceKind: string;
@@ -375,6 +418,12 @@ export type TranslationOperation =
       idempotencyKey: string;
     }
   | { kind: 'read_job_progress'; jobId: string }
+  | { kind: 'export_job'; jobId: string; maxItems: number }
+  | {
+      kind: 'import_item';
+      input: ImportItemInput;
+      idempotencyKey: string;
+    }
   | { kind: 'rebuild_job_progress'; jobId: string; idempotencyKey: string }
   | {
       kind: 'sync_inventory';
@@ -466,6 +515,7 @@ export type TranslationResponse =
   | { kind: 'memory_mutation'; value: MemoryMutation }
   | { kind: 'job'; value: Job }
   | { kind: 'job_progress'; value: JobProgress }
+  | { kind: 'interchange_document'; value: InterchangeDocument }
   | { kind: 'provider_progress'; value: ProviderProgress }
   | { kind: 'required_progress'; value: RequiredProviderProgress }
   | { kind: 'item'; value: JobItem }

@@ -118,7 +118,7 @@ struct RegisteredModuleWork {
 /// Every worker slug owns its source/handler pair. This permits independent
 /// modules to publish separate durable queues without a host-side switch or a
 /// shared source that understands another module's tables.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ModuleWorkScheduler {
     workers: Arc<RwLock<BTreeMap<String, RegisteredModuleWork>>>,
 }

@@ -23,6 +23,8 @@ typed transport contract shared by its native and GraphQL runtime profiles.
 - Expose Translation Memory list/read/lookup and revision-guarded
   retention/tombstone/purge operations with URL-owned `memory_entry_id`
   selection. No entry is selected implicitly.
+- Expose bounded immutable job export and atomic per-item import through the
+  module-owned interchange service and canonical QA path.
 - Keep Translation business rules in `rustok-translation`.
 - Consume owner content only through the Translation module's neutral provider
   registry.
@@ -38,7 +40,7 @@ tables.
 
 - `TranslationAdmin`
 
-The package-internal typed boundary contains 32 operations. Native and GraphQL
+The package-internal typed boundary contains 38 operations. Native and GraphQL
 adapters cover the same set, and GraphQL documents are validated against the
 module-owned schema so the host cannot bypass or redefine the rendered module
 surface.

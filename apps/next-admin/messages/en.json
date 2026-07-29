@@ -471,6 +471,8 @@
       "clearSelection": "Clear selection",
       "createGlossary": "Create glossary",
       "createJob": "Create job",
+      "exportJob": "Export job",
+      "importItem": "Import item",
       "deactivateGlossary": "Deactivate",
       "lookupMemory": "Find suggestions",
       "purgeMemory": "Purge content",
@@ -511,10 +513,13 @@
       "glossaryRevision": "Glossary revision",
       "itemId": "Item ID",
       "includeTombstoned": "Include tombstoned",
+      "importDocument": "Import item JSON",
+      "interchangeSchema": "Schema version",
       "jobId": "Job ID",
       "limit": "Sync limit",
       "listLimit": "List limit",
       "lookupLimit": "Lookup limit",
+      "maxExportItems": "Maximum export items",
       "localePair": "Locale pair",
       "locales": "Required locales",
       "name": "Name",
@@ -550,7 +555,8 @@
       "targets": "Targets",
       "totalItems": "Total items",
       "suggestions": "Suggestions",
-      "value": "Translated value"
+      "value": "Translated value",
+      "exportDocument": "Export document"
     },
     "inventory": {
       "description": "Operate only through an owner-provided target contract; no owner tables are queried here.",
@@ -576,7 +582,9 @@
       "create": "Create translation job",
       "createDescription": "Start a tenant-scoped manual workflow for one exact locale pair.",
       "inspect": "Inspect or rebuild job progress",
-      "inspectDescription": "Job selection remains explicit until a list contract is available."
+      "inspectDescription": "Job selection remains explicit until a list contract is available.",
+      "interchange": "Bounded interchange",
+      "interchangeDescription": "Export immutable job snapshots and import one translated item through canonical QA."
     },
     "memory": {
       "active": "active",
@@ -614,6 +622,7 @@
       "item": "Item updated",
       "job": "Job created",
       "jobProgress": "Job progress",
+      "interchangeExport": "Interchange document exported",
       "policy": "Policy updated",
       "proposal": "Proposal updated",
       "machineProposal": "Machine proposal generated",

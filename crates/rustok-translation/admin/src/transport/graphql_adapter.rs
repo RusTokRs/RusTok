@@ -29,6 +29,7 @@ const MEMORY_MUTATION_FIELDS: &str =
     "entryId revision state retentionPolicy retainUntil tombstonedAt";
 const JOB_FIELDS: &str =
     "id sourceLocale targetLocale glossary { glossaryId revision } status revision";
+const INTERCHANGE_DOCUMENT_FIELDS: &str = "schemaVersion jobId sourceLocale targetLocale items { itemId identity { ownerSlug resourceKind resourceId subresourceId } sourceDigest sourceRevision targetRevision fields { key sourceValue exactTargetValue sourceHash required maxCharacters protectedTokens } }";
 
 pub async fn execute(
     context: TranslationAdminTransportContext,
@@ -75,6 +76,9 @@ pub async fn execute(
         | TranslationAdminOperation::RebuildJobProgress { .. } => Ok(
             TranslationAdminResponse::JobProgress(field_value(&data, field)?),
         ),
+        TranslationAdminOperation::ExportJob { .. } => Ok(
+            TranslationAdminResponse::InterchangeDocument(field_value(&data, field)?),
+        ),
         TranslationAdminOperation::ReadProviderProgress { .. } => Ok(
             TranslationAdminResponse::ProviderProgress(field_value(&data, field)?),
         ),
@@ -89,6 +93,7 @@ pub async fn execute(
             Ok(TranslationAdminResponse::Item(item.into()))
         }
         TranslationAdminOperation::SaveProposal { .. }
+        | TranslationAdminOperation::ImportItem { .. }
         | TranslationAdminOperation::SubmitProposal { .. }
         | TranslationAdminOperation::ApproveProposal { .. } => Ok(
             TranslationAdminResponse::Proposal(field_value(&data, field)?),
@@ -198,6 +203,16 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
             format!("query TranslationJobProgress($jobId: UUID!) {{ translationJobProgress(jobId: $jobId) {{ {JOB_PROGRESS_FIELDS} }} }}"),
             json!({ "jobId": job_id }),
             "translationJobProgress",
+        ),
+        TranslationAdminOperation::ExportJob { job_id, max_items } => (
+            format!(
+                "query ExportTranslationJob($input: ExportTranslationJobInput!) {{ exportTranslationJob(input: $input) {{ {INTERCHANGE_DOCUMENT_FIELDS} }} }}"
+            ),
+            json!({ "input": {
+                "jobId": job_id,
+                "maxItems": max_items,
+            }}),
+            "exportTranslationJob",
         ),
         TranslationAdminOperation::ReadProviderProgress {
             owner_slug,
@@ -391,6 +406,29 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
                 "idempotencyKey": idempotency_key,
             }}),
             "saveTranslationProposal",
+        ),
+        TranslationAdminOperation::ImportItem {
+            schema_version,
+            job_id,
+            item_id,
+            identity,
+            source_digest,
+            values,
+            idempotency_key,
+        } => (
+            format!(
+                "mutation ImportTranslationItem($input: ImportTranslationItemInput!) {{ importTranslationItem(input: $input) {{ {PROPOSAL_FIELDS} }} }}"
+            ),
+            json!({ "input": {
+                "schemaVersion": schema_version,
+                "jobId": job_id,
+                "itemId": item_id,
+                "identity": identity,
+                "sourceDigest": source_digest,
+                "values": values,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "importTranslationItem",
         ),
         TranslationAdminOperation::GenerateMachineProposal {
             item_id,
@@ -771,6 +809,10 @@ mod tests {
             TranslationAdminOperation::ReadJobProgress {
                 job_id: "00000000-0000-0000-0000-000000000001".to_string(),
             },
+            TranslationAdminOperation::ExportJob {
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                max_items: 200,
+            },
             TranslationAdminOperation::ReadProviderProgress {
                 owner_slug: "media".to_string(),
                 resource_kind: "asset".to_string(),
@@ -850,6 +892,23 @@ mod tests {
                     value: "Alt".to_string(),
                 }],
                 idempotency_key: "proposal-1".to_string(),
+            },
+            TranslationAdminOperation::ImportItem {
+                schema_version: 1,
+                job_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                item_id: "00000000-0000-0000-0000-000000000002".to_string(),
+                identity: TranslationResourceIdentity {
+                    owner_slug: "media".to_string(),
+                    resource_kind: "asset".to_string(),
+                    resource_id: "asset-1".to_string(),
+                    subresource_id: None,
+                },
+                source_digest: "source-digest".to_string(),
+                values: vec![ProposalValueInput {
+                    key: "alt".to_string(),
+                    value: "Alt".to_string(),
+                }],
+                idempotency_key: "import-item-1".to_string(),
             },
             TranslationAdminOperation::GenerateMachineProposal {
                 item_id: "00000000-0000-0000-0000-000000000002".to_string(),
@@ -957,8 +1016,8 @@ mod tests {
     #[tokio::test]
     async fn every_graphql_document_validates_against_translation_roots() {
         let schema = async_graphql::Schema::build(
-            rustok_translation::graphql::TranslationQuery::default(),
-            rustok_translation::graphql::TranslationMutation::default(),
+            rustok_translation::graphql::TranslationQuery,
+            rustok_translation::graphql::TranslationMutation,
             async_graphql::EmptySubscription,
         )
         .finish();

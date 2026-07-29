@@ -20,12 +20,11 @@ pub fn scope_matches(allowed: &[String], requested: &str) -> bool {
         if allowed_scope == requested {
             return true;
         }
-        if let Some(prefix) = allowed_scope.strip_suffix(":*") {
-            if let Some(req_prefix) = requested.split(':').next() {
-                if prefix == req_prefix {
-                    return true;
-                }
-            }
+        if let Some(prefix) = allowed_scope.strip_suffix(":*")
+            && let Some(req_prefix) = requested.split(':').next()
+            && prefix == req_prefix
+        {
+            return true;
         }
     }
     false

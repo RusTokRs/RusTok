@@ -262,16 +262,15 @@ async fn rest_error_message(response: reqwest::Response) -> String {
         return format!("request failed with status {status}");
     }
 
-    if let Ok(payload) = serde_json::from_str::<RestApiErrorPayload>(trimmed) {
-        if let Some(message) = payload
+    if let Ok(payload) = serde_json::from_str::<RestApiErrorPayload>(trimmed)
+        && let Some(message) = payload
             .message
             .as_deref()
             .or(payload.error.as_deref())
             .map(str::trim)
             .filter(|value| !value.is_empty())
-        {
-            return message.to_string();
-        }
+    {
+        return message.to_string();
     }
 
     trimmed.to_string()

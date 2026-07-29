@@ -41,11 +41,11 @@ pub fn Switch(
                 class
             )
             on:click=move |_| {
-                if !disabled {
-                    if let Some(set) = set_checked {
-                        let current = checked.map(|c| c.get()).unwrap_or(false);
-                        set.set(!current);
-                    }
+                if !disabled
+                    && let Some(set) = set_checked
+                {
+                    let current = checked.map(|c| c.get()).unwrap_or(false);
+                    set.set(!current);
                 }
             }
         >

@@ -55,9 +55,18 @@ The implemented persistence foundation owns:
   resource/apply-receipt provenance;
 - bounded tenant-scoped exact and contextual-fuzzy memory lookup with Unicode
   normalization and explainable deterministic basis-point scoring;
+- bounded owner-aware job interchange. Export carries immutable
+  owner/resource/revision/hash evidence and only public or tenant-private
+  non-excluded fields. Import is atomic per item, rejects stale source digests
+  and ineligible fields, and creates an `import` proposal only through
+  canonical owner validation and deterministic QA;
 - revision-guarded memory retention, legal hold, tombstone, and purge with
   actor-bound durable idempotency receipts. Tombstoned entries are excluded
-  from lookup, while purge preserves content-free operation evidence;
+  from lookup, while purge preserves content-free operation evidence. Owner
+  `Deleted` observations atomically add content-free lifecycle evidence during
+  inventory synchronization. The module-owned runtime worker automatically
+  tombstones expired or owner-deleted entries and purges them after a 24-hour
+  grace period, while excluding legal hold and machine-operation pins;
 - owner-validated proposal drafts, review submission, and approval transitions
   with operation-specific idempotency bindings, item revision CAS, persisted QA
   evidence, and translator/reviewer separation;
@@ -182,9 +191,11 @@ locale, permission, deadline, and idempotency evidence and never reads an owner
 table. Both adapters share Translation's redacted public-error classification.
 Its six-tab Leptos `core/transport/ui` workbench is manifest-mounted in
 `apps/admin`; the matching `@rustok/translation-admin` package is mounted by
-the Next host through a thin client wrapper and uses the same 32-operation
-GraphQL contract. Both clients use `memory_entry_id` for explicit memory
-selection and never auto-select the first entry.
+the Next host through a thin client wrapper and uses the same 38-operation
+GraphQL contract. The Jobs surface includes bounded immutable snapshot export
+and atomic per-item import through canonical QA. Both clients use
+`memory_entry_id` for explicit memory selection and never auto-select the first
+entry.
 
 ## Verification
 

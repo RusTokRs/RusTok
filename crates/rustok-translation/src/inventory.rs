@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::{
     TranslationError, TranslationResult,
     entities::{inventory_resource, provider_checkpoint},
+    memory::record_owner_deletion,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +214,16 @@ impl TranslationInventoryService {
                 .insert(&transaction)
                 .await?;
             }
+            if change.lifecycle == TranslationResourceLifecycle::Deleted {
+                record_owner_deletion(
+                    &transaction,
+                    tenant_id,
+                    identity,
+                    change.resource_revision.as_str(),
+                    now,
+                )
+                .await?;
+            }
         }
 
         let cursor = page.next_cursor.clone().or_else(|| {
@@ -405,6 +416,16 @@ impl TranslationInventoryService {
             }
             .insert(&transaction)
             .await?;
+            if resource.lifecycle == TranslationResourceLifecycle::Deleted {
+                record_owner_deletion(
+                    &transaction,
+                    tenant_id,
+                    &resource.identity,
+                    resource.resource_revision.as_str(),
+                    now,
+                )
+                .await?;
+            }
         }
 
         let checkpoint_revision = current_checkpoint

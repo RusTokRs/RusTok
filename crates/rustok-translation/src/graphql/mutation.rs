@@ -4,7 +4,8 @@ use uuid::Uuid;
 use crate::{
     AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
     CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput, GenerateMachineProposalInput,
-    ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput, RecoverMachineOperationInput,
+    ImportTranslationItemInput as DomainImportTranslationItemInput, ProposalValue,
+    PurgeMemoryEntryInput, RecoverApplyInput, RecoverMachineOperationInput,
     ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, RetryItemInput,
     SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
     TombstoneMemoryEntryInput, UnassignItemInput, UpdateGlossaryInput,
@@ -16,8 +17,8 @@ use super::{
         AddTranslationJobItemInput, AssignTranslationItemInput,
         CancelMachineTranslationOperationInput, CancelTranslationJobInput,
         CreateTranslationGlossaryInput, CreateTranslationJobInput,
-        GenerateMachineTranslationProposalInput, MachineTranslationCancellation,
-        MachineTranslationProposal,
+        GenerateMachineTranslationProposalInput, ImportTranslationItemInput,
+        MachineTranslationCancellation, MachineTranslationProposal,
         RecoverMachineTranslationOperationInput as GraphqlRecoverMachineTranslationOperationInput,
         RecoverTranslationApplyInput, ReplaceTranslationGlossaryTermsInput,
         ReplaceTranslationPolicyInput, RetryTranslationItemInput, SaveTranslationProposalInput,
@@ -274,6 +275,41 @@ impl TranslationMutation {
                 SaveProposalInput {
                     item_id: input.item_id,
                     origin: input.origin.into(),
+                    values,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn import_translation_item(
+        &self,
+        ctx: &Context<'_>,
+        input: ImportTranslationItemInput,
+    ) -> Result<TranslationProposal> {
+        let context = write_port_context(ctx, "import-item", input.idempotency_key)?;
+        let values = input
+            .values
+            .into_iter()
+            .map(|value| {
+                Ok(ProposalValue {
+                    key: parse_field_key(value.key)?,
+                    value: value.value,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        runtime(ctx)?
+            .workflow_service()
+            .interchange_service()
+            .import_item(
+                context,
+                DomainImportTranslationItemInput {
+                    schema_version: input.schema_version,
+                    job_id: input.job_id,
+                    item_id: input.item_id,
+                    identity: input.identity.try_into()?,
+                    source_digest: input.source_digest,
                     values,
                 },
             )
