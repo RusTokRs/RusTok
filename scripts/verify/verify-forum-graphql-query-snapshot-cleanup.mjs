@@ -41,6 +41,7 @@ const contractPath = "crates/rustok-forum/contracts/forum-graphql-query-snapshot
 const notePath = "crates/rustok-forum/docs/forum-20bn-graphql-query-snapshot-cleanup.md";
 const replyLegacyContractPath = "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json";
 const categoryContractPath = "crates/rustok-forum/contracts/forum-category-audience-read.json";
+const publicDiscoveryContractPath = "crates/rustok-forum/contracts/forum-public-discovery-seo.json";
 const searchContractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
 const invalidationContractPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
 const visibilityContractPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
@@ -124,6 +125,7 @@ for (const [label, source, assign] of [
   [contractPath, read(contractPath), (value) => { contract = value; }],
   [replyLegacyContractPath, read(replyLegacyContractPath), (value) => upstreamContracts.push([replyLegacyContractPath, value])],
   [categoryContractPath, read(categoryContractPath), (value) => upstreamContracts.push([categoryContractPath, value])],
+  [publicDiscoveryContractPath, read(publicDiscoveryContractPath), (value) => upstreamContracts.push([publicDiscoveryContractPath, value])],
   [searchContractPath, read(searchContractPath), (value) => upstreamContracts.push([searchContractPath, value])],
   [invalidationContractPath, read(invalidationContractPath), (value) => upstreamContracts.push([invalidationContractPath, value])],
   [visibilityContractPath, read(visibilityContractPath), (value) => upstreamContracts.push([visibilityContractPath, value])],
