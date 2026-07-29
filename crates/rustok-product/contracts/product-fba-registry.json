@@ -59,6 +59,7 @@
     "graphql_checkout_runtime_verifier": "scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs",
     "grpc_transport_verifier": "scripts/verify/verify-product-catalog-grpc-transport.mjs",
     "grpc_deployment_verifier": "scripts/verify/verify-product-catalog-grpc-deployment.mjs",
+    "grpc_authentication_verifier": "scripts/verify/verify-product-catalog-grpc-authentication.mjs",
     "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
@@ -89,14 +90,29 @@
     "protocol": "tonic_grpc_json_owner_contract",
     "client": "GrpcProductCatalogReadProvider",
     "connection_config": "GrpcProductCatalogReadConnectionConfig",
+    "client_authentication": "ProductCatalogGrpcBearerToken",
     "server": "ProductCatalogGrpcService",
+    "server_authenticator": "ProductCatalogGrpcBearerInterceptor",
     "trusted_authority": "TrustedProductCatalogAuthority",
+    "authentication_metadata": [
+      "authorization",
+      "x-rustok-tenant-id"
+    ],
+    "authentication_assertions": [
+      "constant_time_complete_authorization_compare",
+      "tenant_uuid_validated",
+      "trusted_service_actor_server_configured",
+      "secret_debug_redacted",
+      "authentication_failure_secret_not_echoed"
+    ],
     "proto": "crates/rustok-product-transport/proto/rustok/product/product_catalog.proto",
     "conformance_test": "crates/rustok-product-transport/tests/port_conformance.rs",
     "host_deployment": "apps/server/src/services/product_catalog_deployment.rs",
     "runtime_factory": "ProductCatalogReadRuntime::external",
     "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
     "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
+    "bearer_token_env": "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
+    "authentication_status": "source_complete_execution_pending",
     "status": "runtime_wired_execution_pending"
   },
   "remote_consumer_behavior": {
