@@ -36,7 +36,6 @@ const decoder = requireMarkers(decoderPath, [
   'CursorCodec::encode_for_query(&cursor, query, self)?',
   'ExactCountContractMismatch',
   'InvalidTaggedValue',
-  'ManyLinkSemanticsPending',
 ]);
 
 const compilePosition = decoder.indexOf('let mut compiled = self.compile_postgres_query(query)?;');
@@ -71,6 +70,9 @@ for (const forbidden of [
   if (decoder.includes(forbidden)) fail(`${decoderPath} contains forbidden marker ${forbidden}`);
 }
 
+requireMarkers('crates/rustok-index/src/application/postgres_compiler.rs', [
+  'ManyLinkSemanticsPending',
+]);
 requireMarkers('crates/rustok-index/src/application/postgres_query_result_tests.rs', [
   'page_compilation_adds_exactly_one_lookahead_row',
   'offset_page_compilation_preserves_offset_and_adds_lookahead',
