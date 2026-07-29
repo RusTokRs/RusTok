@@ -105,7 +105,7 @@ This is the active cross-cutting implementation plan. As of 2026-07-29:
   target discovery, policy, job/provider progress, inventory
   synchronization/rebuild, and every implemented workflow command. Its
   capability-owned runtime factory consumes only neutral typed host values.
-  `rustok-translation-admin` adds one typed 35-operation transport contract,
+  `rustok-translation-admin` adds one typed 36-operation transport contract,
   SSR/hydrate native `#[server]` execution over `HostRuntimeContext`,
   CSR/headless execution through `rustok-graphql`, and the module-owned Leptos
   workbench. The matching `@rustok/translation-admin` package renders the Next
@@ -114,7 +114,7 @@ This is the active cross-cutting implementation plan. As of 2026-07-29:
   caller keys, and both adapters use the same redacted Translation public-error
   classifier. The contract includes six glossary operations, six Translation
   Memory list/read/lookup/retention/tombstone/purge operations, and machine
-  proposal generation/status/cancellation.
+  proposal generation/status/cancellation/recovery.
   Live browser, accessibility, module-disablement, and authenticated transport
   evidence remain open;
 - deterministic QA now runs on proposal save, review submission, and approval.
@@ -153,8 +153,8 @@ This is the active cross-cutting implementation plan. As of 2026-07-29:
   substantial. Baseline verifier repair, runtime/storage locale typing, tenant
   locale-policy ownership, the readiness registry, and the neutral target SPI
   are implemented in `main`. Owner write paths, remaining ownership drift,
-  settings, provider onboarding, production AI enablement, stuck-save recovery,
-  and live evidence still require work before broad implementation.
+  settings, provider onboarding, production AI enablement, and live recovery
+  evidence still require work before broad implementation.
 
 The live module plan and FFA/FBA readiness row are now maintained with the
 scaffold in `crates/rustok-translation/docs/implementation-plan.md`.
@@ -810,8 +810,12 @@ once canonical proposal save enters `saving`, it fails closed. AI execution
 status and cancellation resolve through the stable owner/idempotency identity;
 a content-free AI cancellation intent also closes cancellation before
 execution registration, while the Translation receipt records propagation
-status and retries incomplete propagation on exact replay. Audited recovery
-for indefinitely `saving` operations remains open.
+status and retries incomplete propagation on exact replay. An audited
+Manage/Update-authorized recovery command handles indefinitely `saving`
+operations without starting another billable execution: it binds the actor,
+idempotency key, reason, and observed operation revision before retrieval,
+reconstructs and revalidates the original request digest, reads the completed
+result through the stable provider key, and resumes canonical proposal save.
 
 Missing units, extra units, invalid structured output, changed placeholders,
 invalid locale, malformed Unicode, owner-limit violations, or structure drift
@@ -902,7 +906,7 @@ mutation of transaction history.
 
 The current GraphQL control plane and the `rustok-translation-admin` native
 adapter expose policy, progress, inventory, reviewed workflow, versioned
-glossary, and Translation Memory operations through one 35-operation client
+glossary, and Translation Memory operations through one 36-operation client
 contract. The manifest publishes its module-owned six-tab Leptos workbench,
 while `@rustok/translation-admin` renders the matching Next workbench through
 the same GraphQL contract. Both keep glossary and memory selection in
@@ -916,7 +920,7 @@ later domain capabilities land, for:
 - assignment, review, approval, and apply;
 - additional memory propagation and automation;
 - additional glossary operator context;
-- AI estimate and audited stuck-save result recovery;
+- AI estimate and live stuck-save recovery evidence;
 - import/export lifecycle and reports.
 
 REST is reserved for bounded streaming import/export, webhooks if a future TMS

@@ -4,10 +4,10 @@ use uuid::Uuid;
 use crate::{
     AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
     CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput, GenerateMachineProposalInput,
-    ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput, ReplaceGlossaryTermsInput,
-    ReplaceRequiredTargetLocalesInput, RetryItemInput, SaveProposalInput, SetGlossaryActiveInput,
-    SetMemoryRetentionInput, SubmitProposalInput, TombstoneMemoryEntryInput, UnassignItemInput,
-    UpdateGlossaryInput,
+    ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput, RecoverMachineOperationInput,
+    ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, RetryItemInput,
+    SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
+    TombstoneMemoryEntryInput, UnassignItemInput, UpdateGlossaryInput,
 };
 
 use super::{
@@ -17,16 +17,17 @@ use super::{
         CancelMachineTranslationOperationInput, CancelTranslationJobInput,
         CreateTranslationGlossaryInput, CreateTranslationJobInput,
         GenerateMachineTranslationProposalInput, MachineTranslationCancellation,
-        MachineTranslationProposal, RecoverTranslationApplyInput,
-        ReplaceTranslationGlossaryTermsInput, ReplaceTranslationPolicyInput,
-        RetryTranslationItemInput, SaveTranslationProposalInput, SetTranslationGlossaryActiveInput,
-        SetTranslationMemoryRetentionInput, TransitionTranslationMemoryEntryInput,
-        TransitionTranslationProposalInput, TranslationApply, TranslationAssignment,
-        TranslationCancellation, TranslationGlossary, TranslationInventoryRebuild,
-        TranslationInventorySync, TranslationJob, TranslationJobItem, TranslationJobProgress,
-        TranslationMemoryMutation, TranslationPolicy, TranslationProposal, TranslationRetry,
-        UnassignTranslationItemInput, UpdateTranslationGlossaryInput, parse_field_key,
-        parse_locale, parse_owner_slug, parse_resource_kind,
+        MachineTranslationProposal,
+        RecoverMachineTranslationOperationInput as GraphqlRecoverMachineTranslationOperationInput,
+        RecoverTranslationApplyInput, ReplaceTranslationGlossaryTermsInput,
+        ReplaceTranslationPolicyInput, RetryTranslationItemInput, SaveTranslationProposalInput,
+        SetTranslationGlossaryActiveInput, SetTranslationMemoryRetentionInput,
+        TransitionTranslationMemoryEntryInput, TransitionTranslationProposalInput,
+        TranslationApply, TranslationAssignment, TranslationCancellation, TranslationGlossary,
+        TranslationInventoryRebuild, TranslationInventorySync, TranslationJob, TranslationJobItem,
+        TranslationJobProgress, TranslationMemoryMutation, TranslationPolicy, TranslationProposal,
+        TranslationRetry, UnassignTranslationItemInput, UpdateTranslationGlossaryInput,
+        parse_field_key, parse_locale, parse_owner_slug, parse_resource_kind,
     },
 };
 
@@ -326,6 +327,45 @@ impl TranslationMutation {
                 context,
                 CancelMachineOperationInput {
                     operation_id: input.operation_id,
+                    reason: input.reason,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn recover_machine_translation_operation(
+        &self,
+        ctx: &Context<'_>,
+        input: GraphqlRecoverMachineTranslationOperationInput,
+    ) -> Result<MachineTranslationProposal> {
+        let mut context =
+            write_port_context(ctx, "recover-machine-operation", input.idempotency_key)?;
+        context.deadline_ms = Some(120_000);
+        let proposal = input.proposal;
+        let field_keys = proposal
+            .field_keys
+            .into_iter()
+            .map(parse_field_key)
+            .collect::<Result<Vec<_>>>()?;
+        runtime(ctx)?
+            .machine_service()
+            .map_err(translation_error)?
+            .recover_operation(
+                context,
+                RecoverMachineOperationInput {
+                    operation_id: input.operation_id,
+                    expected_updated_at: input.expected_updated_at,
+                    proposal: GenerateMachineProposalInput {
+                        item_id: proposal.item_id,
+                        field_keys,
+                        minimum_memory_similarity_basis_points: proposal
+                            .minimum_memory_similarity_basis_points,
+                        tone: proposal.tone,
+                        domain: proposal.domain,
+                        style: proposal.style,
+                    },
                     reason: input.reason,
                 },
             )

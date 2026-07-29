@@ -122,7 +122,7 @@ selection.
   package for the same control plane: one typed operation/response contract, an
   SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
   CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
-  35 operations, including the six glossary and six memory operations plus
+  36 operations, including the six glossary and six memory operations plus
   machine-proposal generation, status, and cancellation; GraphQL
   documents are validated against the module-owned schema, and every
   idempotency-bound command carries its caller key into `PortContext`.
@@ -178,11 +178,15 @@ selection.
   exact receipt replay retries incomplete propagation. Once proposal save has
   entered `saving`, cancellation fails closed because the canonical save
   outcome may already be in flight.
-- GraphQL and native Leptos transports expose the same machine-proposal and
-  cancellation commands plus content-free local/provider status. Manual
-  Translation surfaces remain available when the optional machine provider is
-  absent or fails to materialize. Operator recovery for indefinitely `saving`
-  operations remains open.
+- GraphQL and native Leptos transports expose the same machine-proposal,
+  cancellation, and recovery commands plus content-free local/provider status.
+  Recovery is Manage/Update-authorized, actor/idempotency-bound, revision
+  guarded, and persists a content-free audit receipt before retrieving an
+  already completed result through the stable provider key. It reconstructs
+  and revalidates the original request digest and resumes canonical proposal
+  save without another billable execution. Manual Translation surfaces remain
+  available when the optional machine provider is absent or fails to
+  materialize.
 
 ## FFA/FBA status
 
@@ -224,8 +228,8 @@ selection.
 7. Enable the implemented optional `ai-translation` distribution bridge in
    the production profile and collect live ledger, replay, budget, fallback,
    cancellation, restart, and recovery evidence.
-8. Add an audited recovery command for indefinitely `saving` operations using
-   the implemented stable-key AI result recovery contract.
+8. Collect live restart evidence for the audited `saving` recovery command,
+   including crash after provider completion and crash after proposal save.
 
 ## Verification
 

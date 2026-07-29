@@ -33,6 +33,10 @@ The implemented persistence foundation owns:
 - `translation_apply_operations`;
 - `translation_apply_recoveries`;
 - `translation_apply_receipts`;
+- `translation_machine_operations`;
+- `translation_machine_memory_bindings`;
+- `translation_machine_cancellations`;
+- `translation_machine_recoveries`;
 - bounded provider change-cursor synchronization with optimistic checkpoint
   revision protection, provider-identity isolation, and cursor-progress
   validation;
@@ -102,7 +106,13 @@ The implemented persistence foundation owns:
 - typed content-free workflow events for job, assignment, proposal, apply, and
   recovery transitions, including job completion and explicit item retry,
   persisted through the Core outbox in the same transaction as their state
-  change.
+  change;
+- content-free machine-operation status, stable-key provider cancellation, and
+  one actor/idempotency-bound recovery receipt per operation. Recovery is
+  accepted only for the exact observed `saving` revision, revalidates the
+  original generation command and reconstructed request digest, retrieves only
+  an already completed provider result, and resumes canonical proposal save
+  without another billable translation call.
 
 Inventory rows never copy source or translated field values. Source text is
 stored only in workflow item snapshots with an explicit job/tenant boundary;

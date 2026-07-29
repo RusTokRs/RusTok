@@ -66,6 +66,14 @@ pub enum TranslationError {
     MachineMemoryProjectionUnavailable,
     #[error("invalid machine translation cancellation reason")]
     InvalidMachineCancellationReason,
+    #[error("invalid machine translation recovery reason")]
+    InvalidMachineRecoveryReason,
+    #[error("machine translation recovery observed a different operation revision")]
+    MachineRecoveryRevisionMismatch,
+    #[error("machine translation recovery was already requested")]
+    MachineRecoveryAlreadyRequested,
+    #[error("machine translation provider has no completed result for recovery")]
+    MachineRecoveryResultUnavailable,
     #[error("translation owner returned invalid patch-validation evidence: {0}")]
     InvalidProviderValidation(String),
     #[error("translation proposal creator cannot approve their own proposal")]

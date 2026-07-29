@@ -51,7 +51,7 @@ pub use machine::{
 pub use machine_service::{
     CancelMachineOperationInput, GenerateMachineProposalInput, MachineCancellationRecord,
     MachineDiagnosticEvidence, MachineOperationStatusRecord, MachineProposalRecord,
-    TranslationMachineControlService, TranslationMachineService,
+    RecoverMachineOperationInput, TranslationMachineControlService, TranslationMachineService,
 };
 pub use memory::{
     MemoryEntryRecord, MemoryListInput, MemoryLookupInput, MemoryMatchEvidence, MemoryMatchKind,

@@ -24,14 +24,14 @@ use uuid::Uuid;
 use crate::{
     GlossaryBinding, GlossaryTermPolicy, MachineTranslationAttemptEvidence,
     MachineTranslationBatchRequest, MachineTranslationBatchResult,
-    MachineTranslationExecutionStatus,
-    MachineTranslationGlossaryTerm, MachineTranslationMemorySuggestion, MachineTranslationPort,
-    MachineTranslationProviderState, MachineTranslationResourceContext, MachineTranslationUnit,
-    MachineTranslationUsage, MemoryLookupInput, ProposalOrigin, ProposalValue, SaveProposalInput,
-    TranslationError, TranslationMemoryService, TranslationResult, TranslationWorkflowService,
+    MachineTranslationExecutionStatus, MachineTranslationGlossaryTerm,
+    MachineTranslationMemorySuggestion, MachineTranslationPort, MachineTranslationProviderState,
+    MachineTranslationResourceContext, MachineTranslationUnit, MachineTranslationUsage,
+    MemoryLookupInput, ProposalOrigin, ProposalValue, SaveProposalInput, TranslationError,
+    TranslationMemoryService, TranslationResult, TranslationWorkflowService,
     entities::{
         job, job_item, machine_cancellation, machine_memory_binding, machine_operation,
-        memory_entry,
+        machine_recovery, memory_entry,
     },
     glossary::read_bound_glossary,
     qa::{glossary_concept_matches, glossary_scope_matches},
@@ -52,6 +52,14 @@ pub struct GenerateMachineProposalInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CancelMachineOperationInput {
     pub operation_id: Uuid,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoverMachineOperationInput {
+    pub operation_id: Uuid,
+    pub expected_updated_at: DateTime<FixedOffset>,
+    pub proposal: GenerateMachineProposalInput,
     pub reason: String,
 }
 
@@ -325,6 +333,173 @@ impl TranslationMachineService {
             &result,
         )
         .await
+    }
+
+    pub async fn recover_operation(
+        &self,
+        context: PortContext,
+        input: RecoverMachineOperationInput,
+    ) -> TranslationResult<MachineProposalRecord> {
+        let tenant_id = authorize_machine_recovery(&context)?;
+        validate_machine_recovery_reason(&input.reason)?;
+        validate_generation_input(&input.proposal)?;
+        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let request_hash = hash_manifest(&input)?;
+
+        if let Some(existing) =
+            find_machine_recovery_by_idempotency(&self.database, tenant_id, &idempotency_key)
+                .await?
+        {
+            validate_machine_recovery_replay(&existing, &context, &request_hash)?;
+            return self
+                .resume_machine_recovery(context, input, existing.operation_id)
+                .await;
+        }
+
+        let operation = find_operation(&self.database, tenant_id, input.operation_id).await?;
+        if operation.status == "completed" {
+            return machine_proposal_record(operation);
+        }
+        if operation.status != "saving" {
+            return Err(TranslationError::MachineOperationTerminal(operation.status));
+        }
+        if operation.updated_at != input.expected_updated_at {
+            return Err(TranslationError::MachineRecoveryRevisionMismatch);
+        }
+        validate_recovery_proposal_input(&operation, &input.proposal)?;
+        self.rebuild_recovery_request(context.clone(), tenant_id, &operation, &input.proposal)
+            .await?;
+
+        let recovery_id = generate_id();
+        let now = Utc::now().fixed_offset();
+        let transaction = self.database.begin().await?;
+        machine_recovery::Entity::insert(machine_recovery::ActiveModel {
+            id: Set(recovery_id),
+            tenant_id: Set(tenant_id),
+            operation_id: Set(operation.id),
+            idempotency_key: Set(idempotency_key.clone()),
+            request_hash: Set(request_hash.clone()),
+            requested_by_actor_kind: Set(actor_kind(&context).to_string()),
+            requested_by_actor_id: Set(context.actor.id.clone()),
+            reason: Set(input.reason.clone()),
+            observed_updated_at: Set(operation.updated_at),
+            created_at: Set(now),
+        })
+        .on_conflict(OnConflict::new().do_nothing().to_owned())
+        .exec_without_returning(&transaction)
+        .await?;
+        let persisted =
+            find_machine_recovery_by_idempotency(&transaction, tenant_id, &idempotency_key).await?;
+        let Some(persisted) = persisted else {
+            transaction.rollback().await?;
+            return Err(TranslationError::MachineRecoveryAlreadyRequested);
+        };
+        if persisted.id != recovery_id {
+            transaction.rollback().await?;
+            validate_machine_recovery_replay(&persisted, &context, &request_hash)?;
+            return self
+                .resume_machine_recovery(context, input, persisted.operation_id)
+                .await;
+        }
+        transaction.commit().await?;
+        self.resume_machine_recovery(context, input, operation.id)
+            .await
+    }
+
+    async fn resume_machine_recovery(
+        &self,
+        context: PortContext,
+        input: RecoverMachineOperationInput,
+        operation_id: Uuid,
+    ) -> TranslationResult<MachineProposalRecord> {
+        let tenant_id =
+            Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)?;
+        let operation = find_operation(&self.database, tenant_id, operation_id).await?;
+        if operation.status == "completed" {
+            return machine_proposal_record(operation);
+        }
+        if operation.status != "saving" {
+            return Err(TranslationError::MachineOperationTerminal(operation.status));
+        }
+        validate_recovery_proposal_input(&operation, &input.proposal)?;
+        let request = self
+            .rebuild_recovery_request(context.clone(), tenant_id, &operation, &input.proposal)
+            .await?;
+        let execution_idempotency_key =
+            child_idempotency_key(&operation.idempotency_key, "machine-port")?;
+        let result = self
+            .machine_port
+            .recover_batch(context.clone(), execution_idempotency_key, request.clone())
+            .await?
+            .ok_or(TranslationError::MachineRecoveryResultUnavailable)?;
+        validate_machine_result(&request, &result)?;
+
+        let values = result
+            .units
+            .iter()
+            .map(|unit| {
+                Ok(ProposalValue {
+                    key: FieldKey::new(unit.unit_id.clone()).map_err(|error| {
+                        TranslationError::InvalidRequest(format!(
+                            "machine translation returned an invalid field key: {error}"
+                        ))
+                    })?,
+                    value: unit.translated_value.clone(),
+                })
+            })
+            .collect::<TranslationResult<Vec<_>>>()?;
+        let mut save_context = context;
+        save_context.idempotency_key = Some(child_idempotency_key(
+            &operation.idempotency_key,
+            "save-proposal",
+        )?);
+        let proposal = self
+            .workflow
+            .save_recovered_machine_proposal(
+                save_context,
+                SaveProposalInput {
+                    item_id: input.proposal.item_id,
+                    origin: ProposalOrigin::Ai,
+                    values,
+                },
+            )
+            .await?;
+        complete_operation(
+            &self.database,
+            tenant_id,
+            operation.id,
+            proposal.id,
+            &result,
+        )
+        .await
+    }
+
+    async fn rebuild_recovery_request(
+        &self,
+        context: PortContext,
+        tenant_id: Uuid,
+        operation: &machine_operation::Model,
+        input: &GenerateMachineProposalInput,
+    ) -> TranslationResult<MachineTranslationBatchRequest> {
+        let item = find_item(&self.database, tenant_id, input.item_id).await?;
+        let snapshot: TranslationResourceSnapshot =
+            serde_json::from_value(item.source_snapshot.clone())?;
+        let request = self
+            .build_request(
+                context.clone(),
+                tenant_id,
+                &item,
+                &snapshot,
+                input,
+                Some(operation),
+            )
+            .await?;
+        request.validate(&context)?;
+        validate_provider_compatibility(&request, self.machine_port.descriptor())?;
+        if hash_manifest(&request)? != operation.machine_request_digest {
+            return Err(TranslationError::IdempotencyConflict);
+        }
+        Ok(request)
     }
 
     async fn build_request(
@@ -639,6 +814,17 @@ fn authorize_machine_generation(context: &PortContext) -> TranslationResult<Uuid
     context.require_policy(PortCallPolicy::write())?;
     let security = SecurityContext::try_from_port_context(context)?;
     for action in [Action::Run, Action::Update] {
+        if security.get_scope(Resource::Translations, action) == PermissionScope::None {
+            return Err(TranslationError::Forbidden);
+        }
+    }
+    Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)
+}
+
+fn authorize_machine_recovery(context: &PortContext) -> TranslationResult<Uuid> {
+    context.require_policy(PortCallPolicy::write())?;
+    let security = SecurityContext::try_from_port_context(context)?;
+    for action in [Action::Manage, Action::Update] {
         if security.get_scope(Resource::Translations, action) == PermissionScope::None {
             return Err(TranslationError::Forbidden);
         }
@@ -1103,6 +1289,42 @@ fn validate_machine_cancellation_reason(reason: &str) -> TranslationResult<()> {
     Ok(())
 }
 
+fn validate_machine_recovery_reason(reason: &str) -> TranslationResult<()> {
+    if reason.trim().is_empty() || reason.trim() != reason || reason.len() > 4_096 {
+        return Err(TranslationError::InvalidMachineRecoveryReason);
+    }
+    Ok(())
+}
+
+fn validate_recovery_proposal_input(
+    operation: &machine_operation::Model,
+    input: &GenerateMachineProposalInput,
+) -> TranslationResult<()> {
+    if operation.item_id != input.item_id {
+        return Err(TranslationError::IdempotencyConflict);
+    }
+    if operation.command_hash != hash_manifest(input)? {
+        return Err(TranslationError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+fn validate_machine_recovery_replay(
+    recovery: &machine_recovery::Model,
+    context: &PortContext,
+    request_hash: &str,
+) -> TranslationResult<()> {
+    if recovery.request_hash != request_hash {
+        return Err(TranslationError::IdempotencyConflict);
+    }
+    if recovery.requested_by_actor_kind != actor_kind(context)
+        || recovery.requested_by_actor_id != context.actor.id
+    {
+        return Err(TranslationError::IdempotencyActorMismatch);
+    }
+    Ok(())
+}
+
 fn replay_machine_cancellation(
     model: machine_cancellation::Model,
     context: &PortContext,
@@ -1445,6 +1667,21 @@ where
         .await?)
 }
 
+async fn find_machine_recovery_by_idempotency<C>(
+    database: &C,
+    tenant_id: Uuid,
+    idempotency_key: &str,
+) -> TranslationResult<Option<machine_recovery::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(machine_recovery::Entity::find()
+        .filter(machine_recovery::Column::TenantId.eq(tenant_id))
+        .filter(machine_recovery::Column::IdempotencyKey.eq(idempotency_key))
+        .one(database)
+        .await?)
+}
+
 async fn find_item(
     database: &DatabaseConnection,
     tenant_id: Uuid,
@@ -1523,13 +1760,17 @@ mod tests {
     };
 
     use async_trait::async_trait;
-    use rustok_api::{Permission, PortActor, TenantLocale};
+    use rustok_api::{Permission, PortActor, PortError, TenantLocale};
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use rustok_tenant::{
+        ReplaceTenantLocalePolicyRequest, TenantLocalePolicyEntry, TenantLocalePolicyProjection,
+    };
     use rustok_translation_targets::{
         OpaqueRevision, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
         TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourceSummary,
         TranslationStrategy, TranslationValueProfile,
     };
-    use sea_orm::{Database, DbBackend, Statement};
+    use sea_orm::{Database, DbBackend, PaginatorTrait, Statement};
     use sea_orm_migration::SchemaManager;
 
     use super::*;
@@ -1542,6 +1783,46 @@ mod tests {
     struct CancellationMachinePort {
         descriptor: MachineTranslationProviderDescriptor,
         calls: AtomicUsize,
+    }
+
+    struct RecoveryMachinePort {
+        descriptor: MachineTranslationProviderDescriptor,
+        recover_calls: AtomicUsize,
+    }
+
+    struct RecoveryTenantLocalePolicies;
+
+    #[async_trait]
+    impl TenantLocalePolicyPort for RecoveryTenantLocalePolicies {
+        async fn read_locale_policy(
+            &self,
+            context: PortContext,
+        ) -> Result<TenantLocalePolicyProjection, PortError> {
+            Ok(TenantLocalePolicyProjection {
+                tenant_id: Uuid::parse_str(&context.tenant_id).unwrap(),
+                revision: 1,
+                default_locale: TenantLocale::new("en").unwrap(),
+                locales: ["en", "de"]
+                    .into_iter()
+                    .map(|locale| TenantLocalePolicyEntry {
+                        locale: TenantLocale::new(locale).unwrap(),
+                        name: locale.to_string(),
+                        native_name: locale.to_string(),
+                        is_default: locale == "en",
+                        is_enabled: true,
+                        fallback_locale: (locale != "en").then(|| TenantLocale::new("en").unwrap()),
+                    })
+                    .collect(),
+            })
+        }
+
+        async fn replace_locale_policy(
+            &self,
+            _context: PortContext,
+            _request: ReplaceTenantLocalePolicyRequest,
+        ) -> Result<TenantLocalePolicyProjection, PortError> {
+            unreachable!("machine recovery test does not replace locale policy")
+        }
     }
 
     impl CancellationMachinePort {
@@ -1610,6 +1891,55 @@ mod tests {
                     MachineTranslationExecutionStatus::Cancelled
                 },
             })
+        }
+    }
+
+    #[async_trait]
+    impl MachineTranslationPort for RecoveryMachinePort {
+        fn descriptor(&self) -> &MachineTranslationProviderDescriptor {
+            &self.descriptor
+        }
+
+        async fn health(
+            &self,
+            _context: PortContext,
+        ) -> Result<crate::MachineTranslationProviderHealth, PortError> {
+            unreachable!("machine recovery never checks provider health")
+        }
+
+        async fn translate_batch(
+            &self,
+            _context: PortContext,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<MachineTranslationBatchResult, PortError> {
+            unreachable!("machine recovery must never start another translation")
+        }
+
+        async fn execution_status(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            unreachable!("machine recovery test does not read status")
+        }
+
+        async fn recover_batch(
+            &self,
+            _context: PortContext,
+            execution_idempotency_key: String,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<Option<MachineTranslationBatchResult>, PortError> {
+            assert!(execution_idempotency_key.starts_with("translation-machine:machine-port:"));
+            self.recover_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(None)
+        }
+
+        async fn cancel_execution(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            unreachable!("machine recovery test does not cancel")
         }
     }
 
@@ -1697,6 +2027,44 @@ mod tests {
                 },
             },
             review_required: true,
+        }
+    }
+
+    fn snapshot() -> TranslationResourceSnapshot {
+        TranslationResourceSnapshot {
+            summary: TranslationResourceSummary {
+                identity: TranslationResourceIdentity {
+                    owner_slug: OwnerSlug::new("media").unwrap(),
+                    resource_kind: ResourceKind::new("asset").unwrap(),
+                    resource_id: ResourceId::new("asset-a").unwrap(),
+                    subresource_id: None,
+                },
+                display_label: "Asset".to_string(),
+                lifecycle: TranslationResourceLifecycle::Active,
+                resource_revision: OpaqueRevision::new("resource-a").unwrap(),
+                exact_locales: vec![TenantLocale::new("en").unwrap()],
+            },
+            source_locale: TenantLocale::new("en").unwrap(),
+            target_locale: TenantLocale::new("de").unwrap(),
+            rendered_fallback_locale: None,
+            source_revision: OpaqueRevision::new("source-a").unwrap(),
+            target_revision: None,
+            fields: vec![rustok_translation_targets::TranslationFieldSnapshot {
+                descriptor: rustok_translation_targets::TranslationFieldDescriptor {
+                    key: FieldKey::new("alt_text").unwrap(),
+                    profile: TranslationValueProfile::TemplateText,
+                    strategy: TranslationStrategy::TranslateWithPlaceholders,
+                    classification: TranslationDataClassification::TenantPrivate,
+                    required: true,
+                    ai_export_allowed: true,
+                    max_characters: Some(200),
+                    preserves_whitespace: false,
+                },
+                source_value: "Hello {name} {count}".to_string(),
+                exact_target_value: None,
+                source_hash: "a".repeat(64),
+                protected_tokens: vec!["{name}".to_string(), "{count}".to_string()],
+            }],
         }
     }
 
@@ -1801,7 +2169,7 @@ mod tests {
             resource_revision: Set("resource-a".to_string()),
             source_revision: Set("source-a".to_string()),
             target_revision: Set(None),
-            source_snapshot: Set(serde_json::json!({})),
+            source_snapshot: Set(serde_json::to_value(snapshot()).unwrap()),
             source_digest: Set("b".repeat(64)),
             status: Set("missing".to_string()),
             current_proposal_id: Set(None),
@@ -1923,26 +2291,7 @@ mod tests {
         let operation = find_operation(&database, tenant_id, operation_id)
             .await
             .unwrap();
-        let snapshot = TranslationResourceSnapshot {
-            summary: TranslationResourceSummary {
-                identity: TranslationResourceIdentity {
-                    owner_slug: OwnerSlug::new("media").unwrap(),
-                    resource_kind: ResourceKind::new("asset").unwrap(),
-                    resource_id: ResourceId::new("asset-a").unwrap(),
-                    subresource_id: None,
-                },
-                display_label: "Asset".to_string(),
-                lifecycle: TranslationResourceLifecycle::Active,
-                resource_revision: OpaqueRevision::new("resource-a").unwrap(),
-                exact_locales: vec![TenantLocale::new("en").unwrap()],
-            },
-            source_locale: TenantLocale::new("en").unwrap(),
-            target_locale: TenantLocale::new("de").unwrap(),
-            rendered_fallback_locale: None,
-            source_revision: OpaqueRevision::new("source-a").unwrap(),
-            target_revision: None,
-            fields: Vec::new(),
-        };
+        let snapshot = snapshot();
         let suggestions = read_pinned_memory_suggestions(
             &database,
             tenant_id,
@@ -2022,15 +2371,16 @@ mod tests {
         };
         let machine_port = CancellationMachinePort::new();
 
-        let first =
-            cancel_machine_operation(&database, Some(&machine_port), context.clone(), input.clone())
-                .await
-                .unwrap();
+        let first = cancel_machine_operation(
+            &database,
+            Some(&machine_port),
+            context.clone(),
+            input.clone(),
+        )
+        .await
+        .unwrap();
         assert_eq!(first.provider_status, "cancellation_requested");
-        assert_eq!(
-            first.provider_execution_id.as_deref(),
-            Some("execution-a")
-        );
+        assert_eq!(first.provider_execution_id.as_deref(), Some("execution-a"));
 
         let replay = cancel_machine_operation(&database, Some(&machine_port), context, input)
             .await
@@ -2053,9 +2403,99 @@ mod tests {
                 .unwrap();
         assert_eq!(status.status, "registered");
         assert_eq!(status.provider_status, "running");
+        assert_eq!(status.provider_execution_id.as_deref(), Some("execution-a"));
+    }
+
+    #[tokio::test]
+    async fn stuck_save_recovery_is_audited_and_never_starts_a_new_execution() {
+        let (database, tenant_id, actor_id, operation_id, _) = persistence_fixture(false).await;
+        let machine_port = Arc::new(RecoveryMachinePort {
+            descriptor: descriptor(100),
+            recover_calls: AtomicUsize::new(0),
+        });
+        let service = TranslationMachineService::new(
+            database.clone(),
+            Arc::new(TranslationTargetRegistry::default()),
+            Arc::new(RecoveryTenantLocalePolicies),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone()))),
+            machine_port.clone(),
+        );
+        let context = machine_control_context(tenant_id, actor_id, "recover-machine")
+            .with_claim(Permission::new(Resource::Translations, Action::Manage).to_string())
+            .with_claim(Permission::new(Resource::Translations, Action::Update).to_string());
+        let operation = find_operation(&database, tenant_id, operation_id)
+            .await
+            .unwrap();
+        let proposal = GenerateMachineProposalInput {
+            item_id: operation.item_id,
+            field_keys: vec![FieldKey::new("alt_text").unwrap()],
+            minimum_memory_similarity_basis_points: 7_000,
+            tone: None,
+            domain: None,
+            style: None,
+        };
+        let item = find_item(&database, tenant_id, proposal.item_id)
+            .await
+            .unwrap();
+        let request = service
+            .build_request(
+                context.clone(),
+                tenant_id,
+                &item,
+                &snapshot(),
+                &proposal,
+                Some(&operation),
+            )
+            .await
+            .unwrap();
+        let observed_updated_at = Utc::now().fixed_offset();
+        machine_operation::Entity::update_many()
+            .col_expr(machine_operation::Column::Status, Expr::value("saving"))
+            .col_expr(
+                machine_operation::Column::CommandHash,
+                Expr::value(hash_manifest(&proposal).unwrap()),
+            )
+            .col_expr(
+                machine_operation::Column::MachineRequestDigest,
+                Expr::value(hash_manifest(&request).unwrap()),
+            )
+            .col_expr(
+                machine_operation::Column::ProviderPolicyDigest,
+                Expr::value(descriptor(100).policy_digest),
+            )
+            .col_expr(
+                machine_operation::Column::UpdatedAt,
+                Expr::value(observed_updated_at),
+            )
+            .filter(machine_operation::Column::Id.eq(operation_id))
+            .exec(&database)
+            .await
+            .unwrap();
+        let input = RecoverMachineOperationInput {
+            operation_id,
+            expected_updated_at: observed_updated_at,
+            proposal,
+            reason: "Recover the completed provider result after an interrupted save".to_string(),
+        };
+
+        for attempt_context in [context.clone(), context] {
+            let error = service
+                .recover_operation(attempt_context, input.clone())
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                TranslationError::MachineRecoveryResultUnavailable
+            ));
+        }
+        assert_eq!(machine_port.recover_calls.load(Ordering::SeqCst), 2);
         assert_eq!(
-            status.provider_execution_id.as_deref(),
-            Some("execution-a")
+            machine_recovery::Entity::find()
+                .filter(machine_recovery::Column::OperationId.eq(operation_id))
+                .count(&database)
+                .await
+                .unwrap(),
+            1
         );
     }
 }

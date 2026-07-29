@@ -13,6 +13,7 @@ pub mod job_progress;
 pub mod machine_cancellation;
 pub mod machine_memory_binding;
 pub mod machine_operation;
+pub mod machine_recovery;
 pub mod memory_entry;
 pub mod memory_receipt;
 pub mod policy;

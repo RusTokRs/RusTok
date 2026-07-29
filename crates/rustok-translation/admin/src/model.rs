@@ -311,6 +311,18 @@ pub enum TranslationAdminOperation {
         reason: String,
         idempotency_key: String,
     },
+    RecoverMachineOperation {
+        operation_id: String,
+        expected_updated_at: String,
+        item_id: String,
+        field_keys: Vec<String>,
+        minimum_memory_similarity_basis_points: u16,
+        tone: Option<String>,
+        domain: Option<String>,
+        style: Option<String>,
+        reason: String,
+        idempotency_key: String,
+    },
     SubmitProposal {
         item_id: String,
         proposal_id: String,
@@ -414,6 +426,9 @@ impl TranslationAdminOperation {
                 idempotency_key, ..
             }
             | Self::CancelMachineOperation {
+                idempotency_key, ..
+            }
+            | Self::RecoverMachineOperation {
                 idempotency_key, ..
             }
             | Self::SubmitProposal {
@@ -857,6 +872,32 @@ mod tests {
                     value: "Beschreibung".to_string(),
                 }],
                 idempotency_key: "save-proposal".to_string(),
+            },
+            TranslationAdminOperation::GenerateMachineProposal {
+                item_id: "item-1".to_string(),
+                field_keys: vec!["alt".to_string()],
+                minimum_memory_similarity_basis_points: 7_000,
+                tone: None,
+                domain: None,
+                style: None,
+                idempotency_key: "generate-machine-proposal".to_string(),
+            },
+            TranslationAdminOperation::CancelMachineOperation {
+                operation_id: "operation-1".to_string(),
+                reason: "Cancel pending machine translation".to_string(),
+                idempotency_key: "cancel-machine-operation".to_string(),
+            },
+            TranslationAdminOperation::RecoverMachineOperation {
+                operation_id: "operation-1".to_string(),
+                expected_updated_at: "2026-07-29T12:00:00Z".to_string(),
+                item_id: "item-1".to_string(),
+                field_keys: vec!["alt".to_string()],
+                minimum_memory_similarity_basis_points: 7_000,
+                tone: None,
+                domain: None,
+                style: None,
+                reason: "Recover completed provider result".to_string(),
+                idempotency_key: "recover-machine-operation".to_string(),
             },
             TranslationAdminOperation::SubmitProposal {
                 item_id: "item-1".to_string(),

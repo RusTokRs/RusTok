@@ -178,7 +178,8 @@ impl MigrationTrait for Migration {
             )
             .await?;
         create_memory_bindings(manager).await?;
-        create_cancellations(manager).await
+        create_cancellations(manager).await?;
+        create_recoveries(manager).await
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
@@ -454,6 +455,104 @@ async fn create_cancellations(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
         .await
 }
 
+async fn create_recoveries(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(MachineRecoveries::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(MachineRecoveries::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(MachineRecoveries::TenantId)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(MachineRecoveries::OperationId)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(MachineRecoveries::IdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(MachineRecoveries::RequestHash)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(MachineRecoveries::RequestedByActorKind)
+                        .string_len(16)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(MachineRecoveries::RequestedByActorId)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(ColumnDef::new(MachineRecoveries::Reason).text().not_null())
+                .col(
+                    ColumnDef::new(MachineRecoveries::ObservedUpdatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(MachineRecoveries::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_translation_machine_recoveries_operation")
+                        .from(MachineRecoveries::Table, MachineRecoveries::OperationId)
+                        .to(MachineOperations::Table, MachineOperations::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_translation_machine_recoveries_tenant")
+                        .from(MachineRecoveries::Table, MachineRecoveries::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .check(Expr::cust(
+                    "requested_by_actor_kind IN ('user', 'service', 'system')",
+                ))
+                .check(Expr::cust("length(reason) > 0 AND length(reason) <= 4096"))
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_machine_recoveries_operation")
+                .table(MachineRecoveries::Table)
+                .col(MachineRecoveries::OperationId)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_machine_recoveries_idempotency")
+                .table(MachineRecoveries::Table)
+                .col(MachineRecoveries::TenantId)
+                .col(MachineRecoveries::IdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await
+}
+
 #[derive(Iden)]
 enum MachineOperations {
     #[iden = "translation_machine_operations"]
@@ -516,6 +615,22 @@ enum MachineCancellations {
     ProviderStatus,
     ProviderErrorCode,
     ProviderObservedAt,
+    CreatedAt,
+}
+
+#[derive(Iden)]
+enum MachineRecoveries {
+    #[iden = "translation_machine_recoveries"]
+    Table,
+    Id,
+    TenantId,
+    OperationId,
+    IdempotencyKey,
+    RequestHash,
+    RequestedByActorKind,
+    RequestedByActorId,
+    Reason,
+    ObservedUpdatedAt,
     CreatedAt,
 }
 

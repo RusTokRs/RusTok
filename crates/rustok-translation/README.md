@@ -41,6 +41,9 @@ machine-translation orchestration.
 - `TranslationMemoryService`
 - `MachineTranslationPort` and bounded machine-translation request/result
   contracts
+- `TranslationMachineService` generation and audited stuck-save recovery
+- `TranslationMachineControlService` status and cancellation controls
+- `RecoverMachineOperationInput`
 - `MemoryLookupInput`
 - `MemoryListInput`
 - `SetMemoryRetentionInput`

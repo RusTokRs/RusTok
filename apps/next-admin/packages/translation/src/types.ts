@@ -436,6 +436,19 @@ export type TranslationOperation =
       idempotencyKey: string;
     }
   | {
+      kind: 'recover_machine_operation';
+      operationId: string;
+      expectedUpdatedAt: string;
+      itemId: string;
+      fieldKeys: string[];
+      minimumMemorySimilarityBasisPoints: number;
+      tone?: string | null;
+      domain?: string | null;
+      style?: string | null;
+      reason: string;
+      idempotencyKey: string;
+    }
+  | {
       kind: 'submit_proposal' | 'approve_proposal' | 'apply_proposal';
       itemId: string;
       proposalId: string;

@@ -543,6 +543,41 @@ export async function executeTranslationOperation(
         value: data.cancelMachineTranslationOperation
       };
     }
+    case 'recover_machine_operation': {
+      const input = {
+        operationId: operation.operationId,
+        expectedUpdatedAt: operation.expectedUpdatedAt,
+        proposal: {
+          itemId: operation.itemId,
+          fieldKeys: operation.fieldKeys,
+          minimumMemorySimilarityBasisPoints:
+            operation.minimumMemorySimilarityBasisPoints,
+          tone: operation.tone,
+          domain: operation.domain,
+          style: operation.style
+        },
+        reason: operation.reason,
+        idempotencyKey: operation.idempotencyKey
+      };
+      const data = await request<
+        { input: typeof input },
+        { recoverMachineTranslationOperation: MachineProposal }
+      >(
+        context,
+        `mutation RecoverMachineTranslationOperation(
+          $input: RecoverMachineTranslationOperationInput!
+        ) {
+          recoverMachineTranslationOperation(input: $input) {
+            ${MACHINE_PROPOSAL_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'machine_proposal',
+        value: data.recoverMachineTranslationOperation
+      };
+    }
     case 'submit_proposal':
     case 'approve_proposal':
     case 'apply_proposal':

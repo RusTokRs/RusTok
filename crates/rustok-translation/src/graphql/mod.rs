@@ -67,6 +67,7 @@ mod tests {
             "saveTranslationProposal",
             "generateMachineTranslationProposal",
             "cancelMachineTranslationOperation",
+            "recoverMachineTranslationOperation",
             "applyTranslationProposal",
             "syncTranslationProviderInventory",
         ] {

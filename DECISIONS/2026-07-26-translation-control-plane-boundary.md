@@ -174,8 +174,11 @@ Cancellation is accepted only before proposal save enters `saving`; AI-runtime
 status and cancellation resolve by stable owner/idempotency identity, including
 a durable content-free cancellation intent before execution registration.
 Translation cancellation receipts retain propagation evidence and exact replay
-retries incomplete propagation. Audited stuck-save recovery remains required
-hardening.
+retries incomplete propagation. Audited stuck-save recovery is
+Manage/Update-authorized, revision-guarded, actor/idempotency-bound, and stores
+no content. It retrieves only an already completed result through the stable
+execution key, revalidates the reconstructed request digest, and resumes the
+canonical proposal save without another billable execution.
 
 Automatic approval or publication requires a later accepted decision, explicit
 tenant policy, measured locale-pair evidence, and deterministic safety/quality

@@ -73,6 +73,7 @@ async fn execute_ssr(
     if matches!(
         &operation,
         TranslationAdminOperation::GenerateMachineProposal { .. }
+            | TranslationAdminOperation::RecoverMachineOperation { .. }
     ) {
         context.deadline_ms = Some(120_000);
     }
@@ -80,6 +81,7 @@ async fn execute_ssr(
         &operation,
         TranslationAdminOperation::GenerateMachineProposal { .. }
             | TranslationAdminOperation::CancelMachineOperation { .. }
+            | TranslationAdminOperation::RecoverMachineOperation { .. }
             | TranslationAdminOperation::ReadMachineOperationStatus { .. }
     ) {
         rustok_translation::machine_translation_port_from_context(&runtime)
@@ -146,9 +148,9 @@ async fn dispatch(
         AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
         CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput,
         GenerateMachineProposalInput, MemoryListInput, MemoryLookupInput, ProposalValue,
-        PurgeMemoryEntryInput, RecoverApplyInput, ReplaceGlossaryTermsInput,
-        ReplaceRequiredTargetLocalesInput, RetryItemInput, SaveProposalInput,
-        SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
+        PurgeMemoryEntryInput, RecoverApplyInput, RecoverMachineOperationInput,
+        ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, RetryItemInput,
+        SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
         TombstoneMemoryEntryInput, TranslationGlossaryService, TranslationInventoryService,
         TranslationMachineControlService, TranslationMachineService, TranslationMemoryService,
         TranslationPolicyService, TranslationProgressService, TranslationWorkflowService,
@@ -586,6 +588,46 @@ async fn dispatch(
                     context,
                     CancelMachineOperationInput {
                         operation_id: parse_uuid(&operation_id, "operation_id")?,
+                        reason,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::RecoverMachineOperation {
+            operation_id,
+            expected_updated_at,
+            item_id,
+            field_keys,
+            minimum_memory_similarity_basis_points,
+            tone,
+            domain,
+            style,
+            reason,
+            ..
+        } => TranslationAdminResponse::MachineProposal(map_machine_proposal(
+            machine()?
+                .recover_operation(
+                    context,
+                    RecoverMachineOperationInput {
+                        operation_id: parse_uuid(&operation_id, "operation_id")?,
+                        expected_updated_at: chrono::DateTime::parse_from_rfc3339(
+                            &expected_updated_at,
+                        )
+                        .map_err(|_| {
+                            ServerFnError::new("expected_updated_at must be an RFC 3339 timestamp")
+                        })?,
+                        proposal: GenerateMachineProposalInput {
+                            item_id: parse_uuid(&item_id, "item_id")?,
+                            field_keys: field_keys
+                                .into_iter()
+                                .map(parse_field_key)
+                                .collect::<Result<Vec<_>, ServerFnError>>()?,
+                            minimum_memory_similarity_basis_points,
+                            tone,
+                            domain,
+                            style,
+                        },
                         reason,
                     },
                 )

@@ -478,6 +478,25 @@ impl TranslationWorkflowService {
         context: PortContext,
         input: SaveProposalInput,
     ) -> TranslationResult<ProposalRecord> {
+        self.save_proposal_with_assignment(context, input, true)
+            .await
+    }
+
+    pub(crate) async fn save_recovered_machine_proposal(
+        &self,
+        context: PortContext,
+        input: SaveProposalInput,
+    ) -> TranslationResult<ProposalRecord> {
+        self.save_proposal_with_assignment(context, input, false)
+            .await
+    }
+
+    async fn save_proposal_with_assignment(
+        &self,
+        context: PortContext,
+        input: SaveProposalInput,
+        enforce_current_assignment: bool,
+    ) -> TranslationResult<ProposalRecord> {
         let tenant_id = authorize_write(&context, Action::Update)?;
         let idempotency_key = operation_idempotency_key(&context);
         let request_hash = hash_manifest(&input)?;
@@ -488,7 +507,9 @@ impl TranslationWorkflowService {
         }
 
         let item = find_item(&self.database, tenant_id, input.item_id).await?;
-        enforce_assignment(&item, &context)?;
+        if enforce_current_assignment {
+            enforce_assignment(&item, &context)?;
+        }
         if !matches!(
             item.status.as_str(),
             "missing" | "draft" | "stale" | "conflict"

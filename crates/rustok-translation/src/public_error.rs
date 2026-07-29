@@ -90,6 +90,9 @@ pub fn map_translation_public_error(
         | TranslationError::MachineOperationCancelled
         | TranslationError::MachineOperationTerminal(_)
         | TranslationError::InvalidMachineCancellationReason
+        | TranslationError::InvalidMachineRecoveryReason
+        | TranslationError::MachineRecoveryRevisionMismatch
+        | TranslationError::MachineRecoveryAlreadyRequested
         | TranslationError::MemoryRetentionConflict(_) => (
             TranslationPublicErrorKind::BadInput,
             error.to_string(),
@@ -99,6 +102,7 @@ pub fn map_translation_public_error(
         TranslationError::Provider {
             retryable: true, ..
         }
+        | TranslationError::MachineRecoveryResultUnavailable
         | TranslationError::Database(_) => (
             TranslationPublicErrorKind::Internal,
             "Translation service is temporarily unavailable".to_string(),

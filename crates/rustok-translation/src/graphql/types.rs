@@ -303,6 +303,25 @@ pub struct CancelMachineTranslationOperationInput {
 }
 
 #[derive(InputObject)]
+pub struct MachineTranslationProposalRequestInput {
+    pub item_id: Uuid,
+    pub field_keys: Vec<String>,
+    pub minimum_memory_similarity_basis_points: u16,
+    pub tone: Option<String>,
+    pub domain: Option<String>,
+    pub style: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct RecoverMachineTranslationOperationInput {
+    pub operation_id: Uuid,
+    pub expected_updated_at: DateTime<FixedOffset>,
+    pub proposal: MachineTranslationProposalRequestInput,
+    pub reason: String,
+    pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
 pub struct TransitionTranslationProposalInput {
     pub item_id: Uuid,
     pub proposal_id: Uuid,
