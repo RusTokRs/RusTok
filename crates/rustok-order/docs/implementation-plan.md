@@ -54,14 +54,14 @@ and old JSON indexes must be removed after all completion/result consumers use
 typed identity exclusively.
 
 Complete order detail and filtered-list projection reads are published through
-`OrderReadPort`. `CommerceOrderReadRuntime` now carries one host-selected owner
-port through the default server, `HostRuntimeContext`, Commerce HTTP, and Commerce
-GraphQL schema data. Mounted admin REST list/detail reads use the port with locale,
-channel, deadline, filters, ordering, pagination total, public error envelopes,
-and payment/fulfillment detail aggregation preserved. Mounted GraphQL detail/list
-reads consume the same host-selected runtime through resolver scope and carry an
-authenticated user actor plus host-resolved channel when present. Storefront HTTP
-order reads remain open and unvalidated.
+`OrderReadPort`. `CommerceOrderReadRuntime` carries one host-selected owner port
+through the default server, `HostRuntimeContext`, Commerce HTTP, and Commerce
+GraphQL schema data. Mounted admin REST list/detail, mounted GraphQL list/detail,
+and storefront HTTP detail/ownership reads use the same port with locale fallback,
+authenticated actor, resolved channel, deadline, public error policy, filters,
+ordering, pagination total, and ownership behavior preserved. All current complete
+order projection consumers are cut over in source; runtime evidence remains
+unvalidated.
 
 ## FFA/FBA boundary
 
@@ -87,6 +87,7 @@ order reads remain open and unvalidated.
 - `scripts/verify/verify-order-admin-boundary.mjs`,
   `scripts/verify/verify-order-storefront-boundary.mjs`,
   `scripts/verify/verify-order-read-port.mjs`,
+  `scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`,
   `scripts/verify/verify-commerce-admin-order-route-error-context.mjs`,
   `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`,
   `scripts/verify/verify-commerce-order-identity-boundary.mjs`,
@@ -97,8 +98,8 @@ order reads remain open and unvalidated.
   UI, transport, projection, identity, staged-consumer, lifecycle, compensation,
   and payment settlement split.
 - No status promotion is allowed from source inspection. Clean/upgraded
-  migrations, compile/tests, contention, restart, remaining mounted consumers,
-  and remote-profile evidence remain missing.
+  migrations, compile/tests, contention, restart, and remote-profile evidence
+  remain missing.
 
 ## Checkout identity, completion, compensation, and settlement workstream
 
@@ -160,7 +161,7 @@ order reads remain open and unvalidated.
 - [x] Map every current `OrderError` variant to stable `PortError` policy without
   owner-message control flow.
 - [x] Export the canonical `in_process_order_read_port` factory.
-- [x] Retain source evidence and a focused guard without claiming runtime parity.
+- [x] Retain source evidence and focused guards without claiming runtime parity.
 - [x] Publish and host-compose `CommerceOrderReadRuntime` while preserving an
   externally installed runtime.
 - [x] Require the host-selected runtime in Commerce HTTP and GraphQL schema-data
@@ -172,7 +173,10 @@ order reads remain open and unvalidated.
   mounted resolver scope while retaining an embedded-schema in-process fallback.
 - [x] Propagate authenticated actor and request channel into GraphQL order reads;
   unauthenticated or embedded reads retain explicit service/no-channel fallback.
-- [ ] Cut storefront HTTP order detail/ownership reads over in a separate atomic change.
+- [x] Cut storefront HTTP order detail and shared ownership reads over to the
+  host-selected runtime while preserving customer resolution, locale fallback,
+  public envelopes, and the concrete return/change/payment operations that follow
+  ownership validation.
 - [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
   evidence before status promotion.
 
@@ -227,18 +231,23 @@ order reads remain open and unvalidated.
    **Done when:** the contract-test matrix has executable remote evidence and
    fallback behavior supports a justified status promotion.
 
-7. **Finish mounted order projection read cutover.** Admin REST and mounted
-   GraphQL list/detail now use the host-selected `CommerceOrderReadRuntime` with
-   authenticated actor and resolved channel context; cut storefront HTTP reads
-   separately without changing order mutations or payment/fulfillment detail
-   ownership.
-   **Depends on:** the published runtime and current public transport envelope
-   inventory.
-   **Done when:** every mounted detail/list/ownership projection read no longer
-   constructs `OrderService`, retains locale/filter/pagination/authorization
-   behavior, and has bounded parity evidence.
+7. **Prove mounted order projection read parity.** Admin REST, mounted GraphQL,
+   and storefront HTTP detail/list/ownership reads now use the host-selected
+   `CommerceOrderReadRuntime` without concrete `OrderService` projection reads.
+   **Depends on:** compiled order/commerce/server crates and mounted local plus
+   remote adapter profiles.
+   **Done when:** locale/filter/pagination/authorization/ownership behavior,
+   deadlines, stable failure policy, restart, and remote adapter parity are
+   retained as execution evidence.
 
-8. **Keep order and commerce documentation synchronized.** Update local docs,
+8. **Publish wider post-order read boundaries.** Return and order-change reads
+   still use concrete owner services after typed order ownership validation.
+   **Depends on:** explicit owner projection contracts that preserve current DTOs,
+   filters, totals, lifecycle policy, and safe error mapping.
+   **Done when:** mounted consumers no longer construct foreign owner services for
+   return/order-change reads without moving mutations or payment policy.
+
+9. **Keep order and commerce documentation synchronized.** Update local docs,
    manifests, registries, central status, and the umbrella commerce plan whenever
    order lifecycle, checkout snapshots, identity ownership, or projection read
    ownership changes.
@@ -249,6 +258,7 @@ order reads remain open and unvalidated.
 - `npm run verify:ecommerce:fba`
 - `node scripts/verify/verify-order-read-port.mjs`
 - `node scripts/verify/verify-commerce-graphql-order-read-shim.mjs`
+- `node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`
 - `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 - `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
@@ -269,7 +279,7 @@ order reads remain open and unvalidated.
 - `cargo test -p rustok-order --test checkout_order_identity_port`
 - `cargo test -p rustok-order --test checkout_completion_port`
 - Targeted order read-port detail/list, locale fallback, context, error-policy,
-  host-composition, and admin transport tests.
+  host-composition, admin, GraphQL, and storefront transport tests.
 - Targeted staged checkout completion/adoption/replay, unknown lifecycle,
   compensation, and payment settlement tests.
 - Clean/upgraded/down/reapply identity migrations on SQLite/PostgreSQL/MySQL.
