@@ -6,8 +6,8 @@ use super::{
     cursor::IndexCursor,
     planner::{ExecutableQueryPlan, PlannedField, PlannedManyProjection},
     postgres_compiler::{
-        CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue,
-        PostgresQueryCompileError, quote_identifier,
+        CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
+        CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError, quote_identifier,
     },
 };
 
@@ -19,6 +19,7 @@ pub(super) fn compile_postgres_plan(
     let base = compile_base(plan, &mut bindings);
     let mut select = Vec::new();
     let mut columns = Vec::new();
+    let mut many_relations = Vec::new();
     push_identity_column(
         &mut select,
         &mut columns,
@@ -58,7 +59,7 @@ pub(super) fn compile_postgres_plan(
             "{aggregate} AS {}",
             quote_identifier(&output_alias),
         ));
-        columns.push(CompiledQueryColumn::ManyRelation {
+        many_relations.push(CompiledManyRelationColumn {
             output_alias,
             projection: projection.clone(),
         });
@@ -104,6 +105,7 @@ pub(super) fn compile_postgres_plan(
         sql,
         binds: bindings.values,
         columns,
+        many_relations,
         exact_count,
         plan_fingerprint: plan.fingerprint()?,
     })
