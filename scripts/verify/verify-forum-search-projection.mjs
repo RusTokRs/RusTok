@@ -75,7 +75,7 @@ for (const marker of [
   "forum_topic_translation::Entity::find()",
   "get_public_category_with_locale_fallback",
   "get_public_topic_with_locale_fallback",
-  "cursor advances over raw owner candidates",
+  "ProjectionCursor",
   "MAX_ENTITY_LOCALES",
   'const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category"',
   'const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic"',
@@ -143,6 +143,7 @@ for (const marker of [
   "explicit Forum reindex",
   "FORUM-20BK",
   "policy-change events",
+  "Cargo.lock",
 ]) {
   requireMarker(note, marker, notePath);
 }
@@ -168,15 +169,18 @@ if (contract) {
   }
   for (const key of [
     "search_owns_projection_storage",
-    "full_rebuild_uses_postgresql_temporary_stage",
-    "full_rebuild_replaces_forum_scope_after_successful_scan",
-    "partial_source_failure_keeps_previous_forum_scope",
+    "explicit_forum_rebuild_uses_postgresql_temporary_stage",
+    "explicit_forum_rebuild_replaces_scope_after_successful_scan",
+    "explicit_forum_rebuild_source_failure_keeps_previous_scope",
     "target_refresh_deletes_and_reinserts_in_one_transaction",
     "denied_closed_missing_or_deleted_target_removes_stale_documents",
   ]) {
     if (!contract.persistence_boundary?.[key]) {
       failures.push(`${contractPath}: persistence boundary must lock ${key}`);
     }
+  }
+  if (contract.persistence_boundary?.full_search_rebuild_source_failure_keeps_previous_forum_scope !== false) {
+    failures.push(`${contractPath}: cross-source rebuild limitation must remain explicit`);
   }
   for (const key of [
     "forum_topic_created_refreshes_topic",
@@ -199,6 +203,9 @@ if (contract) {
   }
   if (contract.ingestion_boundary?.automatic_topic_policy_change_reindex_added !== false) {
     failures.push(`${contractPath}: topic policy event must remain explicit downstream scope`);
+  }
+  if (contract.compatibility?.cargo_lock_regenerated !== false) {
+    failures.push(`${contractPath}: lockfile handoff must remain explicit`);
   }
   if (contract.compatibility?.migration_added !== false) {
     failures.push(`${contractPath}: migration must remain absent`);
