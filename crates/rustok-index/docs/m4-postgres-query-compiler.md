@@ -1,13 +1,13 @@
 # M4 controlled PostgreSQL query compiler
 
 This M4 chain compiles the database-independent `ExecutableQueryPlan` into
-controlled PostgreSQL statements plus ordered typed bind lists. It does not
-connect to PostgreSQL, execute SQL, decode result rows, or publish an
-`IndexQueryPort`.
+controlled PostgreSQL statements plus ordered typed bind lists. The compiler does not
+connect to PostgreSQL or execute SQL. Deterministic compiled-row decoding now lives in
+a separate application handoff; neither slice publishes an `IndexQueryPort`.
 
 ## Planner contract
 
-`SchemaRegistry::plan_query` now records every referenced field exactly once in
+`SchemaRegistry::plan_query` records every referenced field exactly once in
 `ExecutableQueryPlan::referenced_fields`. Each `PlannedField` carries:
 
 - the validated `FieldPath`;
@@ -17,7 +17,7 @@ connect to PostgreSQL, execute SQL, decode result rows, or publish an
 - nullability.
 
 The plan fingerprint domain is `rustok-index-query-plan-v2`, so plans produced
-before typed field contracts cannot be confused with the new compiler input.
+before typed field contracts cannot be confused with the compiler input.
 
 ## Supported query semantics
 
@@ -37,8 +37,8 @@ and validates any continuation cursor, and then compiles:
   without cursor, limit, or offset leakage.
 
 The main page statement selects hidden tagged JSONB order values when explicit
-ordering is present. A later result decoder can therefore construct the next
-`IndexCursor` even when an order field was not requested in the public
+ordering is present. `decode_postgres_query_page` uses those values to construct
+the next `IndexCursor` even when an order field was not requested in the public
 projection.
 
 ## Predicate and ordering contract
@@ -89,12 +89,28 @@ values, cursor values, limit, and offset are bind values. Only fixed
 `index_entities`/`index_links` table and column names plus compiler-owned `tN`
 and `lN` aliases appear in SQL.
 
-The compiler contract and SQL emission live in separate modules:
+The compiler contract, SQL emission, and page/result handoff live in separate
+modules:
 
-- `application/postgres_compiler.rs` owns public types, scoped cursor entry
-  points, and plan invariant checks;
+- `application/postgres_compiler.rs` owns public SQL/bind types, scoped cursor
+  entry points, and plan invariant checks;
 - `application/postgres_query_sql.rs` owns controlled SQL and deterministic bind
-  emission.
+  emission;
+- `application/postgres_query_result.rs` owns one-row lookahead wrapping, strict
+  compiled-column decoding, exact count, `has_more`, and scoped next cursors.
+
+## Page and result handoff
+
+`SchemaRegistry::compile_postgres_page_query` calls the validated compiler and
+changes only the main page-limit bind from `N` to `N + 1`. The SQL string,
+filters, ordering, keyset predicate, offset, plan fingerprint, and optional count
+statement remain unchanged.
+
+A later database adapter executes the compiled statements and maps driver values
+into `CompiledPostgresRow`. `decode_postgres_query_page` then rechecks the plan
+fingerprint and complete `CompiledQueryColumn` contract, validates tagged
+`IndexValue` type/cardinality/nullability, removes the lookahead row, and returns
+`IndexQueryPage`. It does not accept arbitrary column names or untyped JSON rows.
 
 ## Exact count
 
@@ -113,11 +129,11 @@ nested aggregation planning before that gate can be removed.
 
 ## Non-claims
 
-This source slice does not:
+This source chain does not:
 
 - prepare or execute a statement;
 - convert abstract bind values into SeaORM/sqlx parameters;
-- decode page, projection, count, or cursor rows;
+- decode directly from SeaORM `QueryResult`;
 - authorize callers;
 - verify persisted schema readiness;
 - support many-link filtering/projection/aggregation;
