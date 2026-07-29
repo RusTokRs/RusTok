@@ -28,8 +28,9 @@ pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
-    ProductCatalogSchemaService, StorefrontProductList, StorefrontProductListItem,
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+    ProductAttributeFilter, ProductCatalogSchemaService, StorefrontProductList,
+    StorefrontProductListItem, StorefrontProductListQuery, StorefrontProductSortBy,
+    StorefrontProductSortDirection,
 };
 
 pub struct ProductModule;
