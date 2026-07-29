@@ -59,11 +59,12 @@ impl SearchProjector {
     }
 
     /// Replaces the direct Search-owned scopes without deleting documents owned
-    /// by later Blog, Forum or future projection-source stages.
+    /// by Blog, Forum or future projection-source stages.
     ///
-    /// Content and product replacements keep their existing per-scope database
-    /// transactions. A later scope failure therefore leaves every external scope
-    /// at its previous committed value and leaves the failed scope rolled back.
+    /// Content and product retain their existing per-scope transactions. The
+    /// ingestion orchestrator remains sequential rather than globally atomic:
+    /// scopes that completed before a later failure may advance, while the failed
+    /// external scope keeps its previous committed value.
     pub async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         let started_at = Instant::now();
         let result = async {
@@ -138,7 +139,7 @@ impl SearchProjector {
 fn record_scope_preserving_rebuild(tenant_id: Uuid, result: &Result<()>, started_at: Instant) {
     let status = if result.is_ok() { "success" } else { "error" };
     metrics::record_search_indexing_operation(
-        "rebuild_tenant_scoped",
+        "rebuild_tenant",
         "tenant",
         status,
         started_at.elapsed().as_secs_f64(),
