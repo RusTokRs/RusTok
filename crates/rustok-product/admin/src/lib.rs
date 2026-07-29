@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_arguments)]
+mod catalog_controls;
 mod core;
 mod i18n;
 mod model;
