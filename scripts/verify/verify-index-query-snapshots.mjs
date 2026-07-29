@@ -91,11 +91,20 @@ if (!compiled.endsWith('\n')) fail(`${compiledPath} must end with one newline`);
 requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'mod query_snapshot_tests;',
 ]);
+requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-query-planner.mjs'",
+  "'verify-index-postgres-query-compiler.mjs'",
+  "'verify-index-query-result-decoder.mjs'",
+  "'verify-index-many-link-filtering.mjs'",
+  "'verify-index-query-snapshots.mjs'",
+  "console.log('[verify-index-query-contract] OK')",
+]);
 requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
   'Status: `source_complete_owner_execution_pending`',
   'compares all three files byte-for-byte',
   'does not execute SQL',
   'does not claim PostgreSQL/reference-engine equivalence',
+  'verify-index-query-contract.mjs',
   'Not run by the implementation agent',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
