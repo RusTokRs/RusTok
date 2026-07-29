@@ -64,7 +64,10 @@ fn query() -> IndexQuery {
             locale: Some(LocaleKey::new("en-US").unwrap()),
         },
         schema: schema_ref("product"),
-        fields: vec![linked_id.clone(), FieldPath::new(FieldName::new("id").unwrap())],
+        fields: vec![
+            linked_id.clone(),
+            FieldPath::new(FieldName::new("id").unwrap()),
+        ],
         filter: Some(FilterExpr::Eq(
             linked_id.clone(),
             IndexValue::Uuid(Uuid::new_v4()),
@@ -93,9 +96,16 @@ fn aliases_do_not_depend_on_reference_encounter_order() {
 
     assert_eq!(first.path_aliases, second.path_aliases);
     assert_eq!(first.joins, second.joins);
+    assert_eq!(first.referenced_fields, second.referenced_fields);
     assert_eq!(first.root_alias, "t0");
     assert_eq!(first.joins[0].alias, "t1");
     assert_eq!(first.order_by[0].field.relation_alias, "t1");
+    assert_eq!(first.order_by[0].field.value_type, IndexValueType::Uuid);
+    assert_eq!(
+        first.order_by[0].field.cardinality,
+        FieldCardinality::One
+    );
+    assert!(!first.order_by[0].field.nullable);
 }
 
 #[test]
