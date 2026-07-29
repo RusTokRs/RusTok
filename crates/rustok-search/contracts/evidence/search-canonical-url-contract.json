@@ -61,6 +61,10 @@
       "expected": "admin global search delegates to canonical_search_result_url and accepts canonical Blog and Forum result types"
     },
     {
+      "name": "admin_forum_permission_gate",
+      "expected": "admin global search requires Forum category topic or reply read permission for canonical Forum results and rejects spoofed source pairs"
+    },
+    {
       "name": "no_transport_fallback",
       "expected": "storefront transport selection returns backend-projected URLs directly and no navigation compatibility module exists"
     }
@@ -70,6 +74,7 @@
     "execute GraphQL storefrontSearch against projected Blog and Forum reply documents",
     "execute native storefront search and confirm canonical URLs are present",
     "execute Search admin preview and admin global search against product content Blog and Forum results",
+    "verify admin global search enforces Forum category topic and reply domain permissions",
     "verify click analytics records the canonical href",
     "verify malformed Blog and Forum reply payloads remain non-navigable through every transport"
   ]
