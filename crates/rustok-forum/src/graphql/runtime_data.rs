@@ -2,13 +2,18 @@ use rustok_api::graphql::GraphqlRuntimeInputs;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
-use crate::{ModerationService, ReplyService, SharedForumAudienceFactsPort, TopicService};
+use crate::{
+    ForumCategoryAudienceReadService, ForumReplyAudienceReadService,
+    ForumStorefrontReadStateService, ForumTopicAudienceReadService, ModerationService,
+    ReplyService, SharedForumAudienceFactsPort, TopicService,
+};
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
 ///
 /// The optional facts port is published by the host runtime extension registry.
-/// Its absence is preserved so locally decidable create and moderation policies
-/// continue to work while trust, Channel, or Groups facts fail closed in owners.
+/// Its absence is preserved so locally decidable create, moderation, and read
+/// policies continue to work while trust, Channel, or Groups facts fail closed
+/// in owners.
 #[derive(Clone, Default)]
 pub struct ForumGraphqlRuntimeData {
     audience_facts: Option<SharedForumAudienceFactsPort>,
@@ -23,6 +28,16 @@ pub fn attach_schema_data(
 }
 
 impl ForumGraphqlRuntimeData {
+    pub(crate) fn category_audience_read_service(
+        &self,
+        db: DatabaseConnection,
+    ) -> ForumCategoryAudienceReadService {
+        match self.audience_facts.clone() {
+            Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db, facts),
+            None => ForumCategoryAudienceReadService::new(db),
+        }
+    }
+
     pub(crate) fn topic_service(
         &self,
         db: DatabaseConnection,
@@ -45,6 +60,19 @@ impl ForumGraphqlRuntimeData {
         }
     }
 
+    pub(crate) fn reply_audience_read_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> ForumReplyAudienceReadService {
+        match self.audience_facts.clone() {
+            Some(facts) => {
+                ForumReplyAudienceReadService::with_audience_facts(db, event_bus, facts)
+            }
+            None => ForumReplyAudienceReadService::new(db, event_bus),
+        }
+    }
+
     pub(crate) fn moderation_service(
         &self,
         db: DatabaseConnection,
@@ -53,6 +81,30 @@ impl ForumGraphqlRuntimeData {
         match self.audience_facts.clone() {
             Some(facts) => ModerationService::with_audience_facts(db, event_bus, facts),
             None => ModerationService::new(db, event_bus),
+        }
+    }
+
+    pub(crate) fn topic_audience_read_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> ForumTopicAudienceReadService {
+        match self.audience_facts.clone() {
+            Some(facts) => {
+                ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts)
+            }
+            None => ForumTopicAudienceReadService::new(db, event_bus),
+        }
+    }
+
+    pub(crate) fn storefront_read_state_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> ForumStorefrontReadStateService {
+        match self.audience_facts.clone() {
+            Some(facts) => ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts),
+            None => ForumStorefrontReadStateService::new(db, event_bus),
         }
     }
 }

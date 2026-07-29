@@ -1,0 +1,32 @@
+[package]
+name = "rustok-product-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Typed gRPC transport adapter for the RusToK Product catalog read port"
+
+[dependencies]
+async-trait.workspace = true
+bytes = "1.0"
+prost.workspace = true
+rustok-api.workspace = true
+rustok-product.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle = "2"
+thiserror.workspace = true
+tonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }
+tonic-prost.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+protoc-bin-vendored.workspace = true
+tonic-prost-build.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+tokio.workspace = true
+tokio-stream = { version = "0.1", features = ["net"] }

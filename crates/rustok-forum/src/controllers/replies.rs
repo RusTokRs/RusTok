@@ -14,8 +14,10 @@ use crate::reply_create_transport::{
     ForumReplyCreateTransport, reply_create_audience_port_context,
 };
 use crate::{
-    CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, ReplyService,
-    UpdateReplyInput, VoteService,
+    CreateReplyInput, ForumReplyAudienceReadService, ForumReplyReadOperation,
+    ForumReplyReadTransport, ListRepliesFilter, ReplyListItem, ReplyResponse,
+    SharedForumAudienceFactsPort, UpdateReplyInput, VoteService,
+    reply_read_audience_port_context,
 };
 
 fn clamp_per_page(per_page: u64) -> u64 {
@@ -62,12 +64,26 @@ pub async fn list_replies(
     let requested_limit = Some(filter.per_page);
     let effective_limit = clamp_per_page(filter.per_page);
     filter.per_page = effective_limit;
-    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
+    let effective_locale = filter
+        .locale
+        .as_deref()
+        .unwrap_or(tenant.default_locale.as_str());
+    let audience_context = reply_read_audience_port_context(
+        ForumReplyReadTransport::Rest,
+        ForumReplyReadOperation::ReplyList,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        effective_locale,
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let service = reply_audience_read_service(&runtime);
     let list_started_at = Instant::now();
     let (replies, _) = service
-        .list_for_topic_with_locale_fallback(
+        .list_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            audience_context,
             topic_id,
             filter,
             Some(tenant.default_locale.as_str()),
@@ -77,7 +93,7 @@ pub async fn list_replies(
     metrics::record_read_path_query(
         "http",
         "forum.list_replies",
-        "service_list",
+        "exact_reply_audience_owner",
         list_started_at.elapsed().as_secs_f64(),
         replies.len() as u64,
     );
@@ -137,13 +153,21 @@ pub async fn get_reply(
     let locale = filter
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
-    let reply = service
-        .get_with_locale_fallback(
+    let audience_context = reply_read_audience_port_context(
+        ForumReplyReadTransport::Rest,
+        ForumReplyReadOperation::SelectedReply,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        &locale,
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let reply = reply_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            audience_context,
             id,
-            &locale,
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -226,7 +250,7 @@ pub async fn update_reply(
         "Permission denied: forum_replies:update required",
     )?;
 
-    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.reply_service();
     let reply = service
         .update(tenant.id, id, forum_security(&auth), input)
         .await
@@ -258,7 +282,7 @@ pub async fn delete_reply(
         "Permission denied: forum_replies:delete required",
     )?;
 
-    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.reply_service();
     service
         .delete(tenant.id, id, forum_security(&auth))
         .await
@@ -293,18 +317,47 @@ pub async fn set_reply_vote(
         "Permission denied: forum_replies:read required",
     )?;
 
+    let read_service = reply_audience_read_service(&runtime);
+    let preflight_context = reply_read_audience_port_context(
+        ForumReplyReadTransport::Rest,
+        ForumReplyReadOperation::SelectedReply,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    read_service
+        .get_authenticated_owner_visible_with_audience_context(
+            tenant.id,
+            forum_security(&auth),
+            preflight_context,
+            reply_id,
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(crate::controllers::map_forum_error)?;
+
     VoteService::new(runtime.db_clone())
         .set_reply_vote(tenant.id, reply_id, forum_security(&auth), value)
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
-    let reply = service
-        .get_with_locale_fallback(
+    let response_context = reply_read_audience_port_context(
+        ForumReplyReadTransport::Rest,
+        ForumReplyReadOperation::SelectedReply,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let reply = read_service
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            response_context,
             reply_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -336,23 +389,65 @@ pub async fn clear_reply_vote(
         "Permission denied: forum_replies:read required",
     )?;
 
+    let read_service = reply_audience_read_service(&runtime);
+    let preflight_context = reply_read_audience_port_context(
+        ForumReplyReadTransport::Rest,
+        ForumReplyReadOperation::SelectedReply,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    read_service
+        .get_authenticated_owner_visible_with_audience_context(
+            tenant.id,
+            forum_security(&auth),
+            preflight_context,
+            reply_id,
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(crate::controllers::map_forum_error)?;
+
     VoteService::new(runtime.db_clone())
         .clear_reply_vote(tenant.id, reply_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
-    let reply = service
-        .get_with_locale_fallback(
+    let response_context = reply_read_audience_port_context(
+        ForumReplyReadTransport::Rest,
+        ForumReplyReadOperation::SelectedReply,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let reply = read_service
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            response_context,
             reply_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(reply))
+}
+
+fn reply_audience_read_service(
+    runtime: &crate::controllers::ForumHttpRuntime,
+) -> ForumReplyAudienceReadService {
+    match runtime.audience_facts.clone() {
+        Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
+            runtime.db_clone(),
+            runtime.event_bus(),
+            facts,
+        ),
+        None => ForumReplyAudienceReadService::new(runtime.db_clone(), runtime.event_bus()),
+    }
 }
 
 fn ensure_forum_permission(

@@ -7,6 +7,7 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod audience;
 pub mod category_presentation;
+pub mod category_read_transport;
 pub mod constants;
 pub mod controllers;
 pub mod dto;
@@ -23,11 +24,13 @@ pub mod notification_recipient;
 mod notification_source;
 pub mod openapi;
 mod reply_create_transport;
+pub mod reply_read_transport;
 mod seo_targets;
 pub mod services;
 pub mod state_machine;
 pub mod subscription;
 mod topic_create_transport;
+pub mod topic_read_transport;
 pub mod visibility;
 
 pub use audience::{
@@ -37,6 +40,9 @@ pub use audience::{
     ForumAudienceFactsResolver, MAX_FORUM_AUDIENCE_CHANNELS, MAX_FORUM_AUDIENCE_EXPLICIT_USERS,
     MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES, MAX_FORUM_AUDIENCE_TRUST_LEVEL,
     SharedForumAudienceFactsPort,
+};
+pub use category_read_transport::{
+    ForumCategoryReadOperation, ForumCategoryReadTransport, category_read_audience_port_context,
 };
 pub use constants::*;
 pub use dto::*;
@@ -50,11 +56,16 @@ pub use notification_recipient::{
     ForumNotificationRecipientContextPort, ForumNotificationRecipientContextRequest,
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
+pub use reply_read_transport::{
+    ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
+};
 pub use services::{
     CategoryService, FORUM_POSTING_POLICY_FACTS_CAPABILITY,
     FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE, FORUM_POSTING_POLICY_PRECEDENCE,
-    ForumApprovedPostsFactPort, ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
-    ForumCategoryAudiencePolicyService, ForumCategoryModerationAudiencePolicy,
+    ForumApprovedPostsFactPort, ForumCategoryAudiencePage, ForumCategoryAudiencePolicy,
+    ForumCategoryAudiencePolicyLayer, ForumCategoryAudiencePolicyService,
+    ForumCategoryAudienceReadService, ForumCategoryAudienceViewer,
+    ForumCategoryAudienceVisibilityService, ForumCategoryModerationAudiencePolicy,
     ForumCategoryModerationAudiencePolicyLayer, ForumCategoryModerationAudiencePolicyService,
     ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
     ForumCategoryReplyCreateAudiencePolicyService, ForumCategoryTopicCreateAudiencePolicy,
@@ -70,16 +81,18 @@ pub use services::{
     ForumPostingPolicyOwnerFactValue, ForumPostingPolicyRules, ForumPostingPolicyUnavailableFact,
     ForumPostingTrustFactPort, ForumPostingWindowCount, ForumPostingWindowLimit,
     ForumQuoteCommandService, ForumReadModelService, ForumRelationReadService,
-    ForumReplyCreateAudienceAuthorization, ForumReplyCreateAudienceAuthorizationService,
-    ForumReplyCreatesWindowFactPort, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic,
-    ForumStorefrontUnreadTopicPage, ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService,
-    ForumTopicAudienceReadService, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
-    ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
-    ForumTopicCreatesWindowFactPort, ForumTopicReadPostingFactPort, ForumTopicReadState,
-    ForumTopicReadStateService, ForumTopicReplyCreateAudiencePolicy,
-    ForumTopicReplyCreateAudiencePolicyService, ForumTopicUnreadSummary, ForumTopicVisibilityScope,
-    ForumTopicVisibilityService, ForumUserTrustAudienceFactsPort, ForumUserTrustChange,
-    ForumUserTrustRevision, ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
+    ForumReplyAudienceReadService, ForumReplyCreateAudienceAuthorization,
+    ForumReplyCreateAudienceAuthorizationService, ForumReplyCreatesWindowFactPort,
+    ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
+    ForumTopicAudienceListService, ForumTopicAudiencePage, ForumTopicAudiencePolicy,
+    ForumTopicAudiencePolicyService, ForumTopicAudienceReadService, ForumTopicAudienceViewer,
+    ForumTopicAudienceVisibilityService, ForumTopicCreateAudienceAuthorization,
+    ForumTopicCreateAudienceAuthorizationService, ForumTopicCreatesWindowFactPort,
+    ForumTopicReadPostingFactPort, ForumTopicReadState, ForumTopicReadStateService,
+    ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
+    ForumTopicUnreadSummary, ForumTopicVisibilityScope, ForumTopicVisibilityService,
+    ForumUserTrustAudienceFactsPort, ForumUserTrustChange, ForumUserTrustRevision,
+    ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
     ForumWidgetContractService, MAX_FORUM_POSTING_POLICY_FACTS,
     MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
     MAX_FORUM_USER_TRUST_HISTORY_PAGE, MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput,
@@ -93,6 +106,9 @@ pub use services::{
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
+pub use topic_read_transport::{
+    ForumTopicReadOperation, ForumTopicReadTransport, topic_read_audience_port_context,
+};
 pub use visibility::ForumCategoryVisibility;
 
 pub struct ForumModule;

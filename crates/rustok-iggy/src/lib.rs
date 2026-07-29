@@ -70,6 +70,8 @@ pub mod dlq_duplicate_alert_runtime;
 #[cfg(feature = "iggy")]
 pub mod dlq_duplicate_external_scan;
 pub mod dlq_duplicate_inspection;
+#[cfg(feature = "iggy")]
+pub mod dlq_duplicate_moving_window_scan;
 pub mod dlq_duplicate_rolling_window;
 #[cfg(feature = "iggy")]
 mod dlq_publisher;
@@ -101,8 +103,8 @@ pub use dedup_recovery_window_policy::{
 pub use dlq::{DlqEntry, DlqManager};
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_alert_observer::{
-    IggyDlqDuplicateAlertObserver, IggyDlqDuplicateAlertObserverError,
-    IggyDlqDuplicateAlertScanMode,
+    IggyDlqDuplicateAlertMovingWindowConfig, IggyDlqDuplicateAlertObserver,
+    IggyDlqDuplicateAlertObserverError, IggyDlqDuplicateAlertScanMode,
 };
 pub use dlq_duplicate_alert_policy::{
     DlqDuplicateAlertEvaluation, DlqDuplicateAlertLevel, DlqDuplicateAlertPolicy,
@@ -120,6 +122,12 @@ pub use dlq_duplicate_external_scan::{
 pub use dlq_duplicate_inspection::{
     DlqDuplicateInspectionError, DlqDuplicateObservation, DlqDuplicateSummary,
     summarize_dlq_duplicates,
+};
+#[cfg(feature = "iggy")]
+pub use dlq_duplicate_moving_window_scan::{
+    IggyDlqDuplicateMovingWindowError, IggyDlqDuplicateMovingWindowPolicy,
+    IggyDlqDuplicateMovingWindowScanner, IggyDlqDuplicateMovingWindowSnapshot,
+    IggyDlqDuplicateMovingWindowState,
 };
 pub use dlq_duplicate_rolling_window::{
     DlqDuplicateRollingWindow, DlqDuplicateRollingWindowError,

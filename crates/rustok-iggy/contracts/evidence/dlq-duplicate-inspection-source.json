@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "module": "iggy",
   "packet": "dlq-duplicate-inspection-source",
   "status": "source_complete_runtime_evidence_pending",
@@ -86,15 +86,23 @@
     "result": "DlqDuplicateSummary"
   },
   "rolling_window": {
-    "status": "source_complete_scanner_integration_pending",
+    "status": "source_complete_server_composed_runtime_pending",
     "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json",
     "source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
     "result": "DlqDuplicateRollingWindowSnapshot",
     "complete_cycle_retention": true,
     "history_truncated_after_eviction": true,
     "identifier_export": false,
-    "moving_cursor": false,
-    "persistence": false
+    "moving_scanner": {
+      "status": "source_complete_server_composed_runtime_pending",
+      "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
+      "source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
+      "independent_process_local_partition_cursors": true,
+      "complete_cycle_atomicity": true,
+      "progress_persisted": false,
+      "restart_semantics": "reset_to_reviewed_initial_offset",
+      "cursor_values_exported": false
+    }
   },
   "alert_policy": {
     "status": "source_complete_server_observer_execution_pending",
@@ -131,15 +139,23 @@
       "external"
     ],
     "startup_failure_non_fatal": true,
-    "partition_fairness_claimed": false,
+    "scan_modes": [
+      "global_budget",
+      "fair_window",
+      "moving_window"
+    ],
+    "default_scan_mode": "global_budget",
+    "moving_window_explicit_opt_in": true,
+    "moving_configuration_fail_closed": true,
+    "moving_scan_failure_preserves_process_local_state": true,
     "readiness_dependency": false,
     "profiles_authorization": false
   },
   "remaining_work": [
     "retained_external_iggy_duplicate_scan_evidence",
-    "partition_fairness_or_per_partition_budget_policy",
-    "moving_window_or_per_partition_cursor_policy",
-    "rolling_window_scanner_cursor_persistence_integration",
+    "retain_moving_window_external_runtime_evidence",
+    "review_reset_frequency_and_initial_offset_per_deployment",
+    "define_persistent_cursor_owner_only_if_restart_continuity_is_required",
     "telemetry_and_health_projection",
     "alert_delivery_and_suppression_outside_policy",
     "operator_ack_delete_replay_workflow_outside_inspector",

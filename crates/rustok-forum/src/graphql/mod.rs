@@ -6,10 +6,14 @@ mod connection;
 mod content_commands;
 mod error_extension;
 mod mutation;
+#[path = "query_runtime.rs"]
 mod query;
 mod quote_commands;
 mod read_state;
+mod reply_audience_query;
 mod runtime_data;
+mod storefront_audience_topic;
+mod storefront_audience_topics;
 mod storefront_read_state;
 mod types;
 
@@ -45,7 +49,10 @@ pub struct ForumQuery(
     category_tree_query::ForumCategoryTreeQuery,
     category_policy::ForumCategoryTopicPolicyQuery,
     read_state::ForumReadStateQuery,
+    reply_audience_query::ForumReplyAudienceQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,
+    storefront_audience_topic::ForumStorefrontAudienceTopicQuery,
+    storefront_audience_topics::ForumStorefrontAudienceTopicsQuery,
 );
 
 #[derive(MergedObject, Default)]

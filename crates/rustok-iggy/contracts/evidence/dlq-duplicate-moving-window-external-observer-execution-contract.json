@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-moving-window-external-observer-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "source_contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-external-observer-runtime-source.json",
+  "runner": "scripts/evidence/capture-iggy-dlq-duplicate-moving-window-external-observer.mjs",
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-moving-window-external-observer-retained.mjs",
+  "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-external-observer-execution.json",
+  "evidence_status": "runtime_execution_pending",
+  "command": {
+    "program": "cargo",
+    "args": [
+      "test",
+      "-p",
+      "rustok-iggy",
+      "--features",
+      "iggy",
+      "--test",
+      "dlq_duplicate_moving_window_external_observer",
+      "--",
+      "moving_observer_retains_duplicate_across_advancing_cycles",
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
+  "case": "moving_observer_retains_duplicate_across_advancing_cycles",
+  "required_environment": {
+    "address": "RUSTOK_IGGY_MOVING_OBSERVER_TEST_ADDRESS",
+    "config_path": "RUSTOK_IGGY_MOVING_OBSERVER_TEST_CONFIG_PATH",
+    "reset_review_path": "RUSTOK_IGGY_MOVING_OBSERVER_TEST_RESET_REVIEW_PATH",
+    "server_artifact": "RUSTOK_IGGY_MOVING_OBSERVER_TEST_SERVER_ARTIFACT"
+  },
+  "optional_environment": [
+    "RUSTOK_IGGY_MOVING_OBSERVER_TEST_USERNAME",
+    "RUSTOK_IGGY_MOVING_OBSERVER_TEST_PASSWORD"
+  ],
+  "reviewed_configuration": {
+    "section": "system.message_deduplication",
+    "required_enabled": false,
+    "retain_only": [
+      "section",
+      "enabled",
+      "canonical_sha256"
+    ],
+    "config_path_outside_repository": true,
+    "full_content_retained": false,
+    "full_file_sha256_retained": false
+  },
+  "reviewed_reset": {
+    "schema_version": 1,
+    "required_initial_offset": 0,
+    "required_restart_continuity": false,
+    "required_fields": [
+      "schema_version",
+      "initial_offset",
+      "acceptable_reset_frequency",
+      "restart_continuity_required",
+      "review_scope"
+    ],
+    "retain_only": [
+      "schema_version",
+      "initial_offset",
+      "acceptable_reset_frequency",
+      "restart_continuity_required",
+      "review_scope",
+      "canonical_sha256"
+    ],
+    "path_outside_repository": true,
+    "full_content_retained": false,
+    "full_file_sha256_retained": false
+  },
+  "moving_configuration": {
+    "partition_count": 1,
+    "initial_offset": 0,
+    "per_partition_messages": 1,
+    "batch_size": 1,
+    "rolling_max_cycles": 3,
+    "rolling_max_observations_per_cycle": 1,
+    "production_defaults": false
+  },
+  "required_first_summary": {
+    "total_messages": 1,
+    "unique_message_ids": 1,
+    "duplicate_messages": 0,
+    "duplicate_groups": 0,
+    "conflicting_payload_groups": 0,
+    "max_copies_per_message_id": 1,
+    "has_physical_duplicates": false,
+    "has_identity_conflicts": false,
+    "requires_manual_review": false
+  },
+  "required_second_summary": {
+    "total_messages": 2,
+    "unique_message_ids": 1,
+    "duplicate_messages": 1,
+    "duplicate_groups": 1,
+    "conflicting_payload_groups": 0,
+    "max_copies_per_message_id": 2,
+    "has_physical_duplicates": true,
+    "has_identity_conflicts": false,
+    "requires_manual_review": false
+  },
+  "required_comparison": {
+    "second_detects_cross_cycle_duplicate": true,
+    "third_summary_equals_second": true,
+    "replacement_first_summary_equals_first": true,
+    "observer_mode_is_moving_window": true,
+    "connected_state_preserved_after_scan_error": true
+  },
+  "required_offset_observations": {
+    "partitions_checked": 1,
+    "before_fixture_publication_stored_offset_count": 0,
+    "after_first_cycle_stored_offset_count": 0,
+    "after_second_cycle_stored_offset_count": 0,
+    "after_third_cycle_stored_offset_count": 0,
+    "after_replacement_first_cycle_stored_offset_count": 0
+  },
+  "required_runtime_marker": "RUSTOK_MOVING_OBSERVER_EVIDENCE first_total=1 first_duplicates=0 second_total=2 second_duplicates=1 second_groups=1 second_max_copies=2 third_equal=true replacement_equal_first=true stored_offsets=0",
+  "runner_requirements": {
+    "clean_working_tree_before": true,
+    "clean_working_tree_after_test": true,
+    "full_git_commit": true,
+    "commit_unchanged": true,
+    "source_hashes_unchanged": true,
+    "exact_case_only": true,
+    "running_one_test_required": true,
+    "skip_rejected": true,
+    "runtime_marker_required": true,
+    "no_clobber_atomic_write_after_pass": true
+  },
+  "retained_packet": {
+    "reviewed_artifact_labels": true,
+    "canonical_dedup_configuration": true,
+    "canonical_reset_review": true,
+    "git_toolchain_timestamps": true,
+    "exact_command": true,
+    "current_source_sha256": true,
+    "test_output_sha256_and_bytes": true,
+    "first_and_second_summary_assertions": true,
+    "cross_cycle_and_replacement_assertions": true,
+    "aggregate_absent_offset_assertions": true,
+    "case_result": "pass"
+  },
+  "privacy_exclusions": [
+    "broker_address",
+    "config_path",
+    "reset_review_path",
+    "username",
+    "password",
+    "connection_string",
+    "stream_name",
+    "partition_id",
+    "offset",
+    "broker_message_id",
+    "delivery_uuid",
+    "payload",
+    "payload_sha256",
+    "ack_token",
+    "raw_iggy_error",
+    "raw_test_output",
+    "database_url",
+    "config_full_content",
+    "config_full_file_sha256",
+    "reset_review_full_content",
+    "reset_review_full_file_sha256",
+    "raw_threshold_values",
+    "source_counts"
+  ],
+  "source_files": [
+    "crates/rustok-iggy/tests/dlq_duplicate_moving_window_external_observer.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
+    "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+    "crates/rustok-iggy/src/dlq_publisher.rs",
+    "crates/rustok-iggy/src/transport.rs",
+    "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
+    "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-external-observer-runtime-source.json",
+    "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-external-observer-execution-contract.json",
+    "scripts/evidence/capture-iggy-dlq-duplicate-moving-window-external-observer.mjs",
+    "scripts/verify/verify-iggy-dlq-duplicate-moving-window-external-observer-runtime.mjs",
+    "scripts/verify/verify-iggy-dlq-duplicate-moving-window-external-observer-retained.mjs",
+    "crates/rustok-iggy/docs/dlq-duplicate-moving-window-external-observer-runtime-evidence.md",
+    "crates/rustok-profiles/docs/poison-duplicate-moving-window-external-observer-runtime-checkpoint.md"
+  ],
+  "non_claims": [
+    "full_server_process_started",
+    "server_environment_readback",
+    "persisted_progress",
+    "restart_safe_progress",
+    "current_tail_coverage",
+    "complete_history",
+    "production_retention_sufficiency",
+    "same_broker_message_id_split_across_partitions",
+    "bundled_iggy",
+    "tls_auth_failover",
+    "exactly_once",
+    "destructive_reconciliation",
+    "profiles_authorization"
+  ]
+}

@@ -6,6 +6,11 @@ mod category {
     include!("category_visibility_list.rs");
 }
 mod category_audience;
+mod category_audience_read {
+    include!("category_audience_read.rs");
+    include!("category_audience_read_inline.rs");
+}
+mod category_audience_visibility;
 #[allow(clippy::collapsible_if)]
 mod category_command;
 mod category_lifecycle;
@@ -46,6 +51,7 @@ mod reply {
     include!("reply.rs");
     include!("reply_inline.rs");
 }
+mod reply_audience_read;
 mod reply_create_audience_authorization;
 mod reply_facade;
 mod reply_owner {
@@ -65,6 +71,7 @@ mod topic_audience {
     include!("topic_audience.rs");
     include!("topic_audience_visibility.rs");
 }
+mod topic_audience_list;
 mod topic_audience_read;
 mod topic_create_audience_authorization;
 mod topic_facade;
@@ -83,6 +90,12 @@ pub mod widget_contract;
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+};
+pub use category_audience_read::{
+    ForumCategoryAudiencePage, ForumCategoryAudienceReadService,
+};
+pub use category_audience_visibility::{
+    ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
 };
 pub use category_moderation_audience::{
     ForumCategoryModerationAudiencePolicy, ForumCategoryModerationAudiencePolicyLayer,
@@ -139,6 +152,7 @@ pub use read_tracking::{
     MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
 };
 pub use relation_read::ForumRelationReadService;
+pub use reply_audience_read::ForumReplyAudienceReadService;
 pub use reply_create_audience_authorization::{
     ForumReplyCreateAudienceAuthorization, ForumReplyCreateAudienceAuthorizationService,
 };
@@ -153,6 +167,7 @@ pub use topic_audience::{
     ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, ForumTopicAudienceViewer,
     ForumTopicAudienceVisibilityService, SetForumTopicAudiencePolicyInput,
 };
+pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
 pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,

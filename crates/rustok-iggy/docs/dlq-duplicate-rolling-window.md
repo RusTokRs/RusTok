@@ -1,43 +1,37 @@
 # Bounded physical DLQ duplicate rolling window
 
-Status: **transport-neutral rolling-window state source-complete; scanner, cursor, persistence, server integration, and runtime evidence pending**.
+Status: **transport-neutral rolling state plus moving scanner and server integration source-complete; external runtime evidence pending**.
 
 ## Purpose
 
-A fixed explicit-offset scan can classify duplicates that appear inside one scan result. It cannot relate one copy observed near the end of one cycle with another copy observed in a later cycle after the scanner advances.
+A fixed explicit-offset scan can classify copies inside one result but cannot relate one copy observed near the end of one advancing cycle with another copy in a later cycle.
 
-`DlqDuplicateRollingWindow` retains opaque duplicate observations across a bounded number of complete scan cycles. While both copies remain inside the retained window, the existing `DlqDuplicateSummary` classifier detects ordinary duplicates and conflicting payloads across cycle boundaries.
+`DlqDuplicateRollingWindow` retains opaque observations across complete scan cycles. While copies remain inside the retained window, the existing count-only classifier detects ordinary duplicates and conflicting payloads across cycle boundaries.
 
-The state does not move a broker cursor, connect to Iggy, poll messages, store offsets, persist itself, mutate receipts, or authorize Profiles.
+The transport-neutral state itself does not move a broker cursor, connect to Iggy, poll messages, store offsets, persist itself, mutate receipts, or authorize Profiles.
 
 ## Explicit bounds
 
-The caller constructs `DlqDuplicateRollingWindowPolicy` with:
+The caller supplies:
 
 ```text
 max_cycles
 max_observations_per_cycle
 ```
 
-Both values must be positive. `max_cycles` is capped at 128, and the checked product must satisfy:
-
-```text
-max_cycles * max_observations_per_cycle <= 10000
-```
-
-The crate defines no production default for cadence, cycle count, observation count, or retention duration.
+Both are positive. Cycle count is capped at 128, and the checked product cannot exceed 10,000 observations. No production default is defined.
 
 ## Complete-cycle semantics
 
-Each `push_cycle` call supplies one complete scan cycle of opaque `DlqDuplicateObservation` values.
+Each `push_cycle` supplies one complete scan cycle of opaque observations.
 
 - empty successful cycles are valid;
-- an oversized cycle fails before state mutation;
-- the candidate window is classified before it replaces current state;
-- when cycle capacity is full, the oldest complete cycle is evicted;
-- partial-cycle eviction is not allowed.
+- oversized cycles fail before mutation;
+- candidate classification succeeds before current state is replaced;
+- the oldest complete cycle is evicted at capacity;
+- partial-cycle eviction is forbidden.
 
-Keeping complete cycles makes the loss boundary explicit. It does not make the retained observations a complete history.
+Keeping complete scan cycles makes the loss boundary explicit. It does not make the retained result complete history.
 
 ## Identifier-free snapshot
 
@@ -51,25 +45,7 @@ evicted_cycles
 history_truncated
 ```
 
-`summary` remains the existing count-only `DlqDuplicateSummary`. The snapshot exposes no UUID, payload digest, partition, offset, stream, endpoint, credential, receipt identity, timestamp, or raw error.
-
-## Cross-cycle classification
-
-The window combines all retained observations before calling `summarize_dlq_duplicates`.
-
-```text
-cycle 1: A1
-cycle 2: A2, same deterministic ID and exact bytes
-result: ordinary physical duplicate
-```
-
-```text
-cycle 1: B1
-cycle 2: B2, same deterministic ID and different exact bytes
-result: identity conflict requiring manual review
-```
-
-This relationship is preserved only while all relevant copies remain retained.
+The snapshot excludes UUIDs, payloads/digests, partitions, offsets, endpoints, credentials, receipts, timestamps, and raw errors.
 
 ## Truncation boundary
 
@@ -77,37 +53,42 @@ After the first complete-cycle eviction:
 
 ```text
 history_truncated = true
-evicted_cycles > 0
 ```
 
-The flag never returns to false for that in-memory state. An identity relationship can disappear when its older copy is evicted. Therefore a truncated snapshot describes only the currently retained bounded window and is not complete history, current-tail proof, or production retention evidence.
+An evicted old copy can remove a previously visible relationship. A truncated result describes only the retained bounded window and is not complete history, current-tail proof, or production retention evidence.
 
-## Source contract and verification
+## Moving scanner and server integration
 
-Machine contract:
+The moving scanner and server integration are source-complete.
+
+`IggyDlqDuplicateMovingWindowState` owns independent process-local per-partition cursors. `IggyDlqDuplicateMovingWindowScanner` collects every selected partition into a temporary equal-budget candidate and feeds exactly one complete combined cycle into the rolling state.
+
+The server exposes this path only through explicit:
 
 ```text
-crates/rustok-iggy/contracts/evidence/
-  dlq-duplicate-rolling-window-source.json
+RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE=moving_window
 ```
 
-Static verifier:
+Moving configuration requires reviewed initial offset, per-partition cap, batch size, maximum cycles, and maximum observations per cycle. No moving default is provided. The rolling per-cycle capacity must cover the full fair-cycle budget.
+
+A failed moving cycle preserves connected process-local cursor and rolling state. A new process or replacement connection starts again at the reviewed initial offset with empty rolling history because persistence is deliberately absent.
+
+The server reduces each successful moving snapshot to the existing `DlqDuplicateSummary`; partition IDs, cursor values, and observations remain private.
+
+## Source verification
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs
+node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 ```
 
-Focused unit scenarios cover invalid bounds, ordinary duplicates split across cycles, identity conflicts split across cycles, complete-cycle eviction, and transactional oversized-cycle rejection.
+Tests, Cargo commands, formatters, verifiers, broker scans, server startup, and retained capture were not run while authoring these source slices.
 
-## Remaining integration
+## Remaining work
 
-Scanner integration remains pending. A later reviewed slice must:
-
-1. feed one complete fair per-partition scan cycle into the state without exporting identifiers;
-2. define independent per-partition cursor advancement;
-3. choose explicit persistence or restart-reset semantics;
-4. compose the mode-aware server observer;
-5. prove cross-cycle behavior on external Iggy;
-6. publish only identifier-free telemetry or health.
-
-No current API claims moving cursors, persisted progress, restart-safe state, current-tail coverage, complete history, production retention sufficiency, or exactly-once delivery.
+1. retain a real external-Iggy duplicate split across advancing cycles;
+2. review initial offset and acceptable reset frequency per deployment;
+3. add persistent cursor ownership only if restart continuity is required;
+4. retain server observer execution evidence;
+5. define identifier-free telemetry and optional health.

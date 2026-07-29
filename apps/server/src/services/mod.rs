@@ -26,6 +26,7 @@ pub mod email;
 pub mod event_bus;
 pub mod event_delivery_control_adapter;
 pub mod event_delivery_settings_service;
+pub mod event_dlq_duplicate_alert_observability;
 pub mod event_dlq_duplicate_alert_observer;
 #[cfg(feature = "mod-forum")]
 pub mod forum_audience_facts {
@@ -94,6 +95,7 @@ pub mod payment_provider_event_worker;
 #[cfg(feature = "mod-payment")]
 pub mod payment_provider_runtime;
 pub mod platform_composition;
+pub mod product_catalog_deployment;
 pub mod profile_media_public_image_deployment;
 pub mod profile_media_public_image_runtime;
 

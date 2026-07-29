@@ -52,7 +52,7 @@ embed-storefront = ["dep:rustok-storefront"]
 # resolvers additionally check is_enabled(tenant_id) at runtime.
 mod-cart      = ["dep:rustok-cart", "rustok-distribution/mod-cart"]
 mod-customer  = ["dep:rustok-customer", "rustok-distribution/mod-customer"]
-mod-product   = ["dep:rustok-product", "mod-taxonomy", "rustok-distribution/mod-product"]
+mod-product   = ["dep:rustok-product", "dep:rustok-product-transport", "mod-taxonomy", "rustok-distribution/mod-product"]
 mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport", "mod-media", "mod-taxonomy", "rustok-distribution/mod-profiles"]
 mod-social_graph = ["rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]
 mod-groups    = ["dep:rustok-groups", "rustok-groups/graphql", "rustok-distribution/mod-groups"]
@@ -113,6 +113,7 @@ rustok-storefront = { path = "../storefront", default-features = false, features
 rustok-cart      = { workspace = true, optional = true }
 rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
+rustok-product-transport = { path = "../../crates/rustok-product-transport", optional = true }
 rustok-profiles  = { workspace = true, optional = true }
 rustok-social-graph = { path = "../../crates/rustok-social-graph" }
 rustok-groups = { path = "../../crates/rustok-groups", default-features = false, optional = true }
