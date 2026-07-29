@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -9,7 +11,7 @@ use crate::domain::{FieldPath, IndexQuery, LinkCardinality, LinkName, Pagination
 
 use super::{
     CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
-    QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
+    PlannedManyProjection, QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +36,10 @@ pub enum CompiledQueryColumn {
     Field {
         output_alias: String,
         field: PlannedField,
+    },
+    ManyRelation {
+        output_alias: String,
+        projection: PlannedManyProjection,
     },
     OrderValue {
         output_alias: String,
@@ -72,14 +78,14 @@ pub enum PostgresQueryCompileError {
     CursorContextRequired,
     #[error("decoded cursor context does not match query pagination")]
     CursorContextMismatch,
-    #[error("many-cardinality projection requires nested aggregation planning: {0:?}")]
-    ManyLinkProjectionPending(FieldPath),
     #[error("many-cardinality ordering requires an explicit aggregate policy: {0:?}")]
     ManyLinkOrderingPending(FieldPath),
     #[error("query plan has no join contract for path {0:?}")]
     MissingJoinPlan(Vec<LinkName>),
     #[error("query plan many-link traversal metadata is inconsistent for path {0:?}")]
     ManyTraversalMismatch(Vec<LinkName>),
+    #[error("query plan nested many-projection metadata is inconsistent")]
+    ManyProjectionPlanMismatch,
     #[error("query plan relation aliases do not match the path-alias map")]
     AliasMappingMismatch,
     #[error("query plan has no typed field contract for {0:?}")]
@@ -215,12 +221,8 @@ impl ExecutableQueryPlan {
                     field.path.clone(),
                 ));
             }
-            if field.traverses_many {
-                return Err(PostgresQueryCompileError::ManyLinkProjectionPending(
-                    field.path.clone(),
-                ));
-            }
         }
+        validate_many_projection_contract(self)?;
         for order in &self.order_by {
             if self.referenced_fields.get(&order.field.path) != Some(&order.field) {
                 return Err(PostgresQueryCompileError::MissingFieldPlan(
@@ -271,6 +273,50 @@ impl ExecutableQueryPlan {
             _ => Err(PostgresQueryCompileError::CursorContextMismatch),
         }
     }
+}
+
+fn validate_many_projection_contract(
+    plan: &ExecutableQueryPlan,
+) -> Result<(), PostgresQueryCompileError> {
+    let expected_fields = plan
+        .projection
+        .iter()
+        .filter(|field| field.traverses_many)
+        .collect::<Vec<_>>();
+    let actual_fields = plan
+        .many_projections
+        .iter()
+        .flat_map(|projection| projection.fields.iter())
+        .collect::<Vec<_>>();
+    if actual_fields != expected_fields {
+        return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
+    }
+
+    let mut paths = BTreeSet::new();
+    for projection in &plan.many_projections {
+        if projection.path.is_empty()
+            || projection.fields.is_empty()
+            || !paths.insert(projection.path.clone())
+        {
+            return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
+        }
+        let expected_identity_paths = (1..=projection.path.len())
+            .map(|depth| projection.path[..depth].to_vec())
+            .collect::<Vec<_>>();
+        if projection.identity_paths != expected_identity_paths
+            || projection.fields.iter().any(|field| {
+                !field.traverses_many || field.path.links() != projection.path.as_slice()
+            })
+        {
+            return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
+        }
+        for path in &projection.identity_paths {
+            if plan.join_for_path(path).is_none() {
+                return Err(PostgresQueryCompileError::MissingJoinPlan(path.clone()));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_alias(alias: &str) -> Result<(), PostgresQueryCompileError> {
