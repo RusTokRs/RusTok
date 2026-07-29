@@ -131,7 +131,7 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
     "crates/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
-      : "standalone Product catalog service host is source-complete rustok-product-catalog-service OutboxTransport TLS-by-default schema preflight is source-complete products product_variants sys_events schema-preflight execution evidence remains open provider-host execution evidence remains open Product remains `boundary_ready` cargo run -p rustok-product-catalog-service verify-product-catalog-grpc-service-host.mjs",
+      : "standalone Product catalog service host is source-complete rustok-product-catalog-service OutboxTransport TLS-by-default schema preflight is source-complete products product_variants sys_events Schema-preflight execution evidence remains open provider-host execution evidence remains open Product remains `boundary_ready` cargo run -p rustok-product-catalog-service verify-product-catalog-grpc-service-host.mjs",
   );
   return root;
 }
