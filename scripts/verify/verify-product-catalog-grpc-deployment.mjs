@@ -179,7 +179,7 @@ requireAll(plan, [
   "Invalid remote configuration or connection failure aborts startup",
   "Adapter and production-wiring source are complete",
   "Product remains `boundary_ready` rather than",
-  "configured remote-profile execution evidence remain open",
+  "remote-profile execution evidence remain open",
   "Wire a fail-closed production external Product runtime profile",
   "verify-product-catalog-grpc-deployment.mjs",
 ], "Product implementation plan");
