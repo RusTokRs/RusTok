@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rustok_core::{Error, Result};
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use rustok_search::{
+use rustok_core::search_projection::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
     SearchProjectionSource, SearchProjectionSourceFactory,
 };
+use rustok_core::{Error, Result};
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
