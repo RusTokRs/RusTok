@@ -14,7 +14,7 @@ pub async fn fetch_storefront_forum_server(
     selected_topic_id: Option<String>,
     locale: Option<String>,
 ) -> Result<StorefrontForumData, ApiError> {
-    storefront_forum_audience_native(selected_category_id, selected_topic_id, locale)
+    storefront_forum_native(selected_category_id, selected_topic_id, locale)
         .await
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
@@ -28,8 +28,8 @@ pub async fn mark_storefront_topic_read_server(
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
 
-#[server(prefix = "/api/fn", endpoint = "forum/storefront-audience-data")]
-async fn storefront_forum_audience_native(
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-data")]
+async fn storefront_forum_native(
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
     locale: Option<String>,
@@ -64,7 +64,7 @@ async fn storefront_forum_audience_native(
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
                 ServerFnError::new(
-                    "forum/storefront-audience-data requires TransactionalEventBus in host runtime context",
+                    "forum/storefront-data requires TransactionalEventBus in host runtime context",
                 )
             })?;
         let public_security = SecurityContext::public_read();
@@ -260,7 +260,7 @@ async fn storefront_forum_audience_native(
     {
         let _ = (selected_category_id, selected_topic_id, locale);
         Err(ServerFnError::new(
-            "forum/storefront-audience-data requires the `ssr` feature",
+            "forum/storefront-data requires the `ssr` feature",
         ))
     }
 }
