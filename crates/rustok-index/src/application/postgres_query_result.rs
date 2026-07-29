@@ -11,8 +11,9 @@ use crate::domain::{
 
 use super::{
     CompiledPostgresQuery, CompiledQueryColumn, CursorCodec, CursorValidationError,
-    ExecutableQueryPlan, IndexCursor, PlannedField, PostgresBindValue, PostgresQueryBuildError,
-    QueryPlanError, QueryPlanFingerprint, SchemaRegistry, SchemaRegistryError,
+    ExecutableQueryPlan, IndexCursor, PlannedField, PlannedManyProjection, PostgresBindValue,
+    PostgresQueryBuildError, QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
+    SchemaRegistryError,
 };
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
@@ -93,11 +94,28 @@ pub struct IndexRelationIdentity {
     pub entity_id: Option<Uuid>,
 }
 
+/// One row reached through a projection path that crosses a many-cardinality link.
+/// Field values remain aligned with the complete relation identity chain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexNestedRelationItem {
+    pub relations: Vec<IndexRelationIdentity>,
+    pub fields: Vec<IndexProjectedValue>,
+}
+
+/// Deterministic nested projection for all requested fields sharing one terminal
+/// many-traversing relation path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexNestedRelationProjection {
+    pub path: Vec<LinkName>,
+    pub items: Vec<IndexNestedRelationItem>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexQueryItem {
     pub entity_id: Uuid,
     pub relations: Vec<IndexRelationIdentity>,
     pub fields: Vec<IndexProjectedValue>,
+    pub nested_relations: Vec<IndexNestedRelationProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,6 +180,28 @@ pub enum PostgresQueryDecodeError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("compiled row column {alias} contains invalid nested relation JSON")]
+    InvalidNestedRelation {
+        alias: String,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("nested relation column {alias} has identity arity {actual}; expected {expected}")]
+    NestedIdentityArity {
+        alias: String,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("nested relation column {alias} has field arity {actual}; expected {expected}")]
+    NestedFieldArity {
+        alias: String,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("nested relation column {alias} contains a nil entity identity")]
+    NilNestedIdentity { alias: String },
+    #[error("nested relation column {alias} contains a duplicate identity chain")]
+    DuplicateNestedIdentity { alias: String },
     #[error("exact-count value is negative: {0}")]
     NegativeExactCount(i64),
 }
@@ -327,9 +367,19 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
         plan.projection
             .iter()
             .enumerate()
+            .filter(|(_, field)| !field.traverses_many)
             .map(|(index, field)| CompiledQueryColumn::Field {
                 output_alias: format!("f{index}"),
                 field: field.clone(),
+            }),
+    );
+    columns.extend(
+        plan.many_projections
+            .iter()
+            .enumerate()
+            .map(|(index, projection)| CompiledQueryColumn::ManyRelation {
+                output_alias: format!("__many_{index}"),
+                projection: projection.clone(),
             }),
     );
     columns.extend(
@@ -348,6 +398,7 @@ fn column_output_alias(column: &CompiledQueryColumn) -> &str {
     match column {
         CompiledQueryColumn::EntityId { output_alias, .. }
         | CompiledQueryColumn::Field { output_alias, .. }
+        | CompiledQueryColumn::ManyRelation { output_alias, .. }
         | CompiledQueryColumn::OrderValue { output_alias, .. } => output_alias,
     }
 }
@@ -359,7 +410,7 @@ fn identity_alias(relation_alias: &str) -> String {
 fn join_is_projected(plan: &ExecutableQueryPlan, join_path: &[LinkName]) -> bool {
     plan.projection
         .iter()
-        .any(|field| field.path.links().starts_with(join_path))
+        .any(|field| !field.traverses_many && field.path.links().starts_with(join_path))
 }
 
 struct DecodedRow {
@@ -408,7 +459,8 @@ fn decode_row(
     let root_entity_id = root_entity_id.ok_or_else(|| {
         PostgresQueryDecodeError::MissingColumn(identity_alias(&plan.root_alias))
     })?;
-    let mut fields = Vec::with_capacity(plan.projection.len());
+    let mut fields = Vec::with_capacity(plan.outer_projection().count());
+    let mut nested_relations = Vec::with_capacity(plan.many_projections.len());
     let mut order_values = Vec::with_capacity(plan.order_by.len());
 
     for column in &compiled.columns {
@@ -420,6 +472,14 @@ fn decode_row(
                 path: field.path.clone(),
                 value: decode_field(row, output_alias, field, &identities)?,
             }),
+            CompiledQueryColumn::ManyRelation {
+                output_alias,
+                projection,
+            } => nested_relations.push(decode_nested_relation(
+                row,
+                output_alias,
+                projection,
+            )?),
             CompiledQueryColumn::OrderValue {
                 output_alias,
                 field,
@@ -433,6 +493,7 @@ fn decode_row(
             entity_id: root_entity_id,
             relations,
             fields,
+            nested_relations,
         },
         order_values,
     })
@@ -467,12 +528,7 @@ fn decode_field(
         .is_some_and(Option::is_none);
     let value = match required_cell(row, output_alias)? {
         CompiledPostgresCell::Null => IndexValue::Null,
-        CompiledPostgresCell::Json(value) => serde_json::from_value(value.clone()).map_err(
-            |source| PostgresQueryDecodeError::InvalidTaggedValue {
-                alias: output_alias.to_owned(),
-                source,
-            },
-        )?,
+        CompiledPostgresCell::Json(value) => decode_tagged_value(value, output_alias)?,
         _ => {
             return Err(PostgresQueryDecodeError::UnexpectedCellType {
                 alias: output_alias.to_owned(),
@@ -481,6 +537,114 @@ fn decode_field(
         }
     };
 
+    validate_projected_value(field, &value, missing_relation)?;
+    Ok(value)
+}
+
+#[derive(Debug, Deserialize)]
+struct CompiledNestedRelationItem {
+    entity_ids: Vec<Uuid>,
+    values: Vec<JsonValue>,
+}
+
+fn decode_nested_relation(
+    row: &CompiledPostgresRow,
+    output_alias: &str,
+    projection: &PlannedManyProjection,
+) -> Result<IndexNestedRelationProjection, PostgresQueryDecodeError> {
+    let payload = match required_cell(row, output_alias)? {
+        CompiledPostgresCell::Json(value) => value.clone(),
+        _ => {
+            return Err(PostgresQueryDecodeError::UnexpectedCellType {
+                alias: output_alias.to_owned(),
+                expected: "a nested relation JSON array",
+            });
+        }
+    };
+    let wire_items = serde_json::from_value::<Vec<CompiledNestedRelationItem>>(payload).map_err(
+        |source| PostgresQueryDecodeError::InvalidNestedRelation {
+            alias: output_alias.to_owned(),
+            source,
+        },
+    )?;
+    let mut identity_chains = BTreeSet::new();
+    let mut items = Vec::with_capacity(wire_items.len());
+
+    for wire in wire_items {
+        if wire.entity_ids.len() != projection.identity_paths.len() {
+            return Err(PostgresQueryDecodeError::NestedIdentityArity {
+                alias: output_alias.to_owned(),
+                expected: projection.identity_paths.len(),
+                actual: wire.entity_ids.len(),
+            });
+        }
+        if wire.values.len() != projection.fields.len() {
+            return Err(PostgresQueryDecodeError::NestedFieldArity {
+                alias: output_alias.to_owned(),
+                expected: projection.fields.len(),
+                actual: wire.values.len(),
+            });
+        }
+        if wire.entity_ids.iter().any(Uuid::is_nil) {
+            return Err(PostgresQueryDecodeError::NilNestedIdentity {
+                alias: output_alias.to_owned(),
+            });
+        }
+        if !identity_chains.insert(wire.entity_ids.clone()) {
+            return Err(PostgresQueryDecodeError::DuplicateNestedIdentity {
+                alias: output_alias.to_owned(),
+            });
+        }
+
+        let relations = projection
+            .identity_paths
+            .iter()
+            .cloned()
+            .zip(wire.entity_ids.into_iter())
+            .map(|(path, entity_id)| IndexRelationIdentity {
+                path,
+                entity_id: Some(entity_id),
+            })
+            .collect();
+        let fields = projection
+            .fields
+            .iter()
+            .zip(wire.values.iter())
+            .map(|(field, value)| {
+                let decoded = decode_tagged_value(value, output_alias)?;
+                validate_projected_value(field, &decoded, false)?;
+                Ok(IndexProjectedValue {
+                    path: field.path.clone(),
+                    value: decoded,
+                })
+            })
+            .collect::<Result<Vec<_>, PostgresQueryDecodeError>>()?;
+        items.push(IndexNestedRelationItem { relations, fields });
+    }
+
+    Ok(IndexNestedRelationProjection {
+        path: projection.path.clone(),
+        items,
+    })
+}
+
+fn decode_tagged_value(
+    value: &JsonValue,
+    output_alias: &str,
+) -> Result<IndexValue, PostgresQueryDecodeError> {
+    serde_json::from_value(value.clone()).map_err(|source| {
+        PostgresQueryDecodeError::InvalidTaggedValue {
+            alias: output_alias.to_owned(),
+            source,
+        }
+    })
+}
+
+fn validate_projected_value(
+    field: &PlannedField,
+    value: &IndexValue,
+    missing_relation: bool,
+) -> Result<(), PostgresQueryDecodeError> {
     if missing_relation && !matches!(value, IndexValue::Null) {
         return Err(PostgresQueryDecodeError::InvalidFieldValue {
             path: field.path.clone(),
@@ -491,12 +655,12 @@ fn decode_field(
             path: field.path.clone(),
         });
     }
-    if !valid_field_value(field, &value, missing_relation) {
+    if !valid_field_value(field, value, missing_relation) {
         return Err(PostgresQueryDecodeError::InvalidFieldValue {
             path: field.path.clone(),
         });
     }
-    Ok(value)
+    Ok(())
 }
 
 fn valid_field_value(field: &PlannedField, value: &IndexValue, missing_relation: bool) -> bool {
