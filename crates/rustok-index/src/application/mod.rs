@@ -17,7 +17,8 @@ pub use planner::{
     QueryPlanFingerprint,
 };
 pub use postgres_compiler::{
-    CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError,
+    CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue,
+    PostgresQueryBuildError, PostgresQueryCompileError,
 };
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
