@@ -3,7 +3,9 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-use crate::catalog_controls::build_product_admin_catalog_controls_labels;
+use crate::catalog_controls::{
+    build_product_admin_catalog_controls_labels, build_product_admin_list_input,
+};
 use crate::transport;
 
 #[component]
@@ -14,12 +16,18 @@ pub fn ProductAdmin() -> impl IntoView {
     let tenant = use_tenant();
     let selected_product_id =
         read_route_query_value(&route_context, AdminQueryKey::ProductId.as_str());
-    let current_category =
-        read_route_query_value(&route_context, "category_id").unwrap_or_default();
-    let current_sort_by = read_route_query_value(&route_context, "sort_by")
-        .unwrap_or_else(|| "published_at".to_string());
-    let current_sort_direction = read_route_query_value(&route_context, "sort_direction")
-        .unwrap_or_else(|| "desc".to_string());
+    let catalog_controls = build_product_admin_list_input(
+        None,
+        None,
+        read_route_query_value(&route_context, "category_id"),
+        read_route_query_value(&route_context, "sort_by"),
+        read_route_query_value(&route_context, "sort_direction"),
+    );
+    let current_category = catalog_controls.category_id.clone().unwrap_or_default();
+    let current_sort_by = catalog_controls.sort_by.clone().unwrap_or_default();
+    let current_sort_direction = catalog_controls.sort_direction.clone().unwrap_or_default();
+    provide_context(catalog_controls);
+
     let labels = build_product_admin_catalog_controls_labels(locale.as_deref());
     let options_locale = locale.clone().unwrap_or_default();
     let catalog_options = LocalResource::new(move || {
