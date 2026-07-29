@@ -25,6 +25,8 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
+const replyAudiencePath = "crates/rustok-forum/src/services/reply_audience_read.rs";
+const publicDiscoveryPath = "crates/rustok-forum/src/services/public_discovery.rs";
 const sourcePath = "crates/rustok-forum/src/search_projection.rs";
 const replyUpdatePath = "crates/rustok-forum/src/services/reply_inline.rs";
 const projectorPath = "crates/rustok-search/src/forum_projector.rs";
@@ -44,6 +46,8 @@ const invalidationPath = "crates/rustok-forum/contracts/forum-projection-invalid
 const rebuildPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
 const visibilityPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
 
+const replyAudience = read(replyAudiencePath);
+const publicDiscovery = read(publicDiscoveryPath);
 const source = read(sourcePath);
 const replyUpdate = read(replyUpdatePath);
 const projector = read(projectorPath);
@@ -75,13 +79,31 @@ for (const [label, body, assign] of [
 }
 
 for (const marker of [
+  "pub async fn get_public_storefront_visible_with_locale_fallback",
+  "statuses.is_some_and(|allowed| !allowed.contains(&reply.status))",
+  ".is_topic_visible(tenant_id, reply.topic_id, channel_slug, &viewer)",
+  ".get_with_locale_fallback(",
+]) {
+  requireMarker(replyAudience, marker, replyAudiencePath);
+}
+for (const marker of [
+  "replies: ForumReplyAudienceReadService",
+  "pub async fn get_public_reply_with_locale_fallback",
+  ".get_public_storefront_visible_with_locale_fallback(",
+]) {
+  requireMarker(publicDiscovery, marker, publicDiscoveryPath);
+}
+
+for (const marker of [
   'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
   "forum_reply_body::Entity::find()",
   "ProjectionCandidate::Reply",
   "ProjectionCursor::Reply",
   'format!("reply:{entity_id}:{locale}")',
   '"reply" => Ok(Self::Reply',
-  "if owner.status != ReplyStatus::Approved",
+  ".get_public_reply_with_locale_fallback(",
+  "Some(&[ReplyStatus::Approved])",
+  "if reply.effective_locale != locale",
   ".get_public_topic_with_locale_fallback(",
   ".get_public_category_with_locale_fallback(",
   'document_key: format!("forum_reply:{reply_id}:{locale}")',
@@ -95,6 +117,7 @@ for (const marker of [
   requireMarker(source, marker, sourcePath);
 }
 for (const forbidden of [
+  "forum_reply::Entity::find()",
   "ForumAudienceEvaluator",
   "forum_category_audience_policy::",
   "forum_topic_audience_policy::",
@@ -179,6 +202,7 @@ for (const marker of [
 for (const marker of [
   "FORUM-20BO",
   "independent `forum_reply` Search documents",
+  "selected anonymous-public reply read",
   "pending, rejected, deleted",
   "three bounded phases",
   "topic and all child replies together",
@@ -195,14 +219,18 @@ if (contract) {
   if (contract.task !== "FORUM-20BO") failures.push(`${contractPath}: unexpected task`);
   if (contract.upstream_task !== "FORUM-20BN") failures.push(`${contractPath}: unexpected upstream task`);
   if (contract.downstream_task !== "FORUM-20BP") failures.push(`${contractPath}: unexpected downstream task`);
+  if (contract.reply_selected_read_owner !== replyAudiencePath) failures.push(`${contractPath}: reply owner path drift`);
+  if (contract.public_discovery_owner !== publicDiscoveryPath) failures.push(`${contractPath}: public discovery path drift`);
   if (contract.projection_boundary?.entity_type !== "forum_reply") failures.push(`${contractPath}: entity type drift`);
   for (const key of [
     "raw_candidates_are_reply_locale_bodies",
     "cursor_advances_over_hidden_or_unapproved_replies",
+    "selected_public_reply_owner_added",
     "approved_status_required_from_typed_forum_owner",
     "parent_topic_exact_public_discovery_required",
     "parent_category_exact_public_discovery_required",
     "route_channel_restricted_parent_absent_without_route_channel",
+    "exact_raw_candidate_locale_required",
     "reply_body_is_search_document_body",
     "topic_title_is_search_document_title",
     "category_name_is_search_document_subtitle",
@@ -212,8 +240,10 @@ if (contract) {
   for (const key of [
     "missing_exact_locale_body_emits_document",
     "pending_rejected_deleted_or_hidden_reply_emits_document",
+    "projection_source_loads_reply_status_or_body_directly",
     "safe_author_summary_added",
     "vote_score_projected",
+    "reply_position_projected",
     "reply_search_storage_added_to_forum",
     "audience_policy_copied_into_search",
   ]) {
@@ -300,7 +330,11 @@ for (const [label, upstream] of upstreams) {
 }
 if (canonicalEvidence) {
   const cases = new Set((canonicalEvidence.cases ?? []).map((entry) => entry.name));
-  for (const required of ["forum_reply_canonical_route", "forum_reply_fail_closed"]) {
+  for (const required of [
+    "forum_reply_canonical_route",
+    "forum_reply_fail_closed",
+    "admin_forum_permission_gate",
+  ]) {
     if (!cases.has(required)) failures.push(`${canonicalEvidencePath}: missing case ${required}`);
   }
 }
