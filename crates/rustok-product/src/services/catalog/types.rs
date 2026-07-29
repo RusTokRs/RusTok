@@ -1,7 +1,12 @@
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use uuid::Uuid;
+
+const MAX_ATTRIBUTE_FILTERS: usize = 8;
+const MAX_ATTRIBUTE_FILTER_CODE_LENGTH: usize = 128;
+const MAX_ATTRIBUTE_FILTER_VALUE_LENGTH: usize = 512;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum StorefrontProductSortBy {
@@ -41,12 +46,72 @@ impl StorefrontProductSortDirection {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductAttributeFilter {
+    pub code: String,
+    pub value: String,
+}
+
+impl ProductAttributeFilter {
+    fn parse(value: String) -> CommerceResult<Self> {
+        let (code, raw_value) = value.split_once('=').ok_or_else(|| {
+            CommerceError::Validation(
+                "attribute_filters entries must use `code=value`".to_string(),
+            )
+        })?;
+        let code = code.trim();
+        let raw_value = raw_value.trim();
+        if code.is_empty()
+            || code.len() > MAX_ATTRIBUTE_FILTER_CODE_LENGTH
+            || !code
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+        {
+            return Err(CommerceError::Validation(
+                "attribute filter code must contain 1..128 ASCII letters, digits, `_`, or `-`"
+                    .to_string(),
+            ));
+        }
+        if raw_value.is_empty() || raw_value.len() > MAX_ATTRIBUTE_FILTER_VALUE_LENGTH {
+            return Err(CommerceError::Validation(
+                "attribute filter value must contain 1..512 characters".to_string(),
+            ));
+        }
+        Ok(Self {
+            code: code.to_string(),
+            value: raw_value.to_string(),
+        })
+    }
+}
+
+fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAttributeFilter>> {
+    if values.len() > MAX_ATTRIBUTE_FILTERS {
+        return Err(CommerceError::Validation(format!(
+            "attribute_filters supports at most {MAX_ATTRIBUTE_FILTERS} entries"
+        )));
+    }
+    let mut seen = HashSet::new();
+    let mut filters = Vec::with_capacity(values.len());
+    for value in values {
+        let filter = ProductAttributeFilter::parse(value)?;
+        if !seen.insert(filter.code.to_ascii_lowercase()) {
+            return Err(CommerceError::Validation(format!(
+                "attribute filter {} occurs more than once",
+                filter.code
+            )));
+        }
+        filters.push(filter);
+    }
+    Ok(filters)
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StorefrontProductListQuery {
     pub search: Option<String>,
     pub category_id: Option<Uuid>,
     pub sort_by: StorefrontProductSortBy,
     pub sort_direction: StorefrontProductSortDirection,
+    pub attribute_filters: Vec<ProductAttributeFilter>,
 }
 
 impl StorefrontProductListQuery {
@@ -56,11 +121,28 @@ impl StorefrontProductListQuery {
         sort_by: Option<String>,
         sort_direction: Option<String>,
     ) -> CommerceResult<Self> {
+        Self::try_new_with_attribute_filters(
+            search,
+            category_id,
+            sort_by,
+            sort_direction,
+            Vec::new(),
+        )
+    }
+
+    pub fn try_new_with_attribute_filters(
+        search: Option<String>,
+        category_id: Option<Uuid>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+        attribute_filters: Vec<String>,
+    ) -> CommerceResult<Self> {
         Ok(Self {
             search: normalize_optional_text(search),
             category_id,
             sort_by: StorefrontProductSortBy::parse(sort_by)?,
             sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
+            attribute_filters: parse_attribute_filters(attribute_filters)?,
         })
     }
 
@@ -70,11 +152,28 @@ impl StorefrontProductListQuery {
         sort_by: Option<String>,
         sort_direction: Option<String>,
     ) -> CommerceResult<Self> {
-        Self::try_new(
+        Self::try_from_transport_with_attribute_filters(
+            search,
+            category_id,
+            sort_by,
+            sort_direction,
+            Vec::new(),
+        )
+    }
+
+    pub fn try_from_transport_with_attribute_filters(
+        search: Option<String>,
+        category_id: Option<String>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+        attribute_filters: Vec<String>,
+    ) -> CommerceResult<Self> {
+        Self::try_new_with_attribute_filters(
             search,
             parse_optional_uuid(category_id, "category_id")?,
             sort_by,
             sort_direction,
+            attribute_filters,
         )
     }
 }
@@ -86,6 +185,7 @@ pub struct AdminProductListQuery {
     pub category_id: Option<Uuid>,
     pub sort_by: StorefrontProductSortBy,
     pub sort_direction: StorefrontProductSortDirection,
+    pub attribute_filters: Vec<ProductAttributeFilter>,
 }
 
 impl AdminProductListQuery {
@@ -95,6 +195,24 @@ impl AdminProductListQuery {
         category_id: Option<String>,
         sort_by: Option<String>,
         sort_direction: Option<String>,
+    ) -> CommerceResult<Self> {
+        Self::try_from_transport_with_attribute_filters(
+            search,
+            status,
+            category_id,
+            sort_by,
+            sort_direction,
+            Vec::new(),
+        )
+    }
+
+    pub fn try_from_transport_with_attribute_filters(
+        search: Option<String>,
+        status: Option<String>,
+        category_id: Option<String>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+        attribute_filters: Vec<String>,
     ) -> CommerceResult<Self> {
         let status = normalize_optional_text(status)
             .map(|value| match value.to_ascii_lowercase().as_str() {
@@ -112,6 +230,7 @@ impl AdminProductListQuery {
             category_id: parse_optional_uuid(category_id, "category_id")?,
             sort_by: StorefrontProductSortBy::parse(sort_by)?,
             sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
+            attribute_filters: parse_attribute_filters(attribute_filters)?,
         })
     }
 }
@@ -209,11 +328,36 @@ mod tests {
             .is_err()
         );
         assert!(
-            StorefrontProductListQuery::try_new(
+            StorefrontProductListQuery::try_new_with_attribute_filters(
                 None,
                 None,
                 None,
-                Some("sideways".to_string()),
+                None,
+                vec!["color".to_string()],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn typed_attribute_filters_normalize_and_reject_duplicates() {
+        let query = StorefrontProductListQuery::try_new_with_attribute_filters(
+            None,
+            None,
+            None,
+            None,
+            vec![" color = red ".to_string(), "weight=12.5".to_string()],
+        )
+        .expect("valid typed filter syntax");
+        assert_eq!(query.attribute_filters[0].code, "color");
+        assert_eq!(query.attribute_filters[0].value, "red");
+        assert!(
+            StorefrontProductListQuery::try_new_with_attribute_filters(
+                None,
+                None,
+                None,
+                None,
+                vec!["color=red".to_string(), "COLOR=blue".to_string()],
             )
             .is_err()
         );
@@ -221,18 +365,20 @@ mod tests {
 
     #[test]
     fn admin_list_query_normalizes_and_validates_transport_values() {
-        let query = AdminProductListQuery::try_from_transport(
+        let query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             Some("  camera  ".to_string()),
             Some("ACTIVE".to_string()),
             None,
             Some("created_at".to_string()),
             Some("asc".to_string()),
+            vec!["color=red".to_string()],
         )
         .expect("valid admin list query");
         assert_eq!(query.search.as_deref(), Some("camera"));
         assert_eq!(query.status, Some(entities::product::ProductStatus::Active));
         assert_eq!(query.sort_by, StorefrontProductSortBy::CreatedAt);
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
+        assert_eq!(query.attribute_filters.len(), 1);
 
         assert!(
             AdminProductListQuery::try_from_transport(
