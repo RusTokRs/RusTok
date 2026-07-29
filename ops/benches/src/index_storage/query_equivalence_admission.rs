@@ -65,17 +65,17 @@ impl QueryEquivalenceAdmissionConfig {
             .map(PathBuf::from)
             .context(format!("{BUNDLE_ENV} is required"))?;
         let bundle_root = absolute_path(bundle_root)?;
-        let expected_repository = env::var(REPOSITORY_ENV)
-            .unwrap_or_else(|_| "RusTokRs/RusTok".to_owned());
+        let expected_repository =
+            env::var(REPOSITORY_ENV).unwrap_or_else(|_| "RusTokRs/RusTok".to_owned());
         validate_repository(&expected_repository)?;
-        let expected_commit = env::var(COMMIT_ENV)
-            .context(format!("{COMMIT_ENV} is required"))?;
+        let expected_commit =
+            env::var(COMMIT_ENV).context(format!("{COMMIT_ENV} is required"))?;
         ensure!(
             is_lower_hex_commit(&expected_commit),
             "{COMMIT_ENV} must be a 40-character lowercase Git commit"
         );
-        let expected_run_key = env::var(RUN_KEY_ENV)
-            .context(format!("{RUN_KEY_ENV} is required"))?;
+        let expected_run_key =
+            env::var(RUN_KEY_ENV).context(format!("{RUN_KEY_ENV} is required"))?;
         validate_run_key(&expected_run_key)?;
         let output_path = env::var(OUTPUT_ENV)
             .map(PathBuf::from)
@@ -98,6 +98,7 @@ impl QueryEquivalenceAdmissionConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct CaptureSourceIdentity {
     repository: String,
     commit: String,
@@ -106,6 +107,7 @@ struct CaptureSourceIdentity {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CaptureRunnerIdentity {
     job: String,
     runner_os: String,
@@ -113,6 +115,7 @@ struct CaptureRunnerIdentity {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct CaptureDatabaseIdentity {
     version: String,
     server_version_num: String,
@@ -121,6 +124,7 @@ struct CaptureDatabaseIdentity {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CaptureArtifact {
     path: String,
     bytes: usize,
@@ -128,6 +132,7 @@ struct CaptureArtifact {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CaptureExecution {
     package: String,
     test_filter: String,
@@ -141,6 +146,7 @@ struct CaptureExecution {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CaptureDescriptor {
     contract: String,
     completed_at: DateTime<Utc>,
@@ -211,11 +217,7 @@ pub fn admit_query_equivalence_bundle(
     config: &QueryEquivalenceAdmissionConfig,
 ) -> Result<QueryEquivalenceAdmission> {
     let canonical_bundle = validate_bundle_root(&config.bundle_root)?;
-    let output_path = resolve_output_path(&config.output_path)?;
-    ensure!(
-        !output_path.starts_with(&canonical_bundle),
-        "query equivalence admission receipt must be outside the immutable bundle"
-    );
+    let output_path = resolve_output_path(&config.output_path, &canonical_bundle)?;
     ensure_output_absent(&output_path)?;
 
     let inventory_before = read_inventory(&canonical_bundle)?;
@@ -292,9 +294,9 @@ pub fn admit_query_equivalence_bundle(
             exit_code: descriptor.execution.exit_code,
             skipped: descriptor.execution.skipped,
             captured_at: descriptor.completed_at,
-            capture_job: descriptor.runner.job,
-            capture_runner_os: descriptor.runner.runner_os,
-            capture_runner_arch: descriptor.runner.runner_arch,
+            capture_job: descriptor.runner.job.clone(),
+            capture_runner_os: descriptor.runner.runner_os.clone(),
+            capture_runner_arch: descriptor.runner.runner_arch.clone(),
         },
         bundle: AdmissionBundle {
             inventory: INVENTORY.iter().map(|value| (*value).to_owned()).collect(),
@@ -314,8 +316,8 @@ pub fn admit_query_equivalence_bundle(
     publish_receipt(&output_path, &receipt)?;
 
     Ok(QueryEquivalenceAdmission {
-        commit: descriptor.source.commit,
-        run_key: descriptor.source.run_key,
+        commit: descriptor.source.commit.clone(),
+        run_key: descriptor.source.run_key.clone(),
         output_path,
     })
 }
@@ -362,18 +364,26 @@ fn validate_descriptor(
     let execution = &descriptor.execution;
     ensure!(execution.package == TEST_PACKAGE, "unexpected test package");
     ensure!(execution.test_filter == TEST_FILTER, "unexpected test filter");
-    ensure!(execution.exit_code == 0, "captured fixture did not exit successfully");
+    ensure!(
+        execution.exit_code == 0,
+        "captured fixture did not exit successfully"
+    );
     ensure!(!execution.skipped, "captured fixture is marked skipped");
     ensure!(
         execution.command.len() == EXPECTED_COMMAND_ARGS.len() + 1
             && !execution.command[0].trim().is_empty()
             && execution.command[1..]
-                == EXPECTED_COMMAND_ARGS.map(str::to_owned),
+                .iter()
+                .map(String::as_str)
+                .eq(EXPECTED_COMMAND_ARGS),
         "captured equivalence command does not match the admitted command contract"
     );
-    let expected_scenarios = SCENARIOS.map(str::to_owned);
     ensure!(
-        execution.scenarios == expected_scenarios,
+        execution
+            .scenarios
+            .iter()
+            .map(String::as_str)
+            .eq(SCENARIOS),
         "captured equivalence scenarios do not match the admitted scenario contract"
     );
     ensure!(
@@ -383,10 +393,10 @@ fn validate_descriptor(
     validate_artifact_descriptor(&execution.stdout, STDOUT_FILE, stdout)?;
     validate_artifact_descriptor(&execution.stderr, STDERR_FILE, stderr)?;
 
-    let stdout_text = std::str::from_utf8(stdout)
-        .context("retained query equivalence stdout is not UTF-8")?;
-    let stderr_text = std::str::from_utf8(stderr)
-        .context("retained query equivalence stderr is not UTF-8")?;
+    let stdout_text =
+        std::str::from_utf8(stdout).context("retained query equivalence stdout is not UTF-8")?;
+    let stderr_text =
+        std::str::from_utf8(stderr).context("retained query equivalence stderr is not UTF-8")?;
     let combined = format!("{stdout_text}\n{stderr_text}");
     ensure!(
         combined.contains(TEST_FILTER),
@@ -408,8 +418,14 @@ fn validate_artifact_descriptor(
     expected_path: &str,
     bytes: &[u8],
 ) -> Result<()> {
-    ensure!(descriptor.path == expected_path, "retained artifact path mismatch");
-    ensure!(descriptor.bytes == bytes.len(), "retained artifact byte count mismatch");
+    ensure!(
+        descriptor.path == expected_path,
+        "retained artifact path mismatch"
+    );
+    ensure!(
+        descriptor.bytes == bytes.len(),
+        "retained artifact byte count mismatch"
+    );
     ensure!(
         descriptor.sha256 == sha256_bytes(bytes),
         "retained artifact SHA-256 mismatch"
@@ -422,10 +438,16 @@ fn validate_database(identity: &CaptureDatabaseIdentity) -> Result<()> {
         identity.server_version_num.starts_with("16"),
         "query equivalence admission requires PostgreSQL 16"
     );
-    ensure!(!identity.version.trim().is_empty(), "PostgreSQL version is empty");
+    ensure!(
+        !identity.version.trim().is_empty(),
+        "PostgreSQL version is empty"
+    );
     ensure!(
         !identity.system_identifier.is_empty()
-            && identity.system_identifier.bytes().all(|byte| byte.is_ascii_digit()),
+            && identity
+                .system_identifier
+                .bytes()
+                .all(|byte| byte.is_ascii_digit()),
         "PostgreSQL system identifier must contain only digits"
     );
     ensure!(
@@ -461,13 +483,19 @@ fn read_inventory(root: &Path) -> Result<BTreeSet<String>> {
             metadata.is_file() && !metadata.file_type().is_symlink(),
             "query equivalence bundle entry must be a regular non-symlink file: {name}"
         );
-        ensure!(inventory.insert(name.clone()), "duplicate bundle entry: {name}");
+        ensure!(
+            inventory.insert(name.clone()),
+            "duplicate bundle entry: {name}"
+        );
     }
     Ok(inventory)
 }
 
 fn expected_inventory() -> BTreeSet<String> {
-    INVENTORY.iter().map(|value| (*value).to_owned()).collect()
+    INVENTORY
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect()
 }
 
 fn read_stable_regular_file(path: &Path, max_bytes: usize, label: &str) -> Result<Vec<u8>> {
@@ -477,27 +505,32 @@ fn read_stable_regular_file(path: &Path, max_bytes: usize, label: &str) -> Resul
         before.is_file() && !before.file_type().is_symlink(),
         "{label} must be a regular non-symlink file"
     );
-    ensure!(before.len() <= max_bytes as u64, "{label} exceeds retained size limit");
+    ensure!(
+        before.len() <= max_bytes as u64,
+        "{label} exceeds retained size limit"
+    );
     let first = fs::read(path).with_context(|| format!("failed to read {label} {path:?}"))?;
     let second = fs::read(path).with_context(|| format!("failed to reread {label} {path:?}"))?;
     let after = fs::symlink_metadata(path)
         .with_context(|| format!("failed to re-inspect {label} {path:?}"))?;
     ensure!(
-        before.len() == after.len() && first == second,
+        after.is_file()
+            && !after.file_type().is_symlink()
+            && before.len() == after.len()
+            && first == second,
         "{label} changed while it was being reviewed"
     );
     Ok(first)
 }
 
-fn resolve_output_path(path: &Path) -> Result<PathBuf> {
+fn resolve_output_path(path: &Path, forbidden_root: &Path) -> Result<PathBuf> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)
-        .with_context(|| format!("failed to create admission receipt parent {parent:?}"))?;
-    let metadata = fs::symlink_metadata(parent)
-        .with_context(|| format!("failed to inspect admission receipt parent {parent:?}"))?;
+    let metadata = fs::symlink_metadata(parent).with_context(|| {
+        format!("query equivalence admission receipt parent must already exist: {parent:?}")
+    })?;
     ensure!(
         metadata.is_dir() && !metadata.file_type().is_symlink(),
         "admission receipt parent must be a regular non-symlink directory"
@@ -508,7 +541,12 @@ fn resolve_output_path(path: &Path) -> Result<PathBuf> {
     let filename = path
         .file_name()
         .context("admission receipt path must have a filename")?;
-    Ok(canonical_parent.join(filename))
+    let output_path = canonical_parent.join(filename);
+    ensure!(
+        !output_path.starts_with(forbidden_root),
+        "query equivalence admission receipt must be outside the immutable bundle"
+    );
+    Ok(output_path)
 }
 
 fn publish_receipt(path: &Path, receipt: &AdmissionReceipt) -> Result<()> {
@@ -519,7 +557,9 @@ fn publish_receipt(path: &Path, receipt: &AdmissionReceipt) -> Result<()> {
         .write(true)
         .create_new(true)
         .open(path)
-        .with_context(|| format!("failed to create query equivalence admission receipt {path:?}"))?;
+        .with_context(|| {
+            format!("failed to create query equivalence admission receipt {path:?}")
+        })?;
     file.write_all(&bytes)
         .with_context(|| format!("failed to write query equivalence admission receipt {path:?}"))?;
     file.sync_all()
@@ -584,7 +624,10 @@ fn validate_run_key(value: &str) -> Result<()> {
         }),
         "{RUN_KEY_ENV} may contain only ASCII letters, digits, dash, underscore, and dot"
     );
-    ensure!(value != "." && value != "..", "{RUN_KEY_ENV} must not be dot traversal");
+    ensure!(
+        value != "." && value != "..",
+        "{RUN_KEY_ENV} must not be dot traversal"
+    );
     Ok(())
 }
 
@@ -597,6 +640,10 @@ fn is_lower_hex_commit(value: &str) -> bool {
 
 fn first_non_empty_env(keys: &[&str], fallback: &str) -> String {
     keys.iter()
-        .find_map(|key| env::var(key).ok().filter(|value| !value.trim().is_empty()))
+        .find_map(|key| {
+            env::var(key)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
         .unwrap_or_else(|| fallback.to_owned())
 }
