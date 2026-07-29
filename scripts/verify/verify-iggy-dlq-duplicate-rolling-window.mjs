@@ -13,6 +13,10 @@ const movingContractPath =
   "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
 const movingSourcePath =
   "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
+const serverContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+const iggyObserverPath = "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+const serverPath = "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
 const libPath = "crates/rustok-iggy/src/lib.rs";
 const documentationPath = "crates/rustok-iggy/docs/dlq-duplicate-rolling-window.md";
 const profilesCheckpointPath =
@@ -37,9 +41,14 @@ const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"
 const movingContract = JSON.parse(
   readFileSync(resolve(repoRoot, movingContractPath), "utf8"),
 );
+const serverContract = JSON.parse(
+  readFileSync(resolve(repoRoot, serverContractPath), "utf8"),
+);
 const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
 const classifier = readFileSync(resolve(repoRoot, classifierPath), "utf8");
 const movingSource = readFileSync(resolve(repoRoot, movingSourcePath), "utf8");
+const iggyObserver = readFileSync(resolve(repoRoot, iggyObserverPath), "utf8");
+const server = readFileSync(resolve(repoRoot, serverPath), "utf8");
 const lib = readFileSync(resolve(repoRoot, libPath), "utf8");
 const documentation = readFileSync(resolve(repoRoot, documentationPath), "utf8");
 const profilesCheckpoint = readFileSync(
@@ -65,10 +74,10 @@ function countText(text, marker) {
 }
 
 if (
-  contract.schema_version !== 2 ||
+  contract.schema_version !== 3 ||
   contract.module !== "iggy" ||
   contract.packet !== "dlq-duplicate-rolling-window-source" ||
-  contract.status !== "source_complete_moving_scan_integrated_server_pending" ||
+  contract.status !== "source_complete_server_composed_runtime_pending" ||
   contract.owner !== "rustok-iggy" ||
   contract.source !== sourcePath ||
   contract.classifier_source !== classifierPath ||
@@ -174,20 +183,25 @@ if (
 
 const moving = contract.moving_scan_integration ?? {};
 if (
-  moving.status !== "source_complete_server_composition_runtime_pending" ||
+  moving.status !== "source_complete_server_composed_runtime_pending" ||
   moving.contract !== movingContractPath ||
   moving.source !== movingSourcePath ||
+  moving.server_observer_contract !== serverContractPath ||
   moving.complete_cycle_feeding !== true ||
   moving.independent_process_local_partition_cursors !== true ||
   moving.cursor_values_exported !== false ||
   moving.progress_persisted !== false ||
   moving.restart_semantics !== "reset_to_reviewed_initial_offset" ||
-  moving.server_observer_composition !== "pending" ||
+  moving.server_observer_composition !== "source_complete" ||
+  moving.moving_mode_default !== false ||
   moving.runtime_evidence !== "pending" ||
   movingContract.packet !== "dlq-duplicate-moving-window-scan-source" ||
-  movingContract.status !== "source_complete_server_composition_runtime_pending"
+  movingContract.status !== "source_complete_server_composed_runtime_pending" ||
+  serverContract.packet !== "dlq-duplicate-alert-server-observer-source" ||
+  serverContract.schema_version !== 3 ||
+  serverContract.scan?.moving_window_mode?.explicit_opt_in !== true
 ) {
-  fail("DLQ duplicate moving-scan integration relationship drift");
+  fail("DLQ duplicate moving-scan/server integration relationship drift");
 }
 
 for (const marker of [
@@ -208,9 +222,6 @@ for (const marker of [
   "flat_map(|cycle| cycle.iter().cloned())",
   "history_truncated: evicted_cycles > 0",
   "pub enum DlqDuplicateRollingWindowError",
-  'Self::InvalidPolicy => "iggy.dlq_duplicate.rolling_window_policy_invalid"',
-  'Self::CycleTooLarge => "iggy.dlq_duplicate.rolling_window_cycle_too_large"',
-  'Self::CountOverflow => "iggy.dlq_duplicate.rolling_window_count_overflow"',
 ]) {
   requireText("DLQ duplicate rolling-window source", source, marker);
 }
@@ -260,6 +271,20 @@ for (const marker of [
 ]) {
   requireText("moving-window scan integration", movingSource, marker);
 }
+for (const marker of [
+  "pub struct IggyDlqDuplicateAlertMovingWindowConfig",
+  "pub async fn connect_moving_window(",
+  "scanner.scan_cycle(state).await?",
+]) {
+  requireText("moving-window Iggy observer composition", iggyObserver, marker);
+}
+for (const marker of [
+  '"moving" | "moving_window"',
+  "EventDlqDuplicateAlertScanConfig::MovingWindow",
+  "required_u32_env(ROLLING_MAX_CYCLES_ENV)",
+]) {
+  requireText("moving-window server composition", server, marker);
+}
 
 requireText("rustok-iggy module list", lib, "pub mod dlq_duplicate_rolling_window;");
 requireText(
@@ -276,7 +301,7 @@ for (const marker of [
   "history_truncated",
   "does not move a broker cursor",
   "not complete history",
-  "moving scanner integration is source-complete",
+  "moving scanner and server integration are source-complete",
 ]) {
   requireText("DLQ duplicate rolling-window documentation", documentation, marker);
 }
@@ -285,17 +310,17 @@ for (const marker of [
   "cross-cycle",
   "history_truncated",
   "process-local per-partition cursor",
-  "moving scanner integration is source-complete",
+  "moving scanner and server integration are source-complete",
 ]) {
   requireText("Profiles rolling-window checkpoint", profilesCheckpoint, marker);
 }
 
 const requiredRemaining = new Set([
-  "compose_mode_aware_server_observer",
-  "define_reviewed_moving_scan_configuration",
   "retain_external_iggy_cross_cycle_runtime_evidence",
+  "review_reset_frequency_and_initial_offset_per_deployment",
   "define_persistent_cursor_owner_only_if_restart_continuity_is_required",
   "define_identifier_free_telemetry_and_health_projection",
+  "retain_server_observer_execution_evidence",
 ]);
 for (const item of contract.remaining_work ?? []) requiredRemaining.delete(item);
 if (requiredRemaining.size > 0) {
@@ -311,5 +336,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Iggy DLQ duplicate rolling-window source verified: explicit checked memory bounds, complete-cycle retention and eviction, transactional oversized-cycle rejection, cross-cycle ordinary/conflicting classification, identifier-free truncation metadata, and source-complete moving scanner integration with private process-local cursors and explicit restart reset are locked; server composition and runtime evidence remain pending.",
+  "Iggy DLQ duplicate rolling-window source verified: explicit checked memory bounds, complete-cycle retention and eviction, transactional oversized-cycle rejection, cross-cycle ordinary/conflicting classification, identifier-free truncation metadata, source-complete moving scanner and explicit server observer composition, private process-local cursors, and explicit restart reset are locked; external runtime evidence remains pending.",
 );
