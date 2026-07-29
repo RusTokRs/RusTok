@@ -11,6 +11,10 @@ prepare statements, own a database connection, or expose `IndexQueryPort`.
 `CompiledPostgresPageQuery` and changes only the validated page-limit bind from
 `N` to `N + 1`.
 
+The page wrapper is opaque and deliberately does not implement serde. External
+bytes therefore cannot replace its controlled SQL, bind values, column metadata,
+or requested page size before execution.
+
 The SQL text, plan fingerprint, column metadata, scope predicates, filters,
 ordering, cursor predicates, and exact-count statement remain unchanged. The
 one-row lookahead is an execution detail used to determine `has_more`; it is not
@@ -47,7 +51,8 @@ Every tagged projection/order value is deserialized back into `IndexValue` and
 validated against the planned type, cardinality, and nullability. A non-nullable
 linked field may decode as null only when that explicit one-cardinality relation
 identity is absent. A present relation with a missing non-nullable field is a
-typed corruption error.
+typed corruption error. Conversely, an absent relation identity paired with a
+non-null field value is also rejected.
 
 ## Page output
 
