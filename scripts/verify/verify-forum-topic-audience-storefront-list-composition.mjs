@@ -13,10 +13,10 @@ const graphqlQuery = read(
   'crates/rustok-forum/src/graphql/storefront_audience_topics.rs',
 );
 const graphqlAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/graphql_audience_adapter.rs',
+  'crates/rustok-forum/storefront/src/transport/graphql_adapter.rs',
 );
 const nativeAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/native_audience_adapter.rs',
+  'crates/rustok-forum/storefront/src/transport/native_server_adapter.rs',
 );
 const selector = read('crates/rustok-forum/storefront/src/transport/mod.rs');
 const contract = JSON.parse(
@@ -51,6 +51,11 @@ requireText(
   'GraphQL authenticated unread path',
 );
 requireText(
+  graphqlAdapter,
+  'markForumStorefrontTopicRead',
+  'GraphQL exact mark-read preservation',
+);
+requireText(
   nativeAdapter,
   'ForumTopicReadOperation::TopicList',
   'native exact topic-list context',
@@ -66,24 +71,19 @@ requireText(
   'native public exact list owner',
 );
 requireText(
-  selector,
-  'native_audience_adapter::fetch_storefront_forum_server',
-  'native storefront selector',
-);
-requireText(
-  selector,
-  'graphql_audience_adapter::fetch_storefront_forum_graphql',
-  'GraphQL storefront selector',
-);
-requireText(
-  selector,
-  'native_server_adapter::mark_storefront_topic_read_server',
+  nativeAdapter,
+  'mark_topic_read_current_audience_visible',
   'native exact mark-read preservation',
 );
 requireText(
   selector,
-  'graphql_adapter::mark_storefront_topic_read_graphql',
-  'GraphQL exact mark-read preservation',
+  'native_server_adapter::fetch_storefront_forum_server',
+  'canonical native storefront selector',
+);
+requireText(
+  selector,
+  'graphql_adapter::fetch_storefront_forum_graphql',
+  'canonical GraphQL storefront selector',
 );
 
 if (contract.task !== 'FORUM-20BE') throw new Error('unexpected task');
@@ -98,6 +98,12 @@ for (const key of [
   if (!contract.composition_boundary[key]) {
     throw new Error(`contract must lock ${key}`);
   }
+}
+if (!contract.compatibility.canonical_transport_adapters_updated) {
+  throw new Error('contract must lock canonical adapter updates');
+}
+if (contract.compatibility.parallel_transport_adapters_added) {
+  throw new Error('FORUM-20BE must not retain parallel adapters');
 }
 if (contract.composition_boundary.reply_owner_read_changed) {
   throw new Error('FORUM-20BE must not claim exact reply-owner migration');
