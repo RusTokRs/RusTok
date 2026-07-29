@@ -1577,9 +1577,13 @@ mod tests {
         async fn execution_status(
             &self,
             _context: PortContext,
-            _execution_idempotency_key: String,
+            execution_idempotency_key: String,
         ) -> Result<MachineTranslationExecutionStatusEvidence, rustok_api::PortError> {
-            unreachable!("cancellation test does not poll status")
+            assert!(execution_idempotency_key.starts_with("translation-machine:machine-port:"));
+            Ok(MachineTranslationExecutionStatusEvidence {
+                execution_id: Some("execution-a".to_string()),
+                status: MachineTranslationExecutionStatus::Running,
+            })
         }
 
         async fn recover_batch(
@@ -2034,5 +2038,24 @@ mod tests {
         assert_eq!(replay.cancellation_id, first.cancellation_id);
         assert_eq!(replay.provider_status, "cancelled");
         assert_eq!(machine_port.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn operation_status_resolves_provider_by_stable_execution_key() {
+        let (database, tenant_id, actor_id, operation_id, _) = persistence_fixture(false).await;
+        let context = machine_control_context(tenant_id, actor_id, "read-machine-status")
+            .with_claim(Permission::new(Resource::Translations, Action::Read).to_string());
+        let machine_port = CancellationMachinePort::new();
+
+        let status =
+            read_machine_operation_status(&database, Some(&machine_port), context, operation_id)
+                .await
+                .unwrap();
+        assert_eq!(status.status, "registered");
+        assert_eq!(status.provider_status, "running");
+        assert_eq!(
+            status.provider_execution_id.as_deref(),
+            Some("execution-a")
+        );
     }
 }

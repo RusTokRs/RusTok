@@ -171,8 +171,11 @@ identities, order, and match scores without duplicating segment content. Replay
 can read a tombstoned pinned entry, purge is blocked while the pin exists, and
 completion or explicit actor-bound cancellation releases the pins atomically.
 Cancellation is accepted only before proposal save enters `saving`; AI-runtime
-cancellation/status correlation and audited stuck-save recovery remain
-required hardening.
+status and cancellation resolve by stable owner/idempotency identity, including
+a durable content-free cancellation intent before execution registration.
+Translation cancellation receipts retain propagation evidence and exact replay
+retries incomplete propagation. Audited stuck-save recovery remains required
+hardening.
 
 Automatic approval or publication requires a later accepted decision, explicit
 tenant policy, measured locale-pair evidence, and deterministic safety/quality

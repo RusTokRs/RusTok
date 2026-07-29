@@ -86,7 +86,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) -
   owner-safe inventory/workflow, required-target policy, deterministic QA,
-  versioned glossaries, Translation Memory lifecycle, 34-operation GraphQL
+  versioned glossaries, Translation Memory lifecycle, 35-operation GraphQL
   plus native admin parity, and the machine-translation adapter/control track
 - [Machine-readable Translation Surface Readiness Registry](./modules/translation-surfaces.json)
 - [`rustok-translation-targets` owner-provider contract](../crates/rustok-translation-targets/docs/README.md)

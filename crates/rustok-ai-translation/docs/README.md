@@ -27,6 +27,10 @@ deployment keyring publication, and scheduler recovery/result cleanup now
 exist. The optional distribution feature publishes the owner-neutral lazy
 runtime factory; production-profile enablement and live failure/restart
 evidence remain pending.
+The adapter resolves and cancels executions through the stable
+`(owner, idempotency_key)` AI contract. Cancellation therefore remains durable
+when it arrives before AI execution registration, and completed encrypted
+results can be recovered without another billable call.
 Registering this adapter against chat sessions, direct provider engines, or a
 non-durable fallback would violate the machine-translation architecture.
 

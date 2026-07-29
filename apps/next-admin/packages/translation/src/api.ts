@@ -11,6 +11,7 @@ import type {
   MemoryMutation,
   MemorySuggestion,
   MachineCancellation,
+  MachineOperationStatus,
   MachineProposal,
   Proposal,
   ProviderProgress,
@@ -33,6 +34,8 @@ const MACHINE_PROPOSAL_FIELDS =
   'operationId itemId proposalId adapterSlug providerSlug providerPolicyDigest machineRequestDigest glossaryRevision glossaryDigest memoryDigest executionId executionRequestDigest promptPolicyDigest attempts { attempt providerProfileId providerSlug model fallback } usage { inputTokens outputTokens totalTokens costMinorUnits currencyCode priceSnapshotDigest } diagnostics { code blocking unitId } reviewRequired createdAt updatedAt';
 const MACHINE_CANCELLATION_FIELDS =
   'cancellationId operationId status providerExecutionId providerStatus providerErrorCode providerObservedAt createdAt';
+const MACHINE_OPERATION_STATUS_FIELDS =
+  'operationId itemId status providerExecutionId providerStatus providerErrorCode updatedAt';
 const GLOSSARY_SUMMARY_FIELDS =
   'id name description sourceLocale targetLocale scope { ownerSlug resourceKind fieldKey } isActive revision';
 const GLOSSARY_FIELDS =
@@ -67,6 +70,24 @@ export async function executeTranslationOperation(
         `query TranslationPolicy { translationPolicy { ${POLICY_FIELDS} } }`
       );
       return { kind: 'policy', value: data.translationPolicy };
+    }
+    case 'read_machine_operation_status': {
+      const data = await request<
+        { operationId: string },
+        { machineTranslationOperationStatus: MachineOperationStatus }
+      >(
+        context,
+        `query MachineTranslationOperationStatus($operationId: UUID!) {
+          machineTranslationOperationStatus(operationId: $operationId) {
+            ${MACHINE_OPERATION_STATUS_FIELDS}
+          }
+        }`,
+        { operationId: operation.operationId }
+      );
+      return {
+        kind: 'machine_operation_status',
+        value: data.machineTranslationOperationStatus
+      };
     }
     case 'list_targets': {
       const data = await request<

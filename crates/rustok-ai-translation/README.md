@@ -9,6 +9,9 @@ It owns the `machine_translation` task identity, prompt-policy digest, typed
 input/output schemas and their digests, registered system prompt and limits,
 bounded request mapping, and deterministic validation of AI output. It never
 stores translation workflow state and never mutates owner-owned content.
+It also maps Translation status, result recovery, and cancellation to the
+AI execution's stable owner/idempotency identity, so a caller does not need to
+observe the generated execution UUID before a timeout or restart.
 
 ## Responsibilities
 

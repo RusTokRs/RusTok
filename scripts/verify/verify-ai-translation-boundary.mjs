@@ -101,11 +101,14 @@ for (const marker of [
   'pub trait AiStructuredTaskPort',
   'PortCallPolicy::write()',
   'AiStructuredTaskExecution',
+  'AiStructuredTaskExecutionKey',
   'AiStructuredTaskUsage',
   'AiStructuredTaskDescriptor',
   'AiStructuredTaskCatalog',
   'async fn status(',
+  'async fn resolve(',
   'async fn cancel(',
+  'async fn cancel_by_key(',
 ]) requireText(aiPort, marker, 'AI structured-task port');
 
 for (const marker of [
@@ -120,6 +123,8 @@ for (const marker of [
   'ai_structured_provider_policies',
   'ai_structured_reservations',
   'ai_structured_results',
+  'ai_structured_cancellation_intents',
+  'uq_ai_structured_cancellation_execution_key',
 ]) requireText(aiMigration, marker, 'AI structured-task migration');
 for (const marker of [
   'Executions::InputPayload',
@@ -155,6 +160,9 @@ for (const marker of [
   'runtime_inference_engine',
   'complete_structured',
   'cancellation_requested',
+  'apply_cancellation_intent',
+  'put_cancellation_intent',
+  'cancel_by_key',
   'DeadlineExceeded',
   'TerminalOutcome::Failed',
   'TerminalOutcome::Cancelled',
@@ -207,6 +215,9 @@ for (const marker of [
   'MachineTranslationBatchRequest',
   'MachineTranslationExecutionEvidence',
   'review_required',
+  'execution_status',
+  'recover_batch',
+  'cancel_execution',
 ]) requireText(translationPort, marker, 'Translation machine port');
 for (const marker of [
   'pub struct TranslationMachineService',
@@ -222,6 +233,8 @@ for (const marker of [
   'pub struct TranslationMachineControlService',
   'pub async fn cancel_operation',
   'MachineOperationCancelled',
+  'read_machine_operation_status',
+  'provider_cancellation_status',
 ]) requireText(translationService, marker, 'Translation machine proposal command');
 for (const marker of [
   'translation_machine_operations',
@@ -288,6 +301,9 @@ for (const marker of [
   'machine_translation_input_schema_digest',
   'machine_translation_output_schema_digest',
   'machine_translation_port_from_context',
+  'AiStructuredTaskExecutionKey',
+  'cancel_by_key',
+  'recover_batch',
   'output_unit_missing',
   'output_tokens_changed',
   'review_required: true',

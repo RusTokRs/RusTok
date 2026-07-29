@@ -262,6 +262,16 @@ export type MachineCancellation = {
   createdAt: string;
 };
 
+export type MachineOperationStatus = {
+  operationId: string;
+  itemId: string;
+  status: string;
+  providerExecutionId: string | null;
+  providerStatus: string;
+  providerErrorCode: string | null;
+  updatedAt: string;
+};
+
 export type ApplyResult = {
   operationId: string;
   itemId: string;
@@ -279,6 +289,7 @@ export type InventoryResult = {
 
 export type TranslationOperation =
   | { kind: 'read_policy' }
+  | { kind: 'read_machine_operation_status'; operationId: string }
   | { kind: 'list_targets' }
   | { kind: 'list_glossaries'; limit: number }
   | { kind: 'read_glossary'; glossaryId: string; revision?: number }
@@ -447,6 +458,7 @@ export type TranslationResponse =
   | { kind: 'item'; value: JobItem }
   | { kind: 'proposal'; value: Proposal }
   | { kind: 'machine_proposal'; value: MachineProposal }
+  | { kind: 'machine_operation_status'; value: MachineOperationStatus }
   | { kind: 'machine_cancellation'; value: MachineCancellation }
   | { kind: 'apply'; value: ApplyResult }
   | { kind: 'inventory'; value: InventoryResult };

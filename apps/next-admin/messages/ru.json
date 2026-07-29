@@ -618,6 +618,7 @@
       "proposal": "Proposal updated",
       "machineProposal": "Machine proposal generated",
       "machineCancellation": "Machine operation cancelled",
+      "machineOperationStatus": "Machine operation status",
       "providerProgress": "Provider progress",
       "requiredProgress": "Required-target progress",
       "retry": "Item retry accepted",

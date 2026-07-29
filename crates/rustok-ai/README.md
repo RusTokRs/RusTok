@@ -36,7 +36,8 @@ Current implementation includes:
 - the owner-neutral `AiStructuredTaskPort` contract for bounded billable
   structured execution, health, durable execution/status identity, usage/cost
   evidence, polling, and cancellation; a content-free execution/attempt ledger,
-  idempotent registration, leases, cancellation receipts, recovery, tenant
+  idempotent registration, leases, cancellation receipts, durable
+  pre-registration cancellation intents keyed by owner/idempotency, recovery, tenant
   budget reservations, immutable provider price policies, and an exact
   registered-task catalog now back the implementation track. Provider attempt
   slots, immutable per-attempt price snapshots, actual token/cost recording,

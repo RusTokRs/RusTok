@@ -95,8 +95,7 @@ service-host unit, PostgreSQL schema preflight, loopback conformance,
 authenticated transport, and remote consumer harnesses have not been run by the
 implementation agent, so Product remains `boundary_ready` rather than
 `transport_verified`. Configured remote-profile execution evidence remain open.
-Provider-host execution evidence remains open. Schema-preflight execution evidence
-remains open.
+Provider-host execution evidence remains open. Schema-preflight execution evidence remains open.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not

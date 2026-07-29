@@ -19,6 +19,7 @@ const PROVIDER_PROGRESS_FIELDS: &str = "ownerSlug resourceKind sourceLocale targ
 const PROPOSAL_FIELDS: &str = "id itemId proposalRevision origin values { key value expectedSourceHash } qaIssues { field severity code message } qaAccepted status approvalReceiptId";
 const MACHINE_PROPOSAL_FIELDS: &str = "operationId itemId proposalId adapterSlug providerSlug providerPolicyDigest machineRequestDigest glossaryRevision glossaryDigest memoryDigest executionId executionRequestDigest promptPolicyDigest attempts { attempt providerProfileId providerSlug model fallback } usage { inputTokens outputTokens totalTokens costMinorUnits currencyCode priceSnapshotDigest } diagnostics { code blocking unitId } reviewRequired createdAt updatedAt";
 const MACHINE_CANCELLATION_FIELDS: &str = "cancellationId operationId status providerExecutionId providerStatus providerErrorCode providerObservedAt createdAt";
+const MACHINE_OPERATION_STATUS_FIELDS: &str = "operationId itemId status providerExecutionId providerStatus providerErrorCode updatedAt";
 const GLOSSARY_SUMMARY_FIELDS: &str = "id name description sourceLocale targetLocale scope { ownerSlug resourceKind fieldKey } isActive revision";
 const GLOSSARY_FIELDS: &str = "id name description sourceLocale targetLocale scope { ownerSlug resourceKind fieldKey } isActive revision concepts { conceptKey sourceTerm variants { value policy } matchKind caseSensitive notes }";
 const MEMORY_ENTRY_FIELDS: &str = "id tenantId sourceLocale targetLocale ownerSlug resourceKind resourceId subresourceId fieldKey sourceText targetText sourceHash targetHash contextFingerprint segmentationVersion origin qualityState reviewerActorKind reviewerActorId proposalId applyReceiptId retentionPolicy retainUntil tombstonedAt revision createdAt updatedAt";
@@ -39,6 +40,9 @@ pub async fn execute(
         TranslationAdminOperation::ReadPolicy | TranslationAdminOperation::ReplacePolicy { .. } => {
             Ok(TranslationAdminResponse::Policy(field_value(&data, field)?))
         }
+        TranslationAdminOperation::ReadMachineOperationStatus { .. } => Ok(
+            TranslationAdminResponse::MachineOperationStatus(field_value(&data, field)?),
+        ),
         TranslationAdminOperation::ListTargets => Ok(TranslationAdminResponse::Targets(
             field_value(&data, field)?,
         )),
@@ -121,6 +125,13 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
             format!("query TranslationPolicy {{ translationPolicy {{ {POLICY_FIELDS} }} }}"),
             json!({}),
             "translationPolicy",
+        ),
+        TranslationAdminOperation::ReadMachineOperationStatus { operation_id } => (
+            format!(
+                "query MachineTranslationOperationStatus($operationId: UUID!) {{ machineTranslationOperationStatus(operationId: $operationId) {{ {MACHINE_OPERATION_STATUS_FIELDS} }} }}"
+            ),
+            json!({ "operationId": operation_id }),
+            "machineTranslationOperationStatus",
         ),
         TranslationAdminOperation::ListTargets => (
             "query TranslationTargets { translationTargets { ownerSlug resourceKind displayName capabilities readPermissionFloor applyPermissionFloor } }".to_string(),
@@ -699,6 +710,9 @@ mod tests {
         };
         vec![
             TranslationAdminOperation::ReadPolicy,
+            TranslationAdminOperation::ReadMachineOperationStatus {
+                operation_id: "00000000-0000-0000-0000-000000000020".to_string(),
+            },
             TranslationAdminOperation::ListTargets,
             TranslationAdminOperation::ListGlossaries { limit: 50 },
             TranslationAdminOperation::ReadGlossary {

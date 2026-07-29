@@ -7,11 +7,11 @@ use crate::model::{
     Actor, ActorKind, ApplyResult, Assignment, Cancellation, Glossary, GlossaryBinding,
     GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossarySummary, GlossaryTermPolicy,
     GlossaryVariant, InventoryResult, Job, JobItem, JobProgress, MachineCancellation,
-    MachineProposal, MachineTranslationAttempt, MachineTranslationDiagnostic,
-    MachineTranslationUsage, MemoryEntry, MemoryMatchEvidence, MemoryMatchKind, MemoryMutation,
-    MemoryRetentionPolicy, MemorySuggestion, Proposal, ProposalOrigin, ProposalValue,
-    ProviderProgress, QaIssue, RequiredProviderProgress, Retry, TranslationPolicy,
-    TranslationResourceIdentity, TranslationTarget,
+    MachineOperationStatus, MachineProposal, MachineTranslationAttempt,
+    MachineTranslationDiagnostic, MachineTranslationUsage, MemoryEntry, MemoryMatchEvidence,
+    MemoryMatchKind, MemoryMutation, MemoryRetentionPolicy, MemorySuggestion, Proposal,
+    ProposalOrigin, ProposalValue, ProviderProgress, QaIssue, RequiredProviderProgress, Retry,
+    TranslationPolicy, TranslationResourceIdentity, TranslationTarget,
 };
 use crate::model::{TranslationAdminOperation, TranslationAdminResponse};
 
@@ -80,6 +80,7 @@ async fn execute_ssr(
         &operation,
         TranslationAdminOperation::GenerateMachineProposal { .. }
             | TranslationAdminOperation::CancelMachineOperation { .. }
+            | TranslationAdminOperation::ReadMachineOperationStatus { .. }
     ) {
         rustok_translation::machine_translation_port_from_context(&runtime)
             .map_err(|error| ServerFnError::new(error.message))?
@@ -196,6 +197,14 @@ async fn dispatch(
         TranslationAdminOperation::ReadPolicy => TranslationAdminResponse::Policy(map_policy(
             policy().read_policy(context).await.map_err(public_error)?,
         )),
+        TranslationAdminOperation::ReadMachineOperationStatus { operation_id } => {
+            TranslationAdminResponse::MachineOperationStatus(map_machine_operation_status(
+                machine_control()
+                    .operation_status(context, parse_uuid(&operation_id, "operation_id")?)
+                    .await
+                    .map_err(public_error)?,
+            ))
+        }
         TranslationAdminOperation::ListTargets => {
             authorize_target_list(&context)?;
             TranslationAdminResponse::Targets(
@@ -1350,6 +1359,21 @@ fn map_machine_cancellation(
         provider_error_code: value.provider_error_code,
         provider_observed_at: value.provider_observed_at.to_rfc3339(),
         created_at: value.created_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_machine_operation_status(
+    value: rustok_translation::MachineOperationStatusRecord,
+) -> MachineOperationStatus {
+    MachineOperationStatus {
+        operation_id: value.operation_id.to_string(),
+        item_id: value.item_id.to_string(),
+        status: value.status,
+        provider_execution_id: value.provider_execution_id,
+        provider_status: value.provider_status,
+        provider_error_code: value.provider_error_code,
+        updated_at: value.updated_at.to_rfc3339(),
     }
 }
 

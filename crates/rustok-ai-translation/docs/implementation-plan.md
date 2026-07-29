@@ -9,6 +9,8 @@
   `AiStructuredTaskPort`.
 - Typed input/output schemas and deterministic unit/token/length validation
   exist.
+- Stable-key execution status, completed-result recovery, and cancellation are
+  mapped to AI without exposing AI persistence to Translation.
 - The bridge publishes an exact registered-task descriptor containing its
   owner, task identity, immutable prompt policy, input/output schema digests,
   system prompt, classification policy, and hard execution limits.

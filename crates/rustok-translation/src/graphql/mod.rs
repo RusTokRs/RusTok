@@ -52,6 +52,7 @@ mod tests {
             "translationMemoryEntries",
             "translationMemoryEntry",
             "translationMemorySuggestions",
+            "machineTranslationOperationStatus",
             "translationJobProgress",
             "translationRequiredProviderProgress",
             "replaceTranslationPolicy",

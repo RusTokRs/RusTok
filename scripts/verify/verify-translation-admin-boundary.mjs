@@ -152,6 +152,7 @@ contains(
 
 const rustOperations = [
   "ReadPolicy",
+  "ReadMachineOperationStatus",
   "ListTargets",
   "ListGlossaries",
   "ReadGlossary",
@@ -196,6 +197,7 @@ for (const operation of rustOperations) {
 
 const sharedWorkbenchOperations = [
   "read_policy",
+  "read_machine_operation_status",
   "list_targets",
   "list_glossaries",
   "read_glossary",

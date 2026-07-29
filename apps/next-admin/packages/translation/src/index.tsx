@@ -2067,6 +2067,8 @@ function receiptKey(kind: TranslationResponse['kind']): string {
                 ? 'memoryMutation'
                 : kind === 'machine_proposal'
                   ? 'machineProposal'
+                  : kind === 'machine_operation_status'
+                    ? 'machineOperationStatus'
                   : kind === 'machine_cancellation'
                     ? 'machineCancellation'
                     : kind;
@@ -2184,6 +2186,13 @@ function responseFacts(response: TranslationResponse): Array<[string, string]> {
         ['Provider', response.value.providerSlug],
         ['Execution ID', response.value.executionId],
         ['Review required', String(response.value.reviewRequired)]
+      ];
+    case 'machine_operation_status':
+      return [
+        ['Operation ID', response.value.operationId],
+        ['Status', response.value.status],
+        ['Provider status', response.value.providerStatus],
+        ['Provider execution ID', response.value.providerExecutionId ?? '—']
       ];
     case 'machine_cancellation':
       return [

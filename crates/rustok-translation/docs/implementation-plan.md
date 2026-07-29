@@ -122,8 +122,8 @@ selection.
   package for the same control plane: one typed operation/response contract, an
   SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
   CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
-  34 operations, including the six glossary and six memory operations plus
-  machine-proposal generation and cancellation; GraphQL
+  35 operations, including the six glossary and six memory operations plus
+  machine-proposal generation, status, and cancellation; GraphQL
   documents are validated against the module-owned schema, and every
   idempotency-bound command carries its caller key into `PortContext`.
 - Translation exposes one redacted public-error classifier shared by GraphQL
@@ -172,15 +172,17 @@ selection.
 - Translation-owned cancellation is actor-bound and idempotent. The original
   requester can cancel a registered operation; another actor needs Translation
   Manage. Cancellation records the private reason, marks the operation
-  `cancelled`, and releases memory pins in one transaction. Once proposal save
-  has entered `saving`, cancellation fails closed because the canonical save
+  `cancelled`, records AI propagation status/execution/error evidence, and
+  releases memory pins in one transaction. The AI adapter cancels by stable
+  execution idempotency identity, including before execution registration;
+  exact receipt replay retries incomplete propagation. Once proposal save has
+  entered `saving`, cancellation fails closed because the canonical save
   outcome may already be in flight.
 - GraphQL and native Leptos transports expose the same machine-proposal and
-  cancellation commands and evidence shapes. Manual Translation surfaces
-  remain available when the optional machine provider is absent or fails to
-  materialize. AI-runtime cancellation/status correlation by stable execution
-  identity and operator recovery for indefinitely `saving` operations remain
-  open.
+  cancellation commands plus content-free local/provider status. Manual
+  Translation surfaces remain available when the optional machine provider is
+  absent or fails to materialize. Operator recovery for indefinitely `saving`
+  operations remains open.
 
 ## FFA/FBA status
 
@@ -222,8 +224,8 @@ selection.
 7. Enable the implemented optional `ai-translation` distribution bridge in
    the production profile and collect live ledger, replay, budget, fallback,
    cancellation, restart, and recovery evidence.
-8. Add AI-runtime cancellation/status correlation by stable execution identity
-   and an audited recovery command for indefinitely `saving` operations.
+8. Add an audited recovery command for indefinitely `saving` operations using
+   the implemented stable-key AI result recovery contract.
 
 ## Verification
 

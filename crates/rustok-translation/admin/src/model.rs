@@ -922,6 +922,9 @@ mod tests {
     fn read_and_inventory_discovery_operations_do_not_forge_write_identity() {
         let reads = [
             TranslationAdminOperation::ReadPolicy,
+            TranslationAdminOperation::ReadMachineOperationStatus {
+                operation_id: "operation-1".to_string(),
+            },
             TranslationAdminOperation::ListTargets,
             TranslationAdminOperation::ListGlossaries { limit: 50 },
             TranslationAdminOperation::ReadGlossary {

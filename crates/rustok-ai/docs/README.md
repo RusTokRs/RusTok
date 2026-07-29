@@ -169,7 +169,8 @@ or default CI.
   inference/fallback, typed failure mapping, deadline/cancellation observation,
   the content-free execution schema,
   request-hash replay/conflict detection, execution leases, durable
-  cancellation request, tenant budget reservation, atomic terminal
+  cancellation by execution id or stable owner/idempotency identity (including
+  cancellation before registration), tenant budget reservation, atomic terminal
   execution/budget settlement, accounting-aware expired-lease recovery, immutable
   provider pricing policy, provider concurrency acquisition/release,
   per-attempt price snapshot and actual token/cost evidence, exact

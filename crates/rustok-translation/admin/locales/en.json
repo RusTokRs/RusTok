@@ -135,6 +135,7 @@
   "translation.receipt.proposal": "Proposal updated",
   "translation.receipt.machineProposal": "Machine proposal generated",
   "translation.receipt.machineCancellation": "Machine operation cancelled",
+  "translation.receipt.machineOperationStatus": "Machine operation status",
   "translation.receipt.providerProgress": "Provider progress",
   "translation.receipt.requiredProgress": "Required-target progress",
   "translation.receipt.retry": "Item retry accepted",

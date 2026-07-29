@@ -462,6 +462,27 @@ pub fn operation_receipt_view_model(
                 ),
             ],
         },
+        TranslationAdminResponse::MachineOperationStatus(status) => OperationReceiptViewModel {
+            title_key: "translation.receipt.machineOperationStatus",
+            fallback_title: "Machine operation status",
+            facts: vec![
+                fact(
+                    "translation.field.operationId",
+                    "Operation ID",
+                    status.operation_id.clone(),
+                ),
+                fact(
+                    "translation.field.status",
+                    "Status",
+                    status.status.clone(),
+                ),
+                fact(
+                    "translation.field.providerStatus",
+                    "Provider status",
+                    status.provider_status.clone(),
+                ),
+            ],
+        },
         TranslationAdminResponse::Apply(apply) => OperationReceiptViewModel {
             title_key: "translation.receipt.apply",
             fallback_title: "Translation applied",
