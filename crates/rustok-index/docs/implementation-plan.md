@@ -26,7 +26,7 @@ pull requests record checks and PostgreSQL runs that were not executed.
 ## Current state
 
 - Rewrite status: `in_progress`
-- Current milestone: `M3 - PostgreSQL storage engine`
+- Current milestone: `M4 - Query engine v1 (planning started; M3 retained packet owner gate remains open)`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
@@ -50,18 +50,22 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - M3 admitted archive manifest: `complete`
 - M3 retained archive verification and filesystem snapshot: `complete`
 - Real retained PostgreSQL packet execution: `open`
+- M4 deterministic executable query planning: `complete`
+- M4 stable explicit-link relation aliases: `complete`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
   partition admission, snapshot/query/mutation/maintenance/cutover evidence tooling,
   full-capture orchestration, exact-byte packet assembly, retained bundle review,
-  admitted archive manifest generation, saved-manifest verification, and recursive
-  filesystem integrity checks are implemented; one retained admitted packet, query
-  adapter, and production partition lifecycle remain open
+  admitted archive manifest generation, saved-manifest verification, recursive
+  filesystem integrity checks, and database-independent query planning are
+  implemented; one retained admitted packet, SQL query adapter, and production
+  partition lifecycle remain open
 
 The production crate contains the generic domain/application core, seven canonical
 M3 tables, an atomic mutation adapter, durable schema leases, secondary-index
-lifecycle management, and measured partition admission that emits shadow bootstrap
-plans only. Owner-operated evidence tools live under `ops/benches`; they do not
-become runtime storage code.
+lifecycle management, measured partition admission that emits shadow bootstrap
+plans only, and an M4 structural query planner with deterministic relation aliases.
+Owner-operated evidence tools live under `ops/benches`; they do not become runtime
+storage code.
 
 ## Ownership
 
@@ -91,6 +95,7 @@ source modules
 crates/rustok-index/src/
   domain/
   application/
+    planner.rs
   migrations/
   infrastructure/postgres/
     mutation_store.rs
@@ -282,13 +287,20 @@ relations.
 
 ### M4 - Query engine v1
 
-- [ ] Produce deterministic executable plans from validated queries.
-- [ ] Resolve explicit link paths and assign stable aliases.
+- [x] Produce deterministic executable plans from validated queries.
+- [x] Resolve explicit link paths and assign stable aliases.
 - [ ] Compile plans through SeaQuery or controlled SQL.
 - [ ] Support nested projection, filtering, sorting, exact count, and keyset
       pagination.
 - [ ] Keep offset pagination bounded and compatibility-only.
 - [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.
+
+The first M4 slice is database independent. `SchemaRegistry::plan_query` validates
+before planning, assigns stable `t0`, `t1`, ... aliases from sorted explicit link
+prefixes, binds projection and ordering to those aliases, retains typed filters and
+pagination for the compiler, and publishes a versioned SHA-256 plan fingerprint.
+SQL execution, cursor predicate compilation, query-port composition, and consumer
+cutover remain open.
 
 ### M5 - Incremental ingestion
 
@@ -357,6 +369,7 @@ cargo check --workspace --all-targets --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo nextest run --workspace --all-targets --all-features
 cargo test --workspace --doc --all-features
+cargo test -p rustok-index planner_tests -- --nocapture
 cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
@@ -378,7 +391,7 @@ cargo test -p rustok-benchmarks partition_cutover
 cargo check -p rustok-benchmarks --bin index-partition-capture-finalize
 ```
 
-Targeted M3 guards:
+Targeted M3/M4 guards:
 
 ```bash
 node scripts/verify/verify-index-mutation-storage.mjs
@@ -393,6 +406,7 @@ node scripts/verify/verify-index-partition-maintenance-evidence.mjs
 node scripts/verify/verify-index-partition-cutover-evidence.mjs
 node scripts/verify/verify-index-partition-full-capture.mjs
 node scripts/verify/verify-index-partition-post-inspection-drift.mjs
+node scripts/verify/verify-index-query-planner.mjs
 ```
 
 ## Progress log
@@ -409,6 +423,9 @@ node scripts/verify/verify-index-partition-post-inspection-drift.mjs
   owner orchestration with PostgreSQL identity-bound capture finalization, read-only
   retained bundle review, admitted archive manifest generation, saved-manifest
   verification receipts, and exact recursive filesystem snapshot enforcement.
+- 2026-07-29: rechecked the merged M3 source boundary and completed the first M4
+  source slice: validated structural plans, deterministic explicit-link aliases, and
+  a versioned query-plan fingerprint. SQL compilation remains the next bounded slice.
 - Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
   packet remain for the owner to execute and admit before production partition
   lifecycle work begins.
