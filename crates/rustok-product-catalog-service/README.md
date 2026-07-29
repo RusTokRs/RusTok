@@ -82,4 +82,18 @@ RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true \
 cargo run -p rustok-product-catalog-service
 ```
 
-The implementation agent does not claim this command was executed. Product remains `boundary_ready` until the schema preflight, host, and consumers are executed together and retained evidence is committed.
+## Retained separate-process evidence
+
+The locked local evidence profile is defined by `crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`. Its runner starts this provider, waits for the schema-preflight and listener markers, invokes all three read RPCs through the authenticated `rustok-product-transport` probe, then starts `rustok-server` with `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` and waits for remote-provider initialization.
+
+The profile is intentionally restricted to an explicitly enabled loopback HTTP endpoint. The runner rejects TLS overrides in this local packet rather than silently weakening a non-loopback deployment. It requires already migrated provider and consumer PostgreSQL databases plus operator-supplied tenant/product/variant fixtures. Those values and the bearer credential are never persisted; retained evidence contains output hashes and byte counts rather than raw process logs.
+
+```bash
+node scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs
+node scripts/verify/verify-product-catalog-separate-process-runtime-contract.test.mjs
+node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs
+```
+
+A successful capture proves provider schema preflight, authenticated owner RPC execution, and consumer remote-profile startup as separate processes. It does not prove Commerce checkout or AI generation requests through the consumer HTTP/GraphQL surface, so those business end-to-end gates remain open.
+
+The implementation agent does not claim the source-level invocation or runtime capture command was executed. Product remains `boundary_ready` until the capture result and separate-process Commerce/AI business evidence are retained.
