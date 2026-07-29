@@ -61,6 +61,7 @@ pub mod config;
 pub mod consumer;
 pub mod contract_consumer;
 pub mod contract_decode_failure;
+pub mod dedup_recovery_window_policy;
 pub mod dlq;
 #[cfg(feature = "iggy")]
 pub mod dlq_duplicate_alert_observer;
@@ -90,6 +91,11 @@ pub use contract_consumer::{
 };
 pub use contract_decode_failure::{
     ConsumedContractDecodeFailure, ContractDecodeFailureKind,
+};
+pub use dedup_recovery_window_policy::{
+    IggyDedupRecoveryWindowAssessment, IggyDedupRecoveryWindowPolicy,
+    IggyDedupRecoveryWindowPolicyError, IggyDedupRecoveryWindowStatus,
+    IggyDeduplicationConfiguration,
 };
 pub use dlq::{DlqEntry, DlqManager};
 #[cfg(feature = "iggy")]
