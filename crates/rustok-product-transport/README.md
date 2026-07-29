@@ -52,4 +52,4 @@ node scripts/verify/verify-product-catalog-grpc-authentication.mjs
 node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs
 ```
 
-The implementation agent does not claim these commands were executed. Until retained execution evidence exists, Product remains `boundary_ready`.
+The implementation agent does not claim this command was executed, and does not claim the authentication verifier commands were executed. Until retained execution evidence exists, Product remains `boundary_ready`.
