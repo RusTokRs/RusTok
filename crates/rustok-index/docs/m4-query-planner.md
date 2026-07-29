@@ -2,124 +2,105 @@
 
 Date: 2026-07-29
 
-This note actualizes the live `rustok-index` implementation plan after
-rechecking the M3 storage and retained-evidence work already merged into
-`main`.
+This note actualizes the live `rustok-index` implementation plan after rechecking the
+M3 storage boundary and the M4 query slices merged into `main`.
 
 ## Recheck result
 
-The M3 source implementation is complete through retained bundle review,
-archive manifest generation, saved-manifest verification, and recursive
-filesystem drift detection. The repository owner still needs to execute and
-admit one fresh real PostgreSQL partition packet. That owner gate continues to
-block production partition lifecycle design, but it does not require M4 query
-source work to remain idle.
+M3 source implementation remains complete through retained bundle review, archive
+manifest generation, saved-manifest verification, and recursive filesystem drift
+detection. The repository owner still needs to execute and admit one fresh real
+PostgreSQL partition packet. That owner gate blocks production partition lifecycle
+design but does not block database-independent M4 query source work.
 
 ## Actualized status
 
 - M3 real retained PostgreSQL packet execution: `open_owner_action`.
 - M3 production partition lifecycle: `blocked_by_retained_packet`.
 - M4 deterministic executable query planning: `source_complete_execution_pending`.
-- M4 stable relation aliases for explicit link paths: `source_complete_execution_pending`.
-- M4 typed referenced-field contracts: `source_complete_execution_pending`.
-- M4 controlled PostgreSQL query compilation: `source_complete_execution_pending`.
-- M4 root/one-link filter/order/count/keyset/offset semantics: `source_complete_execution_pending`.
-- M4 query-scoped cursor envelopes: `source_complete_execution_pending`.
-- M4 deterministic compiled-row decoding: `source_complete_execution_pending`.
-- M4 one-row lookahead and next-cursor construction: `source_complete_execution_pending`.
+- M4 stable relation aliases and typed referenced fields: `source_complete_execution_pending`.
+- M4 root/one-link query compilation and result decoding: `source_complete_execution_pending`.
+- M4 query-scoped cursors and lookahead pagination: `source_complete_execution_pending`.
 - M4 many-link `EXISTS` filtering: `source_complete_execution_pending`.
-- M4 many-link nested projection aggregation: `open`.
+- M4 nested many-link projection aggregation: `source_complete_execution_pending`.
+- M4 retained plan/SQL snapshots: `source_complete_owner_execution_pending`.
 - M4 PostgreSQL/reference-engine equivalence: `open`.
 
-## Completed M4 slice 1
+## Executable plan v4
 
 `SchemaRegistry::plan_query`:
 
-1. runs registry-backed query validation before planning;
-2. collects every referenced link prefix from projection, filters, and ordering;
-3. sorts link prefixes deterministically and assigns `t0`, `t1`, ... aliases;
-4. resolves each join against the registered schema contract;
-5. records every referenced field with type, cardinality, nullability, path,
-   relation alias, and propagated many-link traversal state;
-6. binds projected and ordered fields to those canonical field contracts;
-7. retains typed filters and pagination for the compiler;
-8. publishes a versioned SHA-256 fingerprint over deterministic postcard bytes.
+1. validates the registry-backed query before planning;
+2. collects and sorts every referenced link prefix;
+3. assigns deterministic `t0`, `t1`, ... aliases;
+4. resolves joins against registered schema contracts;
+5. propagates `traverses_many` from the first many-cardinality link;
+6. captures every referenced field with path, alias, type, cardinality, and nullability;
+7. preserves public projection order;
+8. groups projected many-traversing fields by terminal relation path into
+   `PlannedManyProjection` contracts;
+9. records every identity prefix required to reconstruct a complete nested relation
+   chain;
+10. retains filters, ordering, pagination, and exact-count intent.
 
-The fingerprint domain is `rustok-index-query-plan-v3` because propagated
-`traverses_many` metadata is part of the executable plan identity and compiler
-safety boundary.
+The deterministic fingerprint domain is `rustok-index-query-plan-v4` because grouped
+many-projection metadata is part of executable plan identity and compiler safety.
 
-## Completed M4 slices 2 and 3
+## Controlled PostgreSQL boundary
 
-The controlled PostgreSQL compiler supports the validated root and explicit
-one-cardinality-link subset:
+Root and explicit one-link projection, all validated filters, typed ordering, exact
+count, keyset continuation, and bounded offset remain controlled SQL with ordered bind
+DTOs. Many-link filters compile through independent correlated `EXISTS` chains.
 
-- tagged JSONB projection and hidden order-value columns;
-- all current typed filter operators;
-- deterministic ordering and explicit null placement;
-- query-scoped, checksum/scope/schema/type validated keyset continuation;
-- an ascending root `entity_id` tie-breaker;
-- bounded offset compatibility;
-- a separate exact-count statement without pagination leakage.
+Each `PlannedManyProjection` compiles as one correlated JSONB aggregate outside the
+outer root rowset. Aggregate items preserve the complete linked entity identity chain
+and aligned tagged field values. Stored link ordinal, target entity identity, and locale
+produce deterministic item ordering. Missing reachable rows yield an empty array.
 
-Tenant, schema, locale, link metadata, field names, filter values, cursor
-values, limit, and offset remain bind parameters. Atomic predicates are total
-booleans so missing optional links and tagged null values cannot corrupt
-logical `Not`, `And`, or `Or` semantics.
+Because many projection does not enter the outer rowset, root pagination, one-row
+lookahead, and exact count remain duplicate free.
 
-`ExecutableQueryPlan::compile_postgres` only accepts plans without an opaque
-continuation token. Continuation queries use
-`SchemaRegistry::compile_postgres_query`, which requires a scoped v2 envelope.
-The envelope carries a `rustok-index-cursor-query-v1` fingerprint over tenant,
-schema, locale, filter, and ordered field/direction semantics. Changing filter
-or order semantics produces `QueryFingerprintMismatch` before any keyset SQL is
-emitted. Legacy raw v1 envelopes remain limited to codec round trips and the
-test-only reference engine.
+## Result handoff
 
-## Completed M4 slice 4
+`SchemaRegistry::compile_postgres_page_query` changes only the validated page-limit bind
+from `N` to `N + 1`. `decode_postgres_query_page` re-plans and verifies:
 
-`SchemaRegistry::compile_postgres_page_query` wraps the controlled compiler and
-changes only the validated page-limit bind from `N` to `N + 1`. The SQL string,
-plan fingerprint, column metadata, filters, ordering, cursor predicate, offset,
-and optional exact-count statement remain unchanged.
+- the v4 plan fingerprint;
+- unique scalar and many-relation output aliases;
+- exact scalar column and `CompiledManyRelationColumn` metadata;
+- requested page size and maximum `N + 1` rows;
+- tagged field type/cardinality/nullability;
+- nested identity/value arity;
+- non-nil and non-duplicate complete nested identity chains;
+- optional exact count.
 
-`decode_postgres_query_page` re-plans the query and verifies the plan fingerprint,
-complete deterministic column contract, requested page size, maximum row count,
-tagged `IndexValue` type/cardinality/nullability, relation identities, and exact
-count. It removes the one-row lookahead, preserves projection order, reports
-`has_more`, and creates a scoped next cursor from the last retained root and hidden
-order values. Offset pages report `has_more` without synthesizing a cursor.
+The lookahead row is removed. Cursor pages derive the next scoped cursor from the last
+retained root/order tuple; offset pages report `has_more` without creating a cursor.
 
-## Completed M4 slice 5
+## Retained snapshots
 
-Many-traversing filter fields compile through independent nested correlated
-`EXISTS` chains rather than ordinary joins. `PlannedJoin` and `PlannedField`
-propagate `traverses_many`; only non-many joins enter the main rowset and compiled
-identity-column contract.
+`query_snapshot_tests::retained_v4_plan_and_sql_snapshots_are_stable` compares a fixed
+canonical query against three retained files:
 
-Positive operators use existential matching across reachable values. `IsNull`
-checks for the absence of any non-null reachable value. `Ne` requires at least one
-stored value and rejects the root when any reachable value is null or equal. This
-matches the test-only reference engine's flattened path-value semantics, including
-logical expressions whose atomic branches may be satisfied by different children.
+- readable executable-plan metadata;
+- the complete exact PostgreSQL SQL string;
+- ordered bind, scalar-column, and many-relation metadata.
 
-Exact count recompiles the same correlated predicates without many outer joins,
-ordering, cursor, limit, or offset, so root rows and count values remain duplicate
-free.
+The fixture uses fixed identifiers and forbids automatic snapshot rewriting. SQL keeps
+all contract values in `$N` binds.
 
 ## Remaining bounded M4 work
 
-Many-cardinality projection remains fail-closed with
-`ManyLinkProjectionPending`. The next source slices must define:
+The combined roadmap item remains open until PostgreSQL/reference-engine equivalence is
+implemented and executed. Additional source boundaries remain:
 
-- nested aggregation and a stable public result shape for many-link projection;
-- direct SeaORM bind/row adaptation and execution composition;
-- plan/SQL/parameter snapshots and PostgreSQL/reference-engine equivalence fixtures.
+- direct SeaORM bind/row adaptation and SQL execution composition;
+- persisted-schema/index readiness checks;
+- aggregate ordering semantics for paths traversing `many`;
+- production `IndexQueryPort` composition and consumer cutover.
 
-Many-link ordering remains rejected until an explicit aggregate ordering policy is
-introduced. Production query-port composition and consumer cutover remain later
-slices. The real retained PostgreSQL partition packet remains an independent owner
-gate for production partition lifecycle work.
+The real retained PostgreSQL partition packet remains an independent owner gate for
+production partition lifecycle work.
 
 ## Owner validation
 
@@ -130,11 +111,14 @@ Suggested commands:
 ```bash
 cargo test -p rustok-index planner_tests -- --nocapture
 cargo test -p rustok-index postgres_compiler_tests -- --nocapture
+cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
+cargo test -p rustok-index query_snapshot_tests -- --nocapture
 cargo check -p rustok-index --all-targets
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
 node scripts/verify/verify-index-many-link-filtering.mjs
+node scripts/verify/verify-index-query-snapshots.mjs
 cargo xtask module validate index
 ```
