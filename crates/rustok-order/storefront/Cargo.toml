@@ -14,6 +14,7 @@ ssr = [
     "dep:rustok-commerce",
     "dep:rustok-outbox",
     "dep:rustok-payment",
+    "dep:rustok-product",
     "rustok-api/server",
 ]
 
@@ -28,6 +29,7 @@ rustok-api.workspace = true
 rustok-commerce = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-payment = { workspace = true, optional = true }
+rustok-product = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tracing.workspace = true
