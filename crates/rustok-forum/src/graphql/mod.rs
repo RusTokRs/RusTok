@@ -10,6 +10,7 @@ mod query;
 mod quote_commands;
 mod read_state;
 mod runtime_data;
+mod storefront_audience_topic;
 mod storefront_read_state;
 mod types;
 
@@ -46,6 +47,7 @@ pub struct ForumQuery(
     category_policy::ForumCategoryTopicPolicyQuery,
     read_state::ForumReadStateQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,
+    storefront_audience_topic::ForumStorefrontAudienceTopicQuery,
 );
 
 #[derive(MergedObject, Default)]
