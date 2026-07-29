@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "module": "event-delivery",
+  "packet": "dlq-duplicate-alert-observability-source",
+  "status": "source_complete_runtime_execution_pending",
+  "owners": [
+    "rustok-telemetry",
+    "rustok-server",
+    "rustok-iggy"
+  ],
+  "telemetry_source": "crates/rustok-telemetry/src/dlq_duplicate_alert_metrics.rs",
+  "telemetry_registration": "crates/rustok-telemetry/src/lib.rs",
+  "observer_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
+  "projection_source": "apps/server/src/services/event_dlq_duplicate_alert_observability.rs",
+  "bootstrap_source": "apps/server/src/services/server_bootstrap.rs",
+  "service_registry_source": "apps/server/src/services/mod.rs",
+  "runtime_source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+  "verifier": "scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-alert-observability.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-observability-checkpoint.md",
+  "health_projection": {
+    "type": "EventDlqDuplicateAlertHealthSnapshot",
+    "source_handle": "EventDlqDuplicateAlertObservabilityHandle",
+    "observed_handle": "EventDlqDuplicateAlertObserverHandle",
+    "states": [
+      "disabled",
+      "not_applicable",
+      "starting",
+      "available",
+      "unavailable",
+      "stopped"
+    ],
+    "deployment_labels": [
+      "disabled",
+      "unavailable",
+      "memory",
+      "outbox_local",
+      "iggy_bundled",
+      "iggy_external"
+    ],
+    "scan_labels": [
+      "none",
+      "global_budget",
+      "fair_window",
+      "moving_window"
+    ],
+    "alert_levels": [
+      "clear",
+      "notice",
+      "warning",
+      "critical"
+    ],
+    "generation_exposed": true,
+    "physical_duplicate_flag_exposed": true,
+    "identity_conflict_flag_exposed": true,
+    "task_finished_exposed": true,
+    "affects_readiness": false
+  },
+  "prometheus_metrics": [
+    {
+      "name": "rustok_dlq_duplicate_alert_observer_state",
+      "type": "one_hot_int_gauge",
+      "labels": [
+        "deployment",
+        "scan_mode",
+        "state"
+      ]
+    },
+    {
+      "name": "rustok_dlq_duplicate_alert_snapshots_total",
+      "type": "int_counter",
+      "labels": [
+        "deployment",
+        "scan_mode",
+        "availability",
+        "level"
+      ]
+    },
+    {
+      "name": "rustok_dlq_duplicate_alert_evaluation_flags",
+      "type": "boolean_int_gauge",
+      "labels": [
+        "deployment",
+        "scan_mode",
+        "flag"
+      ]
+    }
+  ],
+  "bounded_evaluation_flags": [
+    "physical_duplicates",
+    "identity_conflict",
+    "duplicate_messages_threshold",
+    "duplicate_groups_threshold",
+    "max_copies_threshold"
+  ],
+  "projection_semantics": {
+    "polls_existing_public_handle_only": true,
+    "projection_interval_seconds": 1,
+    "state_recorded_only_after_state_change": true,
+    "snapshot_recorded_only_after_generation_change": true,
+    "invalid_scan_label_collapses_to_none": true,
+    "failure_stage_inference": false,
+    "observer_configuration_unchanged": true,
+    "moving_scan_error_preservation_unchanged": true,
+    "shared_stop_handle": true
+  },
+  "privacy_exclusions": [
+    "tenant_id",
+    "broker_address",
+    "stream_name",
+    "topic",
+    "partition_id",
+    "offset",
+    "broker_message_id",
+    "delivery_uuid",
+    "payload",
+    "payload_sha256",
+    "receipt_identity",
+    "publisher_identity",
+    "credential",
+    "threshold_value",
+    "source_count",
+    "timestamp",
+    "raw_error",
+    "raw_iggy_error",
+    "arbitrary_label",
+    "inferred_failure_stage"
+  ],
+  "mutation_boundary": {
+    "readiness_coupling": false,
+    "liveness_coupling": false,
+    "notification_delivery": false,
+    "broker_offset_storage": false,
+    "acknowledge": false,
+    "publish": false,
+    "delete": false,
+    "purge": false,
+    "replay": false,
+    "retry": false,
+    "receipt_mutation": false,
+    "profiles_authorization": false
+  },
+  "required_source_tests": [
+    "metric_labels_are_closed_and_identifier_free",
+    "health_projection_tracks_identifier_free_runtime_transitions",
+    "static_modes_have_no_scan_or_readiness_effect",
+    "scan_mode_labels_are_bounded"
+  ],
+  "non_claims": [
+    "runtime_metrics_scrape_executed",
+    "full_health_endpoint_exposed",
+    "failure_stage_classification",
+    "alert_delivery",
+    "cooldown_or_suppression",
+    "readiness_dependency",
+    "persisted_progress",
+    "restart_safe_progress",
+    "current_tail_coverage",
+    "complete_history",
+    "production_retention_sufficiency",
+    "exactly_once",
+    "profiles_authorization"
+  ],
+  "execution_status": "not_run",
+  "remaining_work": [
+    "execute_source_tests_and_verifier",
+    "retain_metrics_scrape_and_health_projection_evidence",
+    "define_notification_delivery_cooldown_and_suppression_separately",
+    "define_persistent_cursor_owner_only_if_restart_continuity_is_required"
+  ]
+}

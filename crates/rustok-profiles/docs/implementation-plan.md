@@ -8,14 +8,16 @@ self-service GraphQL, `profile.updated`, owner-local backfill, Media-backed imag
 presentation, and the module-owned storefront.
 
 Profiles is not an auth, customer, seller, staff, Social Graph, Index, search,
-broker, receipt, or telemetry aggregate. Public GraphQL, Customer Admin
-enrichment, Blog/Forum author cards, and storefront reads evaluate privacy before
-localized presentation and hide restricted or unavailable rows as absent.
+broker, receipt, duplicate-observer, health, or telemetry aggregate. Public
+GraphQL, Customer Admin enrichment, Blog/Forum author cards, and storefront
+reads evaluate privacy before localized presentation and hide restricted or
+unavailable rows as absent.
 
 `followers_only` resolves through authoritative bounded Social Graph owner ports.
 Profiles never reads relation tables and never authorizes from events, Index
 state, DLQ receipts, broker identifiers, offsets, lag, poison health,
-PostgreSQL/Iggy evidence, deduplication observations, or duplicate-scan modes.
+PostgreSQL/Iggy evidence, deduplication observations, duplicate-scan modes,
+alert levels, duplicate-observer health, or Prometheus metrics.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and
 MIME constraints and exposes only Media-selected descriptors; storage keys,
@@ -102,6 +104,13 @@ mutation retry.
   is explicit opt-in, `global_budget` remains default, and reviewed fail-closed
   configuration is required for initial offset, per-partition cap, batch size,
   rolling maximum cycles, and rolling per-cycle observations.
+- The locked moving-observer external-Iggy capture is source-complete. It places
+  identical physical copies in advancing cycles of one production-selected
+  partition, checks absent stored offsets, and records replacement-observer reset
+  semantics without claiming restart-safe progress.
+- Identifier-free duplicate-alert observability is source-complete. A read-only
+  companion projects the existing latest-value observer handle into bounded
+  Prometheus series and an optional health snapshot without readiness coupling.
 - Canonical retained packets remain pending and must omit credentials and
   delivery-level facts, bind reviewed source/configuration/input digests, and
   become stale when any bound source or reviewed input changes.
@@ -170,9 +179,8 @@ partition 1: A/A ordinary duplicate plus one unique overflow message
 partition 2: B1/B2 conflicting-payload duplicate
 ```
 
-The moving external-Iggy cross-cycle fixture must split copies across advancing
-cycles in the same production-selected partition, not invent cross-partition
-routing for one deterministic ID.
+The moving external-Iggy cross-cycle fixture splits copies across advancing
+cycles in the same production-selected partition, not across partitions.
 
 ### Fair-window retained capture
 
@@ -240,8 +248,82 @@ scripts/verify/
 The moving scanner keeps partition IDs, cursor values, message identities,
 payloads/digests, and opaque observations private. The server reduces successful
 moving snapshots to the existing count-only duplicate summary before alert
-policy evaluation. Runtime execution and retained moving-window evidence remain
-pending.
+policy evaluation.
+
+### Moving-observer retained capture
+
+Source-complete paths:
+
+```text
+crates/rustok-iggy/tests/
+  dlq_duplicate_moving_window_external_observer.rs
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-moving-window-external-observer-runtime-source.json
+  dlq-duplicate-moving-window-external-observer-execution-contract.json
+scripts/evidence/
+  capture-iggy-dlq-duplicate-moving-window-external-observer.mjs
+scripts/verify/
+  verify-iggy-dlq-duplicate-moving-window-external-observer-runtime.mjs
+  verify-iggy-dlq-duplicate-moving-window-external-observer-retained.mjs
+```
+
+The locked fixture records one unique first cycle, a cross-cycle ordinary
+physical duplicate after the second copy, an unchanged empty third cycle, a
+replacement observer reset to the reviewed initial offset, and absent stored
+consumer offsets at every checkpoint. Canonical execution is pending.
+
+### Duplicate-alert observability
+
+The server-owned companion reads only the existing public observer mode, latest
+runtime snapshot, and task-finished state. It exports no identifiers or source
+counts and does not modify scanner configuration, retries, moving cursors, or
+event delivery.
+
+Bounded health states:
+
+```text
+disabled
+not_applicable
+starting
+available
+unavailable
+stopped
+```
+
+Prometheus families:
+
+```text
+rustok_dlq_duplicate_alert_observer_state
+rustok_dlq_duplicate_alert_snapshots_total
+rustok_dlq_duplicate_alert_evaluation_flags
+```
+
+Labels are closed deployment, scan-mode, state, availability, level, and
+evaluation-flag domains. State is recorded only on transition; snapshot counters
+and flags are recorded only when the runtime generation changes. The companion
+does not infer connect/scan/publish failure stages from an unavailable snapshot.
+
+The health projection reports `affects_readiness = false` and is not inserted
+into `/health/ready`, liveness, Profiles authorization, or event-delivery gating.
+
+Source-complete paths:
+
+```text
+crates/rustok-telemetry/src/
+  dlq_duplicate_alert_metrics.rs
+apps/server/src/services/
+  event_dlq_duplicate_alert_observer.rs
+  event_dlq_duplicate_alert_observability.rs
+  server_bootstrap.rs
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-alert-observability-source.json
+scripts/verify/
+  verify-event-dlq-duplicate-alert-observability.mjs
+crates/rustok-iggy/docs/
+  dlq-duplicate-alert-observability.md
+crates/rustok-profiles/docs/
+  poison-duplicate-alert-observability-checkpoint.md
+```
 
 Detailed checkpoints:
 
@@ -251,9 +333,13 @@ Detailed checkpoints:
 - `crates/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-rolling-window-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md`
+- `crates/rustok-profiles/docs/poison-duplicate-moving-window-external-observer-runtime-checkpoint.md`
+- `crates/rustok-profiles/docs/poison-duplicate-alert-observability-checkpoint.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-external-scan.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md`
+- `crates/rustok-iggy/docs/dlq-duplicate-moving-window-external-observer-runtime-evidence.md`
+- `crates/rustok-iggy/docs/dlq-duplicate-alert-observability.md`
 - `crates/rustok-iggy/docs/dedup-recovery-window-policy.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-rolling-window.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md`
@@ -303,38 +389,43 @@ Detailed checkpoints:
    no-clobber packet; and repeat whenever a bound source, configuration, or input
    changes. A packet covers only that supplied model.
 
-10. **Execute moving duplicate observer evidence.**
-    Run a reviewed external-Iggy cross-cycle case through the explicit
-    `moving_window` server mode, retain privacy-safe evidence, and review initial
-    offset plus acceptable reset frequency per deployment. Add persistent cursor
-    ownership only if restart continuity is required.
+10. **Execute and retain moving duplicate observer evidence.**
+    Run the locked external-Iggy cross-cycle capture, inspect and commit the
+    no-clobber packet, and repeat whenever a bound source or reviewed input
+    changes. Review initial offset and acceptable reset frequency per deployment.
 
-11. **Retain production operations.**
+11. **Execute observability evidence.**
+    Run focused source tests and verifier, then retain one reviewed Prometheus
+    scrape and identifier-free health projection. Confirm no readiness impact.
+
+12. **Retain production operations.**
     Prove bundled mode, restart, TLS/auth/failover, reconnect, rebalance,
     retention, reconciliation, operator cleanup, and bounded replay/rescan
-    repair.
+    repair. Add persistent cursor ownership only if restart continuity is
+    required, and define alert routing/cooldown/suppression separately.
 
 ## Recheck checkpoint — 2026-07-29
 
-- Rechecked current `main` after the moving scanner merge and confirmed the next
-  source-complete gap was explicit server composition rather than cursor design.
+- Rechecked current `main` after PR #2431 and confirmed the locked moving
+  cross-cycle fixture is source-complete while canonical execution remains
+  pending.
 - Reconfirmed privacy-before-presentation, owner-scoped writes, Media ownership,
   fail-closed follower reads, no automatic mutation retry, and the rule that
   operational state never authorizes profile presentation.
-- Added explicit `moving_window` server mode while preserving `global_budget` as
-  the default and fixed `fair_window` behavior.
-- Added reviewed fail-closed configuration for initial offset, equal
-  per-partition budget, batch size, rolling maximum cycles, and rolling
-  observations per cycle; moving mode defines no production defaults.
-- Kept complete-cycle atomicity and private process-local per-partition cursors.
-  Failed moving cycles preserve connected state; replacement connections and
-  process restart reset to the reviewed initial offset with empty rolling history.
-- Kept external-Iggy cross-cycle execution, retained packets, deployment reset
-  review, optional persistent cursor ownership, telemetry/health,
-  bundled/TLS/auth, failover, and multi-replica claims open.
-- Tests, Cargo commands, formatters, repository source verifiers, broker scans,
-  server observers, retained capture, and multi-replica scenarios were not run
-  per maintainer instruction.
+- Added three bounded Prometheus families to the single `rustok-telemetry`
+  registry and kept every label inside a closed enum.
+- Added a separate read-only companion for disabled, not-applicable, starting,
+  available, unavailable, and stopped health states.
+- Recorded state only on transitions and snapshots only after generation changes;
+  did not invent a failure stage from an unavailable latest-value snapshot.
+- Kept duplicate-observer health out of readiness/liveness and event-delivery
+  gating, and left the observer's moving-state preservation unchanged.
+- Kept runtime metrics scrape, health capture, external-Iggy execution,
+  canonical packets, persistent cursor ownership, alert routing,
+  bundled/TLS/auth/failover, and multi-replica claims open.
+- Tests, Cargo commands, formatters, repository source verifiers, server startup,
+  metrics scrape, broker scans, retained capture, and multi-replica scenarios
+  were not run per maintainer instruction.
 
 ## Verification backlog
 
@@ -343,11 +434,15 @@ cargo xtask module validate profiles
 cargo xtask module test profiles
 cargo check -p rustok-profiles-storefront --all-targets
 cargo test -p rustok-profiles-storefront
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets
+cargo test -p rustok-telemetry dlq_duplicate_alert_metrics -- --nocapture
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
 cargo test -p rustok-iggy dlq_duplicate_rolling_window -- --nocapture
 cargo test -p rustok-iggy dlq_duplicate_moving_window_scan --features iggy -- --nocapture
 cargo test -p rustok-iggy dlq_duplicate_alert_observer --features iggy -- --nocapture
 cargo test -p rustok-server event_dlq_duplicate_alert_observer -- --nocapture
+cargo test -p rustok-server event_dlq_duplicate_alert_observability -- --nocapture
+node scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs
 node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
@@ -365,12 +460,17 @@ cargo test -p rustok-iggy --features iggy \
   --test dlq_duplicate_fair_window_external_scan -- \
   fair_window_scans_each_partition_and_differs_from_global_budget \
   --exact --nocapture --test-threads=1
-cargo test -p rustok-iggy dlq_duplicate_alert_observer -- --nocapture
-cargo test -p rustok-server event_dlq_duplicate_alert_observer -- --nocapture
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-moving-window-external-observer-runtime.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-moving-window-external-observer-retained.mjs
+RUSTOK_IGGY_MOVING_OBSERVER_TEST_ADDRESS='host:8090' \
+RUSTOK_IGGY_MOVING_OBSERVER_TEST_CONFIG_PATH=/outside/repository/iggy.toml \
+RUSTOK_IGGY_MOVING_OBSERVER_TEST_RESET_REVIEW_PATH=/outside/repository/reset-review.json \
+RUSTOK_IGGY_MOVING_OBSERVER_TEST_SERVER_ARTIFACT=reviewed-iggy-build \
+node scripts/evidence/capture-iggy-dlq-duplicate-moving-window-external-observer.mjs
 node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
@@ -395,7 +495,8 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
 11. Deterministic IDs bind immutable source identity and exact payload but do not
     imply exactly-once without retained broker evidence.
 12. Operational telemetry excludes identities, payloads, broker coordinates,
-    claims, credentials, and provider details.
+    claims, credentials, threshold values, source counts, timestamps, and raw
+    errors.
 13. Short dedup sequences do not prove production-window sufficiency; use a
     checked additive recovery horizon and an explicit per-partition capacity
     bound.
@@ -415,4 +516,6 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
     initial offset unless a separately reviewed persistent owner is added.
 21. A sufficient recovery-window assessment covers only the supplied reviewed
     model and never authorizes Profiles or proves exactly-once.
-22. Update Profiles and affected owner docs with every boundary change.
+22. Duplicate-alert metrics use only closed labels and health never affects
+    readiness, liveness, event delivery, or Profiles authorization.
+23. Update Profiles and affected owner docs with every boundary change.
