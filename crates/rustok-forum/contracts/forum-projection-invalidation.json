@@ -2,7 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20BK",
   "upstream_task": "FORUM-20BJ",
-  "scope": "Publish durable owner-transactional invalidations for every canonical Forum mutation that can change exact public category or topic Search projections",
+  "scope": "Publish durable owner-transactional invalidations on the supported PostgreSQL Forum Search runtime for every canonical Forum mutation that can change exact public category or topic projections",
   "root_event": "rustok_events::DomainEvent::ReindexRequested",
   "event_type": "search.reindex_requested",
   "outbox_transaction_api": "crates/rustok-outbox/src/transactional.rs",
@@ -30,9 +30,12 @@
     }
   },
   "outbox_boundary": {
-    "owner_transaction_required": true,
+    "owner_transaction_required_on_postgresql": true,
+    "postgresql_direct_owner_invalidations_persisted": true,
+    "non_postgresql_direct_owner_invalidations_validation_only": true,
+    "non_postgresql_forum_search_projector_supported": false,
     "domain_event_validation_preserved": true,
-    "registered_envelope_schema_validation_preserved": true,
+    "registered_envelope_schema_validation_preserved_for_persisted_events": true,
     "canonical_sys_events_outbox_reused": true,
     "new_root_domain_event_added": false,
     "new_event_schema_added": false,
@@ -93,6 +96,7 @@
     "workspace_dependency_changed": false,
     "cargo_lock_changed": false,
     "migration_added": false,
+    "sqlite_forum_domain_fixtures_require_outbox_migration": false,
     "legacy_graphql_snapshot_changed": false
   },
   "documentation": {
@@ -108,7 +112,7 @@
     "decide whether approved public replies become separate Search documents under FORUM-23",
     "add visibility-scoped category and all-read commands",
     "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
-    "capture maintainer-executed PostgreSQL and SQLite outbox projection cleanup and query runtime evidence",
+    "capture maintainer-executed PostgreSQL outbox projection cleanup and query runtime evidence plus SQLite validation-only domain evidence",
     "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
   ],
   "downstream_task": "FORUM-20BL",
