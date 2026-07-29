@@ -58,7 +58,7 @@ requireAll(auth, [
   'TENANT_ID_METADATA: &str = "x-rustok-tenant-id"',
   "MAX_BEARER_TOKEN_BYTES",
   "Sha256::digest(value)",
-  "Sha256::digest(candidate)",
+  "authorization_digest(candidate)",
   "ConstantTimeEq",
   ".ct_eq(&candidate_digest)",
   'field("authorization", &"[REDACTED]")',
