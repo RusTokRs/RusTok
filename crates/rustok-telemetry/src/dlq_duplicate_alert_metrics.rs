@@ -109,25 +109,6 @@ impl DlqDuplicateAlertMetricLevel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DlqDuplicateAlertFailureStage {
-    Startup,
-    Connect,
-    Scan,
-    Publish,
-}
-
-impl DlqDuplicateAlertFailureStage {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Startup => "startup",
-            Self::Connect => "connect",
-            Self::Scan => "scan",
-            Self::Publish => "publish",
-        }
-    }
-}
-
 lazy_static! {
     /// Current observer health state as a bounded one-hot series.
     pub static ref DLQ_DUPLICATE_ALERT_OBSERVER_STATE: IntGaugeVec = IntGaugeVec::new(
@@ -158,23 +139,12 @@ lazy_static! {
         &["deployment", "scan_mode", "flag"]
     )
     .expect("Failed to create dlq_duplicate_alert_evaluation_flags");
-
-    /// Total observer failures split only by a bounded lifecycle stage.
-    pub static ref DLQ_DUPLICATE_ALERT_FAILURES_TOTAL: IntCounterVec = IntCounterVec::new(
-        Opts::new(
-            "rustok_dlq_duplicate_alert_failures_total",
-            "Total physical DLQ duplicate observer failures by bounded lifecycle stage"
-        ),
-        &["deployment", "scan_mode", "stage"]
-    )
-    .expect("Failed to create dlq_duplicate_alert_failures_total");
 }
 
 pub fn register(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(DLQ_DUPLICATE_ALERT_OBSERVER_STATE.clone()))?;
     registry.register(Box::new(DLQ_DUPLICATE_ALERT_SNAPSHOTS_TOTAL.clone()))?;
     registry.register(Box::new(DLQ_DUPLICATE_ALERT_EVALUATION_FLAGS.clone()))?;
-    registry.register(Box::new(DLQ_DUPLICATE_ALERT_FAILURES_TOTAL.clone()))?;
     Ok(())
 }
 
@@ -227,17 +197,6 @@ pub fn record_snapshot(
     }
 }
 
-/// Increment one bounded lifecycle failure series.
-pub fn record_failure(
-    deployment: DlqDuplicateAlertDeployment,
-    scan_mode: DlqDuplicateAlertScanMode,
-    stage: DlqDuplicateAlertFailureStage,
-) {
-    DLQ_DUPLICATE_ALERT_FAILURES_TOTAL
-        .with_label_values(&[deployment.label(), scan_mode.label(), stage.label()])
-        .inc();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,7 +207,7 @@ mod tests {
         assert_eq!(EVALUATION_FLAGS.len(), 5);
         assert!(!HEALTH_STATE_LABELS.contains(&"partition"));
         assert!(!EVALUATION_FLAGS.contains(&"offset"));
-        assert_eq!(DlqDuplicateAlertFailureStage::Publish.label(), "publish");
         assert_eq!(DlqDuplicateAlertScanMode::MovingWindow.label(), "moving_window");
+        assert_eq!(DlqDuplicateAlertMetricLevel::Critical.label(), "critical");
     }
 }
