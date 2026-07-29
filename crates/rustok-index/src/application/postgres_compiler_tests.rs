@@ -299,9 +299,10 @@ fn compiles_validated_lexicographic_keyset_with_entity_tie_breaker() {
         order_values: vec![IndexValue::Integer(42), IndexValue::Null],
         entity_id: cursor_entity_id,
     };
+    let encoded = CursorCodec::encode_for_query(&cursor, &query, &registry).unwrap();
     query.pagination = Pagination::Cursor {
         first: 20,
-        after: Some(CursorCodec::encode(&cursor).unwrap()),
+        after: Some(encoded),
     };
 
     let compiled = registry.compile_postgres_query(&query).unwrap();
@@ -334,35 +335,34 @@ fn compiles_validated_lexicographic_keyset_with_entity_tie_breaker() {
 }
 
 #[test]
-fn rejects_cursor_order_values_with_wrong_types_before_sql_compilation() {
+fn rejects_cursor_reuse_across_query_semantics_before_sql_compilation() {
     let registry = registry(LinkCardinality::One);
     let tenant_id = Uuid::new_v4();
-    let mut query = root_query(tenant_id);
-    query.order_by = vec![OrderExpr {
+    let mut original = root_query(tenant_id);
+    original.order_by = vec![OrderExpr {
         field: path("score"),
         direction: OrderDirection::Asc,
     }];
     let cursor = IndexCursor {
         tenant_id,
-        schema: query.schema.clone(),
-        schema_fingerprint: registry.get(&query.schema).unwrap().fingerprint,
-        locale: query.scope.locale.clone(),
-        order_values: vec![IndexValue::String("wrong".to_owned())],
+        schema: original.schema.clone(),
+        schema_fingerprint: registry.get(&original.schema).unwrap().fingerprint,
+        locale: original.scope.locale.clone(),
+        order_values: vec![IndexValue::Integer(7)],
         entity_id: Uuid::new_v4(),
     };
-    query.pagination = Pagination::Cursor {
+    let encoded = CursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
+    let mut changed = original.clone();
+    changed.order_by[0].direction = OrderDirection::Desc;
+    changed.pagination = Pagination::Cursor {
         first: 20,
-        after: Some(CursorCodec::encode(&cursor).unwrap()),
+        after: Some(encoded),
     };
 
     assert!(matches!(
-        registry.compile_postgres_query(&query),
+        registry.compile_postgres_query(&changed),
         Err(PostgresQueryBuildError::Cursor(
-            CursorValidationError::OrderValueTypeMismatch {
-                index: 0,
-                expected: IndexValueType::Integer,
-                actual: Some(IndexValueType::String),
-            }
+            CursorValidationError::QueryFingerprintMismatch
         ))
     ));
 }
