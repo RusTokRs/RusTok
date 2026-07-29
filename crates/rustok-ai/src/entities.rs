@@ -410,6 +410,7 @@ pub mod ai_structured_executions {
         pub output_schema_digest: String,
         pub classification: String,
         pub evidence_digest: String,
+        pub input_bytes: i64,
         pub max_output_bytes: i64,
         pub max_attempts: i32,
         pub status: String,

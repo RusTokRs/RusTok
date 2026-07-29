@@ -143,20 +143,23 @@ mod tests {
         async fn complete_structured(
             &self,
             request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
             assert_eq!(request.request.locale.as_deref(), Some("ru"));
             assert_eq!(
                 request.request.messages[0].metadata["direct_generation"],
                 json!("content_moderation")
             );
-            Ok(json!({
-                "decision": "REVIEW",
-                "labels": ["safety"],
-                "severity": 72,
-                "explanation": "Potentially unsafe wording requires human review.",
-                "requires_human": true,
-                "recommended_action": "route_to_moderator"
-            }))
+            Ok(crate::ProviderStructuredResponse {
+                output: json!({
+                    "decision": "REVIEW",
+                    "labels": ["safety"],
+                    "severity": 72,
+                    "explanation": "Potentially unsafe wording requires human review.",
+                    "requires_human": true,
+                    "recommended_action": "route_to_moderator"
+                }),
+                usage: None,
+            })
         }
     }
 

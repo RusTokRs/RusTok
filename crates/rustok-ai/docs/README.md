@@ -51,6 +51,11 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
   - `ai_chat_runs`
   - `ai_tool_traces`
   - `ai_approval_requests`
+  - `ai_structured_executions`
+  - `ai_structured_attempts`
+  - `ai_structured_budgets`
+  - `ai_structured_provider_policies`
+  - `ai_structured_reservations`
 - owner-owned GraphQL query/mutation/subscription surface in `crates/rustok-ai/src/graphql` for providers,
   tool profiles, sessions, traces and approvals;
 - server-side orchestration service `AiManagementService`;
@@ -154,10 +159,18 @@ or default CI.
 
 ## What is not yet implemented
 
-- the canonical durable implementation of `AiStructuredTaskPort`, including
-  idempotent replay/conflict detection, attempt and token/price/cost ledgers,
-  budget reservation, concurrency, execution-time fallback, cancellation, and
-  restart recovery;
+- production activation of the private canonical `AiStructuredTaskPort`
+  implementation: operator provisioning for budget/provider accounting
+  policies, recovery scheduling, terminal-result replay semantics, and runtime
+  publication. Exact descriptor validation, ordered provider
+  inference/fallback, typed failure mapping, deadline/cancellation observation,
+  the content-free execution schema,
+  request-hash replay/conflict detection, execution leases, durable
+  cancellation request, tenant budget reservation, atomic terminal
+  execution/budget settlement, accounting-aware expired-lease recovery, immutable
+  provider pricing policy, provider concurrency acquisition/release,
+  per-attempt price snapshot and actual token/cost evidence, and exact
+  task-descriptor catalog already exist;
 - time-windowed diagnostics/trends on top of the current snapshot/history surface;
 - persisted provider fallback/error analytics beyond the current in-process snapshot;
 - additional provider families beyond those already implemented (`Anthropic`, `Gemini`, richer native adapters);

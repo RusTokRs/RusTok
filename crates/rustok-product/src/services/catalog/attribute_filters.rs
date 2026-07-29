@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    Condition, DatabaseConnection, DbBackend, FromQueryResult, Statement,
+    Condition, ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement,
     sea_query::Expr,
 };
 use std::collections::HashMap;

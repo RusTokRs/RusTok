@@ -206,6 +206,12 @@ pub struct ProviderStructuredRequest {
     pub output_schema: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderStructuredResponse {
+    pub output: serde_json::Value,
+    pub usage: Option<ProviderUsage>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProviderStreamEvent {
     TextDelta(String),

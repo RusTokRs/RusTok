@@ -17,6 +17,11 @@ const forbidText = (text, marker, label) => {
 const files = {
   aiCargo: 'crates/rustok-ai/Cargo.toml',
   aiPort: 'crates/rustok-ai/src/ports.rs',
+  aiLedger: 'crates/rustok-ai/src/structured.rs',
+  aiAccounting: 'crates/rustok-ai/src/accounting.rs',
+  aiRouter: 'crates/rustok-ai/src/router.rs',
+  aiStructuredRuntime: 'crates/rustok-ai/src/structured_runtime.rs',
+  aiMigration: 'crates/rustok-ai/src/migrations/m20260729_000001_structured_execution.rs',
   aiLocalePolicy: 'crates/rustok-ai/src/service/helpers.rs',
   translationCargo: 'crates/rustok-translation/Cargo.toml',
   translationPort: 'crates/rustok-translation/src/machine.rs',
@@ -30,6 +35,11 @@ for (const file of Object.values(files)) requireFile(file);
 
 const aiCargo = read(files.aiCargo);
 const aiPort = read(files.aiPort);
+const aiLedger = read(files.aiLedger);
+const aiAccounting = read(files.aiAccounting);
+const aiRouter = read(files.aiRouter);
+const aiStructuredRuntime = read(files.aiStructuredRuntime);
+const aiMigration = read(files.aiMigration);
 const aiLocalePolicy = read(files.aiLocalePolicy);
 const translationCargo = read(files.translationCargo);
 const translationPort = read(files.translationPort);
@@ -58,9 +68,62 @@ for (const marker of [
   'PortCallPolicy::write()',
   'AiStructuredTaskExecution',
   'AiStructuredTaskUsage',
+  'AiStructuredTaskDescriptor',
+  'AiStructuredTaskCatalog',
   'async fn status(',
   'async fn cancel(',
 ]) requireText(aiPort, marker, 'AI structured-task port');
+
+for (const marker of [
+  'IdempotencyKey',
+  'RequestDigest',
+  'InputDigest',
+  'EvidenceDigest',
+  'LeaseExpiresAt',
+  'CancelIdempotencyKey',
+  'ai_structured_attempts',
+  'ai_structured_budgets',
+  'ai_structured_provider_policies',
+  'ai_structured_reservations',
+]) requireText(aiMigration, marker, 'AI structured-task migration');
+for (const marker of [
+  'Executions::InputPayload',
+  'Executions::OutputPayload',
+  'Executions::RawResponse',
+]) {
+  forbidText(aiMigration, marker, 'content-free structured-task migration');
+}
+for (const marker of [
+  'ai.structured.idempotency_conflict',
+  'request_cancel',
+]) requireText(aiLedger, marker, 'AI structured-task ledger');
+for (const marker of [
+  'put_budget',
+  'put_provider_policy',
+  'reserve',
+  'finalize',
+  'cancel_queued',
+  'recover_expired',
+  'recover_queued_cancellations',
+  'settle_reservation',
+  'finish_recovered_attempt',
+  'begin_attempt',
+  'finish_attempt',
+  'price_snapshot_digest',
+]) requireText(aiAccounting, marker, 'AI structured-task accounting');
+requireText(aiRouter, 'ordered_provider_candidates', 'AI structured-task routing');
+for (const marker of [
+  'impl AiStructuredTaskPort for DurableAiStructuredTaskPort',
+  'validate_descriptor',
+  'ordered_provider_candidates',
+  'runtime_inference_engine',
+  'complete_structured',
+  'cancellation_requested',
+  'DeadlineExceeded',
+  'TerminalOutcome::Completed',
+  'TerminalOutcome::Failed',
+  'TerminalOutcome::Cancelled',
+]) requireText(aiStructuredRuntime, marker, 'AI structured-task runtime');
 
 for (const marker of [
   'pub trait MachineTranslationPort',
@@ -73,6 +136,9 @@ for (const marker of [
   'MACHINE_TRANSLATION_TASK_SLUG: &str = "machine_translation"',
   'impl MachineTranslationPort for AiMachineTranslationAdapter',
   'AiStructuredTaskRequest',
+  'machine_translation_task_descriptor',
+  'machine_translation_input_schema_digest',
+  'machine_translation_output_schema_digest',
   'output_unit_missing',
   'output_tokens_changed',
   'review_required: true',

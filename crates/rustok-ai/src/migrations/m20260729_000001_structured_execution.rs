@@ -84,6 +84,7 @@ async fn create_executions(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         .string_len(64)
                         .not_null(),
                 )
+                .col(ColumnDef::new(Executions::InputBytes).big_integer().not_null())
                 .col(
                     ColumnDef::new(Executions::MaxOutputBytes)
                         .big_integer()
@@ -201,6 +202,7 @@ async fn create_executions(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     "actor_kind IN ('user', 'service', 'system')",
                 ))
                 .check(Expr::cust("max_output_bytes > 0"))
+                .check(Expr::cust("input_bytes > 0"))
                 .check(Expr::cust("max_attempts BETWEEN 1 AND 8"))
                 .check(Expr::cust(
                     "(status = 'running' AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL AND started_at IS NOT NULL AND completed_at IS NULL) OR (status <> 'running' AND lease_token IS NULL AND lease_expires_at IS NULL)",
@@ -699,6 +701,7 @@ enum Executions {
     OutputSchemaDigest,
     Classification,
     EvidenceDigest,
+    InputBytes,
     MaxOutputBytes,
     MaxAttempts,
     Status,

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use rustok_api::{PortActorKind, PortContext, PortError, manifest_hash::hash_manifest};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -14,8 +14,6 @@ use crate::{
     AiStructuredTaskStatus, AiStructuredTaskUsage,
     entities::{ai_structured_attempts, ai_structured_executions},
 };
-
-const RECOVERY_ERROR_CODE: &str = "ai.structured.execution_lease_expired";
 
 #[derive(Clone)]
 pub(crate) struct StructuredExecutionLedger {
@@ -71,6 +69,9 @@ impl StructuredExecutionLedger {
             )
         })?;
         let input_digest = hash(&request.input)?;
+        let input_bytes = serde_json::to_vec(&request.input)
+            .map_err(|_| ledger_invariant())?
+            .len();
         let output_schema_digest = hash(&request.output_schema)?;
         let evidence_digest = hash(&request.evidence)?;
         let request_digest = hash(&RequestDigestManifest {
@@ -114,6 +115,7 @@ impl StructuredExecutionLedger {
             output_schema_digest: Set(output_schema_digest),
             classification: Set(classification_slug(request.classification).to_string()),
             evidence_digest: Set(evidence_digest),
+            input_bytes: Set(i64::try_from(input_bytes).map_err(|_| ledger_invariant())?),
             max_output_bytes: Set(i64::from(request.limits.max_output_bytes)),
             max_attempts: Set(i32::from(request.limits.max_attempts)),
             status: Set(status_slug(AiStructuredTaskStatus::Queued).to_string()),
@@ -144,13 +146,15 @@ impl StructuredExecutionLedger {
                 replayed: false,
             }),
             Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    owner = request.owner,
+                    task_slug = request.task_slug,
+                    "failed to insert structured execution ledger row"
+                );
                 let existing = self
                     .find_by_idempotency(tenant_id, &request.owner, idempotency_key)
                     .await?;
-                #[cfg(test)]
-                if existing.is_none() {
-                    panic!("structured execution insert failed: {error}");
-                }
                 let existing = existing.ok_or_else(database_unavailable)?;
                 reconcile_replay(&existing, &request_digest, context)?;
                 Ok(RegisteredExecution {
@@ -291,6 +295,9 @@ impl StructuredExecutionLedger {
         context.require_write_semantics()?;
         validate_context(context)?;
         let mut execution = self.load(context, execution_id).await?;
+        if is_terminal(&execution.status) {
+            return Ok(execution);
+        }
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
         let request_digest = hash(&(
             context.tenant_id.as_str(),
@@ -314,9 +321,7 @@ impl StructuredExecutionLedger {
         }
 
         let now = Utc::now();
-        let queued = execution.status == status_slug(AiStructuredTaskStatus::Queued);
-        let terminal = is_terminal(&execution.status);
-        let mut update = ai_structured_executions::Entity::update_many()
+        let update = ai_structured_executions::Entity::update_many()
             .col_expr(
                 ai_structured_executions::Column::CancelRequestedAt,
                 Expr::value(Some(now)),
@@ -341,17 +346,6 @@ impl StructuredExecutionLedger {
                 ai_structured_executions::Column::UpdatedAt,
                 Expr::value(now),
             );
-        if queued {
-            update = update
-                .col_expr(
-                    ai_structured_executions::Column::Status,
-                    Expr::value(status_slug(AiStructuredTaskStatus::Cancelled)),
-                )
-                .col_expr(
-                    ai_structured_executions::Column::CompletedAt,
-                    Expr::value(Some(now)),
-                );
-        }
         let changed = update
             .filter(ai_structured_executions::Column::Id.eq(execution_id))
             .filter(ai_structured_executions::Column::TenantId.eq(execution.tenant_id))
@@ -360,7 +354,7 @@ impl StructuredExecutionLedger {
             .exec(&self.database)
             .await
             .map_err(|_| database_unavailable())?;
-        if changed.rows_affected == 0 && !terminal {
+        if changed.rows_affected == 0 {
             execution = self.load(context, execution_id).await?;
             if execution.cancel_idempotency_key.is_none() {
                 return Err(PortError::conflict(
@@ -382,71 +376,30 @@ impl StructuredExecutionLedger {
         Ok(execution)
     }
 
-    pub(crate) async fn recover_expired(&self, now: DateTime<Utc>) -> Result<u64, PortError> {
-        let expired = ai_structured_executions::Entity::find()
-            .filter(
-                ai_structured_executions::Column::Status
-                    .eq(status_slug(AiStructuredTaskStatus::Running)),
-            )
-            .filter(ai_structured_executions::Column::LeaseExpiresAt.lt(now))
-            .all(&self.database)
+    pub(crate) async fn cancellation_requested(
+        &self,
+        execution_id: Uuid,
+        lease_token: Uuid,
+    ) -> Result<bool, PortError> {
+        let execution = ai_structured_executions::Entity::find_by_id(execution_id)
+            .one(&self.database)
             .await
-            .map_err(|_| database_unavailable())?;
-        let mut recovered = 0_u64;
-        for execution in expired {
-            let cancelled = execution.cancel_requested_at.is_some();
-            let result = ai_structured_executions::Entity::update_many()
-                .col_expr(
-                    ai_structured_executions::Column::Status,
-                    Expr::value(status_slug(if cancelled {
-                        AiStructuredTaskStatus::Cancelled
-                    } else {
-                        AiStructuredTaskStatus::Queued
-                    })),
+            .map_err(|_| database_unavailable())?
+            .ok_or_else(|| {
+                PortError::not_found(
+                    "ai.structured.execution_not_found",
+                    "structured task execution was not found",
                 )
-                .col_expr(
-                    ai_structured_executions::Column::ErrorCode,
-                    Expr::value((!cancelled).then(|| RECOVERY_ERROR_CODE.to_string())),
-                )
-                .col_expr(
-                    ai_structured_executions::Column::Retryable,
-                    Expr::value(!cancelled),
-                )
-                .col_expr(
-                    ai_structured_executions::Column::RetryAfterMs,
-                    Expr::value((!cancelled).then_some(0_i64)),
-                )
-                .col_expr(
-                    ai_structured_executions::Column::LeaseToken,
-                    Expr::value(Option::<Uuid>::None),
-                )
-                .col_expr(
-                    ai_structured_executions::Column::LeaseExpiresAt,
-                    Expr::value(Option::<DateTime<Utc>>::None),
-                )
-                .col_expr(
-                    ai_structured_executions::Column::CompletedAt,
-                    Expr::value(cancelled.then_some(now)),
-                )
-                .col_expr(
-                    ai_structured_executions::Column::UpdatedAt,
-                    Expr::value(now),
-                )
-                .filter(ai_structured_executions::Column::Id.eq(execution.id))
-                .filter(
-                    ai_structured_executions::Column::Status
-                        .eq(status_slug(AiStructuredTaskStatus::Running)),
-                )
-                .filter(ai_structured_executions::Column::LeaseToken.eq(execution.lease_token))
-                .filter(ai_structured_executions::Column::LeaseExpiresAt.lt(now))
-                .exec(&self.database)
-                .await
-                .map_err(|_| database_unavailable())?;
-            if result.rows_affected == 1 {
-                recovered = recovered.saturating_add(1);
-            }
+            })?;
+        if execution.status != status_slug(AiStructuredTaskStatus::Running)
+            || execution.lease_token != Some(lease_token)
+        {
+            return Err(PortError::conflict(
+                "ai.structured.execution_lease_conflict",
+                "structured execution lease is not active",
+            ));
         }
-        Ok(recovered)
+        Ok(execution.cancel_requested_at.is_some())
     }
 
     async fn find_by_idempotency(
@@ -772,7 +725,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn queued_cancel_is_durable_and_idempotent() {
+    async fn queued_cancel_receipt_is_durable_and_idempotent() {
         let (ledger, tenant_id) = ledger().await;
         let execute_context = context(tenant_id, "execute-a");
         let execution = ledger
@@ -791,42 +744,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(cancelled.status, "cancelled");
+        assert_eq!(cancelled.status, "queued");
         assert_eq!(
             cancelled.cancel_idempotency_key.as_deref(),
             Some("cancel-a")
         );
         assert_eq!(cancelled.id, replayed.id);
-        assert!(replayed.completed_at.is_some());
-    }
-
-    #[tokio::test]
-    async fn expired_lease_requeues_without_losing_execution_identity() {
-        let (ledger, tenant_id) = ledger().await;
-        let context = context(tenant_id, "execute-a");
-        let execution = ledger
-            .register(&context, &request(json!({"value": "one"})))
-            .await
-            .unwrap()
-            .execution;
-        let lease = ledger
-            .claim(execution.id, Duration::from_millis(1))
-            .await
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(lease.execution.status, "running");
-        assert_ne!(lease.token, Uuid::nil());
-        let recovered = ledger
-            .recover_expired(Utc::now() + chrono::Duration::seconds(1))
-            .await
-            .unwrap();
-        assert_eq!(recovered, 1);
-
-        let requeued = ledger.load(&context, execution.id).await.unwrap();
-        assert_eq!(requeued.status, "queued");
-        assert_eq!(requeued.error_code.as_deref(), Some(RECOVERY_ERROR_CODE));
-        assert!(requeued.retryable);
-        assert!(requeued.lease_token.is_none());
+        assert!(replayed.completed_at.is_none());
     }
 }

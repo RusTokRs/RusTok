@@ -962,7 +962,6 @@ fn resolve_product_source_translation(
         meta_description: normalize_optional_text(input.source_meta_description.clone())
             .or_else(|| selected.and_then(|translation| translation.meta_description.clone())),
     };
-
     if candidate.title.is_none()
         && candidate.description.is_none()
         && candidate.meta_title.is_none()
@@ -1338,7 +1337,7 @@ where
             output_schema: schema,
         })
         .await?;
-    serde_json::from_value(value).map_err(AiError::Json)
+    serde_json::from_value(value.output).map_err(AiError::Json)
 }
 
 fn normalize_locale_hint(locale: Option<&str>) -> Option<String> {
@@ -1665,6 +1664,7 @@ mod tests {
         },
     };
     use async_trait::async_trait;
+    use base64::Engine as _;
     use rust_decimal::Decimal;
     use rustok_ai_content::{BLOG_DRAFT_TASK_SLUG, content_ai_verticals};
     use rustok_ai_media::{media_ai_verticals, normalize_image_size};
@@ -1827,15 +1827,18 @@ mod tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
-            Ok(json!({
-                "title": "Generated draft",
-                "slug": "generated-draft",
-                "body": "Generated draft body",
-                "excerpt": "Generated excerpt",
-                "seo_title": "Generated SEO title",
-                "seo_description": "Generated SEO description"
-            }))
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
+            Ok(crate::ProviderStructuredResponse {
+                output: json!({
+                    "title": "Generated draft",
+                    "slug": "generated-draft",
+                    "body": "Generated draft body",
+                    "excerpt": "Generated excerpt",
+                    "seo_title": "Generated SEO title",
+                    "seo_description": "Generated SEO description"
+                }),
+                usage: None,
+            })
         }
     }
 
@@ -1879,7 +1882,7 @@ mod tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
             unreachable!("direct image execution does not use typed text generation")
         }
 
@@ -1893,7 +1896,11 @@ mod tests {
                 .lock()
                 .expect("captured image provider request") = Some(request);
             Ok(ProviderImageResponse {
-                bytes: b"\x89PNG\r\n\x1a\nimage".to_vec(),
+                bytes: base64::engine::general_purpose::STANDARD
+                    .decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                    )
+                    .expect("embedded PNG fixture must decode"),
                 mime_type: "image/png".to_string(),
                 revised_prompt: Some("Revised editorial hero image".to_string()),
                 raw_payload: json!({}),
@@ -1941,14 +1948,17 @@ mod tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
-            Ok(json!({
-                "title": "Generated product",
-                "handle": "generated-product",
-                "description": "Generated description",
-                "meta_title": "Generated SEO title",
-                "meta_description": "Generated SEO description"
-            }))
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
+            Ok(crate::ProviderStructuredResponse {
+                output: json!({
+                    "title": "Generated product",
+                    "handle": "generated-product",
+                    "description": "Generated description",
+                    "meta_title": "Generated SEO title",
+                    "meta_description": "Generated SEO description"
+                }),
+                usage: None,
+            })
         }
     }
 
@@ -1992,18 +2002,21 @@ mod tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
-            Ok(json!({
-                "brand": "Example brand",
-                "material": "Cotton",
-                "color": "Blue",
-                "size": null,
-                "dimensions": null,
-                "compatibility": null,
-                "care_instructions": "Machine wash cold",
-                "hazmat": null,
-                "flex_attributes": [{"key": "fabric_weight", "value": "180 gsm"}]
-            }))
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
+            Ok(crate::ProviderStructuredResponse {
+                output: json!({
+                    "brand": "Example brand",
+                    "material": "Cotton",
+                    "color": "Blue",
+                    "size": null,
+                    "dimensions": null,
+                    "compatibility": null,
+                    "care_instructions": "Machine wash cold",
+                    "hazmat": null,
+                    "flex_attributes": [{"key": "fabric_weight", "value": "180 gsm"}]
+                }),
+                usage: None,
+            })
         }
     }
 
@@ -2047,13 +2060,16 @@ mod tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
-            Ok(json!({
-                "summary": "One order needs an address review.",
-                "key_findings": ["Address format differs from prior orders"],
-                "risk_flags": ["address_mismatch"],
-                "recommended_actions": ["Ask an operator to confirm the address"]
-            }))
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
+            Ok(crate::ProviderStructuredResponse {
+                output: json!({
+                    "summary": "One order needs an address review.",
+                    "key_findings": ["Address format differs from prior orders"],
+                    "risk_flags": ["address_mismatch"],
+                    "recommended_actions": ["Ask an operator to confirm the address"]
+                }),
+                usage: None,
+            })
         }
     }
 
@@ -2097,14 +2113,17 @@ mod tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
-            Ok(json!({
-                "recommended_action": "contact_customer",
-                "rationale": "The shipping address needs confirmation.",
-                "prefill": {"message": "Please confirm your shipping address."},
-                "requires_human": true,
-                "confidence": 85
-            }))
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
+            Ok(crate::ProviderStructuredResponse {
+                output: json!({
+                    "recommended_action": "contact_customer",
+                    "rationale": "The shipping address needs confirmation.",
+                    "prefill": {"message": "Please confirm your shipping address."},
+                    "requires_human": true,
+                    "confidence": 85
+                }),
+                usage: None,
+            })
         }
     }
 
@@ -2158,31 +2177,33 @@ mod tests {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("media image database");
-        for statement in [
-            "CREATE TABLE media (\
-                id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, uploaded_by TEXT NULL, \
-                filename TEXT NOT NULL, original_name TEXT NOT NULL, mime_type TEXT NOT NULL, \
-                size INTEGER NOT NULL, storage_path TEXT NOT NULL, storage_driver TEXT NOT NULL, \
-                width INTEGER NULL, height INTEGER NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL\
-             )",
-            "CREATE TABLE media_translations (\
-                id TEXT PRIMARY KEY, media_id TEXT NOT NULL, locale TEXT NOT NULL, title TEXT NULL, \
-                alt_text TEXT NULL, caption TEXT NULL, UNIQUE(media_id, locale)\
-             )",
-        ] {
-            database
-                .execute(Statement::from_string(
-                    DbBackend::Sqlite,
-                    statement.to_string(),
-                ))
-                .await
-                .expect("media fixture schema");
-        }
+        database
+            .execute_unprepared(
+                "PRAGMA foreign_keys = ON; \
+                 CREATE TABLE tenants (id UUID PRIMARY KEY); \
+                 CREATE TABLE users (id UUID PRIMARY KEY)",
+            )
+            .await
+            .expect("media owner fixture schema");
         let manager = SchemaManager::new(&database);
         SysEventsMigration
             .up(&manager)
             .await
             .expect("outbox migration");
+        for migration in rustok_media::migrations::migrations() {
+            migration.up(&manager).await.expect("media migration");
+        }
+        let operator = admin_operator();
+        for (table, id) in [("tenants", operator.tenant_id), ("users", operator.user_id)] {
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    format!("INSERT INTO {table} (id) VALUES (?)"),
+                    vec![id.into()],
+                ))
+                .await
+                .expect("media owner fixture");
+        }
 
         let runtime = AiHostRuntime::new(
             database.clone(),
@@ -2193,7 +2214,7 @@ mod tests {
             AiProviderTargetCatalog::default(),
         )
         .with_storage(Some(storage));
-        (runtime, admin_operator())
+        (runtime, operator)
     }
 
     async fn product_runtime() -> (AiHostRuntime, AiOperatorContext, Uuid) {

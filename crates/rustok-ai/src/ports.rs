@@ -1,4 +1,7 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Arc, RwLock},
+};
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
@@ -9,14 +12,120 @@ pub const MAX_STRUCTURED_TASK_INPUT_BYTES: usize = 1_048_576;
 pub const MAX_STRUCTURED_TASK_SCHEMA_BYTES: usize = 262_144;
 pub const MAX_STRUCTURED_TASK_OUTPUT_BYTES: u32 = 1_048_576;
 pub const MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES: usize = 32;
+pub const MAX_STRUCTURED_TASK_SYSTEM_PROMPT_BYTES: usize = 16_384;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AiTaskDataClassification {
     Public,
     TenantPrivate,
     Personal,
     Sensitive,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiStructuredTaskDescriptor {
+    pub owner: String,
+    pub task_slug: String,
+    pub prompt_policy_digest: String,
+    pub input_schema_digest: String,
+    pub output_schema_digest: String,
+    pub system_prompt: String,
+    pub allowed_classifications: Vec<AiTaskDataClassification>,
+    pub max_input_bytes: u32,
+    pub max_output_bytes: u32,
+    pub max_attempts: u16,
+}
+
+impl AiStructuredTaskDescriptor {
+    pub fn validate(&self) -> Result<(), PortError> {
+        require_identity("owner", &self.owner)?;
+        require_identity("task_slug", &self.task_slug)?;
+        require_digest("prompt_policy_digest", &self.prompt_policy_digest)?;
+        require_digest("input_schema_digest", &self.input_schema_digest)?;
+        require_digest("output_schema_digest", &self.output_schema_digest)?;
+        if self.system_prompt.trim().is_empty()
+            || self.system_prompt.len() > MAX_STRUCTURED_TASK_SYSTEM_PROMPT_BYTES
+        {
+            return Err(PortError::validation(
+                "ai.structured.system_prompt_invalid",
+                format!(
+                    "structured task system prompt must contain 1..={MAX_STRUCTURED_TASK_SYSTEM_PROMPT_BYTES} bytes"
+                ),
+            ));
+        }
+        let unique_classifications = self
+            .allowed_classifications
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if unique_classifications.is_empty()
+            || unique_classifications.len() != self.allowed_classifications.len()
+        {
+            return Err(PortError::validation(
+                "ai.structured.classification_policy_invalid",
+                "structured task classification policy must be non-empty and unique",
+            ));
+        }
+        if self.max_input_bytes == 0
+            || usize::try_from(self.max_input_bytes)
+                .map_or(true, |value| value > MAX_STRUCTURED_TASK_INPUT_BYTES)
+            || self.max_output_bytes == 0
+            || self.max_output_bytes > MAX_STRUCTURED_TASK_OUTPUT_BYTES
+            || self.max_attempts == 0
+            || self.max_attempts > 8
+        {
+            return Err(PortError::validation(
+                "ai.structured.descriptor_limits_invalid",
+                "structured task descriptor limits exceed the platform bounds",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct AiStructuredTaskCatalog {
+    descriptors: Arc<RwLock<BTreeMap<(String, String), AiStructuredTaskDescriptor>>>,
+}
+
+impl AiStructuredTaskCatalog {
+    pub fn register(&self, descriptor: AiStructuredTaskDescriptor) -> Result<(), PortError> {
+        descriptor.validate()?;
+        let key = (descriptor.owner.clone(), descriptor.task_slug.clone());
+        let mut descriptors = self.descriptors.write().map_err(|_| {
+            PortError::unavailable(
+                "ai.structured.catalog_unavailable",
+                "structured task catalog is unavailable",
+            )
+        })?;
+        if let Some(existing) = descriptors.get(&key) {
+            if existing == &descriptor {
+                return Ok(());
+            }
+            return Err(PortError::conflict(
+                "ai.structured.descriptor_conflict",
+                "structured task identity is already registered with another contract",
+            ));
+        }
+        descriptors.insert(key, descriptor);
+        Ok(())
+    }
+
+    pub fn get(&self, owner: &str, task_slug: &str) -> Option<AiStructuredTaskDescriptor> {
+        self.descriptors.read().ok().and_then(|descriptors| {
+            descriptors
+                .get(&(owner.to_string(), task_slug.to_string()))
+                .cloned()
+        })
+    }
+
+    pub fn descriptors(&self) -> Vec<AiStructuredTaskDescriptor> {
+        self.descriptors
+            .read()
+            .map(|descriptors| descriptors.values().cloned().collect())
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,6 +398,24 @@ mod tests {
         }
     }
 
+    fn descriptor() -> AiStructuredTaskDescriptor {
+        AiStructuredTaskDescriptor {
+            owner: "translation".to_string(),
+            task_slug: "machine_translation".to_string(),
+            prompt_policy_digest: "a".repeat(64),
+            input_schema_digest: "b".repeat(64),
+            output_schema_digest: "c".repeat(64),
+            system_prompt: "Translate the bounded structured input.".to_string(),
+            allowed_classifications: vec![
+                AiTaskDataClassification::Public,
+                AiTaskDataClassification::TenantPrivate,
+            ],
+            max_input_bytes: 4096,
+            max_output_bytes: 4096,
+            max_attempts: 3,
+        }
+    }
+
     #[test]
     fn billable_execution_requires_write_semantics() {
         let error = sample_request()
@@ -336,6 +463,21 @@ mod tests {
                 .validate_completed_output(MAX_STRUCTURED_TASK_OUTPUT_BYTES)
                 .unwrap(),
             &json!({"ok": true})
+        );
+    }
+
+    #[test]
+    fn catalog_is_idempotent_and_rejects_contract_drift() {
+        let catalog = AiStructuredTaskCatalog::default();
+        catalog.register(descriptor()).unwrap();
+        catalog.register(descriptor()).unwrap();
+        assert_eq!(catalog.descriptors(), vec![descriptor()]);
+
+        let mut changed = descriptor();
+        changed.system_prompt = "Changed policy".to_string();
+        assert_eq!(
+            catalog.register(changed).unwrap_err().code,
+            "ai.structured.descriptor_conflict"
         );
     }
 }

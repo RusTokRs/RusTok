@@ -58,7 +58,7 @@ still requires targeted platform verification evidence.
 | Agent workflow platform contracts | `completed` | `TenantRbacCatalog` and `ModuleWorkScheduler` are available. The scheduler registers source/handler pairs by worker slug, and the generic host invokes module-owned registrations and runs the shared loop without AI persistence or task knowledge. |
 | Agent model-assignment transport parity | `completed` | GraphQL and native transport expose the same typed create/update operations. The module-owned Leptos editor selects active tenant principals and active provider profiles, optionally accepts a model override, and limits execution mode to the closed `auto`/`direct`/`mcp_tooling` enum; provider capability validation remains in the service. |
 | Agent workflow-run transport parity | `completed` | GraphQL and native transport both accept a workflow owner/slug plus an exact stage binding set. Owner surfaces assemble typed bindings and stage payloads; the generic AI panel deliberately does not expose a raw JSON workflow launcher. The service rejects duplicate, incomplete, cross-owner, inactive, or capability-incompatible bindings. |
-| Structured task backend port | `in_progress` | `AiStructuredTaskPort` now defines bounded write-like execution, health, status, cancellation, typed structured output, attempts, token usage, immutable price/cost evidence, and retry hints without importing Translation. The durable execution/attempt/usage/cost ledger, budget reservation, replay, provider fallback, and restart recovery implementation remains open, so no machine-translation runtime is registered. |
+| Structured task backend port | `in_progress` | `AiStructuredTaskPort` defines bounded write-like execution, health, status, cancellation, typed structured output, attempts, token usage, immutable price/cost evidence, and retry hints without importing Translation. The owner migration creates content-free execution/attempt, tenant-budget, provider-price/concurrency-policy, and reservation tables. The ledger provides unique `(tenant, owner, idempotency_key)` registration, request-hash conflict detection, execution leases, cancellation receipts, bounded status evidence, conservative budget reservation, tenant concurrency, and an exact owner/policy/schema task catalog. Provider attempts acquire/release durable concurrency slots and record immutable price snapshots, reconciled actual tokens, costs, retryability and retry hints. Terminal execution state, reservation settlement, committed cost, and tenant slot release are atomic; queued cancellation and expired-lease recovery reconcile reservations and provider slots. The private runtime validates the exact registered descriptor, uses deterministic preferred-then-eligible routing, performs real structured inference/fallback, maps content-free typed failures, enforces the call deadline, and observes durable cancellation. Operator accounting-policy provisioning, recovery scheduling, terminal-result replay semantics, and neutral runtime publication remain open, so no machine-translation runtime is registered. |
 | Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
 
 The current wave has replaced tenant-facing provider settings with a deployment
@@ -139,9 +139,10 @@ active.
 - `cargo xtask module validate ai` passes for the registered `runtime = "extension"`
   capability contract.
 - `cargo test -p rustok-secrets --lib` passes 12 tests.
-- `cargo test -p rustok-ai --features server --lib` passes 94 tests with one
-  deployment-live probe intentionally ignored; the GraphQL variant passes 95
-  tests with the same ignored probe.
+- `cargo test -p rustok-ai --features server --lib` passes 126 tests with one
+  deployment-live probe intentionally ignored. The last recorded GraphQL
+  variant passes 95 tests with the same ignored probe and must be rerun before
+  structured-runtime publication.
 - `cargo test -p rustok-ai-admin --features ssr --lib` passes 22 tests.
 - Next Admin typecheck/lint and `npm run verify:i18n:ui` pass.
 

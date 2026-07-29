@@ -28,7 +28,8 @@ use crate::{
     model::{
         AiProviderConfig, ChatMessage, ChatMessageRole, ProviderChatRequest, ProviderChatResponse,
         ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter,
-        ProviderStructuredRequest, ProviderTestResult, ProviderUsage, ToolCall,
+        ProviderStructuredRequest, ProviderStructuredResponse, ProviderTestResult, ProviderUsage,
+        ToolCall,
     },
 };
 
@@ -51,7 +52,7 @@ pub trait InferenceEngine: Send + Sync {
     async fn complete_structured(
         &self,
         request: ProviderStructuredRequest,
-    ) -> AiResult<serde_json::Value>;
+    ) -> AiResult<ProviderStructuredResponse>;
     async fn generate_image(
         &self,
         _config: &AiProviderConfig,
@@ -433,17 +434,19 @@ where
     async fn complete_structured(
         &self,
         request: ProviderStructuredRequest,
-    ) -> AiResult<serde_json::Value> {
+    ) -> AiResult<ProviderStructuredResponse> {
         let mut completion = map_request(request.request)?;
         completion.output_schema = Some(
             schemars::Schema::try_from(request.output_schema)
                 .map_err(|error| AiError::Validation(error.to_string()))?,
         );
         let response = complete_with(&self.model, completion, &self.provider).await?;
+        let usage = extract_usage(&response.raw_payload);
         let content = response.assistant_message.content.ok_or_else(|| {
             AiError::Provider("Rig structured output returned empty content".to_string())
         })?;
-        serde_json::from_str(content.trim()).map_err(AiError::Json)
+        let output = serde_json::from_str(content.trim()).map_err(AiError::Json)?;
+        Ok(ProviderStructuredResponse { output, usage })
     }
 
     async fn generate_image(

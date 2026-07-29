@@ -124,30 +124,26 @@ impl AiRouter {
                 )
             })?;
 
-            let preferred = profile
+            let candidates = ordered_provider_candidates(profile, providers, actor_role_slugs);
+            let candidate = candidates.first().ok_or_else(|| {
+                AiError::Validation(format!(
+                    "no active provider profile can satisfy task profile `{}`",
+                    profile.slug
+                ))
+            })?;
+            if profile
                 .preferred_provider_profile_ids
-                .iter()
-                .filter_map(|id| providers.iter().find(|candidate| candidate.id == *id))
-                .find(|candidate| provider_allowed(candidate, profile, actor_role_slugs));
-
-            if let Some(candidate) = preferred {
+                .contains(&candidate.id)
+            {
                 reasons.push(format!(
                     "Selected preferred provider `{}` from task profile `{}`",
                     candidate.slug, profile.slug
                 ));
-                candidate
-            } else {
-                providers
-                    .iter()
-                    .filter(|candidate| provider_allowed(candidate, profile, actor_role_slugs))
-                    .find(|candidate| candidate.capabilities.contains(&profile.target_capability))
-                    .ok_or_else(|| {
-                        AiError::Validation(format!(
-                            "no active provider profile can satisfy task profile `{}`",
-                            profile.slug
-                        ))
-                    })?
             }
+            providers
+                .iter()
+                .find(|provider| provider.id == candidate.id)
+                .ok_or_else(|| AiError::NotFound("AI provider profile not found".to_string()))?
         };
 
         if let Some(profile) = task_profile {
@@ -241,6 +237,46 @@ pub fn explain_provider_candidates(
             }
         })
         .collect()
+}
+
+pub fn ordered_provider_candidates(
+    task_profile: &TaskProfile,
+    providers: &[RouterProviderProfile],
+    actor_role_slugs: &[String],
+) -> Vec<RouterProviderProfile> {
+    let mut candidates = Vec::new();
+    for preferred_id in &task_profile.preferred_provider_profile_ids {
+        if candidates
+            .iter()
+            .any(|candidate: &RouterProviderProfile| candidate.id == *preferred_id)
+        {
+            continue;
+        }
+        if let Some(provider) = providers.iter().find(|provider| {
+            provider.id == *preferred_id
+                && provider_allowed(provider, task_profile, actor_role_slugs)
+        }) {
+            candidates.push(provider.clone());
+        }
+    }
+
+    let mut remaining = providers
+        .iter()
+        .filter(|provider| {
+            !candidates
+                .iter()
+                .any(|candidate| candidate.id == provider.id)
+                && provider_allowed(provider, task_profile, actor_role_slugs)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    remaining.sort_by(|left, right| {
+        left.slug
+            .cmp(&right.slug)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    candidates.extend(remaining);
+    candidates
 }
 
 fn provider_allowed(
@@ -435,6 +471,75 @@ mod tests {
                 .reasons
                 .iter()
                 .any(|reason| reason.contains("Selected preferred provider"))
+        );
+    }
+
+    #[test]
+    fn ordered_candidates_preserve_preference_then_sort_eligible_fallbacks() {
+        let alpha = provider(
+            1,
+            "alpha",
+            ProviderSlug::openai_compatible(),
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy::default(),
+        );
+        let preferred_first = provider(
+            2,
+            "preferred-first",
+            ProviderSlug::anthropic(),
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy::default(),
+        );
+        let preferred_second = provider(
+            3,
+            "preferred-second",
+            ProviderSlug::gemini(),
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy::default(),
+        );
+        let zulu = provider(
+            4,
+            "zulu",
+            ProviderSlug::openai_compatible(),
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy::default(),
+        );
+        let inactive = RouterProviderProfile {
+            is_active: false,
+            ..provider(
+                5,
+                "ignored",
+                ProviderSlug::openai_compatible(),
+                vec![ProviderCapability::TextGeneration],
+                ProviderUsagePolicy::default(),
+            )
+        };
+        let task = task_profile(
+            15,
+            "ordered_generation",
+            ProviderCapability::TextGeneration,
+            vec![preferred_second.id, preferred_first.id, preferred_second.id],
+            vec![],
+        );
+
+        let candidates = ordered_provider_candidates(
+            &task,
+            &[
+                zulu.clone(),
+                preferred_first.clone(),
+                inactive,
+                alpha.clone(),
+                preferred_second.clone(),
+            ],
+            &[],
+        );
+
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.id)
+                .collect::<Vec<_>>(),
+            vec![preferred_second.id, preferred_first.id, alpha.id, zulu.id]
         );
     }
 

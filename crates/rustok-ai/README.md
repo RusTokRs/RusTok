@@ -35,8 +35,18 @@ Current implementation includes:
   injection
 - the owner-neutral `AiStructuredTaskPort` contract for bounded billable
   structured execution, health, durable execution/status identity, usage/cost
-  evidence, polling, and cancellation; its canonical durable implementation
-  remains an activation prerequisite for machine translation
+  evidence, polling, and cancellation; a content-free execution/attempt ledger,
+  idempotent registration, leases, cancellation receipts, recovery, tenant
+  budget reservations, immutable provider price policies, and an exact
+  registered-task catalog now back the implementation track. Provider attempt
+  slots, immutable per-attempt price snapshots, actual token/cost recording,
+  slot release, atomic terminal execution/budget settlement, and
+  accounting-aware expired-lease recovery are also durable. The private
+  structured runtime now performs exact descriptor validation, deterministic
+  ordered inference/fallback, typed failure mapping, deadline enforcement, and
+  durable cancellation observation. Operator policy provisioning, recovery
+  scheduling, terminal-result replay semantics, and runtime publication remain
+  activation prerequisites for machine translation
 - owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
   host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
 - host-neutral `AiHostRuntime` for GraphQL mutations, direct execution, and in-process MCP

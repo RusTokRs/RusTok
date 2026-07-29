@@ -1,3 +1,5 @@
+#[cfg(feature = "server")]
+mod accounting;
 pub mod agent;
 #[cfg(feature = "server")]
 pub mod direct;
@@ -29,6 +31,8 @@ pub mod service;
 pub mod streaming;
 #[cfg(feature = "server")]
 mod structured;
+#[cfg(feature = "server")]
+mod structured_runtime;
 
 #[cfg(feature = "server")]
 pub use agent::agent_catalog;
@@ -72,18 +76,20 @@ pub use model::{
     AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage, ChatMessageRole,
     DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval, ProviderCapability,
     ProviderChatRequest, ProviderChatResponse, ProviderImageRequest, ProviderImageResponse,
-    ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest, ProviderTestResult,
-    ProviderUsage, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall,
-    ToolDefinition, ToolTrace, default_provider_capabilities,
+    ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest,
+    ProviderStructuredResponse, ProviderTestResult, ProviderUsage, ProviderUsagePolicy,
+    RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall, ToolDefinition, ToolTrace,
+    default_provider_capabilities,
 };
 pub use policy::ToolExecutionPolicy;
 pub use ports::{
-    AiStructuredTaskAttempt, AiStructuredTaskAvailability, AiStructuredTaskExecution,
-    AiStructuredTaskExecutionRef, AiStructuredTaskHealth, AiStructuredTaskLimits,
-    AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus, AiStructuredTaskUsage,
-    AiTaskDataClassification, MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES,
-    MAX_STRUCTURED_TASK_INPUT_BYTES, MAX_STRUCTURED_TASK_OUTPUT_BYTES,
-    MAX_STRUCTURED_TASK_SCHEMA_BYTES,
+    AiStructuredTaskAttempt, AiStructuredTaskAvailability, AiStructuredTaskCatalog,
+    AiStructuredTaskDescriptor, AiStructuredTaskExecution, AiStructuredTaskExecutionRef,
+    AiStructuredTaskHealth, AiStructuredTaskLimits, AiStructuredTaskPort, AiStructuredTaskRequest,
+    AiStructuredTaskStatus, AiStructuredTaskUsage, AiTaskDataClassification,
+    MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES, MAX_STRUCTURED_TASK_INPUT_BYTES,
+    MAX_STRUCTURED_TASK_OUTPUT_BYTES, MAX_STRUCTURED_TASK_SCHEMA_BYTES,
+    MAX_STRUCTURED_TASK_SYSTEM_PROMPT_BYTES,
 };
 #[cfg(feature = "server")]
 pub use rag::RigRagEmbeddingProvider;

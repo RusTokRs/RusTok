@@ -6,9 +6,9 @@
 `MachineTranslationPort` and the AI-owned `AiStructuredTaskPort`.
 
 It owns the `machine_translation` task identity, prompt-policy digest, typed
-input/output schemas, bounded request mapping, and deterministic validation of
-AI output. It never stores translation workflow state and never mutates
-owner-owned content.
+input/output schemas and their digests, registered system prompt and limits,
+bounded request mapping, and deterministic validation of AI output. It never
+stores translation workflow state and never mutates owner-owned content.
 
 ## Responsibilities
 
@@ -30,16 +30,21 @@ owner-owned content.
 - Does not depend on owner modules, provider SDKs, GraphQL, server hosts, or
   persistence crates.
 
-The bridge is not live-registered yet. Runtime activation is blocked until
-`rustok-ai` implements the durable structured execution/attempt/usage/cost
-ledger, idempotent replay, budgets, fallback, cancellation, and restart
-recovery required by the Translation plan.
+The bridge is not live-registered yet. `rustok-ai` now has the content-free
+execution/attempt/accounting schema, idempotent ledger, leases, cancellation
+receipts, budget reservations, exact task catalog, and a private executor with
+ordered inference/fallback and cancellation/deadline observation. Runtime
+activation remains blocked on accounting-policy provisioning, recovery
+scheduling, terminal-result replay semantics, and neutral runtime publication.
 
 ## Entry points
 
 - `AiMachineTranslationAdapter`
 - `machine_translation_descriptor`
 - `machine_translation_policy_digest`
+- `machine_translation_task_descriptor`
+- `machine_translation_input_schema_digest`
+- `machine_translation_output_schema_digest`
 - `MACHINE_TRANSLATION_TASK_SLUG`
 
 ## Documentation

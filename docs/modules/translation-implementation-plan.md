@@ -43,9 +43,17 @@ This is the active cross-cutting implementation plan. As of 2026-07-29:
   `AiStructuredTaskPort`, and the stateless `rustok-ai-translation` crate is
   the only crate importing both. It owns `machine_translation`, typed
   schemas/policy, bounded mapping, placeholder/unit/length validation, and
-  review-required evidence. It is deliberately not runtime-registered because
-  the durable structured execution/attempt/usage/cost, replay, budget,
-  fallback, cancellation, and recovery foundation remains open;
+  review-required evidence plus an exact owner/policy/schema task descriptor.
+  It is deliberately not runtime-registered. `rustok-ai` now has the
+  content-free execution/attempt schema, idempotent ledger, task catalog,
+  leases, cancellation receipts, conservative tenant budget reservations,
+  settlement, immutable provider price/concurrency policies, durable provider
+  slots, per-attempt price snapshots, and actual token/cost evidence; ordered
+  atomic terminal settlement and accounting-aware expired-lease recovery are
+  implemented; the private runtime now covers ordered inference/fallback and
+  cancellation/deadline observation. Accounting-policy provisioning, recovery
+  scheduling, terminal-result replay semantics, and runtime publication remain
+  open;
 - the optional `translation` slug and `rustok-translation` crate now exist with
   module metadata, RBAC resources, a module-owned migration source, and the first
   rebuildable inventory/checkpoint service. Inventory synchronization rejects
@@ -244,7 +252,7 @@ Four related planes must remain distinct:
 | Page Builder | Fly translation state is project-local and not a platform target provider | Add a Page Builder owner adapter with lossless segment identity and revision checks |
 | Flex exact-locale behavior | Some attached and standalone paths seed or read through fallback/default locale | Add exact read/apply operations and finish the parallel localized-record cutover before onboarding |
 | Static catalogs | `rustok-core` match tables and compiled UI bundles are separate systems | Finish the Fluent/catalog ownership track before claiming all platform copy is editable |
-| AI task contract | `AiStructuredTaskPort` now defines bounded execute/health/status/cancel and typed attempt/usage/cost evidence, but has no canonical durable implementation or runtime publication | Implement the ledger-backed port through runtime extensions without routing machine translation through chat sessions |
+| AI task contract | `AiStructuredTaskPort` defines bounded execute/health/status/cancel and typed attempt/usage/cost evidence. A private canonical implementation now binds the exact task descriptor to tenant routing, durable accounting, ordered structured inference/fallback, cancellation, and deadlines, but is not runtime-published. | Finish policy provisioning, recovery scheduling, terminal-result replay semantics, and neutral runtime publication without routing machine translation through chat sessions |
 | AI task ownership | Completed at contract level: the hard-coded `"translation"` free-locale alias is removed and `rustok-ai-translation` owns `machine_translation` | Register only after the structured runtime activation gate passes |
 | AI accounting/recovery | Current task execution has no durable token/cost/quota ledger, idempotency contract, typed retryability, or execution-time provider fallback | Complete the structured AI execution foundation before machine-translation beta |
 | Multilingual storage gaps | Alloy, RBAC, Channel, Workflow, MCP, AI control-plane copy, and Order prose remain open | Close or explicitly exclude each owner gap before its provider is marked ready |
@@ -274,7 +282,7 @@ until after the module exists.
 | Correct Flex exact semantics | [`flex::attached`](../../crates/flex/src/attached.rs) can seed/read from the first available locale and the standalone host service uses tenant default locale | Exact source/target APIs never synthesize an existing translation; only schema-declared `is_localized` leaves are exposed |
 | Type localized settings | [`ModuleSettingSpec`](../../crates/rustok-modules/src/settings.rs) and host settings writes have no localized-leaf, sensitivity, or revision contract | A named owner exposes stable field IDs, `localized` and field-policy metadata, parallel localized rows, CAS, events, and secret-safe validation |
 | Finish semantic string classification | Product image alt text has base/translation drift; Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
-| Prepare structured AI execution | The cross-module structured port contract now exists; the current task service still stores full task input and has no durable usage/cost/quota ledger or configured provider fallback | Implement the `AiStructuredTaskPort` ledger with durable attempts/usage/cost, budget reservation, idempotency, cancellation, typed retry policy, and content-safe evidence |
+| Prepare structured AI execution | The cross-module port and content-free execution/attempt/accounting schema now exist. Registration is request-hash idempotent; execution leases, cancellation receipts, tenant budget reservation/concurrency, immutable provider price/concurrency policy, exact task descriptors, durable provider slots, actual per-attempt token/cost evidence, atomic queued/terminal settlement, and accounting-aware expired-lease recovery are implemented. The private executor validates exact policy/schema identity, selects preferred then deterministic eligible providers, performs real structured inference/fallback, records typed content-free failures, enforces deadlines, and observes durable cancellation. The separate chat task service still stores full task input, but machine translation does not use that path. | Finish operator policy provisioning, recovery scheduling, terminal-result replay semantics, and neutral runtime publication |
 
 The baseline repair should update
 [`verify-i18n-contract.mjs`](../../scripts/verify/verify-i18n-contract.mjs),

@@ -402,7 +402,7 @@ mod tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> AiResult<serde_json::Value> {
+        ) -> AiResult<crate::ProviderStructuredResponse> {
             unreachable!("agent test never requests structured output")
         }
     }

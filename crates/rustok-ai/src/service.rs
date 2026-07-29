@@ -328,7 +328,7 @@ async fn agent_execution_context_for_run(
 
 pub struct AiManagementService;
 
-async fn runtime_inference_engine(
+pub(crate) async fn runtime_inference_engine(
     runtime: &AiHostRuntime,
     provider_slug: &ProviderSlug,
     provider_config: &crate::AiProviderConfig,
@@ -2053,18 +2053,21 @@ mod product_agent_workflow_persistence_tests {
         async fn complete_structured(
             &self,
             _request: ProviderStructuredRequest,
-        ) -> crate::AiResult<serde_json::Value> {
-            Ok(json!({
-                "brand": "Example brand",
-                "material": "Cotton",
-                "color": "Blue",
-                "size": null,
-                "dimensions": null,
-                "compatibility": null,
-                "care_instructions": "Machine wash cold",
-                "hazmat": null,
-                "flex_attributes": [{"key": "fabric_weight", "value": "180 gsm"}]
-            }))
+        ) -> crate::AiResult<crate::ProviderStructuredResponse> {
+            Ok(crate::ProviderStructuredResponse {
+                output: json!({
+                    "brand": "Example brand",
+                    "material": "Cotton",
+                    "color": "Blue",
+                    "size": null,
+                    "dimensions": null,
+                    "compatibility": null,
+                    "care_instructions": "Machine wash cold",
+                    "hazmat": null,
+                    "flex_attributes": [{"key": "fabric_weight", "value": "180 gsm"}]
+                }),
+                usage: None,
+            })
         }
     }
 
