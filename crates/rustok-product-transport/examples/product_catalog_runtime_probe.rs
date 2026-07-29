@@ -1,6 +1,6 @@
 use std::{env, error::Error, io, time::Duration};
 
-use rustok_api::{PortActor, PortContext};
+use rustok_api::{PortActor, PortContext, PortError};
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
     VariantProductProjectionRequest,
@@ -54,7 +54,12 @@ impl ProbeConfig {
             tenant_id: required_uuid(TENANT_ID_ENV)?,
             product_id: required_uuid(PRODUCT_ID_ENV)?,
             variant_id: required_uuid(VARIANT_ID_ENV)?,
-            locale: bounded_text(optional_env(LOCALE_ENV)?.as_deref().unwrap_or("en"), LOCALE_ENV, 2, 32)?,
+            locale: bounded_text(
+                optional_env(LOCALE_ENV)?.as_deref().unwrap_or("en"),
+                LOCALE_ENV,
+                2,
+                32,
+            )?,
             fallback_locale: optional_env(FALLBACK_LOCALE_ENV)?
                 .map(|value| bounded_text(&value, FALLBACK_LOCALE_ENV, 2, 32))
                 .transpose()?,
@@ -97,7 +102,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 fallback_locale: config.fallback_locale.clone(),
             },
         )
-        .await?;
+        .await
+        .map_err(|error| port_error("read_product_projection", error))?;
     if product.id != config.product_id || product.tenant_id != config.tenant_id {
         return Err(invalid("product projection identity mismatch").into());
     }
@@ -111,7 +117,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 fallback_locale: config.fallback_locale.clone(),
             },
         )
-        .await?;
+        .await
+        .map_err(|error| port_error("read_variant_product_projection", error))?;
     if variant_product.id != config.product_id
         || variant_product.tenant_id != config.tenant_id
         || !variant_product
@@ -133,7 +140,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 per_page: 48,
             },
         )
-        .await?;
+        .await
+        .map_err(|error| port_error("list_published_products", error))?;
     if published.page != 1 || published.per_page != 48 || published.total == 0 {
         return Err(invalid("published product list evidence fixture is empty or invalid").into());
     }
@@ -144,6 +152,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn port_error(operation: &'static str, error: PortError) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Other,
+        format!("{operation} failed with Product port code {}", error.code),
+    )
+}
+
 fn required_env(name: &str) -> Result<String, io::Error> {
     optional_env(name)?.ok_or_else(|| invalid(format!("{name} is required")))
 }
@@ -151,7 +166,9 @@ fn required_env(name: &str) -> Result<String, io::Error> {
 fn required_secret_env(name: &str) -> Result<String, io::Error> {
     let value = env::var(name).map_err(|_| invalid(format!("{name} is required")))?;
     if value.is_empty() || value.trim() != value {
-        return Err(invalid(format!("{name} must be non-empty without surrounding whitespace")));
+        return Err(invalid(format!(
+            "{name} must be non-empty without surrounding whitespace"
+        )));
     }
     Ok(value)
 }
@@ -165,7 +182,9 @@ fn optional_env(name: &str) -> Result<Option<String>, io::Error> {
         return Ok(None);
     }
     if normalized != value || normalized.chars().any(char::is_control) {
-        return Err(invalid(format!("{name} contains unsupported whitespace or control characters")));
+        return Err(invalid(format!(
+            "{name} contains unsupported whitespace or control characters"
+        )));
     }
     Ok(Some(normalized.to_string()))
 }
@@ -182,9 +201,13 @@ fn bounded_text(
     maximum: usize,
 ) -> Result<String, io::Error> {
     if !(minimum..=maximum).contains(&value.len())
-        || value.chars().any(|character| character.is_control() || character.is_whitespace())
+        || value
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
     {
-        return Err(invalid(format!("{name} is outside the runtime evidence boundary")));
+        return Err(invalid(format!(
+            "{name} is outside the runtime evidence boundary"
+        )));
     }
     Ok(value.to_string())
 }
@@ -213,7 +236,9 @@ fn optional_bounded_u64(
         .parse::<u64>()
         .map_err(|_| invalid(format!("{name} must be an integer")))?;
     if !(minimum..=maximum).contains(&parsed) {
-        return Err(invalid(format!("{name} must be between {minimum} and {maximum}")));
+        return Err(invalid(format!(
+            "{name} must be between {minimum} and {maximum}"
+        )));
     }
     Ok(parsed)
 }
