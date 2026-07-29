@@ -50,7 +50,7 @@ for (const [source, value, label] of [
   [storefrontOrders, 'fn map_storefront_order_port_error(', 'safe PortError mapper'],
   [storefrontOrders, 'internal_code = %error.code', 'stable internal diagnostics'],
   [storefrontOrders, 'if order.customer_id != Some(customer_id)', 'ownership comparison'],
-  [note, 'Status: owner port and host runtime published; admin REST, mounted GraphQL, and storefront HTTP detail/ownership cut over, unvalidated.', 'owner note status'],
+  [note, 'Status: owner port and host runtime published; complete order projections plus storefront return/change lists cut over, unvalidated.', 'owner note status'],
   [orderPlan, 'storefront HTTP', 'order plan storefront checkpoint'],
 ]) requireText(source, value, label);
 
@@ -78,12 +78,10 @@ for (const [source, label] of [
 
 for (const [value, label] of [
   ['.create_return(tenant.id, id, input)', 'return mutation remains owner service'],
-  ['.list_returns(', 'return list remains owner service'],
-  ['.list_order_changes(', 'order-change list remains owner service'],
   ['PaymentService::new(runtime.db_clone())', 'refund list remains payment service'],
 ]) requireText(storefrontOrders, value, label);
 
-if (evidence.status !== 'storefront_http_cutover_unvalidated') {
+if (evidence.status !== 'storefront_post_order_reads_cutover_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 if (evidence.consumer_inventory?.commerce_storefront_detail_and_ownership !==
@@ -93,11 +91,14 @@ if (evidence.consumer_inventory?.commerce_storefront_detail_and_ownership !==
 if (evidence.consumer_inventory?.commerce_storefront_detail_and_ownership_cutover_completed !== true) {
   failures.push('storefront detail/ownership source cutover must be complete');
 }
-if (evidence.consumer_inventory?.all_consumer_cutover_completed !== true) {
-  failures.push('complete order projection consumer cutover must be recorded');
+if (evidence.consumer_inventory?.complete_order_projection_consumer_cutover_completed !== true) {
+  failures.push('complete order projection consumer cutover must remain complete');
 }
-if (evidence.consumer_inventory?.cutover_required !== false) {
-  failures.push('complete order projection consumer cutover must no longer be pending');
+if (evidence.consumer_inventory?.all_consumer_cutover_completed !== false) {
+  failures.push('post-order GraphQL/admin consumers must remain open');
+}
+if (evidence.consumer_inventory?.cutover_required !== true) {
+  failures.push('post-order consumer cutover must remain pending');
 }
 if (evidence.context?.storefront_actor_source !== 'validated_auth_context_user') {
   failures.push('storefront actor source mismatch');
@@ -132,5 +133,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Storefront order detail and shared ownership reads use the host-selected typed owner port while return/change/payment operations remain unchanged',
+  '✔ Storefront order detail and shared ownership reads use the host-selected typed owner port while mutations and payment policy remain unchanged',
 );

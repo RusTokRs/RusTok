@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-29",
-  "status": "storefront_http_cutover_unvalidated",
-  "source_base_revision": "f4ff7627c93b18e7fefd8070f8bac99da7eed78b",
-  "scope": "order detail and filtered list projections for mounted Commerce query consumers",
+  "status": "storefront_post_order_reads_cutover_unvalidated",
+  "source_base_revision": "f0a6799a536b369dbffc3ab5f48946fb3825302b",
+  "scope": "complete order, return, and order-change projections for mounted Commerce query consumers",
   "owner": {
     "crate": "rustok-order",
     "port": "OrderReadPort",
@@ -33,6 +33,43 @@
       "ordering": "created_at_desc",
       "locale_source": "PortContext.locale",
       "tenant_default_locale_fallback": true
+    },
+    {
+      "name": "read_order_return_projection",
+      "request": "ReadOrderReturnProjectionRequest",
+      "result": "OrderReturnResponse",
+      "optional_not_found": false
+    },
+    {
+      "name": "list_order_return_projections",
+      "request": "ListOrderReturnProjectionsRequest",
+      "result": "OrderReturnProjectionPage",
+      "filters": [
+        "page",
+        "per_page",
+        "order_id",
+        "status"
+      ],
+      "ordering": "created_at_desc"
+    },
+    {
+      "name": "read_order_change_projection",
+      "request": "ReadOrderChangeProjectionRequest",
+      "result": "OrderChangeResponse",
+      "optional_not_found": false
+    },
+    {
+      "name": "list_order_change_projections",
+      "request": "ListOrderChangeProjectionsRequest",
+      "result": "OrderChangeProjectionPage",
+      "filters": [
+        "page",
+        "per_page",
+        "order_id",
+        "status",
+        "change_type"
+      ],
+      "ordering": "created_at_desc"
     }
   ],
   "context": {
@@ -81,22 +118,31 @@
     "commerce_admin_rest_cutover_completed": true,
     "commerce_storefront_detail_and_ownership": "order_read_port_host_runtime",
     "commerce_storefront_detail_and_ownership_cutover_completed": true,
+    "commerce_storefront_return_list": "order_read_port_host_runtime",
+    "commerce_storefront_return_list_cutover_completed": true,
+    "commerce_storefront_order_change_list": "order_read_port_host_runtime",
+    "commerce_storefront_order_change_list_cutover_completed": true,
     "commerce_graphql_order_list_detail": "order_read_port_host_runtime_with_request_context",
     "commerce_graphql_order_list_detail_cutover_completed": true,
+    "commerce_graphql_return_and_order_change_reads": "concrete_order_service",
+    "commerce_admin_return_and_order_change_reads": "concrete_order_service",
+    "complete_order_projection_consumer_cutover_completed": true,
+    "post_order_consumer_cutover_completed": false,
     "runtime_composition_published": true,
-    "all_consumer_cutover_completed": true,
-    "cutover_required": false
+    "all_consumer_cutover_completed": false,
+    "cutover_required": true
   },
   "unchanged_scope": {
     "admin_order_mutations": "concrete_order_service",
     "admin_detail_payment_lookup": "concrete_payment_service",
     "admin_detail_fulfillment_lookup": "concrete_fulfillment_service",
-    "storefront_return_mutations_and_reads": "concrete_order_service",
-    "storefront_order_change_reads": "concrete_order_service",
-    "storefront_refund_reads": "concrete_payment_service"
+    "storefront_return_mutation": "concrete_order_service",
+    "storefront_refund_reads": "concrete_payment_service",
+    "graphql_return_and_order_change_reads": "concrete_order_service",
+    "admin_return_and_order_change_reads": "concrete_order_service"
   },
   "decision": {
-    "next_slice": "publish wider owner read contracts for returns and order changes separately; execute compile, mounted parity, deadline, restart, and remote-adapter evidence before status promotion",
+    "next_slice": "cut GraphQL post-order reads to the host-selected OrderReadPort, then audit admin post-order reads separately; execute compile and mounted parity evidence before status promotion",
     "mutation_scope": "unchanged",
     "status_promotion": false
   },
