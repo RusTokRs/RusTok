@@ -80,7 +80,10 @@ mod reply_owner {
     include!("reply_owner_inline.rs");
 }
 pub mod revision;
-pub mod storefront_read_state;
+pub mod storefront_read_state {
+    include!("storefront_read_state.rs");
+    include!("storefront_read_state_bulk.rs");
+}
 pub mod subscription;
 #[allow(clippy::collapsible_if)]
 mod topic {
