@@ -1,8 +1,8 @@
 # M4 PostgreSQL query result decoding
 
-This boundary closes the database-independent handoff between the controlled M4
-PostgreSQL compiler and a later execution adapter. It does not execute SQL, prepare
-statements, own a database connection, or expose `IndexQueryPort`.
+This boundary defines the strict handoff between the controlled M4 compiler,
+`PostgresIndexQueryPort`, and the public typed page result. The decoder itself does not
+execute SQL, prepare statements, own a database connection, or authorize callers.
 
 ## Page compilation contract
 
@@ -16,17 +16,20 @@ cursor predicate, offset, and optional exact-count statement remain unchanged. C
 and bounded-offset pages use the same lookahead rule; the original offset bind is
 rechecked and preserved.
 
-## Adapter row handoff
+## PostgreSQL row handoff
 
-A later SeaORM/PostgreSQL adapter converts driver rows into `CompiledPostgresRow`.
-Cells are limited to compiler-owned shapes:
+`PostgresIndexQueryPort` performs exact persisted-schema preflight, executes the page
+and optional count inside one read-only repeatable-read transaction, and converts
+SeaORM driver rows into `CompiledPostgresRow`. Cells are limited to compiler-owned
+shapes:
 
 - UUID or SQL null for outer relation identities;
 - tagged `IndexValue` JSON or SQL null for scalar projection and hidden order columns;
 - JSON arrays for `CompiledManyRelationColumn` aggregates;
 - PostgreSQL bigint for the optional exact-count row.
 
-This DTO is not a generic SQL row abstraction.
+The adapter reads only compiler-declared aliases. `CompiledPostgresRow` is not a generic
+SQL row abstraction, and semantic validation remains owned by the decoder.
 
 ## Decoder validation
 
@@ -87,14 +90,12 @@ v4 plan and SQL fixtures.
 
 ## Remaining boundaries
 
-This source does not:
+The query execution path still does not:
 
-- execute SQL or convert bind DTOs into driver parameters;
-- decode directly from SeaORM `QueryResult`;
-- verify persisted schema/index readiness;
 - define aggregate many-link ordering;
+- compose into server/storefront/admin/search consumers;
 - authorize callers;
-- provide PostgreSQL/reference-engine equivalence evidence;
+- provide live PostgreSQL/reference-engine equivalence evidence;
 - change migrations or production partition lifecycle state.
 
 The repository owner runs formatting, compilation, tests, static verifiers, and later
