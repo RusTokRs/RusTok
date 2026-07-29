@@ -2,19 +2,20 @@
   "schema_version": 1,
   "task": "FORUM-20BF",
   "upstream_task": "FORUM-20BE",
-  "scope": "Publish exact reply and reply-list owners through parent-topic richer audience authorization and compose REST plus final storefront outputs through them",
+  "scope": "Publish exact reply and reply-list owners through parent-topic richer audience authorization and compose REST plus storefront outputs through them",
   "topic_owner_visibility": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
   "reply_owner": "crates/rustok-forum/src/services/reply_audience_read.rs",
   "transport_context": "crates/rustok-forum/src/reply_read_transport.rs",
   "rest_transport": "crates/rustok-forum/src/controllers/replies.rs",
   "graphql_query": "crates/rustok-forum/src/graphql/reply_audience_query.rs",
   "graphql_runtime": "crates/rustok-forum/src/graphql/runtime_data.rs",
-  "graphql_storefront_adapter": "crates/rustok-forum/storefront/src/transport/graphql_reply_audience_adapter.rs",
-  "native_storefront_adapter": "crates/rustok-forum/storefront/src/transport/native_reply_audience_adapter.rs",
+  "graphql_storefront_adapter": "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
+  "native_storefront_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter.rs",
   "transport_selector": "crates/rustok-forum/storefront/src/transport/mod.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20bf-reply-audience-read.md",
   "source_verifier": "scripts/verify/verify-forum-reply-audience-read.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-storefront-list-composition.json",
+  "downstream_completion": "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json",
   "read_boundary": {
     "owner_topic_visibility_ignores_open_and_route_channel": true,
     "owner_topic_visibility_enforces_category_and_richer_layers": true,
@@ -29,9 +30,10 @@
     "graphql_storefront_exact_field_added": true,
     "native_storefront_final_replies_use_exact_owner": true,
     "graphql_storefront_final_replies_use_exact_owner": true,
-    "legacy_graphql_forum_replies_replaced": false,
+    "legacy_graphql_forum_replies_replaced": true,
+    "legacy_graphql_storefront_replies_replaced": true,
     "legacy_graphql_storefront_replies_removed": false,
-    "legacy_base_storefront_reply_fetch_removed": false,
+    "legacy_base_storefront_reply_fetch_removed": true,
     "category_owner_read_changed": false,
     "search_index_changed": false,
     "seo_changed": false,
@@ -46,7 +48,9 @@
     "exact_graphql_fields_are_additive": true,
     "storefront_model_changed": false,
     "mark_read_paths_changed": false,
-    "base_storefront_reply_fetch_result_replaced_before_ui": true,
+    "base_storefront_reply_fetch_result_replaced_before_ui": false,
+    "single_storefront_reply_fetch_per_transport": true,
+    "temporary_reply_adapters_removed": true,
     "external_fact_layers_fail_closed_without_provider": true,
     "locally_decidable_layers_skip_optional_provider": true
   },
@@ -56,10 +60,9 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BF through a conflict-safe repository-local edit."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BG through a conflict-safe repository-local edit."
   },
   "remaining_scope": [
-    "replace the legacy forumReplies field and remove the duplicate base storefront reply fetch",
     "migrate remaining category reads search index SEO and deep-link authorization",
     "add visibility-scoped category and all-read commands",
     "capture maintainer-executed SQLite PostgreSQL REST native and GraphQL runtime evidence"
@@ -71,6 +74,7 @@
       "cargo test -p rustok-forum reply_read_transport -- --nocapture",
       "cargo test -p rustok-forum --test topic_audience_exact_read_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-reply-audience-read.mjs",
+      "node scripts/verify/verify-forum-reply-legacy-cutover.mjs",
       "cargo xtask module validate forum"
     ]
   }
