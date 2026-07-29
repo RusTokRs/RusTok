@@ -9,8 +9,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumError, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumTopicReadOperation,
-    ForumTopicReadState, ForumTopicReadTransport, ListTopicsFilter,
+    ForumError, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic,
+    ForumTopicReadOperation, ForumTopicReadState, ForumTopicReadTransport, ListTopicsFilter,
     topic_read_audience_port_context,
 };
 
@@ -81,11 +81,25 @@ impl ForumStorefrontReadStateQuery {
         let request = ctx.data::<RequestContext>()?;
         let limit = storefront_limit(limit)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::TopicList,
+            tenant_id,
+            &auth,
+            Some(request),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let page = ForumStorefrontReadStateService::new(db.clone(), event_bus.clone())
-            .list_topics_with_unread(
+        let page = runtime
+            .storefront_read_state_service(db.clone(), event_bus.clone())
+            .list_topics_with_unread_audience_visible(
                 tenant_id,
                 forum_security(&auth),
+                audience_context,
                 ListTopicsFilter {
                     category_id,
                     status: None,
@@ -94,7 +108,6 @@ impl ForumStorefrontReadStateQuery {
                     per_page: limit,
                 },
                 Some(tenant.default_locale.as_str()),
-                request.channel_slug.as_deref(),
             )
             .await?;
 
