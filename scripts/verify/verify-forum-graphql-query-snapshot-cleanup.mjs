@@ -38,6 +38,7 @@ const replyLegacyVerifierPath = "scripts/verify/verify-forum-reply-legacy-cutove
 const categoryVerifierPath = "scripts/verify/verify-forum-category-audience-read.mjs";
 const workflowPath = ".github/workflows/forum11-diagnostics.yml";
 const contractPath = "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json";
+const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
 const notePath = "crates/rustok-forum/docs/forum-20bn-graphql-query-snapshot-cleanup.md";
 const replyLegacyContractPath = "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json";
 const categoryContractPath = "crates/rustok-forum/contracts/forum-category-audience-read.json";
@@ -79,7 +80,7 @@ for (const marker of [
   requireMarker(runtime, marker, runtimePath);
 }
 requireMarker(moduleSource, '#[path = "query_runtime.rs"]', modulePath);
-rejectMarker(moduleSource, 'mod query_runtime;', modulePath);
+rejectMarker(moduleSource, "mod query_runtime;", modulePath);
 
 requireMarker(channelVerifier, runtimePath, channelVerifierPath);
 for (const marker of [
@@ -92,7 +93,6 @@ for (const marker of [
   requireMarker(channelVerifier, marker, channelVerifierPath);
 }
 rejectMarker(channelVerifier, snapshotPath, channelVerifierPath);
-
 requireMarker(replyAudienceVerifier, runtimePath, replyAudienceVerifierPath);
 rejectMarker(replyAudienceVerifier, snapshotPath, replyAudienceVerifierPath);
 for (const [source, label] of [
@@ -104,7 +104,6 @@ for (const [source, label] of [
   requireMarker(source, "exists(snapshotPath)", label);
   rejectMarker(source, "read(snapshotPath)", label);
 }
-
 requireMarker(workflow, runtimePath, workflowPath);
 rejectMarker(workflow, snapshotPath, workflowPath);
 rejectMarker(workflow, 'Path("crates/rustok-forum/src/graphql/query.rs")', workflowPath);
@@ -120,9 +119,11 @@ for (const marker of [
 }
 
 let contract = null;
+let approvedReply = null;
 const upstreamContracts = [];
 for (const [label, source, assign] of [
   [contractPath, read(contractPath), (value) => { contract = value; }],
+  [approvedReplyPath, read(approvedReplyPath), (value) => { approvedReply = value; }],
   [replyLegacyContractPath, read(replyLegacyContractPath), (value) => upstreamContracts.push([replyLegacyContractPath, value])],
   [categoryContractPath, read(categoryContractPath), (value) => upstreamContracts.push([categoryContractPath, value])],
   [publicDiscoveryContractPath, read(publicDiscoveryContractPath), (value) => upstreamContracts.push([publicDiscoveryContractPath, value])],
@@ -140,18 +141,13 @@ for (const [label, source, assign] of [
 
 if (contract) {
   if (contract.task !== "FORUM-20BN") failures.push(`${contractPath}: unexpected task`);
-  if (contract.upstream_task !== "FORUM-20BM") {
-    failures.push(`${contractPath}: unexpected upstream task`);
-  }
-  if (contract.downstream_task !== "FORUM-20BO") {
-    failures.push(`${contractPath}: unexpected downstream task`);
-  }
-  if (contract.canonical_graphql_runtime !== runtimePath) {
-    failures.push(`${contractPath}: canonical runtime drift`);
-  }
-  if (contract.removed_snapshot !== snapshotPath) {
-    failures.push(`${contractPath}: removed snapshot drift`);
-  }
+  if (contract.upstream_task !== "FORUM-20BM") failures.push(`${contractPath}: unexpected upstream task`);
+  if (contract.downstream_task !== "FORUM-20BP") failures.push(`${contractPath}: unexpected downstream task`);
+  if (contract.canonical_graphql_runtime !== runtimePath) failures.push(`${contractPath}: canonical runtime drift`);
+  if (contract.removed_snapshot !== snapshotPath) failures.push(`${contractPath}: removed snapshot drift`);
+  if (contract.approved_reply_search_contract !== approvedReplyPath) failures.push(`${contractPath}: approved reply handoff drift`);
+  if (contract.downstream_handoff?.completion_contract !== approvedReplyPath) failures.push(`${contractPath}: reply completion drift`);
+  if (contract.downstream_handoff?.approved_public_reply_documents_completed !== true) failures.push(`${contractPath}: reply completion not recorded`);
   for (const key of [
     "legacy_query_snapshot_removed",
     "canonical_runtime_file_preserved",
@@ -163,17 +159,10 @@ if (contract) {
     "category_exact_owner_assertions_preserved",
     "public_channel_reply_assertions_preserved",
   ]) {
-    if (contract.cleanup_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: cleanup boundary ${key} drift`);
-    }
+    if (contract.cleanup_boundary?.[key] !== true) failures.push(`${contractPath}: cleanup ${key} drift`);
   }
-  for (const key of [
-    "forum11_diagnostics_patches_legacy_snapshot",
-    "removed_snapshot_may_be_recreated_by_workflow",
-  ]) {
-    if (contract.cleanup_boundary?.[key] !== false) {
-      failures.push(`${contractPath}: cleanup boundary ${key} must remain false`);
-    }
+  for (const key of ["forum11_diagnostics_patches_legacy_snapshot", "removed_snapshot_may_be_recreated_by_workflow"]) {
+    if (contract.cleanup_boundary?.[key] !== false) failures.push(`${contractPath}: cleanup ${key} must remain false`);
   }
   for (const key of [
     "existing_graphql_field_names_changed",
@@ -187,23 +176,27 @@ if (contract) {
     "ffa_status_changed",
     "fba_status_changed",
   ]) {
-    if (contract.compatibility?.[key] !== false) {
-      failures.push(`${contractPath}: compatibility ${key} must remain false`);
-    }
+    if (contract.compatibility?.[key] !== false) failures.push(`${contractPath}: compatibility ${key} must remain false`);
+  }
+  if (contract.remaining_scope?.includes("decide whether approved public replies become separate Search documents under FORUM-23")) {
+    failures.push(`${contractPath}: completed reply decision remains open`);
   }
 }
 
 for (const [label, upstream] of upstreamContracts) {
-  if (upstream.graphql_snapshot_cleanup_contract !== contractPath) {
-    failures.push(`${label}: snapshot cleanup contract handoff drift`);
-  }
+  if (upstream.graphql_snapshot_cleanup_contract !== contractPath) failures.push(`${label}: snapshot cleanup handoff drift`);
   const removed =
     upstream.compatibility?.legacy_graphql_snapshot_removed === true ||
     upstream.compatibility?.legacy_query_snapshot_removed === true;
   if (!removed) failures.push(`${label}: snapshot removal compatibility not recorded`);
   if (upstream.remaining_scope?.includes("remove the uncompiled legacy GraphQL query snapshot after verifier migration")) {
-    failures.push(`${label}: completed snapshot cleanup remains in remaining scope`);
+    failures.push(`${label}: completed snapshot cleanup remains open`);
   }
+}
+if (approvedReply) {
+  if (approvedReply.task !== "FORUM-20BO") failures.push(`${approvedReplyPath}: unexpected task`);
+  if (approvedReply.upstream_task !== "FORUM-20BN") failures.push(`${approvedReplyPath}: unexpected upstream task`);
+  if (approvedReply.downstream_task !== "FORUM-20BP") failures.push(`${approvedReplyPath}: unexpected downstream task`);
 }
 
 if (failures.length > 0) {

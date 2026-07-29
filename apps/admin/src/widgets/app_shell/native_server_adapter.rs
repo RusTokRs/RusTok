@@ -164,6 +164,11 @@ fn required_admin_search_permission(
     match (entity_type.trim(), source_module.trim()) {
         ("product", _) => Some(Permission::PRODUCTS_READ),
         ("blog_post", "blog" | "rustok-blog") => Some(Permission::BLOG_POSTS_READ),
+        ("forum_category", "forum" | "rustok-forum") => {
+            Some(Permission::FORUM_CATEGORIES_READ)
+        }
+        ("forum_topic", "forum" | "rustok-forum") => Some(Permission::FORUM_TOPICS_READ),
+        ("forum_reply", "forum" | "rustok-forum") => Some(Permission::FORUM_REPLIES_READ),
         ("node", "" | "content" | "rustok-content") => Some(Permission::NODES_READ),
         ("node", "blog" | "rustok-blog") => Some(Permission::BLOG_POSTS_READ),
         ("node", "pages" | "rustok-pages") => Some(Permission::PAGES_READ),
@@ -220,6 +225,18 @@ mod tests {
             Some(Permission::BLOG_POSTS_READ)
         );
         assert_eq!(
+            required_admin_search_permission("forum_category", "forum"),
+            Some(Permission::FORUM_CATEGORIES_READ)
+        );
+        assert_eq!(
+            required_admin_search_permission("forum_topic", "forum"),
+            Some(Permission::FORUM_TOPICS_READ)
+        );
+        assert_eq!(
+            required_admin_search_permission("forum_reply", "forum"),
+            Some(Permission::FORUM_REPLIES_READ)
+        );
+        assert_eq!(
             required_admin_search_permission("node", "blog"),
             Some(Permission::BLOG_POSTS_READ)
         );
@@ -234,6 +251,10 @@ mod tests {
         assert_eq!(required_admin_search_permission("secret", "unknown"), None);
         assert_eq!(
             required_admin_search_permission("blog_post", "content"),
+            None
+        );
+        assert_eq!(
+            required_admin_search_permission("forum_reply", "content"),
             None
         );
         assert_eq!(required_admin_search_permission("node", "unknown"), None);
