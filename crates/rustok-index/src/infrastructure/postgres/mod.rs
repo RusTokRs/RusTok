@@ -10,6 +10,8 @@ mod mutation_store_tests;
 #[cfg(test)]
 mod partition_admission_tests;
 #[cfg(test)]
+mod postgres_reference_equivalence_tests;
+#[cfg(test)]
 mod schema_lease_tests;
 #[cfg(test)]
 mod schema_registration_tests;
