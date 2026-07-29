@@ -32,7 +32,12 @@ mod mention_relation_tests {
     include!("mention_relation_tests.rs");
     include!("relation_quote_input_tests.rs");
 }
-pub mod moderation;
+#[path = "moderation.rs"]
+mod moderation_legacy;
+mod moderation_owner;
+pub mod moderation {
+    pub use super::moderation_owner::ModerationService;
+}
 mod moderation_audience_authorization;
 mod posting_policy;
 mod posting_policy_approved_facts;
