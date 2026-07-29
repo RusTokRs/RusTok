@@ -40,16 +40,23 @@ and a non-advancing cursor is rejected.
 
 `ForumSearchProjector` owns all writes to `search_documents`.
 
-A full tenant Forum rebuild creates a PostgreSQL temporary staging table,
+An explicit tenant Forum rebuild creates a PostgreSQL temporary staging table,
 streams bounded authorized source pages into it, and replaces the existing
 Forum category/topic scope only after the complete scan succeeds. An error
-before replacement rolls back the transaction and keeps the previous Forum
-scope intact.
+before replacement rolls back that Forum transaction and keeps the previous
+Forum scope intact.
 
 A targeted refresh deletes the existing entity/locale documents and inserts
 the currently authorized records in one transaction. When the owner target is
 missing, deleted, closed or no longer public, the empty authorized result
 therefore removes stale documents.
+
+The broader `search`/tenant/locale rebuild still executes the existing core and
+Blog projectors before the Forum projector. Its replacement is not one atomic
+transaction across all source modules; a later Forum source failure therefore
+does not promise restoration of the Forum scope removed by the existing core
+rebuild sequence. Cross-source atomic rebuild or per-source preservation remains
+explicit downstream work.
 
 The existing Search trigger continues to own `search_vector`; Forum supplies
 only normalized document inputs. No Search or Forum migration is added.
@@ -59,11 +66,11 @@ only normalized document inputs. No Search or Forum migration is added.
 When the Forum source is registered, Search refreshes a topic after existing
 root events for topic create, reply, status, pin and reply-status changes.
 Forum module enable rebuilds the scope and disable deletes it. Full Search,
-tenant and locale rebuilds include Forum.
+tenant and locale rebuilds invoke the Forum projector.
 
 Explicit reindex requests support:
 
-- `forum` with no target for a full Forum scope rebuild;
+- `forum` with no target for an atomic Forum scope rebuild;
 - `forum_category` with an ID for a category refresh;
 - `forum_topic` with an ID for a topic refresh.
 
@@ -79,6 +86,11 @@ unchanged. Existing Forum REST, GraphQL, storefront, SEO and public-discovery
 contracts are unchanged. Forum now depends on the core Search crate only for
 the neutral projection-source contract and declares the always-active Search
 module dependency.
+
+The workspace `Cargo.lock` is intentionally not regenerated in this slice,
+because the implementation agent was instructed not to run Cargo commands. The
+maintainer-owned Cargo validation workflow must regenerate and review the one
+workspace dependency-edge update before locked validation.
 
 Tests, Cargo commands, formatting, verifiers, workflows and CI were not run by
 the implementation agent. The maintainer commands are recorded in
