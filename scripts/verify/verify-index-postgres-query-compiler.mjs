@@ -131,7 +131,7 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'PostgresQueryBuildError',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-postgres-query-compiler.md', [
-  'root/one-link filter/order/count/keyset/offset semantics',
+  '## Supported query semantics',
   'Atomic predicates are compiled into total booleans.',
   'Ascending order uses `NULLS LAST`; descending order uses `NULLS FIRST`.',
   'CompiledPostgresCount',
@@ -140,7 +140,10 @@ requireMarkers('crates/rustok-index/docs/m4-postgres-query-compiler.md', [
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   'M4 controlled PostgreSQL query compilation: `complete`',
+  'M4 typed root/one-link query semantics: `complete`',
   '- [x] Compile plans through SeaQuery or controlled SQL.',
+  '- [x] Keep offset pagination bounded and compatibility-only.',
+  'Many-cardinality paths remain fail-closed with `ManyLinkSemanticsPending`',
 ]);
 
 console.log('[verify-index-postgres-query-compiler] OK');
