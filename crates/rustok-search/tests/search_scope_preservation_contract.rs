@@ -36,7 +36,7 @@ fn full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements() 
         .find("self.blog_projector.rebuild_tenant")
         .expect("Blog scope should rebuild after core scopes");
     let forum = rebuild
-        .find("projector.rebuild_tenant")
+        .rfind("projector.rebuild_tenant")
         .expect("Forum scope should rebuild after Blog");
     assert!(core < blog && blog < forum);
 
