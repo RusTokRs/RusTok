@@ -74,18 +74,22 @@ Explicit reindex requests support:
 - `forum_category` with an ID for a category refresh;
 - `forum_topic` with an ID for a topic refresh.
 
-Category/topic audience-policy replacement does not yet publish a root Search
-reindex event. `FORUM-20BK` must add owner-transactional policy-change events
-and route them to bounded category/topic or tenant reauthorization. Until then,
-explicit Forum reindex remains the recovery path for policy-only changes.
+The current Forum event catalog does not yet publish every projection-affecting
+owner change. Category/topic audience replacement, category or topic content
+and translation edits, category tree or route changes, topic tags, solution
+state and other owner revisions can therefore require an explicit reindex.
+`FORUM-20BK` must publish owner-transactional projection invalidation events and
+route them through durable ordering to bounded category, topic or tenant
+reauthorization.
 
 ## Compatibility and validation
 
 Existing Search content, product and Blog projectors and query contracts are
 unchanged. Existing Forum REST, GraphQL, storefront, SEO and public-discovery
-contracts are unchanged. Forum now depends on the core Search crate only for
-the neutral projection-source contract and declares the always-active Search
-module dependency.
+contracts are unchanged. Forum has a compile-time dependency on the core Search
+crate for the neutral projection-source contract, but does not declare a hard
+module runtime dependency. When no Search listener consumes the registered
+factory, Forum reads and commands continue normally.
 
 The workspace `Cargo.lock` is intentionally not regenerated in this slice,
 because the implementation agent was instructed not to run Cargo commands. The
