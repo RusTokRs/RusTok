@@ -117,18 +117,18 @@ fn compiled_row(
                 } else {
                     linked_entity_id.map_or(CompiledPostgresCell::Null, CompiledPostgresCell::Uuid)
                 };
-                row.insert(output_alias.clone(), value);
+                let _ = row.insert(output_alias.clone(), value);
             }
             CompiledQueryColumn::Field { output_alias, .. } => {
                 let value = projected.next().expect("projection fixture arity");
-                row.insert(
+                let _ = row.insert(
                     output_alias.clone(),
                     CompiledPostgresCell::Json(serde_json::to_value(value).unwrap()),
                 );
             }
             CompiledQueryColumn::OrderValue { output_alias, .. } => {
                 let value = order_values.next().expect("order fixture arity");
-                row.insert(
+                let _ = row.insert(
                     output_alias.clone(),
                     CompiledPostgresCell::Json(serde_json::to_value(value).unwrap()),
                 );
