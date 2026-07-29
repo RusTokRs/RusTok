@@ -27,7 +27,7 @@ impl std::error::Error for ApiError {}
 const STOREFRONT_FORUM_CATEGORIES_QUERY: &str = "query StorefrontForumCategories($tenantId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontCategories(tenantId: $tenantId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale name slug description icon color topicCount replyCount } } }";
 const STOREFRONT_FORUM_TOPICS_QUERY: &str = "query StorefrontForumTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale categoryId title slug status isPinned isLocked replyCount createdAt } } }";
 const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $limit: Int) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, limit: $limit) { total items { id effectiveLocale categoryId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
-const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId title slug body bodyFormat status tags isPinned isLocked replyCount createdAt updatedAt } }";
+const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontAudienceTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId title slug body bodyFormat status tags isPinned isLocked replyCount createdAt updatedAt } }";
 const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale topicId content contentFormat status parentReplyId createdAt updatedAt } } }";
 const MARK_STOREFRONT_FORUM_TOPIC_READ_MUTATION: &str = "mutation MarkStorefrontForumTopicRead($tenantId: UUID, $topicId: UUID!, $locale: String) { markForumStorefrontTopicRead(tenantId: $tenantId, topicId: $topicId, locale: $locale) { topicId } }";
 
@@ -51,7 +51,7 @@ struct StorefrontForumUnreadTopicsResponse {
 
 #[derive(Debug, Deserialize)]
 struct StorefrontForumTopicResponse {
-    #[serde(rename = "forumStorefrontTopic")]
+    #[serde(rename = "forumStorefrontAudienceTopic")]
     forum_storefront_topic: Option<ForumTopicDetail>,
 }
 
@@ -304,21 +304,28 @@ pub async fn fetch_storefront_forum_graphql(
         }
     }
 
-    let replies = if let Some(topic_id) = resolved_topic_id.clone() {
-        let response: StorefrontForumRepliesResponse = request(
-            STOREFRONT_FORUM_REPLIES_QUERY,
-            RepliesVariables {
-                tenant_id: None,
-                topic_id,
-                locale,
-                pagination: PaginationInput {
-                    offset: 0,
-                    limit: 20,
+    let replies = if selected_topic.is_some() {
+        if let Some(topic_id) = resolved_topic_id.clone() {
+            let response: StorefrontForumRepliesResponse = request(
+                STOREFRONT_FORUM_REPLIES_QUERY,
+                RepliesVariables {
+                    tenant_id: None,
+                    topic_id,
+                    locale,
+                    pagination: PaginationInput {
+                        offset: 0,
+                        limit: 20,
+                    },
                 },
-            },
-        )
-        .await?;
-        response.forum_storefront_replies
+            )
+            .await?;
+            response.forum_storefront_replies
+        } else {
+            ForumReplyConnection {
+                items: Vec::new(),
+                total: 0,
+            }
+        }
     } else {
         ForumReplyConnection {
             items: Vec::new(),
