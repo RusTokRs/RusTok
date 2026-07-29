@@ -9,8 +9,13 @@ use rustok_cli_core::{
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_tenant::{TenantReadPort, TenantService};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+};
 use uuid::Uuid;
+
+const DEVELOPMENT_APP_LOCALE: &str = "en";
+const DEVELOPMENT_APP_DESCRIPTION: &str = "Created via rustok-cli oauth create-app";
 
 pub struct AuthCommandProvider {
     runtime: RuntimeComposition,
@@ -99,6 +104,7 @@ async fn create_development_app(
     name: String,
     slug: String,
 ) -> CliCoreResult<CreatedOAuthApp> {
+    let app_id = Uuid::new_v4();
     let client_id = Uuid::new_v4();
     let client_secret = format!(
         "sk_live_{}{}",
@@ -107,61 +113,62 @@ async fn create_development_app(
     );
     let client_secret_hash = hash_password(&client_secret).map_err(command_failed)?;
     let backend = db.get_database_backend();
-    let placeholders = match backend {
-        DbBackend::Sqlite => (
-            "?1", "?2", "?3", "?4", "?5", "?6", "?7", "?8", "?9", "?10", "?11", "?12", "?13",
-            "?14", "?15",
-        ),
-        _ => (
-            "$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10", "$11", "$12", "$13",
-            "$14", "$15",
-        ),
+    let transaction = db.begin().await.map_err(command_failed)?;
+
+    let app_sql = match backend {
+        DbBackend::Postgres => "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+        DbBackend::MySql => "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        DbBackend::Sqlite => "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
     };
-    let sql = format!(
-        "INSERT INTO oauth_apps (id, tenant_id, name, slug, description, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-        placeholders.0,
-        placeholders.1,
-        placeholders.2,
-        placeholders.3,
-        placeholders.4,
-        placeholders.5,
-        placeholders.6,
-        placeholders.7,
-        placeholders.8,
-        placeholders.9,
-        placeholders.10,
-        placeholders.11,
-        placeholders.12,
-        placeholders.13,
-        placeholders.14,
-    );
-    db.execute(Statement::from_sql_and_values(
-        backend,
-        sql,
-        vec![
-            Uuid::new_v4().into(),
-            tenant_id.into(),
-            name.clone().into(),
-            slug.into(),
-            Some("Created via rustok-cli oauth create-app".to_string()).into(),
-            "third_party".into(),
-            client_id.into(),
-            client_secret_hash.into(),
-            serde_json::json!([
-                "http://localhost:3000/api/auth/callback",
-                "http://localhost:1420"
-            ])
-            .into(),
-            serde_json::json!(["openid", "profile", "email", "offline_access"]).into(),
-            serde_json::json!(["authorization_code", "refresh_token"]).into(),
-            serde_json::json!([]).into(),
-            false.into(),
-            true.into(),
-            serde_json::json!({}).into(),
-        ],
-    ))
-    .await
-    .map_err(command_failed)?;
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            app_sql,
+            vec![
+                app_id.into(),
+                tenant_id.into(),
+                slug.into(),
+                "third_party".into(),
+                client_id.into(),
+                client_secret_hash.into(),
+                serde_json::json!([
+                    "http://localhost:3000/api/auth/callback",
+                    "http://localhost:1420"
+                ])
+                .into(),
+                serde_json::json!(["openid", "profile", "email", "offline_access"]).into(),
+                serde_json::json!(["authorization_code", "refresh_token"]).into(),
+                serde_json::json!([]).into(),
+                false.into(),
+                true.into(),
+                serde_json::json!({}).into(),
+            ],
+        ))
+        .await
+        .map_err(command_failed)?;
+
+    let translation_sql = match backend {
+        DbBackend::Postgres => "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES ($1, $2, $3, $4, $5, $6)",
+        DbBackend::MySql => "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?, ?, ?, ?, ?, ?)",
+        DbBackend::Sqlite => "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    };
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            translation_sql,
+            vec![
+                Uuid::new_v4().into(),
+                tenant_id.into(),
+                app_id.into(),
+                DEVELOPMENT_APP_LOCALE.into(),
+                name.clone().into(),
+                Some(DEVELOPMENT_APP_DESCRIPTION.to_string()).into(),
+            ],
+        ))
+        .await
+        .map_err(command_failed)?;
+
+    transaction.commit().await.map_err(command_failed)?;
     Ok(CreatedOAuthApp {
         name,
         client_id,
@@ -180,8 +187,13 @@ async fn resolve_tenant_id(
     }
     TenantService::new(db.clone())
         .read_default_active_tenant(
-            PortContext::new("platform", PortActor::system(), "en", "oauth-create-app")
-                .with_deadline(Duration::from_secs(5)),
+            PortContext::new(
+                "platform",
+                PortActor::system(),
+                DEVELOPMENT_APP_LOCALE,
+                "oauth-create-app",
+            )
+            .with_deadline(Duration::from_secs(5)),
         )
         .await
         .map(|tenant| tenant.id)
@@ -195,12 +207,14 @@ fn options(args: &serde_json::Value) -> CliCoreResult<&serde_json::Map<String, s
             message: "oauth create-app expects normalized command options".to_string(),
         })
 }
+
 fn option<'a>(
     options: &'a serde_json::Map<String, serde_json::Value>,
     key: &str,
 ) -> Option<&'a str> {
     options.get(key).and_then(serde_json::Value::as_str)
 }
+
 fn validate_identity(value: &str, flag: &str) -> CliCoreResult<()> {
     if value.trim().is_empty() {
         Err(CliCoreError::InvalidInput {
@@ -210,8 +224,84 @@ fn validate_identity(value: &str, flag: &str) -> CliCoreResult<()> {
         Ok(())
     }
 }
+
 fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
     CliCoreError::CommandFailed {
         message: error.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DEVELOPMENT_APP_LOCALE, create_development_app};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn development_app_uses_current_translation_schema() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        db.execute_unprepared(
+            r#"CREATE TABLE oauth_apps (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                client_secret_hash TEXT NULL,
+                redirect_uris TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                grant_types TEXT NOT NULL,
+                granted_permissions TEXT NOT NULL,
+                auto_created INTEGER NOT NULL,
+                is_active INTEGER NOT NULL,
+                metadata TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE oauth_app_translations (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                app_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (tenant_id, app_id, locale)
+            );"#,
+        )
+        .await
+        .expect("current OAuth schema");
+
+        let tenant_id = Uuid::new_v4();
+        let created = create_development_app(
+            &db,
+            tenant_id,
+            "Development App".to_string(),
+            "dev-app".to_string(),
+        )
+        .await
+        .expect("development app");
+
+        let row = db
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT a.slug, t.locale, t.name FROM oauth_apps a JOIN oauth_app_translations t ON t.tenant_id = a.tenant_id AND t.app_id = a.id WHERE a.tenant_id = ?1 AND a.client_id = ?2",
+                vec![tenant_id.into(), created.client_id.into()],
+            ))
+            .await
+            .expect("OAuth app query")
+            .expect("OAuth app row");
+        assert_eq!(row.try_get::<String>("", "slug").expect("slug"), "dev-app");
+        assert_eq!(
+            row.try_get::<String>("", "locale").expect("locale"),
+            DEVELOPMENT_APP_LOCALE
+        );
+        assert_eq!(
+            row.try_get::<String>("", "name").expect("name"),
+            "Development App"
+        );
     }
 }
