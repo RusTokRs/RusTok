@@ -273,10 +273,25 @@ impl StructuredExecutionLedger {
         .exec_without_returning(&self.database)
         .await
         .map_err(|_| database_unavailable())?;
-        let persisted = self
-            .find_cancellation_intent(tenant_id, execution)
-            .await?
-            .ok_or_else(ledger_invariant)?;
+        let persisted = match self.find_cancellation_intent(tenant_id, execution).await? {
+            Some(persisted) => persisted,
+            None => {
+                if self
+                    .find_cancellation_intent_by_request_key(
+                        tenant_id,
+                        cancellation_idempotency_key,
+                    )
+                    .await?
+                    .is_some()
+                {
+                    return Err(PortError::conflict(
+                        "ai.structured.cancel_conflict",
+                        "cancellation idempotency key is already bound to another execution",
+                    ));
+                }
+                return Err(ledger_invariant());
+            }
+        };
         if persisted.cancellation_idempotency_key != cancellation_idempotency_key
             || persisted.request_digest != request_digest
             || persisted.actor_kind != actor_kind(&context.actor.kind)
@@ -580,6 +595,22 @@ impl StructuredExecutionLedger {
             .filter(
                 ai_structured_cancellation_intents::Column::ExecutionIdempotencyKey
                     .eq(&execution.idempotency_key),
+            )
+            .one(&self.database)
+            .await
+            .map_err(|_| database_unavailable())
+    }
+
+    async fn find_cancellation_intent_by_request_key(
+        &self,
+        tenant_id: Uuid,
+        cancellation_idempotency_key: &str,
+    ) -> Result<Option<ai_structured_cancellation_intents::Model>, PortError> {
+        ai_structured_cancellation_intents::Entity::find()
+            .filter(ai_structured_cancellation_intents::Column::TenantId.eq(tenant_id))
+            .filter(
+                ai_structured_cancellation_intents::Column::CancellationIdempotencyKey
+                    .eq(cancellation_idempotency_key),
             )
             .one(&self.database)
             .await
@@ -927,5 +958,75 @@ mod tests {
         );
         assert_eq!(cancelled.id, replayed.id);
         assert!(replayed.completed_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn cancellation_intent_prevents_late_execution_registration() {
+        let (ledger, tenant_id) = ledger().await;
+        let execution_key = AiStructuredTaskExecutionKey {
+            owner: "translation".to_string(),
+            idempotency_key: "execute-late".to_string(),
+        };
+        let cancel_context = context(tenant_id, "cancel-before-register");
+
+        let created = ledger
+            .put_cancellation_intent(&cancel_context, &execution_key)
+            .await
+            .unwrap();
+        let replayed = ledger
+            .put_cancellation_intent(&cancel_context, &execution_key)
+            .await
+            .unwrap();
+        assert_eq!(created.id, replayed.id);
+
+        let error = ledger
+            .register(
+                &context(tenant_id, "execute-late"),
+                &request(json!({"value": "must not run"})),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Conflict);
+        assert_eq!(error.code, "ai.structured.execution_cancelled");
+        assert!(
+            ai_structured_executions::Entity::find()
+                .one(&ledger.database)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_intent_rejects_another_actor_or_key() {
+        let (ledger, tenant_id) = ledger().await;
+        let execution_key = AiStructuredTaskExecutionKey {
+            owner: "translation".to_string(),
+            idempotency_key: "execute-a".to_string(),
+        };
+        ledger
+            .put_cancellation_intent(&context(tenant_id, "cancel-a"), &execution_key)
+            .await
+            .unwrap();
+
+        let error = ledger
+            .put_cancellation_intent(&context(tenant_id, "cancel-b"), &execution_key)
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Conflict);
+        assert_eq!(error.code, "ai.structured.cancel_conflict");
+
+        let error = ledger
+            .put_cancellation_intent(
+                &context(tenant_id, "cancel-a"),
+                &AiStructuredTaskExecutionKey {
+                    owner: "translation".to_string(),
+                    idempotency_key: "execute-b".to_string(),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Conflict);
+        assert_eq!(error.code, "ai.structured.cancel_conflict");
     }
 }

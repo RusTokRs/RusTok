@@ -12105,6 +12105,7 @@ dependencies = [
  "rustok-order",
  "rustok-outbox",
  "rustok-product",
+ "rustok-product-transport",
  "rustok-runtime",
  "rustok-secrets",
  "rustok-storage",
@@ -12118,6 +12119,8 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
+ "tonic",
  "tracing",
  "url",
  "uuid",
@@ -12706,6 +12709,7 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-product-transport",
  "rustok-region",
  "rustok-taxonomy",
  "rustok-telemetry",
@@ -12719,6 +12723,8 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
+ "tonic",
  "tower",
  "tracing",
  "utoipa",
@@ -14526,6 +14532,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-product-catalog-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rustok-api",
+ "rustok-outbox",
+ "rustok-product",
+ "rustok-product-transport",
+ "rustok-telemetry",
+ "sea-orm",
+ "tokio",
+ "tonic",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "rustok-product-storefront"
 version = "0.1.0"
 dependencies = [
@@ -14544,6 +14567,31 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-product-transport"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chrono",
+ "prost",
+ "protoc-bin-vendored",
+ "rustok-api",
+ "rustok-product",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "subtle",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "url",
  "uuid",
 ]
 
@@ -15036,6 +15084,7 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-product-transport",
  "rustok-profiles",
  "rustok-rbac",
  "rustok-region",

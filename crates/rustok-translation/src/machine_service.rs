@@ -23,12 +23,12 @@ use uuid::Uuid;
 
 use crate::{
     GlossaryBinding, GlossaryTermPolicy, MachineTranslationAttemptEvidence,
-    MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationExecutionStatus,
-    MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
-    MachineTranslationMemorySuggestion, MachineTranslationPort, MachineTranslationProviderState,
-    MachineTranslationResourceContext, MachineTranslationUnit, MachineTranslationUsage,
-    MemoryLookupInput, ProposalOrigin, ProposalValue, SaveProposalInput, TranslationError,
-    TranslationMemoryService, TranslationResult, TranslationWorkflowService,
+    MachineTranslationBatchRequest, MachineTranslationBatchResult,
+    MachineTranslationExecutionStatus,
+    MachineTranslationGlossaryTerm, MachineTranslationMemorySuggestion, MachineTranslationPort,
+    MachineTranslationProviderState, MachineTranslationResourceContext, MachineTranslationUnit,
+    MachineTranslationUsage, MemoryLookupInput, ProposalOrigin, ProposalValue, SaveProposalInput,
+    TranslationError, TranslationMemoryService, TranslationResult, TranslationWorkflowService,
     entities::{
         job, job_item, machine_cancellation, machine_memory_binding, machine_operation,
         memory_entry,
@@ -65,6 +65,17 @@ pub struct MachineCancellationRecord {
     pub provider_error_code: Option<String>,
     pub provider_observed_at: DateTime<FixedOffset>,
     pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineOperationStatusRecord {
+    pub operation_id: Uuid,
+    pub item_id: Uuid,
+    pub status: String,
+    pub provider_execution_id: Option<String>,
+    pub provider_status: String,
+    pub provider_error_code: Option<String>,
+    pub updated_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,11 +136,19 @@ impl TranslationMachineControlService {
         context: PortContext,
         input: CancelMachineOperationInput,
     ) -> TranslationResult<MachineCancellationRecord> {
-        cancel_machine_operation(
+        cancel_machine_operation(&self.database, self.machine_port.as_deref(), context, input).await
+    }
+
+    pub async fn operation_status(
+        &self,
+        context: PortContext,
+        operation_id: Uuid,
+    ) -> TranslationResult<MachineOperationStatusRecord> {
+        read_machine_operation_status(
             &self.database,
             self.machine_port.as_deref(),
             context,
-            input,
+            operation_id,
         )
         .await
     }
@@ -999,6 +1018,84 @@ async fn cancel_machine_operation(
     Ok(machine_cancellation_record(persisted))
 }
 
+async fn read_machine_operation_status(
+    database: &DatabaseConnection,
+    machine_port: Option<&dyn MachineTranslationPort>,
+    context: PortContext,
+    operation_id: Uuid,
+) -> TranslationResult<MachineOperationStatusRecord> {
+    context.require_policy(PortCallPolicy::read())?;
+    let tenant_id =
+        Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)?;
+    let security = SecurityContext::try_from_port_context(&context)?;
+    if security.get_scope(Resource::Translations, Action::Read) == PermissionScope::None {
+        return Err(TranslationError::Forbidden);
+    }
+    let operation = find_operation(database, tenant_id, operation_id).await?;
+    if operation.status == "completed" {
+        return Ok(MachineOperationStatusRecord {
+            operation_id: operation.id,
+            item_id: operation.item_id,
+            status: operation.status,
+            provider_execution_id: operation.execution_id,
+            provider_status: "completed".to_string(),
+            provider_error_code: None,
+            updated_at: operation.updated_at,
+        });
+    }
+    if operation.status == "cancelled" {
+        let cancellation = find_cancellation_by_operation(database, tenant_id, operation.id)
+            .await?
+            .ok_or(TranslationError::WorkflowRevisionConflict)?;
+        return Ok(MachineOperationStatusRecord {
+            operation_id: operation.id,
+            item_id: operation.item_id,
+            status: operation.status,
+            provider_execution_id: cancellation.provider_execution_id,
+            provider_status: cancellation.provider_status,
+            provider_error_code: cancellation.provider_error_code,
+            updated_at: operation.updated_at,
+        });
+    }
+    let Some(machine_port) = machine_port else {
+        return Ok(MachineOperationStatusRecord {
+            operation_id: operation.id,
+            item_id: operation.item_id,
+            status: operation.status,
+            provider_execution_id: None,
+            provider_status: "unavailable".to_string(),
+            provider_error_code: None,
+            updated_at: operation.updated_at,
+        });
+    };
+    let execution_idempotency_key =
+        child_idempotency_key(&operation.idempotency_key, "machine-port")?;
+    let (provider_execution_id, provider_status, provider_error_code) = match machine_port
+        .execution_status(context, execution_idempotency_key)
+        .await
+    {
+        Ok(evidence) => (
+            evidence.execution_id,
+            machine_execution_status(evidence.status).to_string(),
+            None,
+        ),
+        Err(error) => (
+            None,
+            "unavailable".to_string(),
+            Some(error.code.chars().take(128).collect()),
+        ),
+    };
+    Ok(MachineOperationStatusRecord {
+        operation_id: operation.id,
+        item_id: operation.item_id,
+        status: operation.status,
+        provider_execution_id,
+        provider_status,
+        provider_error_code,
+        updated_at: operation.updated_at,
+    })
+}
+
 fn validate_machine_cancellation_reason(reason: &str) -> TranslationResult<()> {
     if reason.trim().is_empty() || reason.trim() != reason || reason.len() > 4_096 {
         return Err(TranslationError::InvalidMachineCancellationReason);
@@ -1077,9 +1174,7 @@ async fn propagate_machine_cancellation(
                 return ProviderCancellationEvidence {
                     execution_id: None,
                     status: "propagation_failed".to_string(),
-                    error_code: Some(
-                        "translation.machine.cancellation_key_invalid".to_string(),
-                    ),
+                    error_code: Some("translation.machine.cancellation_key_invalid".to_string()),
                     observed_at,
                 };
             }
@@ -1109,6 +1204,18 @@ fn provider_cancellation_status(status: MachineTranslationExecutionStatus) -> &'
         | MachineTranslationExecutionStatus::Queued
         | MachineTranslationExecutionStatus::Running
         | MachineTranslationExecutionStatus::CancellationRequested => "cancellation_requested",
+        MachineTranslationExecutionStatus::Completed => "completed",
+        MachineTranslationExecutionStatus::Failed => "failed",
+        MachineTranslationExecutionStatus::Cancelled => "cancelled",
+    }
+}
+
+fn machine_execution_status(status: MachineTranslationExecutionStatus) -> &'static str {
+    match status {
+        MachineTranslationExecutionStatus::NotRegistered => "not_registered",
+        MachineTranslationExecutionStatus::Queued => "queued",
+        MachineTranslationExecutionStatus::Running => "running",
+        MachineTranslationExecutionStatus::CancellationRequested => "cancellation_requested",
         MachineTranslationExecutionStatus::Completed => "completed",
         MachineTranslationExecutionStatus::Failed => "failed",
         MachineTranslationExecutionStatus::Cancelled => "cancelled",
@@ -1409,8 +1516,13 @@ fn machine_proposal_record(
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, time::Duration};
+    use std::{
+        collections::BTreeMap,
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
 
+    use async_trait::async_trait;
     use rustok_api::{Permission, PortActor, TenantLocale};
     use rustok_translation_targets::{
         OpaqueRevision, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
@@ -1423,9 +1535,79 @@ mod tests {
     use super::*;
     use crate::{
         MachineTranslationDiagnostic, MachineTranslationExecutionEvidence,
-        MachineTranslationProviderDescriptor, MachineTranslationUnitResult, PurgeMemoryEntryInput,
-        TranslationMemoryService, migrations,
+        MachineTranslationExecutionStatusEvidence, MachineTranslationProviderDescriptor,
+        MachineTranslationUnitResult, PurgeMemoryEntryInput, TranslationMemoryService, migrations,
     };
+
+    struct CancellationMachinePort {
+        descriptor: MachineTranslationProviderDescriptor,
+        calls: AtomicUsize,
+    }
+
+    impl CancellationMachinePort {
+        fn new() -> Self {
+            Self {
+                descriptor: descriptor(100),
+                calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl MachineTranslationPort for CancellationMachinePort {
+        fn descriptor(&self) -> &MachineTranslationProviderDescriptor {
+            &self.descriptor
+        }
+
+        async fn health(
+            &self,
+            _context: PortContext,
+        ) -> Result<crate::MachineTranslationProviderHealth, rustok_api::PortError> {
+            unreachable!("cancellation test does not check health")
+        }
+
+        async fn translate_batch(
+            &self,
+            _context: PortContext,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<MachineTranslationBatchResult, rustok_api::PortError> {
+            unreachable!("cancellation test does not translate")
+        }
+
+        async fn execution_status(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, rustok_api::PortError> {
+            unreachable!("cancellation test does not poll status")
+        }
+
+        async fn recover_batch(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<Option<MachineTranslationBatchResult>, rustok_api::PortError> {
+            unreachable!("cancellation test does not recover")
+        }
+
+        async fn cancel_execution(
+            &self,
+            _context: PortContext,
+            execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, rustok_api::PortError> {
+            assert!(execution_idempotency_key.starts_with("translation-machine:machine-port:"));
+            let call = self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(MachineTranslationExecutionStatusEvidence {
+                execution_id: Some("execution-a".to_string()),
+                status: if call == 0 {
+                    MachineTranslationExecutionStatus::CancellationRequested
+                } else {
+                    MachineTranslationExecutionStatus::Cancelled
+                },
+            })
+        }
+    }
 
     fn request() -> MachineTranslationBatchRequest {
         MachineTranslationBatchRequest {
@@ -1824,5 +2006,33 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn cancellation_propagation_is_retried_by_the_same_receipt() {
+        let (database, tenant_id, actor_id, operation_id, _) = persistence_fixture(false).await;
+        let context = machine_control_context(tenant_id, actor_id, "cancel-machine-provider");
+        let input = CancelMachineOperationInput {
+            operation_id,
+            reason: "Operator cancelled the pending generation".to_string(),
+        };
+        let machine_port = CancellationMachinePort::new();
+
+        let first =
+            cancel_machine_operation(&database, Some(&machine_port), context.clone(), input.clone())
+                .await
+                .unwrap();
+        assert_eq!(first.provider_status, "cancellation_requested");
+        assert_eq!(
+            first.provider_execution_id.as_deref(),
+            Some("execution-a")
+        );
+
+        let replay = cancel_machine_operation(&database, Some(&machine_port), context, input)
+            .await
+            .unwrap();
+        assert_eq!(replay.cancellation_id, first.cancellation_id);
+        assert_eq!(replay.provider_status, "cancelled");
+        assert_eq!(machine_port.calls.load(Ordering::SeqCst), 2);
     }
 }

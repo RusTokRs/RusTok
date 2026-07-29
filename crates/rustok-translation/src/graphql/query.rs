@@ -7,11 +7,11 @@ use crate::{MemoryListInput, MemoryLookupInput};
 use super::{
     context::{read_port_context, require_translation_permission, runtime, translation_error},
     types::{
-        LookupTranslationMemoryInput, TranslationGlossary, TranslationGlossarySummary,
-        TranslationJobProgress, TranslationMemoryEntry, TranslationMemorySuggestion,
-        TranslationPolicy, TranslationProviderProgress, TranslationRequiredProviderProgress,
-        TranslationTargetDescriptor, parse_field_key, parse_locale, parse_owner_slug,
-        parse_resource_kind,
+        LookupTranslationMemoryInput, MachineTranslationOperationStatus, TranslationGlossary,
+        TranslationGlossarySummary, TranslationJobProgress, TranslationMemoryEntry,
+        TranslationMemorySuggestion, TranslationPolicy, TranslationProviderProgress,
+        TranslationRequiredProviderProgress, TranslationTargetDescriptor, parse_field_key,
+        parse_locale, parse_owner_slug, parse_resource_kind,
     },
 };
 
@@ -42,6 +42,20 @@ impl TranslationQuery {
             .into_iter()
             .map(Into::into)
             .collect())
+    }
+
+    async fn machine_translation_operation_status(
+        &self,
+        ctx: &Context<'_>,
+        operation_id: Uuid,
+    ) -> Result<MachineTranslationOperationStatus> {
+        let context = read_port_context(ctx, "machine-operation-status")?;
+        runtime(ctx)?
+            .machine_control_service()
+            .operation_status(context, operation_id)
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
     }
 
     async fn translation_glossaries(

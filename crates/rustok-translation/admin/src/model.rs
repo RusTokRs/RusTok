@@ -188,6 +188,9 @@ pub struct MemoryMutation {
 #[serde(tag = "operation", content = "input", rename_all = "snake_case")]
 pub enum TranslationAdminOperation {
     ReadPolicy,
+    ReadMachineOperationStatus {
+        operation_id: String,
+    },
     ListTargets,
     ListGlossaries {
         limit: u16,
@@ -441,6 +444,7 @@ impl TranslationAdminOperation {
                 idempotency_key, ..
             } => Some(idempotency_key),
             Self::ReadPolicy
+            | Self::ReadMachineOperationStatus { .. }
             | Self::ListTargets
             | Self::ListGlossaries { .. }
             | Self::ReadGlossary { .. }
@@ -474,6 +478,7 @@ pub enum TranslationAdminResponse {
     Item(JobItem),
     Proposal(Proposal),
     MachineProposal(MachineProposal),
+    MachineOperationStatus(MachineOperationStatus),
     MachineCancellation(MachineCancellation),
     Apply(ApplyResult),
     Assignment(Assignment),
@@ -720,6 +725,18 @@ pub struct MachineCancellation {
     pub provider_error_code: Option<String>,
     pub provider_observed_at: String,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineOperationStatus {
+    pub operation_id: String,
+    pub item_id: String,
+    pub status: String,
+    pub provider_execution_id: Option<String>,
+    pub provider_status: String,
+    pub provider_error_code: Option<String>,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

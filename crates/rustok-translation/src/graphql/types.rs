@@ -934,6 +934,31 @@ pub struct MachineTranslationCancellation {
     pub created_at: DateTime<FixedOffset>,
 }
 
+#[derive(SimpleObject)]
+pub struct MachineTranslationOperationStatus {
+    pub operation_id: Uuid,
+    pub item_id: Uuid,
+    pub status: String,
+    pub provider_execution_id: Option<String>,
+    pub provider_status: String,
+    pub provider_error_code: Option<String>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl From<crate::MachineOperationStatusRecord> for MachineTranslationOperationStatus {
+    fn from(value: crate::MachineOperationStatusRecord) -> Self {
+        Self {
+            operation_id: value.operation_id,
+            item_id: value.item_id,
+            status: value.status,
+            provider_execution_id: value.provider_execution_id,
+            provider_status: value.provider_status,
+            provider_error_code: value.provider_error_code,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
 impl From<MachineCancellationRecord> for MachineTranslationCancellation {
     fn from(value: MachineCancellationRecord) -> Self {
         Self {
