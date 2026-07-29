@@ -304,7 +304,7 @@ for (const marker of [
   requireText("dedup recovery-window capture runner", runner, marker);
 }
 for (const marker of [
-  "canonical packet is pending",
+  "canonical runtime packet is pending",
   "canonical recovery-window source hash is stale",
   "canonical sufficient recovery-window assessment drift",
   "forbidden field",
