@@ -23,6 +23,7 @@ pub mod notification_recipient;
 mod notification_source;
 pub mod openapi;
 mod reply_create_transport;
+pub mod reply_read_transport;
 mod seo_targets;
 pub mod services;
 pub mod state_machine;
@@ -51,6 +52,9 @@ pub use notification_recipient::{
     ForumNotificationRecipientContextPort, ForumNotificationRecipientContextRequest,
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
+pub use reply_read_transport::{
+    ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
+};
 pub use services::{
     CategoryService, ForumApprovedPostsFactPort, ForumCategoryAudiencePolicy,
     ForumCategoryAudiencePolicyLayer, ForumCategoryAudiencePolicyService,
@@ -69,7 +73,7 @@ pub use services::{
     ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue, ForumPostingPolicyRules,
     ForumPostingPolicyUnavailableFact, ForumPostingTrustFactPort, ForumPostingWindowCount,
     ForumPostingWindowLimit, ForumQuoteCommandService, ForumReadModelService,
-    ForumRelationReadService, ForumReplyCreateAudienceAuthorization,
+    ForumRelationReadService, ForumReplyAudienceReadService, ForumReplyCreateAudienceAuthorization,
     ForumReplyCreateAudienceAuthorizationService, ForumReplyCreatesWindowFactPort,
     ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
     ForumTopicAudienceListService, ForumTopicAudiencePage, ForumTopicAudiencePolicy,

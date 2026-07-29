@@ -3,7 +3,8 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::{
-    ForumStorefrontReadStateService, ForumTopicAudienceReadService, ModerationService, ReplyService,
+    ForumReplyAudienceReadService, ForumStorefrontReadStateService,
+    ForumTopicAudienceReadService, ModerationService, ReplyService,
     SharedForumAudienceFactsPort, TopicService,
 };
 
@@ -46,6 +47,19 @@ impl ForumGraphqlRuntimeData {
         match self.audience_facts.clone() {
             Some(facts) => ReplyService::with_audience_facts(db, event_bus, facts),
             None => ReplyService::new(db, event_bus),
+        }
+    }
+
+    pub(crate) fn reply_audience_read_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> ForumReplyAudienceReadService {
+        match self.audience_facts.clone() {
+            Some(facts) => {
+                ForumReplyAudienceReadService::with_audience_facts(db, event_bus, facts)
+            }
+            None => ForumReplyAudienceReadService::new(db, event_bus),
         }
     }
 

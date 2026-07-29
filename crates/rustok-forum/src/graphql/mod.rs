@@ -9,6 +9,7 @@ mod mutation;
 mod query;
 mod quote_commands;
 mod read_state;
+mod reply_audience_query;
 mod runtime_data;
 mod storefront_audience_topic;
 mod storefront_audience_topics;
@@ -47,6 +48,7 @@ pub struct ForumQuery(
     category_tree_query::ForumCategoryTreeQuery,
     category_policy::ForumCategoryTopicPolicyQuery,
     read_state::ForumReadStateQuery,
+    reply_audience_query::ForumReplyAudienceQuery,
     storefront_read_state::ForumStorefrontReadStateQuery,
     storefront_audience_topic::ForumStorefrontAudienceTopicQuery,
     storefront_audience_topics::ForumStorefrontAudienceTopicsQuery,
