@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "iggy",
   "packet": "dlq-duplicate-rolling-window-source",
-  "status": "source_complete_scanner_integration_pending",
+  "status": "source_complete_moving_scan_integrated_server_pending",
   "owner": "rustok-iggy",
   "source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
   "classifier_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
@@ -90,16 +90,19 @@
     "oldest_complete_cycle_eviction_marks_history_truncated",
     "oversized_cycle_rejection_preserves_existing_state"
   ],
-  "integration_boundary": {
-    "scanner_collection": "pending",
-    "per_partition_cursor_policy": "pending",
-    "cursor_persistence": false,
-    "restart_recovery": false,
+  "moving_scan_integration": {
+    "status": "source_complete_server_composition_runtime_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
+    "source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
+    "complete_cycle_feeding": true,
+    "independent_process_local_partition_cursors": true,
+    "cursor_values_exported": false,
+    "progress_persisted": false,
+    "restart_semantics": "reset_to_reviewed_initial_offset",
     "server_observer_composition": "pending",
     "runtime_evidence": "pending"
   },
   "non_claims": [
-    "moving_cursor",
     "persisted_progress",
     "restart_safe_state",
     "current_tail_coverage",
@@ -109,11 +112,10 @@
     "profiles_authorization"
   ],
   "remaining_work": [
-    "feed_complete_scanner_cycles_without_identifier_export",
-    "define_per_partition_cursor_advancement",
-    "define_state_persistence_or_restart_reset_semantics",
     "compose_mode_aware_server_observer",
+    "define_reviewed_moving_scan_configuration",
     "retain_external_iggy_cross_cycle_runtime_evidence",
+    "define_persistent_cursor_owner_only_if_restart_continuity_is_required",
     "define_identifier_free_telemetry_and_health_projection"
   ],
   "execution_status": "source_not_run"
