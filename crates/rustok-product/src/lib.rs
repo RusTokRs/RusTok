@@ -27,7 +27,8 @@ pub use error::{CommerceError, CommerceResult};
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
 pub use services::{
-    CatalogService, ProductCatalogSchemaService, StorefrontProductList, StorefrontProductListItem,
+    AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
+    ProductCatalogSchemaService, StorefrontProductList, StorefrontProductListItem,
     StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 
