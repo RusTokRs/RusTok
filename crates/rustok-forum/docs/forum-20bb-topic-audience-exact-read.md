@@ -58,15 +58,16 @@ remains [`implementation-plan.md`](implementation-plan.md).
   later open, delayed delivery, or mutation must reauthorize through its owner
   boundary.
 
-## Canonical plan handoff
+## Owner documentation handoff
 
-`CRATE_API.md` is synchronized in this slice. The canonical implementation plan
-is not replaced through the GitHub contents API because that operation requires
-complete replacement of a multi-thousand-line roadmap. A safe repository-local
-edit must advance the `FORUM-20` ledger through `FORUM-20BB`, retain
-`FORUM-20BC` transport composition as the next bounded slice, and keep list,
-reply, category, search/index, SEO, deep-link, reconciliation, and runtime
-proof work open.
+This owner note is synchronized in the implementation slice. `CRATE_API.md` and
+the canonical implementation plan are not replaced through the GitHub contents
+API because both require complete-file replacement and the roadmap is
+multi-thousand-line. A safe repository-local edit must record
+`ForumTopicAudienceReadService`, advance the `FORUM-20` ledger through
+`FORUM-20BB`, retain `FORUM-20BC` transport composition as the next bounded
+slice, and keep list, reply, category, search/index, SEO, deep-link,
+reconciliation, and runtime-proof work open.
 
 ## Verification status
 
