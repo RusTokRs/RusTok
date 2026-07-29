@@ -1,6 +1,7 @@
 mod cursor;
 mod planner;
 mod postgres_compiler;
+mod postgres_query_sql;
 mod registry;
 mod validation;
 
@@ -17,7 +18,8 @@ pub use planner::{
     QueryPlanFingerprint,
 };
 pub use postgres_compiler::{
-    CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError,
+    CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue,
+    PostgresQueryBuildError, PostgresQueryCompileError,
 };
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,

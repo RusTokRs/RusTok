@@ -2,13 +2,18 @@
 
 Date: 2026-07-29
 
-This note actualizes the live `rustok-index` implementation plan after rechecking the M3 storage and retained-evidence work already merged into `main`.
+This note actualizes the live `rustok-index` implementation plan after
+rechecking the M3 storage and retained-evidence work already merged into
+`main`.
 
 ## Recheck result
 
-The M3 source implementation is complete through retained bundle review, archive manifest generation, saved-manifest verification, and recursive filesystem drift detection. The repository owner still needs to execute and admit one fresh real PostgreSQL partition packet. That owner gate continues to block production partition lifecycle design, but it does not require query-planning or controlled SQL source work to remain idle.
-
-No surviving remote branch whose name contains `index` was found before the planner slice. The M4 chain therefore started from current `main` rather than carrying an older branch forward.
+The M3 source implementation is complete through retained bundle review,
+archive manifest generation, saved-manifest verification, and recursive
+filesystem drift detection. The repository owner still needs to execute and
+admit one fresh real PostgreSQL partition packet. That owner gate continues to
+block production partition lifecycle design, but it does not require M4 query
+source work to remain idle.
 
 ## Actualized status
 
@@ -16,44 +21,71 @@ No surviving remote branch whose name contains `index` was found before the plan
 - M3 production partition lifecycle: `blocked_by_retained_packet`.
 - M4 deterministic executable query planning: `source_complete_execution_pending`.
 - M4 stable relation aliases for explicit link paths: `source_complete_execution_pending`.
+- M4 typed referenced-field contracts: `source_complete_execution_pending`.
 - M4 controlled PostgreSQL query compilation: `source_complete_execution_pending`.
-- M4 typed filter/order/count/keyset semantics: `open`.
+- M4 root/one-link filter/order/count/keyset/offset semantics: `source_complete_execution_pending`.
+- M4 query-scoped cursor envelopes: `source_complete_execution_pending`.
+- M4 many-link query semantics: `open`.
 - M4 PostgreSQL/reference-engine equivalence: `open`.
 
 ## Completed M4 slice 1
 
-`SchemaRegistry::plan_query` now:
+`SchemaRegistry::plan_query`:
 
-1. runs the existing registry-backed query validation before planning;
+1. runs registry-backed query validation before planning;
 2. collects every referenced link prefix from projection, filters, and ordering;
 3. sorts link prefixes deterministically and assigns `t0`, `t1`, ... aliases;
 4. resolves each join against the registered schema contract;
-5. binds projected and ordered fields to the same relation aliases;
-6. retains the typed filter and pagination contracts for the SQL compiler;
-7. publishes a versioned SHA-256 plan fingerprint over deterministic postcard bytes.
+5. records every referenced field with type, cardinality, nullability, path, and
+   relation alias;
+6. binds projected and ordered fields to those canonical field contracts;
+7. retains typed filters and pagination for the compiler;
+8. publishes a versioned SHA-256 fingerprint over deterministic postcard bytes.
 
-The planner remains database independent and source-domain agnostic. It does not read source tables, execute SQL, bypass tenant/locale validation, decode cursors, or authorize callers.
+The fingerprint domain is now `rustok-index-query-plan-v2` because typed field
+contracts are part of the executable plan identity.
 
-## Completed M4 slice 2
+## Completed M4 slices 2 and 3
 
-`ExecutableQueryPlan::compile_postgres` now emits controlled SQL, ordered typed bind values, deterministic identity/projection columns, exact root scope, and one-cardinality projection joins. It binds tenant, schema, locale, link, target schema, projected field, and limit values rather than interpolating them. It also rechecks the planner path-to-alias mapping before constructing SQL.
+The controlled PostgreSQL compiler now supports the validated root and explicit
+one-cardinality-link subset:
 
-The compiler deliberately returns typed pending errors for filters, explicit ordering, exact count, cursor continuation, offset pagination, and many-link aggregation. It does not connect to PostgreSQL or execute statements.
+- tagged JSONB projection and hidden order-value columns;
+- all current typed filter operators;
+- deterministic ordering and explicit null placement;
+- query-scoped, checksum/scope/schema/type validated keyset continuation;
+- an ascending root `entity_id` tie-breaker;
+- bounded offset compatibility;
+- a separate exact-count statement without pagination leakage.
 
-## Next bounded slice
+Tenant, schema, locale, link metadata, field names, filter values, cursor
+values, limit, and offset remain bind parameters. Atomic predicates are total
+booleans so missing optional links and tagged null values cannot corrupt
+logical `Not`, `And`, or `Or` semantics.
 
-Typed filter/order/count/keyset compilation remains the next bounded M4 slice. It must preserve:
+`ExecutableQueryPlan::compile_postgres` only accepts plans without an opaque
+continuation token. Continuation queries use
+`SchemaRegistry::compile_postgres_query`, which requires a scoped v2 envelope.
+The envelope carries a `rustok-index-cursor-query-v1` fingerprint over tenant,
+schema, locale, filter, and ordered field/direction semantics. Changing filter
+or order semantics produces `QueryFingerprintMismatch` before any keyset SQL is
+emitted. Legacy raw v1 envelopes remain limited to codec round trips and the
+test-only reference engine.
 
-- tenant and locale predicates as non-optional scope constraints;
-- deterministic aliases and parameter order;
-- typed JSONB scalar/list extraction aligned with secondary indexes;
-- nested link filtering and projection semantics;
-- exact count without pagination leakage;
-- keyset cursor predicates with an entity-id tie-breaker;
-- bounded offset compatibility as a separate explicit path;
-- SQL/parameter snapshots and reference-engine equivalence fixtures.
+## Remaining bounded M4 work
+
+Many-cardinality link paths remain fail-closed. The next source slice must add
+an explicit semantic plan for:
+
+- `EXISTS`-based many-link filtering;
+- nested aggregation for many-link projection;
+- duplicate-free exact count and root pagination;
+- result decoding and scoped cursor construction;
+- SQL/parameter snapshots and PostgreSQL/reference-engine equivalence fixtures.
 
 Production query-port composition and consumer cutover remain later slices.
+The real retained PostgreSQL partition packet remains an independent owner gate
+for production partition lifecycle work.
 
 ## Owner validation
 

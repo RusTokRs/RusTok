@@ -1,7 +1,8 @@
 use uuid::Uuid;
 
 use super::{
-    CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError, SchemaRegistry,
+    CompiledQueryColumn, CursorCodec, CursorValidationError, IndexCursor, PostgresBindValue,
+    PostgresQueryBuildError, PostgresQueryCompileError, SchemaRegistry,
 };
 use crate::domain::{
     EntityName, FieldCardinality, FieldName, FieldPath, FilterExpr, IndexField, IndexLink,
@@ -18,12 +19,18 @@ fn schema_ref(entity: &str) -> SchemaRef {
     }
 }
 
-fn field(name: &str, sortable: bool) -> IndexField {
+fn field(
+    name: &str,
+    value_type: IndexValueType,
+    cardinality: FieldCardinality,
+    nullable: bool,
+    sortable: bool,
+) -> IndexField {
     IndexField {
         name: FieldName::new(name).unwrap(),
-        value_type: IndexValueType::Uuid,
-        cardinality: FieldCardinality::One,
-        nullable: false,
+        value_type,
+        cardinality,
+        nullable,
         selectable: true,
         filterable: true,
         sortable,
@@ -34,13 +41,55 @@ fn registry(link_cardinality: LinkCardinality) -> SchemaRegistry {
     let channel = IndexSchema {
         reference: schema_ref("sales_channel"),
         locale_mode: LocaleMode::None,
-        fields: vec![field("id", true)],
+        fields: vec![field(
+            "id",
+            IndexValueType::Uuid,
+            FieldCardinality::One,
+            false,
+            true,
+        )],
         links: Vec::new(),
     };
     let product = IndexSchema {
         reference: schema_ref("product"),
         locale_mode: LocaleMode::Required,
-        fields: vec![field("id", true), field("sales_channel_id", false)],
+        fields: vec![
+            field(
+                "id",
+                IndexValueType::Uuid,
+                FieldCardinality::One,
+                false,
+                true,
+            ),
+            field(
+                "score",
+                IndexValueType::Integer,
+                FieldCardinality::One,
+                true,
+                true,
+            ),
+            field(
+                "title",
+                IndexValueType::String,
+                FieldCardinality::One,
+                true,
+                true,
+            ),
+            field(
+                "tags",
+                IndexValueType::String,
+                FieldCardinality::Many,
+                false,
+                false,
+            ),
+            field(
+                "sales_channel_id",
+                IndexValueType::Uuid,
+                FieldCardinality::One,
+                false,
+                false,
+            ),
+        ],
         links: vec![IndexLink {
             name: LinkName::new("sales_channel").unwrap(),
             source_fields: vec![FieldName::new("sales_channel_id").unwrap()],
@@ -55,6 +104,10 @@ fn registry(link_cardinality: LinkCardinality) -> SchemaRegistry {
     registry
 }
 
+fn path(name: &str) -> FieldPath {
+    FieldPath::new(FieldName::new(name).unwrap())
+}
+
 fn root_query(tenant_id: Uuid) -> IndexQuery {
     IndexQuery {
         scope: IndexQueryScope {
@@ -62,7 +115,7 @@ fn root_query(tenant_id: Uuid) -> IndexQuery {
             locale: Some(LocaleKey::new("en-US").unwrap()),
         },
         schema: schema_ref("product"),
-        fields: vec![FieldPath::new(FieldName::new("id").unwrap())],
+        fields: vec![path("id")],
         filter: None,
         order_by: Vec::new(),
         pagination: Pagination::Cursor {
@@ -104,6 +157,7 @@ fn compiles_root_projection_with_bound_scope_and_limit() {
         &compiled.columns[0],
         CompiledQueryColumn::EntityId { relation_alias, .. } if relation_alias == "t0"
     ));
+    assert!(compiled.exact_count.is_none());
     assert_eq!(compiled.plan_fingerprint, plan.fingerprint().unwrap());
 }
 
@@ -120,14 +174,12 @@ fn compiles_one_link_projection_without_interpolating_contract_values() {
         ),
     );
 
-    let compiled = registry
-        .plan_query(&query)
-        .unwrap()
-        .compile_postgres()
-        .unwrap();
+    let compiled = registry.compile_postgres_query(&query).unwrap();
 
     assert!(compiled.sql.contains("LEFT JOIN index_links AS \"l1\""));
-    assert!(compiled.sql.contains("\"l1\".source_version = \"t0\".source_version"));
+    assert!(compiled
+        .sql
+        .contains("\"l1\".source_version = \"t0\".source_version"));
     assert!(compiled.sql.contains("LEFT JOIN index_entities AS \"t1\""));
     assert!(compiled.sql.contains("\"t1\".is_deleted = FALSE"));
     assert!(!compiled.sql.contains("sales_channel"));
@@ -148,57 +200,175 @@ fn compiles_one_link_projection_without_interpolating_contract_values() {
 }
 
 #[test]
-fn rejects_semantics_reserved_for_follow_up_compiler_slices() {
+fn compiles_typed_filters_order_exact_count_and_bounded_offset() {
     let registry = registry(LinkCardinality::One);
-    let mut query = root_query(Uuid::new_v4());
-    query.filter = Some(FilterExpr::Eq(
-        FieldPath::new(FieldName::new("id").unwrap()),
-        IndexValue::Uuid(Uuid::new_v4()),
-    ));
-    assert!(matches!(
-        registry.plan_query(&query).unwrap().compile_postgres(),
-        Err(PostgresQueryCompileError::FilterPending)
-    ));
-
-    query.filter = None;
-    query.order_by = vec![OrderExpr {
-        field: FieldPath::new(FieldName::new("id").unwrap()),
-        direction: OrderDirection::Asc,
-    }];
-    assert!(matches!(
-        registry.plan_query(&query).unwrap().compile_postgres(),
-        Err(PostgresQueryCompileError::OrderingPending)
-    ));
-
-    query.order_by.clear();
+    let tenant_id = Uuid::new_v4();
+    let expected_id = Uuid::new_v4();
+    let mut query = root_query(tenant_id);
+    query.fields.push(path("score"));
+    query.filter = Some(FilterExpr::And(vec![
+        FilterExpr::Eq(path("id"), IndexValue::Uuid(expected_id)),
+        FilterExpr::Gt(path("score"), IndexValue::Integer(10)),
+        FilterExpr::Contains(path("tags"), IndexValue::String("featured".to_owned())),
+        FilterExpr::IsNull(path("title"), false),
+        FilterExpr::Not(Box::new(FilterExpr::Ne(
+            path("title"),
+            IndexValue::String("blocked".to_owned()),
+        ))),
+    ]));
+    query.order_by = vec![
+        OrderExpr {
+            field: path("score"),
+            direction: OrderDirection::Desc,
+        },
+        OrderExpr {
+            field: path("title"),
+            direction: OrderDirection::Asc,
+        },
+    ];
+    query.pagination = Pagination::Offset {
+        limit: 25,
+        offset: 50,
+    };
     query.include_exact_count = true;
-    assert!(matches!(
-        registry.plan_query(&query).unwrap().compile_postgres(),
-        Err(PostgresQueryCompileError::ExactCountPending)
-    ));
 
-    query.include_exact_count = false;
+    let compiled = registry.compile_postgres_query(&query).unwrap();
+
+    assert!(compiled.sql.contains("::uuid"));
+    assert!(compiled.sql.contains("::bigint"));
+    assert!(compiled.sql.contains("COLLATE \"C\""));
+    assert!(compiled.sql.contains(" @> "));
+    assert!(compiled.sql.contains("COALESCE("));
+    assert!(compiled.sql.contains(" DESC NULLS FIRST"));
+    assert!(compiled.sql.contains(" ASC NULLS LAST"));
+    assert!(compiled.sql.contains("\"t0\".entity_id ASC"));
+    assert!(compiled.sql.contains(" LIMIT $"));
+    assert!(compiled.sql.contains(" OFFSET $"));
+    assert!(compiled
+        .binds
+        .contains(&PostgresBindValue::Uuid(expected_id)));
+    assert!(compiled
+        .binds
+        .contains(&PostgresBindValue::Integer(10)));
+    assert!(compiled
+        .binds
+        .iter()
+        .any(|value| matches!(value, PostgresBindValue::Json(_))));
+    assert_eq!(
+        compiled
+            .columns
+            .iter()
+            .filter(|column| matches!(column, CompiledQueryColumn::OrderValue { .. }))
+            .count(),
+        2
+    );
+
+    let count = compiled.exact_count.expect("exact count must be compiled");
+    assert!(count
+        .sql
+        .starts_with("SELECT COUNT(*)::bigint AS \"__exact_count\" FROM index_entities"));
+    assert!(count.sql.contains("COALESCE("));
+    assert!(!count.sql.contains("ORDER BY"));
+    assert!(!count.sql.contains("LIMIT"));
+    assert!(!count.sql.contains("OFFSET"));
+    assert!(count.binds.contains(&PostgresBindValue::Uuid(expected_id)));
+}
+
+#[test]
+fn compiles_validated_lexicographic_keyset_with_entity_tie_breaker() {
+    let registry = registry(LinkCardinality::One);
+    let tenant_id = Uuid::new_v4();
+    let cursor_entity_id = Uuid::new_v4();
+    let mut query = root_query(tenant_id);
+    query.order_by = vec![
+        OrderExpr {
+            field: path("score"),
+            direction: OrderDirection::Asc,
+        },
+        OrderExpr {
+            field: path("title"),
+            direction: OrderDirection::Desc,
+        },
+    ];
+    let fingerprint = registry.get(&query.schema).unwrap().fingerprint;
+    let cursor = IndexCursor {
+        tenant_id,
+        schema: query.schema.clone(),
+        schema_fingerprint: fingerprint,
+        locale: query.scope.locale.clone(),
+        order_values: vec![IndexValue::Integer(42), IndexValue::Null],
+        entity_id: cursor_entity_id,
+    };
+    let encoded = CursorCodec::encode_for_query(&cursor, &query, &registry).unwrap();
     query.pagination = Pagination::Cursor {
         first: 20,
-        after: Some("opaque-cursor".to_owned()),
+        after: Some(encoded),
     };
-    assert!(matches!(
-        registry.plan_query(&query).unwrap().compile_postgres(),
-        Err(PostgresQueryCompileError::CursorContinuationPending)
-    ));
 
-    query.pagination = Pagination::Offset {
-        limit: 20,
-        offset: 0,
-    };
+    let compiled = registry.compile_postgres_query(&query).unwrap();
+
+    assert!(compiled.sql.contains(" OR "));
+    assert!(compiled.sql.contains("FALSE"));
+    assert!(compiled.sql.contains(".entity_id > $"));
+    assert!(compiled.sql.contains(" ASC NULLS LAST"));
+    assert!(compiled.sql.contains(" DESC NULLS FIRST"));
+    assert!(compiled
+        .binds
+        .contains(&PostgresBindValue::Integer(42)));
+    assert!(compiled
+        .binds
+        .contains(&PostgresBindValue::Uuid(cursor_entity_id)));
+    assert_eq!(
+        compiled
+            .columns
+            .iter()
+            .filter(|column| matches!(column, CompiledQueryColumn::OrderValue { .. }))
+            .count(),
+        2
+    );
+
+    let plan = registry.plan_query(&query).unwrap();
     assert!(matches!(
-        registry.plan_query(&query).unwrap().compile_postgres(),
-        Err(PostgresQueryCompileError::OffsetPaginationPending)
+        plan.compile_postgres(),
+        Err(PostgresQueryCompileError::CursorContextRequired)
     ));
 }
 
 #[test]
-fn rejects_many_link_projection_before_sql_is_emitted() {
+fn rejects_cursor_reuse_across_query_semantics_before_sql_compilation() {
+    let registry = registry(LinkCardinality::One);
+    let tenant_id = Uuid::new_v4();
+    let mut original = root_query(tenant_id);
+    original.order_by = vec![OrderExpr {
+        field: path("score"),
+        direction: OrderDirection::Asc,
+    }];
+    let cursor = IndexCursor {
+        tenant_id,
+        schema: original.schema.clone(),
+        schema_fingerprint: registry.get(&original.schema).unwrap().fingerprint,
+        locale: original.scope.locale.clone(),
+        order_values: vec![IndexValue::Integer(7)],
+        entity_id: Uuid::new_v4(),
+    };
+    let encoded = CursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
+    let mut changed = original.clone();
+    changed.order_by[0].direction = OrderDirection::Desc;
+    changed.pagination = Pagination::Cursor {
+        first: 20,
+        after: Some(encoded),
+    };
+
+    assert!(matches!(
+        registry.compile_postgres_query(&changed),
+        Err(PostgresQueryBuildError::Cursor(
+            CursorValidationError::QueryFingerprintMismatch
+        ))
+    ));
+}
+
+#[test]
+fn rejects_many_link_semantics_before_sql_is_emitted() {
     let registry = registry(LinkCardinality::Many);
     let mut query = root_query(Uuid::new_v4());
     query.fields = vec![FieldPath::linked(
@@ -207,8 +377,10 @@ fn rejects_many_link_projection_before_sql_is_emitted() {
     )];
 
     assert!(matches!(
-        registry.plan_query(&query).unwrap().compile_postgres(),
-        Err(PostgresQueryCompileError::ManyLinkProjectionPending)
+        registry.compile_postgres_query(&query),
+        Err(PostgresQueryBuildError::Compile(
+            PostgresQueryCompileError::ManyLinkSemanticsPending
+        ))
     ));
 }
 
@@ -218,7 +390,7 @@ fn rejects_tampered_path_alias_mapping() {
     let mut plan = registry
         .plan_query(&root_query(Uuid::new_v4()))
         .unwrap();
-    plan.projection[0].relation_alias = "t9".to_owned();
+    plan.path_aliases.insert(Vec::new(), "t9".to_owned());
 
     assert!(matches!(
         plan.compile_postgres(),
