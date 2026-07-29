@@ -45,9 +45,11 @@ scheduler modules remain deleted.
 - `IndexProjectedValue`, `IndexRelationIdentity`, `IndexNestedRelationItem`,
   `IndexNestedRelationProjection`, `IndexQueryItem`, `IndexQueryPage`
 - `PostgresQueryPageBuildError`, `PostgresQueryDecodeError`
+- `IndexQueryPort`, `IndexQueryExecutionError`, `PersistedSchemaReadinessFailure`
 
 ### Infrastructure
 
+- `PostgresIndexQueryPort`
 - `PostgresMutationStore`
 - `MutationDelivery`
 - `MutationApplyOutcome`
@@ -117,11 +119,14 @@ M4 provides validated typed executable plans, controlled PostgreSQL SQL and bind
 DTOs for root/one-link projection, filtering, ordering, counting and pagination,
 correlated many-link filtering, deterministic nested many-link projection aggregates,
 query-scoped cursor continuation, one-row page lookahead, strict scalar/nested result
-decoding, exact-count decoding, `has_more`, and next-cursor construction. It still
-does not execute statements, adapt SeaORM rows directly, order through many links,
-publish `IndexQueryPort`, or claim PostgreSQL/reference-engine equivalence.
-Multi-source catalog composition, batch ingestion, rebuild, query-port, partition
-cutover, and operator APIs remain later work.
+decoding, exact-count decoding, `has_more`, and next-cursor construction.
+`PostgresIndexQueryPort` now performs PostgreSQL-only execution with exact persisted
+schema readiness, one read-only repeatable-read page/count snapshot, exhaustive
+SeaORM bind conversion, and compiler-metadata-driven row mapping. It does not order
+through many links, authorize callers, compose into server/storefront/admin/search,
+or claim live PostgreSQL/reference-engine equivalence. Multi-source catalog
+composition, batch ingestion, rebuild, consumer cutover, partition cutover, and
+operator APIs remain later work.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -142,7 +147,7 @@ APIs.
 - Writing `index_schemas` directly from a source module instead of calling
   `PostgresSchemaRegistrationStore`.
 - Treating in-memory `SchemaRegistry` registration as persisted tenant schema
-  readiness for `PostgresMutationStore`.
+  readiness for mutation or query execution.
 - Reactivating a retired schema or silently replacing a contract under the same
   schema version.
 - Treating Index as a ranking/full-text search engine.
@@ -153,8 +158,13 @@ APIs.
   ordered fields/directions, order arity, and order-value types.
 - Executing a page query through raw `compile_postgres_query` instead of the
   one-row-lookahead `compile_postgres_page_query` handoff.
+- Executing compiler SQL outside `PostgresIndexQueryPort` or bypassing its exact
+  tenant-scoped persisted schema preflight.
+- Executing page and exact-count statements in separate snapshots.
 - Decoding rows without rechecking the plan fingerprint and exact scalar/nested
   column contracts.
+- Reading arbitrary driver columns instead of compiler-declared UUID/JSONB/bigint
+  aliases.
 - Compiling a many-link filter as an ordinary outer join; it must remain a correlated
   predicate so child multiplicity cannot duplicate root rows or counts.
 - Flattening many-link projection into outer rows or independent value arrays; one
@@ -181,12 +191,16 @@ APIs.
 - `IndexSchema`, `IndexRecord`, `IndexMutation`, and `IndexQuery` are the current
   input contracts.
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
+- `IndexQueryPort::execute_query` is the transport-neutral owner boundary for one
+  structured query and typed page result.
 - `SchemaRegistry::compile_postgres_page_query` is the page-execution compiler
   handoff; it preserves SQL and increases only the validated limit bind by one.
 - `CompiledPostgresQuery::many_relations` binds every aggregate output alias to its
   exact `PlannedManyProjection` metadata.
 - `CompiledPostgresRow` is the narrow adapter handoff for compiler-owned UUID,
   tagged JSON, nested aggregate JSON, SQL-null, and exact-count cells.
+- `PostgresIndexQueryPort` binds one PostgreSQL connection to one immutable
+  `Arc<SchemaRegistry>` and never accepts arbitrary SQL or result metadata.
 - `PostgresSchemaRegistrationStore::register(tenant_id, schema)` binds one non-nil
   tenant to one validated exact schema contract and calculated fingerprint.
 - `SchemaApplicationLeaseRequest` binds one tenant, exact schema reference,
@@ -302,7 +316,7 @@ APIs.
 - Copy, constraints, indexes, replay/dual-write, cutover, rollback, durable global
   ownership, and PostgreSQL evidence remain mandatory future work.
 
-### Query Planning, Compilation, and Result Decoding
+### Query Planning, Compilation, Result Decoding, and Execution
 
 - `SchemaRegistry::plan_query` validates first and captures deterministic aliases,
   joins, typed referenced fields, propagated `traverses_many`, scalar projection,
@@ -331,8 +345,16 @@ APIs.
 - The lookahead row is removed. Cursor pages produce `has_more` and a scoped next
   cursor from the last retained entity/order tuple; offset pages produce
   `has_more` without a cursor.
-- Many-link ordering, SQL execution, SeaORM row adaptation, and live equivalence
-  evidence remain separate future boundaries.
+- `PostgresIndexQueryPort` requires PostgreSQL, verifies every root/source/target
+  schema against the query tenant's exact active persisted fingerprint and JSON
+  contract, and performs preflight/page/count/decode in one read-only repeatable-read
+  transaction.
+- `PostgresBindValue` conversion is exhaustive for boolean, integer, decimal, text,
+  UUID, UTC timestamp, and JSONB.
+- The row adapter reads only compiler-declared identity, scalar, order, nested, and
+  count aliases and delegates semantic validation to the strict decoder.
+- Many-link ordering, server/consumer composition, and live equivalence evidence
+  remain separate future boundaries.
 
 ### Cursor Contract
 
@@ -378,6 +400,10 @@ APIs.
   `PostgresQueryDecodeError` rejects plan/scalar/many/count mismatches, malformed
   cells, invalid tagged values, invalid nested JSON, identity/value arity drift,
   nil/duplicate nested identities, unexpected nulls, and oversized result batches.
+- `IndexQueryExecutionError` separates plan/build/decode failures, unsupported
+  backends, missing/inactive/drifted persisted schemas, missing counts, invalid driver
+  column types, contract preparation, and storage operations. Storage diagnostic
+  details are retained in fields while top-level display remains operation-level.
 - `MutationStorageError` separates validation, delivery identity conflict,
   in-progress/rejected replay, stored-version corruption, backend limits, and
   database failure. Its public display is generic; transport adapters must still
@@ -390,5 +416,5 @@ APIs.
 - `PartitionAdmissionError` separates invalid policy, invalid evidence, metric
   overflow, and unsupported hash modulus. Typed admission reasons explain every
   rejected evidence gate without exposing storage internals.
-- Later milestones add source catalog, retry, cancellation, rebuild, and query-port
-  execution errors.
+- Later milestones add source catalog, retry, cancellation, rebuild, transport, and
+  consumer composition errors.
