@@ -115,6 +115,7 @@ requested unit, authentication, loopback, Commerce, and AI harnesses are
 maintainer-attested as passed. They were not independently run by the
 implementation agent and raw logs were not retained.
 Product remains `boundary_ready` rather than `transport_verified`; configured remote-profile execution evidence remain open; provider-host execution evidence remains open; schema-preflight execution evidence remains open; the standalone PostgreSQL schema-preflight runtime evidence remains open; authenticated separate-process Commerce and AI end-to-end evidence remains open.
+Schema-preflight execution evidence remains open.
 The separate-process capture source is complete, but its sanitized runtime packet has not been generated or retained.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
