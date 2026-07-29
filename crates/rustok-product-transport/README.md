@@ -35,7 +35,7 @@ The RusToK server selects the Product catalog provider once at startup:
 
 All remote variables, including the bearer token, are rejected in embedded mode. Invalid authentication configuration, remote connection failure, or invalid transport configuration stops startup; the host does not silently fall back to the embedded provider.
 
-The future standalone Product catalog service host must use `ProductCatalogGrpcBearerInterceptor` (or an equivalent stronger authenticator that installs `TrustedProductCatalogAuthority`) and configure its trusted service actor server-side. The caller-supplied actor in `PortContext` is never authoritative.
+The standalone Product catalog service host in `crates/rustok-product-catalog-service` must use `ProductCatalogGrpcBearerInterceptor` (or an equivalent stronger authenticator that installs `TrustedProductCatalogAuthority`) and configure its trusted service actor server-side. The caller-supplied actor in `PortContext` is never authoritative.
 
 ## Evidence
 
