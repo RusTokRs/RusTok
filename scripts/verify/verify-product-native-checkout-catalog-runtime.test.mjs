@@ -36,6 +36,13 @@ function fixture(options = {}) {
       ? "CatalogService::new"
       : `shared_get::<ProductCatalogReadRuntime>() .read_port() complete_storefront_checkout_with_product_port dependency = "ProductCatalogReadRuntime"`,
   );
+  write(
+    root,
+    "crates/rustok-order/storefront/Cargo.toml",
+    options.omitProductDependency
+      ? `[features]\nhydrate = ["leptos/hydrate"]\nssr = ["leptos/ssr"]\n[dependencies]`
+      : `[features]\nhydrate = ["leptos/hydrate"]\nssr = ["leptos/ssr", "dep:rustok-product"]\n[dependencies]\nrustok-product = { workspace = true, optional = true }`,
+  );
   const complete = options.registryPending
     ? ["ai-product", "marketplace-listing"]
     : ["ai-product", "marketplace-listing", "order-storefront-native"];
@@ -97,6 +104,10 @@ test("native checkout guard rejects Product construction in composed body", () =
 
 test("native checkout guard rejects direct native Product construction", () => {
   reject({ nativeDirect: true }, /Order native checkout/);
+});
+
+test("native checkout guard rejects missing Product SSR dependency", () => {
+  reject({ omitProductDependency: true }, /Order storefront SSR dependency/);
 });
 
 test("native checkout guard rejects stale registry pending state", () => {
