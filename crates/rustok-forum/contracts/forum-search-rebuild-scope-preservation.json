@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BM",
+  "upstream_task": "FORUM-20BL",
+  "scope": "Preserve the previous committed value of each external Search projection scope during sequential tenant rebuilds by preventing the direct Search projector from deleting Blog, Forum or future provider-owned documents",
+  "active_search_projector": "crates/rustok-search/src/projector.rs",
+  "private_legacy_projector": "crates/rustok-search/src/projector_legacy.rs",
+  "search_module_wiring": "crates/rustok-search/src/lib.rs",
+  "search_ingestion": "crates/rustok-search/src/ingestion.rs",
+  "blog_projector": "crates/rustok-search/src/blog_projector.rs",
+  "forum_projector": "crates/rustok-search/src/forum_projector.rs",
+  "source_contract_test": "crates/rustok-search/tests/search_scope_preservation_contract.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md",
+  "source_verifier": "scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
+  "upstream_contracts": [
+    "crates/rustok-forum/contracts/forum-search-projection.json",
+    "crates/rustok-forum/contracts/forum-projection-invalidation.json",
+    "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json"
+  ],
+  "ownership_boundary": {
+    "public_search_projector_is_scope_preserving_facade": true,
+    "legacy_projector_module_is_private": true,
+    "legacy_projector_reexported": false,
+    "active_tenant_rebuild_calls_legacy_all_tenant_delete": false,
+    "active_direct_scopes": [
+      "node",
+      "product"
+    ],
+    "core_rebuild_deletes_blog_scope": false,
+    "core_rebuild_deletes_forum_scope": false,
+    "core_rebuild_deletes_unknown_future_external_scope": false,
+    "search_document_storage_owner_changed": false
+  },
+  "replacement_boundary": {
+    "full_ingestion_order": [
+      "search_core",
+      "blog",
+      "forum_if_registered"
+    ],
+    "global_cross_source_transaction_added": false,
+    "global_cross_source_atomicity_claimed": false,
+    "content_scope_replacement_transactional": true,
+    "product_scope_replacement_transactional": true,
+    "blog_scope_replacement_transactional": true,
+    "forum_scope_replacement_uses_temporary_stage": true,
+    "forum_scope_replacement_transactional": true,
+    "failed_blog_rebuild_keeps_previous_blog_scope": true,
+    "failed_forum_rebuild_keeps_previous_forum_scope": true,
+    "later_source_failure_cannot_remove_untouched_external_scope": true,
+    "earlier_successful_scope_may_commit_before_later_failure": true,
+    "retry_reexecutes_current_owner_state": true
+  },
+  "bootstrap_boundary": {
+    "bootstrap_presence_query_counts_only_node_and_product": true,
+    "external_only_documents_suppress_core_bootstrap": false,
+    "blog_documents_count_as_core_bootstrap": false,
+    "forum_documents_count_as_core_bootstrap": false
+  },
+  "compatibility": {
+    "search_projector_public_type_changed": false,
+    "search_projector_public_method_names_changed": false,
+    "search_ingestion_event_contract_changed": false,
+    "search_query_contract_changed": false,
+    "forum_projection_source_contract_changed": false,
+    "forum_rest_routes_changed": false,
+    "forum_graphql_fields_changed": false,
+    "public_response_dto_changed": false,
+    "workspace_dependency_changed": false,
+    "cargo_lock_changed": false,
+    "migration_added": false,
+    "ffa_status_changed": false,
+    "fba_status_changed": false,
+    "legacy_graphql_snapshot_changed": false
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "upstream_contracts_updated": true,
+    "source_verifier_added": true,
+    "crate_api_updated": false,
+    "search_plan_updated": false,
+    "canonical_forum_plan_updated": false,
+    "synchronization_debt": "Advance Search CRATE_API/local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BM with conflict-safe repository-local edits after maintainer validation."
+  },
+  "remaining_scope": [
+    "decide whether approved public replies become separate Search documents under FORUM-23",
+    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation and Forum projection cleanup evidence",
+    "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
+    "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
+  ],
+  "downstream_task": "FORUM-20BN",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-search --test search_scope_preservation_contract -- --nocapture",
+      "cargo test -p rustok-search --test blog_projection_postgres_test -- --nocapture",
+      "cargo test -p rustok-search forum_projector -- --nocapture",
+      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
+      "node scripts/verify/verify-forum-search-projection.mjs",
+      "node scripts/verify/verify-forum-projection-invalidation.mjs",
+      "node scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
