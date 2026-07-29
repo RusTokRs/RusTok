@@ -7,9 +7,9 @@ use rustok_forum::{
     ForumApprovedPostsFactPort, ForumPostingPolicyFactKind, ForumPostingPolicyFactsComposer,
     ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
     ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
-    ForumPostingTrustFactPort, ForumReplyCreatesWindowFactPort,
-    ForumTopicCreatesWindowFactPort, ForumTopicReadPostingFactPort,
-    SharedForumAudienceFactsPort, SharedForumPostingPolicyOwnerFactPort,
+    ForumPostingTrustFactPort, ForumReplyCreatesWindowFactPort, ForumTopicCreatesWindowFactPort,
+    ForumTopicReadPostingFactPort, SharedForumAudienceFactsPort,
+    SharedForumPostingPolicyOwnerFactPort,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;

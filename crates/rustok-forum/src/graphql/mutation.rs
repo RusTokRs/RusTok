@@ -14,17 +14,15 @@ use rustok_profiles::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{
-    CategoryResponse, CategoryService, ReplyService, SubscriptionService, TopicService, VoteService,
-};
-use crate::moderation_transport::{
-    ForumModerationTransport, moderation_audience_port_context,
-};
+use crate::moderation_transport::{ForumModerationTransport, moderation_audience_port_context};
 use crate::reply_create_transport::{
     ForumReplyCreateTransport, reply_create_audience_port_context,
 };
 use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
+};
+use crate::{
+    CategoryResponse, CategoryService, ReplyService, SubscriptionService, TopicService, VoteService,
 };
 
 use super::ForumGraphqlRuntimeData;

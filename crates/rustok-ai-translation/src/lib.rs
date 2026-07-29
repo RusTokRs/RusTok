@@ -6,15 +6,18 @@ use std::{
 use async_trait::async_trait;
 use rustok_ai::{
     AiStructuredTaskAvailability, AiStructuredTaskDescriptor, AiStructuredTaskExecution,
-    AiStructuredTaskHealth, AiStructuredTaskLimits, AiStructuredTaskPort, AiStructuredTaskRequest,
-    AiStructuredTaskStatus, AiTaskDataClassification, MAX_STRUCTURED_TASK_INPUT_BYTES,
-    MAX_STRUCTURED_TASK_OUTPUT_BYTES,
+    AiStructuredTaskExecutionKey, AiStructuredTaskHealth, AiStructuredTaskLimits,
+    AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus,
+    AiTaskDataClassification, MAX_STRUCTURED_TASK_INPUT_BYTES, MAX_STRUCTURED_TASK_OUTPUT_BYTES,
 };
 use rustok_api::{PortCallPolicy, PortContext, PortError, manifest_hash::hash_manifest};
+#[cfg(feature = "server")]
+use rustok_translation::MachineTranslationPortFactory;
 use rustok_translation::{
     MachineTranslationAttemptEvidence, MachineTranslationBatchRequest,
     MachineTranslationBatchResult, MachineTranslationDiagnostic,
-    MachineTranslationExecutionEvidence, MachineTranslationGlossaryTerm,
+    MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
+    MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
     MachineTranslationMemorySuggestion, MachineTranslationPort,
     MachineTranslationProviderDescriptor, MachineTranslationProviderHealth,
     MachineTranslationProviderState, MachineTranslationUnit, MachineTranslationUnitResult,
@@ -124,6 +127,47 @@ impl AiMachineTranslationAdapter {
     }
 }
 
+/// Composes the optional machine-translation provider from the neutral host
+/// context. The bridge owns descriptor registration; the host does not import
+/// AI runtime types or construct either owner service.
+#[cfg(feature = "server")]
+pub fn machine_translation_port_from_context(
+    context: &rustok_api::HostRuntimeContext,
+) -> Result<Option<Arc<dyn MachineTranslationPort>>, String> {
+    let catalog = rustok_ai::AiStructuredTaskCatalog::default();
+    catalog
+        .register(machine_translation_task_descriptor())
+        .map_err(|error| {
+            format!(
+                "invalid machine-translation task descriptor: {}",
+                error.code
+            )
+        })?;
+    let Some(ai) = rustok_ai::structured_task_port_from_context(context, catalog)? else {
+        return Ok(None);
+    };
+    Ok(Some(Arc::new(AiMachineTranslationAdapter::new(ai))))
+}
+
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AiMachineTranslationPortFactory;
+
+#[cfg(feature = "server")]
+impl MachineTranslationPortFactory for AiMachineTranslationPortFactory {
+    fn create(
+        &self,
+        context: &rustok_api::HostRuntimeContext,
+    ) -> Result<Option<Arc<dyn MachineTranslationPort>>, PortError> {
+        machine_translation_port_from_context(context).map_err(|_| {
+            PortError::unavailable(
+                "translation.machine.runtime_unavailable",
+                "machine translation runtime is unavailable",
+            )
+        })
+    }
+}
+
 #[async_trait]
 impl MachineTranslationPort for AiMachineTranslationAdapter {
     fn descriptor(&self) -> &MachineTranslationProviderDescriptor {
@@ -194,6 +238,68 @@ impl MachineTranslationPort for AiMachineTranslationAdapter {
 
         map_execution(&self.descriptor, &request, execution)
     }
+
+    async fn execution_status(
+        &self,
+        context: PortContext,
+        execution_idempotency_key: String,
+    ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+        let execution = self
+            .ai
+            .resolve(
+                context,
+                AiStructuredTaskExecutionKey {
+                    owner: "translation".to_string(),
+                    idempotency_key: execution_idempotency_key,
+                },
+            )
+            .await?;
+        Ok(map_execution_status(execution.as_ref(), false))
+    }
+
+    async fn recover_batch(
+        &self,
+        context: PortContext,
+        execution_idempotency_key: String,
+        request: MachineTranslationBatchRequest,
+    ) -> Result<Option<MachineTranslationBatchResult>, PortError> {
+        request.validate(&context)?;
+        let execution = self
+            .ai
+            .resolve(
+                context,
+                AiStructuredTaskExecutionKey {
+                    owner: "translation".to_string(),
+                    idempotency_key: execution_idempotency_key,
+                },
+            )
+            .await?;
+        let Some(execution) = execution else {
+            return Ok(None);
+        };
+        if execution.status != AiStructuredTaskStatus::Completed {
+            return Ok(None);
+        }
+        map_execution(&self.descriptor, &request, execution).map(Some)
+    }
+
+    async fn cancel_execution(
+        &self,
+        context: PortContext,
+        execution_idempotency_key: String,
+    ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+        let execution = self
+            .ai
+            .cancel_by_key(
+                context,
+                AiStructuredTaskExecutionKey {
+                    owner: "translation".to_string(),
+                    idempotency_key: execution_idempotency_key,
+                },
+            )
+            .await?;
+        Ok(map_execution_status(execution.as_ref(), true))
+    }
 }
 
 fn machine_translation_input_schema() -> serde_json::Value {
@@ -217,6 +323,38 @@ fn map_health(health: AiStructuredTaskHealth) -> MachineTranslationProviderHealt
         },
         reason_code: health.reason_code,
         retry_after_ms: health.retry_after_ms,
+    }
+}
+
+fn map_execution_status(
+    execution: Option<&rustok_ai::AiStructuredTaskExecution>,
+    cancellation_requested: bool,
+) -> MachineTranslationExecutionStatusEvidence {
+    let Some(execution) = execution else {
+        return MachineTranslationExecutionStatusEvidence {
+            execution_id: None,
+            status: if cancellation_requested {
+                MachineTranslationExecutionStatus::CancellationRequested
+            } else {
+                MachineTranslationExecutionStatus::NotRegistered
+            },
+        };
+    };
+    let status = match execution.status {
+        AiStructuredTaskStatus::Queued | AiStructuredTaskStatus::Running
+            if cancellation_requested =>
+        {
+            MachineTranslationExecutionStatus::CancellationRequested
+        }
+        AiStructuredTaskStatus::Queued => MachineTranslationExecutionStatus::Queued,
+        AiStructuredTaskStatus::Running => MachineTranslationExecutionStatus::Running,
+        AiStructuredTaskStatus::Completed => MachineTranslationExecutionStatus::Completed,
+        AiStructuredTaskStatus::Failed => MachineTranslationExecutionStatus::Failed,
+        AiStructuredTaskStatus::Cancelled => MachineTranslationExecutionStatus::Cancelled,
+    };
+    MachineTranslationExecutionStatusEvidence {
+        execution_id: Some(execution.execution_id.clone()),
+        status,
     }
 }
 
@@ -663,7 +801,10 @@ struct TaskDiagnostic {
 mod tests {
     use std::{sync::Mutex, time::Duration};
 
-    use rustok_ai::{AiStructuredTaskAttempt, AiStructuredTaskExecutionRef, AiStructuredTaskUsage};
+    use rustok_ai::{
+        AiStructuredTaskAttempt, AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef,
+        AiStructuredTaskUsage,
+    };
     use rustok_api::{PortActor, TenantLocale};
     use rustok_translation::{MachineTranslationResourceContext, MachineTranslationUnit};
     use rustok_translation_targets::{TranslationStrategy, TranslationValueProfile};
@@ -731,12 +872,28 @@ mod tests {
             unreachable!("adapter test does not poll")
         }
 
+        async fn resolve(
+            &self,
+            _context: PortContext,
+            _execution: AiStructuredTaskExecutionKey,
+        ) -> Result<Option<AiStructuredTaskExecution>, PortError> {
+            Ok(None)
+        }
+
         async fn cancel(
             &self,
             _context: PortContext,
             _execution: AiStructuredTaskExecutionRef,
         ) -> Result<AiStructuredTaskExecution, PortError> {
             unreachable!("adapter test does not cancel")
+        }
+
+        async fn cancel_by_key(
+            &self,
+            _context: PortContext,
+            _execution: AiStructuredTaskExecutionKey,
+        ) -> Result<Option<AiStructuredTaskExecution>, PortError> {
+            Ok(None)
         }
     }
 

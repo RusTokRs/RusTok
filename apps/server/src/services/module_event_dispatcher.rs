@@ -183,7 +183,7 @@ pub fn build_shared_runtime_extensions(
     registry: &ModuleRegistry,
     _settings: &RustokSettings,
 ) -> Result<Arc<ModuleRuntimeExtensions>> {
-    let extensions = registry.build_runtime_extensions().map_err(|error| {
+    let extensions = rustok_distribution::build_runtime_extensions(registry).map_err(|error| {
         Error::Message(format!(
             "module runtime extension initialization failed: {error}"
         ))

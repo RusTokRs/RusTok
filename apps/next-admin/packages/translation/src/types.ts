@@ -206,6 +206,62 @@ export type Proposal = {
   [key: string]: unknown;
 };
 
+export type MachineTranslationAttempt = {
+  attempt: number;
+  providerProfileId: string;
+  providerSlug: string;
+  model: string;
+  fallback: boolean;
+};
+
+export type MachineTranslationUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costMinorUnits: number;
+  currencyCode: string;
+  priceSnapshotDigest: string;
+};
+
+export type MachineTranslationDiagnostic = {
+  code: string;
+  blocking: boolean;
+  unitId: string | null;
+};
+
+export type MachineProposal = {
+  operationId: string;
+  itemId: string;
+  proposalId: string;
+  adapterSlug: string;
+  providerSlug: string;
+  providerPolicyDigest: string;
+  machineRequestDigest: string;
+  glossaryRevision: string | null;
+  glossaryDigest: string | null;
+  memoryDigest: string | null;
+  executionId: string;
+  executionRequestDigest: string;
+  promptPolicyDigest: string;
+  attempts: MachineTranslationAttempt[];
+  usage: MachineTranslationUsage;
+  diagnostics: MachineTranslationDiagnostic[];
+  reviewRequired: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MachineCancellation = {
+  cancellationId: string;
+  operationId: string;
+  status: string;
+  providerExecutionId: string | null;
+  providerStatus: string;
+  providerErrorCode: string | null;
+  providerObservedAt: string;
+  createdAt: string;
+};
+
 export type ApplyResult = {
   operationId: string;
   itemId: string;
@@ -353,6 +409,22 @@ export type TranslationOperation =
       idempotencyKey: string;
     }
   | {
+      kind: 'generate_machine_proposal';
+      itemId: string;
+      fieldKeys: string[];
+      minimumMemorySimilarityBasisPoints: number;
+      tone?: string | null;
+      domain?: string | null;
+      style?: string | null;
+      idempotencyKey: string;
+    }
+  | {
+      kind: 'cancel_machine_operation';
+      operationId: string;
+      reason: string;
+      idempotencyKey: string;
+    }
+  | {
       kind: 'submit_proposal' | 'approve_proposal' | 'apply_proposal';
       itemId: string;
       proposalId: string;
@@ -374,5 +446,7 @@ export type TranslationResponse =
   | { kind: 'required_progress'; value: RequiredProviderProgress }
   | { kind: 'item'; value: JobItem }
   | { kind: 'proposal'; value: Proposal }
+  | { kind: 'machine_proposal'; value: MachineProposal }
+  | { kind: 'machine_cancellation'; value: MachineCancellation }
   | { kind: 'apply'; value: ApplyResult }
   | { kind: 'inventory'; value: InventoryResult };

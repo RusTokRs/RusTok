@@ -45,8 +45,7 @@ pub(crate) fn topic_create_audience_port_context(
     if let Some(request) = request {
         if request.tenant_id != tenant_id {
             return Err(ForumError::Validation(
-                "Forum topic-create request tenant does not match the requested tenant"
-                    .to_string(),
+                "Forum topic-create request tenant does not match the requested tenant".to_string(),
             ));
         }
         if request.user_id != Some(auth.user_id) {
@@ -145,8 +144,15 @@ mod tests {
         assert_eq!(context.locale, "ru-RU");
         assert_eq!(context.channel.as_deref(), Some("members"));
         assert_eq!(context.deadline_ms, Some(5_000));
-        assert_eq!(context.claims, vec![Permission::FORUM_TOPICS_CREATE.to_string()]);
-        assert!(context.correlation_id.starts_with("forum-rest-topic-create-"));
+        assert_eq!(
+            context.claims,
+            vec![Permission::FORUM_TOPICS_CREATE.to_string()]
+        );
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-rest-topic-create-")
+        );
     }
 
     #[test]
@@ -166,7 +172,11 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(context.correlation_id.starts_with("forum-graphql-topic-create-"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-graphql-topic-create-")
+        );
     }
 
     #[test]

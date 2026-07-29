@@ -10,9 +10,7 @@ use crate::dto::TopicResponse;
 use crate::error::{ForumError, ForumResult};
 
 use super::rbac::enforce_scope;
-use super::topic_audience_visibility::{
-    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
-};
+use super::topic_audience::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
 use super::topic_facade::TopicService;
 
 /// Exact storefront topic read composition over the canonical topic owner and

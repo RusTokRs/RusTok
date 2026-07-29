@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::{
     TranslationError, TranslationResult,
-    entities::{memory_entry, memory_receipt},
+    entities::{machine_memory_binding, memory_entry, memory_receipt},
 };
 
 const MAX_LOOKUP_LIMIT: u16 = 50;
@@ -433,6 +433,17 @@ impl TranslationMemoryService {
         {
             return Err(TranslationError::MemoryRetentionConflict(
                 "memory entry retention window has not elapsed".to_string(),
+            ));
+        }
+        if machine_memory_binding::Entity::find()
+            .filter(machine_memory_binding::Column::TenantId.eq(tenant_id))
+            .filter(machine_memory_binding::Column::MemoryEntryId.eq(input.entry_id))
+            .one(&self.database)
+            .await?
+            .is_some()
+        {
+            return Err(TranslationError::MemoryRetentionConflict(
+                "memory entry is pinned by a registered machine translation operation".to_string(),
             ));
         }
         let revision = next_revision(current.revision)?;

@@ -10,7 +10,7 @@ mod generation;
 use rustok_auth::AuthModule;
 use rustok_cache::CacheModule;
 use rustok_channel::ChannelModule;
-use rustok_core::ModuleRegistry;
+use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_email::EmailModule;
 use rustok_events_module::EventsModule;
 use rustok_index::IndexModule;
@@ -28,6 +28,36 @@ pub use generation::{
     GeneratedStaticDistributionManifest, GeneratedStaticDistributionSource,
     StaticDistributionGenerationError, generate_static_distribution,
 };
+
+/// Builds module-owned runtime extensions and then adds explicitly selected
+/// cross-module adapters at the distribution composition boundary.
+///
+/// Executable hosts call this single neutral entrypoint and never import
+/// adapter or owner capability types.
+pub fn build_runtime_extensions(
+    registry: &ModuleRegistry,
+) -> rustok_core::Result<ModuleRuntimeExtensions> {
+    let mut extensions = registry.build_runtime_extensions()?;
+    register_runtime_bridges(&mut extensions)?;
+    Ok(extensions)
+}
+
+fn register_runtime_bridges(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
+    #[cfg(feature = "ai-translation")]
+    {
+        if extensions.contains::<rustok_translation::SharedMachineTranslationPortFactory>() {
+            return Err(rustok_core::Error::Validation(
+                "machine translation runtime factory is already registered".to_string(),
+            ));
+        }
+        extensions.insert(rustok_translation::SharedMachineTranslationPortFactory(
+            std::sync::Arc::new(rustok_ai_translation::AiMachineTranslationPortFactory),
+        ));
+    }
+    #[cfg(not(feature = "ai-translation"))]
+    let _ = extensions;
+    Ok(())
+}
 
 /// Immutable identity of the modules compiled into this distribution.
 ///
@@ -209,6 +239,10 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_workflow::WorkflowModule);
     }
+    #[cfg(feature = "mod-ai")]
+    {
+        registry = registry.register(rustok_ai::AiModule);
+    }
 
     generated_promotions::register_promoted_modules(registry)
 }
@@ -275,5 +309,16 @@ mod tests {
                 .iter()
                 .any(|module| module.slug == "social_graph")
         );
+        #[cfg(feature = "mod-ai")]
+        assert!(first.modules.iter().any(|module| module.slug == "ai"));
+    }
+
+    #[cfg(feature = "ai-translation")]
+    #[test]
+    fn selected_ai_translation_bridge_publishes_the_owner_neutral_factory() {
+        let registry = super::build_registry();
+        let extensions =
+            super::build_runtime_extensions(&registry).expect("distribution runtime extensions");
+        assert!(extensions.contains::<rustok_translation::SharedMachineTranslationPortFactory>());
     }
 }

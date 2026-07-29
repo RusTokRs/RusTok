@@ -10,6 +10,8 @@ import type {
   MemoryEntry,
   MemoryMutation,
   MemorySuggestion,
+  MachineCancellation,
+  MachineProposal,
   Proposal,
   ProviderProgress,
   RequiredProviderProgress,
@@ -27,6 +29,10 @@ const PROVIDER_PROGRESS_FIELDS =
   'ownerSlug resourceKind sourceLocale targetLocale requiredUnits exactRequiredUnits optionalUnits exactOptionalUnits resources completeResources ownerChangeCursor projectedCursor checkpointRevision checkpointUpdatedAt freshness';
 const PROPOSAL_FIELDS =
   'id itemId proposalRevision origin values { key value expectedSourceHash } qaIssues { field severity code message } qaAccepted status approvalReceiptId';
+const MACHINE_PROPOSAL_FIELDS =
+  'operationId itemId proposalId adapterSlug providerSlug providerPolicyDigest machineRequestDigest glossaryRevision glossaryDigest memoryDigest executionId executionRequestDigest promptPolicyDigest attempts { attempt providerProfileId providerSlug model fallback } usage { inputTokens outputTokens totalTokens costMinorUnits currencyCode priceSnapshotDigest } diagnostics { code blocking unitId } reviewRequired createdAt updatedAt';
+const MACHINE_CANCELLATION_FIELDS =
+  'cancellationId operationId status providerExecutionId providerStatus providerErrorCode providerObservedAt createdAt';
 const GLOSSARY_SUMMARY_FIELDS =
   'id name description sourceLocale targetLocale scope { ownerSlug resourceKind fieldKey } isActive revision';
 const GLOSSARY_FIELDS =
@@ -473,6 +479,48 @@ export async function executeTranslationOperation(
         { input }
       );
       return { kind: 'proposal', value: data.saveTranslationProposal };
+    }
+    case 'generate_machine_proposal': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { generateMachineTranslationProposal: MachineProposal }
+      >(
+        context,
+        `mutation GenerateMachineTranslationProposal(
+          $input: GenerateMachineTranslationProposalInput!
+        ) {
+          generateMachineTranslationProposal(input: $input) {
+            ${MACHINE_PROPOSAL_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'machine_proposal',
+        value: data.generateMachineTranslationProposal
+      };
+    }
+    case 'cancel_machine_operation': {
+      const input = withoutKind(operation);
+      const data = await request<
+        { input: typeof input },
+        { cancelMachineTranslationOperation: MachineCancellation }
+      >(
+        context,
+        `mutation CancelMachineTranslationOperation(
+          $input: CancelMachineTranslationOperationInput!
+        ) {
+          cancelMachineTranslationOperation(input: $input) {
+            ${MACHINE_CANCELLATION_FIELDS}
+          }
+        }`,
+        { input }
+      );
+      return {
+        kind: 'machine_cancellation',
+        value: data.cancelMachineTranslationOperation
+      };
     }
     case 'submit_proposal':
     case 'approve_proposal':

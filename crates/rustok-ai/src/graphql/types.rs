@@ -7,9 +7,9 @@ use crate::{
     AiAgentPrincipalRecord, AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord,
     AiChatSessionDetail, AiChatSessionSummary, AiMetricBucket, AiProviderProfileRecord,
     AiRecentRunRecord, AiRunStreamEvent, AiRunStreamEventKind, AiRuntimeMetricsSnapshot,
-    AiTaskProfileRecord, AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability,
-    ProviderConfigField, ProviderFeature, ProviderFieldKind, ProviderUsagePolicy, ToolCall,
-    ToolTrace,
+    AiStructuredBudgetPolicyRecord, AiStructuredProviderPolicyRecord, AiTaskProfileRecord,
+    AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability, ProviderConfigField,
+    ProviderFeature, ProviderFieldKind, ProviderUsagePolicy, ToolCall, ToolTrace,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -737,6 +737,81 @@ impl From<AiProviderProfileRecord> for AiProviderProfileGql {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
+pub struct AiStructuredBudgetPolicyGql {
+    pub id: Uuid,
+    pub currency_code: String,
+    pub limit_minor_units: i64,
+    pub reserved_minor_units: i64,
+    pub committed_minor_units: i64,
+    pub max_concurrent: i32,
+    pub in_flight: i32,
+    pub revision: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiStructuredBudgetPolicyRecord> for AiStructuredBudgetPolicyGql {
+    fn from(value: AiStructuredBudgetPolicyRecord) -> Self {
+        Self {
+            id: value.id,
+            currency_code: value.currency_code,
+            limit_minor_units: i64::try_from(value.limit_minor_units)
+                .expect("persisted structured budget limit fits i64"),
+            reserved_minor_units: i64::try_from(value.reserved_minor_units)
+                .expect("persisted structured budget reservation fits i64"),
+            committed_minor_units: i64::try_from(value.committed_minor_units)
+                .expect("persisted structured budget commitment fits i64"),
+            max_concurrent: i32::try_from(value.max_concurrent)
+                .expect("persisted structured budget concurrency fits i32"),
+            in_flight: i32::try_from(value.in_flight)
+                .expect("persisted structured budget in-flight count fits i32"),
+            revision: i64::try_from(value.revision)
+                .expect("persisted structured budget revision fits i64"),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiStructuredProviderPolicyGql {
+    pub id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub currency_code: String,
+    pub input_cost_per_million_minor: i64,
+    pub output_cost_per_million_minor: i64,
+    pub max_concurrent: i32,
+    pub in_flight: i32,
+    pub is_active: bool,
+    pub revision: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiStructuredProviderPolicyRecord> for AiStructuredProviderPolicyGql {
+    fn from(value: AiStructuredProviderPolicyRecord) -> Self {
+        Self {
+            id: value.id,
+            provider_profile_id: value.provider_profile_id,
+            currency_code: value.currency_code,
+            input_cost_per_million_minor: i64::try_from(value.input_cost_per_million_minor)
+                .expect("persisted structured provider input cost fits i64"),
+            output_cost_per_million_minor: i64::try_from(value.output_cost_per_million_minor)
+                .expect("persisted structured provider output cost fits i64"),
+            max_concurrent: i32::try_from(value.max_concurrent)
+                .expect("persisted structured provider concurrency fits i32"),
+            in_flight: i32::try_from(value.in_flight)
+                .expect("persisted structured provider in-flight count fits i32"),
+            is_active: value.is_active,
+            revision: i64::try_from(value.revision)
+                .expect("persisted structured provider revision fits i64"),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
 pub struct AiToolProfileGql {
     pub id: Uuid,
     pub slug: String,
@@ -1100,6 +1175,23 @@ pub struct UpdateAiProviderProfileInputGql {
     pub usage_policy: AiProviderUsagePolicyInputGql,
     pub is_active: bool,
     pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct PutAiStructuredBudgetPolicyInputGql {
+    pub currency_code: String,
+    pub limit_minor_units: i64,
+    pub max_concurrent: i32,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct PutAiStructuredProviderPolicyInputGql {
+    pub provider_profile_id: Uuid,
+    pub currency_code: String,
+    pub input_cost_per_million_minor: i64,
+    pub output_cost_per_million_minor: i64,
+    pub max_concurrent: i32,
+    pub is_active: bool,
 }
 
 #[derive(Debug, Clone, InputObject)]

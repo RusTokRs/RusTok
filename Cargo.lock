@@ -12073,6 +12073,7 @@ dependencies = [
 name = "rustok-ai"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "alloy",
  "anyhow",
  "async-graphql",
@@ -12939,6 +12940,8 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "flex",
+ "rustok-ai",
+ "rustok-ai-translation",
  "rustok-api",
  "rustok-auth",
  "rustok-blog",
@@ -14147,6 +14150,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-outbox",
  "rustok-payment",
+ "rustok-product",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "rustok-ui-transport",

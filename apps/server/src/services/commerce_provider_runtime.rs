@@ -83,10 +83,11 @@ pub fn attach_commerce_provider_registries(
                     .expect(
                         "TransactionalEventBus must be initialized before CommerceOrderReadRuntime",
                     );
-                let runtime = rustok_commerce::graphql_runtime::CommerceOrderReadRuntime::in_process(
-                    server.db_clone(),
-                    event_bus,
-                );
+                let runtime =
+                    rustok_commerce::graphql_runtime::CommerceOrderReadRuntime::in_process(
+                        server.db_clone(),
+                        event_bus,
+                    );
                 server.shared_insert(runtime.clone());
                 runtime
             });
@@ -216,13 +217,14 @@ pub fn attach_commerce_provider_registries(
     };
 
     #[cfg(all(feature = "mod-ai", feature = "mod-product"))]
-    let host = if let Some(runtime) =
-        server.shared_get::<rustok_product::ProductCatalogReadRuntime>()
-    {
-        host.with_shared_value(rustok_ai::SharedAiProductCatalogReadPort(runtime.read_port()))
-    } else {
-        host
-    };
+    let host =
+        if let Some(runtime) = server.shared_get::<rustok_product::ProductCatalogReadRuntime>() {
+            host.with_shared_value(rustok_ai::SharedAiProductCatalogReadPort(
+                runtime.read_port(),
+            ))
+        } else {
+            host
+        };
 
     host
 }
@@ -345,7 +347,10 @@ mod product_catalog_read_port_tests {
             _context: PortContext,
             _request: rustok_product::ProductProjectionRequest,
         ) -> Result<rustok_product::dto::ProductResponse, PortError> {
-            Err(PortError::unavailable("external.test", "external test provider"))
+            Err(PortError::unavailable(
+                "external.test",
+                "external test provider",
+            ))
         }
 
         async fn read_variant_product_projection(
@@ -353,7 +358,10 @@ mod product_catalog_read_port_tests {
             _context: PortContext,
             _request: rustok_product::VariantProductProjectionRequest,
         ) -> Result<rustok_product::dto::ProductResponse, PortError> {
-            Err(PortError::unavailable("external.test", "external test provider"))
+            Err(PortError::unavailable(
+                "external.test",
+                "external test provider",
+            ))
         }
 
         async fn list_published_products(
@@ -361,7 +369,10 @@ mod product_catalog_read_port_tests {
             _context: PortContext,
             _request: rustok_product::PublishedProductsRequest,
         ) -> Result<rustok_product::StorefrontProductList, PortError> {
-            Err(PortError::unavailable("external.test", "external test provider"))
+            Err(PortError::unavailable(
+                "external.test",
+                "external test provider",
+            ))
         }
     }
 

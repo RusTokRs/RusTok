@@ -11,10 +11,12 @@ use super::{
     ensure_ai_session_run, ensure_ai_task_profile_manage,
     types::{
         AiAgentModelAssignmentGql, AiAgentPrincipalGql, AiChatRunGql, AiProviderProfileGql,
-        AiProviderTestResultGql, AiSendMessageResultGql, AiTaskProfileGql, AiToolProfileGql,
+        AiProviderTestResultGql, AiSendMessageResultGql, AiStructuredBudgetPolicyGql,
+        AiStructuredProviderPolicyGql, AiTaskProfileGql, AiToolProfileGql,
         CreateAiAgentModelAssignmentInputGql, CreateAiAgentPrincipalInputGql,
         CreateAiAgentWorkflowRunInputGql, CreateAiProviderProfileInputGql,
         CreateAiTaskProfileInputGql, CreateAiToolProfileInputGql,
+        PutAiStructuredBudgetPolicyInputGql, PutAiStructuredProviderPolicyInputGql,
         ResolveAiAgentWorkflowStageApprovalInputGql, ResumeAiApprovalInputGql,
         RunAiTaskJobInputGql, StartAiChatSessionInputGql, UpdateAiAgentModelAssignmentInputGql,
         UpdateAiAgentPrincipalInputGql, UpdateAiProviderProfileInputGql,
@@ -46,6 +48,22 @@ async fn operator_context(
         role_slugs: Vec::new(),
         preferred_locale,
     })
+}
+
+fn nonnegative_u64(value: i64, field: &str) -> Result<u64> {
+    u64::try_from(value)
+        .map_err(|_| async_graphql::Error::new(format!("{field} must be non-negative")))
+}
+
+fn positive_u32(value: i32, field: &str) -> Result<u32> {
+    let value = u32::try_from(value)
+        .map_err(|_| async_graphql::Error::new(format!("{field} must be positive")))?;
+    if value == 0 {
+        return Err(async_graphql::Error::new(format!(
+            "{field} must be positive"
+        )));
+    }
+    Ok(value)
 }
 
 #[Object]
@@ -322,6 +340,61 @@ impl AiMutation {
         .await
         .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.into())
+    }
+
+    async fn put_ai_structured_budget_policy(
+        &self,
+        ctx: &Context<'_>,
+        input: PutAiStructuredBudgetPolicyInputGql,
+    ) -> Result<AiStructuredBudgetPolicyGql> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_manage(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        Ok(crate::AiManagementService::put_structured_budget_policy(
+            db,
+            &operator,
+            crate::PutAiStructuredBudgetPolicyInput {
+                currency_code: input.currency_code,
+                limit_minor_units: nonnegative_u64(input.limit_minor_units, "limit_minor_units")?,
+                max_concurrent: positive_u32(input.max_concurrent, "max_concurrent")?,
+            },
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.code))?
+        .into())
+    }
+
+    async fn put_ai_structured_provider_policy(
+        &self,
+        ctx: &Context<'_>,
+        input: PutAiStructuredProviderPolicyInputGql,
+    ) -> Result<AiStructuredProviderPolicyGql> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_manage(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        Ok(crate::AiManagementService::put_structured_provider_policy(
+            db,
+            &operator,
+            crate::PutAiStructuredProviderPolicyInput {
+                provider_profile_id: input.provider_profile_id,
+                currency_code: input.currency_code,
+                input_cost_per_million_minor: nonnegative_u64(
+                    input.input_cost_per_million_minor,
+                    "input_cost_per_million_minor",
+                )?,
+                output_cost_per_million_minor: nonnegative_u64(
+                    input.output_cost_per_million_minor,
+                    "output_cost_per_million_minor",
+                )?,
+                max_concurrent: positive_u32(input.max_concurrent, "max_concurrent")?,
+                is_active: input.is_active,
+            },
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.code))?
+        .into())
     }
 
     async fn deactivate_ai_provider_profile(

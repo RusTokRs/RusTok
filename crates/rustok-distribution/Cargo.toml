@@ -42,6 +42,8 @@ mod-media = ["dep:rustok-media"]
 mod-translation = ["dep:rustok-translation"]
 mod-seo = ["dep:rustok-seo", "mod-content"]
 mod-workflow = ["dep:rustok-workflow"]
+mod-ai = ["dep:rustok-ai", "rustok-ai/server"]
+ai-translation = ["mod-ai", "mod-translation", "dep:rustok-ai-translation"]
 
 [dependencies]
 rustok-core.workspace = true
@@ -92,6 +94,8 @@ rustok-media = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
+rustok-ai = { workspace = true, optional = true }
+rustok-ai-translation = { workspace = true, optional = true, features = ["server"] }
 alloy = { workspace = true, optional = true }
 flex.workspace = true
 serde.workspace = true

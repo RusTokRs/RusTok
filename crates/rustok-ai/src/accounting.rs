@@ -4,7 +4,7 @@ use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
     ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter,
-    TransactionTrait,
+    QueryOrder, TransactionTrait,
     sea_query::{Expr, ExprTrait},
 };
 use serde::Serialize;
@@ -13,11 +13,13 @@ use uuid::Uuid;
 use crate::ProviderUsage;
 use crate::entities::{
     ai_structured_attempts, ai_structured_budgets, ai_structured_executions,
-    ai_structured_provider_policies, ai_structured_reservations,
+    ai_structured_provider_policies, ai_structured_reservations, ai_structured_results,
 };
+use crate::structured_result::SealedStructuredResult;
 
 const TOKENS_PER_PRICE_UNIT: u128 = 1_000_000;
 const RECOVERY_ERROR_CODE: &str = "ai.structured.execution_lease_expired";
+const RESULT_HANDOFF_ERROR_CODE: &str = "ai.structured.result_handoff_incomplete";
 const RECOVERY_LEASE_SECONDS: i64 = 30;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,9 +56,6 @@ pub(crate) struct Attempt {
 
 #[derive(Debug, Clone)]
 pub(crate) enum AttemptOutcome {
-    Completed {
-        usage: ProviderUsage,
-    },
     Failed {
         usage: Option<ProviderUsage>,
         error_code: String,
@@ -76,7 +75,6 @@ pub(crate) struct AttemptCost {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TerminalOutcome {
-    Completed,
     Failed {
         error_code: String,
         retryable: bool,
@@ -531,6 +529,195 @@ impl StructuredAccounting {
         Ok(finalized)
     }
 
+    pub(crate) async fn complete_attempt(
+        &self,
+        execution_id: Uuid,
+        lease_token: Uuid,
+        attempt_id: Uuid,
+        usage: ProviderUsage,
+        result: SealedStructuredResult,
+    ) -> Result<ai_structured_executions::Model, PortError> {
+        if usage.total_tokens != usage.input_tokens.saturating_add(usage.output_tokens) {
+            return Err(PortError::invariant_violation(
+                "ai.structured.provider_usage_invalid",
+                "structured generation provider token usage does not reconcile",
+            ));
+        }
+        let transaction = self
+            .database
+            .begin()
+            .await
+            .map_err(|_| accounting_unavailable())?;
+        let execution = ai_structured_executions::Entity::find_by_id(execution_id)
+            .one(&transaction)
+            .await
+            .map_err(|_| accounting_unavailable())?
+            .ok_or_else(|| {
+                PortError::not_found(
+                    "ai.structured.execution_not_found",
+                    "structured task execution was not found",
+                )
+            })?;
+        if execution.status != "running" || execution.lease_token != Some(lease_token) {
+            return Err(PortError::conflict(
+                "ai.structured.finalize_lease_conflict",
+                "structured execution lease is not active",
+            ));
+        }
+        if execution.cancel_requested_at.is_some() {
+            return Err(PortError::conflict(
+                "ai.structured.cancellation_pending",
+                "structured execution must observe its durable cancellation request",
+            ));
+        }
+        if result.tenant_id != execution.tenant_id
+            || result.execution_id != execution.id
+            || result.request_digest != execution.request_digest
+            || result.plaintext_bytes <= 0
+            || result.expires_at <= result.created_at
+        {
+            return Err(accounting_invariant());
+        }
+        let attempt = ai_structured_attempts::Entity::find_by_id(attempt_id)
+            .filter(ai_structured_attempts::Column::TenantId.eq(execution.tenant_id))
+            .filter(ai_structured_attempts::Column::ExecutionId.eq(execution_id))
+            .one(&transaction)
+            .await
+            .map_err(|_| accounting_unavailable())?
+            .ok_or_else(|| {
+                PortError::not_found(
+                    "ai.structured.attempt_not_found",
+                    "structured execution attempt was not found",
+                )
+            })?;
+        if attempt.status != "running" {
+            return Err(PortError::conflict(
+                "ai.structured.attempt_state_conflict",
+                "structured execution attempt is no longer running",
+            ));
+        }
+        let cost = actual_cost(
+            usage.input_tokens,
+            usage.output_tokens,
+            u64::try_from(attempt.input_cost_per_million_minor)
+                .map_err(|_| accounting_invariant())?,
+            u64::try_from(attempt.output_cost_per_million_minor)
+                .map_err(|_| accounting_invariant())?,
+        )?;
+        let cost_minor_units = to_i64(cost)?;
+        let now = Utc::now();
+        let finished = ai_structured_attempts::Entity::update_many()
+            .col_expr(
+                ai_structured_attempts::Column::Status,
+                Expr::value("completed"),
+            )
+            .col_expr(
+                ai_structured_attempts::Column::InputTokens,
+                Expr::value(Some(to_i64(usage.input_tokens)?)),
+            )
+            .col_expr(
+                ai_structured_attempts::Column::OutputTokens,
+                Expr::value(Some(to_i64(usage.output_tokens)?)),
+            )
+            .col_expr(
+                ai_structured_attempts::Column::TotalTokens,
+                Expr::value(Some(to_i64(usage.total_tokens)?)),
+            )
+            .col_expr(
+                ai_structured_attempts::Column::CostMinorUnits,
+                Expr::value(Some(cost_minor_units)),
+            )
+            .col_expr(
+                ai_structured_attempts::Column::CompletedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(ai_structured_attempts::Column::Id.eq(attempt.id))
+            .filter(ai_structured_attempts::Column::Status.eq("running"))
+            .exec(&transaction)
+            .await
+            .map_err(|_| accounting_unavailable())?;
+        if finished.rows_affected != 1 {
+            return Err(accounting_invariant());
+        }
+        release_provider_slot(&attempt, now, &transaction).await?;
+        ai_structured_results::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(result.tenant_id),
+            execution_id: Set(result.execution_id),
+            request_digest: Set(result.request_digest),
+            output_digest: Set(result.output_digest),
+            key_id: Set(result.key_id),
+            nonce: Set(result.nonce),
+            ciphertext: Set(result.ciphertext),
+            plaintext_bytes: Set(result.plaintext_bytes),
+            replay_count: Set(0),
+            created_at: Set(result.created_at.into()),
+            expires_at: Set(result.expires_at.into()),
+            last_replayed_at: Set(None),
+        }
+        .insert(&transaction)
+        .await
+        .map_err(|_| accounting_unavailable())?;
+        let committed = attempt_cost_total(execution_id, &transaction).await?;
+        settle_reservation(execution_id, committed, &transaction).await?;
+        let changed = ai_structured_executions::Entity::update_many()
+            .col_expr(
+                ai_structured_executions::Column::Status,
+                Expr::value("completed"),
+            )
+            .col_expr(
+                ai_structured_executions::Column::ErrorCode,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                ai_structured_executions::Column::Retryable,
+                Expr::value(false),
+            )
+            .col_expr(
+                ai_structured_executions::Column::RetryAfterMs,
+                Expr::value(Option::<i64>::None),
+            )
+            .col_expr(
+                ai_structured_executions::Column::LeaseToken,
+                Expr::value(Option::<Uuid>::None),
+            )
+            .col_expr(
+                ai_structured_executions::Column::LeaseExpiresAt,
+                Expr::value(Option::<DateTime<Utc>>::None),
+            )
+            .col_expr(
+                ai_structured_executions::Column::CompletedAt,
+                Expr::value(Some(now)),
+            )
+            .col_expr(
+                ai_structured_executions::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .filter(ai_structured_executions::Column::Id.eq(execution.id))
+            .filter(ai_structured_executions::Column::Status.eq("running"))
+            .filter(ai_structured_executions::Column::LeaseToken.eq(lease_token))
+            .filter(ai_structured_executions::Column::CancelRequestedAt.is_null())
+            .exec(&transaction)
+            .await
+            .map_err(|_| accounting_unavailable())?;
+        if changed.rows_affected != 1 {
+            return Err(PortError::conflict(
+                "ai.structured.finalize_state_conflict",
+                "structured execution changed while it was being finalized",
+            ));
+        }
+        let completed = ai_structured_executions::Entity::find_by_id(execution.id)
+            .one(&transaction)
+            .await
+            .map_err(|_| accounting_unavailable())?
+            .ok_or_else(accounting_invariant)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| accounting_unavailable())?;
+        Ok(completed)
+    }
+
     pub(crate) async fn cancel_queued(
         &self,
         execution_id: Uuid,
@@ -667,17 +854,41 @@ impl StructuredAccounting {
                 .map_err(|_| accounting_unavailable())?;
             let attempts_exhausted = attempt_count
                 >= u64::try_from(execution.max_attempts).map_err(|_| accounting_invariant())?;
-            let terminal = cancelled || attempts_exhausted;
+            let last_attempt = ai_structured_attempts::Entity::find()
+                .filter(ai_structured_attempts::Column::ExecutionId.eq(execution.id))
+                .order_by_desc(ai_structured_attempts::Column::Attempt)
+                .one(&transaction)
+                .await
+                .map_err(|_| accounting_unavailable())?;
+            let completed_without_handoff = last_attempt
+                .as_ref()
+                .is_some_and(|attempt| attempt.status == "completed");
+            let non_retryable_failure = last_attempt
+                .as_ref()
+                .is_some_and(|attempt| attempt.status == "failed" && !attempt.retryable);
+            let terminal = cancelled
+                || attempts_exhausted
+                || completed_without_handoff
+                || non_retryable_failure;
             if terminal {
                 let committed = attempt_cost_total(execution.id, &transaction).await?;
                 settle_reservation(execution.id, committed, &transaction).await?;
             }
             let status = if cancelled {
                 "cancelled"
-            } else if attempts_exhausted {
+            } else if terminal {
                 "failed"
             } else {
                 "queued"
+            };
+            let error_code = if cancelled {
+                None
+            } else if completed_without_handoff {
+                Some(RESULT_HANDOFF_ERROR_CODE.to_string())
+            } else if non_retryable_failure {
+                last_attempt.and_then(|attempt| attempt.error_code)
+            } else {
+                Some(RECOVERY_ERROR_CODE.to_string())
             };
             let changed = ai_structured_executions::Entity::update_many()
                 .col_expr(
@@ -686,7 +897,7 @@ impl StructuredAccounting {
                 )
                 .col_expr(
                     ai_structured_executions::Column::ErrorCode,
-                    Expr::value((!cancelled).then(|| RECOVERY_ERROR_CODE.to_string())),
+                    Expr::value(error_code),
                 )
                 .col_expr(
                     ai_structured_executions::Column::Retryable,
@@ -966,7 +1177,6 @@ impl StructuredAccounting {
             ));
         }
         let (status, usage, error_code, retryable, retry_after_ms) = match outcome {
-            AttemptOutcome::Completed { usage } => ("completed", Some(usage), None, false, None),
             AttemptOutcome::Failed {
                 usage,
                 error_code,
@@ -997,12 +1207,6 @@ impl StructuredAccounting {
                     Some(to_i64(usage.total_tokens)?),
                     Some(to_i64(cost)?),
                 )
-            }
-            None if status == "completed" => {
-                return Err(PortError::invariant_violation(
-                    "ai.structured.provider_usage_missing",
-                    "completed structured generation has no token usage evidence",
-                ));
             }
             None => (None, None, None, None),
         };
@@ -1052,31 +1256,7 @@ impl StructuredAccounting {
                 "structured execution attempt changed while it was being completed",
             ));
         }
-        let released = ai_structured_provider_policies::Entity::update_many()
-            .col_expr(
-                ai_structured_provider_policies::Column::InFlight,
-                Expr::col(ai_structured_provider_policies::Column::InFlight).sub(1),
-            )
-            .col_expr(
-                ai_structured_provider_policies::Column::Revision,
-                Expr::col(ai_structured_provider_policies::Column::Revision).add(1),
-            )
-            .col_expr(
-                ai_structured_provider_policies::Column::UpdatedAt,
-                Expr::value(now),
-            )
-            .filter(
-                ai_structured_provider_policies::Column::ProviderProfileId
-                    .eq(attempt.provider_profile_id),
-            )
-            .filter(ai_structured_provider_policies::Column::TenantId.eq(attempt.tenant_id))
-            .filter(ai_structured_provider_policies::Column::InFlight.gt(0))
-            .exec(&transaction)
-            .await
-            .map_err(|_| accounting_unavailable())?;
-        if released.rows_affected != 1 {
-            return Err(accounting_invariant());
-        }
+        release_provider_slot(&attempt, now, &transaction).await?;
         transaction
             .commit()
             .await
@@ -1106,7 +1286,6 @@ fn terminal_fields(
     outcome: &TerminalOutcome,
 ) -> Result<(&'static str, Option<String>, bool, Option<i64>), PortError> {
     match outcome {
-        TerminalOutcome::Completed => Ok(("completed", None, false, None)),
         TerminalOutcome::Cancelled => Ok(("cancelled", None, false, None)),
         TerminalOutcome::Failed {
             error_code,
@@ -1169,6 +1348,39 @@ async fn ensure_no_running_attempt(
             "ai.structured.attempt_still_running",
             "structured execution cannot finalize while a provider attempt is running",
         ));
+    }
+    Ok(())
+}
+
+async fn release_provider_slot(
+    attempt: &ai_structured_attempts::Model,
+    now: DateTime<Utc>,
+    transaction: &DatabaseTransaction,
+) -> Result<(), PortError> {
+    let released = ai_structured_provider_policies::Entity::update_many()
+        .col_expr(
+            ai_structured_provider_policies::Column::InFlight,
+            Expr::col(ai_structured_provider_policies::Column::InFlight).sub(1),
+        )
+        .col_expr(
+            ai_structured_provider_policies::Column::Revision,
+            Expr::col(ai_structured_provider_policies::Column::Revision).add(1),
+        )
+        .col_expr(
+            ai_structured_provider_policies::Column::UpdatedAt,
+            Expr::value(now),
+        )
+        .filter(
+            ai_structured_provider_policies::Column::ProviderProfileId
+                .eq(attempt.provider_profile_id),
+        )
+        .filter(ai_structured_provider_policies::Column::TenantId.eq(attempt.tenant_id))
+        .filter(ai_structured_provider_policies::Column::InFlight.gt(0))
+        .exec(transaction)
+        .await
+        .map_err(|_| accounting_unavailable())?;
+    if released.rows_affected != 1 {
+        return Err(accounting_invariant());
     }
     Ok(())
 }
@@ -1453,6 +1665,7 @@ mod tests {
         AiStructuredTaskLimits, AiStructuredTaskRequest, AiTaskDataClassification,
         migrations::m20260729_000001_structured_execution::Migration,
         structured::StructuredExecutionLedger,
+        structured_result::{StructuredResultKeyring, StructuredResultStore},
     };
 
     async fn runtime(
@@ -1538,8 +1751,24 @@ mod tests {
         }
     }
 
+    fn sealed(execution: &ai_structured_executions::Model) -> SealedStructuredResult {
+        let created_at = Utc::now();
+        SealedStructuredResult {
+            tenant_id: execution.tenant_id,
+            execution_id: execution.id,
+            request_digest: execution.request_digest.clone(),
+            output_digest: "c".repeat(64),
+            key_id: "test-v1".to_string(),
+            nonce: vec![1; 12],
+            ciphertext: vec![2; 32],
+            plaintext_bytes: 16,
+            created_at,
+            expires_at: created_at + chrono::Duration::minutes(5),
+        }
+    }
+
     #[tokio::test]
-    async fn finalization_is_atomic_idempotent_and_reconciles_budget() {
+    async fn successful_attempt_result_and_budget_settle_atomically() {
         let (ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
         let execution = ledger
             .register(&context(tenant_id, "execute-a"), &request())
@@ -1566,16 +1795,66 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        let finalized = accounting
-            .finalize(execution.id, lease.token, TerminalOutcome::Completed)
+        let attempt = accounting
+            .begin_attempt(
+                execution.id,
+                lease.token,
+                provider_id,
+                "openai_compatible",
+                "test-model",
+            )
             .await
             .unwrap();
-        let replayed = accounting
-            .finalize(execution.id, lease.token, TerminalOutcome::Completed)
+        let output = json!({"translated": "hello"});
+        let keyring = StructuredResultKeyring::for_test(
+            "test-v1",
+            Duration::from_secs(300),
+            std::collections::BTreeMap::from([("test-v1".to_string(), [7_u8; 32])]),
+        );
+        let encrypted = keyring
+            .seal(tenant_id, execution.id, &execution.request_digest, &output)
+            .await
+            .unwrap();
+        let finalized = accounting
+            .complete_attempt(
+                execution.id,
+                lease.token,
+                attempt.model.id,
+                ProviderUsage::normalized(10, 5, None),
+                encrypted,
+            )
             .await
             .unwrap();
         assert_eq!(finalized.status, "completed");
-        assert_eq!(finalized.id, replayed.id);
+        let store = StructuredResultStore::new(accounting.database.clone(), keyring);
+        assert_eq!(
+            store
+                .replay(
+                    tenant_id,
+                    execution.id,
+                    &execution.request_digest,
+                    execution.max_output_bytes,
+                )
+                .await
+                .unwrap(),
+            output
+        );
+        assert!(
+            ai_structured_results::Entity::find()
+                .filter(ai_structured_results::Column::ExecutionId.eq(execution.id))
+                .one(&accounting.database)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        let result = ai_structured_results::Entity::find()
+            .filter(ai_structured_results::Column::ExecutionId.eq(execution.id))
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.replay_count, 1);
+        assert!(result.last_replayed_at.is_some());
 
         let budget = ai_structured_budgets::Entity::find()
             .one(&accounting.database)
@@ -1583,15 +1862,104 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(budget.reserved_minor_units, 0);
-        assert_eq!(budget.committed_minor_units, 0);
+        assert_eq!(budget.committed_minor_units, 20);
         assert_eq!(budget.in_flight, 0);
         let reservation = ai_structured_reservations::Entity::find()
             .one(&accounting.database)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(reservation.state, "released");
-        assert_eq!(reservation.committed_minor_units, 0);
+        assert_eq!(reservation.state, "committed");
+        assert_eq!(reservation.committed_minor_units, 20);
+    }
+
+    #[tokio::test]
+    async fn result_insert_failure_rolls_back_attempt_slot_budget_and_execution() {
+        let (ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
+        let execution = ledger
+            .register(&context(tenant_id, "execute-rollback"), &request())
+            .await
+            .unwrap()
+            .execution;
+        accounting
+            .reserve(execution.id, &[provider_id])
+            .await
+            .unwrap();
+        let lease = ledger
+            .claim(execution.id, Duration::from_secs(30))
+            .await
+            .unwrap()
+            .unwrap();
+        let attempt = accounting
+            .begin_attempt(
+                execution.id,
+                lease.token,
+                provider_id,
+                "openai_compatible",
+                "test-model",
+            )
+            .await
+            .unwrap();
+        let occupied = sealed(&execution);
+        ai_structured_results::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(occupied.tenant_id),
+            execution_id: Set(occupied.execution_id),
+            request_digest: Set(occupied.request_digest),
+            output_digest: Set(occupied.output_digest),
+            key_id: Set(occupied.key_id),
+            nonce: Set(occupied.nonce),
+            ciphertext: Set(occupied.ciphertext),
+            plaintext_bytes: Set(occupied.plaintext_bytes),
+            replay_count: Set(0),
+            created_at: Set(occupied.created_at.into()),
+            expires_at: Set(occupied.expires_at.into()),
+            last_replayed_at: Set(None),
+        }
+        .insert(&accounting.database)
+        .await
+        .unwrap();
+
+        assert_eq!(
+            accounting
+                .complete_attempt(
+                    execution.id,
+                    lease.token,
+                    attempt.model.id,
+                    ProviderUsage::normalized(10, 5, None),
+                    sealed(&execution),
+                )
+                .await
+                .unwrap_err()
+                .code,
+            "ai.structured.accounting_unavailable"
+        );
+        let attempt = ai_structured_attempts::Entity::find_by_id(attempt.model.id)
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(attempt.status, "running");
+        let execution = ai_structured_executions::Entity::find_by_id(execution.id)
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(execution.status, "running");
+        let policy = ai_structured_provider_policies::Entity::find()
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(policy.in_flight, 1);
+        let budget = ai_structured_budgets::Entity::find()
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(budget.reserved_minor_units > 0);
+        assert_eq!(budget.committed_minor_units, 0);
+        assert_eq!(budget.in_flight, 1);
     }
 
     #[tokio::test]
@@ -1748,21 +2116,14 @@ mod tests {
             "ai.structured.attempt_already_running"
         );
 
-        let cost = accounting
-            .finish_attempt(
+        let finalized = accounting
+            .complete_attempt(
                 execution.id,
                 lease.token,
                 attempt.model.id,
-                AttemptOutcome::Completed {
-                    usage: ProviderUsage::normalized(10, 5, None),
-                },
+                ProviderUsage::normalized(10, 5, None),
+                sealed(&execution),
             )
-            .await
-            .unwrap();
-        assert_eq!(cost.cost_minor_units, 20);
-        assert_eq!(cost.currency_code, "USD");
-        let finalized = accounting
-            .finalize(execution.id, lease.token, TerminalOutcome::Completed)
             .await
             .unwrap();
         assert_eq!(finalized.status, "completed");
@@ -1935,6 +2296,74 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(reservation.state, "reserved");
+    }
+
+    #[tokio::test]
+    async fn recovery_terminalizes_non_retryable_attempt_without_rebilling() {
+        let (ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
+        let execution = ledger
+            .register(&context(tenant_id, "execute-non-retryable"), &request())
+            .await
+            .unwrap()
+            .execution;
+        accounting
+            .reserve(execution.id, &[provider_id])
+            .await
+            .unwrap();
+        let lease = ledger
+            .claim(execution.id, Duration::from_secs(30))
+            .await
+            .unwrap()
+            .unwrap();
+        let attempt = accounting
+            .begin_attempt(
+                execution.id,
+                lease.token,
+                provider_id,
+                "openai_compatible",
+                "test-model",
+            )
+            .await
+            .unwrap();
+        accounting
+            .finish_attempt(
+                execution.id,
+                lease.token,
+                attempt.model.id,
+                AttemptOutcome::Failed {
+                    usage: None,
+                    error_code: "ai.structured.provider_configuration_invalid".to_string(),
+                    retryable: false,
+                    retry_after_ms: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            accounting
+                .recover_expired(Utc::now() + chrono::Duration::seconds(31))
+                .await
+                .unwrap(),
+            1
+        );
+        let recovered = ai_structured_executions::Entity::find_by_id(execution.id)
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(recovered.status, "failed");
+        assert_eq!(
+            recovered.error_code.as_deref(),
+            Some("ai.structured.provider_configuration_invalid")
+        );
+        assert!(!recovered.retryable);
+        let reservation = ai_structured_reservations::Entity::find()
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(reservation.state, "released");
     }
 
     #[tokio::test]

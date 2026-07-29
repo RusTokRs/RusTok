@@ -37,13 +37,13 @@ impl ForumAudienceFactsPort for RecordingFactsPort {
         Ok(ForumAudienceFacts {
             tenant_id: request.tenant_id,
             user_id: request.user_id,
-            trust_level: request
-                .include_trust_level
-                .then_some(if request.user_id == self.low_trust_user_id {
+            trust_level: request.include_trust_level.then_some(
+                if request.user_id == self.low_trust_user_id {
                     1
                 } else {
                     8
-                }),
+                },
+            ),
             channel_memberships: Vec::new(),
             group_memberships: Vec::new(),
         })

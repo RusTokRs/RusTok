@@ -6,6 +6,7 @@ mod m20260728_000005_create_translation_progress_and_retries;
 mod m20260728_000006_create_translation_policies;
 mod m20260729_000007_create_translation_glossaries;
 mod m20260729_000008_create_translation_memory;
+mod m20260729_000009_create_translation_machine_operations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -20,6 +21,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260728_000006_create_translation_policies::Migration),
         Box::new(m20260729_000007_create_translation_glossaries::Migration),
         Box::new(m20260729_000008_create_translation_memory::Migration),
+        Box::new(m20260729_000009_create_translation_machine_operations::Migration),
     ]
 }
 
@@ -56,6 +58,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260729_000008_create_translation_memory",
             vec!["m20260729_000007_create_translation_glossaries"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260729_000009_create_translation_machine_operations",
+            vec!["m20260729_000008_create_translation_memory"],
         ),
     ]
 }

@@ -16,6 +16,8 @@ pub const AI_UPDATE_AGENT_PRINCIPAL_OPERATION: &str = "UpdateAiAgentPrincipal";
 pub const AI_CREATE_AGENT_MODEL_ASSIGNMENT_OPERATION: &str = "CreateAiAgentModelAssignment";
 pub const AI_UPDATE_AGENT_MODEL_ASSIGNMENT_OPERATION: &str = "UpdateAiAgentModelAssignment";
 pub const AI_CREATE_AGENT_WORKFLOW_RUN_OPERATION: &str = "CreateAiAgentWorkflowRun";
+pub const AI_PUT_STRUCTURED_BUDGET_POLICY_OPERATION: &str = "PutAiStructuredBudgetPolicy";
+pub const AI_PUT_STRUCTURED_PROVIDER_POLICY_OPERATION: &str = "PutAiStructuredProviderPolicy";
 
 pub const AI_BOOTSTRAP_QUERY: &str = r#"
 query AiBootstrap {
@@ -74,6 +76,14 @@ query AiBootstrap {
     capabilities
     usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
   }
+  aiStructuredBudgetPolicies {
+    id currencyCode limitMinorUnits reservedMinorUnits committedMinorUnits
+    maxConcurrent inFlight revision createdAt updatedAt
+  }
+  aiStructuredProviderPolicies {
+    id providerProfileId currencyCode inputCostPerMillionMinor outputCostPerMillionMinor
+    maxConcurrent inFlight isActive revision createdAt updatedAt
+  }
   aiTaskProfiles { id slug displayName description targetCapability systemPrompt allowedProviderProfileIds preferredProviderProfileIds fallbackStrategy toolProfileId defaultExecutionMode isActive }
   aiToolProfiles { id slug displayName description allowedTools deniedTools sensitiveTools isActive }
   aiChatSessions { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
@@ -110,6 +120,24 @@ query AiBootstrap {
     usage { inputTokens outputTokens totalTokens }
     sequence
     createdAt
+  }
+}
+"#;
+
+pub const AI_PUT_STRUCTURED_BUDGET_POLICY_MUTATION: &str = r#"
+mutation PutAiStructuredBudgetPolicy($input: PutAiStructuredBudgetPolicyInputGql!) {
+  putAiStructuredBudgetPolicy(input: $input) {
+    id currencyCode limitMinorUnits reservedMinorUnits committedMinorUnits
+    maxConcurrent inFlight revision createdAt updatedAt
+  }
+}
+"#;
+
+pub const AI_PUT_STRUCTURED_PROVIDER_POLICY_MUTATION: &str = r#"
+mutation PutAiStructuredProviderPolicy($input: PutAiStructuredProviderPolicyInputGql!) {
+  putAiStructuredProviderPolicy(input: $input) {
+    id providerProfileId currencyCode inputCostPerMillionMinor outputCostPerMillionMinor
+    maxConcurrent inFlight isActive revision createdAt updatedAt
   }
 }
 "#;
@@ -205,6 +233,7 @@ mod contract_tests {
     use super::{
         AI_BOOTSTRAP_QUERY, AI_CREATE_AGENT_MODEL_ASSIGNMENT_MUTATION,
         AI_CREATE_AGENT_PRINCIPAL_MUTATION, AI_CREATE_AGENT_WORKFLOW_RUN_MUTATION,
+        AI_PUT_STRUCTURED_BUDGET_POLICY_MUTATION, AI_PUT_STRUCTURED_PROVIDER_POLICY_MUTATION,
         AI_SESSION_EVENTS_SUBSCRIPTION, AI_SESSION_QUERY,
         AI_UPDATE_AGENT_MODEL_ASSIGNMENT_MUTATION, AI_UPDATE_AGENT_PRINCIPAL_MUTATION,
     };
@@ -231,6 +260,31 @@ mod contract_tests {
     #[test]
     fn bootstrap_uses_the_same_safe_target_and_credential_shape_as_native_transport() {
         assert_safe_provider_selection(AI_BOOTSTRAP_QUERY);
+    }
+
+    #[test]
+    fn structured_accounting_queries_and_mutations_keep_budget_and_provider_evidence_visible() {
+        for field in [
+            "aiStructuredBudgetPolicies",
+            "limitMinorUnits",
+            "reservedMinorUnits",
+            "committedMinorUnits",
+            "aiStructuredProviderPolicies",
+            "inputCostPerMillionMinor",
+            "outputCostPerMillionMinor",
+            "maxConcurrent",
+            "inFlight",
+            "revision",
+        ] {
+            assert!(
+                AI_BOOTSTRAP_QUERY.contains(field),
+                "missing structured accounting bootstrap field `{field}`"
+            );
+        }
+        assert!(AI_PUT_STRUCTURED_BUDGET_POLICY_MUTATION.contains("putAiStructuredBudgetPolicy"));
+        assert!(
+            AI_PUT_STRUCTURED_PROVIDER_POLICY_MUTATION.contains("putAiStructuredProviderPolicy")
+        );
     }
 
     #[test]

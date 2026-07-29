@@ -165,7 +165,7 @@ fn evaluate_glossary_qa(
             "bound glossary locales do not match the proposal locales".to_string(),
         ));
     }
-    if !scope_matches(glossary, patch) {
+    if !glossary_scope_matches(glossary, &patch.identity) {
         return Ok(());
     }
 
@@ -187,12 +187,7 @@ fn evaluate_glossary_qa(
             continue;
         };
         for concept in &glossary.concepts {
-            if term_matches(
-                source_value,
-                &concept.source_term,
-                concept.match_kind,
-                concept.case_sensitive,
-            ) {
+            if glossary_concept_matches(source_value, concept) {
                 evaluate_concept(concept, field_patch.key.clone(), &field_patch.value, issues);
             }
         }
@@ -200,19 +195,29 @@ fn evaluate_glossary_qa(
     Ok(())
 }
 
-fn scope_matches(glossary: &GlossaryRecord, patch: &TranslationPatchRequest) -> bool {
+pub(crate) fn glossary_scope_matches(
+    glossary: &GlossaryRecord,
+    identity: &rustok_translation_targets::TranslationResourceIdentity,
+) -> bool {
     glossary
         .scope
         .owner_slug
         .as_ref()
-        .is_none_or(|owner_slug| owner_slug.as_str() == patch.identity.owner_slug.as_str())
+        .is_none_or(|owner_slug| owner_slug.as_str() == identity.owner_slug.as_str())
         && glossary
             .scope
             .resource_kind
             .as_ref()
-            .is_none_or(|resource_kind| {
-                resource_kind.as_str() == patch.identity.resource_kind.as_str()
-            })
+            .is_none_or(|resource_kind| resource_kind.as_str() == identity.resource_kind.as_str())
+}
+
+pub(crate) fn glossary_concept_matches(source_value: &str, concept: &GlossaryConcept) -> bool {
+    term_matches(
+        source_value,
+        &concept.source_term,
+        concept.match_kind,
+        concept.case_sensitive,
+    )
 }
 
 fn evaluate_concept(

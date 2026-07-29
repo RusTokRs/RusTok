@@ -122,7 +122,8 @@ selection.
   package for the same control plane: one typed operation/response contract, an
   SSR/hydrate native `#[server]` adapter over `HostRuntimeContext`, and a
   CSR/headless GraphQL adapter over `rustok-graphql`. Both paths cover the same
-  32 operations, including the six glossary and six memory operations; GraphQL
+  34 operations, including the six glossary and six memory operations plus
+  machine-proposal generation and cancellation; GraphQL
   documents are validated against the module-owned schema, and every
   idempotency-bound command carries its caller key into `PortContext`.
 - Translation exposes one redacted public-error classifier shared by GraphQL
@@ -134,8 +135,8 @@ selection.
   memory selection in `glossary_id` and `memory_entry_id`. Live browser,
   accessibility, module-disablement, and authenticated native/GraphQL runtime
   evidence remain open, as do owner-deletion propagation and automated
-  retention enforcement, glossary prompt-context projection, bounded
-  interchange, and AI integration.
+  retention enforcement, bounded interchange, production AI enablement, and
+  live AI/runtime evidence.
 - Translation now owns a bounded `MachineTranslationPort` SPI with explicit
   source/target locales, stable unit/source identities, field
   profile/strategy/classification, protected tokens, glossary and Translation
@@ -144,8 +145,42 @@ selection.
 - The stateless `rustok-ai-translation` support crate now maps that SPI to the
   AI-owned `AiStructuredTaskPort`, owns the `machine_translation` policy and
   typed schemas, and rejects stale policy, missing/extra units, placeholder
-  drift, length violations, and missing usage/attempt evidence. Live
-  registration remains blocked on the AI durable structured-execution gate.
+  drift, length violations, and missing usage/attempt evidence. The explicit
+  optional distribution bridge now publishes the Translation-owned lazy
+  factory; production-profile enablement and live evidence remain open.
+- `TranslationMachineService` now owns the proposal-generation command. It
+  selects explicit AI-eligible fields from the immutable job snapshot,
+  projects only applicable terms from the job-bound glossary revision, adds at
+  most five tenant-scoped Translation Memory suggestions per unit, validates
+  provider capacity and health, and invokes only `MachineTranslationPort`.
+  Successful output is revalidated and saved through
+  `TranslationWorkflowService::save_proposal` with `ProposalOrigin::Ai`, so
+  owner validation and deterministic QA cannot be bypassed.
+- `translation_machine_operations` is the durable, tenant-scoped,
+  actor/idempotency-bound handoff journal. It stores request/context digests,
+  provider policy, execution/attempt/usage/cost evidence, diagnostic codes, and
+  the resulting proposal identity, but never duplicates source, memory, or
+  translated content. A crash after AI completion can replay the AI execution
+  and proposal save with deterministic child keys while the bound request
+  projection is intact; any projection drift fails with an idempotency
+  conflict rather than submitting a different billable request.
+- Registered operations pin normalized Translation Memory entry identities,
+  ordering, and match scores without duplicating segment content. Replay reads
+  the exact pinned entries even after tombstone; purge is blocked while a pin
+  exists, and pins are released atomically on completion or explicit
+  cancellation.
+- Translation-owned cancellation is actor-bound and idempotent. The original
+  requester can cancel a registered operation; another actor needs Translation
+  Manage. Cancellation records the private reason, marks the operation
+  `cancelled`, and releases memory pins in one transaction. Once proposal save
+  has entered `saving`, cancellation fails closed because the canonical save
+  outcome may already be in flight.
+- GraphQL and native Leptos transports expose the same machine-proposal and
+  cancellation commands and evidence shapes. Manual Translation surfaces
+  remain available when the optional machine provider is absent or fails to
+  materialize. AI-runtime cancellation/status correlation by stable execution
+  identity and operator recovery for indefinitely `saving` operations remain
+  open.
 
 ## FFA/FBA status
 
@@ -177,16 +212,18 @@ selection.
    recovery, assignment, cancellation, retry, policy, QA, progress, inventory,
    and workflow operations.
 3. Complete owner-deletion propagation and automated retention enforcement for
-   Translation Memory; then project bounded memory suggestions and the
-   enforced glossary snapshot into the AI request context.
+   Translation Memory. The bounded memory and immutable glossary projections
+   into machine requests are implemented.
 4. Add bounded owner-aware import/export.
 5. Complete live native/GraphQL parity evidence, including tenant isolation and
    host disablement.
 6. Complete Leptos/Next browser, accessibility, URL-state, and module
    disablement evidence.
-7. Implement the durable `AiStructuredTaskPort` runtime ledger, replay,
-   budget, fallback, cancellation, and recovery gates, then register the
-   already contract-tested `rustok-ai-translation` adapter.
+7. Enable the implemented optional `ai-translation` distribution bridge in
+   the production profile and collect live ledger, replay, budget, fallback,
+   cancellation, restart, and recovery evidence.
+8. Add AI-runtime cancellation/status correlation by stable execution identity
+   and an audited recovery command for indefinitely `saving` operations.
 
 ## Verification
 

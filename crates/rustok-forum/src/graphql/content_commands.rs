@@ -11,16 +11,16 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{
-    CreateReplyCommandInput, CreateTopicCommandInput, ForumQuoteReferenceInput,
-    ForumQuoteTargetKindInput, ReplyResponse, ReplyService, TopicResponse, TopicService,
-    UpdateReplyCommandInput, UpdateTopicCommandInput,
-};
 use crate::reply_create_transport::{
     ForumReplyCreateTransport, reply_create_audience_port_context,
 };
 use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
+};
+use crate::{
+    CreateReplyCommandInput, CreateTopicCommandInput, ForumQuoteReferenceInput,
+    ForumQuoteTargetKindInput, ReplyResponse, ReplyService, TopicResponse, TopicService,
+    UpdateReplyCommandInput, UpdateTopicCommandInput,
 };
 
 use super::{

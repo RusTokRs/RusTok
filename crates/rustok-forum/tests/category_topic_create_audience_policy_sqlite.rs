@@ -1,8 +1,8 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, ForumAudienceConstraints, ForumCategoryAudiencePolicyService,
-    ForumCategoryTopicCreateAudiencePolicyService, ForumError, ForumModule,
-    SetForumCategoryTopicCreateAudiencePolicyInput,
+    CategoryService, CreateCategoryInput, ForumAudienceConstraints,
+    ForumCategoryAudiencePolicyService, ForumCategoryTopicCreateAudiencePolicyService, ForumError,
+    ForumModule, SetForumCategoryTopicCreateAudiencePolicyInput,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{

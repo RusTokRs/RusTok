@@ -277,13 +277,8 @@ async fn topic_reply_create_policy_is_separate_and_database_bounded() {
     let (db, event_bus) = setup().await;
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
-    let category = create_category(
-        &db,
-        tenant_id,
-        admin.clone(),
-        "topic-reply-create-storage",
-    )
-    .await;
+    let category =
+        create_category(&db, tenant_id, admin.clone(), "topic-reply-create-storage").await;
     let topic = create_topic(
         &db,
         &event_bus,
@@ -359,7 +354,10 @@ async fn topic_reply_create_policy_is_separate_and_database_bounded() {
         "database must reject a thirty-third topic reply-create channel"
     );
 
-    let policy_row = rustok_forum::entities::forum_topic_reply_create_audience_policy::Entity::find_by_id((tenant_id, topic))
+    let policy_row =
+        rustok_forum::entities::forum_topic_reply_create_audience_policy::Entity::find_by_id((
+            tenant_id, topic,
+        ))
         .one(&db)
         .await
         .expect("topic reply-create policy row lookup should succeed")

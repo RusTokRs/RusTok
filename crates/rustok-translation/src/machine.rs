@@ -1,4 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "runtime")]
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, TenantLocale};
@@ -268,6 +270,24 @@ pub struct MachineTranslationBatchResult {
     pub review_required: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineTranslationExecutionStatus {
+    NotRegistered,
+    Queued,
+    Running,
+    CancellationRequested,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MachineTranslationExecutionStatusEvidence {
+    pub execution_id: Option<String>,
+    pub status: MachineTranslationExecutionStatus,
+}
+
 #[async_trait]
 pub trait MachineTranslationPort: Send + Sync {
     fn descriptor(&self) -> &MachineTranslationProviderDescriptor;
@@ -282,6 +302,52 @@ pub trait MachineTranslationPort: Send + Sync {
         context: PortContext,
         request: MachineTranslationBatchRequest,
     ) -> Result<MachineTranslationBatchResult, PortError>;
+
+    async fn execution_status(
+        &self,
+        context: PortContext,
+        execution_idempotency_key: String,
+    ) -> Result<MachineTranslationExecutionStatusEvidence, PortError>;
+
+    async fn recover_batch(
+        &self,
+        context: PortContext,
+        execution_idempotency_key: String,
+        request: MachineTranslationBatchRequest,
+    ) -> Result<Option<MachineTranslationBatchResult>, PortError>;
+
+    async fn cancel_execution(
+        &self,
+        context: PortContext,
+        execution_idempotency_key: String,
+    ) -> Result<MachineTranslationExecutionStatusEvidence, PortError>;
+}
+
+/// Deployment-composed factory for the optional machine-translation provider.
+///
+/// Translation owns this neutral lazy boundary so the host can transfer the
+/// factory through runtime extensions before a database-backed host context
+/// exists. Concrete AI/provider crates remain outside this owner crate.
+#[cfg(feature = "runtime")]
+pub trait MachineTranslationPortFactory: Send + Sync {
+    fn create(
+        &self,
+        context: &rustok_api::HostRuntimeContext,
+    ) -> Result<Option<Arc<dyn MachineTranslationPort>>, PortError>;
+}
+
+#[cfg(feature = "runtime")]
+#[derive(Clone)]
+pub struct SharedMachineTranslationPortFactory(pub Arc<dyn MachineTranslationPortFactory>);
+
+#[cfg(feature = "runtime")]
+pub fn machine_translation_port_from_context(
+    context: &rustok_api::HostRuntimeContext,
+) -> Result<Option<Arc<dyn MachineTranslationPort>>, PortError> {
+    let Some(factory) = context.shared_get::<SharedMachineTranslationPortFactory>() else {
+        return Ok(None);
+    };
+    factory.0.create(context)
 }
 
 fn validate_unit(unit: &MachineTranslationUnit) -> Result<(), PortError> {

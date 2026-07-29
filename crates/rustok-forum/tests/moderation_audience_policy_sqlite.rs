@@ -269,12 +269,7 @@ async fn moderation_audience_gates_topic_reply_and_solution_owner_paths() {
 
     let moderation = ModerationService::new(db.clone(), event_bus.clone());
     moderation
-        .approve_reply(
-            tenant_id,
-            allowed_reply,
-            role_topic,
-            allowed_admin.clone(),
-        )
+        .approve_reply(tenant_id, allowed_reply, role_topic, allowed_admin.clone())
         .await
         .expect("matching moderation role should approve a reply");
     assert_eq!(
@@ -352,7 +347,11 @@ async fn moderation_audience_gates_topic_reply_and_solution_owner_paths() {
             .await,
         Err(ForumError::Forbidden(_))
     ));
-    assert!(!topic_model(&db, tenant_id, explicit_deny_topic).await.is_locked);
+    assert!(
+        !topic_model(&db, tenant_id, explicit_deny_topic)
+            .await
+            .is_locked
+    );
 
     let group_category = create_category(
         &db,
@@ -463,24 +462,16 @@ async fn moderation_audience_gates_topic_reply_and_solution_owner_paths() {
 
     assert!(matches!(
         moderation
-            .mark_solution(
-                tenant_id,
-                solution_topic,
-                solution_reply,
-                denied_super,
-            )
+            .mark_solution(tenant_id, solution_topic, solution_reply, denied_super,)
             .await,
         Err(ForumError::Forbidden(_))
     ));
     assert!(
-        rustok_forum::entities::forum_solution::Entity::find_by_id((
-            solution_topic,
-            tenant_id,
-        ))
-        .one(&db)
-        .await
-        .expect("solution lookup should succeed")
-        .is_none(),
+        rustok_forum::entities::forum_solution::Entity::find_by_id((solution_topic, tenant_id,))
+            .one(&db)
+            .await
+            .expect("solution lookup should succeed")
+            .is_none(),
         "denied moderator must not write solution state"
     );
 
@@ -489,14 +480,11 @@ async fn moderation_audience_gates_topic_reply_and_solution_owner_paths() {
         .await
         .expect("topic author owner scope should not be narrowed by moderator audience");
     assert!(
-        rustok_forum::entities::forum_solution::Entity::find_by_id((
-            solution_topic,
-            tenant_id,
-        ))
-        .one(&db)
-        .await
-        .expect("solution lookup should succeed")
-        .is_some()
+        rustok_forum::entities::forum_solution::Entity::find_by_id((solution_topic, tenant_id,))
+            .one(&db)
+            .await
+            .expect("solution lookup should succeed")
+            .is_some()
     );
 }
 

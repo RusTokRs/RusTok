@@ -10,11 +10,12 @@ use uuid::Uuid;
 use crate::{
     ApplyRecord, AssignmentRecord, CancellationRecord, GlossaryBinding, GlossaryConcept,
     GlossaryMatchKind, GlossaryRecord, GlossaryScope, GlossarySummaryRecord, GlossaryTermPolicy,
-    GlossaryVariant, JobItemRecord, JobProgressRecord, JobRecord, MemoryEntryRecord,
-    MemoryMatchEvidence, MemoryMatchKind, MemoryMutationRecord, MemoryRetentionPolicy,
-    MemorySuggestion, ProposalOrigin, ProposalRecord, ProviderProgressRecord,
-    RequiredProviderProgressRecord, RetryRecord, TranslationInventoryRebuildResult,
-    TranslationInventorySyncResult, TranslationPolicyFreshness, TranslationPolicyRecord,
+    GlossaryVariant, JobItemRecord, JobProgressRecord, JobRecord, MachineCancellationRecord,
+    MachineProposalRecord, MemoryEntryRecord, MemoryMatchEvidence, MemoryMatchKind,
+    MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, ProposalOrigin, ProposalRecord,
+    ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord,
+    TranslationInventoryRebuildResult, TranslationInventorySyncResult, TranslationPolicyFreshness,
+    TranslationPolicyRecord,
 };
 
 #[derive(InputObject)]
@@ -280,6 +281,24 @@ pub struct SaveTranslationProposalInput {
     pub item_id: Uuid,
     pub origin: TranslationProposalOriginInput,
     pub values: Vec<TranslationProposalValueInput>,
+    pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
+pub struct GenerateMachineTranslationProposalInput {
+    pub item_id: Uuid,
+    pub field_keys: Vec<String>,
+    pub minimum_memory_similarity_basis_points: u16,
+    pub tone: Option<String>,
+    pub domain: Option<String>,
+    pub style: Option<String>,
+    pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
+pub struct CancelMachineTranslationOperationInput {
+    pub operation_id: Uuid,
+    pub reason: String,
     pub idempotency_key: String,
 }
 
@@ -799,6 +818,133 @@ impl From<ProposalRecord> for TranslationProposal {
             qa_accepted: value.qa_accepted,
             status: value.status,
             approval_receipt_id: value.approval_receipt_id,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct MachineTranslationAttempt {
+    pub attempt: u16,
+    pub provider_profile_id: String,
+    pub provider_slug: String,
+    pub model: String,
+    pub fallback: bool,
+}
+
+#[derive(SimpleObject)]
+pub struct MachineTranslationUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+    pub cost_minor_units: u64,
+    pub currency_code: String,
+    pub price_snapshot_digest: String,
+}
+
+#[derive(SimpleObject)]
+pub struct MachineTranslationDiagnostic {
+    pub code: String,
+    pub blocking: bool,
+    pub unit_id: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct MachineTranslationProposal {
+    pub operation_id: Uuid,
+    pub item_id: Uuid,
+    pub proposal_id: Uuid,
+    pub adapter_slug: String,
+    pub provider_slug: String,
+    pub provider_policy_digest: String,
+    pub machine_request_digest: String,
+    pub glossary_revision: Option<String>,
+    pub glossary_digest: Option<String>,
+    pub memory_digest: Option<String>,
+    pub execution_id: String,
+    pub execution_request_digest: String,
+    pub prompt_policy_digest: String,
+    pub attempts: Vec<MachineTranslationAttempt>,
+    pub usage: MachineTranslationUsage,
+    pub diagnostics: Vec<MachineTranslationDiagnostic>,
+    pub review_required: bool,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl From<MachineProposalRecord> for MachineTranslationProposal {
+    fn from(value: MachineProposalRecord) -> Self {
+        Self {
+            operation_id: value.operation_id,
+            item_id: value.item_id,
+            proposal_id: value.proposal_id,
+            adapter_slug: value.adapter_slug,
+            provider_slug: value.provider_slug,
+            provider_policy_digest: value.provider_policy_digest,
+            machine_request_digest: value.machine_request_digest,
+            glossary_revision: value.glossary_revision,
+            glossary_digest: value.glossary_digest,
+            memory_digest: value.memory_digest,
+            execution_id: value.execution_id,
+            execution_request_digest: value.execution_request_digest,
+            prompt_policy_digest: value.prompt_policy_digest,
+            attempts: value
+                .attempts
+                .into_iter()
+                .map(|attempt| MachineTranslationAttempt {
+                    attempt: attempt.attempt,
+                    provider_profile_id: attempt.provider_profile_id,
+                    provider_slug: attempt.provider_slug,
+                    model: attempt.model,
+                    fallback: attempt.fallback,
+                })
+                .collect(),
+            usage: MachineTranslationUsage {
+                input_tokens: value.usage.input_tokens,
+                output_tokens: value.usage.output_tokens,
+                total_tokens: value.usage.total_tokens,
+                cost_minor_units: value.usage.cost_minor_units,
+                currency_code: value.usage.currency_code,
+                price_snapshot_digest: value.usage.price_snapshot_digest,
+            },
+            diagnostics: value
+                .diagnostics
+                .into_iter()
+                .map(|diagnostic| MachineTranslationDiagnostic {
+                    code: diagnostic.code,
+                    blocking: diagnostic.blocking,
+                    unit_id: diagnostic.unit_id,
+                })
+                .collect(),
+            review_required: value.review_required,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct MachineTranslationCancellation {
+    pub cancellation_id: Uuid,
+    pub operation_id: Uuid,
+    pub status: String,
+    pub provider_execution_id: Option<String>,
+    pub provider_status: String,
+    pub provider_error_code: Option<String>,
+    pub provider_observed_at: DateTime<FixedOffset>,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+impl From<MachineCancellationRecord> for MachineTranslationCancellation {
+    fn from(value: MachineCancellationRecord) -> Self {
+        Self {
+            cancellation_id: value.cancellation_id,
+            operation_id: value.operation_id,
+            status: value.status,
+            provider_execution_id: value.provider_execution_id,
+            provider_status: value.provider_status,
+            provider_error_code: value.provider_error_code,
+            provider_observed_at: value.provider_observed_at,
+            created_at: value.created_at,
         }
     }
 }

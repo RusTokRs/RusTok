@@ -63,13 +63,8 @@ impl TopicService {
         security: SecurityContext,
         input: CreateTopicInput,
     ) -> ForumResult<TopicResponse> {
-        self.create_command_with_optional_audience_context(
-            tenant_id,
-            security,
-            None,
-            input.into(),
-        )
-        .await
+        self.create_command_with_optional_audience_context(tenant_id, security, None, input.into())
+            .await
     }
 
     pub async fn create_with_audience_context(

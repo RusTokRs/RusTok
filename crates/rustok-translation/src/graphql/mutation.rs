@@ -3,17 +3,21 @@ use uuid::Uuid;
 
 use crate::{
     AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
-    CreateGlossaryInput, CreateJobInput, ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput,
-    ReplaceGlossaryTermsInput, ReplaceRequiredTargetLocalesInput, RetryItemInput,
-    SaveProposalInput, SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
-    TombstoneMemoryEntryInput, UnassignItemInput, UpdateGlossaryInput,
+    CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput, GenerateMachineProposalInput,
+    ProposalValue, PurgeMemoryEntryInput, RecoverApplyInput, ReplaceGlossaryTermsInput,
+    ReplaceRequiredTargetLocalesInput, RetryItemInput, SaveProposalInput, SetGlossaryActiveInput,
+    SetMemoryRetentionInput, SubmitProposalInput, TombstoneMemoryEntryInput, UnassignItemInput,
+    UpdateGlossaryInput,
 };
 
 use super::{
     context::{read_port_context, runtime, translation_error, write_port_context},
     types::{
-        AddTranslationJobItemInput, AssignTranslationItemInput, CancelTranslationJobInput,
-        CreateTranslationGlossaryInput, CreateTranslationJobInput, RecoverTranslationApplyInput,
+        AddTranslationJobItemInput, AssignTranslationItemInput,
+        CancelMachineTranslationOperationInput, CancelTranslationJobInput,
+        CreateTranslationGlossaryInput, CreateTranslationJobInput,
+        GenerateMachineTranslationProposalInput, MachineTranslationCancellation,
+        MachineTranslationProposal, RecoverTranslationApplyInput,
         ReplaceTranslationGlossaryTermsInput, ReplaceTranslationPolicyInput,
         RetryTranslationItemInput, SaveTranslationProposalInput, SetTranslationGlossaryActiveInput,
         SetTranslationMemoryRetentionInput, TransitionTranslationMemoryEntryInput,
@@ -270,6 +274,59 @@ impl TranslationMutation {
                     item_id: input.item_id,
                     origin: input.origin.into(),
                     values,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn generate_machine_translation_proposal(
+        &self,
+        ctx: &Context<'_>,
+        input: GenerateMachineTranslationProposalInput,
+    ) -> Result<MachineTranslationProposal> {
+        let mut context =
+            write_port_context(ctx, "generate-machine-proposal", input.idempotency_key)?;
+        context.deadline_ms = Some(120_000);
+        let field_keys = input
+            .field_keys
+            .into_iter()
+            .map(parse_field_key)
+            .collect::<Result<Vec<_>>>()?;
+        runtime(ctx)?
+            .machine_service()
+            .map_err(translation_error)?
+            .generate_proposal(
+                context,
+                GenerateMachineProposalInput {
+                    item_id: input.item_id,
+                    field_keys,
+                    minimum_memory_similarity_basis_points: input
+                        .minimum_memory_similarity_basis_points,
+                    tone: input.tone,
+                    domain: input.domain,
+                    style: input.style,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(translation_error)
+    }
+
+    async fn cancel_machine_translation_operation(
+        &self,
+        ctx: &Context<'_>,
+        input: CancelMachineTranslationOperationInput,
+    ) -> Result<MachineTranslationCancellation> {
+        let context = write_port_context(ctx, "cancel-machine-operation", input.idempotency_key)?;
+        runtime(ctx)?
+            .machine_control_service()
+            .cancel_operation(
+                context,
+                CancelMachineOperationInput {
+                    operation_id: input.operation_id,
+                    reason: input.reason,
                 },
             )
             .await

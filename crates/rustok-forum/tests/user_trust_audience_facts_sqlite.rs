@@ -62,10 +62,7 @@ CREATE TABLE forum_user_stats (
 }
 
 fn manager(actor_id: Uuid) -> SecurityContext {
-    SecurityContext::from_permission_snapshot(
-        Some(actor_id),
-        &[Permission::FORUM_TOPICS_MANAGE],
-    )
+    SecurityContext::from_permission_snapshot(Some(actor_id), &[Permission::FORUM_TOPICS_MANAGE])
 }
 
 fn context(tenant_id: Uuid, user_id: Uuid) -> PortContext {

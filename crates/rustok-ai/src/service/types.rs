@@ -36,6 +36,9 @@ pub struct SharedAiEgressPolicy(pub crate::ProviderEgressPolicy);
 #[derive(Clone)]
 pub struct SharedAiProviderTargetCatalog(pub crate::AiProviderTargetCatalog);
 
+#[derive(Clone)]
+pub struct SharedAiStructuredResultKeyringConfig(pub crate::AiStructuredResultKeyringConfig);
+
 /// Deployment-composed owner port for read-only order status enrichment.
 /// The AI runtime never constructs the owner service or mutates orders.
 #[derive(Clone)]
@@ -317,6 +320,52 @@ pub struct UpdateAiProviderProfileInput {
     pub usage_policy: ProviderUsagePolicy,
     pub metadata: serde_json::Value,
     pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PutAiStructuredBudgetPolicyInput {
+    pub currency_code: String,
+    pub limit_minor_units: u64,
+    pub max_concurrent: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PutAiStructuredProviderPolicyInput {
+    pub provider_profile_id: Uuid,
+    pub currency_code: String,
+    pub input_cost_per_million_minor: u64,
+    pub output_cost_per_million_minor: u64,
+    pub max_concurrent: u32,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiStructuredBudgetPolicyRecord {
+    pub id: Uuid,
+    pub currency_code: String,
+    pub limit_minor_units: u64,
+    pub reserved_minor_units: u64,
+    pub committed_minor_units: u64,
+    pub max_concurrent: u32,
+    pub in_flight: u32,
+    pub revision: u64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiStructuredProviderPolicyRecord {
+    pub id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub currency_code: String,
+    pub input_cost_per_million_minor: u64,
+    pub output_cost_per_million_minor: u64,
+    pub max_concurrent: u32,
+    pub in_flight: u32,
+    pub is_active: bool,
+    pub revision: u64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

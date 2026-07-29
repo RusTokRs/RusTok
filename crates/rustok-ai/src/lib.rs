@@ -32,6 +32,8 @@ pub mod streaming;
 #[cfg(feature = "server")]
 mod structured;
 #[cfg(feature = "server")]
+mod structured_result;
+#[cfg(feature = "server")]
 mod structured_runtime;
 
 #[cfg(feature = "server")]
@@ -84,12 +86,12 @@ pub use model::{
 pub use policy::ToolExecutionPolicy;
 pub use ports::{
     AiStructuredTaskAttempt, AiStructuredTaskAvailability, AiStructuredTaskCatalog,
-    AiStructuredTaskDescriptor, AiStructuredTaskExecution, AiStructuredTaskExecutionRef,
-    AiStructuredTaskHealth, AiStructuredTaskLimits, AiStructuredTaskPort, AiStructuredTaskRequest,
-    AiStructuredTaskStatus, AiStructuredTaskUsage, AiTaskDataClassification,
-    MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES, MAX_STRUCTURED_TASK_INPUT_BYTES,
-    MAX_STRUCTURED_TASK_OUTPUT_BYTES, MAX_STRUCTURED_TASK_SCHEMA_BYTES,
-    MAX_STRUCTURED_TASK_SYSTEM_PROMPT_BYTES,
+    AiStructuredTaskDescriptor, AiStructuredTaskExecution, AiStructuredTaskExecutionKey,
+    AiStructuredTaskExecutionRef, AiStructuredTaskHealth, AiStructuredTaskLimits,
+    AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus, AiStructuredTaskUsage,
+    AiTaskDataClassification, MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES,
+    MAX_STRUCTURED_TASK_INPUT_BYTES, MAX_STRUCTURED_TASK_OUTPUT_BYTES,
+    MAX_STRUCTURED_TASK_SCHEMA_BYTES, MAX_STRUCTURED_TASK_SYSTEM_PROMPT_BYTES,
 };
 #[cfg(feature = "server")]
 pub use rag::RigRagEmbeddingProvider;
@@ -108,18 +110,24 @@ pub use service::{
     AiAgentModelAssignmentRecord, AiAgentPrincipalRecord, AiApprovalRequestRecord,
     AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail, AiChatSessionSummary, AiHostRuntime,
     AiManagementService, AiOperatorContext, AiProviderProfileRecord, AiRecentRunRecord,
-    AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
-    CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput, CreateAiAgentWorkflowRunInput,
-    CreateAiProviderProfileInput, CreateAiTaskProfileInput, CreateAiToolProfileInput,
-    ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput, RunAiTaskJobInput,
-    SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiOrderStatusPort,
-    SharedAiProductCatalogReadPort, SharedAiProviderTargetCatalog, SharedAiRagRetrievalPort,
-    SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiAgentModelAssignmentInput,
-    UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput, UpdateAiTaskProfileInput,
-    UpdateAiToolProfileInput, ai_host_runtime_from_context,
+    AiSendMessageResult, AiStructuredBudgetPolicyRecord, AiStructuredProviderPolicyRecord,
+    AiTaskProfileRecord, AiToolProfileRecord, CreateAiAgentModelAssignmentInput,
+    CreateAiAgentPrincipalInput, CreateAiAgentWorkflowRunInput, CreateAiProviderProfileInput,
+    CreateAiTaskProfileInput, CreateAiToolProfileInput, PutAiStructuredBudgetPolicyInput,
+    PutAiStructuredProviderPolicyInput, ResolveAiAgentWorkflowStageApprovalInput,
+    ResumeAiApprovalInput, RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy,
+    SharedAiOrderStatusPort, SharedAiProductCatalogReadPort, SharedAiProviderTargetCatalog,
+    SharedAiRagRetrievalPort, SharedAiSecretResolverRegistry,
+    SharedAiStructuredResultKeyringConfig, StartAiChatSessionInput,
+    UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput,
+    UpdateAiTaskProfileInput, UpdateAiToolProfileInput, ai_host_runtime_from_context,
 };
 #[cfg(feature = "server")]
 pub use streaming::{AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub, ai_run_stream_hub};
+#[cfg(feature = "server")]
+pub use structured_result::AiStructuredResultKeyringConfig;
+#[cfg(feature = "server")]
+pub use structured_runtime::structured_task_port_from_context;
 
 #[cfg(feature = "server")]
 pub struct AiModule;
@@ -170,6 +178,9 @@ impl rustok_core::RusToKModule for AiModule {
         extensions.insert(deployment.secret_registry);
         extensions.insert(deployment.egress_policy);
         extensions.insert(deployment.provider_targets);
+        if let Some(result_keyring) = deployment.result_keyring {
+            extensions.insert(result_keyring);
+        }
         extensions
             .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default)
             .register(std::sync::Arc::new(

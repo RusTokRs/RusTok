@@ -12,6 +12,8 @@ pub struct AiAdminBootstrap {
     pub tenant_rbac_roles: Vec<AiTenantRbacRolePayload>,
     pub tenant_rbac_permissions: Vec<AiTenantRbacPermissionPayload>,
     pub providers: Vec<AiProviderProfilePayload>,
+    pub structured_budget_policies: Vec<AiStructuredBudgetPolicyPayload>,
+    pub structured_provider_policies: Vec<AiStructuredProviderPolicyPayload>,
     pub task_profiles: Vec<AiTaskProfilePayload>,
     pub tool_profiles: Vec<AiToolProfilePayload>,
     pub sessions: Vec<AiChatSessionSummaryPayload>,
@@ -135,6 +137,35 @@ pub struct AiProviderProfilePayload {
     pub denied_task_profiles: Vec<String>,
     pub restricted_role_slugs: Vec<String>,
     pub metadata: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiStructuredBudgetPolicyPayload {
+    pub id: String,
+    pub currency_code: String,
+    pub limit_minor_units: u64,
+    pub reserved_minor_units: u64,
+    pub committed_minor_units: u64,
+    pub max_concurrent: u32,
+    pub in_flight: u32,
+    pub revision: u64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiStructuredProviderPolicyPayload {
+    pub id: String,
+    pub provider_profile_id: String,
+    pub currency_code: String,
+    pub input_cost_per_million_minor: u64,
+    pub output_cost_per_million_minor: u64,
+    pub max_concurrent: u32,
+    pub in_flight: u32,
+    pub is_active: bool,
+    pub revision: u64,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[cfg(test)]

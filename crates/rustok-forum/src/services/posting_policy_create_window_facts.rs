@@ -371,9 +371,12 @@ mod tests {
                 deleted_at TEXT\
             )",
         ] {
-            db.execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
-                .await
-                .expect("create-window fixture table should initialize");
+            db.execute(Statement::from_string(
+                DbBackend::Sqlite,
+                statement.to_string(),
+            ))
+            .await
+            .expect("create-window fixture table should initialize");
         }
         db
     }
@@ -535,22 +538,19 @@ mod tests {
         )
         .await;
 
-        let topic = ForumTopicCreatesWindowFactPort::with_clock(
-            db.clone(),
-            fixed_clock(now),
-        )
-        .resolve_forum_posting_policy_fact(
-            context(tenant_id, user_id),
-            request(
-                tenant_id,
-                user_id,
-                ForumPostingAction::CreateTopic,
-                ForumPostingPolicyFactKind::TopicCreatesWindow,
-                3_600,
-            ),
-        )
-        .await
-        .expect("topic-create window should resolve");
+        let topic = ForumTopicCreatesWindowFactPort::with_clock(db.clone(), fixed_clock(now))
+            .resolve_forum_posting_policy_fact(
+                context(tenant_id, user_id),
+                request(
+                    tenant_id,
+                    user_id,
+                    ForumPostingAction::CreateTopic,
+                    ForumPostingPolicyFactKind::TopicCreatesWindow,
+                    3_600,
+                ),
+            )
+            .await
+            .expect("topic-create window should resolve");
         assert_eq!(
             topic.value,
             ForumPostingPolicyOwnerFactValue::TopicCreatesWindow(ForumPostingWindowCount {
@@ -559,22 +559,19 @@ mod tests {
             })
         );
 
-        let reply = ForumReplyCreatesWindowFactPort::with_clock(
-            db,
-            fixed_clock(now),
-        )
-        .resolve_forum_posting_policy_fact(
-            context(tenant_id, user_id),
-            request(
-                tenant_id,
-                user_id,
-                ForumPostingAction::CreateReply,
-                ForumPostingPolicyFactKind::ReplyCreatesWindow,
-                3_600,
-            ),
-        )
-        .await
-        .expect("reply-create window should resolve");
+        let reply = ForumReplyCreatesWindowFactPort::with_clock(db, fixed_clock(now))
+            .resolve_forum_posting_policy_fact(
+                context(tenant_id, user_id),
+                request(
+                    tenant_id,
+                    user_id,
+                    ForumPostingAction::CreateReply,
+                    ForumPostingPolicyFactKind::ReplyCreatesWindow,
+                    3_600,
+                ),
+            )
+            .await
+            .expect("reply-create window should resolve");
         assert_eq!(
             reply.value,
             ForumPostingPolicyOwnerFactValue::ReplyCreatesWindow(ForumPostingWindowCount {

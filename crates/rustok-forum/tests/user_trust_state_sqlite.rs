@@ -1,8 +1,7 @@
 use rustok_api::Permission;
 use rustok_core::SecurityContext;
 use rustok_forum::{
-    ForumError, ForumUserTrustService, SetForumUserTrustInput,
-    entities::forum_user_trust_revision,
+    ForumError, ForumUserTrustService, SetForumUserTrustInput, entities::forum_user_trust_revision,
 };
 use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait};
 use sea_orm_migration::SchemaManager;
@@ -59,10 +58,7 @@ CREATE TABLE forum_user_stats (
 }
 
 fn manager(actor_id: Uuid) -> SecurityContext {
-    SecurityContext::from_permission_snapshot(
-        Some(actor_id),
-        &[Permission::FORUM_TOPICS_MANAGE],
-    )
+    SecurityContext::from_permission_snapshot(Some(actor_id), &[Permission::FORUM_TOPICS_MANAGE])
 }
 
 fn input(level: u8, key: &str, code: &str, summary: &str) -> SetForumUserTrustInput {
@@ -106,7 +102,12 @@ async fn trust_state_is_authoritative_versioned_and_independent_from_activity_co
             tenant_id,
             user_id,
             manager(actor_id),
-            input(20, "trust-change-1", "manual_review", "Initial moderator review"),
+            input(
+                20,
+                "trust-change-1",
+                "manual_review",
+                "Initial moderator review",
+            ),
         )
         .await
         .expect("first managed trust change should succeed");
@@ -120,7 +121,12 @@ async fn trust_state_is_authoritative_versioned_and_independent_from_activity_co
             tenant_id,
             user_id,
             manager(actor_id),
-            input(20, "trust-change-1", "manual_review", "Initial moderator review"),
+            input(
+                20,
+                "trust-change-1",
+                "manual_review",
+                "Initial moderator review",
+            ),
         )
         .await
         .expect("an identical idempotent replay should succeed");
@@ -138,7 +144,12 @@ async fn trust_state_is_authoritative_versioned_and_independent_from_activity_co
             tenant_id,
             user_id,
             manager(actor_id),
-            input(35, "trust-change-2", "appeal_approved", "Appeal review completed"),
+            input(
+                35,
+                "trust-change-2",
+                "appeal_approved",
+                "Appeal review completed",
+            ),
         )
         .await
         .expect("second managed trust change should succeed");
@@ -264,5 +275,7 @@ async fn trust_owner_requires_manage_scope_and_exact_idempotent_payload() {
             input(16, "trust-replay", "manual_review", "Changed payload"),
         )
         .await;
-    assert!(matches!(conflict, Err(ForumError::Validation(message)) if message.contains("idempotency")));
+    assert!(
+        matches!(conflict, Err(ForumError::Validation(message)) if message.contains("idempotency"))
+    );
 }

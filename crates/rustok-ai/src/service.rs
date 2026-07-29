@@ -23,7 +23,8 @@ use crate::engine::{InferenceEngine, inference_for_slug};
 use crate::entities::{
     ai_agent_model_assignments, ai_agent_principals, ai_agent_workflow_runs,
     ai_agent_workflow_stages, ai_approval_requests, ai_chat_messages, ai_chat_runs,
-    ai_chat_sessions, ai_provider_profiles, ai_task_profiles, ai_tool_profiles, ai_tool_traces,
+    ai_chat_sessions, ai_provider_profiles, ai_structured_budgets, ai_structured_provider_policies,
+    ai_task_profiles, ai_tool_profiles, ai_tool_traces,
 };
 use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
 use crate::model::{
@@ -32,7 +33,7 @@ use crate::model::{
 };
 use crate::router::AiRouter;
 use crate::streaming::{AiRunStreamEvent, ai_run_stream_hub};
-use crate::{AiError, AiResult, McpClientAdapter, ProviderSlug};
+use crate::{AiError, AiResult, McpClientAdapter, ProviderCapability, ProviderSlug};
 use crate::{RagCoordinator, RagRetrievalStrategy, RagSearchRequest};
 
 pub use helpers::*;
@@ -341,6 +342,149 @@ pub(crate) async fn runtime_inference_engine(
     Ok(Arc::<dyn InferenceEngine>::from(
         inference_for_slug(provider_slug, provider_config, runtime.secret_registry()).await?,
     ))
+}
+
+fn ensure_structured_accounting_manage(
+    operator: &AiOperatorContext,
+) -> Result<(), rustok_api::PortError> {
+    if has_effective_permission(operator, Permission::AI_PROVIDERS_MANAGE) {
+        Ok(())
+    } else {
+        Err(rustok_api::PortError::forbidden(
+            "ai.structured.accounting_manage_forbidden",
+            "structured accounting management requires ai:providers:manage",
+        ))
+    }
+}
+
+fn ensure_structured_accounting_read(
+    operator: &AiOperatorContext,
+) -> Result<(), rustok_api::PortError> {
+    if has_effective_permission(operator, Permission::AI_PROVIDERS_READ) {
+        Ok(())
+    } else {
+        Err(rustok_api::PortError::forbidden(
+            "ai.structured.accounting_read_forbidden",
+            "structured accounting reads require ai:providers:read",
+        ))
+    }
+}
+
+fn structured_u64(value: i64) -> Result<u64, rustok_api::PortError> {
+    u64::try_from(value).map_err(|_| {
+        rustok_api::PortError::invariant_violation(
+            "ai.structured.accounting_invalid",
+            "structured accounting contains invalid evidence",
+        )
+    })
+}
+
+fn structured_u32(value: i32) -> Result<u32, rustok_api::PortError> {
+    u32::try_from(value).map_err(|_| {
+        rustok_api::PortError::invariant_violation(
+            "ai.structured.accounting_invalid",
+            "structured accounting contains invalid evidence",
+        )
+    })
+}
+
+fn map_structured_budget_policy(
+    model: ai_structured_budgets::Model,
+) -> Result<AiStructuredBudgetPolicyRecord, rustok_api::PortError> {
+    Ok(AiStructuredBudgetPolicyRecord {
+        id: model.id,
+        currency_code: model.currency_code,
+        limit_minor_units: structured_u64(model.limit_minor_units)?,
+        reserved_minor_units: structured_u64(model.reserved_minor_units)?,
+        committed_minor_units: structured_u64(model.committed_minor_units)?,
+        max_concurrent: structured_u32(model.max_concurrent)?,
+        in_flight: structured_u32(model.in_flight)?,
+        revision: structured_u64(model.revision)?,
+        created_at: model.created_at.with_timezone(&Utc),
+        updated_at: model.updated_at.with_timezone(&Utc),
+    })
+}
+
+fn map_structured_provider_policy(
+    model: ai_structured_provider_policies::Model,
+) -> Result<AiStructuredProviderPolicyRecord, rustok_api::PortError> {
+    Ok(AiStructuredProviderPolicyRecord {
+        id: model.id,
+        provider_profile_id: model.provider_profile_id,
+        currency_code: model.currency_code,
+        input_cost_per_million_minor: structured_u64(model.input_cost_per_million_minor)?,
+        output_cost_per_million_minor: structured_u64(model.output_cost_per_million_minor)?,
+        max_concurrent: structured_u32(model.max_concurrent)?,
+        in_flight: structured_u32(model.in_flight)?,
+        is_active: model.is_active,
+        revision: structured_u64(model.revision)?,
+        created_at: model.created_at.with_timezone(&Utc),
+        updated_at: model.updated_at.with_timezone(&Utc),
+    })
+}
+
+fn structured_accounting_unavailable() -> rustok_api::PortError {
+    rustok_api::PortError::unavailable(
+        "ai.structured.accounting_unavailable",
+        "structured execution accounting is unavailable",
+    )
+}
+
+fn structured_provider_policy_is_eligible(
+    policy_active: bool,
+    profile_active: bool,
+    supports_structured_generation: bool,
+) -> bool {
+    !policy_active || (profile_active && supports_structured_generation)
+}
+
+#[cfg(test)]
+mod structured_accounting_management_tests {
+    use super::{
+        AiOperatorContext, ensure_structured_accounting_manage, ensure_structured_accounting_read,
+        structured_provider_policy_is_eligible,
+    };
+    use rustok_api::Permission;
+    use uuid::Uuid;
+
+    fn operator(permissions: Vec<Permission>) -> AiOperatorContext {
+        AiOperatorContext {
+            tenant_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            permissions,
+            role_slugs: Vec::new(),
+            preferred_locale: None,
+        }
+    }
+
+    #[test]
+    fn structured_accounting_requires_provider_permissions_at_the_service_boundary() {
+        let reader = operator(vec![Permission::AI_PROVIDERS_READ]);
+        assert!(ensure_structured_accounting_read(&reader).is_ok());
+        assert_eq!(
+            ensure_structured_accounting_manage(&reader)
+                .expect_err("read permission must not mutate accounting")
+                .code,
+            "ai.structured.accounting_manage_forbidden"
+        );
+
+        let manager = operator(vec![Permission::AI_PROVIDERS_MANAGE]);
+        assert!(ensure_structured_accounting_manage(&manager).is_ok());
+        assert_eq!(
+            ensure_structured_accounting_read(&operator(Vec::new()))
+                .expect_err("anonymous accounting reads must fail closed")
+                .code,
+            "ai.structured.accounting_read_forbidden"
+        );
+    }
+
+    #[test]
+    fn inactive_provider_policy_can_always_be_persisted_for_shutdown() {
+        assert!(structured_provider_policy_is_eligible(false, false, false));
+        assert!(!structured_provider_policy_is_eligible(true, false, true));
+        assert!(!structured_provider_policy_is_eligible(true, true, false));
+        assert!(structured_provider_policy_is_eligible(true, true, true));
+    }
 }
 
 impl AiManagementService {
@@ -2498,6 +2642,115 @@ mod product_agent_workflow_persistence_tests {
 }
 
 impl AiManagementService {
+    pub async fn put_structured_budget_policy(
+        db: &DatabaseConnection,
+        operator: &AiOperatorContext,
+        input: PutAiStructuredBudgetPolicyInput,
+    ) -> Result<AiStructuredBudgetPolicyRecord, rustok_api::PortError> {
+        ensure_structured_accounting_manage(operator)?;
+        let accounting = crate::accounting::StructuredAccounting::new(db.clone());
+        accounting
+            .put_budget(crate::accounting::BudgetPolicy {
+                tenant_id: operator.tenant_id,
+                currency_code: input.currency_code.clone(),
+                limit_minor_units: input.limit_minor_units,
+                max_concurrent: input.max_concurrent,
+            })
+            .await?;
+        let model = ai_structured_budgets::Entity::find()
+            .filter(ai_structured_budgets::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_structured_budgets::Column::CurrencyCode.eq(input.currency_code))
+            .one(db)
+            .await
+            .map_err(|_| structured_accounting_unavailable())?
+            .ok_or_else(structured_accounting_unavailable)?;
+        map_structured_budget_policy(model)
+    }
+
+    pub async fn put_structured_provider_policy(
+        db: &DatabaseConnection,
+        operator: &AiOperatorContext,
+        input: PutAiStructuredProviderPolicyInput,
+    ) -> Result<AiStructuredProviderPolicyRecord, rustok_api::PortError> {
+        ensure_structured_accounting_manage(operator)?;
+        let profile = Self::get_provider_profile(db, operator.tenant_id, input.provider_profile_id)
+            .await
+            .map_err(|_| structured_accounting_unavailable())?
+            .ok_or_else(|| {
+                rustok_api::PortError::not_found(
+                    "ai.structured.provider_profile_not_found",
+                    "structured accounting provider profile was not found",
+                )
+            })?;
+        if !structured_provider_policy_is_eligible(
+            input.is_active,
+            profile.is_active,
+            profile
+                .capabilities
+                .contains(&ProviderCapability::StructuredGeneration),
+        ) {
+            return Err(rustok_api::PortError::conflict(
+                "ai.structured.provider_profile_ineligible",
+                "structured accounting requires an active structured-generation provider profile",
+            ));
+        }
+        let accounting = crate::accounting::StructuredAccounting::new(db.clone());
+        accounting
+            .put_provider_policy(crate::accounting::ProviderPolicy {
+                tenant_id: operator.tenant_id,
+                provider_profile_id: input.provider_profile_id,
+                currency_code: input.currency_code,
+                input_cost_per_million_minor: input.input_cost_per_million_minor,
+                output_cost_per_million_minor: input.output_cost_per_million_minor,
+                max_concurrent: input.max_concurrent,
+                is_active: input.is_active,
+            })
+            .await?;
+        let model = ai_structured_provider_policies::Entity::find()
+            .filter(ai_structured_provider_policies::Column::TenantId.eq(operator.tenant_id))
+            .filter(
+                ai_structured_provider_policies::Column::ProviderProfileId
+                    .eq(input.provider_profile_id),
+            )
+            .one(db)
+            .await
+            .map_err(|_| structured_accounting_unavailable())?
+            .ok_or_else(structured_accounting_unavailable)?;
+        map_structured_provider_policy(model)
+    }
+
+    pub async fn list_structured_budget_policies(
+        db: &DatabaseConnection,
+        operator: &AiOperatorContext,
+    ) -> Result<Vec<AiStructuredBudgetPolicyRecord>, rustok_api::PortError> {
+        ensure_structured_accounting_read(operator)?;
+        ai_structured_budgets::Entity::find()
+            .filter(ai_structured_budgets::Column::TenantId.eq(operator.tenant_id))
+            .order_by_asc(ai_structured_budgets::Column::CurrencyCode)
+            .all(db)
+            .await
+            .map_err(|_| structured_accounting_unavailable())?
+            .into_iter()
+            .map(map_structured_budget_policy)
+            .collect()
+    }
+
+    pub async fn list_structured_provider_policies(
+        db: &DatabaseConnection,
+        operator: &AiOperatorContext,
+    ) -> Result<Vec<AiStructuredProviderPolicyRecord>, rustok_api::PortError> {
+        ensure_structured_accounting_read(operator)?;
+        ai_structured_provider_policies::Entity::find()
+            .filter(ai_structured_provider_policies::Column::TenantId.eq(operator.tenant_id))
+            .order_by_asc(ai_structured_provider_policies::Column::ProviderProfileId)
+            .all(db)
+            .await
+            .map_err(|_| structured_accounting_unavailable())?
+            .into_iter()
+            .map(map_structured_provider_policy)
+            .collect()
+    }
+
     pub fn metrics_snapshot() -> AiRuntimeMetricsSnapshot {
         ai_metrics::metrics_snapshot()
     }

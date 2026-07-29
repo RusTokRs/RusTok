@@ -12,6 +12,7 @@ use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistration, ModuleWorkSched
 
 use crate::entities::ai_agent_workflow_stages;
 use crate::{AiHostRuntime, AiManagementService, AiOperatorContext};
+use crate::{accounting::StructuredAccounting, structured_result::delete_expired_results};
 
 pub const AGENT_WORKFLOW_STAGE_WORKER: &str = "ai_agent_workflow_stage";
 
@@ -73,6 +74,18 @@ impl AiAgentWorkflowWorkAdapter {
     /// affected tenants from its own durable source.
     async fn recover_expired_leases(&self) -> Result<(), ModuleWorkError> {
         let now = Utc::now();
+        let accounting = StructuredAccounting::new(self.runtime.db_clone());
+        accounting
+            .recover_queued_cancellations()
+            .await
+            .map_err(|error| ModuleWorkError::Source(error.code))?;
+        accounting
+            .recover_expired(now)
+            .await
+            .map_err(|error| ModuleWorkError::Source(error.code))?;
+        delete_expired_results(self.runtime.db(), now)
+            .await
+            .map_err(|error| ModuleWorkError::Source(error.code))?;
         let tenant_ids = ai_agent_workflow_stages::Entity::find()
             .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
             .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.lt(now.clone()))

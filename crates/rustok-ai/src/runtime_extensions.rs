@@ -13,14 +13,16 @@ use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 use crate::{
-    AiProviderTargetCatalog, ProviderEgressPolicy, SharedAiEgressPolicy,
-    SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry,
+    AiProviderTargetCatalog, AiStructuredResultKeyringConfig, ProviderEgressPolicy,
+    SharedAiEgressPolicy, SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry,
+    SharedAiStructuredResultKeyringConfig,
 };
 
 pub(crate) struct AiDeploymentRuntime {
     pub secret_registry: SharedAiSecretResolverRegistry,
     pub egress_policy: SharedAiEgressPolicy,
     pub provider_targets: SharedAiProviderTargetCatalog,
+    pub result_keyring: Option<SharedAiStructuredResultKeyringConfig>,
 }
 
 impl AiDeploymentRuntime {
@@ -32,13 +34,44 @@ impl AiDeploymentRuntime {
         let provider_targets =
             AiProviderTargetCatalog::from_environment_with_egress_policy(&egress_policy)?;
         let secrets = secret_registry_from_environment()?;
+        let result_keyring = structured_result_keyring_from_environment(&secrets)?
+            .map(SharedAiStructuredResultKeyringConfig);
 
         Ok(Self {
             secret_registry: SharedAiSecretResolverRegistry(secrets),
             egress_policy: SharedAiEgressPolicy(egress_policy),
             provider_targets: SharedAiProviderTargetCatalog(provider_targets),
+            result_keyring,
         })
     }
+}
+
+fn structured_result_keyring_from_environment(
+    secrets: &SecretResolverRegistry,
+) -> Result<Option<AiStructuredResultKeyringConfig>, String> {
+    let Some(value) = std::env::var_os("RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON") else {
+        return Ok(None);
+    };
+    let config =
+        serde_json::from_str::<AiStructuredResultKeyringConfig>(value.to_string_lossy().as_ref())
+            .map_err(|error| format!("invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {error}"))?;
+    config.validate().map_err(|error| {
+        format!(
+            "invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {}",
+            error.code
+        )
+    })?;
+    if config
+        .keys
+        .values()
+        .any(|reference| !secrets.contains(&reference.resolver))
+    {
+        return Err(
+            "RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON references an unregistered resolver"
+                .to_string(),
+        );
+    }
+    Ok(Some(config))
 }
 
 #[derive(Debug, Deserialize)]
@@ -340,7 +373,8 @@ fn environment_bool(name: &str) -> Result<bool, String> {
 mod tests {
     use super::{
         DeploymentSecretResolverConfig, environment_bool, policy, register_deployment_resolver,
-        secret_prefixes, secret_registry_from_environment, validate_config_aliases, vault_auth,
+        secret_prefixes, secret_registry_from_environment,
+        structured_result_keyring_from_environment, validate_config_aliases, vault_auth,
     };
 
     static DEPLOYMENT_RESOLVER_CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -479,6 +513,33 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("aliases must be unique and non-empty"));
+    }
+
+    #[test]
+    fn structured_result_keyring_requires_registered_rotation_keys() {
+        let _lock = DEPLOYMENT_RESOLVER_CONFIG_LOCK
+            .lock()
+            .expect("deployment resolver configuration lock must not be poisoned");
+        let _resolvers = ScopedEnvironmentVariable::set(
+            "RUSTOK_AI_SECRET_RESOLVERS_JSON",
+            r#"[{"kind":"env","alias":"deployment_env","key_prefixes":["RUSTOK_AI_"]}]"#,
+        );
+        let _keyring = ScopedEnvironmentVariable::set(
+            "RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON",
+            r#"{"active_key_id":"v2","retention_seconds":300,"keys":{"v1":{"resolver":"deployment_env","key":"RUSTOK_AI_RESULT_KEY_V1"},"v2":{"resolver":"deployment_env","key":"RUSTOK_AI_RESULT_KEY_V2"}}}"#,
+        );
+        let secrets = secret_registry_from_environment().unwrap();
+        let config = structured_result_keyring_from_environment(&secrets)
+            .unwrap()
+            .unwrap();
+        assert_eq!(config.active_key_id, "v2");
+        assert_eq!(config.keys.len(), 2);
+
+        let _invalid = ScopedEnvironmentVariable::set(
+            "RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON",
+            r#"{"active_key_id":"v1","retention_seconds":300,"keys":{"v1":{"resolver":"missing","key":"RUSTOK_AI_RESULT_KEY_V1"}}}"#,
+        );
+        assert!(structured_result_keyring_from_environment(&secrets).is_err());
     }
 
     #[test]

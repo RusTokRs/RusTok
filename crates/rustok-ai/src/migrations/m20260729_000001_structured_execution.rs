@@ -7,10 +7,12 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         create_executions(manager).await?;
+        create_cancellation_intents(manager).await?;
         create_attempts(manager).await?;
         create_budgets(manager).await?;
         create_provider_policies(manager).await?;
-        create_reservations(manager).await
+        create_reservations(manager).await?;
+        create_results(manager).await
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
@@ -19,6 +21,98 @@ impl MigrationTrait for Migration {
                 .to_string(),
         ))
     }
+}
+
+async fn create_cancellation_intents(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(CancellationIntents::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(CancellationIntents::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::TenantId)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::Owner)
+                        .string_len(128)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::ExecutionIdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::CancellationIdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::RequestDigest)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::ActorKind)
+                        .string_len(16)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::ActorId)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(CancellationIntents::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_ai_structured_cancellation_intents_tenant")
+                        .from(CancellationIntents::Table, CancellationIntents::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .check(Expr::cust("length(owner) > 0"))
+                .check(Expr::cust("length(execution_idempotency_key) > 0"))
+                .check(Expr::cust("length(cancellation_idempotency_key) > 0"))
+                .check(Expr::cust("actor_kind IN ('user', 'service', 'system')"))
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_ai_structured_cancellation_execution_key")
+                .table(CancellationIntents::Table)
+                .col(CancellationIntents::TenantId)
+                .col(CancellationIntents::Owner)
+                .col(CancellationIntents::ExecutionIdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_ai_structured_cancellation_request_key")
+                .table(CancellationIntents::Table)
+                .col(CancellationIntents::TenantId)
+                .col(CancellationIntents::CancellationIdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await
 }
 
 async fn create_executions(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
@@ -685,6 +779,116 @@ async fn create_reservations(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .await
 }
 
+async fn create_results(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(Results::Table)
+                .if_not_exists()
+                .col(ColumnDef::new(Results::Id).uuid().not_null().primary_key())
+                .col(ColumnDef::new(Results::TenantId).uuid().not_null())
+                .col(ColumnDef::new(Results::ExecutionId).uuid().not_null())
+                .col(
+                    ColumnDef::new(Results::RequestDigest)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Results::OutputDigest)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(ColumnDef::new(Results::KeyId).string_len(64).not_null())
+                .col(ColumnDef::new(Results::Nonce).binary().not_null())
+                .col(ColumnDef::new(Results::Ciphertext).binary().not_null())
+                .col(
+                    ColumnDef::new(Results::PlaintextBytes)
+                        .big_integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Results::ReplayCount)
+                        .big_integer()
+                        .not_null()
+                        .default(0),
+                )
+                .col(
+                    ColumnDef::new(Results::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .col(
+                    ColumnDef::new(Results::ExpiresAt)
+                        .timestamp_with_time_zone()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Results::LastReplayedAt)
+                        .timestamp_with_time_zone()
+                        .null(),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_ai_structured_result_execution")
+                        .from(Results::Table, Results::ExecutionId)
+                        .to(Executions::Table, Executions::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_ai_structured_result_tenant")
+                        .from(Results::Table, Results::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .check(Expr::cust("length(request_digest) = 64"))
+                .check(Expr::cust("length(output_digest) = 64"))
+                .check(Expr::cust("length(key_id) > 0"))
+                .check(Expr::cust("length(nonce) = 12"))
+                .check(Expr::cust("length(ciphertext) > 16"))
+                .check(Expr::cust("plaintext_bytes > 0"))
+                .check(Expr::cust("replay_count >= 0"))
+                .check(Expr::cust("expires_at > created_at"))
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_ai_structured_result_execution")
+                .table(Results::Table)
+                .col(Results::ExecutionId)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_ai_structured_result_expiry")
+                .table(Results::Table)
+                .col(Results::ExpiresAt)
+                .to_owned(),
+        )
+        .await
+}
+
+#[derive(Iden)]
+enum CancellationIntents {
+    #[iden = "ai_structured_cancellation_intents"]
+    Table,
+    Id,
+    TenantId,
+    Owner,
+    ExecutionIdempotencyKey,
+    CancellationIdempotencyKey,
+    RequestDigest,
+    ActorKind,
+    ActorId,
+    CreatedAt,
+}
+
 #[derive(Iden)]
 enum Executions {
     #[iden = "ai_structured_executions"]
@@ -808,6 +1012,25 @@ enum Reservations {
 }
 
 #[derive(Iden)]
+enum Results {
+    #[iden = "ai_structured_results"]
+    Table,
+    Id,
+    TenantId,
+    ExecutionId,
+    RequestDigest,
+    OutputDigest,
+    KeyId,
+    Nonce,
+    Ciphertext,
+    PlaintextBytes,
+    ReplayCount,
+    CreatedAt,
+    ExpiresAt,
+    LastReplayedAt,
+}
+
+#[derive(Iden)]
 enum Tenants {
     #[iden = "tenants"]
     Table,
@@ -852,6 +1075,7 @@ mod tests {
             "ai_structured_budgets",
             "ai_structured_provider_policies",
             "ai_structured_reservations",
+            "ai_structured_results",
         ] {
             let count = database
                 .query_one(Statement::from_sql_and_values(
@@ -865,6 +1089,15 @@ mod tests {
                 .unwrap();
             assert_eq!(i64::try_get(&count, "", "count").unwrap(), 1);
         }
+
+        let result_columns = table_columns(&database, "ai_structured_results").await;
+        assert!(result_columns.contains(&"ciphertext".to_string()));
+        assert!(result_columns.contains(&"nonce".to_string()));
+        assert!(result_columns.contains(&"key_id".to_string()));
+        assert!(result_columns.contains(&"expires_at".to_string()));
+        assert!(!result_columns.contains(&"output_payload".to_string()));
+        assert!(!result_columns.contains(&"plaintext".to_string()));
+        assert!(!result_columns.contains(&"provider_response".to_string()));
     }
 
     async fn table_columns(database: &sea_orm::DatabaseConnection, table: &str) -> Vec<String> {

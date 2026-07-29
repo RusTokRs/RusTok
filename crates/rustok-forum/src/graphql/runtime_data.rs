@@ -92,11 +92,11 @@ mod tests {
             .await
             .expect("GraphQL runtime test database should connect");
         let facts: SharedForumAudienceFactsPort = Arc::new(StaticFactsPort);
-        let inputs = GraphqlRuntimeInputs::new(
-            HostRuntimeContext::new(db).with_shared_value(facts.clone()),
-        );
+        let inputs =
+            GraphqlRuntimeInputs::new(HostRuntimeContext::new(db).with_shared_value(facts.clone()));
 
-        let runtime = attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
+        let runtime =
+            attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
         assert!(runtime.audience_facts.is_some());
     }
 
@@ -107,7 +107,8 @@ mod tests {
             .expect("GraphQL runtime test database should connect");
         let inputs = GraphqlRuntimeInputs::new(HostRuntimeContext::new(db));
 
-        let runtime = attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
+        let runtime =
+            attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
         assert!(runtime.audience_facts.is_none());
     }
 }

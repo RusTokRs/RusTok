@@ -5,6 +5,12 @@
 This support crate is the selected-distribution module registry owner. It has
 no UI surface and no FFA/FBA boundary of its own.
 
+`build_runtime_extensions(...)` combines module-owned contributions with
+explicitly selected cross-module bridges. The `ai-translation` feature is a
+composition feature, not a module slug: it requires `mod-ai` and
+`mod-translation` and publishes a Translation-owned lazy factory without
+placing AI/Translation imports in the server host.
+
 `composition_identity()` publishes a canonical hash of the selected module
 registry. Trusted CLI and HTTP hosts bind this identity into the installer
 topology before preflight and apply, rather than accepting a host-local or

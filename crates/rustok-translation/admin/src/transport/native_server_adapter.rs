@@ -6,10 +6,12 @@ use leptos::prelude::*;
 use crate::model::{
     Actor, ActorKind, ApplyResult, Assignment, Cancellation, Glossary, GlossaryBinding,
     GlossaryConcept, GlossaryMatchKind, GlossaryScope, GlossarySummary, GlossaryTermPolicy,
-    GlossaryVariant, InventoryResult, Job, JobItem, JobProgress, MemoryEntry, MemoryMatchEvidence,
-    MemoryMatchKind, MemoryMutation, MemoryRetentionPolicy, MemorySuggestion, Proposal,
-    ProposalOrigin, ProposalValue, ProviderProgress, QaIssue, RequiredProviderProgress, Retry,
-    TranslationPolicy, TranslationResourceIdentity, TranslationTarget,
+    GlossaryVariant, InventoryResult, Job, JobItem, JobProgress, MachineCancellation,
+    MachineProposal, MachineTranslationAttempt, MachineTranslationDiagnostic,
+    MachineTranslationUsage, MemoryEntry, MemoryMatchEvidence, MemoryMatchKind, MemoryMutation,
+    MemoryRetentionPolicy, MemorySuggestion, Proposal, ProposalOrigin, ProposalValue,
+    ProviderProgress, QaIssue, RequiredProviderProgress, Retry, TranslationPolicy,
+    TranslationResourceIdentity, TranslationTarget,
 };
 use crate::model::{TranslationAdminOperation, TranslationAdminResponse};
 
@@ -67,7 +69,23 @@ async fn execute_ssr(
         .ok_or_else(|| ServerFnError::new("Translation runtime is unavailable"))?;
     let tenant_locale_policies: Arc<dyn TenantLocalePolicyPort> =
         Arc::new(TenantService::new(database.clone()));
-    let context = port_context(&auth, &request, operation.idempotency_key())?;
+    let mut context = port_context(&auth, &request, operation.idempotency_key())?;
+    if matches!(
+        &operation,
+        TranslationAdminOperation::GenerateMachineProposal { .. }
+    ) {
+        context.deadline_ms = Some(120_000);
+    }
+    let machine_port = if matches!(
+        &operation,
+        TranslationAdminOperation::GenerateMachineProposal { .. }
+            | TranslationAdminOperation::CancelMachineOperation { .. }
+    ) {
+        rustok_translation::machine_translation_port_from_context(&runtime)
+            .map_err(|error| ServerFnError::new(error.message))?
+    } else {
+        None
+    };
 
     dispatch(
         operation,
@@ -76,6 +94,7 @@ async fn execute_ssr(
         providers,
         tenant_locale_policies,
         event_bus,
+        machine_port,
     )
     .await
 }
@@ -120,16 +139,19 @@ async fn dispatch(
     providers: std::sync::Arc<rustok_translation_targets::TranslationTargetRegistry>,
     tenant_locale_policies: std::sync::Arc<dyn rustok_tenant::TenantLocalePolicyPort>,
     event_bus: rustok_outbox::TransactionalEventBus,
+    machine_port: Option<std::sync::Arc<dyn rustok_translation::MachineTranslationPort>>,
 ) -> Result<TranslationAdminResponse, ServerFnError> {
     use rustok_translation::{
         AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
-        CreateGlossaryInput, CreateJobInput, MemoryListInput, MemoryLookupInput, ProposalValue,
+        CancelMachineOperationInput, CreateGlossaryInput, CreateJobInput,
+        GenerateMachineProposalInput, MemoryListInput, MemoryLookupInput, ProposalValue,
         PurgeMemoryEntryInput, RecoverApplyInput, ReplaceGlossaryTermsInput,
         ReplaceRequiredTargetLocalesInput, RetryItemInput, SaveProposalInput,
         SetGlossaryActiveInput, SetMemoryRetentionInput, SubmitProposalInput,
         TombstoneMemoryEntryInput, TranslationGlossaryService, TranslationInventoryService,
-        TranslationMemoryService, TranslationPolicyService, TranslationProgressService,
-        TranslationWorkflowService, UnassignItemInput, UpdateGlossaryInput,
+        TranslationMachineControlService, TranslationMachineService, TranslationMemoryService,
+        TranslationPolicyService, TranslationProgressService, TranslationWorkflowService,
+        UnassignItemInput, UpdateGlossaryInput,
     };
 
     let policy = || TranslationPolicyService::new(database.clone(), tenant_locale_policies.clone());
@@ -152,6 +174,23 @@ async fn dispatch(
             event_bus.clone(),
         )
     };
+    let machine = || {
+        machine_port
+            .as_ref()
+            .cloned()
+            .map(|port| {
+                TranslationMachineService::new(
+                    database.clone(),
+                    providers.clone(),
+                    tenant_locale_policies.clone(),
+                    event_bus.clone(),
+                    port,
+                )
+            })
+            .ok_or_else(|| ServerFnError::new("Machine translation provider is unavailable"))
+    };
+    let machine_control =
+        || TranslationMachineControlService::new(database.clone(), machine_port.clone());
 
     let response = match operation {
         TranslationAdminOperation::ReadPolicy => TranslationAdminResponse::Policy(map_policy(
@@ -496,6 +535,49 @@ async fn dispatch(
                                 })
                             })
                             .collect::<Result<Vec<_>, ServerFnError>>()?,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::GenerateMachineProposal {
+            item_id,
+            field_keys,
+            minimum_memory_similarity_basis_points,
+            tone,
+            domain,
+            style,
+            ..
+        } => TranslationAdminResponse::MachineProposal(map_machine_proposal(
+            machine()?
+                .generate_proposal(
+                    context,
+                    GenerateMachineProposalInput {
+                        item_id: parse_uuid(&item_id, "item_id")?,
+                        field_keys: field_keys
+                            .into_iter()
+                            .map(parse_field_key)
+                            .collect::<Result<Vec<_>, ServerFnError>>()?,
+                        minimum_memory_similarity_basis_points,
+                        tone,
+                        domain,
+                        style,
+                    },
+                )
+                .await
+                .map_err(public_error)?,
+        )),
+        TranslationAdminOperation::CancelMachineOperation {
+            operation_id,
+            reason,
+            ..
+        } => TranslationAdminResponse::MachineCancellation(map_machine_cancellation(
+            machine_control()
+                .cancel_operation(
+                    context,
+                    CancelMachineOperationInput {
+                        operation_id: parse_uuid(&operation_id, "operation_id")?,
+                        reason,
                     },
                 )
                 .await
@@ -1202,6 +1284,72 @@ fn map_proposal(value: rustok_translation::ProposalRecord) -> Proposal {
         qa_accepted: value.qa_accepted,
         status: value.status,
         approval_receipt_id: value.approval_receipt_id,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_machine_proposal(value: rustok_translation::MachineProposalRecord) -> MachineProposal {
+    MachineProposal {
+        operation_id: value.operation_id.to_string(),
+        item_id: value.item_id.to_string(),
+        proposal_id: value.proposal_id.to_string(),
+        adapter_slug: value.adapter_slug,
+        provider_slug: value.provider_slug,
+        provider_policy_digest: value.provider_policy_digest,
+        machine_request_digest: value.machine_request_digest,
+        glossary_revision: value.glossary_revision,
+        glossary_digest: value.glossary_digest,
+        memory_digest: value.memory_digest,
+        execution_id: value.execution_id,
+        execution_request_digest: value.execution_request_digest,
+        prompt_policy_digest: value.prompt_policy_digest,
+        attempts: value
+            .attempts
+            .into_iter()
+            .map(|attempt| MachineTranslationAttempt {
+                attempt: attempt.attempt,
+                provider_profile_id: attempt.provider_profile_id,
+                provider_slug: attempt.provider_slug,
+                model: attempt.model,
+                fallback: attempt.fallback,
+            })
+            .collect(),
+        usage: MachineTranslationUsage {
+            input_tokens: value.usage.input_tokens,
+            output_tokens: value.usage.output_tokens,
+            total_tokens: value.usage.total_tokens,
+            cost_minor_units: value.usage.cost_minor_units,
+            currency_code: value.usage.currency_code,
+            price_snapshot_digest: value.usage.price_snapshot_digest,
+        },
+        diagnostics: value
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| MachineTranslationDiagnostic {
+                code: diagnostic.code,
+                blocking: diagnostic.blocking,
+                unit_id: diagnostic.unit_id,
+            })
+            .collect(),
+        review_required: value.review_required,
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_machine_cancellation(
+    value: rustok_translation::MachineCancellationRecord,
+) -> MachineCancellation {
+    MachineCancellation {
+        cancellation_id: value.cancellation_id.to_string(),
+        operation_id: value.operation_id.to_string(),
+        status: value.status,
+        provider_execution_id: value.provider_execution_id,
+        provider_status: value.provider_status,
+        provider_error_code: value.provider_error_code,
+        provider_observed_at: value.provider_observed_at.to_rfc3339(),
+        created_at: value.created_at.to_rfc3339(),
     }
 }
 

@@ -23,9 +23,7 @@ use crate::entities::{
     forum_category_reply_create_audience_user,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::services::category_audience::{
-    load_category_ancestor_ids, lock_category_tree_in_tx,
-};
+use crate::services::category_audience::{load_category_ancestor_ids, lock_category_tree_in_tx};
 use crate::services::rbac::enforce_scope;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -94,9 +92,7 @@ impl ForumCategoryReplyCreateAudiencePolicyService {
 
         forum_category_reply_create_audience_policy::Entity::delete_many()
             .filter(forum_category_reply_create_audience_policy::Column::TenantId.eq(tenant_id))
-            .filter(
-                forum_category_reply_create_audience_policy::Column::CategoryId.eq(category_id),
-            )
+            .filter(forum_category_reply_create_audience_policy::Column::CategoryId.eq(category_id))
             .exec(&txn)
             .await?;
 
@@ -137,11 +133,13 @@ async fn insert_roles(
             .roles_any
             .iter()
             .cloned()
-            .map(|role| forum_category_reply_create_audience_role::ActiveModel {
-                tenant_id: Set(tenant_id),
-                category_id: Set(category_id),
-                role: Set(role),
-            })
+            .map(
+                |role| forum_category_reply_create_audience_role::ActiveModel {
+                    tenant_id: Set(tenant_id),
+                    category_id: Set(category_id),
+                    role: Set(role),
+                },
+            )
             .collect::<Vec<_>>(),
     )
     .exec(txn)
@@ -191,11 +189,13 @@ async fn insert_groups(
             .group_members_any
             .iter()
             .copied()
-            .map(|group_id| forum_category_reply_create_audience_group::ActiveModel {
-                tenant_id: Set(tenant_id),
-                category_id: Set(category_id),
-                group_id: Set(group_id),
-            })
+            .map(
+                |group_id| forum_category_reply_create_audience_group::ActiveModel {
+                    tenant_id: Set(tenant_id),
+                    category_id: Set(category_id),
+                    group_id: Set(group_id),
+                },
+            )
             .collect::<Vec<_>>(),
     )
     .exec(txn)
@@ -323,7 +323,9 @@ where
         .await?;
     ensure_storage_bound(roles.len(), maximum_roles, "role relations")?;
     for row in roles {
-        layer_mut(&mut layers, row.category_id)?.roles_any.push(row.role);
+        layer_mut(&mut layers, row.category_id)?
+            .roles_any
+            .push(row.role);
     }
 
     let maximum_channels = category_ids.len() * MAX_FORUM_AUDIENCE_CHANNELS;

@@ -1,28 +1,23 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{
-    PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::audience::{
-    ForumAudienceFactsRequest, SharedForumAudienceFactsPort,
-};
+use crate::audience::{ForumAudienceFactsRequest, SharedForumAudienceFactsPort};
 use crate::error::{ForumError, ForumResult};
 
 use super::posting_policy::{
     ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyEvaluationInput,
-    ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
-    ForumPostingPolicyUnavailableFact, ForumPostingWindowCount,
+    ForumPostingPolicyFactKind, ForumPostingPolicyFacts, ForumPostingPolicyUnavailableFact,
+    ForumPostingWindowCount,
 };
 use super::posting_policy_evaluator::ForumPostingPolicyRules;
 use super::user_trust::MAX_FORUM_USER_TRUST_LEVEL;
 
-pub const FORUM_POSTING_POLICY_FACTS_CAPABILITY: &str =
-    "forum_posting_policy_facts";
+pub const FORUM_POSTING_POLICY_FACTS_CAPABILITY: &str = "forum_posting_policy_facts";
 pub const FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE: &str =
     "FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE";
 
@@ -31,12 +26,9 @@ const TENANT_MISMATCH_CODE: &str = "forum.posting_facts.tenant_mismatch";
 const ACTOR_MISMATCH_CODE: &str = "forum.posting_facts.actor_mismatch";
 const DUPLICATE_PROVIDER_CODE: &str = "forum.posting_facts.duplicate_provider";
 const PROVIDER_RESPONSE_CODE: &str = "forum.posting_facts.provider_response_invalid";
-const TRUST_PROVIDER_RESPONSE_CODE: &str =
-    "forum.posting_facts.trust_response_invalid";
-const PROVIDER_MISSING_REASON_CODE: &str =
-    "forum.posting_fact.provider_missing";
-const PROVIDER_ERROR_REASON_CODE: &str =
-    "forum.posting_fact.provider_error";
+const TRUST_PROVIDER_RESPONSE_CODE: &str = "forum.posting_facts.trust_response_invalid";
+const PROVIDER_MISSING_REASON_CODE: &str = "forum.posting_fact.provider_missing";
+const PROVIDER_ERROR_REASON_CODE: &str = "forum.posting_fact.provider_error";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ForumPostingPolicyCompositionRequest {
@@ -74,12 +66,12 @@ impl ForumPostingPolicyOwnerFactRequest {
         fact: ForumPostingPolicyFactKind,
     ) -> ForumResult<Self> {
         let window_seconds = match fact {
-            ForumPostingPolicyFactKind::TopicCreatesWindow => rules
-                .topic_create_limit
-                .map(|limit| limit.window_seconds),
-            ForumPostingPolicyFactKind::ReplyCreatesWindow => rules
-                .reply_create_limit
-                .map(|limit| limit.window_seconds),
+            ForumPostingPolicyFactKind::TopicCreatesWindow => {
+                rules.topic_create_limit.map(|limit| limit.window_seconds)
+            }
+            ForumPostingPolicyFactKind::ReplyCreatesWindow => {
+                rules.reply_create_limit.map(|limit| limit.window_seconds)
+            }
             ForumPostingPolicyFactKind::EditsWindow => {
                 rules.edit_limit.map(|limit| limit.window_seconds)
             }
@@ -157,34 +149,23 @@ impl ForumPostingPolicyOwnerFactValue {
     pub const fn fact_kind(self) -> ForumPostingPolicyFactKind {
         match self {
             Self::TrustLevel(_) => ForumPostingPolicyFactKind::TrustLevel,
-            Self::AccountAgeSeconds(_) => {
-                ForumPostingPolicyFactKind::AccountAgeSeconds
-            }
+            Self::AccountAgeSeconds(_) => ForumPostingPolicyFactKind::AccountAgeSeconds,
             Self::TopicsRead(_) => ForumPostingPolicyFactKind::TopicsRead,
             Self::ApprovedPosts(_) => ForumPostingPolicyFactKind::ApprovedPosts,
             Self::ActiveFlags(_) => ForumPostingPolicyFactKind::ActiveFlags,
             Self::Reputation(_) => ForumPostingPolicyFactKind::Reputation,
-            Self::RecentModerationActions(_) => {
-                ForumPostingPolicyFactKind::RecentModerationActions
-            }
-            Self::TopicCreatesWindow(_) => {
-                ForumPostingPolicyFactKind::TopicCreatesWindow
-            }
-            Self::ReplyCreatesWindow(_) => {
-                ForumPostingPolicyFactKind::ReplyCreatesWindow
-            }
+            Self::RecentModerationActions(_) => ForumPostingPolicyFactKind::RecentModerationActions,
+            Self::TopicCreatesWindow(_) => ForumPostingPolicyFactKind::TopicCreatesWindow,
+            Self::ReplyCreatesWindow(_) => ForumPostingPolicyFactKind::ReplyCreatesWindow,
             Self::EditsWindow(_) => ForumPostingPolicyFactKind::EditsWindow,
-            Self::SecondsSinceLastBump(_) => {
-                ForumPostingPolicyFactKind::SecondsSinceLastBump
-            }
+            Self::SecondsSinceLastBump(_) => ForumPostingPolicyFactKind::SecondsSinceLastBump,
         }
     }
 
     fn normalize(self, request: &ForumPostingPolicyOwnerFactRequest) -> ForumResult<Self> {
         if self.fact_kind() != request.fact {
             return Err(ForumError::Validation(
-                "Forum posting owner fact value does not match the requested fact"
-                    .to_string(),
+                "Forum posting owner fact value does not match the requested fact".to_string(),
             ));
         }
         match self {
@@ -236,8 +217,7 @@ impl ForumPostingPolicyOwnerFactResponse {
             || self.fact != request.fact
         {
             return Err(ForumError::Validation(
-                "Forum posting owner fact returned a different request identity"
-                    .to_string(),
+                "Forum posting owner fact returned a different request identity".to_string(),
             ));
         }
         self.value = self.value.normalize(&request)?;
@@ -256,8 +236,7 @@ pub trait ForumPostingPolicyOwnerFactPort: Send + Sync {
     ) -> Result<ForumPostingPolicyOwnerFactResponse, PortError>;
 }
 
-pub type SharedForumPostingPolicyOwnerFactPort =
-    Arc<dyn ForumPostingPolicyOwnerFactPort>;
+pub type SharedForumPostingPolicyOwnerFactPort = Arc<dyn ForumPostingPolicyOwnerFactPort>;
 
 #[derive(Clone, Default)]
 pub struct ForumPostingPolicyFactsComposer {
@@ -281,13 +260,9 @@ impl ForumPostingPolicyFactsComposer {
         Ok(Self { providers })
     }
 
-    pub fn with_trust_audience_facts(
-        audience_facts: SharedForumAudienceFactsPort,
-    ) -> Self {
+    pub fn with_trust_audience_facts(audience_facts: SharedForumAudienceFactsPort) -> Self {
         Self {
-            providers: vec![Arc::new(ForumPostingTrustFactPort::new(
-                audience_facts,
-            ))],
+            providers: vec![Arc::new(ForumPostingTrustFactPort::new(audience_facts))],
         }
     }
 
@@ -323,9 +298,7 @@ impl ForumPostingPolicyFactsComposer {
 
         for fact in required_facts {
             let owner_request = ForumPostingPolicyOwnerFactRequest::for_rules(
-                request,
-                &rules,
-                fact,
+                request, &rules, fact,
             )
             .map_err(|_| {
                 PortError::invariant_violation(
@@ -334,38 +307,33 @@ impl ForumPostingPolicyFactsComposer {
                 )
             })?;
             let Some(provider) = self.provider_for(fact) else {
-                facts.unavailable_facts.push(
-                    ForumPostingPolicyUnavailableFact {
+                facts
+                    .unavailable_facts
+                    .push(ForumPostingPolicyUnavailableFact {
                         fact,
                         retryable: false,
                         reason_code: PROVIDER_MISSING_REASON_CODE.to_string(),
-                    },
-                );
+                    });
                 continue;
             };
 
             match provider
-                .resolve_forum_posting_policy_fact(
-                    context.clone(),
-                    owner_request,
-                )
+                .resolve_forum_posting_policy_fact(context.clone(), owner_request)
                 .await
             {
                 Ok(response) => {
-                    let response = response
-                        .validate_for_request(&owner_request)
-                        .map_err(|_| {
-                            PortError::invariant_violation(
-                                PROVIDER_RESPONSE_CODE,
-                                "Forum posting policy owner fact response is invalid",
-                            )
-                        })?;
+                    let response = response.validate_for_request(&owner_request).map_err(|_| {
+                        PortError::invariant_violation(
+                            PROVIDER_RESPONSE_CODE,
+                            "Forum posting policy owner fact response is invalid",
+                        )
+                    })?;
                     apply_value(&mut facts, response.value);
                 }
                 Err(error) if capability_error(&error.kind) => {
-                    facts.unavailable_facts.push(unavailable_from_error(
-                        fact, error,
-                    ));
+                    facts
+                        .unavailable_facts
+                        .push(unavailable_from_error(fact, error));
                 }
                 Err(error) => return Err(error),
             }
@@ -498,24 +466,15 @@ fn validate_context(
     Ok(())
 }
 
-fn fact_supports_action(
-    fact: ForumPostingPolicyFactKind,
-    action: ForumPostingAction,
-) -> bool {
+fn fact_supports_action(fact: ForumPostingPolicyFactKind, action: ForumPostingAction) -> bool {
     match fact {
-        ForumPostingPolicyFactKind::TopicCreatesWindow => {
-            action == ForumPostingAction::CreateTopic
-        }
-        ForumPostingPolicyFactKind::ReplyCreatesWindow => {
-            action == ForumPostingAction::CreateReply
-        }
+        ForumPostingPolicyFactKind::TopicCreatesWindow => action == ForumPostingAction::CreateTopic,
+        ForumPostingPolicyFactKind::ReplyCreatesWindow => action == ForumPostingAction::CreateReply,
         ForumPostingPolicyFactKind::EditsWindow => matches!(
             action,
             ForumPostingAction::EditTopic | ForumPostingAction::EditReply
         ),
-        ForumPostingPolicyFactKind::SecondsSinceLastBump => {
-            action == ForumPostingAction::BumpTopic
-        }
+        ForumPostingPolicyFactKind::SecondsSinceLastBump => action == ForumPostingAction::BumpTopic,
         ForumPostingPolicyFactKind::TrustLevel
         | ForumPostingPolicyFactKind::AccountAgeSeconds
         | ForumPostingPolicyFactKind::TopicsRead
@@ -529,9 +488,7 @@ fn fact_supports_action(
 fn capability_error(kind: &PortErrorKind) -> bool {
     matches!(
         kind,
-        PortErrorKind::Unavailable
-            | PortErrorKind::Timeout
-            | PortErrorKind::NotFound
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::NotFound
     )
 }
 
@@ -544,36 +501,27 @@ fn unavailable_from_error(
         retryable: error.retryable,
         reason_code: error.code,
     };
-    candidate.normalize().unwrap_or(ForumPostingPolicyUnavailableFact {
-        fact,
-        retryable: error.retryable,
-        reason_code: PROVIDER_ERROR_REASON_CODE.to_string(),
-    })
+    candidate
+        .normalize()
+        .unwrap_or(ForumPostingPolicyUnavailableFact {
+            fact,
+            retryable: error.retryable,
+            reason_code: PROVIDER_ERROR_REASON_CODE.to_string(),
+        })
 }
 
-fn apply_value(
-    facts: &mut ForumPostingPolicyFacts,
-    value: ForumPostingPolicyOwnerFactValue,
-) {
+fn apply_value(facts: &mut ForumPostingPolicyFacts, value: ForumPostingPolicyOwnerFactValue) {
     match value {
-        ForumPostingPolicyOwnerFactValue::TrustLevel(value) => {
-            facts.trust_level = Some(value)
-        }
+        ForumPostingPolicyOwnerFactValue::TrustLevel(value) => facts.trust_level = Some(value),
         ForumPostingPolicyOwnerFactValue::AccountAgeSeconds(value) => {
             facts.account_age_seconds = Some(value)
         }
-        ForumPostingPolicyOwnerFactValue::TopicsRead(value) => {
-            facts.topics_read = Some(value)
-        }
+        ForumPostingPolicyOwnerFactValue::TopicsRead(value) => facts.topics_read = Some(value),
         ForumPostingPolicyOwnerFactValue::ApprovedPosts(value) => {
             facts.approved_posts = Some(value)
         }
-        ForumPostingPolicyOwnerFactValue::ActiveFlags(value) => {
-            facts.active_flags = Some(value)
-        }
-        ForumPostingPolicyOwnerFactValue::Reputation(value) => {
-            facts.reputation = Some(value)
-        }
+        ForumPostingPolicyOwnerFactValue::ActiveFlags(value) => facts.active_flags = Some(value),
+        ForumPostingPolicyOwnerFactValue::Reputation(value) => facts.reputation = Some(value),
         ForumPostingPolicyOwnerFactValue::RecentModerationActions(value) => {
             facts.recent_moderation_actions = Some(value)
         }
@@ -583,9 +531,7 @@ fn apply_value(
         ForumPostingPolicyOwnerFactValue::ReplyCreatesWindow(value) => {
             facts.reply_creates_window = Some(value)
         }
-        ForumPostingPolicyOwnerFactValue::EditsWindow(value) => {
-            facts.edits_window = Some(value)
-        }
+        ForumPostingPolicyOwnerFactValue::EditsWindow(value) => facts.edits_window = Some(value),
         ForumPostingPolicyOwnerFactValue::SecondsSinceLastBump(value) => {
             facts.seconds_since_last_bump = Some(value)
         }

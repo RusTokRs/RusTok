@@ -309,6 +309,25 @@ pub struct AiStructuredTaskExecutionRef {
     pub execution_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiStructuredTaskExecutionKey {
+    pub owner: String,
+    pub idempotency_key: String,
+}
+
+impl AiStructuredTaskExecutionKey {
+    pub fn validate(&self) -> Result<(), PortError> {
+        require_identity("owner", &self.owner)?;
+        if self.idempotency_key.trim().is_empty() || self.idempotency_key.len() > 191 {
+            return Err(PortError::validation(
+                "ai.structured.idempotency_key_invalid",
+                "structured task idempotency key must contain 1..=191 non-whitespace bytes",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 pub trait AiStructuredTaskPort: Send + Sync {
     async fn health(
@@ -331,11 +350,28 @@ pub trait AiStructuredTaskPort: Send + Sync {
         execution: AiStructuredTaskExecutionRef,
     ) -> Result<AiStructuredTaskExecution, PortError>;
 
+    /// Resolve a durable execution without requiring the caller to have
+    /// observed its generated execution id before a crash or timeout.
+    async fn resolve(
+        &self,
+        context: PortContext,
+        execution: AiStructuredTaskExecutionKey,
+    ) -> Result<Option<AiStructuredTaskExecution>, PortError>;
+
     async fn cancel(
         &self,
         context: PortContext,
         execution: AiStructuredTaskExecutionRef,
     ) -> Result<AiStructuredTaskExecution, PortError>;
+
+    /// Persist cancellation against the stable owner/idempotency identity.
+    /// The intent must also stop a matching execution registered after this
+    /// call returns, closing the submit/cancel race.
+    async fn cancel_by_key(
+        &self,
+        context: PortContext,
+        execution: AiStructuredTaskExecutionKey,
+    ) -> Result<Option<AiStructuredTaskExecution>, PortError>;
 }
 
 fn require_identity(field: &'static str, value: &str) -> Result<(), PortError> {

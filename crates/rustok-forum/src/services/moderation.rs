@@ -354,11 +354,7 @@ impl ModerationService {
         security: SecurityContext,
     ) -> ForumResult<()> {
         self.mark_solution_with_optional_audience_context(
-            tenant_id,
-            topic_id,
-            reply_id,
-            security,
-            None,
+            tenant_id, topic_id, reply_id, security, None,
         )
         .await
     }
@@ -714,9 +710,6 @@ impl ModerationService {
     }
 }
 
-fn is_exact_topic_author(
-    security: &SecurityContext,
-    topic_author_id: Option<Uuid>,
-) -> bool {
+fn is_exact_topic_author(security: &SecurityContext, topic_author_id: Option<Uuid>) -> bool {
     topic_author_id.is_some() && security.user_id == topic_author_id
 }

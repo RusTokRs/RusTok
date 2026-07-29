@@ -61,19 +61,10 @@ impl ForumTopicCreateAudienceAuthorizationService {
         for layer in policy.effective_layers {
             evaluated_layers += 1;
             let facts = self
-                .facts_for_layer(
-                    tenant_id,
-                    security,
-                    context.clone(),
-                    &layer.constraints,
-                )
+                .facts_for_layer(tenant_id, security, context.clone(), &layer.constraints)
                 .await?;
-            let decision = ForumAudienceEvaluator::decide(
-                tenant_id,
-                &layer.constraints,
-                security,
-                &facts,
-            )?;
+            let decision =
+                ForumAudienceEvaluator::decide(tenant_id, &layer.constraints, security, &facts)?;
             last_reason = decision.reason;
             if !decision.allowed {
                 return Ok(ForumTopicCreateAudienceAuthorization {

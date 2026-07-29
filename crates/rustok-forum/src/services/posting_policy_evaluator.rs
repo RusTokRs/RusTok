@@ -99,10 +99,7 @@ impl ForumPostingPolicyRules {
             "minimum account age",
         )?;
         validate_positive_unsigned_minimum(self.minimum_topics_read, "minimum topics read")?;
-        validate_positive_unsigned_minimum(
-            self.minimum_approved_posts,
-            "minimum approved posts",
-        )?;
+        validate_positive_unsigned_minimum(self.minimum_approved_posts, "minimum approved posts")?;
         validate_positive_unsigned_minimum(
             self.minimum_seconds_between_bumps,
             "minimum bump interval",
@@ -498,31 +495,19 @@ fn unsigned_denial(
     )
 }
 
-fn required_u8(
-    value: Option<u8>,
-    fact: ForumPostingPolicyFactKind,
-) -> ForumResult<u8> {
+fn required_u8(value: Option<u8>, fact: ForumPostingPolicyFactKind) -> ForumResult<u8> {
     value.ok_or_else(|| missing_available_fact(fact))
 }
 
-fn required_u32(
-    value: Option<u32>,
-    fact: ForumPostingPolicyFactKind,
-) -> ForumResult<u32> {
+fn required_u32(value: Option<u32>, fact: ForumPostingPolicyFactKind) -> ForumResult<u32> {
     value.ok_or_else(|| missing_available_fact(fact))
 }
 
-fn required_u64(
-    value: Option<u64>,
-    fact: ForumPostingPolicyFactKind,
-) -> ForumResult<u64> {
+fn required_u64(value: Option<u64>, fact: ForumPostingPolicyFactKind) -> ForumResult<u64> {
     value.ok_or_else(|| missing_available_fact(fact))
 }
 
-fn required_i64(
-    value: Option<i64>,
-    fact: ForumPostingPolicyFactKind,
-) -> ForumResult<i64> {
+fn required_i64(value: Option<i64>, fact: ForumPostingPolicyFactKind) -> ForumResult<i64> {
     value.ok_or_else(|| missing_available_fact(fact))
 }
 

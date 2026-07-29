@@ -64,6 +64,8 @@ mod tests {
             "purgeTranslationMemoryEntry",
             "createTranslationJob",
             "saveTranslationProposal",
+            "generateMachineTranslationProposal",
+            "cancelMachineTranslationOperation",
             "applyTranslationProposal",
             "syncTranslationProviderInventory",
         ] {

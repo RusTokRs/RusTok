@@ -12,8 +12,9 @@ use super::{
         AiAgentDescriptorGql, AiAgentModelAssignmentGql, AiAgentPrincipalGql, AiAgentWorkflowGql,
         AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderCatalogEntryGql,
         AiProviderProfileGql, AiProviderTargetGql, AiRecentRunGql, AiRunStreamEventGql,
-        AiRuntimeMetricsGql, AiTaskProfileGql, AiTenantRbacPermissionGql, AiTenantRbacRoleGql,
-        AiToolProfileGql, AiToolTraceGql,
+        AiRuntimeMetricsGql, AiStructuredBudgetPolicyGql, AiStructuredProviderPolicyGql,
+        AiTaskProfileGql, AiTenantRbacPermissionGql, AiTenantRbacRoleGql, AiToolProfileGql,
+        AiToolTraceGql,
     },
 };
 
@@ -203,6 +204,54 @@ impl AiQuery {
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(items.into_iter().map(Into::into).collect())
+    }
+
+    async fn ai_structured_budget_policies(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<AiStructuredBudgetPolicyGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_read(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = crate::AiOperatorContext {
+            tenant_id: auth.tenant_id,
+            user_id: auth.user_id,
+            permissions: auth.permissions.clone(),
+            role_slugs: Vec::new(),
+            preferred_locale: None,
+        };
+        Ok(
+            crate::AiManagementService::list_structured_budget_policies(db, &operator)
+                .await
+                .map_err(|error| async_graphql::Error::new(error.code))?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        )
+    }
+
+    async fn ai_structured_provider_policies(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<AiStructuredProviderPolicyGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_read(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = crate::AiOperatorContext {
+            tenant_id: auth.tenant_id,
+            user_id: auth.user_id,
+            permissions: auth.permissions.clone(),
+            role_slugs: Vec::new(),
+            preferred_locale: None,
+        };
+        Ok(
+            crate::AiManagementService::list_structured_provider_policies(db, &operator)
+                .await
+                .map_err(|error| async_graphql::Error::new(error.code))?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        )
     }
 
     async fn ai_provider_profile(

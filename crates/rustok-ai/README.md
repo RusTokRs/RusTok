@@ -40,13 +40,21 @@ Current implementation includes:
   budget reservations, immutable provider price policies, and an exact
   registered-task catalog now back the implementation track. Provider attempt
   slots, immutable per-attempt price snapshots, actual token/cost recording,
-  slot release, atomic terminal execution/budget settlement, and
-  accounting-aware expired-lease recovery are also durable. The private
+  slot release, accounting-aware expired-lease recovery, and an encrypted
+  TTL-bound result handoff are also durable. Successful attempt evidence,
+  result insertion, slot release, budget settlement, and terminal execution
+  commit atomically; tenant-scoped replay authenticates identity and digests,
+  supports retained-key rotation, and never re-bills after expiry. The private
   structured runtime now performs exact descriptor validation, deterministic
   ordered inference/fallback, typed failure mapping, deadline enforcement, and
-  durable cancellation observation. Operator policy provisioning, recovery
-  scheduling, terminal-result replay semantics, and runtime publication remain
-  activation prerequisites for machine translation
+  durable cancellation observation. Permission-checked GraphQL/native
+  contracts now provision tenant budget and provider policies, while the
+  result keyring remains deployment-owned. The existing AI scheduler adapter
+  performs queued-cancellation recovery, expired-lease reconciliation, and
+  expired-result cleanup before claims. The optional distribution bridge
+  publishes a Translation-owned lazy runtime factory without server capability
+  imports; production-profile enablement and live failure/restart evidence
+  remain activation prerequisites for machine translation
 - owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
   host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
 - host-neutral `AiHostRuntime` for GraphQL mutations, direct execution, and in-process MCP
@@ -122,6 +130,8 @@ implementation plan.
 - `AiRouter`
 - `AiStructuredTaskPort`, `AiStructuredTaskRequest`,
   `AiStructuredTaskExecution`
+- `RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON` deployment config for the
+  AES-256-GCM transient-result active key, retained rotation keys, and TTL
 - `McpClientAdapter`
 - `ToolExecutionPolicy`
 - `ProviderProfile`, `TaskProfile`, `ExecutionMode`, `ExecutionOverride`
@@ -162,3 +172,21 @@ with the `RUSTOK_AI_` prefix and can optionally enable the mounted-file resolver
 
 The process rejects duplicate aliases, blank prefixes, ambiguous Vault auth, invalid endpoint
 shapes, and invalid cloud coordinates before making a resolver available to tenant profiles.
+
+`RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON` is optional and fail-closed. When
+absent, the billable structured-task runtime is not published. Its shape is:
+
+```json
+{
+  "active_key_id": "v2",
+  "retention_seconds": 86400,
+  "keys": {
+    "v1": {"resolver": "deployment_env", "key": "RUSTOK_AI_RESULT_KEY_V1"},
+    "v2": {"resolver": "deployment_env", "key": "RUSTOK_AI_RESULT_KEY_V2"}
+  }
+}
+```
+
+Each referenced secret is standard Base64 for exactly 32 bytes. Keep retired
+key references configured until every row encrypted with that key has passed
+the retention window and scheduled cleanup.

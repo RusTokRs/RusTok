@@ -37,8 +37,7 @@ pub(crate) fn moderation_audience_port_context(
 ) -> ForumResult<PortContext> {
     if tenant_id.is_nil() || auth.tenant_id != tenant_id {
         return Err(ForumError::Validation(
-            "Forum moderation authenticated tenant does not match the requested tenant"
-                .to_string(),
+            "Forum moderation authenticated tenant does not match the requested tenant".to_string(),
         ));
     }
 
@@ -173,9 +172,11 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(context
-            .correlation_id
-            .starts_with("forum-graphql-moderation-"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-graphql-moderation-")
+        );
     }
 
     #[test]

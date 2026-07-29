@@ -8,9 +8,7 @@ use crate::error::{ForumError, ForumResult};
 pub const MAX_FORUM_POSTING_POLICY_FACTS: usize = 11;
 pub const MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH: usize = 64;
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ForumPostingAction {
     CreateTopic,
@@ -20,9 +18,7 @@ pub enum ForumPostingAction {
     BumpTopic,
 }
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ForumPostingPolicyFactKind {
     TrustLevel,
@@ -159,12 +155,8 @@ impl ForumPostingPolicyFacts {
             ForumPostingPolicyFactKind::RecentModerationActions => {
                 self.recent_moderation_actions.is_some()
             }
-            ForumPostingPolicyFactKind::TopicCreatesWindow => {
-                self.topic_creates_window.is_some()
-            }
-            ForumPostingPolicyFactKind::ReplyCreatesWindow => {
-                self.reply_creates_window.is_some()
-            }
+            ForumPostingPolicyFactKind::TopicCreatesWindow => self.topic_creates_window.is_some(),
+            ForumPostingPolicyFactKind::ReplyCreatesWindow => self.reply_creates_window.is_some(),
             ForumPostingPolicyFactKind::EditsWindow => self.edits_window.is_some(),
             ForumPostingPolicyFactKind::SecondsSinceLastBump => {
                 self.seconds_since_last_bump.is_some()
@@ -330,10 +322,7 @@ impl ForumPostingPolicyDecision {
         .normalize()
     }
 
-    pub const fn indeterminate(
-        fact: ForumPostingPolicyFactKind,
-        retryable: bool,
-    ) -> Self {
+    pub const fn indeterminate(fact: ForumPostingPolicyFactKind, retryable: bool) -> Self {
         Self {
             outcome: ForumPostingPolicyOutcome::Indeterminate,
             reason: ForumPostingPolicyDecisionReason::RequiredFactUnavailable,
@@ -436,9 +425,7 @@ impl ForumPostingPolicyDecision {
     }
 }
 
-fn expected_fact(
-    reason: ForumPostingPolicyDecisionReason,
-) -> Option<ForumPostingPolicyFactKind> {
+fn expected_fact(reason: ForumPostingPolicyDecisionReason) -> Option<ForumPostingPolicyFactKind> {
     match reason {
         ForumPostingPolicyDecisionReason::TrustLevel => {
             Some(ForumPostingPolicyFactKind::TrustLevel)
@@ -553,14 +540,11 @@ fn normalize_reason_code(reason_code: String) -> ForumResult<String> {
     let reason_code = reason_code.trim().to_ascii_lowercase();
     if reason_code.is_empty()
         || reason_code.len() > MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH
-        || !reason_code
-            .chars()
-            .enumerate()
-            .all(|(index, character)| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || (index > 0 && matches!(character, '_' | '.' | '-'))
-            })
+        || !reason_code.chars().enumerate().all(|(index, character)| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || (index > 0 && matches!(character, '_' | '.' | '-'))
+        })
     {
         return Err(ForumError::Validation(
             "Forum posting policy unavailable reason code must be a bounded lowercase token"

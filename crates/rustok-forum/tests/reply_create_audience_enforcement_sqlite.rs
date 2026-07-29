@@ -197,8 +197,14 @@ async fn reply_create_commands_enforce_inherited_audience_before_owner_writes() 
         create_category(&db, tenant_id, policy_admin.clone(), "unrestricted", None).await;
     let role_only = create_category(&db, tenant_id, policy_admin.clone(), "role-only", None).await;
     let root = create_category(&db, tenant_id, policy_admin.clone(), "root", None).await;
-    let group_child =
-        create_category(&db, tenant_id, policy_admin.clone(), "group-child", Some(root)).await;
+    let group_child = create_category(
+        &db,
+        tenant_id,
+        policy_admin.clone(),
+        "group-child",
+        Some(root),
+    )
+    .await;
     let explicit_allow =
         create_category(&db, tenant_id, policy_admin.clone(), "explicit-allow", None).await;
     let explicit_deny =
@@ -413,10 +419,12 @@ async fn reply_create_commands_enforce_inherited_audience_before_owner_writes() 
             .await,
         Err(ForumError::CapabilityUnavailable { .. })
     ));
-    assert!(requests
-        .lock()
-        .expect("facts requests should lock")
-        .is_empty());
+    assert!(
+        requests
+            .lock()
+            .expect("facts requests should lock")
+            .is_empty()
+    );
 
     composed
         .create_command_with_audience_context(
@@ -428,10 +436,7 @@ async fn reply_create_commands_enforce_inherited_audience_before_owner_writes() 
         )
         .await
         .expect("matching exact group facts should allow inline-command reply creation");
-    let recorded = requests
-        .lock()
-        .expect("facts requests should lock")
-        .clone();
+    let recorded = requests.lock().expect("facts requests should lock").clone();
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].tenant_id, tenant_id);
     assert_eq!(recorded[0].user_id, allowed_admin_id);
@@ -452,10 +457,7 @@ async fn reply_create_commands_enforce_inherited_audience_before_owner_writes() 
     ));
     assert_eq!(reply_count(&db).await, count_before_group_denial);
 
-    let calls_before_wrong_actor = requests
-        .lock()
-        .expect("facts requests should lock")
-        .len();
+    let calls_before_wrong_actor = requests.lock().expect("facts requests should lock").len();
     assert!(matches!(
         composed
             .create_with_audience_context(
@@ -469,10 +471,7 @@ async fn reply_create_commands_enforce_inherited_audience_before_owner_writes() 
         Err(ForumError::Validation(message)) if message.contains("actor does not match")
     ));
     assert_eq!(
-        requests
-            .lock()
-            .expect("facts requests should lock")
-            .len(),
+        requests.lock().expect("facts requests should lock").len(),
         calls_before_wrong_actor,
         "invalid exact caller context must fail before owner facts"
     );

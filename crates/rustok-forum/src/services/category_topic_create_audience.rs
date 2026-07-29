@@ -23,9 +23,7 @@ use crate::entities::{
     forum_category_topic_create_audience_user,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::services::category_audience::{
-    load_category_ancestor_ids, lock_category_tree_in_tx,
-};
+use crate::services::category_audience::{load_category_ancestor_ids, lock_category_tree_in_tx};
 use crate::services::rbac::enforce_scope;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -93,12 +91,8 @@ impl ForumCategoryTopicCreateAudiencePolicyService {
         load_category_ancestor_ids(&txn, tenant_id, category_id).await?;
 
         forum_category_topic_create_audience_policy::Entity::delete_many()
-            .filter(
-                forum_category_topic_create_audience_policy::Column::TenantId.eq(tenant_id),
-            )
-            .filter(
-                forum_category_topic_create_audience_policy::Column::CategoryId.eq(category_id),
-            )
+            .filter(forum_category_topic_create_audience_policy::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_topic_create_audience_policy::Column::CategoryId.eq(category_id))
             .exec(&txn)
             .await?;
 
@@ -256,13 +250,12 @@ where
     let effective_layers = ancestor_ids
         .into_iter()
         .filter_map(|ancestor_id| {
-            layers
-                .get(&ancestor_id)
-                .cloned()
-                .map(|constraints| ForumCategoryTopicCreateAudiencePolicyLayer {
+            layers.get(&ancestor_id).cloned().map(|constraints| {
+                ForumCategoryTopicCreateAudiencePolicyLayer {
                     category_id: ancestor_id,
                     constraints,
-                })
+                }
+            })
         })
         .collect();
 
@@ -330,7 +323,9 @@ where
         .await?;
     ensure_storage_bound(roles.len(), maximum_roles, "role relations")?;
     for row in roles {
-        layer_mut(&mut layers, row.category_id)?.roles_any.push(row.role);
+        layer_mut(&mut layers, row.category_id)?
+            .roles_any
+            .push(row.role);
     }
 
     let maximum_channels = category_ids.len() * MAX_FORUM_AUDIENCE_CHANNELS;

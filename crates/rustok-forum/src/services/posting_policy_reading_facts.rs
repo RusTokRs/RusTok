@@ -241,10 +241,9 @@ mod tests {
         let user_id = Uuid::new_v4();
         insert_read_state(&db, tenant_id, Uuid::new_v4(), user_id).await;
         insert_read_state(&db, tenant_id, Uuid::new_v4(), user_id).await;
-        let composer = ForumPostingPolicyFactsComposer::new(vec![
-            ForumTopicReadPostingFactPort::shared(db),
-        ])
-        .expect("unique reading provider should compose");
+        let composer =
+            ForumPostingPolicyFactsComposer::new(vec![ForumTopicReadPostingFactPort::shared(db)])
+                .expect("unique reading provider should compose");
         let rules = ForumPostingPolicyRules {
             minimum_topics_read: Some(2),
             ..ForumPostingPolicyRules::default()

@@ -128,10 +128,51 @@ and secrets. Billable AI execution uses a write-like port policy with deadline,
 idempotency, cancellation, budget reservation, typed retryability, and
 content-safe evidence.
 
+The optional cross-module adapter is selected only by the distribution
+composition feature `ai-translation`, which requires both owner modules. It
+publishes a Translation-owned lazy `MachineTranslationPortFactory` through
+`ModuleRuntimeExtensions`; executable hosts transfer that factory generically
+and never import the adapter or either owner capability. The factory
+materializes the concrete port only from the completed `HostRuntimeContext`, so
+database and deployment-owned AI handles are available without a server-owned
+capability match.
+
+Successful structured output is handed off through an AI-owned, encrypted,
+short-lived result store rather than the generic execution or attempt ledger.
+The successful provider attempt, encrypted result row, provider-slot release,
+budget settlement, and terminal execution transition commit in one database
+transaction. AES-256-GCM additional authenticated data binds tenant, execution,
+request, output digest, and key ID; plaintext, raw provider responses, keys, and
+ciphertext are prohibited from generic metadata and logs.
+
+The deployment owns a rotation-safe result keyring through secret references.
+Rows retain the key ID used for encryption, and retired keys remain resolvable
+until the configured result retention expires. Replay after expiry fails closed
+without reopening the execution or charging the tenant again. Result cleanup
+does not remove durable status, attempt, usage, price, or cost evidence.
+
 The adapter receives bounded exact-locale segments, placeholders, field
 semantics, glossary revision, memory suggestions, context, and data
 classification. It returns typed, deterministically validated proposals.
 Initial AI results always require human review and never write owner data.
+
+Translation owns the machine-proposal command and a content-free durable
+handoff journal. The command derives an exact batch from the persisted job
+snapshot, immutable glossary binding, and bounded Translation Memory lookup,
+then calls `MachineTranslationPort`. It persists translated values only by
+calling the canonical proposal workflow, which repeats owner validation and
+deterministic QA. The journal stores request and context digests plus
+execution/attempt/usage/cost evidence and proposal identity, never source,
+memory, or translated values. Deterministic child idempotency keys let restart
+replay both the AI result handoff and proposal save without rebilling while
+the request projection remains intact; projection drift fails closed as an
+idempotency conflict. Registered operations pin normalized memory entry
+identities, order, and match scores without duplicating segment content. Replay
+can read a tombstoned pinned entry, purge is blocked while the pin exists, and
+completion or explicit actor-bound cancellation releases the pins atomically.
+Cancellation is accepted only before proposal save enters `saving`; AI-runtime
+cancellation/status correlation and audited stuck-save recovery remain
+required hardening.
 
 Automatic approval or publication requires a later accepted decision, explicit
 tenant policy, measured locale-pair evidence, and deterministic safety/quality

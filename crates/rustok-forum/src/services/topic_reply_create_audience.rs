@@ -161,11 +161,13 @@ async fn insert_channels(
             .channel_members_any
             .iter()
             .cloned()
-            .map(|channel_slug| forum_topic_reply_create_audience_channel::ActiveModel {
-                tenant_id: Set(tenant_id),
-                topic_id: Set(topic_id),
-                channel_slug: Set(channel_slug),
-            })
+            .map(
+                |channel_slug| forum_topic_reply_create_audience_channel::ActiveModel {
+                    tenant_id: Set(tenant_id),
+                    topic_id: Set(topic_id),
+                    channel_slug: Set(channel_slug),
+                },
+            )
             .collect::<Vec<_>>(),
     )
     .exec(txn)
@@ -187,11 +189,13 @@ async fn insert_groups(
             .group_members_any
             .iter()
             .copied()
-            .map(|group_id| forum_topic_reply_create_audience_group::ActiveModel {
-                tenant_id: Set(tenant_id),
-                topic_id: Set(topic_id),
-                group_id: Set(group_id),
-            })
+            .map(
+                |group_id| forum_topic_reply_create_audience_group::ActiveModel {
+                    tenant_id: Set(tenant_id),
+                    topic_id: Set(topic_id),
+                    group_id: Set(group_id),
+                },
+            )
             .collect::<Vec<_>>(),
     )
     .exec(txn)
@@ -261,9 +265,10 @@ async fn load_topic_layer<C>(
 where
     C: ConnectionTrait,
 {
-    let policy = forum_topic_reply_create_audience_policy::Entity::find_by_id((tenant_id, topic_id))
-        .one(db)
-        .await?;
+    let policy =
+        forum_topic_reply_create_audience_policy::Entity::find_by_id((tenant_id, topic_id))
+            .one(db)
+            .await?;
     let roles = forum_topic_reply_create_audience_role::Entity::find()
         .filter(forum_topic_reply_create_audience_role::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_reply_create_audience_role::Column::TopicId.eq(topic_id))
@@ -289,13 +294,21 @@ where
         .all(db)
         .await?;
 
-    ensure_storage_bound(roles.len(), MAX_FORUM_AUDIENCE_ROLES, "topic role relations")?;
+    ensure_storage_bound(
+        roles.len(),
+        MAX_FORUM_AUDIENCE_ROLES,
+        "topic role relations",
+    )?;
     ensure_storage_bound(
         channels.len(),
         MAX_FORUM_AUDIENCE_CHANNELS,
         "topic channel relations",
     )?;
-    ensure_storage_bound(groups.len(), MAX_FORUM_AUDIENCE_GROUPS, "topic group relations")?;
+    ensure_storage_bound(
+        groups.len(),
+        MAX_FORUM_AUDIENCE_GROUPS,
+        "topic group relations",
+    )?;
     ensure_storage_bound(
         users.len(),
         MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2,

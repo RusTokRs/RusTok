@@ -8,10 +8,10 @@ use uuid::Uuid;
 use crate::{
     AiError, AiHostRuntime, AiManagementService, AiStructuredTaskAvailability,
     AiStructuredTaskCatalog, AiStructuredTaskDescriptor, AiStructuredTaskExecution,
-    AiStructuredTaskExecutionRef, AiStructuredTaskHealth, AiStructuredTaskPort,
-    AiStructuredTaskRequest, ChatMessage, ChatMessageRole, InferenceEngine, ProviderCapability,
-    ProviderChatRequest, ProviderStructuredRequest, ProviderStructuredResponse,
-    RouterProviderProfile,
+    AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef, AiStructuredTaskHealth,
+    AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus, ChatMessage,
+    ChatMessageRole, InferenceEngine, ProviderCapability, ProviderChatRequest,
+    ProviderStructuredRequest, ProviderStructuredResponse, RouterProviderProfile,
     accounting::{AttemptOutcome, StructuredAccounting, TerminalOutcome},
     router::ordered_provider_candidates,
     service::{
@@ -19,10 +19,26 @@ use crate::{
         runtime_inference_engine, task_profile_runtime,
     },
     structured::StructuredExecutionLedger,
+    structured_result::{StructuredResultKeyring, StructuredResultStore},
 };
 
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const LEASE_RECOVERY_GRACE: Duration = Duration::from_secs(5);
+
+pub fn structured_task_port_from_context(
+    context: &rustok_api::HostRuntimeContext,
+    catalog: AiStructuredTaskCatalog,
+) -> Result<Option<Arc<dyn AiStructuredTaskPort>>, String> {
+    let Some(config) = context.shared_get::<crate::SharedAiStructuredResultKeyringConfig>() else {
+        return Ok(None);
+    };
+    let runtime = crate::ai_host_runtime_from_context(context)?;
+    let keyring = StructuredResultKeyring::new(config.0, runtime.secret_registry().clone())
+        .map_err(|error| format!("invalid AI structured result keyring: {}", error.code))?;
+    Ok(Some(Arc::new(DurableAiStructuredTaskPort::new(
+        runtime, catalog, keyring,
+    ))))
+}
 
 #[derive(Clone)]
 pub(crate) struct DurableAiStructuredTaskPort {
@@ -30,6 +46,7 @@ pub(crate) struct DurableAiStructuredTaskPort {
     catalog: AiStructuredTaskCatalog,
     ledger: StructuredExecutionLedger,
     accounting: StructuredAccounting,
+    results: StructuredResultStore,
 }
 
 #[derive(Clone)]
@@ -54,14 +71,41 @@ enum ProviderCall {
 }
 
 impl DurableAiStructuredTaskPort {
-    pub(crate) fn new(runtime: AiHostRuntime, catalog: AiStructuredTaskCatalog) -> Self {
+    pub(crate) fn new(
+        runtime: AiHostRuntime,
+        catalog: AiStructuredTaskCatalog,
+        keyring: StructuredResultKeyring,
+    ) -> Self {
         let database = runtime.db_clone();
         Self {
             runtime,
             catalog,
             ledger: StructuredExecutionLedger::new(database.clone()),
-            accounting: StructuredAccounting::new(database),
+            accounting: StructuredAccounting::new(database.clone()),
+            results: StructuredResultStore::new(database, keyring),
         }
+    }
+
+    async fn view_with_result(
+        &self,
+        context: &PortContext,
+        execution_id: Uuid,
+    ) -> Result<AiStructuredTaskExecution, PortError> {
+        let durable = self.ledger.load(context, execution_id).await?;
+        let mut execution = self.ledger.view(context, execution_id).await?;
+        if execution.status == AiStructuredTaskStatus::Completed {
+            execution.output = Some(
+                self.results
+                    .replay(
+                        durable.tenant_id,
+                        execution_id,
+                        &execution.request_digest,
+                        durable.max_output_bytes,
+                    )
+                    .await?,
+            );
+        }
+        Ok(execution)
     }
 
     async fn descriptor_for_health(
@@ -196,6 +240,7 @@ impl DurableAiStructuredTaskPort {
         request: &AiStructuredTaskRequest,
         descriptor: &AiStructuredTaskDescriptor,
         execution_id: Uuid,
+        request_digest: &str,
         lease_token: Uuid,
         candidates: Vec<ProviderCandidate>,
         deadline: Instant,
@@ -227,6 +272,7 @@ impl DurableAiStructuredTaskPort {
             max_tokens: None,
             locale: Some(context.locale.clone()),
         };
+        self.results.prepare(parse_tenant_id(context)?).await?;
         let mut last_failure = None;
         for candidate in candidates
             .into_iter()
@@ -354,16 +400,23 @@ impl DurableAiStructuredTaskPort {
                         continue;
                     }
                     let usage = response.usage.ok_or_else(runtime_invariant)?;
-                    self.accounting
-                        .finish_attempt(
+                    let sealed = self
+                        .results
+                        .seal(
+                            parse_tenant_id(context)?,
                             execution_id,
-                            lease_token,
-                            attempt.model.id,
-                            AttemptOutcome::Completed { usage },
+                            request_digest,
+                            &response.output,
                         )
                         .await?;
                     self.accounting
-                        .finalize(execution_id, lease_token, TerminalOutcome::Completed)
+                        .complete_attempt(
+                            execution_id,
+                            lease_token,
+                            attempt.model.id,
+                            usage,
+                            sealed,
+                        )
                         .await?;
                     let mut execution = self.ledger.view(context, execution_id).await?;
                     execution.output = Some(response.output);
@@ -529,8 +582,24 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
             .await?;
         candidates.truncate(usize::from(request.limits.max_attempts));
         let registered = self.ledger.register(&context, &request).await?;
+        let execution_key = AiStructuredTaskExecutionKey {
+            owner: request.owner.clone(),
+            idempotency_key: context.idempotency_key.clone().unwrap_or_default(),
+        };
+        if let Some(cancelled) = self
+            .ledger
+            .apply_cancellation_intent(&context, &execution_key)
+            .await?
+        {
+            if cancelled.status == "queued" {
+                self.accounting.cancel_queued(cancelled.id).await?;
+            }
+            return self.view_with_result(&context, cancelled.id).await;
+        }
         if registered.replayed && registered.execution.status != "queued" {
-            return self.ledger.view(&context, registered.execution.id).await;
+            return self
+                .view_with_result(&context, registered.execution.id)
+                .await;
         }
         self.accounting
             .reserve(
@@ -558,13 +627,16 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
             .claim(registered.execution.id, lease_duration)
             .await?
         else {
-            return self.ledger.view(&context, registered.execution.id).await;
+            return self
+                .view_with_result(&context, registered.execution.id)
+                .await;
         };
         self.run(
             &context,
             &request,
             &descriptor,
             registered.execution.id,
+            &registered.execution.request_digest,
             lease.token,
             candidates,
             deadline,
@@ -578,9 +650,22 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         execution: AiStructuredTaskExecutionRef,
     ) -> Result<AiStructuredTaskExecution, PortError> {
         context.require_read_semantics()?;
-        self.ledger
-            .view(&context, parse_execution_id(&execution)?)
+        self.view_with_result(&context, parse_execution_id(&execution)?)
             .await
+    }
+
+    async fn resolve(
+        &self,
+        context: PortContext,
+        execution: AiStructuredTaskExecutionKey,
+    ) -> Result<Option<AiStructuredTaskExecution>, PortError> {
+        execution.validate()?;
+        let Some(resolved) = self.ledger.resolve_by_key(&context, &execution).await? else {
+            return Ok(None);
+        };
+        self.view_with_result(&context, parse_execution_uuid(&resolved.execution_id)?)
+            .await
+            .map(Some)
     }
 
     async fn cancel(
@@ -593,7 +678,31 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         if cancelled.status == "queued" {
             self.accounting.cancel_queued(execution_id).await?;
         }
-        self.ledger.view(&context, execution_id).await
+        self.view_with_result(&context, execution_id).await
+    }
+
+    async fn cancel_by_key(
+        &self,
+        context: PortContext,
+        execution: AiStructuredTaskExecutionKey,
+    ) -> Result<Option<AiStructuredTaskExecution>, PortError> {
+        execution.validate()?;
+        self.ledger
+            .put_cancellation_intent(&context, &execution)
+            .await?;
+        let Some(cancelled) = self
+            .ledger
+            .apply_cancellation_intent(&context, &execution)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if cancelled.status == "queued" {
+            self.accounting.cancel_queued(cancelled.id).await?;
+        }
+        self.view_with_result(&context, cancelled.id)
+            .await
+            .map(Some)
     }
 }
 
@@ -696,7 +805,11 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
 }
 
 fn parse_execution_id(execution: &AiStructuredTaskExecutionRef) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&execution.execution_id).map_err(|_| {
+    parse_execution_uuid(&execution.execution_id)
+}
+
+fn parse_execution_uuid(execution_id: &str) -> Result<Uuid, PortError> {
+    Uuid::parse_str(execution_id).map_err(|_| {
         PortError::validation(
             "ai.structured.execution_id_invalid",
             "structured task execution_id must be a UUID",

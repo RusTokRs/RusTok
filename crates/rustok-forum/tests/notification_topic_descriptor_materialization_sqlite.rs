@@ -2,15 +2,17 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{HostRuntimeContext, Permission, PortActor, PortCallPolicy, PortContext, PortError};
+use rustok_api::{
+    HostRuntimeContext, Permission, PortActor, PortCallPolicy, PortContext, PortError,
+};
 use rustok_core::{MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole};
 use rustok_forum::entities::forum_domain_event;
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumCategoryAudiencePolicyService, ForumModule, ForumNotificationRecipientContextPort,
     ForumNotificationRecipientContextRequest, ModerationService,
-    SetForumCategoryAudiencePolicyInput,
-    SharedForumNotificationRecipientContextPort, SubscriptionService, TopicService,
+    SetForumCategoryAudiencePolicyInput, SharedForumNotificationRecipientContextPort,
+    SubscriptionService, TopicService,
 };
 use rustok_notifications::NotificationsModule;
 use rustok_notifications_api::{
@@ -149,11 +151,9 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
         .build_runtime_extensions()
         .expect("public fallback extensions should initialize");
     let public_host = public_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
-    let public_providers = materialize_notification_source_registry(
-        &mut public_extensions,
-        &public_host,
-    )
-    .expect("public fallback source registry should materialize");
+    let public_providers =
+        materialize_notification_source_registry(&mut public_extensions, &public_host)
+            .expect("public fallback source registry should materialize");
     let public_provider = public_providers
         .get_by_str("forum")
         .expect("Forum source should be discoverable");
@@ -168,25 +168,22 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
         "without recipient capability an initially non-public topic must remain absent"
     );
 
-    let recipient_port: SharedForumNotificationRecipientContextPort = Arc::new(
-        StaticRecipientContextPort {
+    let recipient_port: SharedForumNotificationRecipientContextPort =
+        Arc::new(StaticRecipientContextPort {
             roles: BTreeMap::from([
                 (allowed_recipient, "customer"),
                 (denied_recipient, "moderator"),
             ]),
-        },
-    );
+        });
     let mut recipient_extensions = registry
         .build_runtime_extensions()
         .expect("recipient-aware extensions should initialize");
     recipient_extensions.insert(recipient_port);
     let recipient_host =
         recipient_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
-    let recipient_providers = materialize_notification_source_registry(
-        &mut recipient_extensions,
-        &recipient_host,
-    )
-    .expect("recipient-aware source registry should materialize");
+    let recipient_providers =
+        materialize_notification_source_registry(&mut recipient_extensions, &recipient_host)
+            .expect("recipient-aware source registry should materialize");
     let recipient_provider = recipient_providers
         .get_by_str("forum")
         .expect("Forum source should be discoverable");

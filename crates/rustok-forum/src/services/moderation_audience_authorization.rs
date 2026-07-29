@@ -117,13 +117,7 @@ impl ForumModerationAudienceAuthorizationService {
         context: Option<PortContext>,
     ) -> ForumResult<ForumModerationAudienceAuthorization> {
         let authorization = self
-            .evaluate_reply(
-                tenant_id,
-                reply_id,
-                expected_topic_id,
-                security,
-                context,
-            )
+            .evaluate_reply(tenant_id, reply_id, expected_topic_id, security, context)
             .await?;
         self.require_allowed(authorization)
     }
@@ -142,19 +136,10 @@ impl ForumModerationAudienceAuthorizationService {
         for layer in policy.effective_layers {
             evaluated_layers += 1;
             let facts = self
-                .facts_for_layer(
-                    tenant_id,
-                    security,
-                    context.clone(),
-                    &layer.constraints,
-                )
+                .facts_for_layer(tenant_id, security, context.clone(), &layer.constraints)
                 .await?;
-            let decision = ForumAudienceEvaluator::decide(
-                tenant_id,
-                &layer.constraints,
-                security,
-                &facts,
-            )?;
+            let decision =
+                ForumAudienceEvaluator::decide(tenant_id, &layer.constraints, security, &facts)?;
             last_reason = decision.reason;
             if !decision.allowed {
                 return Ok(ForumModerationAudienceAuthorization {

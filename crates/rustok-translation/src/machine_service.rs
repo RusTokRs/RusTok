@@ -1,0 +1,1828 @@
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
+
+use chrono::{DateTime, FixedOffset, Utc};
+use rustok_api::{
+    Action, PortActorKind, PortCallPolicy, PortContext, Resource, manifest_hash::hash_manifest,
+};
+use rustok_core::{PermissionScope, SecurityContext, generate_id};
+use rustok_outbox::TransactionalEventBus;
+use rustok_tenant::TenantLocalePolicyPort;
+use rustok_translation_targets::{
+    FieldKey, TranslationResourceSnapshot, TranslationTargetRegistry,
+};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
+    sea_query::{Expr, OnConflict},
+};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::{
+    GlossaryBinding, GlossaryTermPolicy, MachineTranslationAttemptEvidence,
+    MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationExecutionStatus,
+    MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
+    MachineTranslationMemorySuggestion, MachineTranslationPort, MachineTranslationProviderState,
+    MachineTranslationResourceContext, MachineTranslationUnit, MachineTranslationUsage,
+    MemoryLookupInput, ProposalOrigin, ProposalValue, SaveProposalInput, TranslationError,
+    TranslationMemoryService, TranslationResult, TranslationWorkflowService,
+    entities::{
+        job, job_item, machine_cancellation, machine_memory_binding, machine_operation,
+        memory_entry,
+    },
+    glossary::read_bound_glossary,
+    qa::{glossary_concept_matches, glossary_scope_matches},
+};
+
+const MEMORY_SUGGESTIONS_PER_UNIT: u16 = 5;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerateMachineProposalInput {
+    pub item_id: Uuid,
+    pub field_keys: Vec<FieldKey>,
+    pub minimum_memory_similarity_basis_points: u16,
+    pub tone: Option<String>,
+    pub domain: Option<String>,
+    pub style: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelMachineOperationInput {
+    pub operation_id: Uuid,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineCancellationRecord {
+    pub cancellation_id: Uuid,
+    pub operation_id: Uuid,
+    pub status: String,
+    pub provider_execution_id: Option<String>,
+    pub provider_status: String,
+    pub provider_error_code: Option<String>,
+    pub provider_observed_at: DateTime<FixedOffset>,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MachineDiagnosticEvidence {
+    pub code: String,
+    pub blocking: bool,
+    pub unit_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineProposalRecord {
+    pub operation_id: Uuid,
+    pub item_id: Uuid,
+    pub proposal_id: Uuid,
+    pub adapter_slug: String,
+    pub provider_slug: String,
+    pub provider_policy_digest: String,
+    pub machine_request_digest: String,
+    pub glossary_revision: Option<String>,
+    pub glossary_digest: Option<String>,
+    pub memory_digest: Option<String>,
+    pub execution_id: String,
+    pub execution_request_digest: String,
+    pub prompt_policy_digest: String,
+    pub attempts: Vec<MachineTranslationAttemptEvidence>,
+    pub usage: MachineTranslationUsage,
+    pub diagnostics: Vec<MachineDiagnosticEvidence>,
+    pub review_required: bool,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+pub struct TranslationMachineService {
+    database: DatabaseConnection,
+    workflow: TranslationWorkflowService,
+    memory: TranslationMemoryService,
+    machine_port: Arc<dyn MachineTranslationPort>,
+}
+
+pub struct TranslationMachineControlService {
+    database: DatabaseConnection,
+    machine_port: Option<Arc<dyn MachineTranslationPort>>,
+}
+
+impl TranslationMachineControlService {
+    pub fn new(
+        database: DatabaseConnection,
+        machine_port: Option<Arc<dyn MachineTranslationPort>>,
+    ) -> Self {
+        Self {
+            database,
+            machine_port,
+        }
+    }
+
+    pub async fn cancel_operation(
+        &self,
+        context: PortContext,
+        input: CancelMachineOperationInput,
+    ) -> TranslationResult<MachineCancellationRecord> {
+        cancel_machine_operation(
+            &self.database,
+            self.machine_port.as_deref(),
+            context,
+            input,
+        )
+        .await
+    }
+}
+
+impl TranslationMachineService {
+    pub fn new(
+        database: DatabaseConnection,
+        providers: Arc<TranslationTargetRegistry>,
+        tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
+        event_bus: TransactionalEventBus,
+        machine_port: Arc<dyn MachineTranslationPort>,
+    ) -> Self {
+        Self {
+            workflow: TranslationWorkflowService::new(
+                database.clone(),
+                providers,
+                tenant_locale_policies,
+                event_bus,
+            ),
+            memory: TranslationMemoryService::new(database.clone()),
+            database,
+            machine_port,
+        }
+    }
+
+    pub async fn generate_proposal(
+        &self,
+        context: PortContext,
+        input: GenerateMachineProposalInput,
+    ) -> TranslationResult<MachineProposalRecord> {
+        let tenant_id = authorize_machine_generation(&context)?;
+        validate_generation_input(&input)?;
+        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let command_hash = hash_manifest(&input)?;
+
+        let existing_operation =
+            find_operation_by_idempotency(&self.database, tenant_id, &idempotency_key).await?;
+        if let Some(existing) = existing_operation.as_ref() {
+            validate_operation_replay(&existing, &context, &command_hash)?;
+            if existing.status == "completed" {
+                return machine_proposal_record(existing.clone());
+            }
+            if existing.status == "cancelled" {
+                return Err(TranslationError::MachineOperationCancelled);
+            }
+        }
+
+        let item = find_item(&self.database, tenant_id, input.item_id).await?;
+        enforce_machine_assignment(&item, &context)?;
+        if !matches!(
+            item.status.as_str(),
+            "missing" | "draft" | "stale" | "conflict"
+        ) {
+            return Err(TranslationError::ItemNotWritable(item.status));
+        }
+        let snapshot: TranslationResourceSnapshot =
+            serde_json::from_value(item.source_snapshot.clone())?;
+        let mut request = self
+            .build_request(
+                context.clone(),
+                tenant_id,
+                &item,
+                &snapshot,
+                &input,
+                existing_operation.as_ref(),
+            )
+            .await?;
+        request.validate(&context)?;
+        validate_provider_compatibility(&request, self.machine_port.descriptor())?;
+        let mut machine_request_digest = hash_manifest(&request)?;
+        let descriptor = self.machine_port.descriptor();
+
+        let (operation, created) = register_operation(
+            &self.database,
+            tenant_id,
+            &context,
+            &input,
+            &command_hash,
+            &machine_request_digest,
+            &request,
+            descriptor.slug.as_str(),
+            descriptor.policy_digest.as_str(),
+        )
+        .await?;
+        validate_operation_replay(&operation, &context, &command_hash)?;
+        if !created && operation.machine_request_digest != machine_request_digest {
+            request = self
+                .build_request(
+                    context.clone(),
+                    tenant_id,
+                    &item,
+                    &snapshot,
+                    &input,
+                    Some(&operation),
+                )
+                .await?;
+            request.validate(&context)?;
+            validate_provider_compatibility(&request, self.machine_port.descriptor())?;
+            machine_request_digest = hash_manifest(&request)?;
+        }
+        if operation.machine_request_digest != machine_request_digest {
+            return Err(TranslationError::IdempotencyConflict);
+        }
+        if operation.status == "completed" {
+            return machine_proposal_record(operation);
+        }
+        if operation.status == "cancelled" {
+            return Err(TranslationError::MachineOperationCancelled);
+        }
+
+        if created {
+            let health = self.machine_port.health(context.clone()).await?;
+            if health.state == MachineTranslationProviderState::Unavailable {
+                return Err(TranslationError::Provider {
+                    code: health
+                        .reason_code
+                        .unwrap_or_else(|| "translation.machine.provider_unavailable".to_string()),
+                    message: "machine translation provider is unavailable".to_string(),
+                    retryable: true,
+                });
+            }
+        }
+        let current = find_operation(&self.database, tenant_id, operation.id).await?;
+        match current.status.as_str() {
+            "registered" | "saving" => {}
+            "completed" => return machine_proposal_record(current),
+            "cancelled" => return Err(TranslationError::MachineOperationCancelled),
+            _ => return Err(TranslationError::WorkflowRevisionConflict),
+        }
+        let machine_context = child_write_context(&context, "machine-port")?;
+        let result = self
+            .machine_port
+            .translate_batch(machine_context, request.clone())
+            .await?;
+        validate_machine_result(&request, &result)?;
+        if let Some(completed) =
+            begin_machine_proposal_save(&self.database, tenant_id, operation.id).await?
+        {
+            return Ok(completed);
+        }
+
+        let values = result
+            .units
+            .iter()
+            .map(|unit| {
+                Ok(ProposalValue {
+                    key: FieldKey::new(unit.unit_id.clone()).map_err(|error| {
+                        TranslationError::InvalidRequest(format!(
+                            "machine translation returned an invalid field key: {error}"
+                        ))
+                    })?,
+                    value: unit.translated_value.clone(),
+                })
+            })
+            .collect::<TranslationResult<Vec<_>>>()?;
+        let proposal = self
+            .workflow
+            .save_proposal(
+                child_write_context(&context, "save-proposal")?,
+                SaveProposalInput {
+                    item_id: input.item_id,
+                    origin: ProposalOrigin::Ai,
+                    values,
+                },
+            )
+            .await?;
+
+        complete_operation(
+            &self.database,
+            tenant_id,
+            operation.id,
+            proposal.id,
+            &result,
+        )
+        .await
+    }
+
+    async fn build_request(
+        &self,
+        context: PortContext,
+        tenant_id: Uuid,
+        item: &job_item::Model,
+        snapshot: &TranslationResourceSnapshot,
+        input: &GenerateMachineProposalInput,
+        existing_operation: Option<&machine_operation::Model>,
+    ) -> TranslationResult<MachineTranslationBatchRequest> {
+        let selected = input.field_keys.iter().collect::<BTreeSet<_>>();
+        let units = snapshot
+            .fields
+            .iter()
+            .filter(|field| selected.contains(&field.descriptor.key))
+            .map(|field| MachineTranslationUnit {
+                unit_id: field.descriptor.key.as_str().to_string(),
+                field_key: field.descriptor.key.as_str().to_string(),
+                source_value: field.source_value.clone(),
+                source_hash: field.source_hash.clone(),
+                source_revision: snapshot.source_revision.as_str().to_string(),
+                profile: field.descriptor.profile,
+                strategy: field.descriptor.strategy,
+                classification: field.descriptor.classification,
+                ai_export_allowed: field.descriptor.ai_export_allowed,
+                max_characters: field.descriptor.max_characters,
+                preserves_whitespace: field.descriptor.preserves_whitespace,
+                protected_tokens: field.protected_tokens.clone(),
+            })
+            .collect::<Vec<_>>();
+        if units.len() != input.field_keys.len() {
+            return Err(TranslationError::InvalidRequest(
+                "machine translation field selection contains an unknown field".to_string(),
+            ));
+        }
+
+        let job = find_job(&self.database, tenant_id, item.job_id).await?;
+        let (glossary_revision, glossary_digest, glossary_terms) =
+            project_glossary(&self.database, tenant_id, &job, snapshot, &selected).await?;
+
+        let memory_suggestions = if let Some(operation) = existing_operation {
+            read_pinned_memory_suggestions(&self.database, tenant_id, operation, snapshot, &units)
+                .await?
+        } else {
+            lookup_memory_suggestions(
+                &self.memory,
+                context,
+                snapshot,
+                &units,
+                input.minimum_memory_similarity_basis_points,
+            )
+            .await?
+        };
+        let memory_digest = (!memory_suggestions.is_empty())
+            .then(|| hash_manifest(&memory_suggestions))
+            .transpose()?;
+        let descriptor = self.machine_port.descriptor();
+
+        Ok(MachineTranslationBatchRequest {
+            source_locale: snapshot.source_locale.clone(),
+            target_locale: snapshot.target_locale.clone(),
+            resource: MachineTranslationResourceContext {
+                owner_slug: snapshot.summary.identity.owner_slug.as_str().to_string(),
+                resource_kind: snapshot.summary.identity.resource_kind.as_str().to_string(),
+                resource_id: snapshot.summary.identity.resource_id.as_str().to_string(),
+                subresource_id: snapshot
+                    .summary
+                    .identity
+                    .subresource_id
+                    .as_ref()
+                    .map(|value| value.as_str().to_string()),
+            },
+            units,
+            glossary_revision,
+            glossary_digest,
+            glossary_terms,
+            memory_digest,
+            memory_suggestions,
+            tone: input.tone.clone(),
+            domain: input.domain.clone(),
+            style: input.style.clone(),
+            adapter_policy_digest: descriptor.policy_digest.clone(),
+            evidence: [
+                ("item_id".to_string(), item.id.to_string()),
+                ("job_id".to_string(), item.job_id.to_string()),
+                ("source_digest".to_string(), item.source_digest.clone()),
+            ]
+            .into_iter()
+            .collect(),
+        })
+    }
+}
+
+async fn lookup_memory_suggestions(
+    memory: &TranslationMemoryService,
+    context: PortContext,
+    snapshot: &TranslationResourceSnapshot,
+    units: &[MachineTranslationUnit],
+    minimum_similarity_basis_points: u16,
+) -> TranslationResult<Vec<MachineTranslationMemorySuggestion>> {
+    let mut memory_suggestions = Vec::new();
+    for unit in units {
+        let suggestions = memory
+            .lookup(
+                context.clone(),
+                MemoryLookupInput {
+                    source_locale: snapshot.source_locale.clone(),
+                    target_locale: snapshot.target_locale.clone(),
+                    identity: snapshot.summary.identity.clone(),
+                    field_key: FieldKey::new(unit.field_key.clone())
+                        .map_err(|error| TranslationError::InvalidRequest(error.to_string()))?,
+                    source_text: unit.source_value.clone(),
+                    minimum_similarity_basis_points,
+                    limit: MEMORY_SUGGESTIONS_PER_UNIT,
+                },
+            )
+            .await?;
+        memory_suggestions.extend(suggestions.into_iter().map(|suggestion| {
+            MachineTranslationMemorySuggestion {
+                unit_id: unit.unit_id.clone(),
+                entry_id: suggestion.entry_id.to_string(),
+                source_value: suggestion.source_text,
+                target_value: suggestion.target_text,
+                score_basis_points: suggestion.evidence.final_similarity_basis_points,
+                source_hash: suggestion.source_hash,
+            }
+        }));
+    }
+    Ok(memory_suggestions)
+}
+
+async fn read_pinned_memory_suggestions(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    operation: &machine_operation::Model,
+    snapshot: &TranslationResourceSnapshot,
+    units: &[MachineTranslationUnit],
+) -> TranslationResult<Vec<MachineTranslationMemorySuggestion>> {
+    let bindings = machine_memory_binding::Entity::find()
+        .filter(machine_memory_binding::Column::TenantId.eq(tenant_id))
+        .filter(machine_memory_binding::Column::OperationId.eq(operation.id))
+        .order_by_asc(machine_memory_binding::Column::BatchOrdinal)
+        .all(database)
+        .await?;
+    if bindings.is_empty() {
+        if operation.memory_digest.is_some() {
+            return Err(TranslationError::MachineMemoryProjectionUnavailable);
+        }
+        return Ok(Vec::new());
+    }
+    if operation.memory_digest.is_none() {
+        return Err(TranslationError::MachineMemoryProjectionUnavailable);
+    }
+
+    let unit_ids = units
+        .iter()
+        .map(|unit| unit.unit_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let entry_ids = bindings
+        .iter()
+        .map(|binding| binding.memory_entry_id)
+        .collect::<BTreeSet<_>>();
+    let expected_entry_count = entry_ids.len();
+    let entries = memory_entry::Entity::find()
+        .filter(memory_entry::Column::TenantId.eq(tenant_id))
+        .filter(memory_entry::Column::Id.is_in(entry_ids))
+        .all(database)
+        .await?
+        .into_iter()
+        .map(|entry| (entry.id, entry))
+        .collect::<BTreeMap<_, _>>();
+    if entries.len() != expected_entry_count {
+        return Err(TranslationError::MachineMemoryProjectionUnavailable);
+    }
+
+    bindings
+        .into_iter()
+        .map(|binding| {
+            if !unit_ids.contains(binding.unit_id.as_str()) {
+                return Err(TranslationError::MachineMemoryProjectionUnavailable);
+            }
+            let entry = entries
+                .get(&binding.memory_entry_id)
+                .ok_or(TranslationError::MachineMemoryProjectionUnavailable)?;
+            if entry.source_locale != snapshot.source_locale.as_str()
+                || entry.target_locale != snapshot.target_locale.as_str()
+                || entry.field_key != binding.unit_id
+            {
+                return Err(TranslationError::MachineMemoryProjectionUnavailable);
+            }
+            let score_basis_points = u16::try_from(binding.score_basis_points)
+                .map_err(|_| TranslationError::MachineMemoryProjectionUnavailable)?;
+            Ok(MachineTranslationMemorySuggestion {
+                unit_id: binding.unit_id,
+                entry_id: entry.id.to_string(),
+                source_value: entry.source_text.clone(),
+                target_value: entry.target_text.clone(),
+                score_basis_points,
+                source_hash: entry.source_hash.clone(),
+            })
+        })
+        .collect()
+}
+
+async fn project_glossary(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    job: &job::Model,
+    snapshot: &TranslationResourceSnapshot,
+    selected: &BTreeSet<&FieldKey>,
+) -> TranslationResult<(
+    Option<String>,
+    Option<String>,
+    Vec<MachineTranslationGlossaryTerm>,
+)> {
+    let binding = match (job.glossary_id, job.glossary_revision) {
+        (None, None) => return Ok((None, None, Vec::new())),
+        (Some(glossary_id), Some(revision)) => GlossaryBinding {
+            glossary_id,
+            revision,
+        },
+        _ => {
+            return Err(TranslationError::GlossaryInvariant(
+                "translation job contains a partial glossary binding".to_string(),
+            ));
+        }
+    };
+    let glossary = read_bound_glossary(database, tenant_id, &binding).await?;
+    if glossary.source_locale != snapshot.source_locale
+        || glossary.target_locale != snapshot.target_locale
+    {
+        return Err(TranslationError::GlossaryLocaleMismatch);
+    }
+    if !glossary_scope_matches(&glossary, &snapshot.summary.identity) {
+        return Ok((None, None, Vec::new()));
+    }
+
+    let applicable_fields = snapshot.fields.iter().filter(|field| {
+        selected.contains(&field.descriptor.key)
+            && glossary
+                .scope
+                .field_key
+                .as_ref()
+                .is_none_or(|key| key == &field.descriptor.key)
+    });
+    let source_values = applicable_fields
+        .map(|field| field.source_value.as_str())
+        .collect::<Vec<_>>();
+    let terms = glossary
+        .concepts
+        .iter()
+        .filter(|concept| {
+            source_values
+                .iter()
+                .any(|source| glossary_concept_matches(source, concept))
+        })
+        .map(|concept| {
+            let mut preferred_target_term = None;
+            let mut allowed_target_terms = Vec::new();
+            let mut forbidden_target_terms = Vec::new();
+            let mut do_not_translate = false;
+            for variant in &concept.variants {
+                match variant.policy {
+                    GlossaryTermPolicy::Preferred => {
+                        preferred_target_term = Some(variant.value.clone());
+                    }
+                    GlossaryTermPolicy::Allowed => {
+                        allowed_target_terms.push(variant.value.clone());
+                    }
+                    GlossaryTermPolicy::Forbidden => {
+                        forbidden_target_terms.push(variant.value.clone());
+                    }
+                    GlossaryTermPolicy::DoNotTranslate => do_not_translate = true,
+                }
+            }
+            MachineTranslationGlossaryTerm {
+                concept_id: concept.concept_key.clone(),
+                source_term: concept.source_term.clone(),
+                preferred_target_term,
+                allowed_target_terms,
+                forbidden_target_terms,
+                do_not_translate,
+            }
+        })
+        .collect::<Vec<_>>();
+    let digest = hash_manifest(&terms)?;
+    Ok((Some(binding.revision.to_string()), Some(digest), terms))
+}
+
+fn validate_generation_input(input: &GenerateMachineProposalInput) -> TranslationResult<()> {
+    if input.field_keys.is_empty() {
+        return Err(TranslationError::InvalidRequest(
+            "machine translation requires an explicit non-empty field selection".to_string(),
+        ));
+    }
+    let unique = input.field_keys.iter().collect::<BTreeSet<_>>();
+    if unique.len() != input.field_keys.len() {
+        return Err(TranslationError::InvalidRequest(
+            "machine translation field selection contains duplicates".to_string(),
+        ));
+    }
+    if input.minimum_memory_similarity_basis_points > 10_000 {
+        return Err(TranslationError::InvalidRequest(
+            "memory similarity must be between 0 and 10000 basis points".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn authorize_machine_generation(context: &PortContext) -> TranslationResult<Uuid> {
+    context.require_policy(PortCallPolicy::write())?;
+    let security = SecurityContext::try_from_port_context(context)?;
+    for action in [Action::Run, Action::Update] {
+        if security.get_scope(Resource::Translations, action) == PermissionScope::None {
+            return Err(TranslationError::Forbidden);
+        }
+    }
+    Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)
+}
+
+fn enforce_machine_assignment(
+    item: &job_item::Model,
+    context: &PortContext,
+) -> TranslationResult<()> {
+    match (&item.assigned_actor_kind, &item.assigned_actor_id) {
+        (None, None) => Ok(()),
+        (Some(kind), Some(id))
+            if kind == actor_kind(context) && id.as_str() == context.actor.id.as_str() =>
+        {
+            Ok(())
+        }
+        (Some(_), Some(_)) => Err(TranslationError::ItemAssignedToAnotherActor),
+        _ => Err(TranslationError::WorkflowRevisionConflict),
+    }
+}
+
+fn actor_kind(context: &PortContext) -> &'static str {
+    match context.actor.kind {
+        PortActorKind::User => "user",
+        PortActorKind::Service => "service",
+        PortActorKind::System => "system",
+    }
+}
+
+fn child_write_context(context: &PortContext, operation: &str) -> TranslationResult<PortContext> {
+    let parent_key = context.idempotency_key.as_deref().unwrap_or_default();
+    let idempotency_key = child_idempotency_key(parent_key, operation)?;
+    let mut child = context.clone();
+    child.causation_id = Some(context.correlation_id.clone());
+    child.idempotency_key = Some(idempotency_key);
+    Ok(child)
+}
+
+fn child_idempotency_key(parent_key: &str, operation: &str) -> TranslationResult<String> {
+    let digest = hash_manifest(&(parent_key, operation))?;
+    Ok(format!("translation-machine:{operation}:{digest}"))
+}
+
+async fn register_operation(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    context: &PortContext,
+    input: &GenerateMachineProposalInput,
+    command_hash: &str,
+    machine_request_digest: &str,
+    request: &MachineTranslationBatchRequest,
+    adapter_slug: &str,
+    provider_policy_digest: &str,
+) -> TranslationResult<(machine_operation::Model, bool)> {
+    let now = Utc::now().fixed_offset();
+    let id = generate_id();
+    let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+    let transaction = database.begin().await?;
+    machine_operation::Entity::insert(machine_operation::ActiveModel {
+        id: Set(id),
+        tenant_id: Set(tenant_id),
+        item_id: Set(input.item_id),
+        proposal_id: Set(None),
+        status: Set("registered".to_string()),
+        command_hash: Set(command_hash.to_string()),
+        machine_request_digest: Set(machine_request_digest.to_string()),
+        adapter_slug: Set(adapter_slug.to_string()),
+        provider_slug: Set(None),
+        provider_policy_digest: Set(provider_policy_digest.to_string()),
+        glossary_revision: Set(request.glossary_revision.clone()),
+        glossary_digest: Set(request.glossary_digest.clone()),
+        memory_digest: Set(request.memory_digest.clone()),
+        execution_id: Set(None),
+        execution_request_digest: Set(None),
+        prompt_policy_digest: Set(None),
+        attempts: Set(serde_json::json!([])),
+        usage: Set(None),
+        diagnostics: Set(serde_json::json!([])),
+        review_required: Set(None),
+        requested_by_actor_kind: Set(actor_kind(context).to_string()),
+        requested_by_actor_id: Set(context.actor.id.clone()),
+        idempotency_key: Set(idempotency_key.clone()),
+        created_at: Set(now),
+        updated_at: Set(now),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            machine_operation::Column::TenantId,
+            machine_operation::Column::IdempotencyKey,
+        ])
+        .do_nothing()
+        .to_owned(),
+    )
+    .exec_without_returning(&transaction)
+    .await?;
+    let persisted = find_operation_by_idempotency(&transaction, tenant_id, &idempotency_key)
+        .await?
+        .ok_or(TranslationError::WorkflowRevisionConflict)?;
+    let created = persisted.id == id;
+    if created {
+        insert_memory_bindings(
+            &transaction,
+            tenant_id,
+            persisted.id,
+            &request.memory_suggestions,
+            now,
+        )
+        .await?;
+    }
+    transaction.commit().await?;
+    Ok((persisted, created))
+}
+
+async fn insert_memory_bindings<C>(
+    database: &C,
+    tenant_id: Uuid,
+    operation_id: Uuid,
+    suggestions: &[MachineTranslationMemorySuggestion],
+    created_at: DateTime<FixedOffset>,
+) -> TranslationResult<()>
+where
+    C: ConnectionTrait,
+{
+    if suggestions.is_empty() {
+        return Ok(());
+    }
+    let mut unit_ordinals = BTreeMap::<&str, i16>::new();
+    let mut models = Vec::with_capacity(suggestions.len());
+    for (batch_ordinal, suggestion) in suggestions.iter().enumerate() {
+        let unit_ordinal = unit_ordinals
+            .entry(suggestion.unit_id.as_str())
+            .or_insert(0);
+        let model = machine_memory_binding::ActiveModel {
+            id: Set(generate_id()),
+            tenant_id: Set(tenant_id),
+            operation_id: Set(operation_id),
+            unit_id: Set(suggestion.unit_id.clone()),
+            batch_ordinal: Set(i16::try_from(batch_ordinal)
+                .map_err(|_| TranslationError::MachineMemoryProjectionUnavailable)?),
+            unit_ordinal: Set(*unit_ordinal),
+            memory_entry_id: Set(Uuid::parse_str(&suggestion.entry_id)
+                .map_err(|_| TranslationError::MachineMemoryProjectionUnavailable)?),
+            score_basis_points: Set(i32::from(suggestion.score_basis_points)),
+            created_at: Set(created_at),
+        };
+        *unit_ordinal = unit_ordinal
+            .checked_add(1)
+            .ok_or(TranslationError::MachineMemoryProjectionUnavailable)?;
+        models.push(model);
+    }
+    machine_memory_binding::Entity::insert_many(models)
+        .exec_without_returning(database)
+        .await?;
+    Ok(())
+}
+
+async fn begin_machine_proposal_save(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    operation_id: Uuid,
+) -> TranslationResult<Option<MachineProposalRecord>> {
+    machine_operation::Entity::update_many()
+        .col_expr(machine_operation::Column::Status, Expr::value("saving"))
+        .col_expr(
+            machine_operation::Column::UpdatedAt,
+            Expr::value(Utc::now().fixed_offset()),
+        )
+        .filter(machine_operation::Column::TenantId.eq(tenant_id))
+        .filter(machine_operation::Column::Id.eq(operation_id))
+        .filter(machine_operation::Column::Status.eq("registered"))
+        .exec(database)
+        .await?;
+    let operation = find_operation(database, tenant_id, operation_id).await?;
+    match operation.status.as_str() {
+        "saving" => Ok(None),
+        "completed" => machine_proposal_record(operation).map(Some),
+        "cancelled" => Err(TranslationError::MachineOperationCancelled),
+        _ => Err(TranslationError::WorkflowRevisionConflict),
+    }
+}
+
+async fn complete_operation(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    operation_id: Uuid,
+    proposal_id: Uuid,
+    result: &MachineTranslationBatchResult,
+) -> TranslationResult<MachineProposalRecord> {
+    let diagnostics = result
+        .units
+        .iter()
+        .flat_map(|unit| {
+            unit.diagnostics
+                .iter()
+                .map(|diagnostic| MachineDiagnosticEvidence {
+                    code: diagnostic.code.clone(),
+                    blocking: diagnostic.blocking,
+                    unit_id: diagnostic.unit_id.clone(),
+                })
+        })
+        .collect::<Vec<_>>();
+    let transaction = database.begin().await?;
+    let update = machine_operation::Entity::update_many()
+        .col_expr(machine_operation::Column::Status, Expr::value("completed"))
+        .col_expr(
+            machine_operation::Column::ProposalId,
+            Expr::value(Some(proposal_id)),
+        )
+        .col_expr(
+            machine_operation::Column::ProviderSlug,
+            Expr::value(Some(result.provider_slug.clone())),
+        )
+        .col_expr(
+            machine_operation::Column::ExecutionId,
+            Expr::value(Some(result.execution.execution_id.clone())),
+        )
+        .col_expr(
+            machine_operation::Column::ExecutionRequestDigest,
+            Expr::value(Some(result.execution.request_digest.clone())),
+        )
+        .col_expr(
+            machine_operation::Column::PromptPolicyDigest,
+            Expr::value(Some(result.execution.prompt_policy_digest.clone())),
+        )
+        .col_expr(
+            machine_operation::Column::Attempts,
+            Expr::value(serde_json::to_value(&result.execution.attempts)?),
+        )
+        .col_expr(
+            machine_operation::Column::Usage,
+            Expr::value(Some(serde_json::to_value(&result.execution.usage)?)),
+        )
+        .col_expr(
+            machine_operation::Column::Diagnostics,
+            Expr::value(serde_json::to_value(diagnostics)?),
+        )
+        .col_expr(
+            machine_operation::Column::ReviewRequired,
+            Expr::value(Some(result.review_required)),
+        )
+        .col_expr(
+            machine_operation::Column::UpdatedAt,
+            Expr::value(Utc::now().fixed_offset()),
+        )
+        .filter(machine_operation::Column::TenantId.eq(tenant_id))
+        .filter(machine_operation::Column::Id.eq(operation_id))
+        .filter(machine_operation::Column::Status.eq("saving"))
+        .exec(&transaction)
+        .await?;
+    if update.rows_affected != 1 {
+        transaction.rollback().await?;
+        let operation = find_operation(database, tenant_id, operation_id).await?;
+        return match operation.status.as_str() {
+            "completed" => machine_proposal_record(operation),
+            "cancelled" => Err(TranslationError::MachineOperationCancelled),
+            _ => Err(TranslationError::WorkflowRevisionConflict),
+        };
+    }
+    machine_memory_binding::Entity::delete_many()
+        .filter(machine_memory_binding::Column::TenantId.eq(tenant_id))
+        .filter(machine_memory_binding::Column::OperationId.eq(operation_id))
+        .exec(&transaction)
+        .await?;
+    transaction.commit().await?;
+    machine_proposal_record(
+        machine_operation::Entity::find_by_id(operation_id)
+            .filter(machine_operation::Column::TenantId.eq(tenant_id))
+            .one(database)
+            .await?
+            .ok_or(TranslationError::WorkflowRevisionConflict)?,
+    )
+}
+
+async fn cancel_machine_operation(
+    database: &DatabaseConnection,
+    machine_port: Option<&dyn MachineTranslationPort>,
+    context: PortContext,
+    input: CancelMachineOperationInput,
+) -> TranslationResult<MachineCancellationRecord> {
+    context.require_policy(PortCallPolicy::write())?;
+    validate_machine_cancellation_reason(&input.reason)?;
+    let tenant_id =
+        Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)?;
+    let security = SecurityContext::try_from_port_context(&context)?;
+    if security.get_scope(Resource::Translations, Action::Run) == PermissionScope::None {
+        return Err(TranslationError::Forbidden);
+    }
+    let request_hash = hash_manifest(&input)?;
+    let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+    if let Some(existing) =
+        find_cancellation_by_idempotency(database, tenant_id, &idempotency_key).await?
+    {
+        validate_machine_cancellation_replay(&existing, &context, &request_hash)?;
+        return refresh_machine_cancellation_provider_evidence(
+            database,
+            machine_port,
+            &context,
+            existing,
+        )
+        .await;
+    }
+
+    let operation = find_operation(database, tenant_id, input.operation_id).await?;
+    let requested_by_owner = operation.requested_by_actor_kind == actor_kind(&context)
+        && operation.requested_by_actor_id == context.actor.id;
+    if !requested_by_owner
+        && security.get_scope(Resource::Translations, Action::Manage) == PermissionScope::None
+    {
+        return Err(TranslationError::Forbidden);
+    }
+    if operation.status == "cancelled" {
+        let existing = find_cancellation_by_operation(database, tenant_id, operation.id)
+            .await?
+            .ok_or(TranslationError::WorkflowRevisionConflict)?;
+        return replay_machine_cancellation(existing, &context, &request_hash);
+    }
+    if operation.status != "registered" {
+        return Err(TranslationError::MachineOperationTerminal(operation.status));
+    }
+    let provider_evidence =
+        propagate_machine_cancellation(machine_port, &context, &operation).await;
+
+    let transaction = database.begin().await?;
+    let cancellation_id = generate_id();
+    let now = Utc::now().fixed_offset();
+    machine_cancellation::Entity::insert(machine_cancellation::ActiveModel {
+        id: Set(cancellation_id),
+        tenant_id: Set(tenant_id),
+        operation_id: Set(operation.id),
+        reason: Set(input.reason),
+        requested_by_actor_kind: Set(actor_kind(&context).to_string()),
+        requested_by_actor_id: Set(context.actor.id.clone()),
+        idempotency_key: Set(idempotency_key.clone()),
+        request_hash: Set(request_hash.clone()),
+        provider_execution_id: Set(provider_evidence.execution_id),
+        provider_status: Set(provider_evidence.status),
+        provider_error_code: Set(provider_evidence.error_code),
+        provider_observed_at: Set(provider_evidence.observed_at),
+        created_at: Set(now),
+    })
+    .on_conflict(OnConflict::new().do_nothing().to_owned())
+    .exec_without_returning(&transaction)
+    .await?;
+    let persisted = if let Some(cancellation) =
+        find_cancellation_by_idempotency(&transaction, tenant_id, &idempotency_key).await?
+    {
+        cancellation
+    } else {
+        transaction.rollback().await?;
+        let existing = find_cancellation_by_operation(database, tenant_id, operation.id)
+            .await?
+            .ok_or(TranslationError::WorkflowRevisionConflict)?;
+        return replay_machine_cancellation(existing, &context, &request_hash);
+    };
+    validate_machine_cancellation_replay(&persisted, &context, &request_hash)?;
+    let update = machine_operation::Entity::update_many()
+        .col_expr(machine_operation::Column::Status, Expr::value("cancelled"))
+        .col_expr(machine_operation::Column::UpdatedAt, Expr::value(now))
+        .filter(machine_operation::Column::TenantId.eq(tenant_id))
+        .filter(machine_operation::Column::Id.eq(operation.id))
+        .filter(machine_operation::Column::Status.eq("registered"))
+        .exec(&transaction)
+        .await?;
+    if update.rows_affected != 1 {
+        transaction.rollback().await?;
+        let current = find_operation(database, tenant_id, operation.id).await?;
+        return Err(TranslationError::MachineOperationTerminal(current.status));
+    }
+    machine_memory_binding::Entity::delete_many()
+        .filter(machine_memory_binding::Column::TenantId.eq(tenant_id))
+        .filter(machine_memory_binding::Column::OperationId.eq(operation.id))
+        .exec(&transaction)
+        .await?;
+    transaction.commit().await?;
+    Ok(machine_cancellation_record(persisted))
+}
+
+fn validate_machine_cancellation_reason(reason: &str) -> TranslationResult<()> {
+    if reason.trim().is_empty() || reason.trim() != reason || reason.len() > 4_096 {
+        return Err(TranslationError::InvalidMachineCancellationReason);
+    }
+    Ok(())
+}
+
+fn replay_machine_cancellation(
+    model: machine_cancellation::Model,
+    context: &PortContext,
+    request_hash: &str,
+) -> TranslationResult<MachineCancellationRecord> {
+    validate_machine_cancellation_replay(&model, context, request_hash)?;
+    Ok(machine_cancellation_record(model))
+}
+
+fn validate_machine_cancellation_replay(
+    model: &machine_cancellation::Model,
+    context: &PortContext,
+    request_hash: &str,
+) -> TranslationResult<()> {
+    if model.idempotency_key != context.idempotency_key.as_deref().unwrap_or_default() {
+        return Err(TranslationError::MachineOperationTerminal(
+            "cancelled".to_string(),
+        ));
+    }
+    if model.request_hash != request_hash {
+        return Err(TranslationError::IdempotencyConflict);
+    }
+    if model.requested_by_actor_kind != actor_kind(context)
+        || model.requested_by_actor_id != context.actor.id
+    {
+        return Err(TranslationError::IdempotencyActorMismatch);
+    }
+    Ok(())
+}
+
+fn machine_cancellation_record(model: machine_cancellation::Model) -> MachineCancellationRecord {
+    MachineCancellationRecord {
+        cancellation_id: model.id,
+        operation_id: model.operation_id,
+        status: "cancelled".to_string(),
+        provider_execution_id: model.provider_execution_id,
+        provider_status: model.provider_status,
+        provider_error_code: model.provider_error_code,
+        provider_observed_at: model.provider_observed_at,
+        created_at: model.created_at,
+    }
+}
+
+struct ProviderCancellationEvidence {
+    execution_id: Option<String>,
+    status: String,
+    error_code: Option<String>,
+    observed_at: DateTime<FixedOffset>,
+}
+
+async fn propagate_machine_cancellation(
+    machine_port: Option<&dyn MachineTranslationPort>,
+    context: &PortContext,
+    operation: &machine_operation::Model,
+) -> ProviderCancellationEvidence {
+    let observed_at = Utc::now().fixed_offset();
+    let Some(machine_port) = machine_port else {
+        return ProviderCancellationEvidence {
+            execution_id: None,
+            status: "unavailable".to_string(),
+            error_code: None,
+            observed_at,
+        };
+    };
+    let execution_idempotency_key =
+        match child_idempotency_key(&operation.idempotency_key, "machine-port") {
+            Ok(key) => key,
+            Err(_) => {
+                return ProviderCancellationEvidence {
+                    execution_id: None,
+                    status: "propagation_failed".to_string(),
+                    error_code: Some(
+                        "translation.machine.cancellation_key_invalid".to_string(),
+                    ),
+                    observed_at,
+                };
+            }
+        };
+    match machine_port
+        .cancel_execution(context.clone(), execution_idempotency_key)
+        .await
+    {
+        Ok(evidence) => ProviderCancellationEvidence {
+            execution_id: evidence.execution_id,
+            status: provider_cancellation_status(evidence.status).to_string(),
+            error_code: None,
+            observed_at,
+        },
+        Err(error) => ProviderCancellationEvidence {
+            execution_id: None,
+            status: "propagation_failed".to_string(),
+            error_code: Some(error.code.chars().take(128).collect()),
+            observed_at,
+        },
+    }
+}
+
+fn provider_cancellation_status(status: MachineTranslationExecutionStatus) -> &'static str {
+    match status {
+        MachineTranslationExecutionStatus::NotRegistered
+        | MachineTranslationExecutionStatus::Queued
+        | MachineTranslationExecutionStatus::Running
+        | MachineTranslationExecutionStatus::CancellationRequested => "cancellation_requested",
+        MachineTranslationExecutionStatus::Completed => "completed",
+        MachineTranslationExecutionStatus::Failed => "failed",
+        MachineTranslationExecutionStatus::Cancelled => "cancelled",
+    }
+}
+
+async fn refresh_machine_cancellation_provider_evidence(
+    database: &DatabaseConnection,
+    machine_port: Option<&dyn MachineTranslationPort>,
+    context: &PortContext,
+    existing: machine_cancellation::Model,
+) -> TranslationResult<MachineCancellationRecord> {
+    if machine_port.is_none()
+        || matches!(
+            existing.provider_status.as_str(),
+            "completed" | "failed" | "cancelled"
+        )
+    {
+        return Ok(machine_cancellation_record(existing));
+    }
+    let operation = find_operation(database, existing.tenant_id, existing.operation_id).await?;
+    let evidence = propagate_machine_cancellation(machine_port, context, &operation).await;
+    machine_cancellation::Entity::update_many()
+        .col_expr(
+            machine_cancellation::Column::ProviderExecutionId,
+            Expr::value(evidence.execution_id),
+        )
+        .col_expr(
+            machine_cancellation::Column::ProviderStatus,
+            Expr::value(evidence.status),
+        )
+        .col_expr(
+            machine_cancellation::Column::ProviderErrorCode,
+            Expr::value(evidence.error_code),
+        )
+        .col_expr(
+            machine_cancellation::Column::ProviderObservedAt,
+            Expr::value(evidence.observed_at),
+        )
+        .filter(machine_cancellation::Column::TenantId.eq(existing.tenant_id))
+        .filter(machine_cancellation::Column::Id.eq(existing.id))
+        .exec(database)
+        .await?;
+    find_cancellation_by_idempotency(database, existing.tenant_id, &existing.idempotency_key)
+        .await?
+        .map(machine_cancellation_record)
+        .ok_or(TranslationError::WorkflowRevisionConflict)
+}
+
+fn validate_machine_result(
+    request: &MachineTranslationBatchRequest,
+    result: &MachineTranslationBatchResult,
+) -> TranslationResult<()> {
+    if result.units.len() != request.units.len()
+        || result.execution.execution_id.trim().is_empty()
+        || !is_digest(&result.execution.request_digest)
+        || !is_digest(&result.execution.prompt_policy_digest)
+        || result.provider_slug.trim().is_empty()
+        || result.provider_slug.len() > 191
+        || result.execution.attempts.is_empty()
+        || result.execution.attempts.len() > 16
+        || result.execution.attempts.iter().any(|attempt| {
+            attempt.attempt == 0
+                || attempt.provider_profile_id.trim().is_empty()
+                || attempt.provider_profile_id.len() > 256
+                || attempt.provider_slug.trim().is_empty()
+                || attempt.provider_slug.len() > 191
+                || attempt.model.trim().is_empty()
+                || attempt.model.len() > 256
+        })
+        || result.execution.usage.total_tokens
+            != result
+                .execution
+                .usage
+                .input_tokens
+                .saturating_add(result.execution.usage.output_tokens)
+        || result.execution.usage.currency_code.trim().is_empty()
+        || result.execution.usage.currency_code.len() > 16
+        || !is_digest(&result.execution.usage.price_snapshot_digest)
+    {
+        return Err(TranslationError::InvalidMachineTranslationResult);
+    }
+    let expected = request
+        .units
+        .iter()
+        .map(|unit| (unit.unit_id.as_str(), unit))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut actual = BTreeSet::new();
+    for unit in &result.units {
+        let Some(source) = expected.get(unit.unit_id.as_str()) else {
+            return Err(TranslationError::InvalidMachineTranslationResult);
+        };
+        if !actual.insert(unit.unit_id.as_str())
+            || unit.translated_value.is_empty()
+            || source
+                .max_characters
+                .is_some_and(|max| unit.translated_value.chars().count() > max as usize)
+            || unit.protected_tokens.iter().collect::<BTreeSet<_>>()
+                != source.protected_tokens.iter().collect::<BTreeSet<_>>()
+            || unit
+                .protected_tokens
+                .iter()
+                .any(|token| !unit.translated_value.contains(token))
+            || unit.diagnostics.len() > 64
+            || unit.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code.trim().is_empty()
+                    || diagnostic.code.len() > 128
+                    || diagnostic
+                        .unit_id
+                        .as_ref()
+                        .is_some_and(|id| id != &unit.unit_id)
+            })
+        {
+            return Err(TranslationError::InvalidMachineTranslationResult);
+        }
+    }
+    Ok(())
+}
+
+fn validate_provider_compatibility(
+    request: &MachineTranslationBatchRequest,
+    descriptor: &crate::MachineTranslationProviderDescriptor,
+) -> TranslationResult<()> {
+    let character_count = request
+        .units
+        .iter()
+        .map(|unit| unit.source_value.chars().count())
+        .sum::<usize>();
+    if descriptor.slug.trim().is_empty()
+        || descriptor.slug.len() > 191
+        || descriptor.policy_digest != request.adapter_policy_digest
+        || request.units.len() > usize::from(descriptor.max_batch_units)
+        || character_count > descriptor.max_batch_characters as usize
+        || request.units.iter().any(|unit| {
+            !descriptor.supported_profiles.contains(&unit.profile)
+                || !descriptor
+                    .supported_classifications
+                    .contains(&unit.classification)
+        })
+    {
+        return Err(TranslationError::Provider {
+            code: "translation.machine.provider_incompatible".to_string(),
+            message: "machine translation provider cannot execute the requested batch".to_string(),
+            retryable: false,
+        });
+    }
+    Ok(())
+}
+
+fn is_digest(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn validate_operation_replay(
+    operation: &machine_operation::Model,
+    context: &PortContext,
+    command_hash: &str,
+) -> TranslationResult<()> {
+    if operation.command_hash != command_hash {
+        return Err(TranslationError::IdempotencyConflict);
+    }
+    if operation.requested_by_actor_kind != actor_kind(context)
+        || operation.requested_by_actor_id != context.actor.id
+    {
+        return Err(TranslationError::IdempotencyActorMismatch);
+    }
+    Ok(())
+}
+
+async fn find_operation_by_idempotency<C>(
+    database: &C,
+    tenant_id: Uuid,
+    idempotency_key: &str,
+) -> TranslationResult<Option<machine_operation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(machine_operation::Entity::find()
+        .filter(machine_operation::Column::TenantId.eq(tenant_id))
+        .filter(machine_operation::Column::IdempotencyKey.eq(idempotency_key))
+        .one(database)
+        .await?)
+}
+
+async fn find_operation<C>(
+    database: &C,
+    tenant_id: Uuid,
+    operation_id: Uuid,
+) -> TranslationResult<machine_operation::Model>
+where
+    C: ConnectionTrait,
+{
+    machine_operation::Entity::find_by_id(operation_id)
+        .filter(machine_operation::Column::TenantId.eq(tenant_id))
+        .one(database)
+        .await?
+        .ok_or(TranslationError::MachineOperationNotFound)
+}
+
+async fn find_cancellation_by_idempotency<C>(
+    database: &C,
+    tenant_id: Uuid,
+    idempotency_key: &str,
+) -> TranslationResult<Option<machine_cancellation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(machine_cancellation::Entity::find()
+        .filter(machine_cancellation::Column::TenantId.eq(tenant_id))
+        .filter(machine_cancellation::Column::IdempotencyKey.eq(idempotency_key))
+        .one(database)
+        .await?)
+}
+
+async fn find_cancellation_by_operation<C>(
+    database: &C,
+    tenant_id: Uuid,
+    operation_id: Uuid,
+) -> TranslationResult<Option<machine_cancellation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(machine_cancellation::Entity::find()
+        .filter(machine_cancellation::Column::TenantId.eq(tenant_id))
+        .filter(machine_cancellation::Column::OperationId.eq(operation_id))
+        .one(database)
+        .await?)
+}
+
+async fn find_item(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    item_id: Uuid,
+) -> TranslationResult<job_item::Model> {
+    job_item::Entity::find_by_id(item_id)
+        .filter(job_item::Column::TenantId.eq(tenant_id))
+        .one(database)
+        .await?
+        .ok_or(TranslationError::ItemNotFound)
+}
+
+async fn find_job(
+    database: &DatabaseConnection,
+    tenant_id: Uuid,
+    job_id: Uuid,
+) -> TranslationResult<job::Model> {
+    job::Entity::find_by_id(job_id)
+        .filter(job::Column::TenantId.eq(tenant_id))
+        .one(database)
+        .await?
+        .ok_or(TranslationError::JobNotFound)
+}
+
+fn machine_proposal_record(
+    model: machine_operation::Model,
+) -> TranslationResult<MachineProposalRecord> {
+    if model.status != "completed" {
+        return Err(TranslationError::MachineTranslationInProgress);
+    }
+    Ok(MachineProposalRecord {
+        operation_id: model.id,
+        item_id: model.item_id,
+        proposal_id: model
+            .proposal_id
+            .ok_or(TranslationError::InvalidMachineTranslationResult)?,
+        adapter_slug: model.adapter_slug,
+        provider_slug: model
+            .provider_slug
+            .ok_or(TranslationError::InvalidMachineTranslationResult)?,
+        provider_policy_digest: model.provider_policy_digest,
+        machine_request_digest: model.machine_request_digest,
+        glossary_revision: model.glossary_revision,
+        glossary_digest: model.glossary_digest,
+        memory_digest: model.memory_digest,
+        execution_id: model
+            .execution_id
+            .ok_or(TranslationError::InvalidMachineTranslationResult)?,
+        execution_request_digest: model
+            .execution_request_digest
+            .ok_or(TranslationError::InvalidMachineTranslationResult)?,
+        prompt_policy_digest: model
+            .prompt_policy_digest
+            .ok_or(TranslationError::InvalidMachineTranslationResult)?,
+        attempts: serde_json::from_value(model.attempts)?,
+        usage: serde_json::from_value(
+            model
+                .usage
+                .ok_or(TranslationError::InvalidMachineTranslationResult)?,
+        )?,
+        diagnostics: serde_json::from_value(model.diagnostics)?,
+        review_required: model
+            .review_required
+            .ok_or(TranslationError::InvalidMachineTranslationResult)?,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeMap, time::Duration};
+
+    use rustok_api::{Permission, PortActor, TenantLocale};
+    use rustok_translation_targets::{
+        OpaqueRevision, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
+        TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourceSummary,
+        TranslationStrategy, TranslationValueProfile,
+    };
+    use sea_orm::{Database, DbBackend, Statement};
+    use sea_orm_migration::SchemaManager;
+
+    use super::*;
+    use crate::{
+        MachineTranslationDiagnostic, MachineTranslationExecutionEvidence,
+        MachineTranslationProviderDescriptor, MachineTranslationUnitResult, PurgeMemoryEntryInput,
+        TranslationMemoryService, migrations,
+    };
+
+    fn request() -> MachineTranslationBatchRequest {
+        MachineTranslationBatchRequest {
+            source_locale: TenantLocale::new("en").unwrap(),
+            target_locale: TenantLocale::new("de").unwrap(),
+            resource: MachineTranslationResourceContext {
+                owner_slug: "media".to_string(),
+                resource_kind: "asset".to_string(),
+                resource_id: "asset-a".to_string(),
+                subresource_id: None,
+            },
+            units: vec![MachineTranslationUnit {
+                unit_id: "alt_text".to_string(),
+                field_key: "alt_text".to_string(),
+                source_value: "Hello {name} {count}".to_string(),
+                source_hash: "a".repeat(64),
+                source_revision: "revision-a".to_string(),
+                profile: TranslationValueProfile::TemplateText,
+                strategy: TranslationStrategy::TranslateWithPlaceholders,
+                classification: TranslationDataClassification::TenantPrivate,
+                ai_export_allowed: true,
+                max_characters: Some(200),
+                preserves_whitespace: false,
+                protected_tokens: vec!["{name}".to_string(), "{count}".to_string()],
+            }],
+            glossary_revision: None,
+            glossary_digest: None,
+            glossary_terms: Vec::new(),
+            memory_digest: None,
+            memory_suggestions: Vec::new(),
+            tone: None,
+            domain: None,
+            style: None,
+            adapter_policy_digest: "b".repeat(64),
+            evidence: BTreeMap::new(),
+        }
+    }
+
+    fn descriptor(max_batch_units: u16) -> MachineTranslationProviderDescriptor {
+        MachineTranslationProviderDescriptor {
+            slug: "ai".to_string(),
+            display_name: "AI".to_string(),
+            policy_digest: "b".repeat(64),
+            supported_profiles: vec![TranslationValueProfile::TemplateText],
+            supported_classifications: vec![TranslationDataClassification::TenantPrivate],
+            max_batch_units,
+            max_batch_characters: 1_000,
+            review_required: true,
+        }
+    }
+
+    fn result() -> MachineTranslationBatchResult {
+        MachineTranslationBatchResult {
+            provider_slug: "provider-a".to_string(),
+            units: vec![MachineTranslationUnitResult {
+                unit_id: "alt_text".to_string(),
+                translated_value: "Hallo {name} {count}".to_string(),
+                protected_tokens: vec!["{count}".to_string(), "{name}".to_string()],
+                diagnostics: vec![MachineTranslationDiagnostic {
+                    code: "translation.machine.review".to_string(),
+                    blocking: false,
+                    unit_id: Some("alt_text".to_string()),
+                }],
+            }],
+            execution: MachineTranslationExecutionEvidence {
+                execution_id: "execution-a".to_string(),
+                request_digest: "c".repeat(64),
+                prompt_policy_digest: "d".repeat(64),
+                attempts: vec![MachineTranslationAttemptEvidence {
+                    attempt: 1,
+                    provider_profile_id: "profile-a".to_string(),
+                    provider_slug: "provider-a".to_string(),
+                    model: "model-a".to_string(),
+                    fallback: false,
+                }],
+                usage: MachineTranslationUsage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    total_tokens: 15,
+                    cost_minor_units: 2,
+                    currency_code: "USD".to_string(),
+                    price_snapshot_digest: "e".repeat(64),
+                },
+            },
+            review_required: true,
+        }
+    }
+
+    #[test]
+    fn generation_requires_unique_explicit_fields() {
+        let input = GenerateMachineProposalInput {
+            item_id: Uuid::new_v4(),
+            field_keys: vec![
+                FieldKey::new("title").unwrap(),
+                FieldKey::new("title").unwrap(),
+            ],
+            minimum_memory_similarity_basis_points: 7_000,
+            tone: None,
+            domain: None,
+            style: None,
+        };
+        assert!(matches!(
+            validate_generation_input(&input),
+            Err(TranslationError::InvalidRequest(_))
+        ));
+    }
+
+    #[test]
+    fn provider_capacity_is_checked_before_export() {
+        assert!(matches!(
+            validate_provider_compatibility(&request(), &descriptor(0)),
+            Err(TranslationError::Provider {
+                retryable: false,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn result_accepts_reordered_but_exact_protected_tokens() {
+        validate_machine_result(&request(), &result()).unwrap();
+    }
+
+    #[test]
+    fn result_rejects_changed_protected_tokens() {
+        let mut result = result();
+        result.units[0].protected_tokens = vec!["{name}".to_string()];
+        assert!(matches!(
+            validate_machine_result(&request(), &result),
+            Err(TranslationError::InvalidMachineTranslationResult)
+        ));
+    }
+
+    async fn persistence_fixture(tombstoned: bool) -> (DatabaseConnection, Uuid, Uuid, Uuid, Uuid) {
+        let database = Database::connect("sqlite::memory:").await.unwrap();
+        database
+            .execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .unwrap();
+        database
+            .execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL)")
+            .await
+            .unwrap();
+        let manager = SchemaManager::new(&database);
+        for migration in migrations::migrations() {
+            migration.up(&manager).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?)",
+                [tenant_id.into()],
+            ))
+            .await
+            .unwrap();
+        let now = Utc::now().fixed_offset();
+        let job_id = Uuid::new_v4();
+        job::Entity::insert(job::ActiveModel {
+            id: Set(job_id),
+            tenant_id: Set(tenant_id),
+            source_locale: Set("en".to_string()),
+            target_locale: Set("de".to_string()),
+            glossary_id: Set(None),
+            glossary_revision: Set(None),
+            status: Set("open".to_string()),
+            created_by_actor_kind: Set("user".to_string()),
+            created_by_actor_id: Set(Uuid::new_v4().to_string()),
+            idempotency_key: Set("fixture-job".to_string()),
+            request_hash: Set("a".repeat(64)),
+            revision: Set(1),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .exec(&database)
+        .await
+        .unwrap();
+        let item_id = Uuid::new_v4();
+        job_item::Entity::insert(job_item::ActiveModel {
+            id: Set(item_id),
+            tenant_id: Set(tenant_id),
+            job_id: Set(job_id),
+            owner_slug: Set("media".to_string()),
+            resource_kind: Set("asset".to_string()),
+            resource_id: Set("asset-a".to_string()),
+            subresource_key: Set(String::new()),
+            resource_revision: Set("resource-a".to_string()),
+            source_revision: Set("source-a".to_string()),
+            target_revision: Set(None),
+            source_snapshot: Set(serde_json::json!({})),
+            source_digest: Set("b".repeat(64)),
+            status: Set("missing".to_string()),
+            current_proposal_id: Set(None),
+            active_apply_operation_id: Set(None),
+            assigned_actor_kind: Set(None),
+            assigned_actor_id: Set(None),
+            idempotency_key: Set("fixture-item".to_string()),
+            request_hash: Set("c".repeat(64)),
+            revision: Set(1),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .exec(&database)
+        .await
+        .unwrap();
+        let memory_entry_id = Uuid::new_v4();
+        memory_entry::Entity::insert(memory_entry::ActiveModel {
+            id: Set(memory_entry_id),
+            tenant_id: Set(tenant_id),
+            source_locale: Set("en".to_string()),
+            target_locale: Set("de".to_string()),
+            owner_slug: Set("media".to_string()),
+            resource_kind: Set("asset".to_string()),
+            resource_id: Set("asset-memory".to_string()),
+            subresource_id: Set(None),
+            field_key: Set("alt_text".to_string()),
+            source_text: Set("Hello".to_string()),
+            target_text: Set("Hallo".to_string()),
+            source_key: Set("d".repeat(64)),
+            source_hash: Set("e".repeat(64)),
+            target_hash: Set("f".repeat(64)),
+            context_fingerprint: Set("1".repeat(64)),
+            segmentation_version: Set("owner-field-v1".to_string()),
+            origin: Set("manual".to_string()),
+            quality_state: Set("human_approved_applied".to_string()),
+            reviewer_actor_kind: Set("user".to_string()),
+            reviewer_actor_id: Set(Uuid::new_v4().to_string()),
+            proposal_id: Set(Uuid::new_v4()),
+            apply_receipt_id: Set(Uuid::new_v4()),
+            retention_policy: Set("owner_lifecycle".to_string()),
+            retain_until: Set(None),
+            tombstoned_at: Set(tombstoned.then_some(now)),
+            revision: Set(1),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .exec(&database)
+        .await
+        .unwrap();
+        let actor_id = Uuid::new_v4();
+        let operation_id = Uuid::new_v4();
+        machine_operation::Entity::insert(machine_operation::ActiveModel {
+            id: Set(operation_id),
+            tenant_id: Set(tenant_id),
+            item_id: Set(item_id),
+            proposal_id: Set(None),
+            status: Set("registered".to_string()),
+            command_hash: Set("2".repeat(64)),
+            machine_request_digest: Set("3".repeat(64)),
+            adapter_slug: Set("ai".to_string()),
+            provider_slug: Set(None),
+            provider_policy_digest: Set("4".repeat(64)),
+            glossary_revision: Set(None),
+            glossary_digest: Set(None),
+            memory_digest: Set(Some("5".repeat(64))),
+            execution_id: Set(None),
+            execution_request_digest: Set(None),
+            prompt_policy_digest: Set(None),
+            attempts: Set(serde_json::json!([])),
+            usage: Set(None),
+            diagnostics: Set(serde_json::json!([])),
+            review_required: Set(None),
+            requested_by_actor_kind: Set("user".to_string()),
+            requested_by_actor_id: Set(actor_id.to_string()),
+            idempotency_key: Set("fixture-machine".to_string()),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .exec(&database)
+        .await
+        .unwrap();
+        machine_memory_binding::Entity::insert(machine_memory_binding::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            operation_id: Set(operation_id),
+            unit_id: Set("alt_text".to_string()),
+            batch_ordinal: Set(0),
+            unit_ordinal: Set(0),
+            memory_entry_id: Set(memory_entry_id),
+            score_basis_points: Set(9_000),
+            created_at: Set(now),
+        })
+        .exec(&database)
+        .await
+        .unwrap();
+        (database, tenant_id, actor_id, operation_id, memory_entry_id)
+    }
+
+    fn machine_control_context(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        idempotency_key: &str,
+    ) -> PortContext {
+        PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(actor_id.to_string()),
+            "en",
+            format!("machine-control-{idempotency_key}"),
+        )
+        .with_claim(Permission::new(Resource::Translations, Action::Run).to_string())
+        .with_role("manager")
+        .with_idempotency_key(idempotency_key)
+        .with_deadline(Duration::from_secs(5))
+    }
+
+    #[tokio::test]
+    async fn pinned_memory_projection_survives_tombstone() {
+        let (database, tenant_id, _, operation_id, _) = persistence_fixture(true).await;
+        let operation = find_operation(&database, tenant_id, operation_id)
+            .await
+            .unwrap();
+        let snapshot = TranslationResourceSnapshot {
+            summary: TranslationResourceSummary {
+                identity: TranslationResourceIdentity {
+                    owner_slug: OwnerSlug::new("media").unwrap(),
+                    resource_kind: ResourceKind::new("asset").unwrap(),
+                    resource_id: ResourceId::new("asset-a").unwrap(),
+                    subresource_id: None,
+                },
+                display_label: "Asset".to_string(),
+                lifecycle: TranslationResourceLifecycle::Active,
+                resource_revision: OpaqueRevision::new("resource-a").unwrap(),
+                exact_locales: vec![TenantLocale::new("en").unwrap()],
+            },
+            source_locale: TenantLocale::new("en").unwrap(),
+            target_locale: TenantLocale::new("de").unwrap(),
+            rendered_fallback_locale: None,
+            source_revision: OpaqueRevision::new("source-a").unwrap(),
+            target_revision: None,
+            fields: Vec::new(),
+        };
+        let suggestions = read_pinned_memory_suggestions(
+            &database,
+            tenant_id,
+            &operation,
+            &snapshot,
+            &request().units,
+        )
+        .await
+        .unwrap();
+        assert_eq!(suggestions.len(), 1);
+        assert_eq!(suggestions[0].target_value, "Hallo");
+        assert_eq!(suggestions[0].score_basis_points, 9_000);
+    }
+
+    #[tokio::test]
+    async fn pinned_memory_cannot_be_purged() {
+        let (database, tenant_id, actor_id, _, memory_entry_id) = persistence_fixture(true).await;
+        let context = machine_control_context(tenant_id, actor_id, "purge-pinned")
+            .with_claim(Permission::new(Resource::TranslationMemory, Action::Delete).to_string())
+            .with_claim(Permission::new(Resource::TranslationMemory, Action::Manage).to_string());
+        let error = TranslationMemoryService::new(database)
+            .purge_entry(
+                context,
+                PurgeMemoryEntryInput {
+                    entry_id: memory_entry_id,
+                    expected_revision: 1,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            TranslationError::MemoryRetentionConflict(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn cancellation_is_actor_bound_replay_safe_and_releases_pins() {
+        let (database, tenant_id, actor_id, operation_id, _) = persistence_fixture(false).await;
+        let context = machine_control_context(tenant_id, actor_id, "cancel-machine");
+        let input = CancelMachineOperationInput {
+            operation_id,
+            reason: "Operator cancelled the pending generation".to_string(),
+        };
+        let first = cancel_machine_operation(&database, None, context.clone(), input.clone())
+            .await
+            .unwrap();
+        let replay = cancel_machine_operation(&database, None, context, input)
+            .await
+            .unwrap();
+        assert_eq!(first, replay);
+        assert_eq!(first.provider_status, "unavailable");
+        assert_eq!(
+            find_operation(&database, tenant_id, operation_id)
+                .await
+                .unwrap()
+                .status,
+            "cancelled"
+        );
+        assert!(
+            machine_memory_binding::Entity::find()
+                .filter(machine_memory_binding::Column::OperationId.eq(operation_id))
+                .one(&database)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+}

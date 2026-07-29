@@ -1,9 +1,9 @@
 use rustok_forum::{
-    ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyDecisionReason,
-    ForumPostingPolicyEvaluationInput, ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
+    FORUM_POSTING_POLICY_PRECEDENCE, ForumPostingAction, ForumPostingCandidateMetrics,
+    ForumPostingPolicyDecisionReason, ForumPostingPolicyEvaluationInput,
+    ForumPostingPolicyEvaluator, ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
     ForumPostingPolicyOutcome, ForumPostingPolicyRules, ForumPostingPolicyUnavailableFact,
-    ForumPostingPolicyEvaluator, ForumPostingWindowCount, ForumPostingWindowLimit,
-    FORUM_POSTING_POLICY_PRECEDENCE,
+    ForumPostingWindowCount, ForumPostingWindowLimit,
 };
 use uuid::Uuid;
 
@@ -153,11 +153,9 @@ fn caller_cannot_omit_or_add_required_facts() {
         count: 0,
         window_seconds: 86_400,
     });
-    let error = ForumPostingPolicyEvaluator::decide(
-        &rules,
-        input(ForumPostingAction::CreateReply, added),
-    )
-    .expect_err("caller-selected extra fact must fail");
+    let error =
+        ForumPostingPolicyEvaluator::decide(&rules, input(ForumPostingAction::CreateReply, added))
+            .expect_err("caller-selected extra fact must fail");
     assert_eq!(error.stable_code(), "FORUM_VALIDATION_FAILED");
 }
 
@@ -180,16 +178,11 @@ fn unavailable_facts_precede_partial_denials_in_stable_order() {
         },
     ];
 
-    let decision = ForumPostingPolicyEvaluator::decide(
-        &rules,
-        input(ForumPostingAction::CreateReply, facts),
-    )
-    .expect("unavailable facts should produce an incomplete decision");
+    let decision =
+        ForumPostingPolicyEvaluator::decide(&rules, input(ForumPostingAction::CreateReply, facts))
+            .expect("unavailable facts should produce an incomplete decision");
     assert_eq!(decision.outcome, ForumPostingPolicyOutcome::Indeterminate);
-    assert_eq!(
-        decision.fact,
-        Some(ForumPostingPolicyFactKind::ActiveFlags)
-    );
+    assert_eq!(decision.fact, Some(ForumPostingPolicyFactKind::ActiveFlags));
     assert!(decision.retryable);
 }
 
@@ -202,13 +195,14 @@ fn safety_history_precedes_trust_and_eligibility_denials() {
     facts.trust_level = Some(1);
     facts.account_age_seconds = Some(1);
 
-    let decision = ForumPostingPolicyEvaluator::decide(
-        &rules,
-        input(ForumPostingAction::CreateReply, facts),
-    )
-    .expect("the first failed rule should decide");
+    let decision =
+        ForumPostingPolicyEvaluator::decide(&rules, input(ForumPostingAction::CreateReply, facts))
+            .expect("the first failed rule should decide");
     assert_eq!(decision.outcome, ForumPostingPolicyOutcome::Denied);
-    assert_eq!(decision.reason, ForumPostingPolicyDecisionReason::ActiveFlags);
+    assert_eq!(
+        decision.reason,
+        ForumPostingPolicyDecisionReason::ActiveFlags
+    );
 }
 
 #[test]
@@ -219,12 +213,13 @@ fn action_window_limit_is_deterministic_and_window_bound() {
         count: 5,
         window_seconds: 60,
     });
-    let decision = ForumPostingPolicyEvaluator::decide(
-        &rules,
-        input(ForumPostingAction::CreateReply, facts),
-    )
-    .expect("an exhausted snapshot should deny the next reply");
-    assert_eq!(decision.reason, ForumPostingPolicyDecisionReason::ReplyRateLimit);
+    let decision =
+        ForumPostingPolicyEvaluator::decide(&rules, input(ForumPostingAction::CreateReply, facts))
+            .expect("an exhausted snapshot should deny the next reply");
+    assert_eq!(
+        decision.reason,
+        ForumPostingPolicyDecisionReason::ReplyRateLimit
+    );
     assert_eq!(decision.retry_after_seconds, Some(60));
 
     let mut mismatched = facts_for(&rules, ForumPostingAction::CreateReply);
@@ -245,12 +240,13 @@ fn bump_interval_returns_exact_remaining_delay() {
     let rules = rules();
     let mut facts = facts_for(&rules, ForumPostingAction::BumpTopic);
     facts.seconds_since_last_bump = Some(450);
-    let decision = ForumPostingPolicyEvaluator::decide(
-        &rules,
-        input(ForumPostingAction::BumpTopic, facts),
-    )
-    .expect("early bump should be denied");
-    assert_eq!(decision.reason, ForumPostingPolicyDecisionReason::BumpInterval);
+    let decision =
+        ForumPostingPolicyEvaluator::decide(&rules, input(ForumPostingAction::BumpTopic, facts))
+            .expect("early bump should be denied");
+    assert_eq!(
+        decision.reason,
+        ForumPostingPolicyDecisionReason::BumpInterval
+    );
     assert_eq!(decision.retry_after_seconds, Some(150));
 }
 
@@ -297,7 +293,10 @@ fn empty_rules_allow_without_owner_facts() {
         ),
     )
     .expect("empty rules should require no owner facts");
-    assert_eq!(decision, rustok_forum::ForumPostingPolicyDecision::allowed());
+    assert_eq!(
+        decision,
+        rustok_forum::ForumPostingPolicyDecision::allowed()
+    );
 }
 
 #[test]
@@ -332,10 +331,14 @@ fn invalid_noop_or_unbounded_rules_fail_closed() {
 
 #[test]
 fn reserved_future_rules_are_not_in_current_precedence() {
-    assert!(!FORUM_POSTING_POLICY_PRECEDENCE
-        .contains(&ForumPostingPolicyDecisionReason::DuplicateContent));
-    assert!(!FORUM_POSTING_POLICY_PRECEDENCE
-        .contains(&ForumPostingPolicyDecisionReason::ExternalSpamScore));
+    assert!(
+        !FORUM_POSTING_POLICY_PRECEDENCE
+            .contains(&ForumPostingPolicyDecisionReason::DuplicateContent)
+    );
+    assert!(
+        !FORUM_POSTING_POLICY_PRECEDENCE
+            .contains(&ForumPostingPolicyDecisionReason::ExternalSpamScore)
+    );
     assert_eq!(
         FORUM_POSTING_POLICY_PRECEDENCE.first(),
         Some(&ForumPostingPolicyDecisionReason::RequiredFactUnavailable)

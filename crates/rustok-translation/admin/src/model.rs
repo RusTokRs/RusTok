@@ -294,6 +294,20 @@ pub enum TranslationAdminOperation {
         values: Vec<ProposalValueInput>,
         idempotency_key: String,
     },
+    GenerateMachineProposal {
+        item_id: String,
+        field_keys: Vec<String>,
+        minimum_memory_similarity_basis_points: u16,
+        tone: Option<String>,
+        domain: Option<String>,
+        style: Option<String>,
+        idempotency_key: String,
+    },
+    CancelMachineOperation {
+        operation_id: String,
+        reason: String,
+        idempotency_key: String,
+    },
     SubmitProposal {
         item_id: String,
         proposal_id: String,
@@ -393,6 +407,12 @@ impl TranslationAdminOperation {
             | Self::SaveProposal {
                 idempotency_key, ..
             }
+            | Self::GenerateMachineProposal {
+                idempotency_key, ..
+            }
+            | Self::CancelMachineOperation {
+                idempotency_key, ..
+            }
             | Self::SubmitProposal {
                 idempotency_key, ..
             }
@@ -453,6 +473,8 @@ pub enum TranslationAdminResponse {
     Job(Job),
     Item(JobItem),
     Proposal(Proposal),
+    MachineProposal(MachineProposal),
+    MachineCancellation(MachineCancellation),
     Apply(ApplyResult),
     Assignment(Assignment),
     Cancellation(Cancellation),
@@ -632,6 +654,72 @@ pub struct Proposal {
     pub qa_accepted: bool,
     pub status: String,
     pub approval_receipt_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineTranslationAttempt {
+    pub attempt: u16,
+    pub provider_profile_id: String,
+    pub provider_slug: String,
+    pub model: String,
+    pub fallback: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineTranslationUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+    pub cost_minor_units: u64,
+    pub currency_code: String,
+    pub price_snapshot_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineTranslationDiagnostic {
+    pub code: String,
+    pub blocking: bool,
+    pub unit_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineProposal {
+    pub operation_id: String,
+    pub item_id: String,
+    pub proposal_id: String,
+    pub adapter_slug: String,
+    pub provider_slug: String,
+    pub provider_policy_digest: String,
+    pub machine_request_digest: String,
+    pub glossary_revision: Option<String>,
+    pub glossary_digest: Option<String>,
+    pub memory_digest: Option<String>,
+    pub execution_id: String,
+    pub execution_request_digest: String,
+    pub prompt_policy_digest: String,
+    pub attempts: Vec<MachineTranslationAttempt>,
+    pub usage: MachineTranslationUsage,
+    pub diagnostics: Vec<MachineTranslationDiagnostic>,
+    pub review_required: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineCancellation {
+    pub cancellation_id: String,
+    pub operation_id: String,
+    pub status: String,
+    pub provider_execution_id: Option<String>,
+    pub provider_status: String,
+    pub provider_error_code: Option<String>,
+    pub provider_observed_at: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

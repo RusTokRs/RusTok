@@ -7,7 +7,8 @@ description = "Owner-safe translation workflow and inventory control plane for R
 
 [features]
 default = []
-graphql = ["dep:async-graphql", "rustok-api/server"]
+graphql = ["dep:async-graphql", "runtime", "rustok-api/server"]
+runtime = ["rustok-api/runtime"]
 
 [dependencies]
 async-trait.workspace = true

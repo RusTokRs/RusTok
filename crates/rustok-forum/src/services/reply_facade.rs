@@ -100,11 +100,7 @@ impl ReplyService {
         input: CreateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
         self.create_command_with_optional_audience_context(
-            tenant_id,
-            security,
-            topic_id,
-            None,
-            input,
+            tenant_id, security, topic_id, None, input,
         )
         .await
     }

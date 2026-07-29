@@ -85,10 +85,7 @@ WHERE tenant_id = '{tenant_id}'
     )
 }
 
-async fn explain_json(
-    db: &sea_orm::DatabaseConnection,
-    sql: &str,
-) -> TestResult<Value> {
+async fn explain_json(db: &sea_orm::DatabaseConnection, sql: &str) -> TestResult<Value> {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,

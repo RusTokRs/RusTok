@@ -3,9 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustok_iggy::{
-    DlqDuplicateAlertPolicy, DlqDuplicateAlertRuntimePublisher,
-    DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeSubscriber,
-    IggyDlqDuplicateAlertObserver, IggyMode, IggyTransport,
+    DlqDuplicateAlertPolicy, DlqDuplicateAlertRuntimePublisher, DlqDuplicateAlertRuntimeSnapshot,
+    DlqDuplicateAlertRuntimeSubscriber, IggyDlqDuplicateAlertObserver, IggyMode, IggyTransport,
 };
 use tokio::task::JoinHandle;
 
@@ -20,8 +19,7 @@ const POLL_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_POLL_MS";
 const SCAN_MODE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_SCAN_MODE";
 const START_OFFSET_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_START_OFFSET";
 const MAX_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_MAX_MESSAGES";
-const PER_PARTITION_MESSAGES_ENV: &str =
-    "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES";
+const PER_PARTITION_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES";
 const BATCH_SIZE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_BATCH_SIZE";
 const WARNING_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_WARNING_MESSAGES";
 const CRITICAL_MESSAGES_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_CRITICAL_MESSAGES";
@@ -72,7 +70,9 @@ impl EventDlqDuplicateAlertObserverHandle {
     }
 
     pub fn current_snapshot(&self) -> Option<DlqDuplicateAlertRuntimeSnapshot> {
-        self.subscriber.as_ref().map(|subscriber| subscriber.current())
+        self.subscriber
+            .as_ref()
+            .map(|subscriber| subscriber.current())
     }
 
     pub fn is_finished(&self) -> bool {
@@ -161,12 +161,7 @@ pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext
         .subscribe();
 
     let (publisher, subscriber) = DlqDuplicateAlertRuntimePublisher::new(config.policy);
-    let handle = tokio::spawn(observer_loop(
-        iggy_config,
-        config,
-        publisher,
-        stop_rx,
-    ));
+    let handle = tokio::spawn(observer_loop(iggy_config, config, publisher, stop_rx));
     ctx.shared_insert(EventDlqDuplicateAlertObserverHandle {
         mode,
         subscriber: Some(subscriber),
@@ -283,10 +278,8 @@ fn record_snapshot(snapshot: DlqDuplicateAlertRuntimeSnapshot) {
         level = evaluation.level().stable_code(),
         physical_duplicates = evaluation.has_physical_duplicates(),
         identity_conflict = evaluation.has_identity_conflict(),
-        duplicate_messages_threshold_reached = evaluation
-            .duplicate_messages_threshold_reached(),
-        duplicate_groups_threshold_reached = evaluation
-            .duplicate_groups_threshold_reached(),
+        duplicate_messages_threshold_reached = evaluation.duplicate_messages_threshold_reached(),
+        duplicate_groups_threshold_reached = evaluation.duplicate_groups_threshold_reached(),
         max_copies_threshold_reached = evaluation.max_copies_threshold_reached(),
         "Recorded identifier-free physical DLQ duplicate alert snapshot"
     );
@@ -353,9 +346,7 @@ fn optional_scan_mode_env() -> Result<EventDlqDuplicateAlertScanMode> {
     }
 }
 
-fn parse_scan_mode(
-    value: &str,
-) -> std::result::Result<EventDlqDuplicateAlertScanMode, String> {
+fn parse_scan_mode(value: &str) -> std::result::Result<EventDlqDuplicateAlertScanMode, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "global" | "global_budget" => Ok(EventDlqDuplicateAlertScanMode::GlobalBudget),
         "fair" | "fair_window" => Ok(EventDlqDuplicateAlertScanMode::FairWindow),
@@ -370,9 +361,7 @@ fn observer_mode(
     iggy_mode: Option<&IggyMode>,
 ) -> Result<EventDlqDuplicateAlertObserverMode> {
     match profile {
-        EventDeliveryProfile::Memory => {
-            Ok(EventDlqDuplicateAlertObserverMode::NotApplicableMemory)
-        }
+        EventDeliveryProfile::Memory => Ok(EventDlqDuplicateAlertObserverMode::NotApplicableMemory),
         EventDeliveryProfile::OutboxLocal => {
             Ok(EventDlqDuplicateAlertObserverMode::NotApplicableOutboxLocal)
         }
@@ -386,10 +375,7 @@ fn observer_mode(
     }
 }
 
-async fn wait_or_stop(
-    delay: Duration,
-    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
-) -> bool {
+async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
     tokio::select! {
         _ = tokio::time::sleep(delay) => false,
         changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
@@ -437,9 +423,9 @@ fn required_u64_env(name: &str) -> Result<u64> {
         Ok(value) => value
             .parse::<u64>()
             .map_err(|error| Error::Message(format!("{name} is invalid: {error}"))),
-        Err(env::VarError::NotPresent) => {
-            Err(Error::Message(format!("{name} is required when {ENABLE_ENV}=true")))
-        }
+        Err(env::VarError::NotPresent) => Err(Error::Message(format!(
+            "{name} is required when {ENABLE_ENV}=true"
+        ))),
         Err(error) => Err(Error::Message(format!("failed to read {name}: {error}"))),
     }
 }
@@ -476,7 +462,10 @@ mod tests {
             subscriber: None,
             handle: None,
         };
-        assert_eq!(handle.mode(), EventDlqDuplicateAlertObserverMode::Unavailable);
+        assert_eq!(
+            handle.mode(),
+            EventDlqDuplicateAlertObserverMode::Unavailable
+        );
         assert_eq!(handle.current_snapshot(), None);
         assert!(!handle.is_finished());
     }

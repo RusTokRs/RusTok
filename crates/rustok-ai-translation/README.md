@@ -30,12 +30,16 @@ stores translation workflow state and never mutates owner-owned content.
 - Does not depend on owner modules, provider SDKs, GraphQL, server hosts, or
   persistence crates.
 
-The bridge is not live-registered yet. `rustok-ai` now has the content-free
+The bridge is not enabled in the production profile yet. `rustok-ai` now has the content-free
 execution/attempt/accounting schema, idempotent ledger, leases, cancellation
 receipts, budget reservations, exact task catalog, and a private executor with
-ordered inference/fallback and cancellation/deadline observation. Runtime
-activation remains blocked on accounting-policy provisioning, recovery
-scheduling, terminal-result replay semantics, and neutral runtime publication.
+ordered inference/fallback, cancellation/deadline observation, and authenticated
+encrypted TTL-bound terminal-result replay without duplicate billing. Runtime
+tenant accounting-policy provisioning, deployment keyring publication, and
+scheduler recovery/result cleanup now exist. The optional distribution feature
+`ai-translation` publishes the Translation-owned lazy runtime factory without
+host capability imports; production-profile enablement and live
+failure/restart evidence remain open.
 
 ## Entry points
 
@@ -45,6 +49,8 @@ scheduling, terminal-result replay semantics, and neutral runtime publication.
 - `machine_translation_task_descriptor`
 - `machine_translation_input_schema_digest`
 - `machine_translation_output_schema_digest`
+- `machine_translation_port_from_context` (`server` feature)
+- `AiMachineTranslationPortFactory` (`server` feature)
 - `MACHINE_TRANSLATION_TASK_SLUG`
 
 ## Documentation

@@ -12,7 +12,8 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::entities::{
-    forum_user_trust_revision::{self, ForumUserTrustChangeKind}, forum_user_trust_state,
+    forum_user_trust_revision::{self, ForumUserTrustChangeKind},
+    forum_user_trust_state,
 };
 use crate::error::{ForumError, ForumResult};
 
@@ -130,8 +131,7 @@ impl ForumUserTrustService {
         if let Some(replayed) = forum_user_trust_revision::Entity::find()
             .filter(forum_user_trust_revision::Column::TenantId.eq(tenant_id))
             .filter(
-                forum_user_trust_revision::Column::IdempotencyKey
-                    .eq(input.idempotency_key.clone()),
+                forum_user_trust_revision::Column::IdempotencyKey.eq(input.idempotency_key.clone()),
             )
             .one(&txn)
             .await?
@@ -176,13 +176,11 @@ impl ForumUserTrustService {
         .insert(&txn)
         .await?;
 
-        let materialized = load_state(&txn, tenant_id, user_id)
-            .await?
-            .ok_or_else(|| {
-                ForumError::Validation(
-                    "Forum trust revision did not materialize a current state".to_string(),
-                )
-            })?;
+        let materialized = load_state(&txn, tenant_id, user_id).await?.ok_or_else(|| {
+            ForumError::Validation(
+                "Forum trust revision did not materialize a current state".to_string(),
+            )
+        })?;
         if materialized.revision != revision
             || materialized.trust_level != i16::from(input.trust_level)
         {
@@ -270,9 +268,7 @@ fn validate_identity(tenant_id: Uuid, user_id: Uuid) -> ForumResult<()> {
     Ok(())
 }
 
-fn normalize_input(
-    input: SetForumUserTrustInput,
-) -> ForumResult<NormalizedSetForumUserTrustInput> {
+fn normalize_input(input: SetForumUserTrustInput) -> ForumResult<NormalizedSetForumUserTrustInput> {
     if input.trust_level > MAX_FORUM_USER_TRUST_LEVEL {
         return Err(ForumError::Validation(format!(
             "Forum trust level must be between 0 and {MAX_FORUM_USER_TRUST_LEVEL}"
@@ -282,14 +278,11 @@ fn normalize_input(
     let reason_code = input.reason_code.trim().to_ascii_lowercase();
     if reason_code.is_empty()
         || reason_code.len() > MAX_REASON_CODE_LENGTH
-        || !reason_code
-            .chars()
-            .enumerate()
-            .all(|(index, character)| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || (index > 0 && matches!(character, '_' | '.' | '-'))
-            })
+        || !reason_code.chars().enumerate().all(|(index, character)| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || (index > 0 && matches!(character, '_' | '.' | '-'))
+        })
     {
         return Err(ForumError::Validation(
             "Forum trust reason code must be a bounded lowercase token".to_string(),
@@ -332,9 +325,11 @@ async fn load_state<C>(
 where
     C: ConnectionTrait,
 {
-    Ok(forum_user_trust_state::Entity::find_by_id((tenant_id, user_id))
-        .one(db)
-        .await?)
+    Ok(
+        forum_user_trust_state::Entity::find_by_id((tenant_id, user_id))
+            .one(db)
+            .await?,
+    )
 }
 
 fn state_from_model(

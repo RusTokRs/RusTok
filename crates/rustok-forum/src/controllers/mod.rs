@@ -41,22 +41,18 @@ impl ForumHttpRuntime {
 
     fn topic_service(&self) -> crate::TopicService {
         match self.audience_facts.clone() {
-            Some(facts) => crate::TopicService::with_audience_facts(
-                self.db_clone(),
-                self.event_bus(),
-                facts,
-            ),
+            Some(facts) => {
+                crate::TopicService::with_audience_facts(self.db_clone(), self.event_bus(), facts)
+            }
             None => crate::TopicService::new(self.db_clone(), self.event_bus()),
         }
     }
 
     fn reply_service(&self) -> crate::ReplyService {
         match self.audience_facts.clone() {
-            Some(facts) => crate::ReplyService::with_audience_facts(
-                self.db_clone(),
-                self.event_bus(),
-                facts,
-            ),
+            Some(facts) => {
+                crate::ReplyService::with_audience_facts(self.db_clone(), self.event_bus(), facts)
+            }
             None => crate::ReplyService::new(self.db_clone(), self.event_bus()),
         }
     }

@@ -442,6 +442,32 @@ pub mod ai_structured_executions {
 }
 
 #[cfg(feature = "server")]
+pub mod ai_structured_cancellation_intents {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_structured_cancellation_intents")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub owner: String,
+        pub execution_idempotency_key: String,
+        pub cancellation_idempotency_key: String,
+        pub request_digest: String,
+        pub actor_kind: String,
+        pub actor_id: String,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
 pub mod ai_structured_attempts {
     use sea_orm::entity::prelude::*;
     use serde::{Deserialize, Serialize};
@@ -558,6 +584,36 @@ pub mod ai_structured_reservations {
         pub revision: i64,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_structured_results {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_structured_results")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub execution_id: Uuid,
+        pub request_digest: String,
+        pub output_digest: String,
+        pub key_id: String,
+        pub nonce: Vec<u8>,
+        pub ciphertext: Vec<u8>,
+        pub plaintext_bytes: i64,
+        pub replay_count: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub expires_at: DateTimeWithTimeZone,
+        pub last_replayed_at: Option<DateTimeWithTimeZone>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -13,6 +13,8 @@ pub struct TranslationGraphqlRuntimeData {
     providers: Arc<TranslationTargetRegistry>,
     tenant_locale_policies: Arc<dyn TenantLocalePolicyPort>,
     event_bus: TransactionalEventBus,
+    machine_port: Option<Arc<dyn crate::MachineTranslationPort>>,
+    machine_port_error_code: Option<String>,
 }
 
 impl TranslationGraphqlRuntimeData {
@@ -55,6 +57,35 @@ impl TranslationGraphqlRuntimeData {
         )
     }
 
+    pub(crate) fn machine_service(
+        &self,
+    ) -> crate::TranslationResult<crate::TranslationMachineService> {
+        let machine_port = self.machine_port.as_ref().cloned().ok_or_else(|| {
+            crate::TranslationError::Provider {
+                code: self
+                    .machine_port_error_code
+                    .clone()
+                    .unwrap_or_else(|| "translation.machine.provider_unavailable".to_string()),
+                message: "machine translation provider is unavailable".to_string(),
+                retryable: true,
+            }
+        })?;
+        Ok(crate::TranslationMachineService::new(
+            self.database.clone(),
+            Arc::clone(&self.providers),
+            Arc::clone(&self.tenant_locale_policies),
+            self.event_bus.clone(),
+            machine_port,
+        ))
+    }
+
+    pub(crate) fn machine_control_service(&self) -> crate::TranslationMachineControlService {
+        crate::TranslationMachineControlService::new(
+            self.database.clone(),
+            self.machine_port.as_ref().cloned(),
+        )
+    }
+
     pub(crate) fn providers(&self) -> &TranslationTargetRegistry {
         self.providers.as_ref()
     }
@@ -73,11 +104,18 @@ pub fn attach_schema_data(
         .ok_or_else(|| "transactional event bus is unavailable".to_string())?;
     let tenant_locale_policies: Arc<dyn TenantLocalePolicyPort> =
         Arc::new(TenantService::new(database.clone()));
+    let (machine_port, machine_port_error_code) =
+        match crate::machine_translation_port_from_context(inputs.host()) {
+            Ok(machine_port) => (machine_port, None),
+            Err(error) => (None, Some(error.code)),
+        };
 
     Ok(TranslationGraphqlRuntimeData {
         database,
         providers,
         tenant_locale_policies,
         event_bus,
+        machine_port,
+        machine_port_error_code,
     })
 }

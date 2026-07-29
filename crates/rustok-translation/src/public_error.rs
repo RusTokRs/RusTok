@@ -46,7 +46,8 @@ pub fn map_translation_public_error(
         | TranslationError::ProposalNotFound
         | TranslationError::JobProgressNotFound
         | TranslationError::GlossaryNotFound
-        | TranslationError::MemoryEntryNotFound => (
+        | TranslationError::MemoryEntryNotFound
+        | TranslationError::MachineOperationNotFound => (
             TranslationPublicErrorKind::NotFound,
             error.to_string(),
             "TRANSLATION_RESOURCE_NOT_FOUND",
@@ -86,6 +87,9 @@ pub fn map_translation_public_error(
         | TranslationError::GlossaryTermConflict(_)
         | TranslationError::MemoryRevisionConflict { .. }
         | TranslationError::MemoryLifecycleConflict(_)
+        | TranslationError::MachineOperationCancelled
+        | TranslationError::MachineOperationTerminal(_)
+        | TranslationError::InvalidMachineCancellationReason
         | TranslationError::MemoryRetentionConflict(_) => (
             TranslationPublicErrorKind::BadInput,
             error.to_string(),

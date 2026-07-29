@@ -131,19 +131,17 @@ impl ForumUserTrustAudienceFactsPort {
             })
     }
 
-    async fn read_trust_level(
-        &self,
-        request: &ForumAudienceFactsRequest,
-    ) -> Result<u8, PortError> {
-        let state = forum_user_trust_state::Entity::find_by_id((request.tenant_id, request.user_id))
-            .one(&self.db)
-            .await
-            .map_err(|_| {
-                PortError::unavailable(
-                    STORAGE_UNAVAILABLE_CODE,
-                    "Forum user trust facts storage is unavailable",
-                )
-            })?;
+    async fn read_trust_level(&self, request: &ForumAudienceFactsRequest) -> Result<u8, PortError> {
+        let state =
+            forum_user_trust_state::Entity::find_by_id((request.tenant_id, request.user_id))
+                .one(&self.db)
+                .await
+                .map_err(|_| {
+                    PortError::unavailable(
+                        STORAGE_UNAVAILABLE_CODE,
+                        "Forum user trust facts storage is unavailable",
+                    )
+                })?;
         state
             .map(|state| validate_state(request, state))
             .transpose()

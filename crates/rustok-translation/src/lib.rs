@@ -7,6 +7,7 @@ pub mod graphql;
 pub mod graphql_runtime;
 mod inventory;
 mod machine;
+mod machine_service;
 mod memory;
 pub mod migrations;
 mod policy;
@@ -35,11 +36,22 @@ pub use machine::{
     MAX_MACHINE_TRANSLATION_GLOSSARY_TERMS, MAX_MACHINE_TRANSLATION_MEMORY_SUGGESTIONS_PER_UNIT,
     MAX_MACHINE_TRANSLATION_PROTECTED_TOKENS_PER_UNIT, MachineTranslationAttemptEvidence,
     MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationDiagnostic,
-    MachineTranslationExecutionEvidence, MachineTranslationGlossaryTerm,
+    MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
+    MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
     MachineTranslationMemorySuggestion, MachineTranslationPort,
     MachineTranslationProviderDescriptor, MachineTranslationProviderHealth,
     MachineTranslationProviderState, MachineTranslationResourceContext, MachineTranslationUnit,
     MachineTranslationUnitResult, MachineTranslationUsage,
+};
+#[cfg(feature = "runtime")]
+pub use machine::{
+    MachineTranslationPortFactory, SharedMachineTranslationPortFactory,
+    machine_translation_port_from_context,
+};
+pub use machine_service::{
+    CancelMachineOperationInput, GenerateMachineProposalInput, MachineCancellationRecord,
+    MachineDiagnosticEvidence, MachineProposalRecord, TranslationMachineControlService,
+    TranslationMachineService,
 };
 pub use memory::{
     MemoryEntryRecord, MemoryListInput, MemoryLookupInput, MemoryMatchEvidence, MemoryMatchKind,

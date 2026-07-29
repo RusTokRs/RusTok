@@ -128,6 +128,7 @@ validator = { version = "0.20", features = ["derive"] }
 # Error Handling
 thiserror = "2.0.18"
 anyhow = "1.0"
+aes-gcm = "0.10"
 
 # Benchmarking
 criterion = { version = "0.8", features = ["html_reports"] }

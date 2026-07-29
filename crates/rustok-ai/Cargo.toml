@@ -10,6 +10,7 @@ default = []
 graphql = ["server", "dep:async-graphql", "rustok-api/server"]
 fastembed = ["server", "dep:rig-fastembed"]
 server = [
+  "dep:aes-gcm",
   "dep:alloy",
   "dep:bytes",
   "dep:once_cell",
@@ -42,6 +43,7 @@ server = [
 ]
 
 [dependencies]
+aes-gcm = { workspace = true, optional = true }
 anyhow.workspace = true
 async-trait.workspace = true
 bytes = { version = "1.0", optional = true }

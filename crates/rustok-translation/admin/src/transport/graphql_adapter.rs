@@ -17,6 +17,8 @@ const POLICY_FIELDS: &str = "tenantId requiredTargetLocales tenantLocalePolicyRe
 const JOB_PROGRESS_FIELDS: &str = "jobId sourceDigest totalItems assignedItems terminalItems missingItems draftItems inReviewItems approvedItems applyingItems appliedItems staleItems conflictItems blockedItems excludedItems cancelledItems requiredUnits optionalUnits appliedRequiredUnits appliedOptionalUnits approvedRequiredUnits approvedOptionalUnits completeResources sourceCharacters translatedCharacters revision updatedAt";
 const PROVIDER_PROGRESS_FIELDS: &str = "ownerSlug resourceKind sourceLocale targetLocale requiredUnits exactRequiredUnits optionalUnits exactOptionalUnits resources completeResources ownerChangeCursor projectedCursor checkpointRevision checkpointUpdatedAt freshness";
 const PROPOSAL_FIELDS: &str = "id itemId proposalRevision origin values { key value expectedSourceHash } qaIssues { field severity code message } qaAccepted status approvalReceiptId";
+const MACHINE_PROPOSAL_FIELDS: &str = "operationId itemId proposalId adapterSlug providerSlug providerPolicyDigest machineRequestDigest glossaryRevision glossaryDigest memoryDigest executionId executionRequestDigest promptPolicyDigest attempts { attempt providerProfileId providerSlug model fallback } usage { inputTokens outputTokens totalTokens costMinorUnits currencyCode priceSnapshotDigest } diagnostics { code blocking unitId } reviewRequired createdAt updatedAt";
+const MACHINE_CANCELLATION_FIELDS: &str = "cancellationId operationId status providerExecutionId providerStatus providerErrorCode providerObservedAt createdAt";
 const GLOSSARY_SUMMARY_FIELDS: &str = "id name description sourceLocale targetLocale scope { ownerSlug resourceKind fieldKey } isActive revision";
 const GLOSSARY_FIELDS: &str = "id name description sourceLocale targetLocale scope { ownerSlug resourceKind fieldKey } isActive revision concepts { conceptKey sourceTerm variants { value policy } matchKind caseSensitive notes }";
 const MEMORY_ENTRY_FIELDS: &str = "id tenantId sourceLocale targetLocale ownerSlug resourceKind resourceId subresourceId fieldKey sourceText targetText sourceHash targetHash contextFingerprint segmentationVersion origin qualityState reviewerActorKind reviewerActorId proposalId applyReceiptId retentionPolicy retainUntil tombstonedAt revision createdAt updatedAt";
@@ -85,6 +87,12 @@ pub async fn execute(
         | TranslationAdminOperation::SubmitProposal { .. }
         | TranslationAdminOperation::ApproveProposal { .. } => Ok(
             TranslationAdminResponse::Proposal(field_value(&data, field)?),
+        ),
+        TranslationAdminOperation::GenerateMachineProposal { .. } => Ok(
+            TranslationAdminResponse::MachineProposal(field_value(&data, field)?),
+        ),
+        TranslationAdminOperation::CancelMachineOperation { .. } => Ok(
+            TranslationAdminResponse::MachineCancellation(field_value(&data, field)?),
         ),
         TranslationAdminOperation::ApplyProposal { .. }
         | TranslationAdminOperation::RecoverApply { .. } => {
@@ -370,6 +378,40 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
                 "idempotencyKey": idempotency_key,
             }}),
             "saveTranslationProposal",
+        ),
+        TranslationAdminOperation::GenerateMachineProposal {
+            item_id,
+            field_keys,
+            minimum_memory_similarity_basis_points,
+            tone,
+            domain,
+            style,
+            idempotency_key,
+        } => (
+            format!("mutation GenerateMachineTranslationProposal($input: GenerateMachineTranslationProposalInput!) {{ generateMachineTranslationProposal(input: $input) {{ {MACHINE_PROPOSAL_FIELDS} }} }}"),
+            json!({ "input": {
+                "itemId": item_id,
+                "fieldKeys": field_keys,
+                "minimumMemorySimilarityBasisPoints": minimum_memory_similarity_basis_points,
+                "tone": tone,
+                "domain": domain,
+                "style": style,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "generateMachineTranslationProposal",
+        ),
+        TranslationAdminOperation::CancelMachineOperation {
+            operation_id,
+            reason,
+            idempotency_key,
+        } => (
+            format!("mutation CancelMachineTranslationOperation($input: CancelMachineTranslationOperationInput!) {{ cancelMachineTranslationOperation(input: $input) {{ {MACHINE_CANCELLATION_FIELDS} }} }}"),
+            json!({ "input": {
+                "operationId": operation_id,
+                "reason": reason,
+                "idempotencyKey": idempotency_key,
+            }}),
+            "cancelMachineTranslationOperation",
         ),
         TranslationAdminOperation::SubmitProposal {
             item_id,
@@ -763,6 +805,20 @@ mod tests {
                     value: "Alt".to_string(),
                 }],
                 idempotency_key: "proposal-1".to_string(),
+            },
+            TranslationAdminOperation::GenerateMachineProposal {
+                item_id: "00000000-0000-0000-0000-000000000002".to_string(),
+                field_keys: vec!["alt".to_string()],
+                minimum_memory_similarity_basis_points: 7_000,
+                tone: Some("neutral".to_string()),
+                domain: Some("media".to_string()),
+                style: None,
+                idempotency_key: "machine-proposal-1".to_string(),
+            },
+            TranslationAdminOperation::CancelMachineOperation {
+                operation_id: "00000000-0000-0000-0000-000000000020".to_string(),
+                reason: "Operator cancelled the pending generation".to_string(),
+                idempotency_key: "machine-cancel-1".to_string(),
             },
             TranslationAdminOperation::SubmitProposal {
                 item_id: "00000000-0000-0000-0000-000000000002".to_string(),

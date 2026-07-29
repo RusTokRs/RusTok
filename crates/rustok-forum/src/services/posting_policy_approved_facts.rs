@@ -90,12 +90,14 @@ impl ForumPostingPolicyOwnerFactPort for ForumApprovedPostsFactPort {
 
         let approved_topics = read_count(&row, "approved_topics")?;
         let approved_replies = read_count(&row, "approved_replies")?;
-        let approved_posts = approved_topics.checked_add(approved_replies).ok_or_else(|| {
-            PortError::invariant_violation(
-                STORAGE_INVARIANT_CODE,
-                "Forum approved-post count exceeds the supported range",
-            )
-        })?;
+        let approved_posts = approved_topics
+            .checked_add(approved_replies)
+            .ok_or_else(|| {
+                PortError::invariant_violation(
+                    STORAGE_INVARIANT_CODE,
+                    "Forum approved-post count exceeds the supported range",
+                )
+            })?;
 
         Ok(ForumPostingPolicyOwnerFactResponse {
             tenant_id: request.tenant_id,
@@ -269,9 +271,12 @@ mod tests {
                 deleted_at TEXT\
             )",
         ] {
-            db.execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
-                .await
-                .expect("approved-post fixture table should initialize");
+            db.execute(Statement::from_string(
+                DbBackend::Sqlite,
+                statement.to_string(),
+            ))
+            .await
+            .expect("approved-post fixture table should initialize");
         }
         db
     }
@@ -353,15 +358,7 @@ mod tests {
             false,
         )
         .await;
-        insert_topic(
-            &db,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            user_id,
-            "open",
-            false,
-        )
-        .await;
+        insert_topic(&db, Uuid::new_v4(), Uuid::new_v4(), user_id, "open", false).await;
 
         insert_reply(&db, tenant_id, retained_topic, user_id, "approved", false).await;
         insert_reply(&db, tenant_id, closed_topic, user_id, "approved", false).await;
@@ -431,10 +428,9 @@ mod tests {
         let topic_id = Uuid::new_v4();
         insert_topic(&db, tenant_id, topic_id, user_id, "open", false).await;
         insert_reply(&db, tenant_id, topic_id, user_id, "approved", false).await;
-        let composer = ForumPostingPolicyFactsComposer::new(vec![
-            ForumApprovedPostsFactPort::shared(db),
-        ])
-        .expect("unique approved-post provider should compose");
+        let composer =
+            ForumPostingPolicyFactsComposer::new(vec![ForumApprovedPostsFactPort::shared(db)])
+                .expect("unique approved-post provider should compose");
         let rules = ForumPostingPolicyRules {
             minimum_approved_posts: Some(2),
             ..ForumPostingPolicyRules::default()

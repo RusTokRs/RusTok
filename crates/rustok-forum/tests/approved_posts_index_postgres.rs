@@ -50,7 +50,12 @@ async fn approved_posts_aggregate_uses_partial_author_indexes_on_postgres() -> T
         assert_index_definition(
             &context.db,
             TOPIC_INDEX,
-            &["tenant_id", "author_id", "author_id IS NOT NULL", "deleted_at IS NULL"],
+            &[
+                "tenant_id",
+                "author_id",
+                "author_id IS NOT NULL",
+                "deleted_at IS NULL",
+            ],
         )
         .await?;
         assert_index_definition(
@@ -104,10 +109,7 @@ SELECT
     )
 }
 
-async fn explain_json(
-    db: &sea_orm::DatabaseConnection,
-    sql: &str,
-) -> TestResult<Value> {
+async fn explain_json(db: &sea_orm::DatabaseConnection, sql: &str) -> TestResult<Value> {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,

@@ -6,14 +6,14 @@ mod category {
     include!("category_visibility_list.rs");
 }
 mod category_audience;
-mod category_moderation_audience;
-mod category_reply_create_audience;
-mod category_topic_create_audience;
 #[allow(clippy::collapsible_if)]
 mod category_command;
 mod category_lifecycle;
+mod category_moderation_audience;
 mod category_owner;
 mod category_policy;
+mod category_reply_create_audience;
+mod category_topic_create_audience;
 mod category_tree {
     include!("category_tree.rs");
     include!("category_tree_visibility.rs");
@@ -88,17 +88,15 @@ pub use category_moderation_audience::{
     ForumCategoryModerationAudiencePolicy, ForumCategoryModerationAudiencePolicyLayer,
     ForumCategoryModerationAudiencePolicyService, SetForumCategoryModerationAudiencePolicyInput,
 };
+pub use category_owner::CategoryService;
 pub use category_reply_create_audience::{
     ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
-    ForumCategoryReplyCreateAudiencePolicyService,
-    SetForumCategoryReplyCreateAudiencePolicyInput,
+    ForumCategoryReplyCreateAudiencePolicyService, SetForumCategoryReplyCreateAudiencePolicyInput,
 };
 pub use category_topic_create_audience::{
     ForumCategoryTopicCreateAudiencePolicy, ForumCategoryTopicCreateAudiencePolicyLayer,
-    ForumCategoryTopicCreateAudiencePolicyService,
-    SetForumCategoryTopicCreateAudiencePolicyInput,
+    ForumCategoryTopicCreateAudiencePolicyService, SetForumCategoryTopicCreateAudiencePolicyInput,
 };
-pub use category_owner::CategoryService;
 pub use category_visibility::{
     ForumCategoryVisibilityPolicy, ForumCategoryVisibilityPolicyService,
     SetForumCategoryVisibilityPolicyInput,
@@ -123,16 +121,15 @@ pub use posting_policy_create_window_facts::{
     ForumReplyCreatesWindowFactPort, ForumTopicCreatesWindowFactPort,
 };
 pub use posting_policy_evaluator::{
-    ForumPostingPolicyEvaluator, ForumPostingPolicyRules, ForumPostingWindowLimit,
-    FORUM_POSTING_POLICY_PRECEDENCE,
+    FORUM_POSTING_POLICY_PRECEDENCE, ForumPostingPolicyEvaluator, ForumPostingPolicyRules,
+    ForumPostingWindowLimit,
 };
 pub use posting_policy_facts::{
+    FORUM_POSTING_POLICY_FACTS_CAPABILITY, FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE,
     ForumPostingPolicyCompositionRequest, ForumPostingPolicyFactsComposer,
     ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
     ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
     ForumPostingTrustFactPort, SharedForumPostingPolicyOwnerFactPort,
-    FORUM_POSTING_POLICY_FACTS_CAPABILITY,
-    FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE,
 };
 pub use posting_policy_reading_facts::ForumTopicReadPostingFactPort;
 pub use quote_command::ForumQuoteCommandService;

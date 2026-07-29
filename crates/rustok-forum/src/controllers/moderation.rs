@@ -6,9 +6,7 @@ use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use crate::moderation_transport::{
-    ForumModerationTransport, moderation_audience_port_context,
-};
+use crate::moderation_transport::{ForumModerationTransport, moderation_audience_port_context};
 use crate::{TopicResponse, TopicService};
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {

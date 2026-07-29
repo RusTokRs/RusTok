@@ -52,6 +52,20 @@ pub enum TranslationError {
     ProposalNotCurrent,
     #[error("translation proposal failed owner validation")]
     ProposalValidationFailed,
+    #[error("machine translation returned invalid execution evidence or output")]
+    InvalidMachineTranslationResult,
+    #[error("machine translation operation is still in progress")]
+    MachineTranslationInProgress,
+    #[error("machine translation operation was not found")]
+    MachineOperationNotFound,
+    #[error("machine translation operation was cancelled")]
+    MachineOperationCancelled,
+    #[error("machine translation operation is terminal in state `{0}`")]
+    MachineOperationTerminal(String),
+    #[error("machine translation memory projection is unavailable")]
+    MachineMemoryProjectionUnavailable,
+    #[error("invalid machine translation cancellation reason")]
+    InvalidMachineCancellationReason,
     #[error("translation owner returned invalid patch-validation evidence: {0}")]
     InvalidProviderValidation(String),
     #[error("translation proposal creator cannot approve their own proposal")]

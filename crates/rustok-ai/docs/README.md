@@ -160,17 +160,21 @@ or default CI.
 ## What is not yet implemented
 
 - production activation of the private canonical `AiStructuredTaskPort`
-  implementation: operator provisioning for budget/provider accounting
-  policies, recovery scheduling, terminal-result replay semantics, and runtime
-  publication. Exact descriptor validation, ordered provider
+  implementation through neutral Translation runtime composition and live
+  failure/restart evidence. Tenant budget/provider accounting policy
+  provisioning is available through permission-checked native and GraphQL
+  contracts; the deployment-owned result keyring is published separately, and
+  the existing AI scheduler adapter performs recovery/result-cleanup before
+  claims. Exact descriptor validation, ordered provider
   inference/fallback, typed failure mapping, deadline/cancellation observation,
   the content-free execution schema,
   request-hash replay/conflict detection, execution leases, durable
   cancellation request, tenant budget reservation, atomic terminal
   execution/budget settlement, accounting-aware expired-lease recovery, immutable
   provider pricing policy, provider concurrency acquisition/release,
-  per-attempt price snapshot and actual token/cost evidence, and exact
-  task-descriptor catalog already exist;
+  per-attempt price snapshot and actual token/cost evidence, exact
+  task-descriptor catalog, and authenticated encrypted TTL-bound result replay
+  without duplicate billing already exist;
 - time-windowed diagnostics/trends on top of the current snapshot/history surface;
 - persisted provider fallback/error analytics beyond the current in-process snapshot;
 - additional provider families beyond those already implemented (`Anthropic`, `Gemini`, richer native adapters);

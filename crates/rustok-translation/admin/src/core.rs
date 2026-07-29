@@ -407,6 +407,61 @@ pub fn operation_receipt_view_model(
                 ),
             ],
         },
+        TranslationAdminResponse::MachineProposal(proposal) => OperationReceiptViewModel {
+            title_key: "translation.receipt.machineProposal",
+            fallback_title: "Machine proposal generated",
+            facts: vec![
+                fact(
+                    "translation.field.proposalId",
+                    "Proposal ID",
+                    proposal.proposal_id.clone(),
+                ),
+                fact(
+                    "translation.field.provider",
+                    "Provider",
+                    proposal.provider_slug.clone(),
+                ),
+                fact(
+                    "translation.field.executionId",
+                    "Execution ID",
+                    proposal.execution_id.clone(),
+                ),
+                fact(
+                    "translation.field.reviewRequired",
+                    "Review required",
+                    proposal.review_required.to_string(),
+                ),
+            ],
+        },
+        TranslationAdminResponse::MachineCancellation(cancellation) => OperationReceiptViewModel {
+            title_key: "translation.receipt.machineCancellation",
+            fallback_title: "Machine operation cancelled",
+            facts: vec![
+                fact(
+                    "translation.field.operationId",
+                    "Operation ID",
+                    cancellation.operation_id.clone(),
+                ),
+                fact(
+                    "translation.field.status",
+                    "Status",
+                    cancellation.status.clone(),
+                ),
+                fact(
+                    "translation.field.providerStatus",
+                    "Provider status",
+                    cancellation.provider_status.clone(),
+                ),
+                fact(
+                    "translation.field.providerExecutionId",
+                    "Provider execution ID",
+                    cancellation
+                        .provider_execution_id
+                        .clone()
+                        .unwrap_or_else(|| "—".to_string()),
+                ),
+            ],
+        },
         TranslationAdminResponse::Apply(apply) => OperationReceiptViewModel {
             title_key: "translation.receipt.apply",
             fallback_title: "Translation applied",

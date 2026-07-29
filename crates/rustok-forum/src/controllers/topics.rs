@@ -12,12 +12,12 @@ use std::time::Instant;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::topic_create_transport::{
+    ForumTopicCreateTransport, topic_create_audience_port_context,
+};
 use crate::{
     CreateTopicInput, ListTopicsFilter, ModerationService, SubscriptionService, TopicListItem,
     TopicResponse, TopicService, UpdateTopicInput, VoteService,
-};
-use crate::topic_create_transport::{
-    ForumTopicCreateTransport, topic_create_audience_port_context,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize, IntoParams, ToSchema)]

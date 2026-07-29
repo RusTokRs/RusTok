@@ -3,16 +3,20 @@ use std::time::Duration;
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortContext, PortError, manifest_hash::hash_manifest};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, sea_query::Expr,
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    sea_query::{Expr, OnConflict},
 };
 use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    AiStructuredTaskAttempt, AiStructuredTaskExecution, AiStructuredTaskRequest,
-    AiStructuredTaskStatus, AiStructuredTaskUsage,
-    entities::{ai_structured_attempts, ai_structured_executions},
+    AiStructuredTaskAttempt, AiStructuredTaskExecution, AiStructuredTaskExecutionKey,
+    AiStructuredTaskRequest, AiStructuredTaskStatus, AiStructuredTaskUsage,
+    entities::{
+        ai_structured_attempts, ai_structured_cancellation_intents, ai_structured_executions,
+    },
 };
 
 #[derive(Clone)]
@@ -89,6 +93,18 @@ impl StructuredExecutionLedger {
             max_output_bytes: request.limits.max_output_bytes,
             max_attempts: request.limits.max_attempts,
         })?;
+        let execution_key = AiStructuredTaskExecutionKey {
+            owner: request.owner.clone(),
+            idempotency_key: idempotency_key.to_string(),
+        };
+        execution_key.validate()?;
+        if self
+            .find_cancellation_intent(tenant_id, &execution_key)
+            .await?
+            .is_some()
+        {
+            return Err(execution_cancelled_before_registration());
+        }
 
         if let Some(existing) = self
             .find_by_idempotency(tenant_id, &request.owner, idempotency_key)
@@ -199,6 +215,142 @@ impl StructuredExecutionLedger {
             .await
             .map_err(|_| database_unavailable())?;
         map_execution(execution, attempts)
+    }
+
+    pub(crate) async fn resolve_by_key(
+        &self,
+        context: &PortContext,
+        execution: &AiStructuredTaskExecutionKey,
+    ) -> Result<Option<AiStructuredTaskExecution>, PortError> {
+        context.require_read_semantics()?;
+        execution.validate()?;
+        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        let Some(model) = self
+            .find_by_idempotency(tenant_id, &execution.owner, &execution.idempotency_key)
+            .await?
+        else {
+            return Ok(None);
+        };
+        self.view(context, model.id).await.map(Some)
+    }
+
+    pub(crate) async fn put_cancellation_intent(
+        &self,
+        context: &PortContext,
+        execution: &AiStructuredTaskExecutionKey,
+    ) -> Result<ai_structured_cancellation_intents::Model, PortError> {
+        context.require_write_semantics()?;
+        validate_context(context)?;
+        execution.validate()?;
+        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        let cancellation_idempotency_key = context.idempotency_key.as_deref().ok_or_else(|| {
+            PortError::validation(
+                "port.idempotency_key_required",
+                "write port calls require a non-empty idempotency key",
+            )
+        })?;
+        let request_digest = hash(&(
+            context.tenant_id.as_str(),
+            execution.owner.as_str(),
+            execution.idempotency_key.as_str(),
+            actor_kind(&context.actor.kind),
+            context.actor.id.as_str(),
+        ))?;
+        ai_structured_cancellation_intents::Entity::insert(
+            ai_structured_cancellation_intents::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant_id),
+                owner: Set(execution.owner.clone()),
+                execution_idempotency_key: Set(execution.idempotency_key.clone()),
+                cancellation_idempotency_key: Set(cancellation_idempotency_key.to_string()),
+                request_digest: Set(request_digest.clone()),
+                actor_kind: Set(actor_kind(&context.actor.kind).to_string()),
+                actor_id: Set(context.actor.id.clone()),
+                created_at: Set(Utc::now().into()),
+            },
+        )
+        .on_conflict(OnConflict::new().do_nothing().to_owned())
+        .exec_without_returning(&self.database)
+        .await
+        .map_err(|_| database_unavailable())?;
+        let persisted = self
+            .find_cancellation_intent(tenant_id, execution)
+            .await?
+            .ok_or_else(ledger_invariant)?;
+        if persisted.cancellation_idempotency_key != cancellation_idempotency_key
+            || persisted.request_digest != request_digest
+            || persisted.actor_kind != actor_kind(&context.actor.kind)
+            || persisted.actor_id != context.actor.id
+        {
+            return Err(PortError::conflict(
+                "ai.structured.cancel_conflict",
+                "structured execution already has a different cancellation request",
+            ));
+        }
+        Ok(persisted)
+    }
+
+    pub(crate) async fn apply_cancellation_intent(
+        &self,
+        context: &PortContext,
+        execution: &AiStructuredTaskExecutionKey,
+    ) -> Result<Option<ai_structured_executions::Model>, PortError> {
+        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        let Some(intent) = self.find_cancellation_intent(tenant_id, execution).await? else {
+            return Ok(None);
+        };
+        let Some(mut model) = self
+            .find_by_idempotency(tenant_id, &execution.owner, &execution.idempotency_key)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if is_terminal(&model.status) || model.cancel_requested_at.is_some() {
+            return Ok(Some(model));
+        }
+        let changed = ai_structured_executions::Entity::update_many()
+            .col_expr(
+                ai_structured_executions::Column::CancelRequestedAt,
+                Expr::value(Some(intent.created_at)),
+            )
+            .col_expr(
+                ai_structured_executions::Column::CancelIdempotencyKey,
+                Expr::value(Some(intent.cancellation_idempotency_key.clone())),
+            )
+            .col_expr(
+                ai_structured_executions::Column::CancelRequestDigest,
+                Expr::value(Some(intent.request_digest.clone())),
+            )
+            .col_expr(
+                ai_structured_executions::Column::CancelActorKind,
+                Expr::value(Some(intent.actor_kind.clone())),
+            )
+            .col_expr(
+                ai_structured_executions::Column::CancelActorId,
+                Expr::value(Some(intent.actor_id.clone())),
+            )
+            .col_expr(
+                ai_structured_executions::Column::UpdatedAt,
+                Expr::value(Utc::now()),
+            )
+            .filter(ai_structured_executions::Column::Id.eq(model.id))
+            .filter(ai_structured_executions::Column::TenantId.eq(tenant_id))
+            .filter(ai_structured_executions::Column::Status.eq(model.status.clone()))
+            .filter(ai_structured_executions::Column::CancelRequestedAt.is_null())
+            .exec(&self.database)
+            .await
+            .map_err(|_| database_unavailable())?;
+        if changed.rows_affected != 1 {
+            model = self.load(context, model.id).await?;
+            if model.cancel_requested_at.is_none() && !is_terminal(&model.status) {
+                return Err(PortError::conflict(
+                    "ai.structured.cancel_state_conflict",
+                    "structured execution changed while cancellation was requested",
+                ));
+            }
+            return Ok(Some(model));
+        }
+        self.load(context, model.id).await.map(Some)
     }
 
     pub(crate) async fn claim(
@@ -416,6 +568,23 @@ impl StructuredExecutionLedger {
             .await
             .map_err(|_| database_unavailable())
     }
+
+    async fn find_cancellation_intent(
+        &self,
+        tenant_id: Uuid,
+        execution: &AiStructuredTaskExecutionKey,
+    ) -> Result<Option<ai_structured_cancellation_intents::Model>, PortError> {
+        ai_structured_cancellation_intents::Entity::find()
+            .filter(ai_structured_cancellation_intents::Column::TenantId.eq(tenant_id))
+            .filter(ai_structured_cancellation_intents::Column::Owner.eq(&execution.owner))
+            .filter(
+                ai_structured_cancellation_intents::Column::ExecutionIdempotencyKey
+                    .eq(&execution.idempotency_key),
+            )
+            .one(&self.database)
+            .await
+            .map_err(|_| database_unavailable())
+    }
 }
 
 fn reconcile_replay(
@@ -610,6 +779,13 @@ fn database_unavailable() -> PortError {
     PortError::unavailable(
         "ai.structured.persistence_unavailable",
         "structured execution persistence is unavailable",
+    )
+}
+
+fn execution_cancelled_before_registration() -> PortError {
+    PortError::conflict(
+        "ai.structured.execution_cancelled",
+        "structured execution was cancelled before registration",
     )
 }
 

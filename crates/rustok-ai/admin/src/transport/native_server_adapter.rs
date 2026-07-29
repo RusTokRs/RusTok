@@ -9,7 +9,8 @@ use crate::model::{
     AiAdminBootstrap, AiAgentModelAssignmentPayload, AiAgentPrincipalPayload,
     AiAgentWorkflowStageBindingInputPayload, AiChatRunPayload, AiChatSessionDetailPayload,
     AiCredentialRefPayload, AiProviderProfilePayload, AiProviderTestResultPayload,
-    AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
+    AiSendMessageResultPayload, AiStructuredBudgetPolicyPayload, AiStructuredProviderPolicyPayload,
+    AiTaskProfilePayload, AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -116,6 +117,36 @@ pub async fn test_provider(id: String) -> Result<AiProviderTestResultPayload, Ap
 
 pub async fn deactivate_provider(id: String) -> Result<AiProviderProfilePayload, ApiError> {
     ai_deactivate_provider_native(id).await.map_err(Into::into)
+}
+
+pub async fn put_structured_budget_policy(
+    currency_code: String,
+    limit_minor_units: u64,
+    max_concurrent: u32,
+) -> Result<AiStructuredBudgetPolicyPayload, ApiError> {
+    ai_put_structured_budget_policy_native(currency_code, limit_minor_units, max_concurrent)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn put_structured_provider_policy(
+    provider_profile_id: String,
+    currency_code: String,
+    input_cost_per_million_minor: u64,
+    output_cost_per_million_minor: u64,
+    max_concurrent: u32,
+    is_active: bool,
+) -> Result<AiStructuredProviderPolicyPayload, ApiError> {
+    ai_put_structured_provider_policy_native(
+        provider_profile_id,
+        currency_code,
+        input_cost_per_million_minor,
+        output_cost_per_million_minor,
+        max_concurrent,
+        is_active,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Creates an agent principal using only roles published by the host tenant
@@ -444,6 +475,38 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
                 .into_iter()
                 .map(map_provider)
                 .collect(),
+            structured_budget_policies: if rustok_api::has_effective_permission(
+                &auth.permissions,
+                &rustok_api::Permission::AI_PROVIDERS_READ,
+            ) {
+                rustok_ai::AiManagementService::list_structured_budget_policies(
+                    &db,
+                    &operator(&auth, &db).await?,
+                )
+                .await
+                .map_err(|error| ServerFnError::new(error.code))?
+                .into_iter()
+                .map(map_structured_budget_policy)
+                .collect()
+            } else {
+                Vec::new()
+            },
+            structured_provider_policies: if rustok_api::has_effective_permission(
+                &auth.permissions,
+                &rustok_api::Permission::AI_PROVIDERS_READ,
+            ) {
+                rustok_ai::AiManagementService::list_structured_provider_policies(
+                    &db,
+                    &operator(&auth, &db).await?,
+                )
+                .await
+                .map_err(|error| ServerFnError::new(error.code))?
+                .into_iter()
+                .map(map_structured_provider_policy)
+                .collect()
+            } else {
+                Vec::new()
+            },
             task_profiles: rustok_ai::AiManagementService::list_task_profiles(&db, auth.tenant_id)
                 .await
                 .map_err(server_error)?
@@ -479,6 +542,87 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
         Err(ServerFnError::new(
             "rustok-ai-admin requires the `ssr` feature for native bootstrap",
         ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/put-structured-budget-policy")]
+async fn ai_put_structured_budget_policy_native(
+    currency_code: String,
+    limit_minor_units: u64,
+    max_concurrent: u32,
+) -> Result<AiStructuredBudgetPolicyPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_provider_manage_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        rustok_ai::AiManagementService::put_structured_budget_policy(
+            &db,
+            &operator(&auth, &db).await?,
+            rustok_ai::PutAiStructuredBudgetPolicyInput {
+                currency_code,
+                limit_minor_units,
+                max_concurrent,
+            },
+        )
+        .await
+        .map(map_structured_budget_policy)
+        .map_err(|error| ServerFnError::new(error.code))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (currency_code, limit_minor_units, max_concurrent);
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/put-structured-provider-policy")]
+async fn ai_put_structured_provider_policy_native(
+    provider_profile_id: String,
+    currency_code: String,
+    input_cost_per_million_minor: u64,
+    output_cost_per_million_minor: u64,
+    max_concurrent: u32,
+    is_active: bool,
+) -> Result<AiStructuredProviderPolicyPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_provider_manage_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        rustok_ai::AiManagementService::put_structured_provider_policy(
+            &db,
+            &operator(&auth, &db).await?,
+            rustok_ai::PutAiStructuredProviderPolicyInput {
+                provider_profile_id: parse_uuid(&provider_profile_id, "provider_profile_id")?,
+                currency_code,
+                input_cost_per_million_minor,
+                output_cost_per_million_minor,
+                max_concurrent,
+                is_active,
+            },
+        )
+        .await
+        .map(map_structured_provider_policy)
+        .map_err(|error| ServerFnError::new(error.code))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (
+            provider_profile_id,
+            currency_code,
+            input_cost_per_million_minor,
+            output_cost_per_million_minor,
+            max_concurrent,
+            is_active,
+        );
+        Err(ServerFnError::new("SSR only"))
     }
 }
 
@@ -1628,6 +1772,43 @@ fn map_provider(value: rustok_ai::AiProviderProfileRecord) -> AiProviderProfileP
         denied_task_profiles: value.usage_policy.denied_task_profiles,
         restricted_role_slugs: value.usage_policy.restricted_role_slugs,
         metadata: value.metadata.to_string(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_structured_budget_policy(
+    value: rustok_ai::AiStructuredBudgetPolicyRecord,
+) -> AiStructuredBudgetPolicyPayload {
+    AiStructuredBudgetPolicyPayload {
+        id: value.id.to_string(),
+        currency_code: value.currency_code,
+        limit_minor_units: value.limit_minor_units,
+        reserved_minor_units: value.reserved_minor_units,
+        committed_minor_units: value.committed_minor_units,
+        max_concurrent: value.max_concurrent,
+        in_flight: value.in_flight,
+        revision: value.revision,
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_structured_provider_policy(
+    value: rustok_ai::AiStructuredProviderPolicyRecord,
+) -> AiStructuredProviderPolicyPayload {
+    AiStructuredProviderPolicyPayload {
+        id: value.id.to_string(),
+        provider_profile_id: value.provider_profile_id.to_string(),
+        currency_code: value.currency_code,
+        input_cost_per_million_minor: value.input_cost_per_million_minor,
+        output_cost_per_million_minor: value.output_cost_per_million_minor,
+        max_concurrent: value.max_concurrent,
+        in_flight: value.in_flight,
+        is_active: value.is_active,
+        revision: value.revision,
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
     }
 }
 

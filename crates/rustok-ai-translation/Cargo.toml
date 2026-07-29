@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Stateless machine-translation bridge between RusToK Translation and AI contracts"
 
+[features]
+default = []
+server = ["rustok-ai/server", "rustok-api/runtime", "rustok-translation/runtime"]
+
 [dependencies]
 async-trait.workspace = true
 rustok-ai.workspace = true
