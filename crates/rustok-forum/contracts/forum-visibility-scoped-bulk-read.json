@@ -81,11 +81,11 @@
   },
   "downstream_handoff": {
     "full_rebuild_external_scope_preservation_completed": true,
-    "rebuild_completion_task": "FORUM-20BM",
-    "rebuild_completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
+    "completion_task": "FORUM-20BM",
+    "completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
     "legacy_graphql_snapshot_cleanup_completed": true,
-    "completion_task": "FORUM-20BN",
-    "completion_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json"
+    "snapshot_cleanup_task": "FORUM-20BN",
+    "snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json"
   },
   "compatibility": {
     "legacy_br1_trusted_owner_methods_removed": false,
