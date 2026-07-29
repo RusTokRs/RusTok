@@ -17,6 +17,7 @@ use rustok_core::SecurityContext;
 use crate::dto::{MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES};
 use crate::entities::{forum_category, forum_category_policy};
 use crate::error::{ForumError, ForumResult};
+use crate::services::projection_invalidation::publish_forum_projection_scope_direct_in_tx;
 use crate::services::rbac::enforce_scope;
 use crate::visibility::ForumCategoryVisibility;
 
@@ -120,6 +121,12 @@ impl ForumCategoryVisibilityPolicyService {
         let result = CategoryVisibilitySnapshot::load(&txn, tenant_id)
             .await?
             .policy(category_id)?;
+        publish_forum_projection_scope_direct_in_tx(
+            &txn,
+            tenant_id,
+            security.user_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(result)
     }
@@ -264,15 +271,15 @@ impl CategoryVisibilitySnapshot {
                     "Forum category visibility tree contains a hierarchy cycle".to_string(),
                 ));
             }
-            if self.overrides.get(&current_id) == Some(&ForumCategoryVisibility::Authenticated) {
+            if let Some(visibility) = self.overrides.get(&current_id).copied() {
                 return Ok(ResolvedVisibility {
-                    effective_visibility: ForumCategoryVisibility::Authenticated,
+                    effective_visibility: visibility,
                     effective_from_category_id: Some(current_id),
                 });
             }
             current = self.parents.get(&current_id).copied().ok_or_else(|| {
                 ForumError::Validation(format!(
-                    "Forum category visibility tree references missing or foreign category {current_id}"
+                    "Forum category visibility tree references missing category {current_id}"
                 ))
             })?;
             depth += 1;
@@ -285,6 +292,7 @@ impl CategoryVisibilitySnapshot {
     }
 }
 
+#[derive(Clone, Copy)]
 struct ResolvedVisibility {
     effective_visibility: ForumCategoryVisibility,
     effective_from_category_id: Option<Uuid>,
