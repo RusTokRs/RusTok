@@ -169,3 +169,16 @@ contracts documented and source-locked.
    selection documentation with a public contract change.
 4. Update this status block and `docs/modules/registry.md` with an FFA/FBA
    boundary change.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-29`
+- Scope inspected: `channel ownership, documented resolution precedence, durable generation contract, cache dimensions, policy and OAuth binding boundaries`
+- Findings: `P0=0, P1=0, P2=0, P3=1`
+- Fixed in this pass: `added the missing current-cycle verification handoff`
+- Remaining risks or blockers: `source audit and targeted workflow evidence are still in progress`
+- Evidence: `AGENTS.md, docs/index.md, current cycle cursor, crate README, local docs and implementation plan were read on the fresh branch`
+- Next action: `inspect tenant-scoped writes, migration triggers, resolution policy selection, cache key dimensions and OAuth application binding trust`
+- Resume command: `cargo xtask module validate channel && cargo xtask module test channel && cargo test -p rustok-channel invalidation_generation --lib`
