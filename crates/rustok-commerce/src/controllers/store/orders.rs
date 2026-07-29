@@ -8,7 +8,10 @@ use rustok_api::{
 };
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
-use rustok_order::{OrderService, ReadOrderProjectionRequest, error::OrderError};
+use rustok_order::{
+    ListOrderChangeProjectionsRequest, ListOrderReturnProjectionsRequest, OrderService,
+    ReadOrderProjectionRequest, error::OrderError,
+};
 use rustok_payment::{PaymentService, error::PaymentError};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use uuid::Uuid;
@@ -21,15 +24,17 @@ use super::{
     StoreOrderChangesParams, StoreOrderRefundsParams, StoreOrderReturnsParams,
 };
 use crate::dto::{
-    CreateOrderReturnInput, ListOrderChangesInput, ListOrderReturnsInput, ListRefundsInput,
-    OrderChangeResponse, OrderResponse, OrderReturnResponse, RefundResponse,
+    CreateOrderReturnInput, ListRefundsInput, OrderChangeResponse, OrderResponse,
+    OrderReturnResponse, RefundResponse,
 };
 
 const STOREFRONT_ORDER_CUSTOMER_OWNER: &str = "rustok_customer";
 const STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION: &str = "read_customer_projection_by_user";
 const STOREFRONT_ORDER_CUSTOMER_BOUNDARY: &str = "commerce_storefront_order_http";
 const STOREFRONT_ORDER_OWNER: &str = "rustok_order.storefront_orders";
-const STOREFRONT_ORDER_OWNER_OPERATION: &str = "read_order_projection";
+const STOREFRONT_ORDER_DETAIL_OPERATION: &str = "read_order_projection";
+const STOREFRONT_ORDER_RETURN_LIST_OPERATION: &str = "list_order_return_projections";
+const STOREFRONT_ORDER_CHANGE_LIST_OPERATION: &str = "list_order_change_projections";
 const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";
 const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";
 
@@ -160,7 +165,8 @@ fn storefront_order_read_port_context(
 fn map_storefront_order_port_error(
     error: PortError,
     context: &PortContext,
-    operation: &'static str,
+    owner_operation: &'static str,
+    consumer_operation: &'static str,
     actor_id: Uuid,
     customer_id: Uuid,
     order_id: Uuid,
@@ -206,8 +212,8 @@ fn map_storefront_order_port_error(
     tracing::error!(
         error = ?error,
         owner = STOREFRONT_ORDER_OWNER,
-        owner_operation = STOREFRONT_ORDER_OWNER_OPERATION,
-        operation,
+        owner_operation,
+        consumer_operation,
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
         actor_id = %actor_id,
@@ -447,6 +453,7 @@ async fn read_storefront_order_projection(
             map_storefront_order_port_error(
                 error,
                 &read_context,
+                STOREFRONT_ORDER_DETAIL_OPERATION,
                 operation,
                 auth.user_id,
                 customer_id,
@@ -646,7 +653,7 @@ pub async fn list_order_returns(
 ) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(
+    let customer_id = ensure_customer_owns_order(
         &runtime,
         tenant.id,
         tenant.default_locale.as_str(),
@@ -657,10 +664,18 @@ pub async fn list_order_returns(
     )
     .await?;
 
-    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .list_returns(
-            tenant.id,
-            ListOrderReturnsInput {
+    let read_context = storefront_order_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        id,
+        "list_order_returns",
+    );
+    let page = runtime
+        .order_read_port()
+        .list_order_return_projections(
+            read_context.clone(),
+            ListOrderReturnProjectionsRequest {
                 page: params.pagination.page,
                 per_page: params.pagination.per_page,
                 order_id: Some(id),
@@ -668,11 +683,21 @@ pub async fn list_order_returns(
             },
         )
         .await
-        .map_err(|error| map_storefront_order_error(error, "list_order_returns", tenant.id, id))?;
+        .map_err(|error| {
+            map_storefront_order_port_error(
+                error,
+                &read_context,
+                STOREFRONT_ORDER_RETURN_LIST_OPERATION,
+                "list_order_returns",
+                auth.user_id,
+                customer_id,
+                id,
+            )
+        })?;
 
     Ok(Json(PaginatedResponse {
-        data: items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), total),
+        data: page.items,
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
     }))
 }
 
@@ -773,7 +798,7 @@ pub async fn list_order_changes(
 ) -> HttpResult<Json<PaginatedResponse<OrderChangeResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(
+    let customer_id = ensure_customer_owns_order(
         &runtime,
         tenant.id,
         tenant.default_locale.as_str(),
@@ -784,10 +809,18 @@ pub async fn list_order_changes(
     )
     .await?;
 
-    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .list_order_changes(
-            tenant.id,
-            ListOrderChangesInput {
+    let read_context = storefront_order_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        id,
+        "list_order_changes",
+    );
+    let page = runtime
+        .order_read_port()
+        .list_order_change_projections(
+            read_context.clone(),
+            ListOrderChangeProjectionsRequest {
                 page: params.pagination.page,
                 per_page: params.pagination.per_page,
                 order_id: Some(id),
@@ -796,10 +829,20 @@ pub async fn list_order_changes(
             },
         )
         .await
-        .map_err(|error| map_storefront_order_error(error, "list_order_changes", tenant.id, id))?;
+        .map_err(|error| {
+            map_storefront_order_port_error(
+                error,
+                &read_context,
+                STOREFRONT_ORDER_CHANGE_LIST_OPERATION,
+                "list_order_changes",
+                auth.user_id,
+                customer_id,
+                id,
+            )
+        })?;
 
     Ok(Json(PaginatedResponse {
-        data: items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), total),
+        data: page.items,
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
     }))
 }
