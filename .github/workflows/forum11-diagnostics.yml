@@ -61,14 +61,6 @@ jobs:
               source = source.replace(anchor, methods + anchor, 1)
           owner.write_text(source)
 
-          query = Path("crates/rustok-forum/src/graphql/query.rs")
-          source = query.read_text()
-          old = "closed_active.status = Set(crate::constants::topic_status::CLOSED.to_string());"
-          new = "closed_active.status = Set(crate::state_machine::TopicStatus::Closed);"
-          if old not in source and new not in source:
-              raise SystemExit("typed topic status replacement anchor missing")
-          query.write_text(source.replace(old, new, 1))
-
           read_model = Path("crates/rustok-forum/src/services/read_model.rs")
           read_model.write_text(read_model.read_text().replace(
               "cursor.updated_at.clone()", "cursor.updated_at"
@@ -112,7 +104,7 @@ jobs:
           PY
 
           targets=(
-            crates/rustok-forum/src/graphql/query.rs
+            crates/rustok-forum/src/graphql/query_runtime.rs
             crates/rustok-forum/src/services/category_owner.rs
             crates/rustok-forum/src/services/read_model.rs
             crates/rustok-forum/src/services/subscription/category.rs
@@ -133,6 +125,7 @@ jobs:
 
           python - <<'PY'
           from pathlib import Path
+
           media = Path("crates/rustok-media/src/ports.rs")
           source = media.read_text()
           needle = "        MediaError::UnsupportedMimeType(content_type) => PortError::validation(\n"
