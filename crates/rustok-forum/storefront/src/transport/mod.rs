@@ -2,8 +2,20 @@ mod graphql_adapter;
 mod native_server_adapter;
 
 use crate::model::StorefrontForumData;
+use serde::{Deserialize, Serialize};
 
 pub type TransportError = graphql_adapter::ApiError;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontForumBulkReadResult {
+    pub processed: u64,
+    #[serde(rename = "nextCursor")]
+    pub next_cursor: Option<String>,
+    #[serde(rename = "hasMore")]
+    pub has_more: bool,
+    #[serde(rename = "snapshotAt")]
+    pub snapshot_at: String,
+}
 
 fn use_native_transport() -> bool {
     cfg!(any(feature = "ssr", feature = "hydrate"))
@@ -39,5 +51,42 @@ pub async fn mark_storefront_topic_read(
         native_server_adapter::mark_storefront_topic_read_server(topic_id, locale).await
     } else {
         graphql_adapter::mark_storefront_topic_read_graphql(topic_id, locale).await
+    }
+}
+
+pub async fn mark_storefront_category_read(
+    category_id: String,
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<StorefrontForumBulkReadResult, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::mark_storefront_category_read_server(
+            category_id,
+            cursor,
+            limit,
+            locale,
+        )
+        .await
+    } else {
+        graphql_adapter::mark_storefront_category_read_graphql(
+            category_id,
+            cursor,
+            limit,
+            locale,
+        )
+        .await
+    }
+}
+
+pub async fn mark_all_storefront_topics_read(
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<StorefrontForumBulkReadResult, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::mark_all_storefront_topics_read_server(cursor, limit, locale).await
+    } else {
+        graphql_adapter::mark_all_storefront_topics_read_graphql(cursor, limit, locale).await
     }
 }
