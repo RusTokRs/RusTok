@@ -13,8 +13,9 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryResponse, CategoryService, CreateCategoryInput, SubscriptionService,
-    UpdateCategoryInput,
+    CategoryListItem, CategoryResponse, CategoryService, CreateCategoryInput,
+    ForumCategoryAudienceReadService, ForumCategoryReadOperation, ForumCategoryReadTransport,
+    SubscriptionService, UpdateCategoryInput, category_read_audience_port_context,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -64,13 +65,22 @@ pub async fn list_categories(
         .as_ref()
         .map(|pagination| pagination.per_page);
     let pagination = params.pagination.unwrap_or_default();
-    let service = CategoryService::new(runtime.db_clone());
+    let context = category_read_audience_port_context(
+        ForumCategoryReadTransport::Rest,
+        ForumCategoryReadOperation::CategoryList,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        &locale,
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let service = category_audience_read_service(&runtime);
     let list_started_at = Instant::now();
-    let (categories, _) = service
-        .list_paginated_with_locale_fallback(
+    let page = service
+        .list_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
-            &locale,
+            context,
             pagination.page,
             pagination.limit(),
             Some(tenant.default_locale.as_str()),
@@ -80,9 +90,9 @@ pub async fn list_categories(
     metrics::record_read_path_query(
         "http",
         "forum.list_categories",
-        "service_list",
+        "exact_category_audience_owner",
         list_started_at.elapsed().as_secs_f64(),
-        categories.len() as u64,
+        page.total,
     );
 
     metrics::record_read_path_budget(
@@ -90,10 +100,10 @@ pub async fn list_categories(
         "forum.list_categories",
         requested_limit,
         pagination.limit(),
-        categories.len(),
+        page.items.len(),
     );
 
-    Ok(Json(categories))
+    Ok(Json(page.items))
 }
 
 #[utoipa::path(
@@ -128,13 +138,21 @@ pub async fn get_category(
     let locale = params
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let service = CategoryService::new(runtime.db_clone());
-    let category = service
-        .get_with_locale_fallback(
+    let context = category_read_audience_port_context(
+        ForumCategoryReadTransport::Rest,
+        ForumCategoryReadOperation::SelectedCategory,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        &locale,
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let category = category_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            context,
             id,
-            &locale,
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -269,12 +287,21 @@ pub async fn subscribe_category(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let category = CategoryService::new(runtime.db_clone())
-        .get_with_locale_fallback(
+    let context = category_read_audience_port_context(
+        ForumCategoryReadTransport::Rest,
+        ForumCategoryReadOperation::SelectedCategory,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let category = category_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            context,
             id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -311,17 +338,37 @@ pub async fn unsubscribe_category(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let category = CategoryService::new(runtime.db_clone())
-        .get_with_locale_fallback(
+    let context = category_read_audience_port_context(
+        ForumCategoryReadTransport::Rest,
+        ForumCategoryReadOperation::SelectedCategory,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let category = category_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            context,
             id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(category))
+}
+
+fn category_audience_read_service(
+    runtime: &crate::controllers::ForumHttpRuntime,
+) -> ForumCategoryAudienceReadService {
+    match runtime.audience_facts.clone() {
+        Some(facts) => {
+            ForumCategoryAudienceReadService::with_audience_facts(runtime.db_clone(), facts)
+        }
+        None => ForumCategoryAudienceReadService::new(runtime.db_clone()),
+    }
 }
 
 fn ensure_forum_permission(

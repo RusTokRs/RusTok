@@ -10,7 +10,8 @@ const requireText = (source, needle, label) => {
   }
 };
 
-const query = read('crates/rustok-forum/src/graphql/query.rs');
+const query = read('crates/rustok-forum/src/graphql/query_runtime.rs');
+const graphqlModule = read('crates/rustok-forum/src/graphql/mod.rs');
 const graphqlAdapter = read(
   'crates/rustok-forum/storefront/src/transport/graphql_adapter.rs',
 );
@@ -20,6 +21,9 @@ const nativeAdapter = read(
 const selector = read('crates/rustok-forum/storefront/src/transport/mod.rs');
 const contract = JSON.parse(
   read('crates/rustok-forum/contracts/forum-reply-legacy-cutover.json'),
+);
+const categoryContract = JSON.parse(
+  read('crates/rustok-forum/contracts/forum-category-audience-read.json'),
 );
 
 requireText(query, 'async fn forum_replies(', 'legacy forumReplies field');
@@ -52,6 +56,11 @@ requireText(
   query,
   'Some(&PUBLIC_REPLY_STATUSES)',
   'approved-only storefront replies',
+);
+requireText(
+  graphqlModule,
+  '#[path = "query_runtime.rs"]',
+  'canonical GraphQL runtime selector',
 );
 requireText(
   graphqlAdapter,
@@ -121,10 +130,26 @@ for (const key of [
   'transport_selector_does_not_replace_reply_results',
   'temporary_graphql_reply_adapter_removed',
   'temporary_native_reply_adapter_removed',
+  'category_owner_read_changed',
 ]) {
   if (!contract.cutover_boundary[key]) {
     throw new Error(`contract must lock ${key}`);
   }
+}
+if (!contract.compatibility.canonical_graphql_runtime_moved) {
+  throw new Error('reply handoff must record the canonical GraphQL runtime move');
+}
+if (contract.compatibility.legacy_graphql_snapshot_is_compiled) {
+  throw new Error('legacy GraphQL snapshot must remain uncompiled');
+}
+if (
+  contract.downstream_completion !==
+  'crates/rustok-forum/contracts/forum-category-audience-read.json'
+) {
+  throw new Error('reply handoff must point to category-read completion');
+}
+if (categoryContract.task !== 'FORUM-20BH') {
+  throw new Error('unexpected category-read completion task');
 }
 if (contract.downstream_task !== 'FORUM-20BH') {
   throw new Error('unexpected downstream task');

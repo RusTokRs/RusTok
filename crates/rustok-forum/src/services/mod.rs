@@ -6,6 +6,11 @@ mod category {
     include!("category_visibility_list.rs");
 }
 mod category_audience;
+mod category_audience_read {
+    include!("category_audience_read.rs");
+    include!("category_audience_read_inline.rs");
+}
+mod category_audience_visibility;
 mod category_moderation_audience;
 mod category_reply_create_audience;
 mod category_topic_create_audience;
@@ -85,6 +90,12 @@ pub mod widget_contract;
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+};
+pub use category_audience_read::{
+    ForumCategoryAudiencePage, ForumCategoryAudienceReadService,
+};
+pub use category_audience_visibility::{
+    ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
 };
 pub use category_moderation_audience::{
     ForumCategoryModerationAudiencePolicy, ForumCategoryModerationAudiencePolicyLayer,

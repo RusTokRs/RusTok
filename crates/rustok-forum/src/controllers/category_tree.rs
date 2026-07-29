@@ -11,8 +11,9 @@ use std::time::Instant;
 use utoipa::IntoParams;
 
 use crate::{
-    CategoryService, CategoryTreeQuery, CategoryTreeResponse, ForumError,
-    MAX_FORUM_CATEGORY_TREE_NODES,
+    CategoryTreeQuery, CategoryTreeResponse, ForumCategoryAudienceReadService,
+    ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError,
+    MAX_FORUM_CATEGORY_TREE_NODES, category_read_audience_port_context,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -48,24 +49,48 @@ pub async fn get_category_tree(
         "Permission denied: forum_categories:list required",
     )?;
 
+    let locale = params
+        .locale
+        .unwrap_or_else(|| request_context.locale.clone());
     let query = CategoryTreeQuery {
-        locale: Some(params.locale.unwrap_or(request_context.locale)),
+        locale: Some(locale.clone()),
         fallback_locale: Some(
             params
                 .fallback_locale
                 .unwrap_or_else(|| tenant.default_locale.clone()),
         ),
     };
+    let context = category_read_audience_port_context(
+        ForumCategoryReadTransport::Rest,
+        ForumCategoryReadOperation::CategoryTree,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        &locale,
+    )
+    .map_err(category_tree_error)?;
+    let service = match runtime.audience_facts.clone() {
+        Some(facts) => {
+            ForumCategoryAudienceReadService::with_audience_facts(runtime.db_clone(), facts)
+        }
+        None => ForumCategoryAudienceReadService::new(runtime.db_clone()),
+    };
+
     let started_at = Instant::now();
-    let tree = CategoryService::new(runtime.db_clone())
-        .tree(tenant.id, forum_security(&auth), query)
+    let tree = service
+        .tree_authenticated_owner_visible_with_audience_context(
+            tenant.id,
+            forum_security(&auth),
+            context,
+            query,
+        )
         .await
         .map_err(category_tree_error)?;
 
     metrics::record_read_path_query(
         "http",
         "forum.category_tree",
-        "service_tree",
+        "exact_category_audience_owner",
         started_at.elapsed().as_secs_f64(),
         tree.total_nodes as u64,
     );

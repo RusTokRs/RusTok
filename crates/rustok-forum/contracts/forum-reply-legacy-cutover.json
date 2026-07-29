@@ -5,7 +5,8 @@
   "scope": "Cut existing GraphQL reply fields and canonical storefront transports over to the exact parent-topic audience owner while removing duplicate reply fetches",
   "reply_owner": "crates/rustok-forum/src/services/reply_audience_read.rs",
   "transport_context": "crates/rustok-forum/src/reply_read_transport.rs",
-  "legacy_graphql_query": "crates/rustok-forum/src/graphql/query.rs",
+  "legacy_graphql_query": "crates/rustok-forum/src/graphql/query_runtime.rs",
+  "legacy_graphql_snapshot": "crates/rustok-forum/src/graphql/query.rs",
   "graphql_runtime": "crates/rustok-forum/src/graphql/runtime_data.rs",
   "graphql_storefront_adapter": "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
   "native_storefront_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter.rs",
@@ -13,6 +14,7 @@
   "owner_note": "crates/rustok-forum/docs/forum-20bg-reply-legacy-cutover.md",
   "source_verifier": "scripts/verify/verify-forum-reply-legacy-cutover.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-reply-audience-read.json",
+  "downstream_completion": "crates/rustok-forum/contracts/forum-category-audience-read.json",
   "cutover_boundary": {
     "legacy_forum_replies_field_preserved": true,
     "legacy_forum_replies_uses_exact_owner": true,
@@ -30,7 +32,7 @@
     "temporary_graphql_reply_adapter_removed": true,
     "temporary_native_reply_adapter_removed": true,
     "additive_exact_graphql_fields_preserved": true,
-    "category_owner_read_changed": false,
+    "category_owner_read_changed": true,
     "search_index_changed": false,
     "seo_changed": false,
     "deep_link_changed": false,
@@ -46,7 +48,9 @@
     "mark_read_paths_changed": false,
     "selected_topic_gate_preserved": true,
     "profile_enrichment_preserved": true,
-    "approved_reply_filter_preserved": true
+    "approved_reply_filter_preserved": true,
+    "canonical_graphql_runtime_moved": true,
+    "legacy_graphql_snapshot_is_compiled": false
   },
   "documentation": {
     "owner_note_added": true,
@@ -54,22 +58,22 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BG through a conflict-safe repository-local edit."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BH through a conflict-safe repository-local edit; remove the uncompiled query.rs snapshot after downstream source verifiers are migrated."
   },
   "remaining_scope": [
-    "migrate remaining category owner and storefront reads through exact audience authorization",
     "migrate search index SEO and deep-link authorization",
     "add visibility-scoped category and all-read commands",
+    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
     "capture maintainer-executed SQLite PostgreSQL REST native and GraphQL runtime evidence"
   ],
   "downstream_task": "FORUM-20BH",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
-      "cargo test -p rustok-forum reply_read_transport -- --nocapture",
-      "cargo test -p rustok-forum --test topic_audience_exact_read_sqlite -- --nocapture",
-      "node scripts/verify/verify-forum-reply-audience-read.mjs",
+      "cargo test -p rustok-forum category_read_transport -- --nocapture",
+      "cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-reply-legacy-cutover.mjs",
+      "node scripts/verify/verify-forum-category-audience-read.mjs",
       "cargo xtask module validate forum"
     ]
   }

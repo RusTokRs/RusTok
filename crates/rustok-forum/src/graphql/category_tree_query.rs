@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, TenantContext,
+    AuthContext, RequestContext, TenantContext,
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
     has_any_effective_permission,
 };
@@ -11,9 +11,12 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    CategoryBreadcrumb, CategoryService, CategoryTreeNode, CategoryTreeQuery,
-    MAX_FORUM_CATEGORY_TREE_NODES,
+    CategoryBreadcrumb, CategoryTreeNode, CategoryTreeQuery, ForumCategoryReadOperation,
+    ForumCategoryReadTransport, MAX_FORUM_CATEGORY_TREE_NODES,
+    category_read_audience_port_context,
 };
+
+use super::ForumGraphqlRuntimeData;
 
 const MODULE_SLUG: &str = "forum";
 
@@ -36,15 +39,29 @@ impl ForumCategoryTreeQuery {
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let requested_locale = resolve_graphql_locale(ctx, locale.as_deref());
         let fallback_locale = fallback_locale.unwrap_or_else(|| tenant.default_locale.clone());
+        let audience_context = category_read_audience_port_context(
+            ForumCategoryReadTransport::Graphql,
+            ForumCategoryReadOperation::CategoryTree,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            requested_locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
         let started_at = Instant::now();
-        let tree = CategoryService::new(db.clone())
-            .tree(
+        let tree = runtime
+            .category_audience_read_service(db.clone())
+            .tree_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                audience_context,
                 CategoryTreeQuery {
                     locale: Some(requested_locale),
                     fallback_locale: Some(fallback_locale),
@@ -55,7 +72,7 @@ impl ForumCategoryTreeQuery {
         metrics::record_read_path_query(
             "graphql",
             "forum.category_tree",
-            "service_tree",
+            "exact_category_audience_owner",
             started_at.elapsed().as_secs_f64(),
             tree.total_nodes as u64,
         );

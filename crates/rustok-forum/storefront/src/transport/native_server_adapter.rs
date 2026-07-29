@@ -42,12 +42,14 @@ async fn storefront_forum_native(
         };
         use rustok_core::SecurityContext;
         use rustok_forum::{
-            CategoryService, ForumReplyAudienceReadService, ForumReplyReadOperation,
+            ForumCategoryAudienceReadService, ForumCategoryReadOperation,
+            ForumCategoryReadTransport, ForumReplyAudienceReadService, ForumReplyReadOperation,
             ForumReplyReadTransport, ForumStorefrontReadStateService,
             ForumTopicAudienceListService, ForumTopicAudienceReadService,
             ForumTopicReadOperation, ForumTopicReadTransport, ListRepliesFilter,
             ListTopicsFilter, ReplyStatus, SharedForumAudienceFactsPort,
-            reply_read_audience_port_context, topic_read_audience_port_context,
+            category_read_audience_port_context, reply_read_audience_port_context,
+            topic_read_audience_port_context,
         };
         use rustok_outbox::TransactionalEventBus;
 
@@ -69,7 +71,6 @@ async fn storefront_forum_native(
                     "forum/storefront-data requires TransactionalEventBus in host runtime context",
                 )
             })?;
-        let public_security = SecurityContext::public_read();
         let effective_locale = normalize_locale(
             locale
                 .as_deref()
@@ -77,8 +78,13 @@ async fn storefront_forum_native(
                 .or(Some(tenant.default_locale.as_str())),
         );
         let db = runtime_ctx.db_clone();
-        let category_service = CategoryService::new(db.clone());
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
+        let category_audience_service = match audience_facts.clone() {
+            Some(facts) => {
+                ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts)
+            }
+            None => ForumCategoryAudienceReadService::new(db.clone()),
+        };
         let topic_audience_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
                 db.clone(),
@@ -113,17 +119,48 @@ async fn storefront_forum_native(
         };
         let channel_slug = request.channel_slug.as_deref();
 
-        let (categories, categories_total) = category_service
-            .list_paginated_with_locale_fallback(
-                tenant.id,
-                public_security,
-                effective_locale.as_str(),
-                1,
-                12,
-                Some(tenant.default_locale.as_str()),
+        let category_page = if let Some(auth) = auth.as_ref().filter(|auth| {
+            has_any_effective_permission(
+                &auth.permissions,
+                &[Permission::FORUM_CATEGORIES_LIST],
             )
-            .await
+        }) {
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+            let audience_context = category_read_audience_port_context(
+                ForumCategoryReadTransport::NativeServer,
+                ForumCategoryReadOperation::CategoryList,
+                tenant.id,
+                auth,
+                Some(&request),
+                effective_locale.as_str(),
+            )
             .map_err(server_error)?;
+            category_audience_service
+                .list_authenticated_storefront_visible_with_audience_context(
+                    tenant.id,
+                    security,
+                    audience_context,
+                    1,
+                    12,
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await
+                .map_err(server_error)?
+        } else {
+            category_audience_service
+                .list_public_storefront_visible_with_locale_fallback(
+                    tenant.id,
+                    effective_locale.as_str(),
+                    1,
+                    12,
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await
+                .map_err(server_error)?
+        };
+        let categories = category_page.items;
+        let categories_total = category_page.total;
 
         let requested_topic_id = parse_optional_uuid(selected_topic_id.as_deref(), "topic_id")?;
         let mut selected_topic = match requested_topic_id {
@@ -142,10 +179,29 @@ async fn storefront_forum_native(
             None => None,
         };
 
-        let resolved_category_id =
-            parse_optional_uuid(selected_category_id.as_deref(), "category_id")?
-                .or_else(|| selected_topic.as_ref().map(|topic| topic.category_id))
-                .or_else(|| categories.first().map(|category| category.id));
+        let requested_category_id =
+            parse_optional_uuid(selected_category_id.as_deref(), "category_id")?;
+        let category_candidate_id = requested_category_id
+            .or_else(|| selected_topic.as_ref().map(|topic| topic.category_id));
+        let exact_selected_category = match category_candidate_id {
+            Some(category_id) => {
+                load_audience_visible_category(
+                    &category_audience_service,
+                    tenant.id,
+                    auth.as_ref(),
+                    &request,
+                    category_id,
+                    effective_locale.as_str(),
+                    tenant.default_locale.as_str(),
+                )
+                .await?
+            }
+            None => None,
+        };
+        let resolved_category_id = exact_selected_category
+            .as_ref()
+            .map(|category| category.id)
+            .or_else(|| categories.first().map(|category| category.id));
         let topic_filter = ListTopicsFilter {
             category_id: resolved_category_id,
             status: None,
@@ -423,6 +479,66 @@ fn parse_optional_uuid(
                 .map_err(|_| ServerFnError::new(format!("{field} must be a valid UUID")))
         })
         .transpose()
+}
+
+#[cfg(feature = "ssr")]
+async fn load_audience_visible_category(
+    service: &rustok_forum::ForumCategoryAudienceReadService,
+    tenant_id: uuid::Uuid,
+    auth: Option<&rustok_api::AuthContext>,
+    request: &rustok_api::RequestContext,
+    category_id: uuid::Uuid,
+    locale: &str,
+    fallback_locale: &str,
+) -> Result<Option<rustok_forum::CategoryResponse>, ServerFnError> {
+    if let Some(auth) = auth.filter(|auth| {
+        rustok_api::has_any_effective_permission(
+            &auth.permissions,
+            &[rustok_api::Permission::FORUM_CATEGORIES_LIST],
+        )
+    }) {
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        let context = rustok_forum::category_read_audience_port_context(
+            rustok_forum::ForumCategoryReadTransport::NativeServer,
+            rustok_forum::ForumCategoryReadOperation::SelectedCategory,
+            tenant_id,
+            auth,
+            Some(request),
+            locale,
+        )
+        .map_err(server_error)?;
+        match service
+            .get_authenticated_storefront_list_visible_with_audience_context(
+                tenant_id,
+                security,
+                context,
+                category_id,
+                Some(fallback_locale),
+            )
+            .await
+        {
+            Ok(category) => Ok(Some(category)),
+            Err(rustok_forum::ForumError::CategoryNotFound(_)) => Ok(None),
+            Err(error) => Err(server_error(error)),
+        }
+    } else {
+        match service
+            .get_public_storefront_visible_with_locale_fallback(
+                tenant_id,
+                category_id,
+                locale,
+                Some(fallback_locale),
+            )
+            .await
+        {
+            Ok(category) => Ok(Some(category)),
+            Err(rustok_forum::ForumError::CategoryNotFound(_)) => Ok(None),
+            Err(error) => Err(server_error(error)),
+        }
+    }
 }
 
 #[cfg(feature = "ssr")]
