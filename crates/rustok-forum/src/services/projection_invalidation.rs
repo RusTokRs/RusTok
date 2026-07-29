@@ -1,5 +1,5 @@
-use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseTransaction;
 use uuid::Uuid;
 
@@ -116,15 +116,16 @@ async fn write_projection_invalidation_in_tx(
     target_type: &'static str,
     target_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    let envelope = EventEnvelope::new(
+    TransactionalEventBus::publish_root_in_tx(
+        txn,
         tenant_id,
         actor_id,
         DomainEvent::ReindexRequested {
             target_type: target_type.to_string(),
             target_id,
         },
-    );
-    OutboxTransport::write_envelope_in_tx(txn, envelope).await?;
+    )
+    .await?;
     Ok(())
 }
 
