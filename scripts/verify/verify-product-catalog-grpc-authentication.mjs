@@ -193,7 +193,7 @@ requireAll(plan, [
   "trusted service actor",
   "authentication source",
   "Product remains `boundary_ready`",
-  "Implement a standalone Product catalog service host",
+  "standalone Product catalog service host is source-complete",
   "verify-product-catalog-grpc-authentication.mjs",
 ], "Product authentication implementation plan");
 
