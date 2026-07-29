@@ -8,14 +8,16 @@ Reply text is not folded into the parent topic document. Keeping a separate iden
 
 ## Forum-owned authorization
 
-`crates/rustok-forum/src/search_projection.rs` remains the source owner. Search receives only already-authorized documents.
+`ForumReplyAudienceReadService` now publishes an exact selected anonymous-public reply read. It resolves the typed allowed status and parent-topic visibility before loading reply content. `ForumPublicDiscoveryService` exposes that decision to cross-consumer projection code.
+
+`crates/rustok-forum/src/search_projection.rs` remains the Forum-owned source mapper. Its direct reply-body query is limited to bounded raw locale candidate enumeration; it does not load reply status or content directly. Search receives only already-authorized `ReplyResponse` values.
 
 A reply document is emitted only when all of the following are true:
 
-- the typed Forum reply status is `Approved`;
-- the parent topic passes the exact anonymous public discovery owner with no route channel;
+- the selected reply owner accepts typed `ReplyStatus::Approved`;
+- the parent topic passes the exact anonymous public visibility owner with no route channel;
 - the parent category passes the exact anonymous public discovery owner;
-- an exact body exists for the raw reply locale candidate.
+- the selected owner returns the exact raw candidate locale rather than a fallback body.
 
 This means pending, rejected, deleted, hidden or otherwise non-approved replies are absent. Replies beneath closed, channel-restricted, inherited-policy-denied or topic-policy-denied parents are also absent. Search SQL contains no Forum audience or moderation predicate.
 
@@ -37,7 +39,7 @@ Each projected reply uses:
 - reply body as the searchable body;
 - topic title as the result title;
 - category name as the subtitle;
-- bounded payload containing reply, topic, category, author, parent, position and solution identities.
+- bounded payload containing reply, topic, category, author, parent and solution identities.
 
 Vote totals and author profile fields are deliberately not copied. A safe author summary and richer FORUM-23 filters remain later owner-composition work.
 
