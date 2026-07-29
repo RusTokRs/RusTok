@@ -47,8 +47,10 @@ requireAll(cargo, [
   'name = "rustok-product-transport"',
   "rustok-api.workspace = true",
   "rustok-product.workspace = true",
+  "thiserror.workspace = true",
   "tonic = { workspace = true",
   "tonic-prost.workspace = true",
+  "url.workspace = true",
   "protoc-bin-vendored.workspace = true",
   "tonic-prost-build.workspace = true",
   'tokio-stream = { version = "0.1", features = ["net"] }',
@@ -72,9 +74,11 @@ requireAll(proto, [
 ], "Product catalog protobuf");
 requireAll(lib, [
   "pub mod client;",
+  "pub mod connection;",
   "pub mod server;",
   'tonic::include_proto!("rustok.product")',
   "GrpcProductCatalogReadProvider",
+  "GrpcProductCatalogReadConnectionConfig",
   "ProductCatalogGrpcService",
   "TrustedProductCatalogAuthority",
   "ProductCatalogGrpcOperation",
@@ -151,8 +155,8 @@ if (registry) {
   if (external.crate !== "rustok-product-transport") {
     failures.push("Product FBA registry must name rustok-product-transport");
   }
-  if (external.status !== "source_complete_execution_pending") {
-    failures.push("Product external transport must remain source_complete_execution_pending");
+  if (external.status !== "runtime_wired_execution_pending") {
+    failures.push("Product external transport must remain runtime_wired_execution_pending");
   }
   if (external.client !== "GrpcProductCatalogReadProvider") {
     failures.push("Product external transport client identity drift");
@@ -182,10 +186,10 @@ if (registry) {
 }
 
 requireAll(plan, [
-  "`rustok-product-transport` now supplies a concrete tonic gRPC client/server adapter",
-  "source is complete",
-  "has not been executed by the implementation agent",
-  "Loopback execution evidence and production external-profile wiring",
+  "`rustok-product-transport` supplies a concrete tonic gRPC client/server adapter",
+  "Adapter and production-wiring source are complete",
+  "has been run by the implementation agent",
+  "configured remote-profile execution evidence remain open",
   "cargo test -p rustok-product-transport --test port_conformance",
   "ProductCatalogReadRuntime::external",
   "verify-product-catalog-grpc-transport.mjs",
