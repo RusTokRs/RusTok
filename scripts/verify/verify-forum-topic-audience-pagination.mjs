@@ -34,8 +34,14 @@ if (!contract.pagination_boundary.items_and_total_share_allowed_sequence) {
 if (!contract.pagination_boundary.graphql_unread_query_uses_exact_owner) {
   throw new Error('contract must lock GraphQL unread composition');
 }
-if (contract.pagination_boundary.native_storefront_composed) {
-  throw new Error('FORUM-20BD must not claim native storefront composition');
+if (contract.completed_by_task !== 'FORUM-20BE') {
+  throw new Error('FORUM-20BD handoff must identify FORUM-20BE completion');
+}
+if (!contract.pagination_boundary.native_storefront_composed) {
+  throw new Error('FORUM-20BE must compose the native storefront');
+}
+if (!contract.pagination_boundary.public_graphql_topic_list_composed) {
+  throw new Error('FORUM-20BE must compose public GraphQL topic pagination');
 }
 
 console.log('forum topic audience pagination composition verified');
