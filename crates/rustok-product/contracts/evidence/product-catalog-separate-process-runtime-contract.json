@@ -81,6 +81,7 @@
     ]
   },
   "source_files": [
+    "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
     "crates/rustok-product-catalog-service/src/main.rs",
     "crates/rustok-product-transport/examples/product_catalog_runtime_probe.rs",
     "crates/rustok-product-transport/src/auth.rs",
@@ -94,13 +95,13 @@
     "git_commit",
     "started_at",
     "completed_at",
-    "node_version",
-    "cargo_version",
-    "rustc_version",
+    "toolchain.node",
+    "toolchain.cargo",
+    "toolchain.rustc",
     "source_sha256",
-    "provider_output_sha256",
-    "probe_output_sha256",
-    "consumer_output_sha256"
+    "provider.output_sha256",
+    "authenticated_probe.output_sha256",
+    "consumer_server.output_sha256"
   ],
   "privacy_boundary": {
     "forbidden_persisted_values": [
