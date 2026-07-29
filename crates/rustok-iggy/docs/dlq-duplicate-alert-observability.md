@@ -35,7 +35,7 @@ rustok_dlq_duplicate_alert_snapshots_total
 rustok_dlq_duplicate_alert_evaluation_flags
 ```
 
-Labels are limited to closed deployment, scan-mode, state, availability, level, and evaluation-flag domains. No tenant, identifier, coordinate, raw error, threshold, source-count, or arbitrary label is accepted.
+The bounded labels are limited to closed deployment, scan-mode, state, availability, level, and evaluation-flag domains. No tenant, identifier, coordinate, raw error, threshold, source-count, or arbitrary label is accepted.
 
 The companion records state only after a state transition and records snapshot counters/flags only after the runtime generation changes. It does not infer whether an unavailable transition came from connection, polling, validation, or publication, so no guessed failure-stage label is emitted.
 
