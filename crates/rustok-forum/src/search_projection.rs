@@ -15,8 +15,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_category, forum_category_translation, forum_reply, forum_reply_body,
-    forum_topic_translation,
+    forum_category, forum_category_translation, forum_reply_body, forum_topic_translation,
 };
 use crate::state_machine::ReplyStatus;
 use crate::ForumPublicDiscoveryService;
@@ -326,23 +325,29 @@ impl ForumSearchProjectionSource {
         reply_id: Uuid,
         locale: &str,
     ) -> Result<Option<SearchProjectionDocument>> {
-        let owner = forum_reply::Entity::find_by_id(reply_id)
-            .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+        let reply = self
+            .discovery
+            .get_public_reply_with_locale_fallback(
+                tenant_id,
+                reply_id,
+                locale,
+                None,
+                None,
+                Some(&[ReplyStatus::Approved]),
+            )
             .await
-            .map_err(Error::Database)?;
-        let Some(owner) = owner else {
+            .map_err(map_forum_error)?;
+        let Some(reply) = reply else {
             return Ok(None);
         };
-        if owner.status != ReplyStatus::Approved {
+        if reply.effective_locale != locale {
             return Ok(None);
         }
-
         let topic = self
             .discovery
             .get_public_topic_with_locale_fallback(
                 tenant_id,
-                owner.topic_id,
+                reply.topic_id,
                 locale,
                 None,
                 None,
@@ -365,22 +370,10 @@ impl ForumSearchProjectionSource {
         let Some(category) = category else {
             return Ok(None);
         };
-        let body = forum_reply_body::Entity::find()
-            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
-            .filter(forum_reply_body::Column::Locale.eq(locale))
-            .one(&self.db)
-            .await
-            .map_err(Error::Database)?;
-        let Some(body) = body else {
-            return Ok(None);
-        };
 
-        let created_at = owner.created_at.with_timezone(&Utc);
-        let owner_updated_at = owner.updated_at.with_timezone(&Utc);
-        let body_updated_at = body.updated_at.with_timezone(&Utc);
-        let updated_at = owner_updated_at.max(body_updated_at);
-        let is_solution = topic.solution_reply_id == Some(reply_id);
+        let created_at = parse_timestamp(&reply.created_at, "reply.created_at")?;
+        let updated_at = parse_timestamp(&reply.updated_at, "reply.updated_at")?;
+        let is_solution = reply.is_solution && topic.solution_reply_id == Some(reply_id);
         let route = format!("/modules/forum?topic={}&reply={reply_id}", topic.id);
         Ok(Some(SearchProjectionDocument {
             document_key: format!("forum_reply:{reply_id}:{locale}"),
@@ -389,28 +382,27 @@ impl ForumSearchProjectionSource {
             source_module: FORUM_SOURCE_MODULE.to_string(),
             entity_type: FORUM_REPLY_ENTITY_TYPE.to_string(),
             locale: locale.to_string(),
-            status: owner.status.to_string(),
+            status: reply.status,
             is_public: true,
             title: topic.title.clone(),
             subtitle: Some(category.name.clone()),
             slug: None,
             handle: None,
-            body: body.body,
+            body: reply.content,
             keywords_text: format!("{} {} {}", category.name, topic.title, topic.slug),
             facets: json!({
                 "kind": "forum_reply",
                 "category_id": topic.category_id,
                 "topic_id": topic.id,
-                "has_parent": owner.parent_reply_id.is_some(),
+                "has_parent": reply.parent_reply_id.is_some(),
                 "is_solution": is_solution
             }),
             payload: json!({
                 "reply_id": reply_id,
                 "topic_id": topic.id,
                 "category_id": topic.category_id,
-                "author_id": owner.author_id,
-                "parent_reply_id": owner.parent_reply_id,
-                "position": owner.position,
+                "author_id": reply.author_id,
+                "parent_reply_id": reply.parent_reply_id,
                 "is_solution": is_solution,
                 "route": route
             }),
@@ -609,7 +601,7 @@ fn parse_timestamp(value: &str, field: &str) -> Result<DateTime<Utc>> {
         .map(|timestamp| timestamp.with_timezone(&Utc))
         .map_err(|_| {
             Error::Validation(format!(
-                "Forum Search projection topic {field} is not RFC3339"
+                "Forum Search projection {field} is not RFC3339"
             ))
         })
 }
