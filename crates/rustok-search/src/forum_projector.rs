@@ -17,6 +17,7 @@ use crate::{
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
 const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
+const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply";
 const MAX_TARGET_ENTITY_DOCUMENTS: usize = 32;
 const STAGE_TABLE: &str = "forum_search_projection_stage";
 
@@ -171,7 +172,7 @@ impl ForumSearchProjector {
 fn validate_entity_type(entity_type: &str) -> Result<()> {
     if matches!(
         entity_type,
-        FORUM_CATEGORY_ENTITY_TYPE | FORUM_TOPIC_ENTITY_TYPE
+        FORUM_CATEGORY_ENTITY_TYPE | FORUM_TOPIC_ENTITY_TYPE | FORUM_REPLY_ENTITY_TYPE
     ) {
         Ok(())
     } else {
@@ -212,7 +213,7 @@ where
 {
     let statement = Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = 'forum' AND entity_type IN ('forum_category', 'forum_topic')",
+        "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = 'forum' AND entity_type IN ('forum_category', 'forum_topic', 'forum_reply')",
         vec![tenant_id.into()],
     );
     conn.execute(statement).await.map_err(Error::Database)?;
