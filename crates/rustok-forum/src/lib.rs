@@ -7,6 +7,7 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod audience;
 pub mod category_presentation;
+pub mod category_read_transport;
 pub mod constants;
 pub mod controllers;
 pub mod dto;
@@ -40,6 +41,9 @@ pub use audience::{
     MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES, MAX_FORUM_AUDIENCE_TRUST_LEVEL,
     SharedForumAudienceFactsPort,
 };
+pub use category_read_transport::{
+    ForumCategoryReadOperation, ForumCategoryReadTransport, category_read_audience_port_context,
+};
 pub use constants::*;
 pub use dto::*;
 pub use entities::*;
@@ -56,8 +60,10 @@ pub use reply_read_transport::{
     ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
 };
 pub use services::{
-    CategoryService, ForumApprovedPostsFactPort, ForumCategoryAudiencePolicy,
-    ForumCategoryAudiencePolicyLayer, ForumCategoryAudiencePolicyService,
+    CategoryService, ForumApprovedPostsFactPort, ForumCategoryAudiencePage,
+    ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
+    ForumCategoryAudiencePolicyService, ForumCategoryAudienceReadService,
+    ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
     ForumCategoryModerationAudiencePolicy, ForumCategoryModerationAudiencePolicyLayer,
     ForumCategoryModerationAudiencePolicyService, ForumCategoryReplyCreateAudiencePolicy,
     ForumCategoryReplyCreateAudiencePolicyLayer, ForumCategoryReplyCreateAudiencePolicyService,
