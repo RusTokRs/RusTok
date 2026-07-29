@@ -105,9 +105,9 @@ the authenticated transport example, starts `rustok-server` with the external
 Product profile, and waits for remote-provider and HTTP host readiness before
 bounded shutdown. Commands and readiness markers are allowlisted; arbitrary shell
 commands and non-loopback plaintext are rejected. Retained output contains source
-hashes, toolchain versions, marker sets, output hashes, and byte counts only; raw
-database URLs, bearer credentials, tenant IDs, product IDs, variant IDs, and process logs are not retained. A successful capture would prove provider startup,
-authenticated owner RPCs, and consumer remote-profile initialization, but Commerce and AI business requests through the separate consumer process remain open.
+hashes, toolchain versions, marker sets, output hashes, and byte counts only.
+The capture contract guarantees that raw database URLs, bearer credentials, tenant IDs, product IDs, variant IDs, and process logs are not retained.
+A successful capture would prove provider startup, authenticated owner RPCs, and consumer remote-profile initialization, but Commerce and AI business requests through the separate consumer process remain open.
 
 Adapter and production-wiring source are complete. Consumer-behavior,
 authentication, provider-host, and schema-preflight source are complete, and the
