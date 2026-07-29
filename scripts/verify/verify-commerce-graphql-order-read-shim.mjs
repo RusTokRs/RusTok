@@ -15,7 +15,7 @@ const shim = read(
   'crates/rustok-commerce/src/graphql/safe_query/source/rustok_order_shim.rs',
 );
 const query = read('crates/rustok-commerce/src/graphql/query.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const note = read('crates/rustok-commerce/docs/graphql-order-read-shim.md');
 const failures = [];
 
 const requireText = (value, text, label) => {
@@ -40,7 +40,8 @@ for (const [value, text, label] of [
   [shim, 'self.inner.get_return(', 'unchanged return delegate'],
   [shim, 'self.inner.list_returns(', 'unchanged return list delegate'],
   [query, 'use rustok_order::OrderService;', 'legacy included source import'],
-  [plan, 'GraphQL safe-query order detail/list compatibility facade', 'master-plan checkpoint'],
+  [note, 'Status: source-ready, unvalidated.', 'checkpoint status'],
+  [note, 'scope the host-selected `CommerceOrderReadRuntime`', 'remaining runtime handoff'],
 ]) requireText(value, text, label);
 
 for (const [text, label] of [
