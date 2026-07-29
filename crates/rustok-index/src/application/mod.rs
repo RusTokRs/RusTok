@@ -1,6 +1,7 @@
 mod cursor;
 mod planner;
 mod postgres_compiler;
+mod postgres_query_result;
 mod postgres_query_sql;
 mod registry;
 mod validation;
@@ -9,6 +10,8 @@ mod validation;
 mod planner_tests;
 #[cfg(test)]
 mod postgres_compiler_tests;
+#[cfg(test)]
+mod postgres_query_result_tests;
 #[cfg(test)]
 mod reference;
 
@@ -20,6 +23,11 @@ pub use planner::{
 pub use postgres_compiler::{
     CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue,
     PostgresQueryBuildError, PostgresQueryCompileError,
+};
+pub use postgres_query_result::{
+    CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow, IndexProjectedValue,
+    IndexQueryItem, IndexQueryPage, IndexRelationIdentity, PostgresQueryDecodeError,
+    PostgresQueryPageBuildError,
 };
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
