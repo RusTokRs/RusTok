@@ -5,11 +5,12 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{FieldPath, IndexQuery, LinkCardinality, Pagination};
+use crate::domain::{FieldPath, IndexQuery, LinkCardinality, LinkName, Pagination};
 
 use super::{
     CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
-    QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
+    PlannedManyProjection, QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
+    planner::derive_many_projections,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +43,12 @@ pub enum CompiledQueryColumn {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompiledManyRelationColumn {
+    pub output_alias: String,
+    pub projection: PlannedManyProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledPostgresCount {
     pub sql: String,
     pub binds: Vec<PostgresBindValue>,
@@ -52,6 +59,7 @@ pub struct CompiledPostgresQuery {
     pub sql: String,
     pub binds: Vec<PostgresBindValue>,
     pub columns: Vec<CompiledQueryColumn>,
+    pub many_relations: Vec<CompiledManyRelationColumn>,
     pub exact_count: Option<CompiledPostgresCount>,
     pub plan_fingerprint: QueryPlanFingerprint,
 }
@@ -72,8 +80,14 @@ pub enum PostgresQueryCompileError {
     CursorContextRequired,
     #[error("decoded cursor context does not match query pagination")]
     CursorContextMismatch,
-    #[error("many-cardinality link query semantics require nested aggregation or EXISTS planning")]
-    ManyLinkSemanticsPending,
+    #[error("many-cardinality ordering requires an explicit aggregate policy: {0:?}")]
+    ManyLinkOrderingPending(FieldPath),
+    #[error("query plan has no join contract for path {0:?}")]
+    MissingJoinPlan(Vec<LinkName>),
+    #[error("query plan many-link traversal metadata is inconsistent for path {0:?}")]
+    ManyTraversalMismatch(Vec<LinkName>),
+    #[error("query plan nested many-projection metadata is inconsistent")]
+    ManyProjectionPlanMismatch,
     #[error("query plan relation aliases do not match the path-alias map")]
     AliasMappingMismatch,
     #[error("query plan has no typed field contract for {0:?}")]
@@ -162,8 +176,21 @@ impl ExecutableQueryPlan {
             {
                 return Err(PostgresQueryCompileError::AliasMappingMismatch);
             }
-            if join.cardinality == LinkCardinality::Many {
-                return Err(PostgresQueryCompileError::ManyLinkSemanticsPending);
+            let parent_traverses_many = if parent_path.is_empty() {
+                false
+            } else {
+                self.join_for_path(&parent_path)
+                    .ok_or_else(|| {
+                        PostgresQueryCompileError::MissingJoinPlan(parent_path.clone())
+                    })?
+                    .traverses_many
+            };
+            let expected_traverses_many =
+                parent_traverses_many || join.cardinality == LinkCardinality::Many;
+            if join.traverses_many != expected_traverses_many {
+                return Err(PostgresQueryCompileError::ManyTraversalMismatch(
+                    join.path.clone(),
+                ));
             }
         }
 
@@ -175,6 +202,20 @@ impl ExecutableQueryPlan {
             {
                 return Err(PostgresQueryCompileError::AliasMappingMismatch);
             }
+            let expected_traverses_many = if path.links().is_empty() {
+                false
+            } else {
+                self.join_for_path(path.links())
+                    .ok_or_else(|| {
+                        PostgresQueryCompileError::MissingJoinPlan(path.links().to_vec())
+                    })?
+                    .traverses_many
+            };
+            if field.traverses_many != expected_traverses_many {
+                return Err(PostgresQueryCompileError::ManyTraversalMismatch(
+                    path.links().to_vec(),
+                ));
+            }
         }
         for field in &self.projection {
             if self.referenced_fields.get(&field.path) != Some(field) {
@@ -183,9 +224,15 @@ impl ExecutableQueryPlan {
                 ));
             }
         }
+        validate_many_projection_contract(self)?;
         for order in &self.order_by {
             if self.referenced_fields.get(&order.field.path) != Some(&order.field) {
                 return Err(PostgresQueryCompileError::MissingFieldPlan(
+                    order.field.path.clone(),
+                ));
+            }
+            if order.field.traverses_many {
+                return Err(PostgresQueryCompileError::ManyLinkOrderingPending(
                     order.field.path.clone(),
                 ));
             }
@@ -228,6 +275,26 @@ impl ExecutableQueryPlan {
             _ => Err(PostgresQueryCompileError::CursorContextMismatch),
         }
     }
+}
+
+fn validate_many_projection_contract(
+    plan: &ExecutableQueryPlan,
+) -> Result<(), PostgresQueryCompileError> {
+    if plan.many_projections != derive_many_projections(&plan.projection) {
+        return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
+    }
+
+    for projection in &plan.many_projections {
+        if projection.path.is_empty() || projection.fields.is_empty() {
+            return Err(PostgresQueryCompileError::ManyProjectionPlanMismatch);
+        }
+        for path in &projection.identity_paths {
+            if plan.join_for_path(path).is_none() {
+                return Err(PostgresQueryCompileError::MissingJoinPlan(path.clone()));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_alias(alias: &str) -> Result<(), PostgresQueryCompileError> {

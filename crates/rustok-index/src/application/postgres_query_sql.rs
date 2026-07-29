@@ -1,11 +1,13 @@
-use crate::domain::{FieldPath, FilterExpr, IndexValue, IndexValueType, OrderDirection, Pagination};
+use crate::domain::{
+    FieldPath, FilterExpr, IndexValue, IndexValueType, OrderDirection, Pagination,
+};
 
 use super::{
     cursor::IndexCursor,
-    planner::{ExecutableQueryPlan, PlannedField},
+    planner::{ExecutableQueryPlan, PlannedField, PlannedManyProjection},
     postgres_compiler::{
-        CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue,
-        PostgresQueryCompileError, quote_identifier,
+        CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
+        CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError, quote_identifier,
     },
 };
 
@@ -17,13 +19,14 @@ pub(super) fn compile_postgres_plan(
     let base = compile_base(plan, &mut bindings);
     let mut select = Vec::new();
     let mut columns = Vec::new();
+    let mut many_relations = Vec::new();
     push_identity_column(
         &mut select,
         &mut columns,
         &plan.root_alias,
         &base.root_alias,
     );
-    for join in &plan.joins {
+    for join in plan.outer_joins() {
         push_identity_column(
             &mut select,
             &mut columns,
@@ -33,6 +36,9 @@ pub(super) fn compile_postgres_plan(
     }
 
     for (index, field) in plan.projection.iter().enumerate() {
+        if field.traverses_many {
+            continue;
+        }
         let field_sql = field_sql(field, &mut bindings);
         let output_alias = format!("f{index}");
         select.push(format!(
@@ -43,6 +49,19 @@ pub(super) fn compile_postgres_plan(
         columns.push(CompiledQueryColumn::Field {
             output_alias,
             field: field.clone(),
+        });
+    }
+
+    for (index, projection) in plan.many_projections.iter().enumerate() {
+        let output_alias = format!("__many_{index}");
+        let aggregate = compile_many_projection(plan, projection, index, &mut bindings)?;
+        select.push(format!(
+            "{aggregate} AS {}",
+            quote_identifier(&output_alias),
+        ));
+        many_relations.push(CompiledManyRelationColumn {
+            output_alias,
+            projection: projection.clone(),
         });
     }
 
@@ -86,6 +105,7 @@ pub(super) fn compile_postgres_plan(
         sql,
         binds: bindings.values,
         columns,
+        many_relations,
         exact_count,
         plan_fingerprint: plan.fingerprint()?,
     })
@@ -117,7 +137,7 @@ fn compile_base(plan: &ExecutableQueryPlan, bindings: &mut Bindings) -> Compiled
     ));
 
     let mut from_sql = format!("FROM index_entities AS {root_alias}");
-    for (index, join) in plan.joins.iter().enumerate() {
+    for (index, join) in plan.outer_joins().enumerate() {
         let source_alias = quote_identifier(&join.source_alias);
         let target_alias = quote_identifier(&join.alias);
         let link_alias = quote_identifier(&format!("l{}", index + 1));
@@ -145,6 +165,90 @@ fn compile_base(plan: &ExecutableQueryPlan, bindings: &mut Bindings) -> Compiled
     }
 }
 
+fn compile_many_projection(
+    plan: &ExecutableQueryPlan,
+    projection: &PlannedManyProjection,
+    projection_index: usize,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let mut source_alias = plan.root_alias.clone();
+    let mut from_sql = String::new();
+    let mut predicates = Vec::new();
+    let mut identity_values = Vec::with_capacity(projection.identity_paths.len());
+    let mut order_terms = Vec::with_capacity(projection.identity_paths.len() * 3);
+    let mut terminal_alias = None;
+
+    for (index, path) in projection.identity_paths.iter().enumerate() {
+        let join = plan
+            .join_for_path(path)
+            .ok_or_else(|| PostgresQueryCompileError::MissingJoinPlan(path.clone()))?;
+        let link_alias_name = format!("mp{projection_index}_l{}", index + 1);
+        let target_alias_name = format!("mp{projection_index}_t{}", index + 1);
+        let source_alias_q = quote_identifier(&source_alias);
+        let link_alias = quote_identifier(&link_alias_name);
+        let target_alias = quote_identifier(&target_alias_name);
+        let link_name = bindings.push(PostgresBindValue::Text(join.link.as_str().to_owned()));
+        let target_module = bindings.push(PostgresBindValue::Text(
+            join.target_schema.module.as_str().to_owned(),
+        ));
+        let target_entity = bindings.push(PostgresBindValue::Text(
+            join.target_schema.entity.as_str().to_owned(),
+        ));
+        let target_version = bindings.push(PostgresBindValue::Integer(i64::from(
+            join.target_schema.version.get(),
+        )));
+        let source_predicate = format!(
+            "{link_alias}.tenant_id = {source_alias_q}.tenant_id AND {link_alias}.source_module = {source_alias_q}.module_name AND {link_alias}.source_entity = {source_alias_q}.entity_name AND {link_alias}.source_schema_version = {source_alias_q}.schema_version AND {link_alias}.source_entity_id = {source_alias_q}.entity_id AND {link_alias}.source_locale_key = {source_alias_q}.locale_key AND {link_alias}.source_version = {source_alias_q}.source_version AND {link_alias}.link_name = {link_name} AND {link_alias}.target_module = {target_module} AND {link_alias}.target_entity = {target_entity} AND {link_alias}.target_schema_version = {target_version}"
+        );
+        let target_predicate = format!(
+            "{target_alias}.tenant_id = {link_alias}.tenant_id AND {target_alias}.module_name = {link_alias}.target_module AND {target_alias}.entity_name = {link_alias}.target_entity AND {target_alias}.schema_version = {link_alias}.target_schema_version AND {target_alias}.entity_id = {link_alias}.target_entity_id AND {target_alias}.locale_key = {link_alias}.target_locale_key AND {target_alias}.is_deleted = FALSE"
+        );
+
+        if index == 0 {
+            from_sql.push_str(&format!(
+                "FROM index_links AS {link_alias} JOIN index_entities AS {target_alias} ON {target_predicate}",
+            ));
+            predicates.push(source_predicate);
+        } else {
+            from_sql.push_str(&format!(
+                " JOIN index_links AS {link_alias} ON {source_predicate} JOIN index_entities AS {target_alias} ON {target_predicate}",
+            ));
+        }
+
+        identity_values.push(format!("{target_alias}.entity_id"));
+        order_terms.push(format!("{link_alias}.ordinal ASC"));
+        order_terms.push(format!("{target_alias}.entity_id ASC"));
+        order_terms.push(format!("{target_alias}.locale_key ASC"));
+        source_alias = target_alias_name.clone();
+        terminal_alias = Some(target_alias_name);
+    }
+
+    let terminal_alias = terminal_alias.ok_or(
+        PostgresQueryCompileError::ManyProjectionPlanMismatch,
+    )?;
+    let field_values = projection
+        .fields
+        .iter()
+        .map(|field| {
+            let sql = field_sql_for_alias(field, &terminal_alias, bindings);
+            format!(
+                "COALESCE({}, jsonb_build_object('type', 'null'))",
+                sql.raw
+            )
+        })
+        .collect::<Vec<_>>();
+    let item = format!(
+        "jsonb_build_object('entity_ids', jsonb_build_array({}), 'values', jsonb_build_array({}))",
+        identity_values.join(", "),
+        field_values.join(", "),
+    );
+    Ok(format!(
+        "COALESCE((SELECT jsonb_agg({item} ORDER BY {}) {from_sql} WHERE {}), '[]'::jsonb)",
+        order_terms.join(", "),
+        predicates.join(" AND "),
+    ))
+}
+
 fn compile_filter(
     plan: &ExecutableQueryPlan,
     filter: &FilterExpr,
@@ -157,24 +261,77 @@ fn compile_filter(
             "NOT ({})",
             compile_filter(plan, child, bindings)?
         )),
-        FilterExpr::Eq(path, value) => {
-            let field = planned_field(plan, path)?;
-            let sql = field_sql(field, bindings);
+        FilterExpr::Eq(path, value) => compile_eq(plan, path, value, bindings),
+        FilterExpr::Ne(path, value) => compile_ne(plan, path, value, bindings),
+        FilterExpr::In(path, values) => compile_in(plan, path, values, bindings),
+        FilterExpr::Gt(path, value) => compile_range(plan, path, value, ">", bindings),
+        FilterExpr::Gte(path, value) => compile_range(plan, path, value, ">=", bindings),
+        FilterExpr::Lt(path, value) => compile_range(plan, path, value, "<", bindings),
+        FilterExpr::Lte(path, value) => compile_range(plan, path, value, "<=", bindings),
+        FilterExpr::Contains(path, value) => compile_contains(plan, path, value, bindings),
+        FilterExpr::IsNull(path, expected_null) => {
+            compile_is_null(plan, path, *expected_null, bindings)
+        }
+    }
+}
+
+fn compile_eq(
+    plan: &ExecutableQueryPlan,
+    path: &FieldPath,
+    value: &IndexValue,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let field = planned_field(plan, path)?;
+    if field.traverses_many {
+        compile_many_exists(plan, field, bindings, |sql, bindings| {
             let value = bindings.push(scalar_bind(path, value)?);
             Ok(format!("COALESCE({} = {value}, FALSE)", sql.scalar))
-        }
-        FilterExpr::Ne(path, value) => {
-            let field = planned_field(plan, path)?;
-            let sql = field_sql(field, bindings);
+        })
+    } else {
+        let sql = field_sql(field, bindings);
+        let value = bindings.push(scalar_bind(path, value)?);
+        Ok(format!("COALESCE({} = {value}, FALSE)", sql.scalar))
+    }
+}
+
+fn compile_ne(
+    plan: &ExecutableQueryPlan,
+    path: &FieldPath,
+    value: &IndexValue,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let field = planned_field(plan, path)?;
+    if field.traverses_many {
+        let present = compile_many_exists(plan, field, bindings, |sql, _| {
+            Ok(format!("{} IS NOT NULL", sql.raw))
+        })?;
+        let disqualifying = compile_many_exists(plan, field, bindings, |sql, bindings| {
             let value = bindings.push(scalar_bind(path, value)?);
             Ok(format!(
-                "({} IS NOT NULL AND {} <> {value})",
-                sql.scalar, sql.scalar
+                "({} IS NOT NULL AND ({} IS NULL OR {} = 'null' OR COALESCE({} = {value}, FALSE)))",
+                sql.raw, sql.type_text, sql.type_text, sql.scalar,
             ))
-        }
-        FilterExpr::In(path, values) => {
-            let field = planned_field(plan, path)?;
-            let sql = field_sql(field, bindings);
+        })?;
+        Ok(format!("({present} AND NOT ({disqualifying}))"))
+    } else {
+        let sql = field_sql(field, bindings);
+        let value = bindings.push(scalar_bind(path, value)?);
+        Ok(format!(
+            "({} IS NOT NULL AND {} <> {value})",
+            sql.scalar, sql.scalar
+        ))
+    }
+}
+
+fn compile_in(
+    plan: &ExecutableQueryPlan,
+    path: &FieldPath,
+    values: &[IndexValue],
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let field = planned_field(plan, path)?;
+    if field.traverses_many {
+        compile_many_exists(plan, field, bindings, |sql, bindings| {
             let values = values
                 .iter()
                 .map(|value| Ok(bindings.push(scalar_bind(path, value)?)))
@@ -184,37 +341,96 @@ fn compile_filter(
                 sql.scalar,
                 values.join(", ")
             ))
-        }
-        FilterExpr::Gt(path, value) => {
-            compile_range(plan, path, value, ">", bindings)
-        }
-        FilterExpr::Gte(path, value) => {
-            compile_range(plan, path, value, ">=", bindings)
-        }
-        FilterExpr::Lt(path, value) => {
-            compile_range(plan, path, value, "<", bindings)
-        }
-        FilterExpr::Lte(path, value) => {
-            compile_range(plan, path, value, "<=", bindings)
-        }
-        FilterExpr::Contains(path, value) => {
-            let field = planned_field(plan, path)?;
-            let sql = field_sql(field, bindings);
+        })
+    } else {
+        let sql = field_sql(field, bindings);
+        let values = values
+            .iter()
+            .map(|value| Ok(bindings.push(scalar_bind(path, value)?)))
+            .collect::<Result<Vec<_>, PostgresQueryCompileError>>()?;
+        Ok(format!(
+            "COALESCE({} IN ({}), FALSE)",
+            sql.scalar,
+            values.join(", ")
+        ))
+    }
+}
+
+fn compile_range(
+    plan: &ExecutableQueryPlan,
+    path: &FieldPath,
+    value: &IndexValue,
+    operator: &str,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let field = planned_field(plan, path)?;
+    if field.traverses_many {
+        compile_many_exists(plan, field, bindings, |sql, bindings| {
+            let value = bindings.push(scalar_bind(path, value)?);
+            Ok(format!(
+                "COALESCE({} {operator} {value}, FALSE)",
+                sql.scalar
+            ))
+        })
+    } else {
+        let sql = field_sql(field, bindings);
+        let value = bindings.push(scalar_bind(path, value)?);
+        Ok(format!(
+            "COALESCE({} {operator} {value}, FALSE)",
+            sql.scalar
+        ))
+    }
+}
+
+fn compile_contains(
+    plan: &ExecutableQueryPlan,
+    path: &FieldPath,
+    value: &IndexValue,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let field = planned_field(plan, path)?;
+    if field.traverses_many {
+        compile_many_exists(plan, field, bindings, |sql, bindings| {
             let encoded = serde_json::to_value(vec![value.clone()])?;
             let value = bindings.push(PostgresBindValue::Json(encoded));
             Ok(format!(
                 "COALESCE({} @> {value}::jsonb, FALSE)",
                 sql.list_values
             ))
+        })
+    } else {
+        let sql = field_sql(field, bindings);
+        let encoded = serde_json::to_value(vec![value.clone()])?;
+        let value = bindings.push(PostgresBindValue::Json(encoded));
+        Ok(format!(
+            "COALESCE({} @> {value}::jsonb, FALSE)",
+            sql.list_values
+        ))
+    }
+}
+
+fn compile_is_null(
+    plan: &ExecutableQueryPlan,
+    path: &FieldPath,
+    expected_null: bool,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
+    let field = planned_field(plan, path)?;
+    if field.traverses_many {
+        let non_null = compile_many_exists(plan, field, bindings, |sql, _| {
+            Ok(sql.non_null_predicate())
+        })?;
+        if expected_null {
+            Ok(format!("NOT ({non_null})"))
+        } else {
+            Ok(non_null)
         }
-        FilterExpr::IsNull(path, expected_null) => {
-            let field = planned_field(plan, path)?;
-            let sql = field_sql(field, bindings);
-            if *expected_null {
-                Ok(format!("({})", sql.null_predicate))
-            } else {
-                Ok(format!("NOT ({})", sql.null_predicate))
-            }
+    } else {
+        let sql = field_sql(field, bindings);
+        if expected_null {
+            Ok(format!("({})", sql.null_predicate))
+        } else {
+            Ok(format!("NOT ({})", sql.null_predicate))
         }
     }
 }
@@ -232,20 +448,54 @@ fn compile_logical(
     Ok(format!("({})", children.join(&format!(" {operator} "))))
 }
 
-fn compile_range(
+fn compile_many_exists(
     plan: &ExecutableQueryPlan,
-    path: &FieldPath,
-    value: &IndexValue,
-    operator: &str,
+    field: &PlannedField,
     bindings: &mut Bindings,
+    predicate: impl FnOnce(&FieldSql, &mut Bindings) -> Result<String, PostgresQueryCompileError>,
 ) -> Result<String, PostgresQueryCompileError> {
-    let field = planned_field(plan, path)?;
-    let sql = field_sql(field, bindings);
-    let value = bindings.push(scalar_bind(path, value)?);
-    Ok(format!(
-        "COALESCE({} {operator} {value}, FALSE)",
-        sql.scalar
-    ))
+    let mut path = Vec::new();
+    let mut source_alias = plan.root_alias.clone();
+    let mut wrappers = Vec::with_capacity(field.path.links().len());
+
+    for (index, link_name) in field.path.links().iter().enumerate() {
+        path.push(link_name.clone());
+        let join = plan
+            .join_for_path(&path)
+            .ok_or_else(|| PostgresQueryCompileError::MissingJoinPlan(path.clone()))?;
+        let link_alias_name = format!("mx_l{}", index + 1);
+        let target_alias_name = format!("mx_t{}", index + 1);
+        let source_alias_q = quote_identifier(&source_alias);
+        let link_alias = quote_identifier(&link_alias_name);
+        let target_alias = quote_identifier(&target_alias_name);
+        let link_name = bindings.push(PostgresBindValue::Text(join.link.as_str().to_owned()));
+        let target_module = bindings.push(PostgresBindValue::Text(
+            join.target_schema.module.as_str().to_owned(),
+        ));
+        let target_entity = bindings.push(PostgresBindValue::Text(
+            join.target_schema.entity.as_str().to_owned(),
+        ));
+        let target_version = bindings.push(PostgresBindValue::Integer(i64::from(
+            join.target_schema.version.get(),
+        )));
+        wrappers.push(format!(
+            "SELECT 1 FROM index_links AS {link_alias} JOIN index_entities AS {target_alias} ON {target_alias}.tenant_id = {link_alias}.tenant_id AND {target_alias}.module_name = {link_alias}.target_module AND {target_alias}.entity_name = {link_alias}.target_entity AND {target_alias}.schema_version = {link_alias}.target_schema_version AND {target_alias}.entity_id = {link_alias}.target_entity_id AND {target_alias}.locale_key = {link_alias}.target_locale_key AND {target_alias}.is_deleted = FALSE WHERE {link_alias}.tenant_id = {source_alias_q}.tenant_id AND {link_alias}.source_module = {source_alias_q}.module_name AND {link_alias}.source_entity = {source_alias_q}.entity_name AND {link_alias}.source_schema_version = {source_alias_q}.schema_version AND {link_alias}.source_entity_id = {source_alias_q}.entity_id AND {link_alias}.source_locale_key = {source_alias_q}.locale_key AND {link_alias}.source_version = {source_alias_q}.source_version AND {link_alias}.link_name = {link_name} AND {link_alias}.target_module = {target_module} AND {link_alias}.target_entity = {target_entity} AND {link_alias}.target_schema_version = {target_version} AND ",
+        ));
+        source_alias = target_alias_name;
+    }
+
+    if wrappers.is_empty() {
+        return Err(PostgresQueryCompileError::ManyTraversalMismatch(
+            field.path.links().to_vec(),
+        ));
+    }
+
+    let sql = field_sql_for_alias(field, &source_alias, bindings);
+    let mut expression = predicate(&sql, bindings)?;
+    for wrapper in wrappers.into_iter().rev() {
+        expression = format!("EXISTS ({wrapper}{expression})");
+    }
+    Ok(expression)
 }
 
 fn compile_keyset(
@@ -382,11 +632,29 @@ struct FieldSql {
     raw: String,
     scalar: String,
     list_values: String,
+    type_text: String,
     null_predicate: String,
 }
 
+impl FieldSql {
+    fn non_null_predicate(&self) -> String {
+        format!(
+            "({} IS NOT NULL AND {} IS NOT NULL AND {} <> 'null')",
+            self.raw, self.type_text, self.type_text
+        )
+    }
+}
+
 fn field_sql(field: &PlannedField, bindings: &mut Bindings) -> FieldSql {
-    let relation_alias = quote_identifier(&field.relation_alias);
+    field_sql_for_alias(field, &field.relation_alias, bindings)
+}
+
+fn field_sql_for_alias(
+    field: &PlannedField,
+    relation_alias: &str,
+    bindings: &mut Bindings,
+) -> FieldSql {
+    let relation_alias = quote_identifier(relation_alias);
     let field_name = bindings.push(PostgresBindValue::Text(
         field.path.field().as_str().to_owned(),
     ));
@@ -407,13 +675,17 @@ fn field_sql(field: &PlannedField, bindings: &mut Bindings) -> FieldSql {
         IndexValueType::Uuid => format!("({scalar_text})::uuid"),
         IndexValueType::Timestamp => format!("({scalar_text})::timestamptz"),
     };
+    let null_predicate = format!(
+        "{raw} IS NULL OR {type_text} IS NULL OR {type_text} = 'null'"
+    );
     FieldSql {
         raw,
         scalar,
         list_values: format!(
             "jsonb_extract_path({relation_alias}.payload, {field_name}::text, 'value')"
         ),
-        null_predicate: format!("{type_text} IS NULL OR {type_text} = 'null'"),
+        type_text,
+        null_predicate,
     }
 }
 

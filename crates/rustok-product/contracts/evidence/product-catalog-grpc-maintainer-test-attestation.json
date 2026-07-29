@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "module": "product",
+  "packet": "product-catalog-grpc-maintainer-test-attestation",
+  "status": "maintainer_attested_passed",
+  "attestation": {
+    "source": "repository_maintainer_chat_confirmation",
+    "attested_at": "2026-07-29T16:33:00+03:00",
+    "statement": "tests passed",
+    "agent_independently_verified": false,
+    "raw_logs_retained": false,
+    "exact_local_git_commit": null,
+    "repository_head_observed_after_attestation": "6655bda2068911bf010be2d950638a4473f953f1"
+  },
+  "cargo_lock": {
+    "path": "Cargo.lock",
+    "package": "rustok-product-catalog-service",
+    "entry_present_in_observed_head": true
+  },
+  "commands": [
+    {
+      "command": "node scripts/verify/verify-product-catalog-grpc-service-host.mjs",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "node scripts/verify/verify-product-catalog-grpc-service-host.test.mjs",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "node scripts/verify/verify-product-catalog-grpc-authentication.mjs",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "cargo test -p rustok-product-catalog-service",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "cargo test -p rustok-product-transport --lib",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "cargo test -p rustok-product-transport --test port_conformance",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "cargo test -p rustok-commerce --test product_remote_consumer_behavior",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    },
+    {
+      "command": "cargo test -p rustok-ai --features server --lib remote_product_",
+      "result": "passed",
+      "evidence_quality": "maintainer_attested_no_raw_log"
+    }
+  ],
+  "closed_gates": [
+    "service_host_unit_suite",
+    "service_host_source_and_mutation_guards",
+    "authentication_source_and_mutation_guards",
+    "transport_library_suite",
+    "grpc_loopback_port_conformance",
+    "commerce_remote_consumer_behavior_harness",
+    "ai_remote_consumer_behavior_harness",
+    "cargo_lock_package_entry"
+  ],
+  "remaining_gates": [
+    "standalone_provider_postgresql_schema_preflight_runtime_evidence",
+    "authenticated_separate_process_commerce_end_to_end_evidence",
+    "authenticated_separate_process_ai_end_to_end_evidence",
+    "retained_runtime_logs_or_ci_artifacts_for_transport_promotion"
+  ],
+  "promotion": {
+    "product_status": "boundary_ready",
+    "transport_verified_claimed": false,
+    "reason": "Maintainer-attested test results close the requested unit, loopback, and consumer-harness commands, but do not prove standalone PostgreSQL provider startup or authenticated separate-process Commerce/AI execution."
+  }
+}

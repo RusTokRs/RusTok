@@ -1,6 +1,6 @@
 use async_graphql::{Context, Enum, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::{
-    AuthContext, Permission, TenantContext,
+    AuthContext, Permission, RequestContext, TenantContext,
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
     has_any_effective_permission,
 };
@@ -9,10 +9,13 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
-    ForumReadModelService, ForumTopicReadState, ForumTopicReadStateService,
-    MarkForumTopicReadInput, MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
-    TopicReadModel, TopicStatus, TopicUnreadCursorQuery, TopicUnreadReadModel,
+    ForumReadModelService, ForumTopicReadOperation, ForumTopicReadState,
+    ForumTopicReadStateService, ForumTopicReadTransport, MarkForumTopicReadInput,
+    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, TopicReadModel, TopicStatus,
+    TopicUnreadCursorQuery, TopicUnreadReadModel, topic_read_audience_port_context,
 };
+
+use super::ForumGraphqlRuntimeData;
 
 const MODULE_SLUG: &str = "forum";
 
@@ -234,12 +237,27 @@ impl ForumReadStateMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, None);
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::MarkCategoryRead,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let result = ForumTopicReadStateService::new(db.clone())
-            .mark_category_read(
+        let result = runtime
+            .visibility_scoped_read_state_service(db.clone())
+            .mark_category_read_with_audience_context(
                 tenant_id,
                 category_id,
                 forum_security(&auth),
+                audience_context,
                 batch_input(input.unwrap_or_default())?,
             )
             .await?;
@@ -261,11 +279,26 @@ impl ForumReadStateMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, None);
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::MarkAllRead,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let result = ForumTopicReadStateService::new(db.clone())
-            .mark_all_read(
+        let result = runtime
+            .visibility_scoped_read_state_service(db.clone())
+            .mark_all_read_with_audience_context(
                 tenant_id,
                 forum_security(&auth),
+                audience_context,
                 batch_input(input.unwrap_or_default())?,
             )
             .await?;

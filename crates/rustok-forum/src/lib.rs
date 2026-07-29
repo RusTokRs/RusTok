@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
+use rustok_core::search_projection::register_search_projection_source;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_notifications_api::register_notification_source_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
@@ -25,6 +26,7 @@ mod notification_source;
 pub mod openapi;
 mod reply_create_transport;
 pub mod reply_read_transport;
+mod search_projection;
 mod seo_audience_targets;
 #[path = "seo_targets.rs"]
 mod seo_targets_legacy;
@@ -61,6 +63,7 @@ pub use notification_recipient::{
 pub use reply_read_transport::{
     ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
 };
+pub use search_projection::ForumSearchProjectionSourceFactory;
 pub use services::{
     CategoryService, FORUM_POSTING_POLICY_FACTS_CAPABILITY,
     FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE, FORUM_POSTING_POLICY_PRECEDENCE,
@@ -95,16 +98,17 @@ pub use services::{
     ForumTopicUnreadSummary, ForumTopicVisibilityScope, ForumTopicVisibilityService,
     ForumUserTrustAudienceFactsPort, ForumUserTrustChange, ForumUserTrustRevision,
     ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
-    ForumWidgetContractService, MAX_FORUM_POSTING_POLICY_FACTS,
-    MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
-    MAX_FORUM_USER_TRUST_HISTORY_PAGE, MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput,
-    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
-    RevisionService, SetForumCategoryAudiencePolicyInput,
-    SetForumCategoryModerationAudiencePolicyInput, SetForumCategoryReplyCreateAudiencePolicyInput,
-    SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
-    SetForumTopicAudiencePolicyInput, SetForumTopicReplyCreateAudiencePolicyInput,
-    SetForumUserTrustInput, SharedForumPostingPolicyOwnerFactPort, SubscriptionService,
-    TopicService, UserStatsService, VoteService,
+    ForumVisibilityScopedReadStateService, ForumWidgetContractService,
+    MAX_FORUM_POSTING_POLICY_FACTS, MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
+    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MAX_FORUM_USER_TRUST_HISTORY_PAGE,
+    MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
+    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
+    SetForumCategoryAudiencePolicyInput, SetForumCategoryModerationAudiencePolicyInput,
+    SetForumCategoryReplyCreateAudiencePolicyInput, SetForumCategoryTopicCreateAudiencePolicyInput,
+    SetForumCategoryVisibilityPolicyInput, SetForumTopicAudiencePolicyInput,
+    SetForumTopicReplyCreateAudiencePolicyInput, SetForumUserTrustInput,
+    SharedForumPostingPolicyOwnerFactPort, SubscriptionService, TopicService, UserStatsService,
+    VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
@@ -166,6 +170,12 @@ impl RusToKModule for ForumModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
+        register_search_projection_source(extensions, ForumSearchProjectionSourceFactory)
+            .map_err(|error| {
+                rustok_core::Error::Validation(format!(
+                    "forum Search projection source registration failed: {error}"
+                ))
+            })?;
         register_seo_target_provider(
             extensions,
             seo_audience_targets::ForumCategorySeoTargetProvider,

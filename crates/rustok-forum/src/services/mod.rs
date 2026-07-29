@@ -3,17 +3,27 @@
 mod bounded_compat;
 mod category {
     include!("category.rs");
+    include!("category_projection_owner.rs");
     include!("category_visibility_list.rs");
 }
-mod category_audience;
+mod category_audience {
+    include!("category_audience.rs");
+    include!("category_audience_owner.rs");
+}
 mod category_audience_read {
     include!("category_audience_read.rs");
     include!("category_audience_read_inline.rs");
 }
 mod category_audience_visibility;
 #[allow(clippy::collapsible_if)]
-mod category_command;
-mod category_lifecycle;
+mod category_command {
+    include!("category_command.rs");
+    include!("category_command_owner.rs");
+}
+mod category_lifecycle {
+    include!("category_lifecycle.rs");
+    include!("category_lifecycle_owner.rs");
+}
 mod category_moderation_audience;
 mod category_owner;
 mod category_policy;
@@ -32,7 +42,13 @@ mod mention_relation_tests {
     include!("mention_relation_tests.rs");
     include!("relation_quote_input_tests.rs");
 }
-pub mod moderation;
+#[path = "moderation.rs"]
+mod moderation_legacy;
+mod moderation_owner;
+mod moderation_public_owner;
+pub mod moderation {
+    pub use super::moderation_public_owner::ModerationService;
+}
 mod moderation_audience_authorization;
 mod posting_policy;
 mod posting_policy_approved_facts;
@@ -40,11 +56,15 @@ mod posting_policy_create_window_facts;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
+mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
 mod rbac;
 pub mod read_model;
-pub mod read_tracking;
+pub mod read_tracking {
+    include!("read_tracking.rs");
+    include!("read_tracking_audience.rs");
+}
 mod relation_quote_input;
 mod relation_read;
 #[allow(clippy::collapsible_if, clippy::items_after_test_module)]
@@ -60,7 +80,10 @@ mod reply_owner {
     include!("reply_owner_inline.rs");
 }
 pub mod revision;
-pub mod storefront_read_state;
+pub mod storefront_read_state {
+    include!("storefront_read_state.rs");
+    include!("storefront_read_state_bulk.rs");
+}
 pub mod subscription;
 #[allow(clippy::collapsible_if)]
 mod topic {
@@ -70,6 +93,7 @@ mod topic {
 }
 mod topic_audience {
     include!("topic_audience.rs");
+    include!("topic_audience_owner.rs");
 }
 mod topic_audience_visibility;
 mod topic_audience_list;
@@ -90,7 +114,8 @@ pub mod widget_contract;
 
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
-    ForumCategoryAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+    ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService,
+    SetForumCategoryAudiencePolicyInput,
 };
 pub use category_audience_read::{
     ForumCategoryAudiencePage, ForumCategoryAudienceReadService,
@@ -150,8 +175,8 @@ pub use public_discovery::ForumPublicDiscoveryService;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use read_tracking::{
-    ForumTopicReadState, ForumTopicReadStateService, MarkForumTopicReadInput,
-    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
+    ForumTopicReadState, ForumTopicReadStateService, ForumVisibilityScopedReadStateService,
+    MarkForumTopicReadInput, MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
 };
 pub use relation_read::ForumRelationReadService;
 pub use reply_audience_read::ForumReplyAudienceReadService;
@@ -166,7 +191,9 @@ pub use storefront_read_state::{
 };
 pub use subscription::SubscriptionService;
 pub use topic_audience::{
-    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, SetForumTopicAudiencePolicyInput,
+    ForumTopicAudiencePolicy,
+    ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
+    SetForumTopicAudiencePolicyInput,
 };
 pub use topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,

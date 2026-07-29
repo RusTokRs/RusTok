@@ -2,6 +2,9 @@ use async_graphql::{EmptySubscription, Schema};
 use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_forum::{ForumMutation, ForumQuery};
 
+const REST_READ_STATE: &str = include_str!("../src/controllers/read_state.rs");
+const GRAPHQL_READ_STATE: &str = include_str!("../src/graphql/read_state.rs");
+
 #[test]
 fn openapi_exposes_owner_read_state_routes() {
     let document = rustok_forum::openapi::openapi_document();
@@ -73,5 +76,17 @@ fn graphql_schema_exposes_owner_read_state_fields() {
             sdl.contains(contract_field),
             "missing Forum GraphQL contract field {contract_field}"
         );
+    }
+}
+
+#[test]
+fn category_and_all_read_transports_use_exact_visibility_owner() {
+    for source in [REST_READ_STATE, GRAPHQL_READ_STATE] {
+        assert!(source.contains("ForumVisibilityScopedReadStateService")
+            || source.contains("visibility_scoped_read_state_service"));
+        assert!(source.contains("MarkCategoryRead"));
+        assert!(source.contains("MarkAllRead"));
+        assert!(!source.contains(".mark_category_read(\n"));
+        assert!(!source.contains(".mark_all_read(\n"));
     }
 }

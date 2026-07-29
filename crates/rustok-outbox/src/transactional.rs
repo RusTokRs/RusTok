@@ -18,6 +18,29 @@ impl TransactionalEventBus {
         Self { transport }
     }
 
+    /// Publishes a validated registered root event through an owner transaction
+    /// without requiring a separately configured transport handle.
+    ///
+    /// This is intended for domain helpers that receive only the active
+    /// transaction. It preserves both `DomainEvent::validate()` and registered
+    /// envelope/schema validation before inserting into the canonical outbox.
+    pub async fn publish_root_in_tx<C>(
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: DomainEvent,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        validate_event(&event)?;
+        OutboxTransport::write_envelope_in_tx(
+            txn,
+            EventEnvelope::new(tenant_id, actor_id, event),
+        )
+        .await
+    }
+
     pub async fn publish_in_tx<C>(
         &self,
         txn: &C,

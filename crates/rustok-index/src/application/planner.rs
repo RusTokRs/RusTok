@@ -47,6 +47,7 @@ pub struct PlannedJoin {
     pub source_fields: Vec<FieldName>,
     pub target_fields: Vec<FieldName>,
     pub cardinality: LinkCardinality,
+    pub traverses_many: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,12 +57,22 @@ pub struct PlannedField {
     pub value_type: IndexValueType,
     pub cardinality: FieldCardinality,
     pub nullable: bool,
+    pub traverses_many: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlannedOrder {
     pub field: PlannedField,
     pub direction: OrderDirection,
+}
+
+/// One deterministic nested result group for projected fields sharing a terminal
+/// relation path that crosses at least one many-cardinality link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedManyProjection {
+    pub path: Vec<LinkName>,
+    pub identity_paths: Vec<Vec<LinkName>>,
+    pub fields: Vec<PlannedField>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +84,7 @@ pub struct ExecutableQueryPlan {
     pub joins: Vec<PlannedJoin>,
     pub referenced_fields: BTreeMap<FieldPath, PlannedField>,
     pub projection: Vec<PlannedField>,
+    pub many_projections: Vec<PlannedManyProjection>,
     pub filter: Option<FilterExpr>,
     pub order_by: Vec<PlannedOrder>,
     pub pagination: Pagination,
@@ -88,10 +100,24 @@ impl ExecutableQueryPlan {
         self.referenced_fields.get(path)
     }
 
+    pub(crate) fn join_for_path(&self, path: &[LinkName]) -> Option<&PlannedJoin> {
+        self.joins
+            .iter()
+            .find(|join| join.path.as_slice() == path)
+    }
+
+    pub(crate) fn outer_joins(&self) -> impl Iterator<Item = &PlannedJoin> {
+        self.joins.iter().filter(|join| !join.traverses_many)
+    }
+
+    pub(crate) fn outer_projection(&self) -> impl Iterator<Item = &PlannedField> {
+        self.projection.iter().filter(|field| !field.traverses_many)
+    }
+
     pub fn fingerprint(&self) -> Result<QueryPlanFingerprint, postcard::Error> {
         let bytes = postcard::to_stdvec(self)?;
         let mut hasher = Sha256::new();
-        hasher.update(b"rustok-index-query-plan-v2");
+        hasher.update(b"rustok-index-query-plan-v4");
         hasher.update((bytes.len() as u64).to_be_bytes());
         hasher.update(bytes);
         Ok(QueryPlanFingerprint(hasher.finalize().into()))
@@ -121,6 +147,7 @@ impl SchemaRegistry {
         }
 
         let mut schemas = BTreeMap::from([(Vec::new(), query.schema.clone())]);
+        let mut many_paths = BTreeMap::from([(Vec::new(), false)]);
         let mut joins = Vec::with_capacity(paths.len());
         for path in &paths {
             let parent = path[..path.len() - 1].to_vec();
@@ -146,6 +173,8 @@ impl SchemaRegistry {
                     target: source_schema.clone(),
                 })?;
             let target_schema = link.target_schema.clone();
+            let traverses_many = many_paths.get(&parent).copied().unwrap_or(false)
+                || link.cardinality == LinkCardinality::Many;
             joins.push(PlannedJoin {
                 path: path.clone(),
                 alias: aliases[path].clone(),
@@ -156,8 +185,10 @@ impl SchemaRegistry {
                 source_fields: link.source_fields.clone(),
                 target_fields: link.target_fields.clone(),
                 cardinality: link.cardinality,
+                traverses_many,
             });
             schemas.insert(path.clone(), target_schema);
+            many_paths.insert(path.clone(), traverses_many);
         }
 
         let referenced_paths = query
@@ -188,6 +219,10 @@ impl SchemaRegistry {
                 .get(&link_path)
                 .cloned()
                 .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))?;
+            let traverses_many = many_paths
+                .get(&link_path)
+                .copied()
+                .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))?;
             referenced_fields.insert(
                 path.clone(),
                 PlannedField {
@@ -196,6 +231,7 @@ impl SchemaRegistry {
                     value_type: field.value_type,
                     cardinality: field.cardinality,
                     nullable: field.nullable,
+                    traverses_many,
                 },
             );
         }
@@ -205,6 +241,7 @@ impl SchemaRegistry {
             .iter()
             .map(|path| planned_field(&referenced_fields, path))
             .collect::<Result<Vec<_>, _>>()?;
+        let many_projections = derive_many_projections(&projection);
         let order_by = query
             .order_by
             .iter()
@@ -224,6 +261,7 @@ impl SchemaRegistry {
             joins,
             referenced_fields,
             projection,
+            many_projections,
             filter: query.filter.clone(),
             order_by,
             pagination: query.pagination.clone(),
@@ -240,6 +278,33 @@ fn planned_field(
         .get(path)
         .cloned()
         .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))
+}
+
+pub(crate) fn derive_many_projections(
+    projection: &[PlannedField],
+) -> Vec<PlannedManyProjection> {
+    let mut group_indexes = BTreeMap::<Vec<LinkName>, usize>::new();
+    let mut groups = Vec::<PlannedManyProjection>::new();
+
+    for field in projection.iter().filter(|field| field.traverses_many) {
+        let path = field.path.links().to_vec();
+        if let Some(index) = group_indexes.get(&path).copied() {
+            groups[index].fields.push(field.clone());
+            continue;
+        }
+
+        let identity_paths = (1..=path.len())
+            .map(|depth| path[..depth].to_vec())
+            .collect();
+        group_indexes.insert(path.clone(), groups.len());
+        groups.push(PlannedManyProjection {
+            path,
+            identity_paths,
+            fields: vec![field.clone()],
+        });
+    }
+
+    groups
 }
 
 fn collect_link_prefixes(query: &IndexQuery) -> Vec<Vec<LinkName>> {

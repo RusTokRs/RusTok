@@ -23,7 +23,16 @@ impl OutboxTransport {
         Self { db }
     }
 
-    pub async fn write_to_outbox<C>(&self, txn: &C, envelope: EventEnvelope) -> Result<()>
+    /// Writes one validated root event through an owner-supplied transaction.
+    ///
+    /// This static boundary is used by the validated transactional bus. Keeping
+    /// it crate-private avoids adding a second public raw-envelope entry point.
+    /// New external domain code must publish through `TransactionalEventBus`;
+    /// the existing instance compatibility API remains unchanged.
+    pub(crate) async fn write_envelope_in_tx<C>(
+        txn: &C,
+        envelope: EventEnvelope,
+    ) -> Result<()>
     where
         C: ConnectionTrait,
     {
@@ -33,8 +42,8 @@ impl OutboxTransport {
         Ok(())
     }
 
-    pub async fn write_contract_to_outbox<C>(
-        &self,
+    /// Writes one validated sealed contract event through an owner transaction.
+    pub(crate) async fn write_contract_envelope_in_tx<C>(
         txn: &C,
         envelope: ContractEventEnvelope,
     ) -> Result<()>
@@ -45,6 +54,24 @@ impl OutboxTransport {
             .exec_without_returning(txn)
             .await?;
         Ok(())
+    }
+
+    pub async fn write_to_outbox<C>(&self, txn: &C, envelope: EventEnvelope) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        Self::write_envelope_in_tx(txn, envelope).await
+    }
+
+    pub async fn write_contract_to_outbox<C>(
+        &self,
+        txn: &C,
+        envelope: ContractEventEnvelope,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        Self::write_contract_envelope_in_tx(txn, envelope).await
     }
 
     fn model_from_envelope(envelope: EventEnvelope) -> Result<entity::ActiveModel> {

@@ -52,4 +52,21 @@ node scripts/verify/verify-product-catalog-grpc-authentication.mjs
 node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs
 ```
 
-The implementation agent does not claim this command was executed, and does not claim the authentication verifier commands were executed. Until retained execution evidence exists, Product remains `boundary_ready`.
+`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all three owner RPCs, validates returned identities, and emits one bounded success marker without printing identifiers or credentials. It does not connect to Product persistence or construct `CatalogService`.
+
+The source contract and mutation guard are checked with:
+
+```bash
+node scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs
+node scripts/verify/verify-product-catalog-separate-process-runtime-contract.test.mjs
+```
+
+The operator-only capture command is:
+
+```bash
+node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs
+```
+
+The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. This capture does not prove Commerce or AI business requests through the consumer server.
+
+The implementation agent does not claim the runtime capture command was executed. Product remains `boundary_ready` until retained provider/consumer runtime evidence and separate-process Commerce/AI business-request evidence exist.

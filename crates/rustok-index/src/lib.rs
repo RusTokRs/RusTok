@@ -4,7 +4,8 @@
 //! core under [`domain`] and [`application`], the canonical M3 PostgreSQL
 //! storage-schema migrations, atomic mutation persistence, tenant-scoped source
 //! schema registration, durable schema-application leases, schema-derived
-//! secondary-index lifecycle, and a fail-closed measured partition-admission contract.
+//! secondary-index lifecycle, fail-closed measured partition admission, and the
+//! PostgreSQL execution adapter for structured Index queries.
 
 use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
@@ -23,12 +24,12 @@ pub use infrastructure::postgres::{
     PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
     PartitionMeasurementCoverage, PartitionRelationPlan, PartitionShadowEvidence,
     PartitionShadowPlan, PartitionStrategy, PersistedSchemaRegistrationOutcome,
-    PostgresMutationStore, PostgresSchemaLeaseStore, PostgresSchemaRegistrationStore,
-    PostgresSecondaryIndexManager, SchemaApplicationLease, SchemaApplicationLeaseRequest,
-    SchemaLeaseAcquireOutcome, SchemaLeaseError, SchemaRegistrationError,
-    SecondaryIndexClaimOutcome, SecondaryIndexError, SecondaryIndexExecutionOutcome,
-    SecondaryIndexKind, SecondaryIndexLease, SecondaryIndexOperation, SecondaryIndexPlan,
-    SecondaryIndexRequest, SecondaryIndexSpec,
+    PostgresIndexQueryPort, PostgresMutationStore, PostgresSchemaLeaseStore,
+    PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager, SchemaApplicationLease,
+    SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome, SchemaLeaseError,
+    SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
+    SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
+    SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
 };
 
 pub struct IndexModule;

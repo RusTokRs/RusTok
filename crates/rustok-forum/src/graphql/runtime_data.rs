@@ -4,8 +4,9 @@ use sea_orm::DatabaseConnection;
 
 use crate::{
     ForumCategoryAudienceReadService, ForumReplyAudienceReadService,
-    ForumStorefrontReadStateService, ForumTopicAudienceReadService, ModerationService,
-    ReplyService, SharedForumAudienceFactsPort, TopicService,
+    ForumStorefrontReadStateService, ForumTopicAudienceReadService,
+    ForumVisibilityScopedReadStateService, ModerationService, ReplyService,
+    SharedForumAudienceFactsPort, TopicService,
 };
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
@@ -105,6 +106,16 @@ impl ForumGraphqlRuntimeData {
         match self.audience_facts.clone() {
             Some(facts) => ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts),
             None => ForumStorefrontReadStateService::new(db, event_bus),
+        }
+    }
+
+    pub(crate) fn visibility_scoped_read_state_service(
+        &self,
+        db: DatabaseConnection,
+    ) -> ForumVisibilityScopedReadStateService {
+        match self.audience_facts.clone() {
+            Some(facts) => ForumVisibilityScopedReadStateService::with_audience_facts(db, facts),
+            None => ForumVisibilityScopedReadStateService::new(db),
         }
     }
 }
