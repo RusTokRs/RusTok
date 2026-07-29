@@ -31,10 +31,19 @@ for (const [value, text, label] of [
   [source, 'use self::rustok_order_shim as rustok_order;', 'safe-query order alias'],
   [shim, 'pub(crate) mod dto {', 'order DTO passthrough'],
   [graphqlRuntime, 'static CURRENT_COMMERCE_ORDER_READ_RUNTIME:', 'order task-local runtime'],
+  [graphqlRuntime, 'static CURRENT_COMMERCE_ORDER_READ_CALL_CONTEXT:', 'order request task-local context'],
+  [graphqlRuntime, 'ctx.data_opt::<AuthContext>()', 'validated GraphQL actor source'],
+  [graphqlRuntime, 'PortActor::user(auth.user_id.to_string())', 'authenticated user actor'],
+  [graphqlRuntime, 'ctx.data_opt::<RequestContext>()', 'resolved GraphQL request context source'],
+  [graphqlRuntime, 'request.channel_slug.clone()', 'resolved request channel slug'],
   [graphqlRuntime, 'runtime_data.order_read_runtime()', 'host-selected order runtime scope'],
   [graphqlRuntime, 'pub(crate) fn order_read_runtime_for_current_graphql_scope(', 'order runtime scope accessor'],
+  [graphqlRuntime, 'pub(crate) fn order_read_call_context_for_current_graphql_scope()', 'order request context accessor'],
   [shim, 'order_reads: Arc<dyn OrderReadPort>', 'typed owner read dependency'],
   [shim, 'order_read_runtime_for_current_graphql_scope(', 'scoped runtime lookup'],
+  [shim, 'order_read_call_context_for_current_graphql_scope()', 'scoped call context lookup'],
+  [shim, 'call_context.actor()', 'PortContext actor propagation'],
+  [shim, 'context.with_channel(channel)', 'PortContext channel propagation'],
   [shim, '.read_order_projection(', 'detail owner port call'],
   [shim, '.list_order_projections(', 'list owner port call'],
   [shim, 'ReadOrderProjectionRequest {', 'detail typed request'],
@@ -46,12 +55,15 @@ for (const [value, text, label] of [
   [shim, '.get_return(tenant_id, return_id)', 'unchanged return delegate'],
   [shim, '.list_returns(tenant_id, input)', 'unchanged return list delegate'],
   [query, 'use rustok_order::OrderService;', 'legacy included source import'],
-  [note, 'Status: host-runtime-scoped, unvalidated.', 'checkpoint status'],
-  [note, 'Directly embedded schemas', 'embedded compatibility fallback'],
+  [note, 'Status: request-context-scoped, unvalidated.', 'checkpoint status'],
+  [note, 'validated `AuthContext`', 'authenticated actor note'],
+  [note, '`RequestContext.channel_slug`', 'resolved channel note'],
+  [note, 'service-actor/no-channel context', 'embedded context fallback'],
 ]) requireText(value, text, label);
 
 for (const [text, label] of [
   ['CommerceOrderReadRuntime::in_process(', 'shim-local runtime construction'],
+  ['PortActor::service(', 'shim-local actor construction'],
   ['.get_order_with_locale_fallback(tenant_id, order_id', 'concrete detail delegation'],
   ['.list_orders_with_locale_fallback(tenant_id, input', 'concrete list delegation'],
 ]) forbidText(shim, text, label);
@@ -63,5 +75,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL safe-query order detail/list reads use the host-selected typed owner runtime; embedded schemas retain an explicit in-process fallback',
+  '✔ Commerce GraphQL safe-query order detail/list reads use the host-selected typed owner runtime with validated actor and resolved request channel context; embedded schemas retain explicit service/no-channel fallbacks',
 );
