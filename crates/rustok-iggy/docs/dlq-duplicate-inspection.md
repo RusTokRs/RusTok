@@ -1,6 +1,6 @@
 # Count-only physical DLQ duplicate inspection
 
-Status: **classifier, bounded scanner, runtime harness, retained tooling, alert policy, latest-value runtime, and mode-aware server observer source-complete; runtime execution and telemetry/health projection pending**.
+Status: **classifier, bounded scanner, bounded rolling state, runtime harness, retained tooling, alert policy, latest-value runtime, and mode-aware server observer source-complete; scanner/cursor integration, runtime execution, and telemetry/health projection pending**.
 
 ## Purpose
 
@@ -12,7 +12,8 @@ The implementation is deliberately split:
 
 ```text
 physical observations
-  -> DlqDuplicateSummary
+  -> one-cycle DlqDuplicateSummary
+  -> optional bounded cross-cycle rolling state
   -> explicit alert policy
   -> latest-value runtime
   -> mode-aware server observer
@@ -52,7 +53,7 @@ The summary excludes broker coordinates, UUIDs, payloads/digests, receipt identi
 
 ## Mutation boundary
 
-The classifier and scanner cannot acknowledge, store offsets, delete, purge, replay, retry, publish, repair broker state, mutate poison receipts, or choose operator policy.
+The classifier, rolling state, and scanner cannot acknowledge, store offsets, delete, purge, replay, retry, publish, repair broker state, mutate poison receipts, or choose operator policy.
 
 The alert policy cannot scan, route notifications, persist thresholds, or mutate state. The latest-value runtime cannot start workers, register telemetry/health, deliver notifications, or mutate broker/receipt/Profile state.
 
@@ -78,7 +79,23 @@ auto_commit = false
 
 One request permits at most 128 partition identifiers, 10,000 messages globally, and batches of 1,000. It validates returned partition, count, monotonic offsets, and header identity before returning only `DlqDuplicateSummary`.
 
-The global message budget is shared across the ordered partition allowlist. It may be exhausted before later partitions are polled, so the scanner and observer make no partition-fairness claim.
+The global message budget is shared across the ordered partition allowlist. It may be exhausted before later partitions are polled, so the compatibility scanner makes no partition-fairness claim. The opt-in fair policy gives each selected partition one equal cap under the same checked 10,000-message total.
+
+## Bounded cross-cycle rolling state
+
+`DlqDuplicateRollingWindow` retains opaque observations across complete scan cycles so ordinary duplicates or conflicting payloads split across adjacent retained cycles can still be classified together.
+
+The caller supplies positive `max_cycles` and `max_observations_per_cycle`. Cycle count is capped at 128 and their checked product cannot exceed 10,000 observations. No production default is defined.
+
+An oversized cycle fails transactionally. At capacity, the oldest complete cycle is evicted; partial-cycle eviction is forbidden. After the first eviction every identifier-free snapshot reports:
+
+```text
+history_truncated = true
+```
+
+An evicted older copy can remove a previously visible duplicate relationship. The retained result is therefore not complete history, current-tail proof, or production retention evidence.
+
+The state does not connect to Iggy, move a broker cursor, persist offsets, serialize itself, or define restart semantics. Feeding complete scanner cycles and advancing independent per-partition cursors remain separate reviewed integration work.
 
 ## Count-only alert policy
 
@@ -127,9 +144,9 @@ For `outbox_iggy`, the observer reuses the exact active transport configuration 
 
 Observer-specific startup failures are non-fatal. Invalid observer configuration or a missing observer dependency records `Unavailable`, logs only a stable code, and returns success to server bootstrap.
 
-The observer includes every configured domain partition in the scanner request, but the single global budget may prevent later partitions from being polled.
+The observer includes every configured domain partition in the scanner request. Global mode may let an early partition consume the shared budget; fair mode attempts every selected partition under an equal cap.
 
-Each poll reuses the same configured explicit start offset. This is a repeated bounded window, not a moving cursor, current-tail monitor, or complete-history observer. Moving-window and per-partition cursor/fairness behavior remain separate design work.
+Each poll still reuses one configured explicit start offset. The current observer is a repeated bounded snapshot, not a moving cursor, current-tail monitor, or complete-history observer. The source-complete rolling state is not yet composed into the scanner or server observer.
 
 ## Safe operational sequence
 
@@ -137,21 +154,23 @@ Each poll reuses the same configured explicit start offset. This is a repeated b
 2. return not-applicable before Iggy access for `memory` or `outbox_local`;
 3. for `outbox_iggy`, use the already-active bundled or external configuration;
 4. scan one bounded explicit-offset window with `auto_commit=false`;
-5. evaluate through explicit thresholds;
-6. publish only the identifier-free latest snapshot;
-7. mark unavailable after startup, connection, scan, or shutdown failures without stopping the host;
-8. keep cursor/fairness policy, telemetry, health, notification delivery, and destructive actions in separate owners.
+5. optionally retain complete cycles only through a separately composed bounded rolling state;
+6. evaluate through explicit thresholds;
+7. publish only the identifier-free latest snapshot;
+8. mark unavailable after startup, connection, scan, or shutdown failures without stopping the host;
+9. keep cursor policy, persistence, telemetry, health, notification delivery, and destructive actions in separate owners.
 
 ## Runtime and retained evidence status
 
 The opt-in external harness and privacy-safe retained tooling are source-complete. The canonical execution JSON remains absent until a maintainer runs the reviewed external-Iggy scenario successfully.
 
-The mode-aware server observer is source-complete. Runtime execution, moving-window/fairness semantics, identifier-free telemetry, optional operational health without readiness coupling, and retained server evidence remain pending.
+The bounded rolling state and mode-aware server observer are source-complete as separate components. Scanner-to-state integration, per-partition cursor semantics, persistence/restart behavior, cross-cycle external-Iggy execution, telemetry, optional operational health without readiness coupling, and retained server evidence remain pending.
 
 ## Source verification
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs
@@ -165,9 +184,11 @@ No tests, Cargo commands, formatters, verifiers, broker scans, server observers,
 ## Remaining work
 
 1. execute and retain the reviewed external-Iggy duplicate scan packet;
-2. define partition fairness/per-partition budgets and a moving-window or per-partition cursor policy;
-3. define identifier-free telemetry and optional operational health;
-4. retain mode-aware server observer execution evidence;
-5. define alert routing, cooldown, and suppression separately;
-6. design acknowledgement/delete/replay as a separately authorized operation;
-7. correlate aggregate receipt and duplicate health without exporting message identities.
+2. feed complete fair scanner cycles into the rolling state without identifier export;
+3. define independent per-partition cursor advancement and persistence/restart semantics;
+4. prove cross-cycle behavior on external Iggy and compose the mode-aware observer;
+5. define identifier-free telemetry and optional operational health;
+6. retain mode-aware server observer execution evidence;
+7. define alert routing, cooldown, and suppression separately;
+8. design acknowledgement/delete/replay as a separately authorized operation;
+9. correlate aggregate receipt and duplicate health without exporting message identities.
