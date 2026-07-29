@@ -44,6 +44,10 @@ const registrySource = read(
   "crates/rustok-product/contracts/product-fba-registry.json",
 );
 const plan = read("crates/rustok-product/docs/implementation-plan.md");
+const aiProductRegistrySource = read(
+  "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+);
+const aiProductPlan = read("crates/rustok-ai-product/docs/implementation-plan.md");
 
 requireAll(commerceCargo, [
   'rustok-product-transport = { path = "../rustok-product-transport" }',
@@ -160,6 +164,56 @@ if (registry) {
   }
 }
 
+let aiProductRegistry;
+try {
+  aiProductRegistry = JSON.parse(aiProductRegistrySource);
+} catch (error) {
+  failures.push(`AI-product FBA registry is invalid JSON: ${error.message}`);
+}
+if (aiProductRegistry) {
+  if (aiProductRegistry.status !== "boundary_ready") {
+    failures.push("AI-product must remain boundary_ready before remote behavior execution evidence");
+  }
+  const dependency = aiProductRegistry.provider_dependencies?.find(
+    (entry) => entry.module === "product",
+  );
+  if (!dependency?.required_profiles?.includes("grpc_loopback")) {
+    failures.push("AI-product Product dependency must include grpc_loopback");
+  }
+  const behavior = aiProductRegistry.remote_consumer_behavior ?? {};
+  if (behavior.status !== "source_complete_execution_pending") {
+    failures.push("AI-product remote behavior must remain source_complete_execution_pending");
+  }
+  if (behavior.profile !== "grpc_loopback") {
+    failures.push("AI-product remote behavior must identify grpc_loopback");
+  }
+  if (behavior.source !== "crates/rustok-ai/src/direct_product_attributes.rs") {
+    failures.push("AI-product remote behavior must identify the capability handler source");
+  }
+  for (const failureProfile of ["unavailable", "timeout"]) {
+    if (!behavior.failure_profiles?.includes(failureProfile)) {
+      failures.push(`AI-product remote behavior must include ${failureProfile}`);
+    }
+  }
+  for (const assertion of [
+    "generate_from_prompt_only",
+    "skip_catalog_enrichment",
+    "require_operator_review",
+    "persistence_none",
+    "typed_port_error_preserved",
+  ]) {
+    if (!behavior.assertions?.includes(assertion)) {
+      failures.push(`AI-product remote behavior must assert ${assertion}`);
+    }
+  }
+  if (
+    aiProductRegistry.evidence?.remote_consumer_behavior_verifier !==
+    "scripts/verify/verify-product-remote-consumer-behavior.mjs"
+  ) {
+    failures.push("AI-product registry must link the remote consumer behavior verifier");
+  }
+}
+
 requireAll(plan, [
   "Remote consumer behavior is now source-complete through executable loopback",
   "it never substitutes the",
@@ -174,6 +228,15 @@ requireAll(plan, [
   "cargo test -p rustok-ai --features server --lib remote_product_",
   "verify-product-remote-consumer-behavior.mjs",
 ], "Product remote consumer implementation plan");
+requireAll(aiProductPlan, [
+  "A source-complete gRPC loopback harness now exercises the same product-context",
+  "Remote `Unavailable` and `Timeout` errors preserve",
+  "review-required and non-persistent",
+  "source_complete_execution_pending",
+  "Execute the remote Product consumer harness",
+  "cargo test -p rustok-ai --features server --lib remote_product_",
+  "verify-product-remote-consumer-behavior.mjs",
+], "AI-product remote consumer implementation plan");
 
 if (failures.length > 0) {
   console.error("Product remote consumer behavior verification failed:");
