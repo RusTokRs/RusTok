@@ -20,6 +20,8 @@ pub mod pg_engine;
 pub mod ports;
 pub mod presets;
 pub mod projection_source;
+#[path = "projector_legacy.rs"]
+mod projector_legacy;
 pub mod projector;
 pub mod ranking;
 pub mod search_settings;
