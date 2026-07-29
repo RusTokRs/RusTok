@@ -66,12 +66,12 @@ const adminSliceComplete = [
     "pub sort_by: Option<String>",
     "pub sort_direction: Option<String>",
   ]),
-  complete("crates/rustok-product/admin/src/ui/leptos.rs", [
+  complete("crates/rustok-product/admin/src/ui/catalog_admin.rs", [
     'name="category_id"',
     'name="sort_by"',
     'name="sort_direction"',
   ]),
-  complete("crates/rustok-product/admin/src/transport.rs", [
+  complete("crates/rustok-product/admin/src/catalog_transport.rs", [
     "admin_catalog_native::fetch_products",
     "admin_catalog_graphql::fetch_products",
   ]),
@@ -99,7 +99,7 @@ const attributeFiltersComplete = [
   "crates/rustok-product/storefront/src/transport/catalog_list_native.rs",
   "crates/rustok-product/storefront/src/transport/graphql_adapter.rs",
   "crates/rustok-product/admin/src/catalog_controls.rs",
-  "crates/rustok-product/admin/src/ui/leptos.rs",
+  "crates/rustok-product/admin/src/ui/catalog_admin.rs",
   "crates/rustok-product/admin/src/transport/admin_catalog_native.rs",
   "crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs",
   "crates/rustok-product/src/services/catalog/types.rs",
