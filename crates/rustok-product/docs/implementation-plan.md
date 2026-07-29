@@ -14,15 +14,14 @@ framework-specific outbox adapter dependency.
 The Product-owned `ProductCatalogReadRuntime` gives host composition one typed
 profile selector for `embedded_native` or `external` execution. The server
 preserves a runtime already installed in `HostRuntimeContext` or
-`ServerRuntimeContext`, otherwise composes the embedded provider once. AI and
-Marketplace Listing consume the same selected port rather than constructing
-parallel `CatalogService` instances. The Order storefront native checkout and
-Commerce HTTP checkout now read the selected runtime from `HostRuntimeContext`
-and enter Commerce through composed staged entrypoints; both pass the selected
-port directly to `CheckoutPlanBuilder`. The backward-compatible GraphQL wrapper
-still constructs the embedded Product provider, so checkout transport cutover
-remains open only for that surface. A concrete external transport adapter has
-not yet been executed, so the provider remains `boundary_ready` rather than
+`ServerRuntimeContext`, otherwise composes the embedded provider once. AI,
+Marketplace Listing, Order storefront native checkout, Commerce HTTP checkout,
+and mounted Commerce GraphQL checkout consume the host-selected port rather than
+constructing parallel `CatalogService` instances. GraphQL schema data carries the
+Product runtime into a resolver-scoped task-local; directly embedded schemas
+retain an explicit in-process compatibility fallback. The checkout consumer
+source cutover is complete. A concrete external transport adapter has not yet
+been executed, so the provider remains `boundary_ready` rather than
 `transport_verified`.
 
 The composed `rustok-ai` consumer has live unavailable/deadline degraded-path
@@ -116,9 +115,8 @@ rustok-pricing` dependency cycle.
 - FFA status: `in_progress` — both owner UI surfaces exist and must preserve
   the core/transport/UI split and native/GraphQL parity.
 - FBA status: `boundary_ready` — the read port, in-process persistence profile,
-  Product-owned runtime selector, AI/Marketplace host composition, native
-  checkout, and HTTP checkout source cutovers are complete. External transport
-  execution plus GraphQL checkout cutover remain open.
+  Product-owned runtime selector, and all declared consumer source cutovers are
+  complete. Concrete external transport execution remains open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
@@ -127,6 +125,7 @@ rustok-pricing` dependency cycle.
   `scripts/verify/verify-product-catalog-read-runtime-composition.mjs`,
   `scripts/verify/verify-product-native-checkout-catalog-runtime.mjs`,
   `scripts/verify/verify-product-http-checkout-catalog-runtime.mjs`,
+  `scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
   `scripts/verify/verify-product-storefront-boundary.mjs`,
@@ -140,13 +139,11 @@ rustok-pricing` dependency cycle.
 1. Implement a concrete external `ProductCatalogReadPort` transport adapter in a
    separate transport crate and execute all three operations through it. Preserve
    serialized `PortContext`, deadlines, typed `PortError`, tenant/locale/channel
-   semantics, variant-to-product resolution, count, and pagination. Do not promote
-   above `boundary_ready` from source markers alone.
-2. Complete Commerce GraphQL checkout cutover. GraphQL composition must receive
-   `ProductCatalogReadRuntime::read_port()` and call the composed staged
-   entrypoint. Execute unavailable/deadline behavior as an explicit
-   hard-dependency failure; do not invent a degraded cart-snapshot fallback.
-3. Keep Product richtext adoption explicitly deferred until the owner approves
+   semantics, variant-to-product resolution, count, and pagination. Execute the
+   declared unavailable/deadline hard-dependency behavior for Commerce and the
+   reviewed degraded behavior for AI. Do not promote above `boundary_ready` from
+   source markers alone.
+2. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
    their textarea alone would create a false contract. When approved, use the
@@ -159,7 +156,7 @@ rustok-pricing` dependency cycle.
 - [x] Compose one host-selected `ProductCatalogReadRuntime` and reuse it for AI and Marketplace Listing.
 - [x] Cut Order storefront native checkout over to the composed Product runtime.
 - [x] Cut Commerce HTTP checkout over to the composed Product runtime.
-- [ ] Cut Commerce GraphQL checkout over to the composed Product runtime.
+- [x] Cut mounted Commerce GraphQL checkout over to the composed Product runtime.
 - [ ] Execute a concrete external Product catalog read adapter.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
@@ -172,6 +169,8 @@ rustok-pricing` dependency cycle.
 - `node scripts/verify/verify-product-native-checkout-catalog-runtime.test.mjs`
 - `node scripts/verify/verify-product-http-checkout-catalog-runtime.mjs`
 - `node scripts/verify/verify-product-http-checkout-catalog-runtime.test.mjs`
+- `node scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`
+- `node scripts/verify/verify-product-graphql-checkout-catalog-runtime.test.mjs`
 - `node scripts/verify/verify-product-catalog-attribute-filters.mjs`
 - `node scripts/verify/verify-product-catalog-attribute-filters.test.mjs`
 - `node scripts/verify/verify-product-admin-category-sort.mjs`
@@ -192,11 +191,11 @@ rustok-pricing` dependency cycle.
   `ProductCatalogReadRuntime` profile selection.
 - The host selects and shares one Product read runtime; consumers receive the
   public port and must not construct parallel owner services.
-- Order native checkout, Commerce HTTP checkout, Marketplace Listing, and AI
-  consume Product's public read contract through host composition. Commerce
-  GraphQL checkout remains an explicit embedded compatibility path until its
-  cutover PR. Pricing uses Product's public embedded service contract and does
-  not claim a read-port fallback profile. None regain Product DTO, entity, or
-  storage ownership.
+- Order native checkout, Commerce HTTP checkout, mounted Commerce GraphQL
+  checkout, Marketplace Listing, and AI consume Product's public read contract
+  through host composition. Directly embedded GraphQL schemas retain an explicit
+  in-process compatibility fallback. Pricing uses Product's public embedded
+  service contract and does not claim a read-port fallback profile. None regain
+  Product DTO, entity, or storage ownership.
 - Hosts compose product UI packages and pass the effective locale and runtime
   context without adding a package-local locale or transport fallback.
