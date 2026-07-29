@@ -25,24 +25,24 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const registryPath = "crates/rustok-search/src/projection_source.rs";
+const capabilityPath = "crates/rustok-core/src/search_projection.rs";
+const searchFacadePath = "crates/rustok-search/src/projection_source.rs";
 const projectorPath = "crates/rustok-search/src/forum_projector.rs";
 const ingestionPath = "crates/rustok-search/src/ingestion.rs";
 const searchLibPath = "crates/rustok-search/src/lib.rs";
 const providerPath = "crates/rustok-forum/src/search_projection.rs";
 const forumLibPath = "crates/rustok-forum/src/lib.rs";
-const forumCargoPath = "crates/rustok-forum/Cargo.toml";
 const contractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
 const upstreamPath = "crates/rustok-forum/contracts/forum-public-discovery-seo.json";
 const notePath = "crates/rustok-forum/docs/forum-20bj-search-projection.md";
 
-const registry = read(registryPath);
+const capability = read(capabilityPath);
+const searchFacade = read(searchFacadePath);
 const projector = read(projectorPath);
 const ingestion = read(ingestionPath);
 const searchLib = read(searchLibPath);
 const provider = read(providerPath);
 const forumLib = read(forumLibPath);
-const forumCargo = read(forumCargoPath);
 const note = read(notePath);
 let contract = null;
 let upstream = null;
@@ -65,9 +65,22 @@ for (const marker of [
   "MAX_SEARCH_PROJECTION_PAGE_SIZE",
   "already registered",
   "register_search_projection_source",
+  "search_projection_source_registry_from_extensions",
 ]) {
-  requireMarker(registry, marker, registryPath);
+  requireMarker(capability, marker, capabilityPath);
 }
+for (const forbidden of [
+  "search_documents",
+  "ForumPublicDiscoveryService",
+  "ForumSearchProjector",
+]) {
+  rejectMarker(capability, forbidden, capabilityPath);
+}
+requireMarker(
+  searchFacade,
+  "pub use rustok_core::search_projection::*;",
+  searchFacadePath,
+);
 
 for (const marker of [
   "ForumPublicDiscoveryService",
@@ -79,6 +92,7 @@ for (const marker of [
   "MAX_ENTITY_LOCALES",
   'const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category"',
   'const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic"',
+  "rustok_core::search_projection",
 ]) {
   requireMarker(provider, marker, providerPath);
 }
@@ -87,6 +101,7 @@ for (const forbidden of [
   "forum_category_audience_policies",
   "forum_topic_audience_policies",
   "SecurityContext::system()",
+  "rustok_search::",
 ]) {
   rejectMarker(provider, forbidden, providerPath);
 }
@@ -130,21 +145,27 @@ for (const marker of [
 
 for (const marker of [
   "mod search_projection;",
-  "register_search_projection_source",
+  "rustok_core::search_projection::register_search_projection_source",
   "ForumSearchProjectionSourceFactory",
   '&["content", "taxonomy"]',
 ]) {
   requireMarker(forumLib, marker, forumLibPath);
 }
-requireMarker(forumCargo, "rustok-search.workspace = true", forumCargoPath);
+for (const forbidden of [
+  "rustok_search::register_search_projection_source",
+  '&["content", "taxonomy", "search"]',
+]) {
+  rejectMarker(forumLib, forbidden, forumLibPath);
+}
 
 for (const marker of [
+  "rustok-core",
   "temporary staging table",
   "explicit Forum reindex",
   "FORUM-20BK",
   "projection invalidation events",
-  "Cargo.lock",
-  "does not declare a hard module runtime dependency",
+  "Cargo.lock is unchanged",
+  "does not gain a Search crate or hard",
 ]) {
   requireMarker(note, marker, notePath);
 }
@@ -158,15 +179,19 @@ if (contract) {
     failures.push(`${contractPath}: unexpected downstream task`);
   }
   for (const key of [
+    "neutral_capability_has_no_forum_dependency",
+    "neutral_capability_has_no_search_storage_or_query_logic",
+    "search_facade_reexports_neutral_capability",
     "category_candidates_use_exact_public_discovery",
     "topic_candidates_use_exact_public_discovery",
-    "cross_consumer_audience_policy_copy_added",
     "per_entity_locale_fanout_bounded",
   ]) {
-    const expected = key === "cross_consumer_audience_policy_copy_added" ? false : true;
-    if (contract.source_boundary?.[key] !== expected) {
+    if (contract.source_boundary?.[key] !== true) {
       failures.push(`${contractPath}: source boundary ${key} drift`);
     }
+  }
+  if (contract.source_boundary?.cross_consumer_audience_policy_copy_added !== false) {
+    failures.push(`${contractPath}: audience policy copy must remain absent`);
   }
   for (const key of [
     "search_owns_projection_storage",
@@ -209,17 +234,17 @@ if (contract) {
       failures.push(`${contractPath}: ${key} must remain explicit downstream scope`);
     }
   }
-  if (contract.compatibility?.forum_module_declares_core_search_dependency !== false) {
-    failures.push(`${contractPath}: Search must remain an optional runtime consumer`);
-  }
-  if (contract.compatibility?.forum_runtime_works_without_search_listener !== true) {
-    failures.push(`${contractPath}: Forum runtime independence must be locked`);
-  }
-  if (contract.compatibility?.cargo_lock_regenerated !== false) {
-    failures.push(`${contractPath}: lockfile handoff must remain explicit`);
-  }
-  if (contract.compatibility?.migration_added !== false) {
-    failures.push(`${contractPath}: migration must remain absent`);
+  for (const [key, expected] of Object.entries({
+    forum_to_search_workspace_dependency_added: false,
+    forum_module_declares_core_search_dependency: false,
+    forum_runtime_works_without_search_listener: true,
+    cargo_lock_changed: false,
+    cargo_lock_regeneration_required: false,
+    migration_added: false,
+  })) {
+    if (contract.compatibility?.[key] !== expected) {
+      failures.push(`${contractPath}: compatibility ${key} drift`);
+    }
   }
 }
 
@@ -232,6 +257,9 @@ if (upstream) {
   }
   if (upstream.search_boundary?.completion_contract !== contractPath) {
     failures.push(`${upstreamPath}: completion contract drift`);
+  }
+  if (upstream.search_boundary?.downstream_workspace_dependency_added !== false) {
+    failures.push(`${upstreamPath}: workspace dependency handoff drift`);
   }
   if (upstream.downstream_task !== "FORUM-20BK") {
     failures.push(`${upstreamPath}: downstream task drift`);
