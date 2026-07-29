@@ -1,6 +1,6 @@
 # Order read port
 
-Status: owner port and host runtime published; admin REST and mounted GraphQL list/detail cut over, unvalidated.
+Status: owner port and host runtime published; admin REST and mounted GraphQL list/detail cut over with request context, unvalidated.
 
 ## Scope
 
@@ -15,8 +15,8 @@ needed by mounted Commerce REST and GraphQL query consumers. It is separate from
   order-owner commands and services.
 
 The owner boundary and host-selected runtime are now published. Mounted admin REST
-and GraphQL order list/detail reads use the port. Storefront order reads remain an
-explicit later cutover.
+and GraphQL order list/detail reads use the port. Storefront HTTP order reads remain
+an explicit later cutover.
 
 ## Operations
 
@@ -70,14 +70,22 @@ The default application host:
 3. caches the runtime in `ServerRuntimeContext`;
 4. attaches the same value to `HostRuntimeContext`.
 
-`CommerceHttpRuntime` now requires this value. Commerce GraphQL schema-data
-composition also requires it. The mounted resolver extension scopes the same value
-into the safe-query compatibility facade. Directly embedded schemas retain an
-explicit in-process fallback rather than receiving an unrelated global runtime.
+`CommerceHttpRuntime` requires this value. Commerce GraphQL schema-data composition
+also requires it. The mounted resolver extension scopes the same runtime into the
+safe-query compatibility facade.
+
+The resolver extension separately scopes request-owned order context:
+
+- authenticated actors come only from validated `AuthContext` data;
+- unauthenticated reads use the stable `rustok-commerce.graphql-order-query`
+  service actor;
+- the channel is the host-resolved `RequestContext.channel_slug`;
+- directly embedded schemas without the mounted extension use the service actor
+  and no channel rather than inventing attribution.
 
 ## Admin REST cutover
 
-`GET /admin/orders` now calls `list_order_projections` and preserves:
+`GET /admin/orders` calls `list_order_projections` and preserves:
 
 - `orders:list` authorization;
 - page and per-page values;
@@ -86,7 +94,7 @@ explicit in-process fallback rather than receiving an unrelated global runtime.
 - descending owner ordering and owner pagination total;
 - the existing `PaginatedResponse<OrderResponse>` envelope.
 
-`GET /admin/orders/{id}` now calls `read_order_projection` and preserves:
+`GET /admin/orders/{id}` calls `read_order_projection` and preserves:
 
 - `orders:read` authorization;
 - requested locale and tenant-default fallback;
@@ -119,7 +127,7 @@ This source wave deliberately leaves these paths unchanged:
   `OrderService`;
 - admin order detail payment lookup still constructs `PaymentService`;
 - admin order detail fulfillment lookup still constructs `FulfillmentService`;
-- storefront order detail and ownership checks still construct `OrderService`;
+- storefront HTTP order detail and ownership checks still construct `OrderService`;
 - return and order-change paths still require wider owner contracts.
 
 Keeping payment/fulfillment aggregation and mutations out of this cutover avoids
@@ -136,11 +144,10 @@ or owner-invariant details.
 
 ## Remaining source work
 
-1. propagate authenticated actor and request channel into GraphQL order read context;
-2. cut storefront order detail and ownership checks in a separate atomic change;
-3. publish wider owner contracts before moving return/order-change reads or order
+1. cut storefront HTTP order detail and ownership checks in a separate atomic change;
+2. publish wider owner contracts before moving return/order-change reads or order
    mutations;
-4. retain compile, mounted parity, deadline/failure, restart, and remote-adapter
+3. retain compile, mounted parity, deadline/failure, restart, and remote-adapter
    evidence before any status promotion.
 
 ## Evidence
@@ -149,15 +156,17 @@ Source evidence is retained at:
 
 `crates/rustok-order/contracts/evidence/order-read-port-source.json`
 
-Its status is `graphql_host_runtime_scoped_unvalidated`. Host composition, admin
-REST, and mounted GraphQL source cutover are recorded as complete. Storefront
-consumer cutover, compile evidence, mounted parity, deadline/failure execution,
-restart, and remote-adapter evidence remain false or open.
+Its status is `graphql_request_context_scoped_unvalidated`. Host composition,
+admin REST, and mounted GraphQL source cutover with actor/channel context are
+recorded as complete. Storefront HTTP consumer cutover, compile evidence, mounted
+parity, deadline/failure execution, restart, and remote-adapter evidence remain
+false or open.
 
 ## Intended checks
 
 ```bash
 node scripts/verify/verify-order-read-port.mjs
+node scripts/verify/verify-commerce-graphql-order-read-shim.mjs
 node scripts/verify/verify-commerce-admin-order-route-error-context.mjs
 cargo check -p rustok-order --lib
 cargo check -p rustok-commerce --lib
