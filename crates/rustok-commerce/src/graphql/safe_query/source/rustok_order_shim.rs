@@ -28,7 +28,8 @@ const GRAPHQL_ORDER_READ_BOUNDARY: &str = "commerce_graphql_order_read_shim";
 /// boundary. Return and order-change reads remain on the concrete owner service
 /// until their wider owner contracts are published.
 pub(crate) struct OrderService {
-    inner: ::rustok_order::OrderService,
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
     order_reads: Arc<dyn OrderReadPort>,
 }
 
@@ -40,7 +41,8 @@ impl OrderService {
         )
         .order_read_port();
         Self {
-            inner: ::rustok_order::OrderService::new(db, event_bus),
+            db,
+            event_bus,
             order_reads,
         }
     }
@@ -101,7 +103,9 @@ impl OrderService {
         tenant_id: Uuid,
         change_id: Uuid,
     ) -> OrderResult<OrderChangeResponse> {
-        self.inner.get_order_change(tenant_id, change_id).await
+        self.concrete_owner_service()
+            .get_order_change(tenant_id, change_id)
+            .await
     }
 
     pub(crate) async fn list_order_changes(
@@ -109,7 +113,9 @@ impl OrderService {
         tenant_id: Uuid,
         input: ListOrderChangesInput,
     ) -> OrderResult<(Vec<OrderChangeResponse>, u64)> {
-        self.inner.list_order_changes(tenant_id, input).await
+        self.concrete_owner_service()
+            .list_order_changes(tenant_id, input)
+            .await
     }
 
     pub(crate) async fn get_return(
@@ -117,7 +123,9 @@ impl OrderService {
         tenant_id: Uuid,
         return_id: Uuid,
     ) -> OrderResult<OrderReturnResponse> {
-        self.inner.get_return(tenant_id, return_id).await
+        self.concrete_owner_service()
+            .get_return(tenant_id, return_id)
+            .await
     }
 
     pub(crate) async fn list_returns(
@@ -125,7 +133,13 @@ impl OrderService {
         tenant_id: Uuid,
         input: ListOrderReturnsInput,
     ) -> OrderResult<(Vec<OrderReturnResponse>, u64)> {
-        self.inner.list_returns(tenant_id, input).await
+        self.concrete_owner_service()
+            .list_returns(tenant_id, input)
+            .await
+    }
+
+    fn concrete_owner_service(&self) -> ::rustok_order::OrderService {
+        ::rustok_order::OrderService::new(self.db.clone(), self.event_bus.clone())
     }
 }
 
