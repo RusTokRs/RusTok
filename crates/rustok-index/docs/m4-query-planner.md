@@ -23,6 +23,7 @@ design but does not block database-independent M4 query source work.
 - M4 query-scoped cursors and lookahead pagination: `source_complete_execution_pending`.
 - M4 many-link `EXISTS` filtering: `source_complete_execution_pending`.
 - M4 nested many-link projection aggregation: `source_complete_execution_pending`.
+- M4 PostgreSQL query port and strict row adapter: `source_complete_execution_pending`.
 - M4 retained plan/SQL snapshots: `source_complete_owner_execution_pending`.
 - M4 PostgreSQL/reference-engine equivalence: `open`.
 
@@ -60,7 +61,7 @@ produce deterministic item ordering. Missing reachable rows yield an empty array
 Because many projection does not enter the outer rowset, root pagination, one-row
 lookahead, and exact count remain duplicate free.
 
-## Result handoff
+## Result and execution handoff
 
 `SchemaRegistry::compile_postgres_page_query` changes only the validated page-limit bind
 from `N` to `N + 1`. `decode_postgres_query_page` re-plans and verifies:
@@ -77,6 +78,12 @@ from `N` to `N + 1`. `decode_postgres_query_page` re-plans and verifies:
 The lookahead row is removed. Cursor pages derive the next scoped cursor from the last
 retained root/order tuple; offset pages report `has_more` without creating a cursor.
 
+`PostgresIndexQueryPort` is now the Index-owned execution boundary. It verifies exact
+active persisted schema contracts for the query tenant, converts every
+`PostgresBindValue` variant, executes page and optional count in one read-only
+repeatable-read PostgreSQL transaction, maps only compiler-declared aliases, and then
+delegates semantic validation and cursor creation to the strict decoder.
+
 ## Retained snapshots
 
 `query_snapshot_tests::retained_v4_plan_and_sql_snapshots_are_stable` compares a fixed
@@ -92,12 +99,11 @@ all contract values in `$N` binds.
 ## Remaining bounded M4 work
 
 The combined roadmap item remains open until PostgreSQL/reference-engine equivalence is
-implemented and executed. Additional source boundaries remain:
+implemented and executed. Additional boundaries remain:
 
-- direct SeaORM bind/row adaptation and SQL execution composition;
-- persisted-schema/index readiness checks;
 - aggregate ordering semantics for paths traversing `many`;
-- production `IndexQueryPort` composition and consumer cutover.
+- server/storefront/admin/search query-port composition and consumer cutover;
+- live PostgreSQL/reference-engine fixtures and retained execution evidence.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
@@ -115,6 +121,7 @@ cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo test -p rustok-index query_snapshot_tests -- --nocapture
 cargo check -p rustok-index --all-targets
+node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
