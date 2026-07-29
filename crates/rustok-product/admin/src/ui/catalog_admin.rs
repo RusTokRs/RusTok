@@ -5,6 +5,7 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::catalog_controls::{
     build_product_admin_catalog_controls_labels, build_product_admin_list_input,
+    serialize_attribute_filters,
 };
 use crate::transport;
 
@@ -22,8 +23,11 @@ pub fn ProductAdmin() -> impl IntoView {
         read_route_query_value(&route_context, "category_id"),
         read_route_query_value(&route_context, "sort_by"),
         read_route_query_value(&route_context, "sort_direction"),
+        read_route_query_value(&route_context, "attribute_filters"),
     );
     let current_category = catalog_controls.category_id.clone().unwrap_or_default();
+    let current_attribute_filters =
+        serialize_attribute_filters(catalog_controls.attribute_filters.as_slice());
     let current_sort_by = catalog_controls.sort_by.clone().unwrap_or_default();
     let current_sort_direction = catalog_controls.sort_direction.clone().unwrap_or_default();
     provide_context(catalog_controls);
@@ -44,7 +48,7 @@ pub fn ProductAdmin() -> impl IntoView {
                     <h3 class="text-lg font-semibold text-card-foreground">{labels.title}</h3>
                     <p class="text-sm text-muted-foreground">{labels.subtitle}</p>
                 </div>
-                <form method="get" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                <form method="get" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
                     {selected_product_id.map(|value| view! {
                         <input type="hidden" name=AdminQueryKey::ProductId.as_str() value=value />
                     })}
@@ -64,6 +68,17 @@ pub fn ProductAdmin() -> impl IntoView {
                                 }).collect_view())
                                 .unwrap_or_default()}
                         </select>
+                    </label>
+                    <label class="grid gap-2 text-sm text-foreground">
+                        <span class="font-medium">{labels.attribute_filters}</span>
+                        <input
+                            name="attribute_filters"
+                            type="text"
+                            value=current_attribute_filters
+                            placeholder=labels.attribute_filters_placeholder
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                        />
+                        <span class="text-xs text-muted-foreground">{labels.attribute_filters_help}</span>
                     </label>
                     <label class="grid gap-2 text-sm text-foreground">
                         <span class="font-medium">{labels.sort_by}</span>
