@@ -24,6 +24,9 @@ const contract = JSON.parse(
     'crates/rustok-forum/contracts/forum-topic-audience-storefront-list-composition.json',
   ),
 );
+const replyContract = JSON.parse(
+  read('crates/rustok-forum/contracts/forum-reply-audience-read.json'),
+);
 
 requireText(
   graphqlQuery,
@@ -103,10 +106,16 @@ if (!contract.compatibility.canonical_transport_adapters_updated) {
   throw new Error('contract must lock canonical adapter updates');
 }
 if (contract.compatibility.parallel_transport_adapters_added) {
-  throw new Error('FORUM-20BE must not retain parallel adapters');
+  throw new Error('FORUM-20BE must not retain parallel topic-list adapters');
 }
-if (contract.composition_boundary.reply_owner_read_changed) {
-  throw new Error('FORUM-20BE must not claim exact reply-owner migration');
+if (!contract.composition_boundary.reply_owner_read_changed) {
+  throw new Error('FORUM-20BE handoff must record delivered reply-owner migration');
+}
+if (contract.downstream_completion !== 'crates/rustok-forum/contracts/forum-reply-audience-read.json') {
+  throw new Error('FORUM-20BE handoff must point to the reply-read contract');
+}
+if (replyContract.task !== 'FORUM-20BF') {
+  throw new Error('unexpected reply-read completion task');
 }
 if (contract.downstream_task !== 'FORUM-20BF') {
   throw new Error('unexpected downstream task');
