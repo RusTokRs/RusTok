@@ -75,10 +75,7 @@ impl StorefrontStagedCheckoutRuntimeError {
     }
 }
 
-/// Backward-compatible native storefront command wrapper.
-///
-/// New transports should call `complete_storefront_checkout_input` so every
-/// checkout field is preserved while using the same staged owner-port runtime.
+/// Backward-compatible storefront command wrapper using the embedded Product provider.
 pub async fn complete_storefront_checkout(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
@@ -109,12 +106,74 @@ pub async fn complete_storefront_checkout(
     .await
 }
 
-/// Completes one storefront checkout through the durable staged owner-port
-/// pipeline. REST, GraphQL, and native transports must converge here rather
-/// than constructing the legacy `CheckoutService` facade.
+/// Host-composed storefront command wrapper.
+///
+/// Native and future remote-selected transports use this entrypoint so Product execution is chosen
+/// by `ProductCatalogReadRuntime` rather than reconstructed inside Commerce.
+pub async fn complete_storefront_checkout_with_product_port(
+    runtime: &StorefrontCheckoutRuntime,
+    payment_provider_registry: PaymentProviderRegistry,
+    product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>,
+    tenant: &TenantContext,
+    request_context: &RequestContext,
+    auth: OptionalAuthContext,
+    idempotency_key: impl Into<String>,
+    command: StorefrontCheckoutCompletionCommand,
+) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontStagedCheckoutRuntimeError> {
+    complete_storefront_checkout_input_with_product_port(
+        runtime,
+        payment_provider_registry,
+        product_catalog_read_port,
+        tenant.id,
+        request_context,
+        auth.0,
+        idempotency_key,
+        crate::dto::CompleteCheckoutInput {
+            cart_id: command.cart_id,
+            shipping_option_id: None,
+            shipping_selections: None,
+            region_id: None,
+            country_code: None,
+            locale: Some(request_context.locale.clone()),
+            create_fulfillment: command.create_fulfillment,
+            metadata: command.metadata,
+        },
+    )
+    .await
+}
+
+/// Backward-compatible input wrapper using the embedded Product provider.
 pub async fn complete_storefront_checkout_input(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    auth: Option<AuthContext>,
+    idempotency_key: impl Into<String>,
+    checkout_input: crate::dto::CompleteCheckoutInput,
+) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontStagedCheckoutRuntimeError> {
+    let product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(
+        rustok_product::CatalogService::new(runtime.db_clone(), runtime.event_bus()),
+    );
+    complete_storefront_checkout_input_with_product_port(
+        runtime,
+        payment_provider_registry,
+        product_catalog_read_port,
+        tenant_id,
+        request_context,
+        auth,
+        idempotency_key,
+        checkout_input,
+    )
+    .await
+}
+
+/// Completes one storefront checkout through the durable staged owner-port pipeline using the
+/// Product port selected by host composition.
+pub async fn complete_storefront_checkout_input_with_product_port(
+    runtime: &StorefrontCheckoutRuntime,
+    payment_provider_registry: PaymentProviderRegistry,
+    product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>,
     tenant_id: Uuid,
     request_context: &RequestContext,
     auth: Option<AuthContext>,
@@ -218,10 +277,7 @@ pub async fn complete_storefront_checkout_input(
         runtime.db_clone(),
         Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
         inventory_availability,
-        Arc::new(rustok_product::CatalogService::new(
-            runtime.db_clone(),
-            event_bus.clone(),
-        )),
+        product_catalog_read_port,
     );
     let marketplace_allocation_service = Arc::new(
         rustok_marketplace_allocation::MarketplaceAllocationService::new(runtime.db_clone()),
