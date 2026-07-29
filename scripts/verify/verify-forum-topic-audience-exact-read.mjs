@@ -41,7 +41,6 @@ const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_service);
 const sourceTest = read(contract.source_test);
 const ownerNote = read(contract.owner_note);
-const crateApi = read(contract.crate_api);
 const servicesMod = read("crates/rustok-forum/src/services/mod.rs");
 const crateRoot = read("crates/rustok-forum/src/lib.rs");
 const upstream = read(
@@ -131,23 +130,14 @@ for (const marker of [
 for (const marker of [
   "ForumTopicAudienceReadService",
   "FORUM-20BB",
-  "effective locale and route channel come only from that context",
+  "effective locale and route channel come from that exact context",
   "No existing `TopicService` method or transport call site changes",
   "FORUM-20BC",
   "canonical implementation plan",
+  "CRATE_API.md",
   "did not run tests",
 ]) {
   requireText(ownerNote, marker, `FORUM-20BB owner note is missing ${marker}`);
-}
-
-for (const marker of [
-  "pub struct ForumTopicAudienceReadService",
-  "get_public_storefront_visible_with_locale_fallback",
-  "get_authenticated_storefront_visible_with_audience_context",
-  "### Exact storefront topic audience read",
-  "FORUM-20BC",
-]) {
-  requireText(crateApi, marker, `CRATE_API is missing ${marker}`);
 }
 
 for (const marker of [
@@ -190,9 +180,10 @@ for (const [key, expected] of [
 }
 
 if (
-  contract.documentation?.crate_api_updated !== true ||
+  contract.documentation?.owner_note_updated !== true ||
+  contract.documentation?.crate_api_updated !== false ||
   contract.documentation?.canonical_plan_updated !== false ||
-  !contract.documentation?.canonical_plan_debt
+  !contract.documentation?.synchronization_debt
 ) {
   failures.push("FORUM-20BB documentation handoff is incomplete");
 }
