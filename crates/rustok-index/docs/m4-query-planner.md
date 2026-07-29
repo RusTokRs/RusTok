@@ -13,6 +13,12 @@ detection. The repository owner still needs to execute and admit one fresh real
 PostgreSQL partition packet. That owner gate blocks production partition lifecycle
 design but does not block M4 query source work.
 
+Server composition was also rechecked. `PostgresIndexQueryPort` requires one immutable
+source-owned `SchemaRegistry`; the server currently has no published source registry
+contract from which to compose that value. Building a host runtime from an empty or
+tenant-derived registry would be a false cutover, so server/consumer composition remains
+open until a source-owned registry boundary exists.
+
 ## Actualized status
 
 - M3 real retained PostgreSQL packet execution: `open_owner_action`.
@@ -27,6 +33,7 @@ design but does not block M4 query source work.
 - M4 retained plan/SQL snapshots: `source_complete_owner_execution_pending`.
 - M4 PostgreSQL/reference fixture source: `source_complete_owner_execution_pending`.
 - M4 retained PostgreSQL/reference capture source: `source_complete_owner_execution_pending`.
+- M4 PostgreSQL/reference admission review source: `source_complete_owner_execution_pending`.
 - M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
@@ -110,28 +117,32 @@ one-link filtering/projection, many-link `Gte`/`Contains`/`Ne`/`IsNull`, and nes
 identity/value alignment. The fixture is env-gated and has not been run by the
 implementation agent.
 
-## Retained equivalence capture
+## Retained equivalence capture and admission
 
-`index-query-equivalence-capture` is an owner-operated `ops/benches` binary. It requires
-an explicit opt-in, exact clean checkout commit, stable run key, and PostgreSQL 16. It
-runs only the merged fixture, rejects skipped-test success, rechecks source and database
-identity after execution, and publishes a fresh descriptor-last bundle containing exact
-stdout/stderr plus hashes and provenance. The PostgreSQL URL and credentials are not
-serialized.
+`index-query-equivalence-capture` requires explicit opt-in, an exact clean checkout
+commit, stable run key, and PostgreSQL 16. It runs only the merged fixture, rejects
+skipped-test success, rechecks source and database identity, and publishes a fresh
+three-file descriptor-last bundle containing exact stdout/stderr plus hashes and
+provenance. The PostgreSQL URL and credentials are not serialized.
 
-The capture command is source complete but has not been run. Its bundle is not admitted
-merely because the command exits successfully; the repository owner still reviews the
-three-file inventory, descriptor, commit, database identity, and log hashes.
+`index-query-equivalence-admission` performs no Cargo or database execution. It reads the
+immutable bundle, requires independent expected source identity, rejects unknown
+descriptor fields, aliases, symlinks, extras, hash drift, command/scenario drift,
+skipped output, and mid-review byte changes, then creates one no-clobber receipt outside
+the bundle. The receipt records `production_lifecycle_authorized: false`.
+
+Both tools are source complete but have not been run. A capture exit alone does not admit
+the bundle; an admission receipt alone does not authorize deployment or partition work.
 
 ## Remaining bounded M4 work
 
-The canonical checklist remains open until the owner runs the fixture through the
-capture command and retains live PostgreSQL/reference evidence. Additional boundaries
+The canonical checklist remains open until the owner runs the fixture through capture,
+admits the retained bundle, and preserves both bundle and receipt. Additional boundaries
 remain:
 
 - aggregate ordering semantics for paths traversing `many`;
-- server/storefront/admin/search query-port composition and consumer cutover;
-- owner review and admission of one retained live equivalence bundle.
+- a source-owned immutable registry contract for server composition;
+- server/storefront/admin/search query-port composition and consumer cutover.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
@@ -155,8 +166,15 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... \
 INDEX_QUERY_EQUIVALENCE_COMMIT=<40-char-head-commit> \
 INDEX_QUERY_EQUIVALENCE_RUN_KEY=<stable-run-key> \
   cargo run -p rustok-benchmarks --bin index-query-equivalence-capture
+INDEX_QUERY_EQUIVALENCE_ALLOW_ADMISSION=1 \
+INDEX_QUERY_EQUIVALENCE_BUNDLE=<fresh-capture-root> \
+INDEX_QUERY_EQUIVALENCE_EXPECTED_COMMIT=<40-char-head-commit> \
+INDEX_QUERY_EQUIVALENCE_EXPECTED_RUN_KEY=<stable-run-key> \
+INDEX_QUERY_EQUIVALENCE_ADMISSION_OUTPUT=<existing-parent>/equivalence-admission.json \
+  cargo run -p rustok-benchmarks --bin index-query-equivalence-admission
 cargo check -p rustok-index --all-targets
 cargo check -p rustok-benchmarks --bin index-query-equivalence-capture
+cargo check -p rustok-benchmarks --bin index-query-equivalence-admission
 node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
@@ -165,5 +183,6 @@ node scripts/verify/verify-index-many-link-filtering.mjs
 node scripts/verify/verify-index-query-snapshots.mjs
 node scripts/verify/verify-index-postgres-reference-equivalence.mjs
 node scripts/verify/verify-index-query-equivalence-capture.mjs
+node scripts/verify/verify-index-query-equivalence-admission.mjs
 cargo xtask module validate index
 ```
