@@ -25,6 +25,7 @@ pub struct CommerceHttpRuntime {
     fulfillment_lifecycle_read_runtime:
         crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime,
     order_read_runtime: crate::graphql_runtime::CommerceOrderReadRuntime,
+    product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
 }
 
@@ -72,6 +73,12 @@ impl CommerceHttpRuntime {
         self.order_read_runtime.order_read_port()
     }
 
+    fn product_catalog_read_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_product::ProductCatalogReadPort> {
+        self.product_catalog_read_runtime.read_port()
+    }
+
     fn marketplace_financial_operator_service(&self) -> crate::MarketplaceFinancialOperatorService {
         self.marketplace_financial_runtime
             .operator_service(self.db_clone(), self.event_bus())
@@ -113,6 +120,13 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require CommerceOrderReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let product_catalog_read_runtime = runtime
+            .shared_get::<rustok_product::ProductCatalogReadRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require ProductCatalogReadRuntime in HostRuntimeContext"
+                )
+            })?;
         let marketplace_financial_runtime = runtime
             .shared_get::<crate::MarketplaceFinancialRuntime>()
             .ok_or_else(|| {
@@ -132,6 +146,7 @@ impl CommerceHttpRuntime {
             shipping_option_read_runtime,
             fulfillment_lifecycle_read_runtime,
             order_read_runtime,
+            product_catalog_read_runtime,
             marketplace_financial_runtime,
         })
     }
