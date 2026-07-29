@@ -9,6 +9,10 @@ const BLOG_SOURCE_MODULE: &str = "blog";
 const BLOG_ENTITY_TYPE: &str = "blog_post";
 const BLOG_STOREFRONT_ROUTE: &str = "/modules/blog";
 const MAX_BLOG_SLUG_LEN: usize = 200;
+const FORUM_SOURCE_MODULE: &str = "forum";
+const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
+const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
+const FORUM_STOREFRONT_ROUTE: &str = "/modules/forum";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -117,9 +121,9 @@ pub struct SearchResultItem {
 /// Resolves the canonical application URL for a normalized Search result.
 ///
 /// URL ownership lives in the Search contract so GraphQL, native server
-/// functions, remote connectors, and future consumers cannot drift. Blog URLs
-/// are derived only for the canonical Blog source/entity pair and only from a
-/// bounded safe owner-projected slug. Invalid payloads fail closed.
+/// functions, remote connectors, and future consumers cannot drift. Forum URLs
+/// are emitted only for canonical Forum source/entity pairs and use the same
+/// stable query keys as the module-owned storefront. Invalid pairs fail closed.
 pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
     match value.entity_type.as_str() {
         "product" => Some(format!("/store/products/{}", value.id)),
@@ -130,6 +134,13 @@ pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
         )),
         BLOG_ENTITY_TYPE if value.source_module == BLOG_SOURCE_MODULE => {
             canonical_blog_result_url(&value.payload)
+        }
+        FORUM_CATEGORY_ENTITY_TYPE if value.source_module == FORUM_SOURCE_MODULE => Some(format!(
+            "{FORUM_STOREFRONT_ROUTE}?category={}",
+            value.id
+        )),
+        FORUM_TOPIC_ENTITY_TYPE if value.source_module == FORUM_SOURCE_MODULE => {
+            Some(format!("{FORUM_STOREFRONT_ROUTE}?topic={}", value.id))
         }
         _ => None,
     }
@@ -251,6 +262,32 @@ mod tests {
             item("blog_post", "blog", json!({ "slug": "hello world" })),
             item("blog_post", "blog", json!({ "slug": 7 })),
             item("blog_post", "blog", json!({})),
+        ] {
+            assert_eq!(canonical_search_result_url(&value), None);
+        }
+    }
+
+    #[test]
+    fn canonical_url_derives_forum_category_and_topic_routes() {
+        let category = item("forum_category", "forum", json!({}));
+        let topic = item("forum_topic", "forum", json!({}));
+
+        assert_eq!(
+            canonical_search_result_url(&category).as_deref(),
+            Some("/modules/forum?category=00000000-0000-0000-0000-000000000001")
+        );
+        assert_eq!(
+            canonical_search_result_url(&topic).as_deref(),
+            Some("/modules/forum?topic=00000000-0000-0000-0000-000000000001")
+        );
+    }
+
+    #[test]
+    fn canonical_url_rejects_spoofed_forum_source_entity_pairs() {
+        for value in [
+            item("forum_category", "content", json!({})),
+            item("forum_topic", "blog", json!({})),
+            item("forum_reply", "forum", json!({})),
         ] {
             assert_eq!(canonical_search_result_url(&value), None);
         }
