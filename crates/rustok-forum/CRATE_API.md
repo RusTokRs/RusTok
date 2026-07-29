@@ -16,10 +16,6 @@
 - `TopicService::create_command_with_audience_context(tenant_id, security, PortContext, CreateTopicCommandInput) -> TopicResponse`
 - `TopicService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> TopicService`
 - `pub struct ForumTopicCreateAudienceAuthorizationService`, `ForumTopicCreateAudienceAuthorization`
-- `pub struct ForumTopicAudienceReadService`
-- `ForumTopicAudienceReadService::get_public_storefront_visible_with_locale_fallback(tenant_id, topic_id, locale, fallback_locale, channel_slug) -> Option<TopicResponse>`
-- `ForumTopicAudienceReadService::get_authenticated_storefront_visible_with_audience_context(tenant_id, security, PortContext, topic_id, fallback_locale) -> Option<TopicResponse>`
-- `ForumTopicAudienceReadService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> ForumTopicAudienceReadService`
 - `pub struct graphql::ForumGraphqlRuntimeData`; `graphql::attach_schema_data(GraphqlRuntimeInputs)`
 - `TopicService::update_command(tenant_id, topic_id, security, UpdateTopicCommandInput) -> TopicResponse`
 - `ReplyService::create_command(tenant_id, security, topic_id, CreateReplyCommandInput) -> ReplyResponse`
@@ -151,14 +147,6 @@
 - PostgreSQL and SQLite enforce tenant/category ownership, immutable rows, bounded relations, and one shared advisory key for owner replacement and direct bounded inserts.
 - GraphQL/REST exact context composition remains `FORUM-20AZ`; no moderation DTO changed in `FORUM-20AY`.
 - Run `node scripts/verify/verify-forum-moderation-audience-policy.mjs` after changing this boundary.
-### Exact storefront topic audience read
-- `ForumTopicAudienceReadService` is the `FORUM-20BB` owner composition for one exact storefront topic target.
-- Public reads compose base open/category/channel visibility with every richer category/topic audience layer and never call optional owner-facts providers.
-- Authenticated reads require exact `PortContext` tenant/user identity before topic lookup; effective locale and route channel come only from that context.
-- Locally decidable role and explicit-user layers remain provider-independent. Required trust, Channel, or Groups facts are exact and bounded; missing still-required composition fails closed.
-- Missing and denied targets return the same absent result, and topic localization/hydration occurs only after authorization.
-- Existing `TopicService` methods and transport call sites remain unchanged; native/GraphQL selected-topic and mark-read composition is retained as `FORUM-20BC`.
-- Run `cargo test -p rustok-forum --test topic_audience_exact_read_sqlite -- --nocapture` and `node scripts/verify/verify-forum-topic-audience-exact-read.mjs` after changing this boundary.
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
@@ -266,8 +254,101 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 
 ## Owner Service Boundary
 - Public topic and reply workflows use the root `TopicService` and `ReplyService` facade exports.
-- Exact richer storefront topic reads use `ForumTopicAudienceReadService`; transports must not duplicate base/category/topic audience evaluation.
 - Raw `services::topic`, `services::reply`, `topic_owner`, `reply_owner` and `mention_relation` implementations are crate-private.
 - Public facades expose explicit create/read/update/list methods and never implement `Deref` to an implementation service.
 - Topic/reply deletion must use facade `delete` methods so tombstones, counters and semantic events remain atomic.
 - Active mention/quote persistence and added-target event publication are composed by the same owner write transaction; transports must never invoke `MentionRelationService` or event publishing directly.
+- Quote replacement is exposed only through `ForumQuoteCommandService`; inline quote create/edit is exposed through topic/reply command facades.
+- The legacy facade methods convert into command DTOs and preserve existing quotes on body updates.
+- Relation snapshots are read only through `ForumRelationReadService` or materialized inside an active owner transaction.
+- Moderation transports must call `ModerationService`; audience evaluation remains owner-side and precedes every moderation write transaction.
+- Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
+
+## Dependencies on Other RusToK Crates
+- `rustok-content`
+- `rustok-core`
+- `rustok-media` for transport-neutral image descriptors, owner read-port resolution and optional-capability degradation
+- `rustok-events` for the sealed Forum mention event family
+- `rustok-outbox`
+- `rustok-profiles` for tenant-scoped mention handle resolution through `ProfilesReader`
+
+## Common AI Mistakes
+- Incorrectly uses moderation limits/constants from `constants`.
+- Confuses the category/topic/reply hierarchy in entity imports.
+- Ignores tenant-boundary in service filters.
+- Confuses `locale` (requested) and `effective_locale` (actually used).
+- Uses the flat category list to reconstruct hierarchy instead of `CategoryService::tree`.
+- Writes `parent_id` or sibling positions directly instead of using category owner commands.
+- Writes lifecycle rows parent-first or restores a child beneath an archived ancestor.
+- Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
+- Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
+- Stores a category image URL/path or reads Media tables instead of using the Media owner port.
+- Swallows a Media port failure as an absent category cover instead of degrading only when Media is not composed.
+- Parses mentions from code blocks, escaped text or unsanitized `rt_json_v1`.
+- Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
+- Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
+- Calls Notifications from the Forum transaction instead of publishing a typed owner event.
+- Uses separate identities for the outbox and Forum journal copies of one mention event.
+- Exposes `handle_snapshot`, projection fingerprint or source body through the relation owner read.
+- Updates a persisted mention/quote row instead of appending a new relation revision.
+- Removes the source INSERT seed triggers before active owner writes are composed.
+- Persists a prepared relation projection without revalidating the source body inside the owner transaction.
+- Lets quote transports import `MentionRelationService`, `PreparedMentionRelations` or `persist_in_tx`.
+- Treats omitted update quotes as an empty list and silently clears relations.
+- Preserves an out-of-date quote snapshot without expected-revision CAS.
+- Returns a quote command response through a post-commit read that can fail after the write committed.
+- Imports raw topic/reply implementation modules instead of the root owner facades.
+- Treats `forum_user_stats` activity counters as Forum trust state.
+- Builds reply-create audience identity from DTO fields or bypasses the exact transport context and host-composed `ReplyService`.
+- Reuses `forum_topic_audience_*` visibility rows for topic-local reply-create narrowing instead of the separate owner policy.
+- Applies moderator audience policy to a topic author's owned solution command instead of only the moderation fallback.
+- Opens a moderation write transaction before category audience authorization or queries Channel/Groups tables directly.
+- Passes methods to `ModerationService` without `tenant_id` — it is now required.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- Existing `CreateTopicInput`, `UpdateTopicInput`, `CreateReplyInput` and `UpdateReplyInput` remain source-compatible.
+- Separate command DTOs carry inline quotes and are consumed by transport adapters and facade conversions.
+- All changes to existing create/update DTO fields are considered breaking changes.
+
+### Domain Invariants
+- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
+- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
+- Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected, foreign-parent or invalid archive hierarchies.
+- Category move/reorder commands use a per-tenant transaction order and never persist a partial sibling normalization.
+- Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
+- Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
+- Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
+- Category topic-create and reply-create audience layers are normalized, independently inherited, bounded, immutable on direct update and separate from content visibility.
+- Topic-local reply-create audience is a separate normalized final narrowing layer evaluated only after every inherited category reply-create layer.
+- Category moderation audience is normalized, inherited as a conjunction, and evaluated before all moderator-owned topic/reply/solution writes while preserving the topic-author solution owner path.
+- Topic/reply create transports derive exact tenant, actor, claims, locale, deadline, and route channel only from authenticated runtime contexts and use the same host-published optional audience facts port.
+- Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
+- Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
+- Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
+- Mention revision diffs are immutable on replay and only added resolved targets become owner events.
+- Relation revisions and mention/quote children are append-only, tenant-bound and atomically matched to the persisted source body.
+- Source INSERT seeding preserves one relation identity for every persisted topic/reply locale during the B1-to-B2 rollout window.
+- Mention events and their relation revision are committed atomically with one identity shared between outbox and Forum journal.
+- Bounded relation reads are tenant/source/locale scoped and never expose handle snapshots or replay fingerprints.
+- Quote replacement is exact-locale, owner-scoped, bounded to 32 references and materializes its response before commit.
+- Inline body edits preserve omitted quotes by expected relation revision and conflict rather than overwrite a concurrent replacement.
+- Quote relations retain target revision identity, reject source/target mismatches and cannot self-reference their own source revision.
+- Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
+
+### Events / Outbox Side Effects
+- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Event payload and event-type format must remain backward-compatible for cross-module consumers.
+- `forum.mention.user_added` and `forum.mention.audience_added` are emitted only for targets added by a newly persisted relation revision.
+- Quote-only replacement and preserved body edits emit nothing for unchanged mentions and never call Notifications synchronously.
+- Forum records the same event UUID in the canonical outbox and append-only owner journal.
+
+### Errors / Failure Codes
+- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+- Optional capability absence uses `ForumError::CapabilityUnavailable` and a stable owner-specific code; actual provider failures use `ForumError::CapabilityFailure` and preserve source code and retryability.
+- Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
+- Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.
+- Invalid, absent or foreign relation revision identities share `FORUM_RELATION_REVISION_UNAVAILABLE`.
+- A stale omitted-update quote snapshot returns retryable `FORUM_RELATION_REVISION_CONFLICT`; REST maps it to HTTP 409.
