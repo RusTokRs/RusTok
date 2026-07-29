@@ -42,6 +42,7 @@ const registrySource = read("crates/rustok-product/contracts/product-fba-registr
 const plan = read("crates/rustok-product/docs/implementation-plan.md");
 
 requireAll(cargo, [
+  "sha2.workspace = true",
   'subtle = "2"',
   "uuid.workspace = true",
 ], "Product transport authentication dependencies");
@@ -56,8 +57,10 @@ requireAll(auth, [
   'AUTHORIZATION_METADATA: &str = "authorization"',
   'TENANT_ID_METADATA: &str = "x-rustok-tenant-id"',
   "MAX_BEARER_TOKEN_BYTES",
+  "Sha256::digest(value)",
+  "Sha256::digest(candidate)",
   "ConstantTimeEq",
-  ".ct_eq(candidate)",
+  ".ct_eq(&candidate_digest)",
   'field("authorization", &"[REDACTED]")',
   "InvalidBearerToken",
   "bearer_token_debug_is_redacted",
@@ -188,7 +191,7 @@ requireAll(plan, [
   "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
   "constant-time",
   "trusted service actor",
-  "authentication source is complete",
+  "authentication source",
   "Product remains `boundary_ready`",
   "Implement a standalone Product catalog service host",
   "verify-product-catalog-grpc-authentication.mjs",
