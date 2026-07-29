@@ -35,12 +35,15 @@ scheduler modules remain deleted.
 - `SchemaRegistryError`, `LinkPathStep`
 - `RecordValidationError`, `QueryValidationError`
 - `IndexCursor`, `CursorCodec`, `CursorCodecError`, `CursorValidationError`
-- `ExecutableQueryPlan`, `PlannedJoin`, `PlannedField`, `PlannedOrder`
+- `ExecutableQueryPlan`, `PlannedJoin`, `PlannedField`, `PlannedManyProjection`,
+  `PlannedOrder`
 - `QueryPlanFingerprint`, `QueryPlanError`
-- `PostgresBindValue`, `CompiledQueryColumn`, `CompiledPostgresCount`
+- `PostgresBindValue`, `CompiledQueryColumn`, `CompiledManyRelationColumn`,
+  `CompiledPostgresCount`
 - `CompiledPostgresQuery`, `PostgresQueryBuildError`, `PostgresQueryCompileError`
 - `CompiledPostgresCell`, `CompiledPostgresRow`, `CompiledPostgresPageQuery`
-- `IndexProjectedValue`, `IndexRelationIdentity`, `IndexQueryItem`, `IndexQueryPage`
+- `IndexProjectedValue`, `IndexRelationIdentity`, `IndexNestedRelationItem`,
+  `IndexNestedRelationProjection`, `IndexQueryItem`, `IndexQueryPage`
 - `PostgresQueryPageBuildError`, `PostgresQueryDecodeError`
 
 ### Infrastructure
@@ -112,13 +115,13 @@ cutover, or rollback.
 
 M4 provides validated typed executable plans, controlled PostgreSQL SQL and bind
 DTOs for root/one-link projection, filtering, ordering, counting and pagination,
-correlated many-link filtering, query-scoped cursor continuation, one-row page
-lookahead, strict compiled-column/result decoding, exact-count decoding, `has_more`,
-and next-cursor construction. It still does not execute statements, adapt SeaORM
-rows directly, aggregate many-link projections, publish `IndexQueryPort`, or claim
-PostgreSQL/reference-engine equivalence. Multi-source catalog composition, batch
-ingestion, rebuild, query-port, partition cutover, and operator APIs remain later
-work.
+correlated many-link filtering, deterministic nested many-link projection aggregates,
+query-scoped cursor continuation, one-row page lookahead, strict scalar/nested result
+decoding, exact-count decoding, `has_more`, and next-cursor construction. It still
+does not execute statements, adapt SeaORM rows directly, order through many links,
+publish `IndexQueryPort`, or claim PostgreSQL/reference-engine equivalence.
+Multi-source catalog composition, batch ingestion, rebuild, query-port, partition
+cutover, and operator APIs remain later work.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`,
 `DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
@@ -150,11 +153,13 @@ APIs.
   ordered fields/directions, order arity, and order-value types.
 - Executing a page query through raw `compile_postgres_query` instead of the
   one-row-lookahead `compile_postgres_page_query` handoff.
-- Decoding rows without rechecking the plan fingerprint and exact compiled column
-  contract.
+- Decoding rows without rechecking the plan fingerprint and exact scalar/nested
+  column contracts.
 - Compiling a many-link filter as an ordinary outer join; it must remain a correlated
   predicate so child multiplicity cannot duplicate root rows or counts.
-- Sorting or projecting through a `many` link without an explicit aggregate policy.
+- Flattening many-link projection into outer rows or independent value arrays; one
+  aggregate item must retain its full identity chain and aligned selected values.
+- Sorting through a `many` link without an explicit aggregate ordering policy.
 - Completing or heartbeating schema/index work without exact worker and attempt
   fencing.
 - Building expression indexes against `payload ->> field`; stored `IndexValue`
@@ -178,8 +183,10 @@ APIs.
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
 - `SchemaRegistry::compile_postgres_page_query` is the page-execution compiler
   handoff; it preserves SQL and increases only the validated limit bind by one.
+- `CompiledPostgresQuery::many_relations` binds every aggregate output alias to its
+  exact `PlannedManyProjection` metadata.
 - `CompiledPostgresRow` is the narrow adapter handoff for compiler-owned UUID,
-  tagged JSON, SQL-null, and exact-count cells.
+  tagged JSON, nested aggregate JSON, SQL-null, and exact-count cells.
 - `PostgresSchemaRegistrationStore::register(tenant_id, schema)` binds one non-nil
   tenant to one validated exact schema contract and calculated fingerprint.
 - `SchemaApplicationLeaseRequest` binds one tenant, exact schema reference,
@@ -213,7 +220,9 @@ APIs.
 - Selected, filtered, and ordered fields are resolved through typed link paths.
 - Query complexity, path depth, page size, and offset depth are bounded.
 - Filtering through `many` paths uses correlated existential semantics.
-- Sorting through a `many` link is rejected until aggregation is explicit.
+- Projection through `many` paths returns deterministic nested items with complete
+  relation identity chains and aligned tagged values.
+- Sorting through a `many` link is rejected until aggregate ordering is explicit.
 - Source versions and tombstones prevent stale mutation overwrite.
 - Generic engine types remain source-domain agnostic.
 
@@ -296,25 +305,34 @@ APIs.
 ### Query Planning, Compilation, and Result Decoding
 
 - `SchemaRegistry::plan_query` validates first and captures deterministic aliases,
-  joins, typed referenced fields, propagated `traverses_many`, projection, filters,
-  ordering, pagination, and a v3 plan fingerprint.
+  joins, typed referenced fields, propagated `traverses_many`, scalar projection,
+  grouped `PlannedManyProjection` metadata, filters, ordering, pagination, and a v4
+  plan fingerprint.
+- Many projection groups preserve first terminal-path appearance and requested field
+  order; each group records every relation-prefix identity path.
 - `compile_postgres_query` emits controlled SQL plus ordered bind DTOs for root and
-  one-link projection/ordering plus all validated filters; caller values and contract
-  names remain binds.
+  one-link projection/ordering, nested many projection aggregates, and all validated
+  filters; caller values and contract names remain binds.
 - Every many-traversing atomic filter emits an independent nested correlated `EXISTS`
   chain. No many join enters the outer rowset or identity-column contract.
+- Every selected many path emits one correlated JSONB aggregate ordered by stored link
+  ordinal, target entity identity, and locale at every hop. Empty reachability emits
+  an empty array rather than a null relation.
+- Aggregate items carry parallel identity/value arrays whose exact arity and metadata
+  are fixed by the compiled plan; the public decoder reconstructs typed nested items.
 - Many-link `Ne` requires at least one stored reachable value and no reachable null or
   equal value; `IsNull` tests the absence of any reachable non-null value.
 - `compile_postgres_page_query` changes only the validated main-statement page-limit
   bind from `N` to `N + 1`; offset and exact-count binds are preserved.
 - `decode_postgres_query_page` re-plans the query, compares the plan fingerprint and
-  complete unique column metadata, validates every tagged field value, and rejects
-  more than `N + 1` rows.
+  complete unique scalar/many metadata, validates every tagged field value, nested
+  identity/value arity, nil or duplicate identity chains, and rejects more than
+  `N + 1` rows.
 - The lookahead row is removed. Cursor pages produce `has_more` and a scoped next
   cursor from the last retained entity/order tuple; offset pages produce
   `has_more` without a cursor.
-- Many-link projection/order, SQL execution, SeaORM row adaptation, and live
-  equivalence evidence remain separate future boundaries.
+- Many-link ordering, SQL execution, SeaORM row adaptation, and live equivalence
+  evidence remain separate future boundaries.
 
 ### Cursor Contract
 
@@ -354,11 +372,12 @@ APIs.
   scope/schema/query-fingerprint/type mismatches.
 - `QueryPlanError`, `PostgresQueryBuildError`, and `PostgresQueryCompileError`
   separate validation/planning failures from unsupported or corrupted compiler
-  contracts. Many-link projection, ordering, missing join plans, and inconsistent
-  traversal metadata are distinct typed compiler failures.
+  contracts. Many-link ordering, missing join plans, inconsistent traversal metadata,
+  and inconsistent nested projection plans are distinct typed compiler failures.
 - `PostgresQueryPageBuildError` rejects missing or mismatched pagination binds;
-  `PostgresQueryDecodeError` rejects plan/column/count mismatches, malformed cells,
-  invalid tagged values, unexpected nulls, and oversized result batches.
+  `PostgresQueryDecodeError` rejects plan/scalar/many/count mismatches, malformed
+  cells, invalid tagged values, invalid nested JSON, identity/value arity drift,
+  nil/duplicate nested identities, unexpected nulls, and oversized result batches.
 - `MutationStorageError` separates validation, delivery identity conflict,
   in-progress/rejected replay, stored-version corruption, backend limits, and
   database failure. Its public display is generic; transport adapters must still
