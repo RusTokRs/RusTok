@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "owner": "rustok-blog",
+  "boundary": "graphql-post-richtext",
+  "status": "source_verified_no_compile",
+  "canonical_contract": {
+    "write": "rustok_api::RichTextDocument",
+    "read": "rustok_api::RichTextView",
+    "plain_text": "server-derived"
+  },
+  "legacy_adapter_fields": [
+    "body",
+    "body_format",
+    "content_json"
+  ],
+  "legacy_adapter_files": [
+    "crates/rustok-blog/src/graphql/types.rs",
+    "crates/rustok-blog/src/graphql/mutation.rs"
+  ],
+  "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
+  "exit_condition": "Remove legacy adapter fields atomically with storage, Leptos, storefront, Search, AI, and SEO cutover; then tighten the guardrail to require their absence."
+}
