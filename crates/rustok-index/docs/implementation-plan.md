@@ -26,7 +26,7 @@ pull requests record checks and PostgreSQL runs that were not executed.
 ## Current state
 
 - Rewrite status: `in_progress`
-- Current milestone: `M4 - Query engine v1 (planning started; M3 retained packet owner gate remains open)`
+- Current milestone: `M4 - Query engine v1 (controlled SQL compiler added; M3 retained packet owner gate remains open)`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
@@ -52,18 +52,20 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - Real retained PostgreSQL packet execution: `open`
 - M4 deterministic executable query planning: `complete`
 - M4 stable explicit-link relation aliases: `complete`
+- M4 controlled PostgreSQL query compilation: `complete`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
   partition admission, snapshot/query/mutation/maintenance/cutover evidence tooling,
   full-capture orchestration, exact-byte packet assembly, retained bundle review,
   admitted archive manifest generation, saved-manifest verification, recursive
-  filesystem integrity checks, and database-independent query planning are
-  implemented; one retained admitted packet, SQL query adapter, and production
-  partition lifecycle remain open
+  filesystem integrity checks, database-independent query planning, and controlled
+  projection SQL compilation are implemented; one retained admitted packet, typed
+  query execution adapter, and production partition lifecycle remain open
 
 The production crate contains the generic domain/application core, seven canonical
 M3 tables, an atomic mutation adapter, durable schema leases, secondary-index
 lifecycle management, measured partition admission that emits shadow bootstrap
-plans only, and an M4 structural query planner with deterministic relation aliases.
+plans only, an M4 structural query planner with deterministic relation aliases, and
+a controlled PostgreSQL compiler for the explicitly supported projection subset.
 Owner-operated evidence tools live under `ops/benches`; they do not become runtime
 storage code.
 
@@ -96,6 +98,7 @@ crates/rustok-index/src/
   domain/
   application/
     planner.rs
+    postgres_compiler.rs
   migrations/
   infrastructure/postgres/
     mutation_store.rs
@@ -289,7 +292,7 @@ relations.
 
 - [x] Produce deterministic executable plans from validated queries.
 - [x] Resolve explicit link paths and assign stable aliases.
-- [ ] Compile plans through SeaQuery or controlled SQL.
+- [x] Compile plans through SeaQuery or controlled SQL.
 - [ ] Support nested projection, filtering, sorting, exact count, and keyset
       pagination.
 - [ ] Keep offset pagination bounded and compatibility-only.
@@ -299,8 +302,19 @@ The first M4 slice is database independent. `SchemaRegistry::plan_query` validat
 before planning, assigns stable `t0`, `t1`, ... aliases from sorted explicit link
 prefixes, binds projection and ordering to those aliases, retains typed filters and
 pagination for the compiler, and publishes a versioned SHA-256 plan fingerprint.
-SQL execution, cursor predicate compilation, query-port composition, and consumer
-cutover remain open.
+
+The second M4 slice adds `ExecutableQueryPlan::compile_postgres`. It emits one
+controlled PostgreSQL statement, ordered typed bind values, deterministic root/link
+identity columns, projected tagged JSONB values, exact tenant/schema/locale/live-row
+scope, and projection-only one-cardinality `LEFT JOIN` traversal. Caller values,
+link/schema identities, field names, and page limits remain bind parameters. The
+compiler also revalidates the complete path-to-alias mapping before SQL construction.
+
+Filters, explicit ordering, exact count, cursor continuation, bounded offset, and
+many-link aggregation return typed pending errors rather than guessed semantics.
+Typed filter/order/count/keyset compilation remains the next bounded M4 slice.
+SQL execution, result decoding, persisted-schema readiness, query-port composition,
+and consumer cutover remain open.
 
 ### M5 - Incremental ingestion
 
@@ -370,6 +384,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo nextest run --workspace --all-targets --all-features
 cargo test --workspace --doc --all-features
 cargo test -p rustok-index planner_tests -- --nocapture
+cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
@@ -407,6 +422,7 @@ node scripts/verify/verify-index-partition-cutover-evidence.mjs
 node scripts/verify/verify-index-partition-full-capture.mjs
 node scripts/verify/verify-index-partition-post-inspection-drift.mjs
 node scripts/verify/verify-index-query-planner.mjs
+node scripts/verify/verify-index-postgres-query-compiler.mjs
 ```
 
 ## Progress log
@@ -423,9 +439,10 @@ node scripts/verify/verify-index-query-planner.mjs
   owner orchestration with PostgreSQL identity-bound capture finalization, read-only
   retained bundle review, admitted archive manifest generation, saved-manifest
   verification receipts, and exact recursive filesystem snapshot enforcement.
-- 2026-07-29: rechecked the merged M3 source boundary and completed the first M4
-  source slice: validated structural plans, deterministic explicit-link aliases, and
-  a versioned query-plan fingerprint. SQL compilation remains the next bounded slice.
+- 2026-07-29: rechecked the merged M3 source boundary, completed deterministic M4
+  structural planning and aliases, then added controlled projection SQL compilation
+  with ordered typed binds, alias-map revalidation, and fail-closed pending semantics.
+  Typed filter/order/count/keyset compilation remains the next bounded source slice.
 - Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
   packet remain for the owner to execute and admit before production partition
   lifecycle work begins.

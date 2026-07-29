@@ -70,13 +70,14 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
 requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
   'M4 deterministic executable query planning: `source_complete_execution_pending`',
   'M3 production partition lifecycle: `blocked_by_retained_packet`',
-  'Compile `ExecutableQueryPlan` through controlled SeaQuery/PostgreSQL SQL',
+  'M4 controlled PostgreSQL query compilation: `source_complete_execution_pending`',
+  'Typed filter/order/count/keyset compilation remains the next bounded M4 slice.',
   'Not run by the implementation agent',
 ]);
 
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '### M4 - Query engine v1',
-  '- [ ] Compile plans through SeaQuery or controlled SQL.',
+  '- [x] Compile plans through SeaQuery or controlled SQL.',
   'Partition cutover remains forbidden until one retained real',
 ]);
 

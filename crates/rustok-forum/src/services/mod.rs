@@ -40,6 +40,7 @@ mod posting_policy_create_window_facts;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
+mod public_discovery;
 mod quote_command;
 mod rbac;
 pub mod read_model;
@@ -145,6 +146,7 @@ pub use posting_policy_facts::{
     ForumPostingTrustFactPort, SharedForumPostingPolicyOwnerFactPort,
 };
 pub use posting_policy_reading_facts::ForumTopicReadPostingFactPort;
+pub use public_discovery::ForumPublicDiscoveryService;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use read_tracking::{

@@ -25,7 +25,9 @@ mod notification_source;
 pub mod openapi;
 mod reply_create_transport;
 pub mod reply_read_transport;
-mod seo_targets;
+mod seo_audience_targets;
+#[path = "seo_targets.rs"]
+mod seo_targets_legacy;
 pub mod services;
 pub mod state_machine;
 pub mod subscription;
@@ -80,8 +82,8 @@ pub use services::{
     ForumPostingPolicyOwnerFactRequest, ForumPostingPolicyOwnerFactResponse,
     ForumPostingPolicyOwnerFactValue, ForumPostingPolicyRules, ForumPostingPolicyUnavailableFact,
     ForumPostingTrustFactPort, ForumPostingWindowCount, ForumPostingWindowLimit,
-    ForumQuoteCommandService, ForumReadModelService, ForumRelationReadService,
-    ForumReplyAudienceReadService, ForumReplyCreateAudienceAuthorization,
+    ForumPublicDiscoveryService, ForumQuoteCommandService, ForumReadModelService,
+    ForumRelationReadService, ForumReplyAudienceReadService, ForumReplyCreateAudienceAuthorization,
     ForumReplyCreateAudienceAuthorizationService, ForumReplyCreatesWindowFactPort,
     ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
     ForumTopicAudienceListService, ForumTopicAudiencePage, ForumTopicAudiencePolicy,
@@ -164,18 +166,24 @@ impl RusToKModule for ForumModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        register_seo_target_provider(extensions, seo_targets::ForumCategorySeoTargetProvider)
-            .map_err(|error| {
-                rustok_core::Error::Validation(format!(
-                    "forum category SEO target registration failed: {error}"
-                ))
-            })?;
-        register_seo_target_provider(extensions, seo_targets::ForumTopicSeoTargetProvider)
-            .map_err(|error| {
-                rustok_core::Error::Validation(format!(
-                    "forum topic SEO target registration failed: {error}"
-                ))
-            })?;
+        register_seo_target_provider(
+            extensions,
+            seo_audience_targets::ForumCategorySeoTargetProvider,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "forum category SEO target registration failed: {error}"
+            ))
+        })?;
+        register_seo_target_provider(
+            extensions,
+            seo_audience_targets::ForumTopicSeoTargetProvider,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "forum topic SEO target registration failed: {error}"
+            ))
+        })?;
         register_notification_source_provider_factory(
             extensions,
             notification_source::ForumNotificationSourceProviderFactory,
