@@ -22,6 +22,7 @@ use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category::CategoryService;
 use super::mention_relation::MentionRelationService;
+use super::projection_invalidation::publish_forum_category_projection_in_tx;
 use super::rbac::{enforce_owned_scope, enforce_scope};
 use super::reply;
 use super::topic_owner::TopicService;
@@ -168,6 +169,14 @@ impl ReplyService {
                     },
                 )
                 .await?;
+            publish_forum_category_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic.category_id,
+            )
+            .await?;
         }
 
         txn.commit().await?;
@@ -252,6 +261,16 @@ impl ReplyService {
                 },
             )
             .await?;
+        if reply.status == ReplyStatus::Approved {
+            publish_forum_category_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic.category_id,
+            )
+            .await?;
+        }
 
         txn.commit().await?;
         Ok(())
