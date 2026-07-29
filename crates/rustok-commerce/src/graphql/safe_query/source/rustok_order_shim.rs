@@ -10,6 +10,10 @@ use ::rustok_outbox::TransactionalEventBus;
 use ::sea_orm::{DatabaseConnection, DbErr};
 use ::uuid::Uuid;
 
+pub(crate) mod dto {
+    pub use ::rustok_order::dto::*;
+}
+
 pub(crate) mod error {
     pub use ::rustok_order::error::*;
 }
