@@ -27,7 +27,8 @@ source work to remain idle.
 - M4 query-scoped cursor envelopes: `source_complete_execution_pending`.
 - M4 deterministic compiled-row decoding: `source_complete_execution_pending`.
 - M4 one-row lookahead and next-cursor construction: `source_complete_execution_pending`.
-- M4 many-link query semantics: `open`.
+- M4 many-link `EXISTS` filtering: `source_complete_execution_pending`.
+- M4 many-link nested projection aggregation: `open`.
 - M4 PostgreSQL/reference-engine equivalence: `open`.
 
 ## Completed M4 slice 1
@@ -38,14 +39,15 @@ source work to remain idle.
 2. collects every referenced link prefix from projection, filters, and ordering;
 3. sorts link prefixes deterministically and assigns `t0`, `t1`, ... aliases;
 4. resolves each join against the registered schema contract;
-5. records every referenced field with type, cardinality, nullability, path, and
-   relation alias;
+5. records every referenced field with type, cardinality, nullability, path,
+   relation alias, and propagated many-link traversal state;
 6. binds projected and ordered fields to those canonical field contracts;
 7. retains typed filters and pagination for the compiler;
 8. publishes a versioned SHA-256 fingerprint over deterministic postcard bytes.
 
-The fingerprint domain is now `rustok-index-query-plan-v2` because typed field
-contracts are part of the executable plan identity.
+The fingerprint domain is `rustok-index-query-plan-v3` because propagated
+`traverses_many` metadata is part of the executable plan identity and compiler
+safety boundary.
 
 ## Completed M4 slices 2 and 3
 
@@ -88,20 +90,36 @@ count. It removes the one-row lookahead, preserves projection order, reports
 `has_more`, and creates a scoped next cursor from the last retained root and hidden
 order values. Offset pages report `has_more` without synthesizing a cursor.
 
+## Completed M4 slice 5
+
+Many-traversing filter fields compile through independent nested correlated
+`EXISTS` chains rather than ordinary joins. `PlannedJoin` and `PlannedField`
+propagate `traverses_many`; only non-many joins enter the main rowset and compiled
+identity-column contract.
+
+Positive operators use existential matching across reachable values. `IsNull`
+checks for the absence of any non-null reachable value. `Ne` requires at least one
+stored value and rejects the root when any reachable value is null or equal. This
+matches the test-only reference engine's flattened path-value semantics, including
+logical expressions whose atomic branches may be satisfied by different children.
+
+Exact count recompiles the same correlated predicates without many outer joins,
+ordering, cursor, limit, or offset, so root rows and count values remain duplicate
+free.
+
 ## Remaining bounded M4 work
 
-Many-cardinality link paths remain fail-closed. The next source slice must add
-an explicit semantic plan for:
+Many-cardinality projection remains fail-closed with
+`ManyLinkProjectionPending`. The next source slices must define:
 
-- `EXISTS`-based many-link filtering;
-- nested aggregation for many-link projection;
-- duplicate-free exact count and root pagination;
+- nested aggregation and a stable public result shape for many-link projection;
 - direct SeaORM bind/row adaptation and execution composition;
-- SQL/parameter snapshots and PostgreSQL/reference-engine equivalence fixtures.
+- plan/SQL/parameter snapshots and PostgreSQL/reference-engine equivalence fixtures.
 
-Production query-port composition and consumer cutover remain later slices.
-The real retained PostgreSQL partition packet remains an independent owner gate
-for production partition lifecycle work.
+Many-link ordering remains rejected until an explicit aggregate ordering policy is
+introduced. Production query-port composition and consumer cutover remain later
+slices. The real retained PostgreSQL partition packet remains an independent owner
+gate for production partition lifecycle work.
 
 ## Owner validation
 
@@ -117,5 +135,6 @@ cargo check -p rustok-index --all-targets
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
+node scripts/verify/verify-index-many-link-filtering.mjs
 cargo xtask module validate index
 ```
