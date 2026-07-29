@@ -12,6 +12,7 @@ const scripts = [
   'verify-index-many-link-filtering.mjs',
   'verify-index-query-snapshots.mjs',
   'verify-index-postgres-reference-equivalence.mjs',
+  'verify-index-query-equivalence-capture.mjs',
 ];
 
 for (const script of scripts) {

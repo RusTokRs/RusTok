@@ -27,6 +27,7 @@ rust_decimal = "1.42"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+hex = { workspace = true }
 futures = "0.3"
 
 [[bin]]
@@ -64,6 +65,10 @@ path = "src/bin/index_partition_cutover_evidence.rs"
 [[bin]]
 name = "index-partition-capture-finalize"
 path = "src/bin/index_partition_capture_finalize.rs"
+
+[[bin]]
+name = "index-query-equivalence-capture"
+path = "src/bin/index_query_equivalence_capture.rs"
 
 [[bench]]
 name = "tenant_cache"
