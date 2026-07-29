@@ -9,6 +9,7 @@
   "search_projector": "crates/rustok-search/src/forum_projector.rs",
   "search_ingestion": "crates/rustok-search/src/ingestion.rs",
   "canonical_url_owner": "crates/rustok-search/src/engine.rs",
+  "admin_global_search_consumer": "apps/admin/src/widgets/app_shell/native_server_adapter.rs",
   "source_contract_test": "crates/rustok-search/tests/forum_approved_reply_projection_contract.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20bo-approved-reply-search.md",
   "source_verifier": "scripts/verify/verify-forum-approved-reply-search.mjs",
@@ -71,6 +72,18 @@
     "storefront_reply_anchor_behavior_added": false,
     "spoofed_or_malformed_payload_is_non_navigable": true,
     "transport_local_url_fallback_added": false
+  },
+  "consumer_boundary": {
+    "published_only_search_filters_by_is_public": true,
+    "published_only_search_filters_by_fixed_status_allowlist": false,
+    "graphql_result_mapping_is_entity_generic": true,
+    "storefront_native_result_mapping_is_entity_generic": true,
+    "search_admin_preview_mapping_is_entity_generic": true,
+    "admin_global_category_requires_forum_categories_read": true,
+    "admin_global_topic_requires_forum_topics_read": true,
+    "admin_global_reply_requires_forum_replies_read": true,
+    "admin_global_wrong_source_fails_closed": true,
+    "consumer_local_reply_url_added": false
   },
   "compatibility": {
     "existing_search_category_and_topic_documents_changed": false,
