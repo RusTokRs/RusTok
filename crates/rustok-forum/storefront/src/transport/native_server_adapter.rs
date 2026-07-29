@@ -42,8 +42,9 @@ async fn storefront_forum_native(
         };
         use rustok_core::SecurityContext;
         use rustok_forum::{
-            CategoryService, ForumStorefrontReadStateService, ListRepliesFilter, ListTopicsFilter,
-            ReplyService, ReplyStatus, TopicService,
+            CategoryService, ForumStorefrontReadStateService, ForumTopicAudienceReadService,
+            ListRepliesFilter, ListTopicsFilter, ReplyService, ReplyStatus,
+            SharedForumAudienceFactsPort, TopicService,
         };
         use rustok_outbox::TransactionalEventBus;
 
@@ -53,7 +54,8 @@ async fn storefront_forum_native(
             .map_err(ServerFnError::new)?;
         let auth = leptos_axum::extract::<OptionalAuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(ServerFnError::new)?
+            .0;
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -75,6 +77,16 @@ async fn storefront_forum_native(
         let category_service = CategoryService::new(db.clone());
         let topic_service = TopicService::new(db.clone(), event_bus.clone());
         let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+        let topic_audience_service = match runtime_ctx
+            .shared_get::<SharedForumAudienceFactsPort>()
+        {
+            Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
+                db.clone(),
+                event_bus.clone(),
+                facts,
+            ),
+            None => ForumTopicAudienceReadService::new(db.clone(), event_bus.clone()),
+        };
         let channel_slug = request.channel_slug.as_deref();
 
         let (categories, categories_total) = category_service
@@ -92,14 +104,14 @@ async fn storefront_forum_native(
         let requested_topic_id = parse_optional_uuid(selected_topic_id.as_deref(), "topic_id")?;
         let mut selected_topic = match requested_topic_id {
             Some(topic_id) => {
-                load_visible_topic(
-                    &topic_service,
+                load_audience_visible_topic(
+                    &topic_audience_service,
                     tenant.id,
-                    public_security.clone(),
+                    auth.as_ref(),
+                    &request,
                     topic_id,
                     effective_locale.as_str(),
                     tenant.default_locale.as_str(),
-                    channel_slug,
                 )
                 .await?
             }
@@ -119,7 +131,7 @@ async fn storefront_forum_native(
         };
 
         let (topic_items, topics_total, first_topic_id, read_state_available) = if let Some(auth) =
-            auth.0.filter(|auth| {
+            auth.as_ref().filter(|auth| {
                 has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_LIST])
             }) {
             let security =
@@ -164,14 +176,14 @@ async fn storefront_forum_native(
         let resolved_topic_id = requested_topic_id.or(first_topic_id);
         if selected_topic.is_none() {
             if let Some(topic_id) = resolved_topic_id {
-                selected_topic = load_visible_topic(
-                    &topic_service,
+                selected_topic = load_audience_visible_topic(
+                    &topic_audience_service,
                     tenant.id,
-                    public_security.clone(),
+                    auth.as_ref(),
+                    &request,
                     topic_id,
                     effective_locale.as_str(),
                     tenant.default_locale.as_str(),
-                    channel_slug,
                 )
                 .await?;
             }
@@ -239,7 +251,11 @@ async fn storefront_topic_mark_read_native(
     {
         use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
-        use rustok_forum::{ForumError, ForumStorefrontReadStateService};
+        use rustok_forum::{
+            ForumError, ForumStorefrontReadStateService, ForumTopicReadOperation,
+            ForumTopicReadTransport, SharedForumAudienceFactsPort,
+            topic_read_audience_port_context,
+        };
         use rustok_outbox::TransactionalEventBus;
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
@@ -271,15 +287,31 @@ async fn storefront_topic_mark_read_native(
         );
         let security =
             SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::NativeServer,
+            ForumTopicReadOperation::MarkRead,
+            tenant.id,
+            &auth,
+            Some(&request),
+            effective_locale.as_str(),
+        )
+        .map_err(server_error)?;
         let db = runtime_ctx.db_clone();
-        match ForumStorefrontReadStateService::new(db, event_bus)
-            .mark_topic_read_current_visible(
+        let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
+            Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
+                db,
+                event_bus,
+                facts,
+            ),
+            None => ForumStorefrontReadStateService::new(db, event_bus),
+        };
+        match service
+            .mark_topic_read_current_audience_visible(
                 tenant.id,
                 topic_id,
                 security,
-                effective_locale.as_str(),
+                audience_context,
                 Some(tenant.default_locale.as_str()),
-                request.channel_slug.as_deref(),
             )
             .await
         {
@@ -324,26 +356,51 @@ fn parse_optional_uuid(
 }
 
 #[cfg(feature = "ssr")]
-async fn load_visible_topic(
-    service: &rustok_forum::TopicService,
+async fn load_audience_visible_topic(
+    service: &rustok_forum::ForumTopicAudienceReadService,
     tenant_id: uuid::Uuid,
-    security: rustok_core::SecurityContext,
+    auth: Option<&rustok_api::AuthContext>,
+    request: &rustok_api::RequestContext,
     topic_id: uuid::Uuid,
     locale: &str,
     fallback_locale: &str,
-    channel_slug: Option<&str>,
 ) -> Result<Option<rustok_forum::TopicResponse>, ServerFnError> {
-    service
-        .get_storefront_visible_with_locale_fallback(
+    if let Some(auth) = auth {
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        let context = rustok_forum::topic_read_audience_port_context(
+            rustok_forum::ForumTopicReadTransport::NativeServer,
+            rustok_forum::ForumTopicReadOperation::SelectedTopic,
             tenant_id,
-            security,
-            topic_id,
+            auth,
+            Some(request),
             locale,
-            Some(fallback_locale),
-            channel_slug,
         )
-        .await
-        .map_err(server_error)
+        .map_err(server_error)?;
+        service
+            .get_authenticated_storefront_visible_with_audience_context(
+                tenant_id,
+                security,
+                context,
+                topic_id,
+                Some(fallback_locale),
+            )
+            .await
+            .map_err(server_error)
+    } else {
+        service
+            .get_public_storefront_visible_with_locale_fallback(
+                tenant_id,
+                topic_id,
+                locale,
+                Some(fallback_locale),
+                request.channel_slug.as_deref(),
+            )
+            .await
+            .map_err(server_error)
+    }
 }
 
 #[cfg(feature = "ssr")]

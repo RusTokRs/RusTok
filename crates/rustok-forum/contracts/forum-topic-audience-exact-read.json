@@ -43,7 +43,7 @@
     "owner_note_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the FORUM-20 ledger through FORUM-20BB, then record FORUM-20BC transport composition through a safe repository-local edit; the contents API requires complete replacement of both owner documents and the implementation plan is multi-thousand-line."
+    "synchronization_debt": "Advance CRATE_API and the FORUM-20 ledger through delivered FORUM-20BB and FORUM-20BC through a safe repository-local edit; the contents API requires complete replacement of both owner documents and the implementation plan is multi-thousand-line."
   },
   "compatibility": {
     "existing_topic_service_methods_changed": false,
@@ -54,15 +54,14 @@
     "external_fact_layers_require_exact_context_and_provider": true
   },
   "remaining_scope": [
-    "compose native and GraphQL selected-topic reads through the FORUM-20BB owner service",
-    "compose authenticated mark-read visibility recheck through the same exact owner service",
-    "migrate topic list pagination through an exact bounded richer-audience scope without count drift",
+    "migrate topic list and unread list pagination through an exact bounded richer-audience scope without count drift",
     "migrate exact reply and reply-list reads through parent-topic richer authorization",
-    "migrate remaining category reads, search/index, SEO, and deep-link authorization",
-    "synchronize CRATE_API and the canonical Forum plan through FORUM-20BB with a safe repository-local edit",
-    "capture maintainer-executed SQLite, PostgreSQL, and transport runtime evidence"
+    "migrate remaining category reads search index SEO and deep-link authorization",
+    "synchronize CRATE_API and the canonical Forum plan through FORUM-20BC with a safe repository-local edit",
+    "capture maintainer-executed SQLite PostgreSQL native and GraphQL runtime evidence"
   ],
   "downstream_task": "FORUM-20BC",
+  "downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-transport-composition.json",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [

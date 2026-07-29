@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BC",
+  "upstream_task": "FORUM-20BB",
+  "scope": "Compose the module-owned native and GraphQL selected-topic reads plus authenticated mark-read through the exact richer Forum topic audience owner",
+  "owner_service": "crates/rustok-forum/src/services/topic_audience_read.rs",
+  "read_state_owner": "crates/rustok-forum/src/services/storefront_read_state.rs",
+  "transport_context": "crates/rustok-forum/src/topic_read_transport.rs",
+  "graphql_query": "crates/rustok-forum/src/graphql/storefront_audience_topic.rs",
+  "graphql_mark_read": "crates/rustok-forum/src/graphql/storefront_read_state.rs",
+  "graphql_runtime": "crates/rustok-forum/src/graphql/runtime_data.rs",
+  "graphql_storefront_adapter": "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
+  "native_storefront_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bc-topic-audience-transport-composition.md",
+  "source_verifier": "scripts/verify/verify-forum-topic-audience-transport-composition.mjs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-exact-read.json",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "crate_api": "crates/rustok-forum/CRATE_API.md",
+  "transport_boundary": {
+    "native_selected_topic_uses_exact_owner": true,
+    "graphql_selected_topic_uses_exact_owner": true,
+    "graphql_storefront_adapter_uses_exact_field": true,
+    "native_mark_read_uses_exact_owner": true,
+    "graphql_mark_read_uses_exact_owner": true,
+    "authenticated_tenant_from_transport_context": true,
+    "authenticated_actor_from_transport_context": true,
+    "effective_locale_from_transport_context": true,
+    "route_channel_from_transport_context": true,
+    "claims_forwarded_to_owner_context": true,
+    "five_second_read_deadline": true,
+    "shared_optional_audience_facts_reused": true,
+    "public_selected_topic_skips_optional_facts": true,
+    "missing_and_denied_topic_non_oracular": true,
+    "replies_not_loaded_after_selected_topic_denial": true,
+    "topic_list_pagination_changed": false,
+    "unread_list_visibility_changed": false,
+    "reply_owner_read_changed": false,
+    "category_owner_read_changed": false,
+    "search_index_changed": false,
+    "seo_changed": false,
+    "deep_link_changed": false,
+    "migration_added": false,
+    "dependency_changed": false,
+    "public_dto_changed": false
+  },
+  "compatibility": {
+    "legacy_graphql_forum_storefront_topic_field_removed": false,
+    "legacy_mark_read_owner_method_removed": false,
+    "module_owned_graphql_adapter_migrated": true,
+    "module_owned_native_adapter_migrated": true,
+    "transport_request_identity_fields_added": false,
+    "categories_without_richer_layers_preserve_behavior": true,
+    "locally_decidable_layers_do_not_require_provider": true,
+    "external_fact_layers_fail_closed_without_provider": true
+  },
+  "documentation": {
+    "owner_note_updated": true,
+    "upstream_contract_updated": true,
+    "crate_api_updated": false,
+    "canonical_plan_updated": false,
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BC through a conflict-safe repository-local edit; the GitHub contents API replaces complete files and the canonical plan is multi-thousand-line."
+  },
+  "remaining_scope": [
+    "migrate topic list and unread list pagination through an exact bounded richer-audience scope without count drift",
+    "migrate exact reply and reply-list reads through parent-topic richer authorization",
+    "migrate remaining category reads search index SEO and deep-link authorization",
+    "add visibility-scoped category and all-read commands",
+    "synchronize CRATE_API and the canonical Forum plan through FORUM-20BC with a safe repository-local edit",
+    "capture maintainer-executed SQLite PostgreSQL native and GraphQL runtime evidence"
+  ],
+  "downstream_task": "FORUM-20BD",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-forum topic_read_transport -- --nocapture",
+      "cargo test -p rustok-forum --test topic_audience_exact_read_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-topic-audience-transport-composition.mjs",
+      "node scripts/verify/verify-forum-topic-audience-exact-read.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}

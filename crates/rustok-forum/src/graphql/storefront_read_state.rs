@@ -9,9 +9,12 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumError, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumTopicReadState,
-    ListTopicsFilter,
+    ForumError, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumTopicReadOperation,
+    ForumTopicReadState, ForumTopicReadTransport, ListTopicsFilter,
+    topic_read_audience_port_context,
 };
+
+use super::ForumGraphqlRuntimeData;
 
 const MODULE_SLUG: &str = "forum";
 const DEFAULT_STOREFRONT_UNREAD_LIMIT: u64 = 20;
@@ -124,17 +127,28 @@ impl ForumStorefrontReadStateMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let request = ctx.data::<RequestContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::MarkRead,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let state = match ForumStorefrontReadStateService::new(db.clone(), event_bus.clone())
-            .mark_topic_read_current_visible(
+        let state = match runtime
+            .storefront_read_state_service(db.clone(), event_bus.clone())
+            .mark_topic_read_current_audience_visible(
                 tenant_id,
                 topic_id,
                 forum_security(&auth),
-                locale.as_str(),
+                audience_context,
                 Some(tenant.default_locale.as_str()),
-                request.channel_slug.as_deref(),
             )
             .await
         {

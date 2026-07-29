@@ -28,6 +28,7 @@ pub mod services;
 pub mod state_machine;
 pub mod subscription;
 mod topic_create_transport;
+pub mod topic_read_transport;
 pub mod visibility;
 
 pub use audience::{
@@ -94,6 +95,9 @@ pub use services::{
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
+pub use topic_read_transport::{
+    ForumTopicReadOperation, ForumTopicReadTransport, topic_read_audience_port_context,
+};
 pub use visibility::ForumCategoryVisibility;
 
 pub struct ForumModule;
