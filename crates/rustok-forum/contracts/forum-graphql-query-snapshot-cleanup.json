@@ -18,6 +18,7 @@
   "upstream_contracts": [
     "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json",
     "crates/rustok-forum/contracts/forum-category-audience-read.json",
+    "crates/rustok-forum/contracts/forum-public-discovery-seo.json",
     "crates/rustok-forum/contracts/forum-search-projection.json",
     "crates/rustok-forum/contracts/forum-projection-invalidation.json",
     "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
@@ -51,7 +52,7 @@
   "documentation": {
     "owner_note_added": true,
     "contract_added": true,
-    "historical_reply_and_category_contracts_updated": true,
+    "historical_reply_category_and_discovery_contracts_updated": true,
     "search_visibility_handoff_contracts_updated": true,
     "canonical_plan_updated": false,
     "crate_api_updated": false,
