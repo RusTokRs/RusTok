@@ -40,7 +40,8 @@ names, or page size.
 
 `query_snapshot_tests::retained_v4_plan_and_sql_snapshots_are_stable` compares all
 three files byte-for-byte. Contract changes therefore require an intentional fixture
-update in the same pull request.
+update in the same pull request. No environment variable or helper can rewrite these
+files during a test run.
 
 ## Additional source scenarios
 
@@ -56,6 +57,13 @@ The nested result scenarios cover valid aligned identity/value arrays and reject
 - duplicate complete identity chains.
 
 These tests are source evidence only until the repository owner executes them.
+
+## Static query contract
+
+`scripts/verify/verify-index-query-contract.mjs` is the unified M4 static entry point.
+It runs the planner, compiler, result decoder, many-link filtering, and retained
+snapshot guards in deterministic order. The individual scripts remain available for
+focused diagnostics.
 
 ## Boundary
 
@@ -83,6 +91,7 @@ cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo check -p rustok-index --all-targets
+node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
