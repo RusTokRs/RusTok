@@ -158,7 +158,12 @@ async fn remote_runtime(
     (runtime, shutdown_tx, server)
 }
 
-fn prepared_snapshot(tenant_id: Uuid, cart_id: Uuid, product_id: Uuid, variant_id: Uuid) -> PreparedCartCheckoutSnapshot {
+fn prepared_snapshot(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    product_id: Uuid,
+    variant_id: Uuid,
+) -> PreparedCartCheckoutSnapshot {
     let now = Utc::now();
     let amount = Decimal::new(1000, 2);
     let cart = CartResponse {
@@ -180,8 +185,8 @@ fn prepared_snapshot(tenant_id: Uuid, cart_id: Uuid, product_id: Uuid, variant_i
         total_amount: amount,
         tax_total: Decimal::ZERO,
         metadata: serde_json::json!({}),
-        created_at: now,
-        updated_at: now,
+        created_at: now.clone(),
+        updated_at: now.clone(),
         completed_at: None,
         line_items: vec![CartLineItemResponse {
             id: Uuid::new_v4(),
@@ -198,8 +203,8 @@ fn prepared_snapshot(tenant_id: Uuid, cart_id: Uuid, product_id: Uuid, variant_i
             total_price: amount,
             currency_code: "USD".to_string(),
             metadata: serde_json::json!({}),
-            created_at: now,
-            updated_at: now,
+            created_at: now.clone(),
+            updated_at: now.clone(),
         }],
         adjustments: Vec::new(),
         tax_lines: Vec::new(),
