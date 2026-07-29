@@ -58,6 +58,16 @@ remains [`implementation-plan.md`](implementation-plan.md).
   later open, delayed delivery, or mutation must reauthorize through its owner
   boundary.
 
+## Canonical plan handoff
+
+`CRATE_API.md` is synchronized in this slice. The canonical implementation plan
+is not replaced through the GitHub contents API because that operation requires
+complete replacement of a multi-thousand-line roadmap. A safe repository-local
+edit must advance the `FORUM-20` ledger through `FORUM-20BB`, retain
+`FORUM-20BC` transport composition as the next bounded slice, and keep list,
+reply, category, search/index, SEO, deep-link, reconciliation, and runtime
+proof work open.
+
 ## Verification status
 
 The implementation agent did not run tests, Cargo commands, formatting,
