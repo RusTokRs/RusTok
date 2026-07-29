@@ -59,8 +59,9 @@ port through the default server, `HostRuntimeContext`, Commerce HTTP, and Commer
 GraphQL schema data. Mounted admin REST list/detail reads use the port with locale,
 channel, deadline, filters, ordering, pagination total, public error envelopes,
 and payment/fulfillment detail aggregation preserved. Mounted GraphQL detail/list
-reads consume the same host-selected runtime through resolver scope. GraphQL
-actor/channel propagation and storefront order reads remain open and unvalidated.
+reads consume the same host-selected runtime through resolver scope and carry an
+authenticated user actor plus host-resolved channel when present. Storefront HTTP
+order reads remain open and unvalidated.
 
 ## FFA/FBA boundary
 
@@ -169,8 +170,9 @@ actor/channel propagation and storefront order reads remain open and unvalidated
   public envelopes.
 - [x] Cut GraphQL order list/detail over to the host-selected runtime through the
   mounted resolver scope while retaining an embedded-schema in-process fallback.
-- [ ] Propagate authenticated actor and request channel into GraphQL order reads.
-- [ ] Cut storefront order detail/ownership reads over in a separate atomic change.
+- [x] Propagate authenticated actor and request channel into GraphQL order reads;
+  unauthenticated or embedded reads retain explicit service/no-channel fallback.
+- [ ] Cut storefront HTTP order detail/ownership reads over in a separate atomic change.
 - [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
   evidence before status promotion.
 
@@ -226,8 +228,8 @@ actor/channel propagation and storefront order reads remain open and unvalidated
    fallback behavior supports a justified status promotion.
 
 7. **Finish mounted order projection read cutover.** Admin REST and mounted
-   GraphQL list/detail now use the host-selected `CommerceOrderReadRuntime`;
-   propagate GraphQL actor/channel context next, then cut storefront reads
+   GraphQL list/detail now use the host-selected `CommerceOrderReadRuntime` with
+   authenticated actor and resolved channel context; cut storefront HTTP reads
    separately without changing order mutations or payment/fulfillment detail
    ownership.
    **Depends on:** the published runtime and current public transport envelope
@@ -246,6 +248,7 @@ actor/channel propagation and storefront order reads remain open and unvalidated
 
 - `npm run verify:ecommerce:fba`
 - `node scripts/verify/verify-order-read-port.mjs`
+- `node scripts/verify/verify-commerce-graphql-order-read-shim.mjs`
 - `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 - `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
 - `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
