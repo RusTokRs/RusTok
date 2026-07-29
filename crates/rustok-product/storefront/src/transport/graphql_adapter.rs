@@ -77,6 +77,8 @@ struct StorefrontProductsFilter {
     sort_by: Option<String>,
     #[serde(rename = "sortDirection")]
     sort_direction: Option<String>,
+    #[serde(rename = "attributeFilters")]
+    attribute_filters: Vec<String>,
     page: Option<u64>,
     #[serde(rename = "perPage")]
     per_page: Option<u64>,
@@ -197,6 +199,7 @@ async fn fetch_storefront_products(
                 category_id: controls.category_id,
                 sort_by: controls.sort_by,
                 sort_direction: controls.sort_direction,
+                attribute_filters: controls.attribute_filters,
                 page: Some(1),
                 per_page: Some(12),
             },
