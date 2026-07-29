@@ -96,6 +96,8 @@ for (const marker of [
   'FORUM_TOPIC_PROJECTION_TARGET: &str = "forum_topic"',
   "TransactionalEventBus::publish_root_in_tx",
   "DomainEvent::ReindexRequested",
+  "DatabaseBackend::Postgres",
+  "event.validate()",
   "publish_forum_projection_scope_direct_in_tx",
   "publish_forum_category_projection_in_tx",
   "publish_forum_topic_projection_in_tx",
@@ -212,8 +214,10 @@ rejectMarker(moderationPublic, "impl Deref", moderationPublicPath);
 for (const marker of [
   "search.reindex_requested",
   "owner transaction",
+  "PostgreSQL-only",
+  "validation only",
   "at-least-once",
-  "full Forum projection",
+  "Full Forum scope",
   "FORUM-20BL",
 ]) {
   requireMarker(note, marker, notePath);
@@ -231,9 +235,11 @@ if (contract) {
     failures.push(`${contractPath}: root event drift`);
   }
   for (const key of [
-    "owner_transaction_required",
+    "owner_transaction_required_on_postgresql",
+    "postgresql_direct_owner_invalidations_persisted",
+    "non_postgresql_direct_owner_invalidations_validation_only",
     "domain_event_validation_preserved",
-    "registered_envelope_schema_validation_preserved",
+    "registered_envelope_schema_validation_preserved_for_persisted_events",
     "canonical_sys_events_outbox_reused",
     "duplicate_invalidations_allowed",
     "consumer_operations_are_idempotent",
@@ -243,6 +249,7 @@ if (contract) {
     }
   }
   for (const key of [
+    "non_postgresql_forum_search_projector_supported",
     "new_root_domain_event_added",
     "new_event_schema_added",
     "sql_trigger_event_envelope_copy_added",
@@ -266,6 +273,7 @@ if (contract) {
     workspace_dependency_changed: false,
     cargo_lock_changed: false,
     migration_added: false,
+    sqlite_forum_domain_fixtures_require_outbox_migration: false,
   })) {
     if (contract.compatibility?.[key] !== expected) {
       failures.push(`${contractPath}: compatibility ${key} drift`);
