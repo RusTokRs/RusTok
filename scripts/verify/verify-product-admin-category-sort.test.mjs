@@ -19,9 +19,11 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-admin-category-sort-"));
   write(root, "crates/rustok-product/admin/src/catalog_controls.rs", `ProductAdminListInput category_id sort_by sort_direction published_at created_at desc asc`);
   write(root, "crates/rustok-product/admin/src/ui/catalog_admin.rs", options.omitUiCategory
-    ? `name="sort_by" name="sort_direction" fetch_catalog_search_options super::leptos::ProductAdmin`
-    : `name="category_id" name="sort_by" name="sort_direction" fetch_catalog_search_options super::leptos::ProductAdmin`);
-  write(root, "crates/rustok-product/admin/src/catalog_transport.rs", `build_product_admin_list_input browser_query_value("category_id") admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
+    ? `name="sort_by" name="sort_direction" build_product_admin_list_input provide_context(catalog_controls) fetch_catalog_search_options super::leptos::ProductAdmin`
+    : `name="category_id" name="sort_by" name="sort_direction" build_product_admin_list_input provide_context(catalog_controls) fetch_catalog_search_options super::leptos::ProductAdmin`);
+  write(root, "crates/rustok-product/admin/src/catalog_transport.rs", options.omitContext
+    ? `admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`
+    : `use_context::<ProductAdminListInput>() route_controls.category_id route_controls.sort_by route_controls.sort_direction admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
   write(root, "crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs", options.omitGraphqlSort
     ? `adminProductCatalog AdminProductCatalogFilter categoryId primaryCategoryId`
     : `adminProductCatalog AdminProductCatalogFilter categoryId sortBy sortDirection primaryCategoryId`);
@@ -67,6 +69,10 @@ test("admin category/sort guard passes canonical fixture", () => {
 
 test("admin category/sort guard rejects missing UI category", () => {
   reject({ omitUiCategory: true }, /admin UI must retain/);
+});
+
+test("admin category/sort guard rejects missing SSR context", () => {
+  reject({ omitContext: true }, /admin transport facade must retain/);
 });
 
 test("admin category/sort guard rejects missing GraphQL sort mapping", () => {
