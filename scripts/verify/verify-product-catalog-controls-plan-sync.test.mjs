@@ -18,10 +18,21 @@ function write(root, relativePath, content) {
 const storefrontMarker = "- [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.";
 const adminMarker = "- [x] Connect admin search/status/category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.";
 
-function plan({ umbrellaComplete = false, includeAdminMarker = true } = {}) {
+function plan({
+  umbrellaComplete = false,
+  includeAdminMarker = true,
+  staleSourceLock = false,
+  includeProvenance = true,
+} = {}) {
+  const provenance = includeProvenance
+    ? "Recheck on 2026-07-29."
+    : "The latest source recheck date is missing.";
+  const sourceLock = staleSourceLock
+    ? "The optional catalog filters/sorts, detached-value marker contract, and no-compile schema guardrail are source-locked."
+    : "Catalog search-option discovery is source-locked; typed attribute_filters remain open.";
   return `
 # Product plan
-Recheck on 2026-07-29. The task stays open for typed \`attribute_filters\`.
+${provenance} ${sourceLock} The task stays open for typed \`attribute_filters\`.
 ## Verification
 - [${umbrellaComplete ? "x" : " "}] Connect storefront/admin UI controls to optional catalog filters/sorts.
 ${storefrontMarker}
@@ -33,7 +44,15 @@ ${includeAdminMarker ? adminMarker : ""}
 `;
 }
 
-function fixture({ attributeComplete = false, umbrellaComplete = false, includeAdminMarker = true, omitAdminSource = false } = {}) {
+function fixture({
+  attributeComplete = false,
+  umbrellaComplete = false,
+  includeAdminMarker = true,
+  omitAdminSource = false,
+  staleSourceLock = false,
+  includeProvenance = true,
+  includeCatalogPriority = true,
+} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-catalog-plan-sync-"));
   const attribute = attributeComplete ? " attribute_filters " : "";
   write(root, "crates/rustok-product/storefront/src/catalog_controls.rs", `pub category_id: Option<String> pub sort_by: Option<String> pub sort_direction: Option<String>${attribute}`);
@@ -43,16 +62,27 @@ function fixture({ attributeComplete = false, umbrellaComplete = false, includeA
   write(root, "crates/rustok-product/src/services/catalog/queries.rs", `PrimaryCategoryId.eq(category_id) StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt`);
 
   write(root, "crates/rustok-product/admin/src/catalog_controls.rs", `ProductAdminListInput pub category_id: Option<String> pub sort_by: Option<String> pub sort_direction: Option<String>${attribute}`);
-  write(root, "crates/rustok-product/admin/src/ui/catalog_admin.rs", `name="category_id" name="sort_by" name="sort_direction"${attribute}`);
-  write(root, "crates/rustok-product/admin/src/catalog_transport.rs", `admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
+  write(root, "crates/rustok-product/admin/src/ui/catalog_admin.rs", `name="category_id" name="sort_by" name="sort_direction" provide_context(catalog_controls)${attribute}`);
+  write(root, "crates/rustok-product/admin/src/catalog_transport.rs", `use_context::<ProductAdminListInput>() admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
   write(root, "crates/rustok-product/admin/src/transport/admin_catalog_native.rs", `AdminProductListQuery::try_from_transport list_admin_products_with_query${attribute}`);
   write(root, "crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs", `AdminProductCatalogFilter categoryId sortBy sortDirection${attribute}`);
   write(root, "crates/rustok-product/src/services/catalog/admin_queries.rs", omitAdminSource
     ? `PrimaryCategoryId.eq(category_id) order_by_asc order_by_desc`
     : `Status.eq(status) PrimaryCategoryId.eq(category_id) order_by_asc order_by_desc`);
   write(root, "crates/rustok-product/src/services/catalog/types.rs", attribute);
-  write(root, "crates/rustok-product/docs/implementation-plan.md", plan({ umbrellaComplete, includeAdminMarker }));
-  write(root, "docs/modules/implementation-plans-registry.md", `| product |\n| \`product\` | plan | in_progress | Complete attribute filters before provider promotion. |`);
+  write(
+    root,
+    "crates/rustok-product/docs/implementation-plan.md",
+    plan({ umbrellaComplete, includeAdminMarker, staleSourceLock, includeProvenance }),
+  );
+  const priority = includeCatalogPriority
+    ? "Complete typed attribute filters before provider promotion."
+    : "Execute the catalog read provider before provider promotion.";
+  write(
+    root,
+    "docs/modules/implementation-plans-registry.md",
+    `| product |\n| \`product\` | plan | in_progress | ${priority} |`,
+  );
   return root;
 }
 
@@ -100,4 +130,16 @@ test("catalog plan sync rejects missing completed admin marker", () => {
 
 test("catalog plan sync rejects admin marker without owner status source", () => {
   reject({ omitAdminSource: true }, /admin category\/sort marker is complete without source parity/);
+});
+
+test("catalog plan sync rejects stale source-locked claim", () => {
+  reject({ staleSourceLock: true }, /must not be described as source-locked/);
+});
+
+test("catalog plan sync rejects missing source recheck provenance", () => {
+  reject({ includeProvenance: false }, /Recheck on 2026-07-29/);
+});
+
+test("catalog plan sync rejects central registry priority drift", () => {
+  reject({ includeCatalogPriority: false }, /nearest priority/);
 });
