@@ -112,7 +112,7 @@ fn compiled_row(
                 output_alias,
                 relation_alias,
             } => {
-                let value = if relation_alias == "t0" {
+                let value = if relation_alias.as_str() == "t0" {
                     CompiledPostgresCell::Uuid(root_entity_id)
                 } else {
                     linked_entity_id.map_or(CompiledPostgresCell::Null, CompiledPostgresCell::Uuid)
@@ -161,6 +161,24 @@ fn page_compilation_adds_exactly_one_lookahead_row() {
     );
     assert_eq!(page.requested_page_size(), 2);
     assert_eq!(page.compiled().sql, raw.sql);
+}
+
+#[test]
+fn offset_page_compilation_preserves_offset_and_adds_lookahead() {
+    let registry = registry();
+    let mut query = query(Uuid::new_v4());
+    query.pagination = Pagination::Offset {
+        limit: 2,
+        offset: 5,
+    };
+    let page = registry.compile_postgres_page_query(&query).unwrap();
+    let binds = &page.compiled().binds;
+
+    assert_eq!(
+        binds.get(binds.len() - 2),
+        Some(&PostgresBindValue::Integer(3))
+    );
+    assert_eq!(binds.last(), Some(&PostgresBindValue::Integer(5)));
 }
 
 #[test]
@@ -269,7 +287,12 @@ fn rejects_page_compiled_for_different_query_semantics() {
     let page_query = registry.compile_postgres_page_query(&changed).unwrap();
 
     assert!(matches!(
-        registry.decode_postgres_query_page(&query, &page_query, Vec::new(), Some(exact_count_row(0))),
+        registry.decode_postgres_query_page(
+            &query,
+            &page_query,
+            Vec::new(),
+            Some(exact_count_row(0)),
+        ),
         Err(PostgresQueryDecodeError::PlanFingerprintMismatch { .. })
     ));
 }
@@ -294,8 +317,14 @@ fn rejects_invalid_tagged_field_contract() {
     );
 
     assert!(matches!(
-        registry.decode_postgres_query_page(&query, &page_query, vec![row], Some(exact_count_row(1))),
-        Err(PostgresQueryDecodeError::InvalidFieldValue { path }) if path == path("score")
+        registry.decode_postgres_query_page(
+            &query,
+            &page_query,
+            vec![row],
+            Some(exact_count_row(1)),
+        ),
+        Err(PostgresQueryDecodeError::InvalidFieldValue { path: field_path })
+            if field_path == path("score")
     ));
 }
 
