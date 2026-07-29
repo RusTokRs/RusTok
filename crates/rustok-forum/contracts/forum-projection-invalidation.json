@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BK",
+  "upstream_task": "FORUM-20BJ",
+  "scope": "Publish durable owner-transactional invalidations for every canonical Forum mutation that can change exact public category or topic Search projections",
+  "root_event": "rustok_events::DomainEvent::ReindexRequested",
+  "event_type": "search.reindex_requested",
+  "outbox_transaction_api": "crates/rustok-outbox/src/transactional.rs",
+  "outbox_storage_api": "crates/rustok-outbox/src/transport.rs",
+  "forum_invalidation_owner": "crates/rustok-forum/src/services/projection_invalidation.rs",
+  "search_consumer": "crates/rustok-search/src/ingestion.rs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-search-projection.json",
+  "owner_note": "crates/rustok-forum/docs/forum-20bk-projection-invalidation.md",
+  "source_verifier": "scripts/verify/verify-forum-projection-invalidation.mjs",
+  "targets": {
+    "forum_scope": {
+      "target_type": "forum",
+      "target_id": null,
+      "reason": "Category copy, hierarchy, lifecycle and inherited category policy can change category documents and any descendant topic visibility or subtitle."
+    },
+    "category": {
+      "target_type": "forum_category",
+      "target_id": "category_id",
+      "reason": "Topic and approved-reply count changes update only the owning category document."
+    },
+    "topic": {
+      "target_type": "forum_topic",
+      "target_id": "topic_id",
+      "reason": "Topic-local copy, tags, channels, lock, solution and topic-local audience changes update one topic's locale documents."
+    }
+  },
+  "outbox_boundary": {
+    "owner_transaction_required": true,
+    "domain_event_validation_preserved": true,
+    "registered_envelope_schema_validation_preserved": true,
+    "canonical_sys_events_outbox_reused": true,
+    "new_root_domain_event_added": false,
+    "new_event_schema_added": false,
+    "sql_trigger_event_envelope_copy_added": false,
+    "second_database_connection_required": false,
+    "dispatch_reliability": "at_least_once",
+    "duplicate_invalidations_allowed": true,
+    "consumer_operations_are_idempotent": true
+  },
+  "forum_scope_invalidation": {
+    "category_create": true,
+    "category_content_or_translation_update": true,
+    "category_move": true,
+    "category_sibling_reorder": true,
+    "category_archive_or_restore_subtree": true,
+    "category_delete_archives_subtree": true,
+    "category_visibility_policy_replace": true,
+    "category_richer_audience_policy_replace": true,
+    "category_topic_creation_policy_changes_projection": false,
+    "category_reply_creation_policy_changes_projection": false,
+    "category_moderation_policy_changes_projection": false
+  },
+  "category_target_invalidation": {
+    "topic_create_updates_topic_count": true,
+    "topic_delete_updates_topic_and_reply_counts": true,
+    "approved_reply_create_updates_reply_count": true,
+    "approved_reply_delete_updates_reply_count": true,
+    "reply_moderation_public_state_transition_updates_reply_count": true,
+    "pending_or_rejected_reply_without_public_count_change_emits_category_target": false
+  },
+  "topic_target_invalidation": {
+    "topic_content_translation_metadata_tags_or_channel_update": true,
+    "topic_delete_removes_stale_document_even_when_already_archived": true,
+    "topic_lock_or_unlock": true,
+    "topic_solution_mark_or_clear": true,
+    "topic_local_audience_policy_replace": true,
+    "topic_create_already_refreshed_by_existing_lifecycle_event": true,
+    "topic_status_already_refreshed_by_existing_lifecycle_event": true,
+    "topic_pin_already_refreshed_by_existing_lifecycle_event": true,
+    "reply_lifecycle_already_refreshes_topic_document": true
+  },
+  "owner_sealing": {
+    "public_category_owner_routes_content_placement_and_lifecycle_writes": true,
+    "public_category_audience_alias_routes_policy_replacement": true,
+    "public_topic_audience_alias_routes_policy_replacement": true,
+    "public_moderation_facade_seals_private_transactional_owner": true,
+    "legacy_moderation_constructor_exported": false,
+    "raw_category_mutation_service_exported": false,
+    "raw_topic_mutation_service_exported": false,
+    "read_composers_may_use_private_read_implementations": true
+  },
+  "compatibility": {
+    "existing_reindex_target_strings_changed": false,
+    "search_ingestion_contract_changed": false,
+    "forum_rest_routes_changed": false,
+    "forum_graphql_fields_changed": false,
+    "forum_public_response_dto_changed": false,
+    "workspace_dependency_changed": false,
+    "cargo_lock_changed": false,
+    "migration_added": false,
+    "legacy_graphql_snapshot_changed": false
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "upstream_contract_updated": true,
+    "crate_api_updated": false,
+    "canonical_plan_updated": false,
+    "synchronization_debt": "Advance CRATE_API, the Search owner plan and canonical FORUM-20/FORUM-23 ledgers through FORUM-20BK with conflict-safe repository-local edits after maintainer validation."
+  },
+  "remaining_scope": [
+    "make full multi-source Search rebuild replacement atomic or preserve each prior external scope when a later source fails",
+    "decide whether approved public replies become separate Search documents under FORUM-23",
+    "add visibility-scoped category and all-read commands",
+    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
+    "capture maintainer-executed PostgreSQL and SQLite outbox projection cleanup and query runtime evidence",
+    "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
+  ],
+  "downstream_task": "FORUM-20BL",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-outbox transactional -- --nocapture",
+      "cargo test -p rustok-forum projection_invalidation -- --nocapture",
+      "cargo test -p rustok-forum category_audience_policy_sqlite -- --nocapture",
+      "cargo test -p rustok-forum topic_audience_policy_sqlite -- --nocapture",
+      "cargo test -p rustok-search forum_projector -- --nocapture",
+      "node scripts/verify/verify-forum-search-projection.mjs",
+      "node scripts/verify/verify-forum-projection-invalidation.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
