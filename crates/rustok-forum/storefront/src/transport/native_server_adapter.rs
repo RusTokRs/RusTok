@@ -14,7 +14,7 @@ pub async fn fetch_storefront_forum_server(
     selected_topic_id: Option<String>,
     locale: Option<String>,
 ) -> Result<StorefrontForumData, ApiError> {
-    storefront_forum_native(selected_category_id, selected_topic_id, locale)
+    storefront_forum_audience_native(selected_category_id, selected_topic_id, locale)
         .await
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
@@ -28,8 +28,8 @@ pub async fn mark_storefront_topic_read_server(
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
 
-#[server(prefix = "/api/fn", endpoint = "forum/storefront-data")]
-async fn storefront_forum_native(
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-audience-data")]
+async fn storefront_forum_audience_native(
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
     locale: Option<String>,
@@ -42,9 +42,10 @@ async fn storefront_forum_native(
         };
         use rustok_core::SecurityContext;
         use rustok_forum::{
-            CategoryService, ForumStorefrontReadStateService, ForumTopicAudienceReadService,
+            CategoryService, ForumStorefrontReadStateService, ForumTopicAudienceListService,
+            ForumTopicAudienceReadService, ForumTopicReadOperation, ForumTopicReadTransport,
             ListRepliesFilter, ListTopicsFilter, ReplyService, ReplyStatus,
-            SharedForumAudienceFactsPort, TopicService,
+            SharedForumAudienceFactsPort, topic_read_audience_port_context,
         };
         use rustok_outbox::TransactionalEventBus;
 
@@ -63,7 +64,7 @@ async fn storefront_forum_native(
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
                 ServerFnError::new(
-                    "forum/storefront-data requires TransactionalEventBus in host runtime context",
+                    "forum/storefront-audience-data requires TransactionalEventBus in host runtime context",
                 )
             })?;
         let public_security = SecurityContext::public_read();
@@ -75,17 +76,31 @@ async fn storefront_forum_native(
         );
         let db = runtime_ctx.db_clone();
         let category_service = CategoryService::new(db.clone());
-        let topic_service = TopicService::new(db.clone(), event_bus.clone());
         let reply_service = ReplyService::new(db.clone(), event_bus.clone());
-        let topic_audience_service = match runtime_ctx
-            .shared_get::<SharedForumAudienceFactsPort>()
-        {
+        let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
+        let topic_audience_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
                 db.clone(),
                 event_bus.clone(),
                 facts,
             ),
             None => ForumTopicAudienceReadService::new(db.clone(), event_bus.clone()),
+        };
+        let topic_audience_list_service = match audience_facts.clone() {
+            Some(facts) => ForumTopicAudienceListService::with_audience_facts(
+                db.clone(),
+                event_bus.clone(),
+                facts,
+            ),
+            None => ForumTopicAudienceListService::new(db.clone(), event_bus.clone()),
+        };
+        let read_state_service = match audience_facts {
+            Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
+                db.clone(),
+                event_bus.clone(),
+                facts,
+            ),
+            None => ForumStorefrontReadStateService::new(db.clone(), event_bus.clone()),
         };
         let channel_slug = request.channel_slug.as_deref();
 
@@ -136,13 +151,22 @@ async fn storefront_forum_native(
             }) {
             let security =
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
-            let page = ForumStorefrontReadStateService::new(db.clone(), event_bus.clone())
-                .list_topics_with_unread(
+            let audience_context = topic_read_audience_port_context(
+                ForumTopicReadTransport::NativeServer,
+                ForumTopicReadOperation::TopicList,
+                tenant.id,
+                auth,
+                Some(&request),
+                effective_locale.as_str(),
+            )
+            .map_err(server_error)?;
+            let page = read_state_service
+                .list_topics_with_unread_audience_visible(
                     tenant.id,
                     security,
+                    audience_context,
                     topic_filter,
                     Some(tenant.default_locale.as_str()),
-                    channel_slug,
                 )
                 .await
                 .map_err(server_error)?;
@@ -154,20 +178,19 @@ async fn storefront_forum_native(
                 true,
             )
         } else {
-            let (topics, total) = topic_service
-                .list_storefront_visible_with_locale_fallback(
+            let page = topic_audience_list_service
+                .list_public_storefront_visible_with_locale_fallback(
                     tenant.id,
-                    public_security.clone(),
                     topic_filter,
                     Some(tenant.default_locale.as_str()),
                     channel_slug,
                 )
                 .await
                 .map_err(server_error)?;
-            let first_topic_id = topics.first().map(|topic| topic.id);
+            let first_topic_id = page.items.first().map(|topic| topic.id);
             (
-                topics.into_iter().map(map_topic_list_item).collect(),
-                total,
+                page.items.into_iter().map(map_topic_list_item).collect(),
+                page.total,
                 first_topic_id,
                 false,
             )
@@ -237,7 +260,7 @@ async fn storefront_forum_native(
     {
         let _ = (selected_category_id, selected_topic_id, locale);
         Err(ServerFnError::new(
-            "forum/storefront-data requires the `ssr` feature",
+            "forum/storefront-audience-data requires the `ssr` feature",
         ))
     }
 }
