@@ -191,7 +191,7 @@ requireAll(plan, [
   "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
   "constant-time",
   "trusted service actor",
-  "authentication source",
+  "authentication, provider-host, and schema-preflight source are complete",
   "Product remains `boundary_ready`",
   "standalone Product catalog service host is source-complete",
   "verify-product-catalog-grpc-authentication.mjs",
