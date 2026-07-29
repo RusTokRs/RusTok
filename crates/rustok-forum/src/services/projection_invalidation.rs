@@ -1,9 +1,9 @@
-use rustok_events::DomainEvent;
+use rustok_events::{DomainEvent, ValidateEvent};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::DatabaseTransaction;
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction};
 use uuid::Uuid;
 
-use crate::error::ForumResult;
+use crate::error::{ForumError, ForumResult};
 
 pub(crate) const FORUM_PROJECTION_SCOPE: &str = "forum";
 pub(crate) const FORUM_CATEGORY_PROJECTION_TARGET: &str = "forum_category";
@@ -116,16 +116,23 @@ async fn write_projection_invalidation_in_tx(
     target_type: &'static str,
     target_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    TransactionalEventBus::publish_root_in_tx(
-        txn,
-        tenant_id,
-        actor_id,
-        DomainEvent::ReindexRequested {
-            target_type: target_type.to_string(),
-            target_id,
-        },
-    )
-    .await?;
+    let event = DomainEvent::ReindexRequested {
+        target_type: target_type.to_string(),
+        target_id,
+    };
+
+    // The Search-owned Forum projector is PostgreSQL-only. SQLite and any
+    // other non-PostgreSQL backend are domain-test/unsupported projection
+    // environments, so keep root validation without requiring an outbox table
+    // that has no matching Search consumer.
+    if txn.get_database_backend() != DatabaseBackend::Postgres {
+        event.validate().map_err(|error| {
+            ForumError::Validation(format!("Forum projection invalidation failed: {error}"))
+        })?;
+        return Ok(());
+    }
+
+    TransactionalEventBus::publish_root_in_tx(txn, tenant_id, actor_id, event).await?;
     Ok(())
 }
 
