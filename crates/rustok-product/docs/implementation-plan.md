@@ -98,12 +98,25 @@ It closes the requested unit, loopback, and remote-consumer harness commands onl
 it does not prove standalone PostgreSQL provider startup or authenticated
 separate-process Commerce and AI execution.
 
+The separate-process runtime capture contract is source-complete. The locked
+local-loopback runner starts `rustok-product-catalog-service`, waits for schema
+preflight and listener readiness, invokes all three owner read operations through
+the authenticated transport example, starts `rustok-server` with the external
+Product profile, and waits for remote-provider and HTTP host readiness before
+bounded shutdown. Commands and readiness markers are allowlisted; arbitrary shell
+commands and non-loopback plaintext are rejected. Retained output contains source
+hashes, toolchain versions, marker sets, output hashes, and byte counts only.
+The capture contract guarantees that raw database URLs, bearer credentials, tenant IDs, product IDs, variant IDs, and process logs are not retained.
+A successful capture would prove provider startup, authenticated owner RPCs, and consumer remote-profile initialization, but Commerce and AI business requests through the separate consumer process remain open.
+
 Adapter and production-wiring source are complete. Consumer-behavior,
 authentication, provider-host, and schema-preflight source are complete, and the
 requested unit, authentication, loopback, Commerce, and AI harnesses are
 maintainer-attested as passed. They were not independently run by the
 implementation agent and raw logs were not retained.
 Product remains `boundary_ready` rather than `transport_verified`; configured remote-profile execution evidence remain open; provider-host execution evidence remains open; schema-preflight execution evidence remains open; the standalone PostgreSQL schema-preflight runtime evidence remains open; authenticated separate-process Commerce and AI end-to-end evidence remains open.
+Schema-preflight execution evidence remains open.
+The separate-process capture source is complete, but its sanitized runtime packet has not been generated or retained.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
@@ -198,20 +211,23 @@ rustok-pricing` dependency cycle.
 - FBA status: `boundary_ready` — the owner port, in-process profile, host runtime,
   declared consumer source cutovers, external gRPC adapter, validated connection
   policy, production client wiring, service-to-service authentication, standalone
-  provider host, startup schema preflight, and Commerce/AI remote behavior
-  harnesses are source-complete. The requested unit, authentication, loopback,
-  Commerce, and AI harnesses are maintainer-attested as passed without retained
-  raw logs. Provider-host schema-preflight and authenticated separate-process
-  end-to-end execution evidence remain open.
+  provider host, startup schema preflight, Commerce/AI remote behavior harnesses,
+  and the separate-process runtime capture contract are source-complete. The
+  requested unit, authentication, loopback, Commerce, and AI harnesses are
+  maintainer-attested as passed without retained raw logs. Runtime capture
+  execution and authenticated Commerce/AI business-request evidence remain open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
   `crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`,
+  `crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`,
   `crates/rustok-product-transport/tests/port_conformance.rs`,
+  `crates/rustok-product-transport/examples/product_catalog_runtime_probe.rs`,
   `crates/rustok-product-catalog-service/src/main.rs`,
   `crates/rustok-commerce/tests/product_remote_consumer_behavior.rs`,
   `crates/rustok-ai/src/direct_product_attributes.rs`,
+  `scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-catalog-read-runtime-composition.mjs`,
   `scripts/verify/verify-product-native-checkout-catalog-runtime.mjs`,
@@ -222,6 +238,7 @@ rustok-pricing` dependency cycle.
   `scripts/verify/verify-product-catalog-grpc-authentication.mjs`,
   `scripts/verify/verify-product-catalog-grpc-service-host.mjs`,
   `scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs`,
+  `scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs`,
   `scripts/verify/verify-product-remote-consumer-behavior.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
@@ -233,15 +250,17 @@ rustok-pricing` dependency cycle.
 
 ## Open results
 
-1. Execute `cargo run -p rustok-product-catalog-service` against the migrated
-   PostgreSQL schema and retain sanitized runtime logs proving the successful
-   `products`, `product_variants`, and `sys_events` preflight before listener
-   startup.
-2. Start the consumer server with matching authenticated gRPC deployment
-   variables and retain authenticated separate-process Commerce and AI
-   end-to-end evidence through the selected runtime. Promote above
-   `boundary_ready` only after these runtime results and their logs or CI
-   artifacts are retained.
+1. Run the source guard before execution:
+   - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs`;
+   - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.test.mjs`.
+   Then execute `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
+   from a clean commit with migrated provider and consumer PostgreSQL databases,
+   matching loopback bind/endpoint values, one bearer credential, and existing
+   tenant/product/variant fixtures. Commit the generated sanitized evidence packet.
+2. After a successful capture, retain authenticated Commerce checkout and AI
+   product-generation business requests through the separately running consumer
+   server. Promote above `boundary_ready` only after those results and their
+   sanitized logs or CI artifacts are retained.
 3. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
@@ -264,8 +283,10 @@ rustok-pricing` dependency cycle.
 - [x] Fail closed on missing Product/outbox schema before owner composition or listener startup.
 - [x] Execute the Product catalog service-host unit, authentication, and loopback conformance test suites.
 - [x] Execute the Commerce and AI remote consumer behavior harnesses.
+- [x] Lock a reproducible separate-process Product runtime evidence capture contract.
+- [ ] Execute the separate-process Product runtime capture and retain its sanitized evidence packet.
 - [ ] Execute the standalone PostgreSQL schema preflight and retain runtime logs.
-- [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.
+- [ ] Retain authenticated separate-process Commerce and AI business-request evidence.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
@@ -289,6 +310,9 @@ rustok-pricing` dependency cycle.
 - `node scripts/verify/verify-product-catalog-grpc-service-host.test.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.test.mjs`
+- `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs`
+- `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.test.mjs`
+- `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.test.mjs`
 - `cargo test -p rustok-product-catalog-service`
@@ -332,6 +356,11 @@ rustok-pricing` dependency cycle.
   trusted service actor server-side, verifies `products`, `product_variants`, and
   `sys_events` before serving, and never trusts actor/claims/roles supplied in
   `PortContext`.
+- The retained evidence runner owns orchestration only: fixed process commands,
+  local-loopback validation, bounded readiness/shutdown, source/output hashing,
+  secret-leak rejection, and atomic JSON output. It does not seed data, run
+  migrations, persist raw logs, alter Product policy, or claim Commerce/AI
+  business-request execution.
 - Commerce owns hard-dependency checkout behavior: a Product timeout or
   unavailable result blocks planning and cannot be replaced by the cart snapshot.
 - AI owns advisory degradation: Product transport failures skip enrichment,

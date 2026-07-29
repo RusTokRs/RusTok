@@ -63,6 +63,9 @@
     "grpc_service_host_verifier": "scripts/verify/verify-product-catalog-grpc-service-host.mjs",
     "grpc_maintainer_test_attestation": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
     "grpc_maintainer_test_attestation_verifier": "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
+    "separate_process_runtime_contract": "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
+    "separate_process_runtime_contract_verifier": "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs",
+    "separate_process_runtime_capture_runner": "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs",
     "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
@@ -176,6 +179,32 @@
       "authenticated_separate_process_commerce_end_to_end_evidence",
       "authenticated_separate_process_ai_end_to_end_evidence",
       "retained_runtime_logs_or_ci_artifacts_for_transport_promotion"
+    ]
+  },
+  "separate_process_runtime": {
+    "status": "source_complete_execution_pending",
+    "execution_scope": "provider_schema_preflight_authenticated_rpc_and_consumer_remote_startup",
+    "contract": "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
+    "runner": "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs",
+    "verifier": "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs",
+    "probe": "crates/rustok-product-transport/examples/product_catalog_runtime_probe.rs",
+    "evidence_path": "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json",
+    "transport_profile": "explicit_loopback_plaintext_local_evidence",
+    "processes": [
+      "standalone_provider",
+      "authenticated_transport_probe",
+      "consumer_server"
+    ],
+    "retained_output": "sha256_and_byte_counts_only",
+    "closed_on_success": [
+      "standalone_provider_postgresql_schema_preflight_runtime_evidence",
+      "authenticated_product_catalog_read_rpc_evidence",
+      "separate_process_consumer_remote_provider_startup_evidence"
+    ],
+    "remaining_gates": [
+      "authenticated_separate_process_commerce_business_request_evidence",
+      "authenticated_separate_process_ai_business_request_evidence",
+      "retained_business_end_to_end_logs_or_ci_artifacts_for_transport_promotion"
     ]
   },
   "in_process_provider_impl": {
