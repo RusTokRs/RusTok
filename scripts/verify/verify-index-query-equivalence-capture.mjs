@@ -39,8 +39,12 @@ const capture = requireMarkers(capturePath, [
   'stderr.log',
   'equivalence.json',
   'create_new(true)',
+  'fs::create_dir(&final_root)',
+  'ensure_exact_files(&final_root, &[STDERR_FILE, STDOUT_FILE])',
+  '&[DESCRIPTOR_FILE, STDERR_FILE, STDOUT_FILE]',
   'output.stdout.len() <= MAX_LOG_BYTES',
   'database_after == database_before',
+  'verify_source_identity(config)?;',
 ]);
 for (const forbidden of [
   'Command::new("sh")',
@@ -48,12 +52,22 @@ for (const forbidden of [
   'INSERT INTO index_schemas',
   'INSERT INTO index_entities',
   'INSERT INTO index_links',
-  'database_url:',
   'serde_json::to_value(&config)',
   'fs::write(',
   'File::create(',
 ]) {
   if (capture.includes(forbidden)) fail(`${capturePath} contains forbidden marker ${forbidden}`);
+}
+const descriptorStart = capture.indexOf('struct QueryEquivalenceDescriptor');
+const descriptorEnd = capture.indexOf('pub struct QueryEquivalenceCapture');
+if (descriptorStart < 0 || descriptorEnd <= descriptorStart) {
+  fail(`${capturePath} has no inspectable descriptor contract`);
+}
+const descriptorContract = capture.slice(descriptorStart, descriptorEnd);
+for (const forbidden of ['database_url', 'workspace_root', 'cargo_program']) {
+  if (descriptorContract.includes(forbidden)) {
+    fail(`${capturePath} serializes forbidden descriptor field ${forbidden}`);
+  }
 }
 
 requireMarkers('ops/benches/src/bin/index_query_equivalence_capture.rs', [
@@ -66,6 +80,7 @@ requireMarkers('ops/benches/src/index_storage/mod.rs', [
   'QueryEquivalenceCapture, QueryEquivalenceCaptureConfig, capture_query_equivalence',
 ]);
 requireMarkers('ops/benches/Cargo.toml', [
+  'hex = { workspace = true }',
   'name = "index-query-equivalence-capture"',
   'path = "src/bin/index_query_equivalence_capture.rs"',
 ]);
