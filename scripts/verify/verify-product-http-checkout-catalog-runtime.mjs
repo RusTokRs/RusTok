@@ -24,7 +24,7 @@ function requireText(source, marker, description) {
 }
 
 function findFunctionBody(source, functionName) {
-  const signature = new RegExp(`(?:pub\s+)?(?:async\s+)?fn\s+${functionName}\s*\(`, "g");
+  const signature = new RegExp(`(?:pub\\s+)?(?:async\\s+)?fn\\s+${functionName}\\s*\\(`, "g");
   const match = signature.exec(source);
   if (!match) return null;
   const openBrace = source.indexOf("{", match.index);
