@@ -2,6 +2,7 @@
   "schema_version": 1,
   "task": "FORUM-20BD",
   "upstream_task": "FORUM-20BC",
+  "completed_by_task": "FORUM-20BE",
   "scope": "Publish exact richer-audience topic pagination and compose authenticated GraphQL unread topics through it",
   "owner_service": "crates/rustok-forum/src/services/topic_audience_list.rs",
   "read_state_owner": "crates/rustok-forum/src/services/storefront_read_state.rs",
@@ -10,6 +11,7 @@
   "owner_note": "crates/rustok-forum/docs/forum-20bd-topic-audience-pagination.md",
   "source_verifier": "scripts/verify/verify-forum-topic-audience-pagination.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-transport-composition.json",
+  "downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-storefront-list-composition.json",
   "pagination_boundary": {
     "base_candidates_use_canonical_storefront_owner": true,
     "candidate_scan_page_is_bounded": true,
@@ -18,8 +20,8 @@
     "authenticated_context_validated_before_optional_facts": true,
     "graphql_unread_query_uses_exact_owner": true,
     "unread_enrichment_only_receives_allowed_ids": true,
-    "native_storefront_composed": false,
-    "public_graphql_topic_list_composed": false,
+    "native_storefront_composed": true,
+    "public_graphql_topic_list_composed": true,
     "reply_reads_changed": false,
     "category_reads_changed": false,
     "search_index_changed": false,
@@ -31,7 +33,10 @@
   },
   "compatibility": {
     "legacy_unread_owner_method_removed": false,
-    "graphql_field_name_changed": false,
+    "legacy_storefront_adapters_removed": false,
+    "graphql_existing_field_removed": false,
+    "graphql_exact_public_field_added": true,
+    "module_owned_storefront_adapters_migrated": true,
     "locally_decidable_layers_skip_optional_provider": true,
     "external_fact_layers_fail_closed_without_provider": true
   },
@@ -40,23 +45,22 @@
     "contract_added": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BD through a conflict-safe repository-local edit."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BE through a conflict-safe repository-local edit."
   },
   "remaining_scope": [
-    "compose native storefront topic and unread list paths through the exact owner",
-    "compose public GraphQL storefront topic pagination through the exact owner",
     "migrate exact reply and reply-list reads through parent-topic richer authorization",
     "migrate remaining category reads search index SEO and deep-link authorization",
     "add visibility-scoped category and all-read commands",
     "capture maintainer-executed SQLite PostgreSQL native and GraphQL runtime evidence"
   ],
-  "downstream_task": "FORUM-20BE",
+  "downstream_task": "FORUM-20BF",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
       "cargo test -p rustok-forum topic_read_transport -- --nocapture",
       "cargo test -p rustok-forum --test topic_audience_exact_read_sqlite -- --nocapture",
       "node scripts/verify/verify-forum-topic-audience-pagination.mjs",
+      "node scripts/verify/verify-forum-topic-audience-storefront-list-composition.mjs",
       "cargo xtask module validate forum"
     ]
   }
