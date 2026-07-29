@@ -10,6 +10,7 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+mod forum_projector;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod ingestion;
@@ -18,6 +19,7 @@ pub mod models;
 pub mod pg_engine;
 pub mod ports;
 pub mod presets;
+pub mod projection_source;
 pub mod projector;
 pub mod ranking;
 pub mod search_settings;
@@ -46,6 +48,11 @@ pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;
 pub use ports::*;
 pub use presets::{ResolvedSearchFilterPreset, SearchFilterPreset, SearchFilterPresetService};
+pub use projection_source::{
+    MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
+    SearchProjectionSource, SearchProjectionSourceFactory, SearchProjectionSourceRegistry,
+    register_search_projection_source, search_projection_source_registry_from_extensions,
+};
 pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;
 pub use search_settings::SearchSettingsService;
@@ -95,7 +102,12 @@ impl RusToKModule for SearchModule {
         registry: &mut ModuleEventListenerRegistry,
         ctx: &ModuleEventListenerContext<'_>,
     ) {
-        registry.register(SearchIngestionHandler::new(ctx.db.clone()));
+        let forum_source = search_projection_source_registry_from_extensions(ctx.extensions)
+            .and_then(|sources| sources.build("forum", ctx.db.clone()));
+        registry.register(SearchIngestionHandler::with_forum_source(
+            ctx.db.clone(),
+            forum_source,
+        ));
     }
 
     async fn health(&self) -> HealthStatus {

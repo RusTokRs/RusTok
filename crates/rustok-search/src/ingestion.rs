@@ -1,5 +1,7 @@
 #![allow(clippy::items_after_test_module)]
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -11,25 +13,41 @@ use rustok_telemetry::metrics;
 use tracing::Instrument;
 
 use crate::blog_projector::BlogSearchProjector;
+use crate::forum_projector::ForumSearchProjector;
 use crate::projector::SearchProjector;
+use crate::SearchProjectionSource;
 
 #[derive(Clone)]
 pub struct SearchIngestionHandler {
     projector: SearchProjector,
     blog_projector: BlogSearchProjector,
+    forum_projector: Option<ForumSearchProjector>,
 }
 
 impl SearchIngestionHandler {
     pub fn new(db: DatabaseConnection) -> Self {
+        Self::with_forum_source(db, None)
+    }
+
+    pub fn with_forum_source(
+        db: DatabaseConnection,
+        forum_source: Option<Arc<dyn SearchProjectionSource>>,
+    ) -> Self {
         Self {
             projector: SearchProjector::new(db.clone()),
-            blog_projector: BlogSearchProjector::new(db),
+            blog_projector: BlogSearchProjector::new(db.clone()),
+            forum_projector: forum_source
+                .map(|source| ForumSearchProjector::new(db, source)),
         }
     }
 
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
         self.projector.rebuild_tenant(tenant_id).await?;
-        self.blog_projector.rebuild_tenant(tenant_id).await
+        self.blog_projector.rebuild_tenant(tenant_id).await?;
+        if let Some(projector) = &self.forum_projector {
+            projector.rebuild_tenant(tenant_id).await?;
+        }
+        Ok(())
     }
 
     async fn handle_reindex_request(
@@ -48,6 +66,26 @@ impl SearchIngestionHandler {
             ("product", None) => self.projector.rebuild_product_scope(tenant_id).await,
             ("blog", Some(post_id)) => self.blog_projector.upsert_post(tenant_id, post_id).await,
             ("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await,
+            ("forum", None) => match &self.forum_projector {
+                Some(projector) => projector.rebuild_tenant(tenant_id).await,
+                None => Ok(()),
+            },
+            ("forum_category", Some(category_id)) => match &self.forum_projector {
+                Some(projector) => {
+                    projector
+                        .refresh_entity(tenant_id, "forum_category", category_id)
+                        .await
+                }
+                None => Ok(()),
+            },
+            ("forum_topic", Some(topic_id)) => match &self.forum_projector {
+                Some(projector) => {
+                    projector
+                        .refresh_entity(tenant_id, "forum_topic", topic_id)
+                        .await
+                }
+                None => Ok(()),
+            },
             _ => Ok(()),
         }
     }
@@ -57,6 +95,17 @@ impl SearchIngestionHandler {
             self.blog_projector.rebuild_tenant(tenant_id).await
         } else {
             self.blog_projector.delete_tenant(tenant_id).await
+        }
+    }
+
+    async fn handle_forum_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
+        let Some(projector) = &self.forum_projector else {
+            return Ok(());
+        };
+        if enabled {
+            projector.rebuild_tenant(tenant_id).await
+        } else {
+            projector.delete_tenant(tenant_id).await
         }
     }
 }
@@ -96,14 +145,27 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
             | DomainEvent::TenantUpdated { .. } => true,
+            DomainEvent::ForumTopicCreated { .. }
+            | DomainEvent::ForumTopicReplied { .. }
+            | DomainEvent::ForumTopicStatusChanged { .. }
+            | DomainEvent::ForumTopicPinned { .. }
+            | DomainEvent::ForumReplyStatusChanged { .. } => self.forum_projector.is_some(),
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
-            DomainEvent::TenantModuleToggled { module_slug, .. } => module_slug == "blog",
+            DomainEvent::TenantModuleToggled { module_slug, .. } => {
+                module_slug == "blog"
+                    || (module_slug == "forum" && self.forum_projector.is_some())
+            }
             DomainEvent::ReindexRequested { target_type, .. } => {
                 target_type == "search"
                     || target_type == "content"
                     || target_type == "product"
                     || target_type == "blog"
+                    || (self.forum_projector.is_some()
+                        && matches!(
+                            target_type.as_str(),
+                            "forum" | "forum_category" | "forum_topic"
+                        ))
             }
             _ => false,
         }
@@ -190,12 +252,34 @@ impl EventHandler for SearchIngestionHandler {
                         .delete_post(envelope.tenant_id, *post_id)
                         .await
                 }
+                DomainEvent::ForumTopicCreated { topic_id, .. }
+                | DomainEvent::ForumTopicReplied { topic_id, .. }
+                | DomainEvent::ForumTopicStatusChanged { topic_id, .. }
+                | DomainEvent::ForumTopicPinned { topic_id, .. }
+                | DomainEvent::ForumReplyStatusChanged { topic_id, .. } => {
+                    match &self.forum_projector {
+                        Some(projector) => {
+                            projector
+                                .refresh_entity(envelope.tenant_id, "forum_topic", *topic_id)
+                                .await
+                        }
+                        None => Ok(()),
+                    }
+                }
                 DomainEvent::TenantModuleToggled {
                     module_slug,
                     enabled,
                     ..
                 } if module_slug == "blog" => {
                     self.handle_blog_module_toggle(envelope.tenant_id, *enabled)
+                        .await
+                }
+                DomainEvent::TenantModuleToggled {
+                    module_slug,
+                    enabled,
+                    ..
+                } if module_slug == "forum" => {
+                    self.handle_forum_module_toggle(envelope.tenant_id, *enabled)
                         .await
                 }
                 DomainEvent::LocaleEnabled { .. }
@@ -223,42 +307,7 @@ impl EventHandler for SearchIngestionHandler {
     }
 
     async fn on_error(&self, envelope: &EventEnvelope, error: &Error) {
-        let operation = match &envelope.event {
-            DomainEvent::ReindexRequested { target_type, .. } => match target_type.as_str() {
-                "content" => "rebuild_content_scope",
-                "product" => "rebuild_product_scope",
-                "blog" => "rebuild_blog_scope",
-                _ => "rebuild_tenant",
-            },
-            DomainEvent::TenantModuleToggled {
-                module_slug,
-                enabled,
-                ..
-            } if module_slug == "blog" => {
-                if *enabled {
-                    "rebuild_blog_scope"
-                } else {
-                    "delete_blog_scope"
-                }
-            }
-            DomainEvent::ProductCreated { .. }
-            | DomainEvent::ProductUpdated { .. }
-            | DomainEvent::ProductPublished { .. }
-            | DomainEvent::ProductDeleted { .. }
-            | DomainEvent::VariantCreated { .. }
-            | DomainEvent::VariantUpdated { .. }
-            | DomainEvent::VariantDeleted { .. }
-            | DomainEvent::InventoryUpdated { .. }
-            | DomainEvent::PriceUpdated { .. } => "upsert_product",
-            DomainEvent::BlogPostDeleted { .. } => "delete_blog_post",
-            DomainEvent::BlogPostCreated { .. }
-            | DomainEvent::BlogPostPublished { .. }
-            | DomainEvent::BlogPostUnpublished { .. }
-            | DomainEvent::BlogPostUpdated { .. }
-            | DomainEvent::BlogPostArchived { .. } => "upsert_blog_post",
-            _ => "upsert_node",
-        };
-
+        let operation = projector_operation_for_event(&envelope.event);
         metrics::record_search_indexing_operation(operation, "event_handler", "error", 0.0);
         metrics::record_module_error("search", classify_error(error), "error");
         tracing::error!(
@@ -326,6 +375,12 @@ mod tests {
             module_slug: "forum".to_string(),
             enabled: false,
         }));
+        assert!(!handler.handles(&DomainEvent::ForumTopicCreated {
+            topic_id: Uuid::new_v4(),
+            category_id: Uuid::new_v4(),
+            author_id: None,
+            locale: "en".to_string(),
+        }));
     }
 }
 
@@ -350,6 +405,8 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
             "content" => "rebuild_content_scope",
             "product" => "rebuild_product_scope",
             "blog" => "rebuild_blog_scope",
+            "forum" => "rebuild_forum_scope",
+            "forum_category" | "forum_topic" => "refresh_forum_entity",
             _ => "rebuild_tenant",
         },
         DomainEvent::TenantModuleToggled {
@@ -363,6 +420,22 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
                 "delete_blog_scope"
             }
         }
+        DomainEvent::TenantModuleToggled {
+            module_slug,
+            enabled,
+            ..
+        } if module_slug == "forum" => {
+            if *enabled {
+                "rebuild_forum_scope"
+            } else {
+                "delete_forum_scope"
+            }
+        }
+        DomainEvent::ForumTopicCreated { .. }
+        | DomainEvent::ForumTopicReplied { .. }
+        | DomainEvent::ForumTopicStatusChanged { .. }
+        | DomainEvent::ForumTopicPinned { .. }
+        | DomainEvent::ForumReplyStatusChanged { .. } => "refresh_forum_entity",
         DomainEvent::NodeTranslationUpdated { .. } | DomainEvent::BodyUpdated { .. } => {
             "upsert_node_locale"
         }

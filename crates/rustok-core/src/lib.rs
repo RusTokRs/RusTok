@@ -28,6 +28,7 @@ pub mod rbac;
 pub mod registry;
 pub mod resilience;
 pub mod rt_json;
+pub mod search_projection;
 pub mod security;
 pub mod security_principal;
 pub mod state_machine;

@@ -41,10 +41,13 @@
     "canonical_source_entity_pair_required": true,
     "spoofed_source_entity_pairs_fail_closed": true,
     "forum_storefront_query_keys_reused": true,
-    "forum_projection_consumer_wired": false,
-    "forum_search_documents_written": false,
+    "neutral_core_projection_capability_added": true,
+    "forum_projection_consumer_wired": true,
+    "forum_search_documents_written": true,
     "forum_index_storage_changed": false,
-    "forum_event_ingestion_changed": false
+    "forum_event_ingestion_changed": true,
+    "downstream_workspace_dependency_added": false,
+    "completion_contract": "crates/rustok-forum/contracts/forum-search-projection.json"
   },
   "compatibility": {
     "existing_forum_rest_routes_changed": false,
@@ -54,7 +57,9 @@
     "existing_forum_storefront_route_changed": false,
     "existing_search_product_content_blog_routes_changed": false,
     "migration_added": false,
-    "dependency_changed": false,
+    "dependency_changed_in_forum_20bi": false,
+    "dependency_changed_in_forum_20bj": false,
+    "cargo_lock_changed_in_forum_20bj": false,
     "public_response_dto_changed": false,
     "legacy_graphql_snapshot_changed": false
   },
@@ -64,23 +69,24 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BI through a conflict-safe repository-local edit after maintainer validation."
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BJ through a conflict-safe repository-local edit after maintainer validation."
   },
   "remaining_scope": [
-    "wire a Search-owned Forum projection consumer through the exact public discovery capability without copying audience policy into Search SQL",
-    "reauthorize or remove projected Forum documents after visibility policy changes and owner revision changes",
+    "publish owner-transactional projection invalidation events for every category and topic content translation visibility tag solution tree and route change",
+    "route projection invalidations through durable ordered category topic or tenant reauthorization",
     "add visibility-scoped category and all-read commands",
     "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
     "capture maintainer-executed PostgreSQL SQLite SEO Search and route runtime evidence"
   ],
-  "downstream_task": "FORUM-20BJ",
+  "downstream_task": "FORUM-20BK",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
-      "cargo test -p rustok-forum seo_audience_targets -- --nocapture",
-      "cargo test -p rustok-search canonical_url_derives_forum -- --nocapture",
-      "node scripts/verify/verify-forum-category-audience-read.mjs",
+      "cargo test -p rustok-core search_projection -- --nocapture",
+      "cargo test -p rustok-search forum_projector -- --nocapture",
+      "cargo test -p rustok-forum search_projection -- --nocapture",
       "node scripts/verify/verify-forum-public-discovery-seo.mjs",
+      "node scripts/verify/verify-forum-search-projection.mjs",
       "node scripts/verify/verify-search-canonical-url-contract.mjs",
       "cargo xtask module validate forum"
     ]
