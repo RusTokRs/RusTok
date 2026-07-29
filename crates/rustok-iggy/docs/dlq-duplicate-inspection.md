@@ -163,6 +163,8 @@ The fixed external harnesses and privacy-safe retained tooling are source-comple
 
 The rolling state and moving scanner integration are source-complete as library components. Moving server composition and reviewed configuration, cross-cycle external-Iggy execution, optional persistent cursor ownership, telemetry, operational health, and retained server evidence remain pending.
 
+Moving server composition and runtime evidence pending remain explicit non-claims.
+
 ## Source verification
 
 ```bash
