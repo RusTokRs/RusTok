@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BI",
+  "upstream_task": "FORUM-20BH",
+  "scope": "Publish one exact anonymous Forum discovery owner, authorize public SEO and route surfaces through it, and add canonical Forum Search result routes without duplicating audience policy in Search SQL",
+  "public_discovery_owner": "crates/rustok-forum/src/services/public_discovery.rs",
+  "category_read_owner": "crates/rustok-forum/src/services/category_audience_read.rs",
+  "topic_read_owner": "crates/rustok-forum/src/services/topic_audience_read.rs",
+  "seo_exact_wrapper": "crates/rustok-forum/src/seo_audience_targets.rs",
+  "seo_legacy_mapper": "crates/rustok-forum/src/seo_targets.rs",
+  "seo_registration": "crates/rustok-forum/src/lib.rs",
+  "search_route_contract": "crates/rustok-search/src/engine.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bi-public-discovery-seo.md",
+  "source_verifier": "scripts/verify/verify-forum-public-discovery-seo.mjs",
+  "upstream_contract": "crates/rustok-forum/contracts/forum-category-audience-read.json",
+  "discovery_boundary": {
+    "anonymous_public_only": true,
+    "category_inherited_base_floor_enforced": true,
+    "category_richer_layers_enforced": true,
+    "topic_open_status_enforced": true,
+    "topic_route_channel_enforced": true,
+    "topic_inherited_category_layers_enforced": true,
+    "topic_local_narrowing_enforced": true,
+    "authentication_role_trust_group_and_explicit_user_targets_absent": true,
+    "missing_foreign_and_denied_targets_are_indistinguishable": true,
+    "cross_consumer_policy_copy_added": false
+  },
+  "seo_boundary": {
+    "authoring_scope_preserves_managed_legacy_load": true,
+    "public_target_load_uses_exact_discovery": true,
+    "public_route_resolution_uses_exact_discovery": true,
+    "bulk_summaries_filter_exact_public_targets": true,
+    "sitemap_candidates_filter_exact_public_targets": true,
+    "category_target_slug_changed": false,
+    "topic_target_slug_changed": false,
+    "legacy_mapping_and_schema_payload_preserved": true
+  },
+  "search_boundary": {
+    "forum_category_result_route_added": true,
+    "forum_topic_result_route_added": true,
+    "canonical_source_entity_pair_required": true,
+    "spoofed_source_entity_pairs_fail_closed": true,
+    "forum_storefront_query_keys_reused": true,
+    "forum_projection_consumer_wired": false,
+    "forum_search_documents_written": false,
+    "forum_index_storage_changed": false,
+    "forum_event_ingestion_changed": false
+  },
+  "compatibility": {
+    "existing_forum_rest_routes_changed": false,
+    "existing_forum_graphql_fields_changed": false,
+    "existing_seo_target_slugs_changed": false,
+    "existing_seo_authoring_scope_changed": false,
+    "existing_forum_storefront_route_changed": false,
+    "existing_search_product_content_blog_routes_changed": false,
+    "migration_added": false,
+    "dependency_changed": false,
+    "public_response_dto_changed": false,
+    "legacy_graphql_snapshot_changed": false
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "upstream_contract_updated": true,
+    "crate_api_updated": false,
+    "canonical_plan_updated": false,
+    "synchronization_debt": "Advance CRATE_API and the canonical FORUM-20 ledger through FORUM-20BI through a conflict-safe repository-local edit after maintainer validation."
+  },
+  "remaining_scope": [
+    "wire a Search-owned Forum projection consumer through the exact public discovery capability without copying audience policy into Search SQL",
+    "reauthorize or remove projected Forum documents after visibility policy changes and owner revision changes",
+    "add visibility-scoped category and all-read commands",
+    "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
+    "capture maintainer-executed PostgreSQL SQLite SEO Search and route runtime evidence"
+  ],
+  "downstream_task": "FORUM-20BJ",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-forum seo_audience_targets -- --nocapture",
+      "cargo test -p rustok-search canonical_url_derives_forum -- --nocapture",
+      "node scripts/verify/verify-forum-category-audience-read.mjs",
+      "node scripts/verify/verify-forum-public-discovery-seo.mjs",
+      "node scripts/verify/verify-search-canonical-url-contract.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}
