@@ -3,12 +3,16 @@ import path from 'node:path';
 
 const root = process.cwd();
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const exists = (relative) => fs.existsSync(path.join(root, relative));
 const requireText = (source, needle, label) => {
   if (!source.includes(needle)) {
     throw new Error(`missing ${label}: ${needle}`);
   }
 };
 
+const snapshotPath = 'crates/rustok-forum/src/graphql/query.rs';
+const cleanupPath =
+  'crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json';
 const transport = read('crates/rustok-forum/src/category_read_transport.rs');
 const visibility = read(
   'crates/rustok-forum/src/services/category_audience_visibility.rs',
@@ -38,6 +42,7 @@ const nativeAdapter = read(
 const contract = JSON.parse(
   read('crates/rustok-forum/contracts/forum-category-audience-read.json'),
 );
+const cleanup = JSON.parse(read(cleanupPath));
 
 requireText(
   transport,
@@ -191,6 +196,9 @@ requireText(
   'get_authenticated_storefront_list_visible_with_audience_context',
   'native selected-category list-scope owner call',
 );
+if (exists(snapshotPath)) {
+  throw new Error('legacy GraphQL query snapshot must be removed');
+}
 
 if (contract.task !== 'FORUM-20BH') throw new Error('unexpected task');
 for (const key of [
@@ -218,8 +226,14 @@ for (const key of [
 if (!contract.compatibility.canonical_graphql_runtime_uses_query_runtime) {
   throw new Error('contract must lock the canonical GraphQL runtime selector');
 }
-if (!contract.compatibility.legacy_query_snapshot_is_uncompiled) {
-  throw new Error('contract must identify the uncompiled legacy query snapshot');
+if (!contract.compatibility.legacy_query_snapshot_removed) {
+  throw new Error('contract must lock legacy query snapshot removal');
+}
+if (contract.graphql_snapshot_cleanup_contract !== cleanupPath) {
+  throw new Error('category handoff must point to snapshot cleanup completion');
+}
+if (cleanup.task !== 'FORUM-20BN') {
+  throw new Error('unexpected snapshot cleanup task');
 }
 if (contract.downstream_task !== 'FORUM-20BI') {
   throw new Error('unexpected downstream task');
