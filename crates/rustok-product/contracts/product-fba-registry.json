@@ -124,6 +124,13 @@
     "provider_host_authenticator": "ProductCatalogGrpcBearerInterceptor",
     "provider_host_trusted_actor_env": "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR",
     "provider_host_migrations": "external_precondition",
+    "provider_host_schema_preflight_tables": [
+      "products",
+      "product_variants",
+      "sys_events"
+    ],
+    "provider_host_schema_preflight_order": "after_connect_before_owner_and_listener",
+    "provider_host_schema_preflight_status": "source_complete_execution_pending",
     "provider_host_status": "source_complete_execution_pending",
     "status": "runtime_wired_execution_pending"
   },
