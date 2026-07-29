@@ -135,6 +135,20 @@ fn many_registry() -> SchemaRegistry {
                 true,
             ),
             field(
+                "title",
+                IndexValueType::String,
+                FieldCardinality::One,
+                true,
+                true,
+            ),
+            field(
+                "tags",
+                IndexValueType::String,
+                FieldCardinality::Many,
+                false,
+                false,
+            ),
+            field(
                 "sales_channel_id",
                 IndexValueType::Uuid,
                 FieldCardinality::One,
@@ -387,6 +401,36 @@ fn compiles_many_link_filter_as_correlated_exists_without_outer_join() {
     let count = compiled.exact_count.expect("many filter count");
     assert!(count.sql.contains("EXISTS (SELECT 1 FROM index_links"));
     assert!(!count.sql.contains("ORDER BY"));
+}
+
+#[test]
+fn compiles_many_link_ne_and_is_null_with_reference_totality() {
+    let registry = many_registry();
+    let mut query = root_query(Uuid::new_v4());
+    query.filter = Some(FilterExpr::And(vec![
+        FilterExpr::Ne(
+            linked_path(&["variants"], "score"),
+            IndexValue::Integer(7),
+        ),
+        FilterExpr::IsNull(linked_path(&["variants"], "title"), true),
+        FilterExpr::Contains(
+            linked_path(&["variants"], "tags"),
+            IndexValue::String("featured".to_owned()),
+        ),
+    ]));
+
+    let compiled = registry.compile_postgres_query(&query).unwrap();
+
+    assert!(compiled
+        .sql
+        .matches("EXISTS (SELECT 1 FROM index_links")
+        .count()
+        >= 4);
+    assert!(compiled.sql.contains("AND NOT (EXISTS"));
+    assert!(compiled.sql.contains("IS NULL OR"));
+    assert!(compiled.sql.contains("NOT (EXISTS"));
+    assert!(compiled.sql.contains(" @> "));
+    assert!(!compiled.sql.contains("LEFT JOIN index_links AS \"l1\""));
 }
 
 #[test]
