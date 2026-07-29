@@ -18,12 +18,12 @@ use rustok_commerce::graphql_runtime::{
     CommerceFulfillmentLifecycleReadRuntime, CommerceOrderReadRuntime,
     CommerceShippingOptionReadRuntime, CommerceShippingOptionReadScope,
 };
-use rustok_commerce::{MarketplaceFinancialRuntime, dto::CreateOrderInput};
+use rustok_commerce::{MarketplaceFinancialRuntime};
 use rustok_fulfillment::{
     FindLatestFulfillmentByOrderProjectionRequest, FulfillmentProjectionPage, FulfillmentReadPort,
     FulfillmentResponse, ListFulfillmentProjectionsRequest, ReadFulfillmentProjectionRequest,
 };
-use rustok_order::{OrderService, dto::CreateOrderLineItemInput};
+use rustok_order::{OrderService, dto::{CreateOrderInput, CreateOrderLineItemInput}};
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::{Value, json};

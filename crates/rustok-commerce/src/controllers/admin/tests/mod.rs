@@ -134,6 +134,8 @@ pub(crate) fn test_app_context(
         db.clone(),
         event_bus.clone(),
     );
+    let product_catalog_read_runtime =
+        rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
     crate::controllers::CommerceHttpRuntime {
         db,
         event_bus,
@@ -144,6 +146,7 @@ pub(crate) fn test_app_context(
         shipping_option_read_runtime,
         fulfillment_lifecycle_read_runtime,
         order_read_runtime,
+        product_catalog_read_runtime,
         marketplace_financial_runtime,
     }
 }

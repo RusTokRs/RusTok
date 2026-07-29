@@ -9,7 +9,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumError, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic,
+    ForumError, ForumStorefrontUnreadTopic,
     ForumTopicReadOperation, ForumTopicReadState, ForumTopicReadTransport, ListTopicsFilter,
     topic_read_audience_port_context,
 };

@@ -69,8 +69,8 @@ mod topic {
 }
 mod topic_audience {
     include!("topic_audience.rs");
-    include!("topic_audience_visibility.rs");
 }
+mod topic_audience_visibility;
 mod topic_audience_list;
 mod topic_audience_read;
 mod topic_create_audience_authorization;
@@ -164,8 +164,10 @@ pub use storefront_read_state::{
 };
 pub use subscription::SubscriptionService;
 pub use topic_audience::{
-    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, ForumTopicAudienceViewer,
-    ForumTopicAudienceVisibilityService, SetForumTopicAudiencePolicyInput,
+    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, SetForumTopicAudiencePolicyInput,
+};
+pub use topic_audience_visibility::{
+    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
 pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
 pub use topic_audience_read::ForumTopicAudienceReadService;

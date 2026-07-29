@@ -37,7 +37,7 @@ pub(crate) async fn execute(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{selected_transport_path, UiTransportPath};
 
     #[test]
     fn default_profile_selects_graphql() {

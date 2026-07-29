@@ -16,7 +16,7 @@ use crate::reply_create_transport::{
 use crate::{
     CreateReplyInput, ForumReplyAudienceReadService, ForumReplyReadOperation,
     ForumReplyReadTransport, ListRepliesFilter, ReplyListItem, ReplyResponse,
-    SharedForumAudienceFactsPort, UpdateReplyInput, VoteService,
+    UpdateReplyInput, VoteService,
     reply_read_audience_port_context,
 };
 
