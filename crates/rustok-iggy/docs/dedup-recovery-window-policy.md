@@ -1,6 +1,6 @@
 # Iggy deduplication recovery-window policy
 
-Status: **source complete; runtime calibration remains pending**.
+Status: **policy and retained-calibration tooling source complete; runtime calibration and canonical packet pending**.
 
 ## Purpose
 
@@ -64,14 +64,72 @@ node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
 
 Focused source tests cover invalid policy/configuration, duration overflow, disabled mode, independent expiry/capacity deficits, and exact-boundary sufficiency.
 
+## Retained calibration
+
+The retained path requires two operator-reviewed files outside the repository.
+
+Recovery bounds JSON:
+
+```json
+{
+  "schema_version": 1,
+  "publication_lease_milliseconds": 30000,
+  "process_restart_milliseconds": 20000,
+  "transport_reconnect_milliseconds": 10000,
+  "operator_recovery_milliseconds": 60000,
+  "required_max_entries_per_partition": 500,
+  "capacity_basis": "reviewed peak per-partition arrival bound"
+}
+```
+
+Iggy configuration:
+
+```toml
+[system.message_deduplication]
+enabled = true
+max_entries = 500
+expiry = "2m"
+```
+
+The capture reads only the versioned bounds allowlist and the Iggy deduplication section. It retains canonical projections and their SHA-256 values, not file paths, full contents, or full-file hashes.
+
+Execution contract:
+
+```text
+crates/rustok-iggy/contracts/evidence/
+  dedup-recovery-window-calibration-execution-contract.json
+```
+
+Exact environment-driven Rust case:
+
+```text
+crates/rustok-iggy/tests/dedup_recovery_window_calibration.rs
+reviewed_configuration_covers_recovery_window
+```
+
+Capture and retained verifier:
+
+```bash
+RUSTOK_IGGY_DEDUP_RECOVERY_BOUNDS_PATH=/outside/repository/bounds.json \
+RUSTOK_IGGY_DEDUP_RECOVERY_CONFIG_PATH=/outside/repository/iggy.toml \
+RUSTOK_IGGY_DEDUP_RECOVERY_SERVER_ARTIFACT=reviewed-iggy-build \
+node scripts/evidence/capture-iggy-dedup-recovery-window-calibration.mjs
+
+node scripts/verify/verify-iggy-dedup-recovery-window-retained.mjs
+```
+
+The runner requires one clean unchanged commit, exact one-test success, no skip, current source hashes, a reviewed server artifact label, sufficient expiry and capacity, and a clean worktree after execution. Publication is no-clobber.
+
+The canonical packet remains pending until a maintainer supplies reviewed production inputs and runs the capture. Any bound source, configuration, or recovery-bounds change makes an existing packet stale.
+
 ## Remaining evidence
 
 Before a stronger duplicate-suppression statement is made, operators still need to:
 
-1. publish reviewed maximum lease, restart, reconnect, and intervention bounds;
-2. derive a defensible maximum distinct-ID arrival bound per physical partition;
-3. bind the assessment to a reviewed Iggy configuration projection and digest;
-4. retain the assessment from one clean commit;
-5. repeat evidence for bundled mode, TLS/auth/failover, capacity pressure, and multi-replica recovery.
+1. review the maximum lease, restart, reconnect, and intervention bounds;
+2. review the maximum distinct-ID arrival bound per physical partition;
+3. execute the clean-commit retained calibration and commit the no-clobber packet;
+4. repeat calibration whenever a bound source, configuration, or input changes;
+5. separately prove bundled mode, TLS/auth/failover, capacity pressure, and multi-replica recovery.
 
-The policy remains operational evidence only. Profiles privacy and visibility continue to resolve exclusively through authoritative owner ports.
+The policy and packet remain operational evidence only. Profiles privacy and visibility continue to resolve exclusively through authoritative owner ports.
