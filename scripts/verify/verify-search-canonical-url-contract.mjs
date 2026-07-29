@@ -104,12 +104,24 @@ for (const [source, sourcePath, marker] of [
   }
 }
 
+for (const marker of [
+  '("forum_category", "forum" | "rustok-forum")',
+  "Permission::FORUM_CATEGORIES_READ",
+  '("forum_topic", "forum" | "rustok-forum")',
+  "Permission::FORUM_TOPICS_READ",
+  '("forum_reply", "forum" | "rustok-forum")',
+  "Permission::FORUM_REPLIES_READ",
+  'required_admin_search_permission("forum_reply", "content")',
+]) {
+  requireMarker(adminShell, marker, adminShellPath);
+}
+
 requireMarker(
   adminNativeRoot,
   'include!("native_server_adapter/mapping.rs")',
   adminNativeRootPath,
 );
-for (const marker of ["mod navigation", "enrich_search_result_urls", "blog_result_url"] ) {
+for (const marker of ["mod navigation", "enrich_search_result_urls", "blog_result_url"]) {
   rejectMarker(storefrontFacade, marker, storefrontFacadePath);
 }
 if (existsSync(repoPath(removedCompatibilityPath))) {
