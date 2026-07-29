@@ -21,8 +21,9 @@ pub use planner::{
     QueryPlanError, QueryPlanFingerprint,
 };
 pub use postgres_compiler::{
-    CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, PostgresBindValue,
-    PostgresQueryBuildError, PostgresQueryCompileError,
+    CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
+    CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError,
+    PostgresQueryCompileError,
 };
 pub use postgres_query_result::{
     CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow,
