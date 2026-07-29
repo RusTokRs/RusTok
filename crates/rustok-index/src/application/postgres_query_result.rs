@@ -12,7 +12,7 @@ use crate::domain::{
 use super::{
     CompiledPostgresQuery, CompiledQueryColumn, CursorCodec, CursorValidationError,
     ExecutableQueryPlan, IndexCursor, PlannedField, PostgresBindValue, PostgresQueryBuildError,
-    QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
+    QueryPlanError, QueryPlanFingerprint, SchemaRegistry, SchemaRegistryError,
 };
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
@@ -144,6 +144,10 @@ pub enum PostgresQueryDecodeError {
     },
     #[error("root entity identity column {0} is null")]
     NullRootIdentity(String),
+    #[error("compiled column references unknown relation alias {0}")]
+    UnknownRelationAlias(String),
+    #[error("lookahead cursor construction has no retained item")]
+    MissingCursorItem,
     #[error("projected field {path:?} unexpectedly decoded as null")]
     UnexpectedFieldNull { path: FieldPath },
     #[error("projected field {path:?} contains an invalid value contract")]
@@ -214,19 +218,21 @@ impl SchemaRegistry {
 
         let exact_count = decode_exact_count(query, compiled, exact_count_row.as_ref())?;
         let has_more = rows.len() > requested_page_size as usize;
-        let mut decoded = rows
+        let decoded = rows
             .iter()
             .take(requested_page_size as usize)
             .map(|row| decode_row(&plan, compiled, row))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let next_cursor = if has_more && matches!(query.pagination, Pagination::Cursor { .. }) {
+        let next_cursor = if has_more && matches!(&query.pagination, Pagination::Cursor { .. }) {
             let last = decoded
                 .last()
-                .expect("lookahead requires at least one retained result row");
-            let registered = self
-                .get(&query.schema)
-                .expect("validated query schema must remain registered");
+                .ok_or(PostgresQueryDecodeError::MissingCursorItem)?;
+            let registered = self.get(&query.schema).ok_or_else(|| {
+                QueryPlanError::Registry(SchemaRegistryError::SchemaNotFound(
+                    query.schema.clone(),
+                ))
+            })?;
             let cursor = IndexCursor {
                 tenant_id: query.scope.tenant_id,
                 schema: query.schema.clone(),
@@ -241,7 +247,7 @@ impl SchemaRegistry {
         };
 
         Ok(IndexQueryPage {
-            items: decoded.drain(..).map(|row| row.item).collect(),
+            items: decoded.into_iter().map(|row| row.item).collect(),
             exact_count,
             has_more,
             next_cursor,
@@ -268,8 +274,10 @@ fn apply_lookahead_bind(
             let offset_index = length
                 .checked_sub(1)
                 .ok_or(PostgresQueryPageBuildError::PaginationBindMissing)?;
+            let expected_offset = i64::try_from(*offset)
+                .map_err(|_| PostgresQueryPageBuildError::PaginationBindMismatch)?;
             if compiled.binds.get(offset_index)
-                != Some(&PostgresBindValue::Integer(*offset as i64))
+                != Some(&PostgresBindValue::Integer(expected_offset))
             {
                 return Err(PostgresQueryPageBuildError::PaginationBindMismatch);
             }
@@ -360,7 +368,9 @@ fn decode_row(
                 .joins
                 .iter()
                 .find(|join| join.alias == *relation_alias)
-                .expect("validated column contract must resolve every join alias");
+                .ok_or_else(|| {
+                    PostgresQueryDecodeError::UnknownRelationAlias(relation_alias.clone())
+                })?;
             relations.push(IndexRelationIdentity {
                 path: join.path.clone(),
                 entity_id: identity,
