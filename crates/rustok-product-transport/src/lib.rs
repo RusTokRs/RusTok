@@ -4,6 +4,7 @@
 //! replaceable external adapter and does not own catalog storage or semantics.
 
 pub mod client;
+pub mod connection;
 pub mod server;
 
 pub mod proto {
@@ -11,6 +12,10 @@ pub mod proto {
 }
 
 pub use client::GrpcProductCatalogReadProvider;
+pub use connection::{
+    GrpcProductCatalogReadConnectionConfig, GrpcProductCatalogReadConnectionError,
+    ValidatedGrpcProductCatalogReadConnection,
+};
 pub use server::{
     ProductCatalogGrpcOperation, ProductCatalogGrpcService, TrustedProductCatalogAuthority,
 };
