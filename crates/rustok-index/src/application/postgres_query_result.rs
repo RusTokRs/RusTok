@@ -57,6 +57,10 @@ impl CompiledPostgresRow {
     }
 }
 
+/// Opaque page-execution contract produced only by `SchemaRegistry`.
+///
+/// The wrapper deliberately has no serde implementation so untrusted bytes cannot
+/// replace controlled SQL, bind values, or the requested page size before execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledPostgresPageQuery {
     compiled: CompiledPostgresQuery,
