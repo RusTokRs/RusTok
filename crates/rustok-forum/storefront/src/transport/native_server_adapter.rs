@@ -42,10 +42,12 @@ async fn storefront_forum_native(
         };
         use rustok_core::SecurityContext;
         use rustok_forum::{
-            CategoryService, ForumStorefrontReadStateService, ForumTopicAudienceListService,
-            ForumTopicAudienceReadService, ForumTopicReadOperation, ForumTopicReadTransport,
-            ListRepliesFilter, ListTopicsFilter, ReplyService, ReplyStatus,
-            SharedForumAudienceFactsPort, topic_read_audience_port_context,
+            CategoryService, ForumReplyAudienceReadService, ForumReplyReadOperation,
+            ForumReplyReadTransport, ForumStorefrontReadStateService,
+            ForumTopicAudienceListService, ForumTopicAudienceReadService,
+            ForumTopicReadOperation, ForumTopicReadTransport, ListRepliesFilter,
+            ListTopicsFilter, ReplyStatus, SharedForumAudienceFactsPort,
+            reply_read_audience_port_context, topic_read_audience_port_context,
         };
         use rustok_outbox::TransactionalEventBus;
 
@@ -76,7 +78,6 @@ async fn storefront_forum_native(
         );
         let db = runtime_ctx.db_clone();
         let category_service = CategoryService::new(db.clone());
-        let reply_service = ReplyService::new(db.clone(), event_bus.clone());
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
         let topic_audience_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
@@ -94,6 +95,14 @@ async fn storefront_forum_native(
             ),
             None => ForumTopicAudienceListService::new(db.clone(), event_bus.clone()),
         };
+        let reply_audience_service = match audience_facts.clone() {
+            Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
+                db.clone(),
+                event_bus.clone(),
+                facts,
+            ),
+            None => ForumReplyAudienceReadService::new(db.clone(), event_bus.clone()),
+        };
         let read_state_service = match audience_facts {
             Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
                 db.clone(),
@@ -107,7 +116,7 @@ async fn storefront_forum_native(
         let (categories, categories_total) = category_service
             .list_paginated_with_locale_fallback(
                 tenant.id,
-                public_security.clone(),
+                public_security,
                 effective_locale.as_str(),
                 1,
                 12,
@@ -214,21 +223,59 @@ async fn storefront_forum_native(
 
         let replies = if let Some(topic_id) = resolved_topic_id {
             if selected_topic.is_some() {
-                let (items, total) = reply_service
-                    .list_response_for_topic_by_statuses_with_locale_fallback(
-                        tenant.id,
-                        public_security,
-                        topic_id,
-                        ListRepliesFilter {
-                            locale: Some(effective_locale.clone()),
-                            page: 1,
-                            per_page: 20,
-                        },
-                        Some(tenant.default_locale.as_str()),
-                        Some(&[ReplyStatus::Approved]),
+                let approved_statuses = [ReplyStatus::Approved];
+                let (items, total) = if let Some(auth) = auth.as_ref().filter(|auth| {
+                    has_any_effective_permission(
+                        &auth.permissions,
+                        &[Permission::FORUM_REPLIES_LIST],
                     )
-                    .await
+                }) {
+                    let security = SecurityContext::from_permission_snapshot(
+                        Some(auth.user_id),
+                        &auth.permissions,
+                    );
+                    let audience_context = reply_read_audience_port_context(
+                        ForumReplyReadTransport::NativeServer,
+                        ForumReplyReadOperation::ReplyList,
+                        tenant.id,
+                        auth,
+                        Some(&request),
+                        effective_locale.as_str(),
+                    )
                     .map_err(server_error)?;
+                    reply_audience_service
+                        .list_authenticated_storefront_visible_with_audience_context(
+                            tenant.id,
+                            security,
+                            audience_context,
+                            topic_id,
+                            ListRepliesFilter {
+                                locale: Some(effective_locale.clone()),
+                                page: 1,
+                                per_page: 20,
+                            },
+                            Some(tenant.default_locale.as_str()),
+                            Some(&approved_statuses),
+                        )
+                        .await
+                        .map_err(server_error)?
+                } else {
+                    reply_audience_service
+                        .list_public_storefront_visible_with_locale_fallback(
+                            tenant.id,
+                            topic_id,
+                            ListRepliesFilter {
+                                locale: Some(effective_locale.clone()),
+                                page: 1,
+                                per_page: 20,
+                            },
+                            Some(tenant.default_locale.as_str()),
+                            channel_slug,
+                            Some(&approved_statuses),
+                        )
+                        .await
+                        .map_err(server_error)?
+                };
                 ForumReplyConnection {
                     items: items.into_iter().map(map_reply).collect(),
                     total,

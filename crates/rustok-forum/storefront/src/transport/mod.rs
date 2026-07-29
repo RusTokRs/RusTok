@@ -1,6 +1,4 @@
 mod graphql_adapter;
-mod graphql_reply_audience_adapter;
-mod native_reply_audience_adapter;
 mod native_server_adapter;
 
 use crate::model::StorefrontForumData;
@@ -17,31 +15,19 @@ pub async fn fetch_storefront_forum(
     locale: Option<String>,
 ) -> Result<StorefrontForumData, TransportError> {
     if use_native_transport() {
-        let mut data = native_server_adapter::fetch_storefront_forum_server(
+        native_server_adapter::fetch_storefront_forum_server(
             selected_category_id,
             selected_topic_id,
-            locale.clone(),
-        )
-        .await?;
-        data.replies = native_reply_audience_adapter::fetch_storefront_replies_server(
-            data.selected_topic_id.clone(),
             locale,
         )
-        .await?;
-        Ok(data)
+        .await
     } else {
-        let mut data = graphql_adapter::fetch_storefront_forum_graphql(
+        graphql_adapter::fetch_storefront_forum_graphql(
             selected_category_id,
             selected_topic_id,
-            locale.clone(),
-        )
-        .await?;
-        data.replies = graphql_reply_audience_adapter::fetch_storefront_replies_graphql(
-            data.selected_topic_id.clone(),
             locale,
         )
-        .await?;
-        Ok(data)
+        .await
     }
 }
 

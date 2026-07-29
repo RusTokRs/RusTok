@@ -19,12 +19,13 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult,
-    ForumWidgetCatalogResponse, ForumWidgetContractService, ReplyResponse, ReplyService,
-    ReplyStatus, TopicListItem, TopicResponse, TopicService, UserStatsService,
+    CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumReplyReadOperation,
+    ForumReplyReadTransport, ForumResult, ForumWidgetCatalogResponse, ForumWidgetContractService,
+    ReplyResponse, ReplyService, ReplyStatus, TopicListItem, TopicResponse, TopicService,
+    UserStatsService, reply_read_audience_port_context,
 };
 
-use super::types::*;
+use super::{ForumGraphqlRuntimeData, types::*};
 
 const MODULE_SLUG: &str = "forum";
 const PUBLIC_REPLY_STATUSES: [ReplyStatus; 1] = [ReplyStatus::Approved];
@@ -299,7 +300,6 @@ impl ForumQuery {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let service = ReplyService::new(db.clone(), event_bus.clone());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -308,24 +308,36 @@ impl ForumQuery {
             page: (offset / limit + 1) as u64,
             per_page: limit as u64,
         };
+        let audience_context = reply_read_audience_port_context(
+            ForumReplyReadTransport::Graphql,
+            ForumReplyReadOperation::ReplyList,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+        let service = runtime.reply_audience_read_service(db.clone(), event_bus.clone());
 
         let list_started_at = Instant::now();
         let (replies, total) = service
-            .list_response_for_topic_with_locale_fallback(
+            .list_response_authenticated_owner_visible_with_audience_context(
                 tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions),
+                audience_context,
                 topic_id,
                 filter,
                 Some(tenant.default_locale.as_str()),
+                None,
             )
             .await?;
         metrics::record_read_path_query(
             "graphql",
             "forum.replies",
-            "service_list",
+            "exact_reply_audience_owner",
             list_started_at.elapsed().as_secs_f64(),
             total,
         );
@@ -619,60 +631,61 @@ impl ForumQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let resolved_tenant_id = tenant_id.unwrap_or(tenant.id);
-        let service = ReplyService::new(db.clone(), event_bus.clone());
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
-        let topic_service = TopicService::new(db.clone(), event_bus.clone());
-        let topic = match topic_service
-            .get_with_locale_fallback(
-                resolved_tenant_id,
-                forum_request_security(ctx),
-                topic_id,
-                &locale,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await
-        {
-            Ok(topic) => Some(topic),
-            Err(ForumError::TopicNotFound(_)) => None,
-            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
-        };
-
-        let topic_is_visible = topic.as_ref().is_some_and(|topic| {
-            is_storefront_topic_visible(
-                &topic.status,
-                &topic.channel_slugs,
-                public_channel_slug(ctx).as_deref(),
-            )
-        });
-
-        if !topic_is_visible {
-            return Ok(ForumReplyConnection::new(Vec::new(), 0, offset, limit));
-        }
-
         let filter = crate::ListRepliesFilter {
             locale: Some(locale.clone()),
             page: (offset / limit + 1) as u64,
             per_page: limit as u64,
         };
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+        let service = runtime.reply_audience_read_service(db.clone(), event_bus.clone());
 
         let list_started_at = Instant::now();
-        let (replies, total) = service
-            .list_response_for_topic_by_statuses_with_locale_fallback(
-                resolved_tenant_id,
-                forum_request_security(ctx),
-                topic_id,
-                filter,
-                Some(tenant.default_locale.as_str()),
-                Some(&PUBLIC_REPLY_STATUSES),
-            )
-            .await?;
+        let (replies, total) = if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let audience_context = reply_read_audience_port_context(
+                ForumReplyReadTransport::Graphql,
+                ForumReplyReadOperation::ReplyList,
+                tenant_id,
+                auth,
+                ctx.data_opt::<RequestContext>(),
+                locale.as_str(),
+            )?;
+            service
+                .list_authenticated_storefront_visible_with_audience_context(
+                    tenant_id,
+                    SecurityContext::from_permission_snapshot(
+                        Some(auth.user_id),
+                        &auth.permissions,
+                    ),
+                    audience_context,
+                    topic_id,
+                    filter,
+                    Some(tenant.default_locale.as_str()),
+                    Some(&PUBLIC_REPLY_STATUSES),
+                )
+                .await?
+        } else {
+            service
+                .list_public_storefront_visible_with_locale_fallback(
+                    tenant_id,
+                    topic_id,
+                    filter,
+                    Some(tenant.default_locale.as_str()),
+                    public_channel_slug(ctx).as_deref(),
+                    Some(&PUBLIC_REPLY_STATUSES),
+                )
+                .await?
+        };
         metrics::record_read_path_query(
             "graphql",
             "forum.storefront_replies",
-            "service_list",
+            "exact_reply_audience_owner",
             list_started_at.elapsed().as_secs_f64(),
             total,
         );
@@ -680,7 +693,7 @@ impl ForumQuery {
         let author_profiles = load_author_profiles_map(
             ctx,
             db,
-            resolved_tenant_id,
+            tenant_id,
             replies.iter().map(|reply| reply.author_id),
             locale.as_str(),
             tenant.default_locale.as_str(),
