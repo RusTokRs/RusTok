@@ -1,8 +1,8 @@
 # M4 many-link `EXISTS` filtering
 
 This slice adds deterministic PostgreSQL filtering through explicit paths that cross one
-or more `many` links. It does not add many-link projection, ordering, SQL execution, or
-PostgreSQL/reference-engine equivalence evidence.
+or more `many` links. It does not execute SQL and does not add many-link projection,
+ordering, or PostgreSQL/reference-engine equivalence evidence.
 
 ## Plan contract
 
