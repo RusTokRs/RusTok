@@ -15,7 +15,7 @@ Completed execution history does not belong here.
 - Domain-specific cache identity and recovery stay in the owner module plan. This plan coordinates
   the reusable capability and host adoption only.
 
-Last reconciled with `main`: 2026-07-17.
+Last reconciled with `main`: 2026-07-29.
 
 ## Ownership boundary
 
@@ -343,3 +343,16 @@ RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server \
 3. Update the crate README, inventory, operations runbook and module plan with contract changes.
 4. Update the central implementation-plan registry only for status and nearest priority.
 5. Prefer a correctness-preserving miss over serving unversioned stale data.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `in_progress`
+- Last verified at (UTC): `2026-07-29`
+- Scope inspected: `cache ownership and documentation; Redis and in-memory backend contracts; degraded fallback and pending invalidation behavior; atomic CAS; workflow coverage and current execution-evidence backlog`
+- Findings: `P0=0, P1=0, P2=0, P3=1`
+- Fixed in this pass: `added the missing current-cycle handoff and reconciled the plan date with main`
+- Remaining risks or blockers: `compiled and live Redis evidence remain open until the permanent cache workflows execute on this branch; source inspection is still in progress`
+- Evidence: `AGENTS.md, docs/index.md, the cycle cursor, crate README, local docs and the permanent cache workflows were read on the branch`
+- Next action: `open a pull request to trigger the cache workflows, inspect failures, and continue the P0/P1 source audit`
+- Resume command: `cargo xtask module validate cache && cargo xtask module test cache && cargo test -p rustok-cache --lib`
