@@ -31,11 +31,13 @@ const projectorPath = "crates/rustok-search/src/forum_projector.rs";
 const ingestionPath = "crates/rustok-search/src/ingestion.rs";
 const searchLibPath = "crates/rustok-search/src/lib.rs";
 const providerPath = "crates/rustok-forum/src/search_projection.rs";
+const replyUpdatePath = "crates/rustok-forum/src/services/reply_inline.rs";
 const forumLibPath = "crates/rustok-forum/src/lib.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
 const invalidationPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
 const visibilityBulkPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
 const rebuildPreservationPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
+const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
 const upstreamPath = "crates/rustok-forum/contracts/forum-public-discovery-seo.json";
 const notePath = "crates/rustok-forum/docs/forum-20bj-search-projection.md";
 
@@ -45,18 +47,21 @@ const projector = read(projectorPath);
 const ingestion = read(ingestionPath);
 const searchLib = read(searchLibPath);
 const provider = read(providerPath);
+const replyUpdate = read(replyUpdatePath);
 const forumLib = read(forumLibPath);
 const note = read(notePath);
 let contract = null;
 let invalidation = null;
 let visibilityBulk = null;
 let rebuildPreservation = null;
+let approvedReply = null;
 let upstream = null;
 for (const [label, source, assign] of [
   [contractPath, read(contractPath), (value) => { contract = value; }],
   [invalidationPath, read(invalidationPath), (value) => { invalidation = value; }],
   [visibilityBulkPath, read(visibilityBulkPath), (value) => { visibilityBulk = value; }],
   [rebuildPreservationPath, read(rebuildPreservationPath), (value) => { rebuildPreservation = value; }],
+  [approvedReplyPath, read(approvedReplyPath), (value) => { approvedReply = value; }],
   [upstreamPath, read(upstreamPath), (value) => { upstream = value; }],
 ]) {
   try {
@@ -78,29 +83,26 @@ for (const marker of [
 ]) {
   requireMarker(capability, marker, capabilityPath);
 }
-for (const forbidden of [
-  "search_documents",
-  "ForumPublicDiscoveryService",
-  "ForumSearchProjector",
-]) {
+for (const forbidden of ["search_documents", "ForumPublicDiscoveryService", "ForumSearchProjector"]) {
   rejectMarker(capability, forbidden, capabilityPath);
 }
-requireMarker(
-  searchFacade,
-  "pub use rustok_core::search_projection::*;",
-  searchFacadePath,
-);
+requireMarker(searchFacade, "pub use rustok_core::search_projection::*;", searchFacadePath);
 
 for (const marker of [
   "ForumPublicDiscoveryService",
   "forum_category_translation::Entity::find()",
   "forum_topic_translation::Entity::find()",
+  "forum_reply_body::Entity::find()",
   "get_public_category_with_locale_fallback",
   "get_public_topic_with_locale_fallback",
-  "ProjectionCursor",
-  "MAX_ENTITY_LOCALES",
+  "ProjectionCursor::Reply",
+  "ProjectionCandidate::Reply",
+  "if owner.status != ReplyStatus::Approved",
   'const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category"',
   'const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic"',
+  'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
+  'document_key: format!("forum_reply:{reply_id}:{locale}")',
+  '"kind": "forum_reply"',
   "rustok_core::search_projection",
 ]) {
   requireMarker(provider, marker, providerPath);
@@ -124,6 +126,10 @@ for (const marker of [
   "delete_forum_entity",
   "Forum Search projection cursor did not advance",
   "foreign or non-public document",
+  "FORUM_TOPIC_ENTITY_TYPE | FORUM_REPLY_ENTITY_TYPE",
+  "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
+  "return self.rebuild_tenant(tenant_id).await",
+  "'forum_category', 'forum_topic', 'forum_reply'",
 ]) {
   requireMarker(projector, marker, projectorPath);
 }
@@ -142,6 +148,13 @@ for (const marker of [
 ]) {
   requireMarker(ingestion, marker, ingestionPath);
 }
+for (const marker of [
+  'target_type: "forum_topic".to_string()',
+  "target_id: Some(topic_id)",
+  ".publish_in_tx(",
+]) {
+  requireMarker(replyUpdate, marker, replyUpdatePath);
+}
 
 for (const marker of [
   "mod forum_projector;",
@@ -151,7 +164,6 @@ for (const marker of [
 ]) {
   requireMarker(searchLib, marker, searchLibPath);
 }
-
 for (const marker of [
   "mod search_projection;",
   "rustok_core::search_projection::register_search_projection_source",
@@ -166,7 +178,6 @@ for (const forbidden of [
 ]) {
   rejectMarker(forumLib, forbidden, forumLibPath);
 }
-
 for (const marker of [
   "rustok-core",
   "temporary staging table",
@@ -181,20 +192,14 @@ for (const marker of [
 
 if (contract) {
   if (contract.task !== "FORUM-20BJ") failures.push(`${contractPath}: unexpected task`);
-  if (contract.upstream_task !== "FORUM-20BI") {
-    failures.push(`${contractPath}: unexpected upstream task`);
-  }
-  if (contract.downstream_task !== "FORUM-20BN") {
-    failures.push(`${contractPath}: unexpected downstream task`);
-  }
-  if (contract.invalidation_contract !== invalidationPath) {
-    failures.push(`${contractPath}: invalidation contract handoff drift`);
-  }
-  if (contract.visibility_scoped_bulk_read_contract !== visibilityBulkPath) {
-    failures.push(`${contractPath}: visible bulk read contract handoff drift`);
-  }
-  if (contract.rebuild_scope_preservation_contract !== rebuildPreservationPath) {
-    failures.push(`${contractPath}: rebuild preservation contract handoff drift`);
+  if (contract.upstream_task !== "FORUM-20BI") failures.push(`${contractPath}: unexpected upstream task`);
+  if (contract.downstream_task !== "FORUM-20BP") failures.push(`${contractPath}: unexpected downstream task`);
+  if (contract.invalidation_contract !== invalidationPath) failures.push(`${contractPath}: invalidation handoff drift`);
+  if (contract.visibility_scoped_bulk_read_contract !== visibilityBulkPath) failures.push(`${contractPath}: visible bulk handoff drift`);
+  if (contract.rebuild_scope_preservation_contract !== rebuildPreservationPath) failures.push(`${contractPath}: rebuild handoff drift`);
+  if (contract.approved_reply_search_contract !== approvedReplyPath) failures.push(`${contractPath}: approved reply handoff drift`);
+  for (const type of ["forum_category", "forum_topic", "forum_reply"]) {
+    if (!contract.entity_types?.includes(type)) failures.push(`${contractPath}: missing entity type ${type}`);
   }
   for (const key of [
     "neutral_capability_has_no_forum_dependency",
@@ -202,11 +207,11 @@ if (contract) {
     "search_facade_reexports_neutral_capability",
     "category_candidates_use_exact_public_discovery",
     "topic_candidates_use_exact_public_discovery",
+    "reply_candidates_require_approved_status_and_exact_parent_discovery",
+    "reply_topic_and_category_are_reauthorized_for_context",
     "per_entity_locale_fanout_bounded",
   ]) {
-    if (contract.source_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: source boundary ${key} drift`);
-    }
+    if (contract.source_boundary?.[key] !== true) failures.push(`${contractPath}: source boundary ${key} drift`);
   }
   if (contract.source_boundary?.cross_consumer_audience_policy_copy_added !== false) {
     failures.push(`${contractPath}: audience policy copy must remain absent`);
@@ -219,26 +224,21 @@ if (contract) {
     "full_search_rebuild_source_failure_keeps_previous_forum_scope",
     "earlier_successful_scope_may_commit_before_later_failure",
     "target_refresh_deletes_and_reinserts_in_one_transaction",
+    "topic_refresh_rebuilds_atomic_forum_scope_with_child_replies",
     "denied_closed_missing_or_deleted_target_removes_stale_documents",
   ]) {
-    if (contract.persistence_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: persistence boundary must lock ${key}`);
-    }
+    if (contract.persistence_boundary?.[key] !== true) failures.push(`${contractPath}: persistence boundary ${key} drift`);
   }
-  for (const key of [
-    "direct_search_rebuild_deletes_external_scopes",
-    "global_cross_source_atomicity_added",
-  ]) {
-    if (contract.persistence_boundary?.[key] !== false) {
-      failures.push(`${contractPath}: persistence boundary ${key} must remain false`);
-    }
+  for (const key of ["direct_search_rebuild_deletes_external_scopes", "global_cross_source_atomicity_added"]) {
+    if (contract.persistence_boundary?.[key] !== false) failures.push(`${contractPath}: persistence ${key} must remain false`);
   }
   for (const key of [
     "forum_topic_created_refreshes_topic",
-    "forum_topic_replied_refreshes_topic",
-    "forum_topic_status_changed_refreshes_topic",
-    "forum_topic_pinned_refreshes_topic",
-    "forum_reply_status_changed_refreshes_topic",
+    "forum_topic_replied_refreshes_topic_and_reply_scope",
+    "forum_topic_status_changed_refreshes_topic_and_reply_scope",
+    "forum_topic_pinned_refreshes_topic_and_reply_scope",
+    "forum_reply_status_changed_refreshes_topic_and_reply_scope",
+    "forum_reply_edit_publishes_topic_reindex",
     "forum_module_enable_rebuilds_scope",
     "forum_module_disable_deletes_scope",
     "explicit_forum_scope_reindex_supported",
@@ -250,30 +250,18 @@ if (contract) {
     "automatic_category_content_translation_tree_change_reindex_added",
     "automatic_category_and_reply_count_reindex_added",
     "owner_transactional_outbox_delivery_added",
+    "reply_documents_projected",
   ]) {
-    if (contract.ingestion_boundary?.[key] !== true) {
-      failures.push(`${contractPath}: ingestion boundary ${key} drift`);
-    }
+    if (contract.ingestion_boundary?.[key] !== true) failures.push(`${contractPath}: ingestion ${key} drift`);
   }
-  if (contract.ingestion_boundary?.root_reindex_event_schema_changed !== false) {
-    failures.push(`${contractPath}: root reindex event schema must remain unchanged`);
+  for (const key of ["root_reindex_event_schema_changed", "new_reindex_target_string_added"]) {
+    if (contract.ingestion_boundary?.[key] !== false) failures.push(`${contractPath}: ingestion ${key} must remain false`);
   }
-  if (contract.ingestion_boundary?.completion_contract !== invalidationPath) {
-    failures.push(`${contractPath}: invalidation completion contract drift`);
-  }
-  if (contract.downstream_handoff?.visibility_completion_contract !== visibilityBulkPath) {
-    failures.push(`${contractPath}: downstream visible bulk completion drift`);
-  }
-  if (contract.downstream_handoff?.completion_contract !== rebuildPreservationPath) {
-    failures.push(`${contractPath}: downstream rebuild preservation completion drift`);
-  }
-  for (const completed of [
-    "add visibility-scoped category and all-read commands",
-    "make full multi-source Search rebuild replacement atomic or preserve each prior external scope when a later source fails",
-  ]) {
-    if (contract.remaining_scope?.includes(completed)) {
-      failures.push(`${contractPath}: completed scope remains listed: ${completed}`);
-    }
+  if (contract.ingestion_boundary?.completion_contract !== invalidationPath) failures.push(`${contractPath}: invalidation completion drift`);
+  if (contract.downstream_handoff?.completion_contract !== rebuildPreservationPath) failures.push(`${contractPath}: historical rebuild completion drift`);
+  if (contract.downstream_handoff?.reply_completion_contract !== approvedReplyPath) failures.push(`${contractPath}: reply completion drift`);
+  if (contract.remaining_scope?.includes("decide whether approved public replies become separate Search documents under FORUM-23")) {
+    failures.push(`${contractPath}: completed reply decision remains open`);
   }
   for (const [key, expected] of Object.entries({
     forum_to_search_workspace_dependency_added: false,
@@ -283,76 +271,30 @@ if (contract) {
     cargo_lock_regeneration_required: false,
     migration_added: false,
   })) {
-    if (contract.compatibility?.[key] !== expected) {
-      failures.push(`${contractPath}: compatibility ${key} drift`);
-    }
+    if (contract.compatibility?.[key] !== expected) failures.push(`${contractPath}: compatibility ${key} drift`);
   }
 }
 
-if (invalidation) {
-  if (invalidation.task !== "FORUM-20BK") {
-    failures.push(`${invalidationPath}: unexpected task`);
-  }
-  if (invalidation.upstream_task !== "FORUM-20BJ") {
-    failures.push(`${invalidationPath}: unexpected upstream task`);
-  }
-  if (invalidation.downstream_task !== "FORUM-20BN") {
-    failures.push(`${invalidationPath}: unexpected downstream task`);
-  }
-  if (invalidation.upstream_contract !== contractPath) {
-    failures.push(`${invalidationPath}: upstream contract drift`);
-  }
-  if (invalidation.visibility_scoped_bulk_read_contract !== visibilityBulkPath) {
-    failures.push(`${invalidationPath}: visible bulk read handoff drift`);
-  }
-  if (invalidation.rebuild_scope_preservation_contract !== rebuildPreservationPath) {
-    failures.push(`${invalidationPath}: rebuild preservation handoff drift`);
-  }
+for (const [label, value] of [
+  [invalidationPath, invalidation],
+  [visibilityBulkPath, visibilityBulk],
+  [rebuildPreservationPath, rebuildPreservation],
+]) {
+  if (!value) continue;
+  if (value.downstream_task !== "FORUM-20BP") failures.push(`${label}: downstream task must advance to FORUM-20BP`);
+  if (value.approved_reply_search_contract !== approvedReplyPath) failures.push(`${label}: approved reply handoff drift`);
 }
-
-if (visibilityBulk) {
-  if (visibilityBulk.task !== "FORUM-20BL") {
-    failures.push(`${visibilityBulkPath}: unexpected task`);
-  }
-  if (visibilityBulk.upstream_task !== "FORUM-20BK") {
-    failures.push(`${visibilityBulkPath}: unexpected upstream task`);
-  }
-  if (visibilityBulk.downstream_task !== "FORUM-20BN") {
-    failures.push(`${visibilityBulkPath}: downstream task drift`);
-  }
-  if (visibilityBulk.rebuild_scope_preservation_contract !== rebuildPreservationPath) {
-    failures.push(`${visibilityBulkPath}: rebuild preservation handoff drift`);
-  }
+if (approvedReply) {
+  if (approvedReply.task !== "FORUM-20BO") failures.push(`${approvedReplyPath}: unexpected task`);
+  if (approvedReply.upstream_task !== "FORUM-20BN") failures.push(`${approvedReplyPath}: unexpected upstream task`);
+  if (approvedReply.downstream_task !== "FORUM-20BP") failures.push(`${approvedReplyPath}: unexpected downstream task`);
 }
-
-if (rebuildPreservation) {
-  if (rebuildPreservation.task !== "FORUM-20BM") {
-    failures.push(`${rebuildPreservationPath}: unexpected task`);
-  }
-  if (rebuildPreservation.upstream_task !== "FORUM-20BL") {
-    failures.push(`${rebuildPreservationPath}: unexpected upstream task`);
-  }
-  if (rebuildPreservation.downstream_task !== "FORUM-20BN") {
-    failures.push(`${rebuildPreservationPath}: unexpected downstream task`);
-  }
-}
-
 if (upstream) {
-  if (upstream.search_boundary?.forum_projection_consumer_wired !== true) {
-    failures.push(`${upstreamPath}: projection consumer handoff not advanced`);
-  }
-  if (upstream.search_boundary?.forum_search_documents_written !== true) {
-    failures.push(`${upstreamPath}: Search document handoff not advanced`);
-  }
-  if (upstream.search_boundary?.completion_contract !== contractPath) {
-    failures.push(`${upstreamPath}: completion contract drift`);
-  }
-  if (upstream.search_boundary?.downstream_workspace_dependency_added !== false) {
-    failures.push(`${upstreamPath}: workspace dependency handoff drift`);
-  }
-  if (upstream.downstream_task !== "FORUM-20BK") {
-    failures.push(`${upstreamPath}: historical downstream task drift`);
-  }
+  if (upstream.search_boundary?.forum_projection_consumer_wired !== true) failures.push(`${upstreamPath}: projection consumer handoff not advanced`);
+  if (upstream.search_boundary?.forum_search_documents_written !== true) failures.push(`${upstreamPath}: Search document handoff not advanced`);
+  if (upstream.search_boundary?.completion_contract !== contractPath) failures.push(`${upstreamPath}: completion contract drift`);
+  if (upstream.search_boundary?.downstream_workspace_dependency_added !== false) failures.push(`${upstreamPath}: workspace dependency drift`);
+  if (upstream.downstream_task !== "FORUM-20BK") failures.push(`${upstreamPath}: historical downstream task drift`);
 }
 
 if (failures.length > 0) {
