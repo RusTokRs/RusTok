@@ -25,11 +25,13 @@ impl OutboxTransport {
 
     /// Writes one validated root event through an owner-supplied transaction.
     ///
-    /// This static boundary is intended for domain helpers that already own a
-    /// transaction and must not manufacture a second database handle merely to
-    /// use the outbox. The same envelope/schema validation as normal transport
-    /// publishing remains mandatory.
-    pub async fn write_envelope_in_tx<C>(txn: &C, envelope: EventEnvelope) -> Result<()>
+    /// This crate-private boundary is used by the validated transactional bus;
+    /// external domain code must publish through `TransactionalEventBus` so
+    /// `DomainEvent::validate()` cannot be bypassed.
+    pub(crate) async fn write_envelope_in_tx<C>(
+        txn: &C,
+        envelope: EventEnvelope,
+    ) -> Result<()>
     where
         C: ConnectionTrait,
     {
@@ -40,7 +42,7 @@ impl OutboxTransport {
     }
 
     /// Writes one validated sealed contract event through an owner transaction.
-    pub async fn write_contract_envelope_in_tx<C>(
+    pub(crate) async fn write_contract_envelope_in_tx<C>(
         txn: &C,
         envelope: ContractEventEnvelope,
     ) -> Result<()>
