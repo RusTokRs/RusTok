@@ -1,6 +1,6 @@
 # Bounded physical DLQ duplicate rolling window
 
-Status: **transport-neutral rolling-window state source-complete; scanner, cursor, persistence, server integration, and runtime evidence pending**.
+Status: **transport-neutral rolling-window state and moving scanner integration source-complete; server composition and runtime evidence pending**.
 
 ## Purpose
 
@@ -82,32 +82,57 @@ evicted_cycles > 0
 
 The flag never returns to false for that in-memory state. An identity relationship can disappear when its older copy is evicted. Therefore a truncated snapshot describes only the currently retained bounded window and is not complete history, current-tail proof, or production retention evidence.
 
+## Moving scanner integration
+
+The moving scanner integration is source-complete in:
+
+```text
+crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-moving-window-scan-source.json
+```
+
+`IggyDlqDuplicateMovingWindowScanner` polls every selected partition under one equal per-partition budget. `IggyDlqDuplicateMovingWindowState` owns one private process-local per-partition cursor and feeds only a complete successful all-partition cycle into this rolling state.
+
+The integration is atomic:
+
+- all partition polls complete before state mutation;
+- invalid or incomplete cycles leave cursors and rolling state unchanged;
+- cursor values and observations are never exported;
+- the rolling per-cycle capacity must cover the full checked fair-cycle budget;
+- the scanner still uses explicit offsets and `auto_commit = false`.
+
+The restart choice is explicit reset, not implied persistence. A new state or `reset_to_initial_offset()` rewinds every cursor to the reviewed initial offset and clears rolling history. This does not provide restart-safe progress, current-tail coverage, or complete history.
+
+The transport-neutral rolling state itself still does not move a broker cursor; the feature-gated moving adapter owns collection and process-local cursor advancement.
+
 ## Source contract and verification
 
-Machine contract:
+Machine contracts:
 
 ```text
 crates/rustok-iggy/contracts/evidence/
   dlq-duplicate-rolling-window-source.json
+  dlq-duplicate-moving-window-scan-source.json
 ```
 
-Static verifier:
+Static verifiers:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs
 ```
 
-Focused unit scenarios cover invalid bounds, ordinary duplicates split across cycles, identity conflicts split across cycles, complete-cycle eviction, and transactional oversized-cycle rejection.
+Focused unit scenarios cover invalid bounds, ordinary duplicates split across cycles, identity conflicts split across cycles, complete-cycle eviction, transactional oversized-cycle rejection, independent cursor advancement, incomplete-cycle rollback, and explicit reset.
 
 ## Remaining integration
 
-Scanner integration remains pending. A later reviewed slice must:
+Moving scanner integration is source-complete. Remaining reviewed work must:
 
-1. feed one complete fair per-partition scan cycle into the state without exporting identifiers;
-2. define independent per-partition cursor advancement;
-3. choose explicit persistence or restart-reset semantics;
-4. compose the mode-aware server observer;
-5. prove cross-cycle behavior on external Iggy;
-6. publish only identifier-free telemetry or health.
+1. compose an explicit opt-in mode in the mode-aware server observer;
+2. define reviewed configuration for initial offset, fair budget, batch size, and rolling bounds;
+3. prove cross-cycle behavior on external Iggy;
+4. add a persistent cursor owner only if restart continuity is required;
+5. publish only identifier-free telemetry or health.
 
-No current API claims moving cursors, persisted progress, restart-safe state, current-tail coverage, complete history, production retention sufficiency, or exactly-once delivery.
+No current API claims persisted progress, restart-safe state, current-tail coverage, complete history, production retention sufficiency, server integration, runtime execution, or exactly-once delivery.
