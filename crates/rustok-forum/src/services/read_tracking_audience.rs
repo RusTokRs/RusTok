@@ -264,7 +264,7 @@ fn visibility_channel_scope_token(channel_slug: Option<&str>) -> String {
 
     let mut hasher = Sha256::new();
     hasher.update(channel_slug.unwrap_or("<no-route-channel>").as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 fn encode_visibility_bulk_read_cursor(
