@@ -472,8 +472,11 @@ fn decode_field(
 }
 
 fn valid_field_value(field: &PlannedField, value: &IndexValue, missing_relation: bool) -> bool {
+    if missing_relation {
+        return matches!(value, IndexValue::Null);
+    }
     match value {
-        IndexValue::Null => field.nullable || missing_relation,
+        IndexValue::Null => field.nullable,
         IndexValue::List(values) => {
             field.cardinality == FieldCardinality::Many
                 && values
