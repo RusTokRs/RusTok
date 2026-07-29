@@ -33,16 +33,31 @@ conformance harness covers product projection, variant-first projection,
 published list pagination, typed not-found, deadline-required semantics, and
 trusted actor replacement.
 
+The transport now has a concrete service-to-service bearer authentication
+boundary. `ProductCatalogGrpcBearerToken` validates visible non-whitespace ASCII,
+redacts its `Debug` representation, and compares the complete `Authorization`
+metadata value in constant-time. Authenticated clients attach both
+`authorization` and `x-rustok-tenant-id`; the server interceptor validates the
+tenant UUID, installs a server-configured trusted service actor, and authorizes
+only Product catalog read operations. Authentication failures use one generic
+message and never echo the credential. TLS protects the channel while bearer
+authentication establishes caller identity; neither substitutes for the other.
+
 The production host now owns explicit Product catalog deployment selection.
-`RUSTOK_PRODUCT_CATALOG_PROVIDER` defaults to `embedded`; `grpc` requires
-`RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT`. `GrpcProductCatalogReadConnectionConfig`
-requires HTTPS without credentials/path/query/fragment, permits plaintext only
-for an explicitly enabled loopback host, bounds connect timeout, and applies
-WebPKI TLS roots. The server connects before `bootstrap_app_runtime`, inserts
-`ProductCatalogReadRuntime::external(...)` into `ServerRuntimeContext`, and lets
-all existing composition surfaces reuse that same runtime. Invalid remote
-configuration or connection failure aborts startup and never silently falls back
-to embedded execution.
+`RUSTOK_PRODUCT_CATALOG_PROVIDER` defaults to `embedded`; `grpc` requires both
+`RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT` and
+`RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`.
+`GrpcProductCatalogReadConnectionConfig` requires HTTPS without
+credentials/path/query/fragment, permits plaintext only for an explicitly
+enabled loopback host, bounds connect timeout, and applies WebPKI TLS roots. The
+server validates authentication before connecting, connects before
+`bootstrap_app_runtime`, inserts `ProductCatalogReadRuntime::external(...)` into
+`ServerRuntimeContext`, and lets all existing composition surfaces reuse that
+same runtime. Invalid remote configuration or connection failure aborts startup
+and never silently falls back to embedded execution. Invalid authentication
+configuration also aborts startup before the network connection is opened.
+Remote variables, including the bearer credential, are rejected in embedded
+mode.
 
 Remote consumer behavior is now source-complete through executable loopback
 harnesses. Commerce builds checkout plans with a real external gRPC runtime and
@@ -54,10 +69,13 @@ typed degraded metadata. The production handler still requires operator review
 and performs no persistence. These harnesses have not been executed by the
 implementation agent.
 
-Adapter and production-wiring source are complete. Consumer-behavior source is
-also complete, but the loopback conformance and remote consumer harnesses have
-not been run by the implementation agent, so Product remains `boundary_ready`
-rather than `transport_verified`.
+Adapter and production-wiring source are complete. Consumer-behavior and
+authentication source are complete, but the loopback conformance, authenticated
+transport, and remote consumer harnesses have not been run by the implementation
+agent, so Product remains `boundary_ready` rather than `transport_verified`.
+Configured remote-profile execution evidence remain open. A standalone Product
+catalog service host is still required before the repository contains a complete
+provider-side deployment unit.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
@@ -151,9 +169,9 @@ rustok-pricing` dependency cycle.
   the core/transport/UI split and native/GraphQL parity.
 - FBA status: `boundary_ready` — the owner port, in-process profile, host runtime,
   declared consumer source cutovers, external gRPC adapter, validated connection
-  policy, production host wiring, and Commerce/AI remote behavior harnesses are
-  source-complete. Loopback and configured remote-profile execution evidence
-  remain open.
+  policy, production client wiring, service-to-service authentication, and
+  Commerce/AI remote behavior harnesses are source-complete. The standalone
+  provider host plus authenticated runtime execution evidence remain open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
@@ -168,6 +186,7 @@ rustok-pricing` dependency cycle.
   `scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`,
   `scripts/verify/verify-product-catalog-grpc-transport.mjs`,
   `scripts/verify/verify-product-catalog-grpc-deployment.mjs`,
+  `scripts/verify/verify-product-catalog-grpc-authentication.mjs`,
   `scripts/verify/verify-product-remote-consumer-behavior.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
@@ -179,16 +198,23 @@ rustok-pricing` dependency cycle.
 
 ## Open results
 
-1. Execute and retain the external runtime evidence:
+1. Implement a standalone Product catalog service host that composes
+   `CatalogService`, PostgreSQL, `ProductCatalogGrpcService`, TLS, and
+   `ProductCatalogGrpcBearerInterceptor`. The host must configure the trusted
+   service actor server-side, use the same bearer credential as the client
+   deployment, expose graceful shutdown/telemetry, and must not introduce a
+   second Product policy or persistence implementation.
+2. Execute and retain the external runtime evidence:
+   - `cargo test -p rustok-product-transport --lib`;
    - `cargo test -p rustok-product-transport --test port_conformance`;
    - `cargo test -p rustok-commerce --test product_remote_consumer_behavior`;
    - `cargo test -p rustok-ai --features server --lib remote_product_`.
    Retain the generated `Cargo.lock` package entry with the first successful Cargo
    execution. Then start the server with the gRPC deployment variables against a
-   separately running Product catalog service and retain end-to-end Commerce and
-   AI evidence through the selected runtime. Promote above `boundary_ready` only
-   with those retained results.
-2. Keep Product richtext adoption explicitly deferred until the owner approves
+   separately running authenticated Product catalog service and retain end-to-end
+   Commerce and AI evidence through the selected runtime. Promote above
+   `boundary_ready` only with those retained results.
+3. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
    their textarea alone would create a false contract. When approved, use the
@@ -204,8 +230,10 @@ rustok-pricing` dependency cycle.
 - [x] Cut mounted Commerce GraphQL checkout over to the composed Product runtime.
 - [x] Implement the concrete Product catalog gRPC adapter and loopback conformance harness.
 - [x] Wire a fail-closed production external Product runtime profile.
+- [x] Add service-to-service bearer authentication and trusted tenant metadata.
 - [x] Add executable Commerce hard-dependency and AI degraded-behavior gRPC harnesses.
-- [ ] Execute the Product catalog gRPC loopback conformance harness.
+- [ ] Implement a standalone Product catalog service host.
+- [ ] Execute the Product catalog gRPC authentication and loopback conformance harnesses.
 - [ ] Execute the Commerce and AI remote consumer behavior harnesses.
 - [ ] Retain end-to-end Commerce and AI behavior through a separately configured Product service.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
@@ -225,8 +253,11 @@ rustok-pricing` dependency cycle.
 - `node scripts/verify/verify-product-catalog-grpc-transport.test.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-deployment.mjs`
 - `node scripts/verify/verify-product-catalog-grpc-deployment.test.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-authentication.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.test.mjs`
+- `cargo test -p rustok-product-transport --lib`
 - `cargo test -p rustok-product-transport --test port_conformance`
 - `cargo test -p rustok-commerce --test product_remote_consumer_behavior`
 - `cargo test -p rustok-ai --features server --lib remote_product_`
@@ -248,14 +279,19 @@ rustok-pricing` dependency cycle.
 
 - Product owns catalog data, `ProductCatalogReadPort`, and
   `ProductCatalogReadRuntime` profile selection.
-- `rustok-product-transport` owns only tonic/protobuf framing, validated client
-  connection policy, deadline/status mapping, and trusted-authority adaptation.
-  It must not own Product policy, persistence, DTOs, locale/channel rules, or
-  fallback decisions.
-- The server host owns deployment variables, endpoint/TLS selection, startup
-  connection, and insertion of the selected runtime. It must fail closed for an
-  invalid or unavailable configured remote provider and must not silently select
+- `rustok-product-transport` owns tonic/protobuf framing, validated client
+  connection policy, deadline/status mapping, bearer metadata, constant-time
+  credential comparison, and trusted-authority adaptation. It must not own
+  Product policy, persistence, DTOs, locale/channel rules, fallback decisions,
+  or deployment secret storage.
+- The consumer server host owns deployment variables, endpoint/TLS selection,
+  bearer credential injection, startup connection, and insertion of the selected
+  runtime. It must fail closed for invalid authentication, invalid configuration,
+  or an unavailable configured remote provider and must not silently select
   embedded execution.
+- The standalone provider host must compose the Product owner service and the
+  exported bearer interceptor, configure the trusted service actor server-side,
+  and never trust actor/claims/roles supplied in `PortContext`.
 - Commerce owns hard-dependency checkout behavior: a Product timeout or
   unavailable result blocks planning and cannot be replaced by the cart snapshot.
 - AI owns advisory degradation: Product transport failures skip enrichment,

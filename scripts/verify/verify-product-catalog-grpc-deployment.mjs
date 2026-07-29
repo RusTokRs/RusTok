@@ -47,12 +47,16 @@ requireAll(transportCargo, [
   "thiserror.workspace = true",
   "url.workspace = true",
   'features = ["tls-ring", "tls-webpki-roots"]',
+  "sha2.workspace = true",
+  'subtle = "2"',
 ], "Product transport connection dependencies");
 requireAll(transportLib, [
+  "pub mod auth;",
   "pub mod connection;",
   "GrpcProductCatalogReadConnectionConfig",
   "GrpcProductCatalogReadConnectionError",
   "ValidatedGrpcProductCatalogReadConnection",
+  "ProductCatalogGrpcBearerToken",
 ], "Product transport connection exports");
 requireAll(connection, [
   "pub struct GrpcProductCatalogReadConnectionConfig",
@@ -84,27 +88,36 @@ requireAll(services, ["pub mod product_catalog_deployment;"], "server service ex
 requireAll(deployment, [
   'const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER";',
   'const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT";',
+  'const GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";',
   'const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";',
   '"RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS"',
   '"RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK"',
   'unwrap_or("embedded")',
   '"grpc" => {',
+  "ProductCatalogGrpcBearerToken::new(remote.bearer_token.expose())",
   "GrpcProductCatalogReadConnectionConfig::new(remote.endpoint)",
   ".with_tls_domain(remote.tls_domain)",
   ".with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms))",
   ".allow_insecure_loopback(remote.allow_insecure_loopback)",
   ".connect()",
+  ".with_authentication(authentication)",
   "ProductCatalogReadRuntime::external(Arc::new(provider))",
   "ctx.shared_insert(",
+  "remote Product catalog authentication configuration failed",
   "remote Product catalog provider initialization failed",
   "remote Product catalog variables require {PROVIDER_ENV}=grpc",
   "is required when {PROVIDER_ENV}=grpc",
   "must be either embedded or grpc",
+  "grpc_requires_a_bearer_token",
+  "bearer_token_is_not_silently_ignored_in_embedded_mode",
+  "bearer_secret_debug_is_redacted",
 ], "server Product catalog deployment");
 forbidAll(deployment, [
   "ProductCatalogReadRuntime::in_process",
   "CatalogService::new",
   "unwrap_or_else(|_|",
+  "bearer_token = %",
+  "bearer_token = ?",
 ], "server Product catalog fail-closed deployment");
 
 requireAll(bootstrap, [
@@ -133,6 +146,7 @@ requireAll(readme, [
   "RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded",
   "RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc",
   "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
+  "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
   "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true",
   "does not silently fall back to the embedded provider",
 ], "Product transport deployment documentation");
@@ -151,6 +165,9 @@ if (registry) {
   if (external.connection_config !== "GrpcProductCatalogReadConnectionConfig") {
     failures.push("Product registry must identify the validated connection config");
   }
+  if (external.client_authentication !== "ProductCatalogGrpcBearerToken") {
+    failures.push("Product registry must identify authenticated client metadata");
+  }
   if (external.host_deployment !== "apps/server/src/services/product_catalog_deployment.rs") {
     failures.push("Product registry must identify the server deployment source");
   }
@@ -162,6 +179,12 @@ if (registry) {
   }
   if (external.endpoint_env !== "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT") {
     failures.push("Product registry must identify the endpoint environment variable");
+  }
+  if (external.bearer_token_env !== "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN") {
+    failures.push("Product registry must identify the bearer token environment variable");
+  }
+  if (external.authentication_status !== "source_complete_execution_pending") {
+    failures.push("Product registry must retain authentication execution-pending status");
   }
   if (external.status !== "runtime_wired_execution_pending") {
     failures.push("Product registry must retain runtime_wired_execution_pending status");
@@ -177,6 +200,7 @@ if (registry) {
 requireAll(plan, [
   "The production host now owns explicit Product catalog deployment selection",
   "Invalid remote configuration or connection failure aborts startup",
+  "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
   "Adapter and production-wiring source are complete",
   "Product remains `boundary_ready` rather than",
   "remote-profile execution evidence remain open",

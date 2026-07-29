@@ -14,10 +14,13 @@ rustok-api.workspace = true
 rustok-product.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+subtle = "2"
 thiserror.workspace = true
 tonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }
 tonic-prost.workspace = true
 url.workspace = true
+uuid.workspace = true
 
 [build-dependencies]
 protoc-bin-vendored.workspace = true
@@ -27,4 +30,3 @@ tonic-prost-build.workspace = true
 chrono.workspace = true
 tokio.workspace = true
 tokio-stream = { version = "0.1", features = ["net"] }
-uuid.workspace = true

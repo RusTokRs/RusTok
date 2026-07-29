@@ -23,12 +23,12 @@ function fixture(options = {}) {
   write(
     root,
     "crates/rustok-product-transport/Cargo.toml",
-    `thiserror.workspace = true\nurl.workspace = true\ntonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }`,
+    `thiserror.workspace = true\nurl.workspace = true\nsha2.workspace = true\nsubtle = "2"\ntonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }`,
   );
   write(
     root,
     "crates/rustok-product-transport/src/lib.rs",
-    `pub mod connection; GrpcProductCatalogReadConnectionConfig GrpcProductCatalogReadConnectionError ValidatedGrpcProductCatalogReadConnection`,
+    `pub mod auth; pub mod connection; GrpcProductCatalogReadConnectionConfig GrpcProductCatalogReadConnectionError ValidatedGrpcProductCatalogReadConnection ProductCatalogGrpcBearerToken`,
   );
   const connection = options.missingTls
     ? `pub struct GrpcProductCatalogReadConnectionConfig; pub fn validated( Url::parse(value.trim()) !parsed.username().is_empty() parsed.password().is_some() parsed.query().is_some() parsed.fragment().is_some() !matches!(parsed.path(), "" | "/") "http" if allow_insecure_loopback && is_loopback_host(parsed.host()) => false InsecureEndpointForbidden MAX_CONNECT_TIMEOUT_MS timeout_ms == 0 || timeout_ms > MAX_CONNECT_TIMEOUT_MS .connect_timeout(validated.connect_timeout) .tcp_keepalive(Some(Duration::from_secs(30))) pub async fn connect(`
@@ -37,7 +37,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/rustok-product-transport/README.md",
-    `RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true does not silently fall back to the embedded provider`,
+    `RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true does not silently fall back to the embedded provider`,
   );
 
   write(
@@ -53,10 +53,13 @@ function fixture(options = {}) {
   const fallback = options.silentFallback
     ? `ProductCatalogReadRuntime::in_process unwrap_or_else(|_|`
     : "";
+  const authentication = options.missingAuthentication
+    ? ""
+    : `const GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN"; ProductCatalogGrpcBearerToken::new(remote.bearer_token.expose()) .with_authentication(authentication) remote Product catalog authentication configuration failed grpc_requires_a_bearer_token bearer_token_is_not_silently_ignored_in_embedded_mode bearer_secret_debug_is_redacted`;
   write(
     root,
     "apps/server/src/services/product_catalog_deployment.rs",
-    `const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER"; const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT"; const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN"; "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS" "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK" unwrap_or("embedded") "grpc" => { GrpcProductCatalogReadConnectionConfig::new(remote.endpoint) .with_tls_domain(remote.tls_domain) .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms)) .allow_insecure_loopback(remote.allow_insecure_loopback) .connect() ProductCatalogReadRuntime::external(Arc::new(provider)) ctx.shared_insert( remote Product catalog provider initialization failed remote Product catalog variables require {PROVIDER_ENV}=grpc is required when {PROVIDER_ENV}=grpc must be either embedded or grpc ${fallback}`,
+    `const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER"; const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT"; ${authentication} const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN"; "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS" "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK" unwrap_or("embedded") "grpc" => { GrpcProductCatalogReadConnectionConfig::new(remote.endpoint) .with_tls_domain(remote.tls_domain) .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms)) .allow_insecure_loopback(remote.allow_insecure_loopback) .connect() ProductCatalogReadRuntime::external(Arc::new(provider)) ctx.shared_insert( remote Product catalog provider initialization failed remote Product catalog variables require {PROVIDER_ENV}=grpc is required when {PROVIDER_ENV}=grpc must be either embedded or grpc ${fallback}`,
   );
   const configure = "configure_product_catalog_deployment(&runtime_ctx).await?;";
   const appBootstrap =
@@ -87,10 +90,13 @@ function fixture(options = {}) {
       },
       external_transport: {
         connection_config: "GrpcProductCatalogReadConnectionConfig",
+        client_authentication: "ProductCatalogGrpcBearerToken",
         host_deployment: "apps/server/src/services/product_catalog_deployment.rs",
         runtime_factory: "ProductCatalogReadRuntime::external",
         provider_selector_env: "RUSTOK_PRODUCT_CATALOG_PROVIDER",
         endpoint_env: "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
+        bearer_token_env: "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
+        authentication_status: "source_complete_execution_pending",
         status: staleRegistry
           ? "source_complete_execution_pending"
           : falsePromotion
@@ -104,7 +110,7 @@ function fixture(options = {}) {
     "crates/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
-      : "The production host now owns explicit Product catalog deployment selection. Invalid remote configuration or connection failure aborts startup. Adapter and production-wiring source are complete. Product remains `boundary_ready` rather than `transport_verified`; configured remote-profile execution evidence remain open. Wire a fail-closed production external Product runtime profile. verify-product-catalog-grpc-deployment.mjs",
+      : "The production host now owns explicit Product catalog deployment selection. Invalid remote configuration or connection failure aborts startup. RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN. Adapter and production-wiring source are complete. Product remains `boundary_ready` rather than `transport_verified`; configured remote-profile execution evidence remain open. Wire a fail-closed production external Product runtime profile. verify-product-catalog-grpc-deployment.mjs",
   );
 
   return root;
@@ -141,6 +147,10 @@ test("Product catalog gRPC deployment guard accepts canonical fixture", () => {
 
 test("deployment guard rejects missing TLS policy", () => {
   reject({ missingTls: true }, /validated Product gRPC connection/);
+});
+
+test("deployment guard rejects missing authentication", () => {
+  reject({ missingAuthentication: true }, /server Product catalog deployment/);
 });
 
 test("deployment guard rejects silent embedded fallback", () => {
