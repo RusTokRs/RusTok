@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-moving-window-scan-source",
+  "status": "source_complete_server_composition_runtime_pending",
+  "owner": "rustok-iggy",
+  "feature": "iggy",
+  "source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
+  "rolling_source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
+  "classifier_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md",
+  "public_exports": [
+    "IggyDlqDuplicateMovingWindowPolicy",
+    "IggyDlqDuplicateMovingWindowState",
+    "IggyDlqDuplicateMovingWindowSnapshot",
+    "IggyDlqDuplicateMovingWindowScanner",
+    "IggyDlqDuplicateMovingWindowError"
+  ],
+  "bounds": {
+    "maximum_partitions": 128,
+    "maximum_total_messages_per_cycle": 10000,
+    "maximum_batch_messages": 1000,
+    "equal_per_partition_message_budget": true,
+    "rolling_cycle_capacity_must_cover_fair_cycle": true,
+    "production_defaults": false
+  },
+  "cursor_semantics": {
+    "one_private_next_offset_per_partition": true,
+    "advance_only_after_complete_all_partition_cycle": true,
+    "empty_partition_cursor_unchanged": true,
+    "failed_cycle_preserves_all_cursors": true,
+    "explicit_offsets": true,
+    "auto_commit": false,
+    "stored_consumer_offsets": false
+  },
+  "rolling_integration": {
+    "complete_cycle_only": true,
+    "combined_observations_not_exported": true,
+    "failed_cycle_preserves_rolling_state": true,
+    "cross_cycle_ordinary_duplicate": true,
+    "cross_cycle_identity_conflict": true,
+    "history_truncated_delegated": true
+  },
+  "restart_semantics": {
+    "progress_persisted": false,
+    "rolling_state_persisted": false,
+    "new_process_starts_at_reviewed_initial_offset": true,
+    "explicit_reset_to_initial_offset": true,
+    "reset_clears_rolling_history": true,
+    "reset_generation_count_only": true,
+    "restart_safe_progress_claimed": false
+  },
+  "snapshot_fields": [
+    "rolling",
+    "partition_count",
+    "advanced_partitions",
+    "reset_generation"
+  ],
+  "privacy_boundary": {
+    "identifier_free_snapshot": true,
+    "payload_free_snapshot": true,
+    "cursor_values_not_exported": true,
+    "observations_not_exported": true,
+    "snapshot_excludes": [
+      "broker_address",
+      "stream",
+      "topic",
+      "partition_id",
+      "offset",
+      "broker_message_id",
+      "payload",
+      "payload_sha256",
+      "receipt_identity",
+      "publisher_identity",
+      "credential",
+      "timestamp",
+      "raw_iggy_error"
+    ]
+  },
+  "mutation_boundary": {
+    "store_consumer_offsets": false,
+    "acknowledge": false,
+    "publish": false,
+    "delete": false,
+    "purge": false,
+    "replay": false,
+    "retry": false,
+    "mutate_receipts": false,
+    "authorize_profiles": false
+  },
+  "stable_errors": {
+    "invalid_policy": "iggy.dlq_duplicate.moving_window_policy_invalid",
+    "poll_failed": "iggy.dlq_duplicate.moving_window_poll_failed",
+    "invalid_response": "iggy.dlq_duplicate.moving_window_response_invalid",
+    "offset_overflow": "iggy.dlq_duplicate.moving_window_offset_overflow",
+    "invalid_cycle": "iggy.dlq_duplicate.moving_window_cycle_invalid",
+    "count_overflow": "iggy.dlq_duplicate.moving_window_count_overflow",
+    "reset_overflow": "iggy.dlq_duplicate.moving_window_reset_overflow"
+  },
+  "required_source_tests": [
+    "policy_requires_complete_fair_cycle_to_fit_rolling_capacity",
+    "complete_cycle_advances_partition_cursors_independently",
+    "duplicate_split_across_advancing_cycles_remains_count_only",
+    "incomplete_cycle_preserves_cursors_and_rolling_state",
+    "explicit_reset_rewinds_cursors_and_clears_rolling_history"
+  ],
+  "integration_boundary": {
+    "mode_aware_server_observer": "pending",
+    "configuration_surface": "pending",
+    "external_iggy_runtime_evidence": "pending",
+    "retained_execution_packet": "pending",
+    "telemetry_and_health_projection": "pending"
+  },
+  "non_claims": [
+    "persisted_progress",
+    "restart_safe_progress",
+    "current_tail_coverage",
+    "complete_history",
+    "production_retention_sufficiency",
+    "server_observer_integration",
+    "external_iggy_execution",
+    "exactly_once",
+    "profiles_authorization"
+  ],
+  "remaining_work": [
+    "compose_explicit_opt_in_mode_aware_server_observer",
+    "define_reviewed_configuration_surface",
+    "retain_external_iggy_cross_cycle_runtime_evidence",
+    "define_persisted_cursor_store_only_if_restart_continuity_is_required",
+    "define_identifier_free_telemetry_and_health_projection"
+  ],
+  "execution_status": "source_not_run"
+}

@@ -1,6 +1,6 @@
 # Profiles checkpoint: physical DLQ duplicate operations
 
-Status: **classifier, bounded scanner, bounded rolling state, runtime harness, retained tooling, alert policy, latest-value runtime, and mode-aware server observer source-complete; scanner/cursor integration, runtime execution, and telemetry/health projection pending**.
+Status: **classifier, fixed scanners, bounded rolling state, moving scanner integration, runtime harnesses, retained tooling, alert policy, latest-value runtime, and fixed-window mode-aware server observer source-complete; moving server composition, runtime execution, and telemetry/health projection pending**.
 
 ## Why this matters for Profiles
 
@@ -11,18 +11,19 @@ Profiles authorization remains independent of broker and receipt state. Downstre
 - one deterministic DLQ ID associated with conflicting exact bytes;
 - copies of the same physical duplicate observed in adjacent retained scan cycles.
 
-The Iggy-owned classifier exposes these distinctions without message identities or payloads. The bounded scanner supplies observations through explicit-offset polling without storing progress. The rolling state can preserve opaque relationships across complete retained cycles. The alert policy evaluates only the count-only summary. The latest-value runtime and server observer publish only identifier-free operational state. None becomes a Profiles authorization input.
+The Iggy-owned classifier exposes these distinctions without message identities or payloads. Fixed scanners provide bounded one-cycle snapshots. The rolling state preserves opaque relationships across retained cycles. The moving scanner integration is source-complete and supplies whole fair cycles through private process-local per-partition cursors. Alert/runtime/server projections remain identifier-free. None becomes a Profiles authorization input.
 
 ## Owner boundaries
 
 ```text
-classifier:      crates/rustok-iggy/src/dlq_duplicate_inspection.rs
-rolling state:   crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs
-scanner:         crates/rustok-iggy/src/dlq_duplicate_external_scan.rs
-policy:          crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs
-runtime:         crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
-Iggy observer:   crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs
-server observer: apps/server/src/services/event_dlq_duplicate_alert_observer.rs
+classifier:          crates/rustok-iggy/src/dlq_duplicate_inspection.rs
+rolling state:       crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs
+fixed scanner:       crates/rustok-iggy/src/dlq_duplicate_external_scan.rs
+moving scanner:      crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
+policy:              crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs
+runtime:             crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
+Iggy observer:       crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+server observer:     apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 ```
 
 Machine contracts:
@@ -30,6 +31,7 @@ Machine contracts:
 ```text
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-inspection-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json
+crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
 crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
@@ -41,6 +43,7 @@ Verifiers:
 ```text
 scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
 scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
+scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs
 scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs
 scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs
@@ -69,26 +72,15 @@ evicted_cycles
 history_truncated
 ```
 
-The policy evaluation exposes only:
+The moving snapshot adds only:
 
 ```text
-level
-physical_duplicates
-identity_conflict
-duplicate_messages_threshold_reached
-duplicate_groups_threshold_reached
-max_copies_threshold_reached
+partition_count
+advanced_partitions
+reset_generation
 ```
 
-The runtime snapshot exposes only:
-
-```text
-generation
-available
-evaluation
-```
-
-These projections exclude broker endpoints, stream coordinates, UUIDs, payloads/digests, receipt identities, producer identities, credentials, timestamps, and raw Iggy errors. Policy/runtime projections also exclude source counts and raw threshold values.
+Policy and runtime continue to expose only level, reason flags, generation, availability, and evaluation. These projections exclude broker endpoints, stream coordinates, partition IDs, cursor values, UUIDs, payloads/digests, receipt identities, producer identities, credentials, timestamps, and raw Iggy errors.
 
 ## Duplicate classification
 
@@ -96,9 +88,9 @@ An ordinary physical duplicate requires the same deterministic Iggy header UUID 
 
 A repeated UUID with different exact bytes increments `conflicting_payload_groups` and requires manual review. It is not silently collapsed into a normal duplicate.
 
-## Bounded scan boundary
+## Fixed scan boundary
 
-The scanner borrows an already connected `IggyClient` and uses:
+Fixed global and fair scanners borrow an already connected `IggyClient` and use:
 
 ```text
 topic = dlq
@@ -110,15 +102,13 @@ auto_commit = false
 
 Global mode accepts no more than 128 unique positive partitions, 10,000 physical messages total, and batches of 1,000. Fair mode gives every selected partition one equal cap under the same checked 10,000-message total.
 
-Each current polling cycle reuses the configured explicit start offset. The observer therefore still measures a repeated bounded snapshot and does not own a moving cursor, tail coverage, or complete-history semantics.
-
-The scanner does not use a consumer group, stored-offset `next` polling, offset storage, acknowledgement, topology discovery, publication, delete/purge, replay/retry, receipt mutation, or client shutdown.
+The current server observer still uses fixed snapshots and does not own moving progress. Fixed scanners do not use consumer groups, stored-offset `next` polling, offset storage, acknowledgement, topology discovery, publication, delete/purge, replay/retry, receipt mutation, or client shutdown.
 
 ## Bounded cross-cycle state
 
 `DlqDuplicateRollingWindowPolicy` requires explicit positive `max_cycles` and `max_observations_per_cycle`. Cycle count is capped at 128 and their checked product cannot exceed 10,000. No production default is provided.
 
-`push_cycle` accepts one complete cycle of opaque observations. It detects ordinary and conflicting duplicates split across retained cycles. Oversized input fails without changing the current state.
+`push_cycle` accepts one complete cycle of opaque observations. It detects ordinary and conflicting duplicates split across retained cycles. Oversized input fails without changing current state.
 
 When cycle capacity is reached, the oldest complete cycle is evicted. Partial-cycle eviction is forbidden. Every later snapshot reports:
 
@@ -126,57 +116,31 @@ When cycle capacity is reached, the oldest complete cycle is evicted. Partial-cy
 history_truncated = true
 ```
 
-An evicted old copy can remove a relationship from the retained summary. The snapshot therefore represents only the bounded retained window and is not current-tail or complete-history evidence.
+An evicted old copy can remove a relationship from the retained summary. The snapshot represents only the bounded retained window and is not current-tail or complete-history evidence.
 
-The state does not connect to Iggy, move or store cursors, persist itself, define restart recovery, compose the server observer, or register telemetry. Those remain separate owners and follow-up evidence.
+## Moving scanner integration
 
-## Alert policy boundary
+The moving scanner integration is source-complete.
 
-The caller supplies warning and critical thresholds for duplicate messages, duplicate groups, and max copies per message ID. The library provides no production defaults.
+Every selected partition owns one private process-local per-partition cursor. A complete cycle:
 
-```text
-identity conflict -> Critical
-critical numeric threshold -> Critical
-warning numeric threshold -> Warning
-physical duplicate below warning -> Notice
-no duplicate -> Clear
-```
+1. polls every selected partition with one equal bounded budget;
+2. validates partition, count, strictly increasing offsets, UUID, and checked advancement;
+3. combines observations privately;
+4. pushes one complete rolling cycle;
+5. replaces every cursor together only after rolling acceptance.
 
-The policy does not choose notification routing, paging, cooldown, suppression, scan cadence, threshold persistence, or destructive action.
+A failed or incomplete cycle preserves all cursors and rolling state. Empty partitions are successful and keep their cursor unchanged.
 
-## Latest-value alert runtime
+Progress persistence is deliberately absent. New state starts from one reviewed initial offset. Explicit restart reset via `reset_to_initial_offset()` rewinds all cursors and clears rolling history while incrementing only a count-only generation. No restart-safe progress, current-tail, or complete-history claim is made.
 
-The runtime accepts an already observed summary and a prevalidated policy:
+A persistent cursor owner remains separate work only if restart continuity is required.
 
-```text
-summary -> policy evaluation -> latest snapshot -> read-only subscribers
-```
+## Alert and server boundaries
 
-The publisher is single-writer. Initial state is generation `0`, unavailable, with no evaluation. Every successful or unavailable transition increments generation through checked arithmetic.
+The caller supplies warning and critical thresholds; the library provides no production defaults. Identity conflicts are always critical. The latest-value runtime clears stale evaluation on unavailable transitions and is not an audit log.
 
-Unavailable publication clears the previous evaluation so stale severity does not remain current. The channel retains only the latest state and is not an audit log.
-
-## Mode-aware server observer
-
-The server handles every event-delivery and observer startup mode explicitly:
-
-```text
-disabled      -> Disabled
-startup issue -> Unavailable, no task or snapshot
-memory        -> NotApplicableMemory
-outbox_local  -> NotApplicableOutboxLocal
-outbox_iggy   -> IggyBundled or IggyExternal
-```
-
-For `memory` and `outbox_local`, absence of Iggy is expected platform behavior. For `outbox_iggy`, the observer reuses the active transport configuration and opens only a separate read-only SDK client. Observer-specific startup, connection, scan, and shutdown failures are non-fatal to event delivery and module projection.
-
-The source-complete rolling state is not yet composed into this observer. No second transport, persisted cursor, notification dispatch, or readiness dependency is introduced.
-
-## Runtime and retained status
-
-The external-Iggy harness and retained execution tooling are source-complete. The canonical retained execution packet remains absent until a maintainer performs the reviewed external-Iggy run.
-
-The rolling state is source-complete as a transport-neutral component. Scanner observation feeding, independent per-partition cursor advancement, persistence/restart semantics, cross-cycle external-Iggy evidence, mode-aware composition, telemetry, and optional operational health remain pending.
+The server handles disabled, startup-unavailable, memory, outbox-local, bundled-Iggy, and external-Iggy modes explicitly. The current observer remains fixed-window. Moving scan is not silently enabled; it requires a separate reviewed server observer mode and configuration surface.
 
 ## Relationship to receipt health
 
@@ -190,7 +154,7 @@ No profile visibility, relationship, block, mute, follow, friendship, audience, 
 
 - event delivery profile or Iggy deployment mode;
 - observer startup, applicability, availability, or generation;
-- partition ordering, fairness, fixed-window selection, or budget exhaustion;
+- partition ordering, fairness, private cursor position, or reset generation;
 - rolling retention or eviction state, including `history_truncated`;
 - physical DLQ copy or duplicate-group counts;
 - identity-conflict presence;
@@ -204,14 +168,15 @@ Profiles presentation continues to consume authorized owner-port results. These 
 
 ## Remaining work
 
-1. execute and retain the reviewed external-Iggy duplicate scan packet;
-2. feed complete fair scanner cycles into rolling state without identifier export;
-3. define independent per-partition cursor advancement and persistence/restart semantics;
-4. prove cross-cycle behavior on external Iggy and compose the mode-aware observer;
-5. define identifier-free telemetry and optional operational health without readiness coupling;
-6. retain mode-aware server observer execution evidence;
-7. define alert routing, cooldown, and suppression outside Profiles and the policy/runtime;
-8. define acknowledgement/delete/replay separately with explicit authorization;
-9. keep aggregate receipt and duplicate observations identifier-free.
+1. execute and retain the reviewed fixed external-Iggy duplicate scan packets;
+2. compose moving scanning as an explicit mode-aware server opt-in;
+3. define reviewed moving configuration and fail-closed startup validation;
+4. retain real external-Iggy cross-cycle evidence;
+5. add a persistent cursor owner only if restart continuity is required;
+6. define identifier-free telemetry and optional operational health;
+7. retain server observer execution evidence;
+8. define alert routing, cooldown, and suppression outside Profiles and policy/runtime;
+9. define acknowledgement/delete/replay separately with explicit authorization;
+10. keep aggregate receipt and duplicate observations identifier-free.
 
 Tests, Cargo commands, formatters, verifiers, server observers, external-Iggy scans, telemetry registration, alert dispatch, and retained capture were not run by the implementation agent.

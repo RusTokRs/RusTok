@@ -97,13 +97,17 @@ mutation retry.
   cap, detects ordinary and conflicting duplicates split across retained cycles,
   rejects oversized cycles transactionally, and reports permanent truncation
   after complete-cycle eviction.
+- The moving-window scanner integration is source-complete. It owns independent
+  process-local per-partition cursors, collects one complete equal-budget cycle
+  before mutation, atomically feeds that cycle into the rolling state, and
+  chooses explicit restart-reset semantics rather than implied persistence.
 - Canonical retained packets remain pending and must omit credentials and
   delivery-level facts, bind reviewed source/configuration/input digests, and
   become stale when any bound source or reviewed input changes.
 
 ## Physical DLQ duplicate inspection
 
-Two bounded scanner policies are source-complete:
+Two fixed bounded scanner policies are source-complete:
 
 - `global_budget`: one ordered partition allowlist and one shared cap. A busy
   early partition may prevent later partitions from being polled.
@@ -121,12 +125,20 @@ RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES=<positive cap>
 ```
 
 `memory` and `outbox_local` remain intentional not-applicable modes and do not
-resolve Iggy. Both scanner policies use explicit offsets and `auto_commit=false`.
-The current observer still reuses one configured start offset and does not own
-moving cursors, stored progress, current-tail coverage, or complete-history
-semantics. The separate rolling state can preserve relationships across complete
-cycles supplied by a future scanner integration, but it does not move or persist
-a cursor itself.
+resolve Iggy. Both fixed policies use explicit offsets and `auto_commit=false`.
+The current server observer still reuses one configured start offset and does not
+own moving progress, current-tail coverage, or complete-history semantics.
+
+A separate opt-in library adapter now composes moving collection with the bounded
+rolling state. It gives every selected partition one private process-local next
+offset, scans every partition under an equal bounded budget, and replaces all
+cursors only after the complete cycle has been accepted by the rolling window.
+It is not yet composed into the mode-aware server observer.
+
+The moving adapter deliberately persists neither cursors nor rolling observations.
+New state and explicit reset return every cursor to one reviewed initial offset
+and clear rolling history. This can reread an earlier bounded region and therefore
+makes no restart-safe progress or current-tail claim.
 
 ### Production partition invariant
 
@@ -150,7 +162,7 @@ partition 2: B1/B2 conflicting-payload duplicate
 With a cap of two messages per partition, the fair scan observes both duplicate
 groups and the conflict. The ordered global request with four total slots reads
 three messages from partition 1 and one from partition 2, producing a different
-summary. The fair policy runs twice from offset zero, and stored
+summary. The fixed fair policy runs twice from offset zero, and stored
 standalone-consumer offsets must remain absent on both partitions.
 
 ### Fair-window retained capture
@@ -215,21 +227,26 @@ payloads, or raw output. Publication is no-clobber.
 
 Runtime calibration and the canonical packet remain pending.
 
-### Bounded rolling duplicate window
+### Bounded rolling and moving duplicate window
 
 Source-complete paths:
 
 ```text
 crates/rustok-iggy/src/
   dlq_duplicate_rolling_window.rs
+  dlq_duplicate_moving_window_scan.rs
 crates/rustok-iggy/contracts/evidence/
   dlq-duplicate-rolling-window-source.json
+  dlq-duplicate-moving-window-scan-source.json
 scripts/verify/
   verify-iggy-dlq-duplicate-rolling-window.mjs
+  verify-iggy-dlq-duplicate-moving-window-scan.mjs
 crates/rustok-iggy/docs/
   dlq-duplicate-rolling-window.md
+  dlq-duplicate-moving-window-scan.md
 crates/rustok-profiles/docs/
   poison-duplicate-rolling-window-checkpoint.md
+  poison-duplicate-moving-window-scan-checkpoint.md
 ```
 
 `DlqDuplicateRollingWindowPolicy` requires positive explicit cycle and per-cycle
@@ -242,9 +259,26 @@ existing state unchanged. At capacity the oldest complete cycle is evicted, and
 all later snapshots report `history_truncated = true`; an evicted relationship
 may disappear, so the result is never complete-history or current-tail proof.
 
-Scanner collection, independent per-partition cursor advancement, persistence or
-restart-reset semantics, mode-aware server composition, and external-Iggy
-cross-cycle runtime evidence remain pending.
+`IggyDlqDuplicateMovingWindowPolicy` additionally requires one reviewed initial
+offset, equal per-partition message and batch bounds, and enough rolling capacity
+to contain the full checked fair cycle. It defines no production default.
+
+`IggyDlqDuplicateMovingWindowState` owns independent process-local per-partition
+cursors. A complete all-partition candidate is collected before any state change.
+Only after rolling classification succeeds are every cursor and the rolling cycle
+accepted together. Failed or incomplete cycles preserve the prior state.
+
+The public moving snapshot exposes only the rolling snapshot, partition count,
+advanced-partition count, and reset generation. It excludes partition IDs,
+cursor values, UUIDs, payloads/digests, broker coordinates, credentials, receipt
+identities, timestamps, and raw errors.
+
+Progress is not persisted. A new process or explicit reset starts at the reviewed
+initial offset and clears rolling history. A separately owned persistent cursor
+store remains optional future work only if restart continuity is required.
+
+Mode-aware server composition, reviewed environment/configuration fields, real
+external-Iggy cross-cycle runtime evidence, and retained execution remain pending.
 
 Detailed checkpoints:
 
@@ -253,11 +287,13 @@ Detailed checkpoints:
 - `crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-rolling-window-checkpoint.md`
+- `crates/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-external-scan.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md`
 - `crates/rustok-iggy/docs/dedup-recovery-window-policy.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-rolling-window.md`
+- `crates/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md`
 
 ## Results and next work
 
@@ -304,11 +340,12 @@ Detailed checkpoints:
    no-clobber packet; and repeat whenever a bound source, configuration, or input
    changes. A packet covers only that supplied model.
 
-10. **Integrate the bounded rolling duplicate window.**
-    Feed complete fair scanner cycles without exporting identifiers, define
-    independent per-partition cursor advancement, choose persistence or explicit
-    restart-reset semantics, compose the mode-aware observer, and retain real
-    cross-cycle Iggy evidence. Truncated state must remain visibly incomplete.
+10. **Compose the moving duplicate observer.**
+    Add an explicit opt-in mode to the existing mode-aware server observer,
+    define reviewed fail-closed configuration for initial offset, fair budget,
+    batch size, and rolling bounds, then retain a real duplicate split across
+    advancing external-Iggy cycles. Keep reset semantics explicit; add a
+    persistent cursor owner only if restart continuity is required.
 
 11. **Retain production operations.**
     Prove bundled mode, restart, TLS/auth/failover, reconnect, rebalance,
@@ -317,22 +354,25 @@ Detailed checkpoints:
 
 ## Recheck checkpoint — 2026-07-29
 
-- Rechecked the canonical plan and current `main` after the retained
-  recovery-window calibration tooling merge.
+- Rechecked the canonical plan and current `main` after the bounded rolling-window
+  merge and unrelated newer Product transport work.
 - Reconfirmed privacy-before-presentation, owner-scoped writes, Media ownership,
   fail-closed follower reads, no automatic mutation retry, and the rule that
   operational state never authorizes profile presentation.
 - Reconfirmed deterministic same-ID colocation and the production-reachable
   fair/global comparison.
-- Rechecked the fixed scanner APIs and confirmed that returning one already
-  aggregated summary cannot preserve a duplicate relationship split across
-  advancing scan cycles.
-- Added a pure bounded complete-cycle rolling state with checked memory limits,
-  transactional oversized-cycle rejection, cross-cycle ordinary/conflicting
-  classification, complete-cycle eviction, and permanent truncation metadata.
-- Kept scanner observation feeding, per-partition cursor advancement, state
-  persistence/restart semantics, server composition, external runtime evidence,
-  telemetry/health, bundled/TLS/auth, failover, and multi-replica claims open.
+- Rechecked the fixed scanner APIs and confirmed that their already aggregated
+  summaries remain correct for fixed snapshots but cannot preserve relationships
+  across advancing cycles.
+- Added source-complete moving-window collection with independent process-local
+  per-partition cursors, equal bounded budgets, strict response/offset validation,
+  and complete-cycle atomicity across scanner cursors and rolling state.
+- Chose explicit restart-reset semantics: no cursor or observation persistence,
+  new state starts at one reviewed initial offset, reset clears rolling history,
+  and no restart-safe progress or current-tail claim is made.
+- Kept server opt-in/configuration, external runtime evidence, retained packets,
+  optional persistent cursor ownership, telemetry/health, bundled/TLS/auth,
+  failover, and multi-replica claims open.
 - Tests, Cargo commands, formatters, repository source verifiers, broker scans,
   server observers, retained capture, and multi-replica scenarios were not run
   per maintainer instruction.
@@ -346,7 +386,9 @@ cargo check -p rustok-profiles-storefront --all-targets
 cargo test -p rustok-profiles-storefront
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
 cargo test -p rustok-iggy dlq_duplicate_rolling_window -- --nocapture
+cargo test -p rustok-iggy dlq_duplicate_moving_window_scan --features iggy -- --nocapture
 node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs
 cargo test -p rustok-iggy dedup_recovery_window_policy -- --nocapture
 cargo test -p rustok-iggy --test dedup_recovery_window_calibration
 node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
@@ -403,6 +445,12 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
     cycles; partial silent eviction is forbidden.
 17. Any cycle eviction permanently marks the in-memory history truncated, and a
     truncated snapshot is never current-tail or complete-history evidence.
-18. A sufficient recovery-window assessment covers only the supplied reviewed
+18. Moving scan cursors advance atomically only after every selected partition
+    succeeds and the complete rolling cycle is accepted.
+19. Cursor values, partition identities, message identities, payloads, digests,
+    and opaque observations never surface in public moving snapshots.
+20. Process restart resets moving cursors to one reviewed initial offset and
+    clears rolling history unless a separately reviewed persistent owner is added.
+21. A sufficient recovery-window assessment covers only the supplied reviewed
     model and never authorizes Profiles or proves exactly-once.
-19. Update Profiles and affected owner docs with every boundary change.
+22. Update Profiles and affected owner docs with every boundary change.
