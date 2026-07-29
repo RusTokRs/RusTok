@@ -40,6 +40,7 @@ mod posting_policy_create_window_facts;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
+mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
 mod rbac;
