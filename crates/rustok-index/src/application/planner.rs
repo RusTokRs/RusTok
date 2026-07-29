@@ -241,7 +241,7 @@ impl SchemaRegistry {
             .iter()
             .map(|path| planned_field(&referenced_fields, path))
             .collect::<Result<Vec<_>, _>>()?;
-        let many_projections = plan_many_projections(&projection);
+        let many_projections = derive_many_projections(&projection);
         let order_by = query
             .order_by
             .iter()
@@ -280,7 +280,9 @@ fn planned_field(
         .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))
 }
 
-fn plan_many_projections(projection: &[PlannedField]) -> Vec<PlannedManyProjection> {
+pub(crate) fn derive_many_projections(
+    projection: &[PlannedField],
+) -> Vec<PlannedManyProjection> {
     let mut group_indexes = BTreeMap::<Vec<LinkName>, usize>::new();
     let mut groups = Vec::<PlannedManyProjection>::new();
 
