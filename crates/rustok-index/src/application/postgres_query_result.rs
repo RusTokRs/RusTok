@@ -197,7 +197,14 @@ impl SchemaRegistry {
                 actual: compiled.plan_fingerprint,
             });
         }
-        if compiled.columns != expected_columns(&plan) {
+        let unique_aliases = compiled
+            .columns
+            .iter()
+            .map(column_output_alias)
+            .collect::<BTreeSet<_>>();
+        if unique_aliases.len() != compiled.columns.len()
+            || compiled.columns != expected_columns(&plan)
+        {
             return Err(PostgresQueryDecodeError::ColumnContractMismatch);
         }
 
@@ -331,6 +338,14 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
             }),
     );
     columns
+}
+
+fn column_output_alias(column: &CompiledQueryColumn) -> &str {
+    match column {
+        CompiledQueryColumn::EntityId { output_alias, .. }
+        | CompiledQueryColumn::Field { output_alias, .. }
+        | CompiledQueryColumn::OrderValue { output_alias, .. } => output_alias,
+    }
 }
 
 fn identity_alias(relation_alias: &str) -> String {
