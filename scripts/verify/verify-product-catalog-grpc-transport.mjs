@@ -185,9 +185,8 @@ requireAll(plan, [
   "`rustok-product-transport` now supplies a concrete tonic gRPC client/server adapter",
   "source is complete",
   "has not been executed by the implementation agent",
-  "source_complete_execution_pending",
+  "Loopback execution evidence and production external-profile wiring",
   "cargo test -p rustok-product-transport --test port_conformance",
-  "production external-profile wiring",
   "ProductCatalogReadRuntime::external",
   "verify-product-catalog-grpc-transport.mjs",
 ], "Product implementation plan");
