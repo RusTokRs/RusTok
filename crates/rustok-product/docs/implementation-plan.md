@@ -20,9 +20,20 @@ and mounted Commerce GraphQL checkout consume the host-selected port rather than
 constructing parallel `CatalogService` instances. GraphQL schema data carries the
 Product runtime into a resolver-scoped task-local; directly embedded schemas
 retain an explicit in-process compatibility fallback. The checkout consumer
-source cutover is complete. A concrete external transport adapter has not yet
-been executed, so the provider remains `boundary_ready` rather than
-`transport_verified`.
+source cutover is complete.
+
+`rustok-product-transport` now supplies a concrete tonic gRPC client/server
+adapter for all three catalog-read operations. Protobuf owns RPC identity and
+framing while JSON preserves Product-owned request/response DTOs and
+`PortContext`. The client maps context deadlines to tonic timeouts and restores
+structured `PortError` details. The server requires interceptor-provided
+`TrustedProductCatalogAuthority`, verifies tenant/operation authority, and
+replaces untrusted actor/claims/roles before invoking the owner port. A loopback
+conformance harness covers product projection, variant-first projection,
+published list pagination, typed not-found, deadline-required semantics, and
+trusted actor replacement. The adapter source is complete, but the harness has
+not been executed by the implementation agent, so Product remains
+`boundary_ready` rather than `transport_verified`.
 
 The composed `rustok-ai` consumer has live unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
@@ -85,8 +96,8 @@ isolation for category, attribute, and schema copy.
 `product_catalog_read_port_executes_against_postgres` exercises product,
 variant-first, and published-list operations with live price/inventory
 enrichment, tenant isolation, locale fallback, channel filtering, count, and
-pagination. A concrete external adapter execution remains required before
-promoting the transport status.
+pagination. The gRPC loopback harness mirrors the same public owner operations
+without taking ownership of Product persistence.
 `storefront_queries_use_indexes_at_representative_scales` seeds ten tenants at
 10k, 100k, and 1M total products and captures live
 `EXPLAIN (ANALYZE, BUFFERS)` plans for storefront page and count SQL. The
@@ -114,18 +125,21 @@ rustok-pricing` dependency cycle.
 
 - FFA status: `in_progress` — both owner UI surfaces exist and must preserve
   the core/transport/UI split and native/GraphQL parity.
-- FBA status: `boundary_ready` — the read port, in-process persistence profile,
-  Product-owned runtime selector, and all declared consumer source cutovers are
-  complete. Concrete external transport execution remains open.
+- FBA status: `boundary_ready` — the owner port, in-process profile, host runtime,
+  declared consumer source cutovers, and external gRPC adapter source are
+  complete. Loopback execution evidence and production external-profile wiring
+  remain open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
+  `crates/rustok-product-transport/tests/port_conformance.rs`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-catalog-read-runtime-composition.mjs`,
   `scripts/verify/verify-product-native-checkout-catalog-runtime.mjs`,
   `scripts/verify/verify-product-http-checkout-catalog-runtime.mjs`,
   `scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`,
+  `scripts/verify/verify-product-catalog-grpc-transport.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
   `scripts/verify/verify-product-storefront-boundary.mjs`,
@@ -136,13 +150,12 @@ rustok-pricing` dependency cycle.
 
 ## Open results
 
-1. Implement a concrete external `ProductCatalogReadPort` transport adapter in a
-   separate transport crate and execute all three operations through it. Preserve
-   serialized `PortContext`, deadlines, typed `PortError`, tenant/locale/channel
-   semantics, variant-to-product resolution, count, and pagination. Execute the
-   declared unavailable/deadline hard-dependency behavior for Commerce and the
-   reviewed degraded behavior for AI. Do not promote above `boundary_ready` from
-   source markers alone.
+1. Execute `cargo test -p rustok-product-transport --test port_conformance` and
+   retain the result as external transport evidence. After successful execution,
+   wire a production configuration path that creates
+   `ProductCatalogReadRuntime::external(Arc::new(GrpcProductCatalogReadProvider))`
+   and prove Commerce hard-dependency plus AI degraded behavior against the remote
+   profile. Promote above `boundary_ready` only with that runtime evidence.
 2. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
@@ -157,7 +170,9 @@ rustok-pricing` dependency cycle.
 - [x] Cut Order storefront native checkout over to the composed Product runtime.
 - [x] Cut Commerce HTTP checkout over to the composed Product runtime.
 - [x] Cut mounted Commerce GraphQL checkout over to the composed Product runtime.
-- [ ] Execute a concrete external Product catalog read adapter.
+- [x] Implement the concrete Product catalog gRPC adapter and loopback conformance harness.
+- [ ] Execute the Product catalog gRPC loopback conformance harness.
+- [ ] Wire and execute a production external Product runtime profile.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
@@ -171,6 +186,9 @@ rustok-pricing` dependency cycle.
 - `node scripts/verify/verify-product-http-checkout-catalog-runtime.test.mjs`
 - `node scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`
 - `node scripts/verify/verify-product-graphql-checkout-catalog-runtime.test.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-transport.mjs`
+- `node scripts/verify/verify-product-catalog-grpc-transport.test.mjs`
+- `cargo test -p rustok-product-transport --test port_conformance`
 - `node scripts/verify/verify-product-catalog-attribute-filters.mjs`
 - `node scripts/verify/verify-product-catalog-attribute-filters.test.mjs`
 - `node scripts/verify/verify-product-admin-category-sort.mjs`
@@ -189,6 +207,9 @@ rustok-pricing` dependency cycle.
 
 - Product owns catalog data, `ProductCatalogReadPort`, and
   `ProductCatalogReadRuntime` profile selection.
+- `rustok-product-transport` owns only tonic/protobuf framing, deadline/status
+  mapping, and trusted-authority adaptation. It must not own Product policy,
+  persistence, DTOs, locale/channel rules, or fallback decisions.
 - The host selects and shares one Product read runtime; consumers receive the
   public port and must not construct parallel owner services.
 - Order native checkout, Commerce HTTP checkout, mounted Commerce GraphQL

@@ -57,6 +57,7 @@
     "native_checkout_runtime_verifier": "scripts/verify/verify-product-native-checkout-catalog-runtime.mjs",
     "http_checkout_runtime_verifier": "scripts/verify/verify-product-http-checkout-catalog-runtime.mjs",
     "graphql_checkout_runtime_verifier": "scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs",
+    "grpc_transport_verifier": "scripts/verify/verify-product-catalog-grpc-transport.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
     "runtime_fallback_smoke": "crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
@@ -80,6 +81,17 @@
     "pending_consumers": [],
     "status": "source_complete_consumer_cutover_complete"
   },
+  "external_transport": {
+    "crate": "rustok-product-transport",
+    "source": "crates/rustok-product-transport",
+    "protocol": "tonic_grpc_json_owner_contract",
+    "client": "GrpcProductCatalogReadProvider",
+    "server": "ProductCatalogGrpcService",
+    "trusted_authority": "TrustedProductCatalogAuthority",
+    "proto": "crates/rustok-product-transport/proto/rustok/product/product_catalog.proto",
+    "conformance_test": "crates/rustok-product-transport/tests/port_conformance.rs",
+    "status": "source_complete_execution_pending"
+  },
   "in_process_provider_impl": {
     "service": "CatalogService",
     "runtime": "ProductCatalogReadRuntime",
@@ -93,41 +105,48 @@
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "profiles": [
       "in_process",
-      "remote_adapter_placeholder"
+      "remote_adapter_placeholder",
+      "grpc_loopback"
     ],
     "cases": [
       {
         "operation": "read_product_projection",
         "profiles": [
           "in_process",
-          "remote_adapter_placeholder"
+          "remote_adapter_placeholder",
+          "grpc_loopback"
         ],
         "assertions": [
           "typed_port_error_mapping",
-          "context_deadline_preserved"
+          "context_deadline_preserved",
+          "trusted_authority_replaces_actor"
         ]
       },
       {
         "operation": "read_variant_product_projection",
         "profiles": [
           "in_process",
-          "remote_adapter_placeholder"
+          "remote_adapter_placeholder",
+          "grpc_loopback"
         ],
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "variant_to_product_owner_resolution"
+          "variant_to_product_owner_resolution",
+          "trusted_authority_replaces_actor"
         ]
       },
       {
         "operation": "list_published_products",
         "profiles": [
           "in_process",
-          "remote_adapter_placeholder"
+          "remote_adapter_placeholder",
+          "grpc_loopback"
         ],
         "assertions": [
           "typed_port_error_mapping",
-          "context_deadline_preserved"
+          "context_deadline_preserved",
+          "trusted_authority_replaces_actor"
         ]
       }
     ],
