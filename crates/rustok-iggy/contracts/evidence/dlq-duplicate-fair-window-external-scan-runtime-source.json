@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "iggy",
   "packet": "dlq-duplicate-fair-window-external-scan-runtime-source",
   "status": "source_complete_runtime_pending",
@@ -127,6 +127,15 @@
     "required_stored_offset": null,
     "second_fair_summary_equals_first": true,
     "auto_commit": false
+  },
+  "retained_execution": {
+    "status": "capture_source_complete_execution_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution-contract.json",
+    "runner": "scripts/evidence/capture-iggy-dlq-duplicate-fair-window-external-scan.mjs",
+    "verifier": "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs",
+    "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution.json",
+    "canonical_packet_present": false,
+    "no_clobber_write": true
   },
   "sdk_observer_boundary": {
     "allowed": [
