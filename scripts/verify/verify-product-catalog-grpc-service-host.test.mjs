@@ -42,6 +42,23 @@ tonic = { workspace = true, features = ["tls-ring"] }`,
   const security = options.insecurePublicPlaintext
     ? ""
     : `TLS_CERT_PATH_ENV} and {TLS_KEY_PATH_ENV} must be configured together bind.ip().is_loopback() Product catalog service TLS is required unless explicit loopback plaintext is enabled`;
+  const schemaPreflight = options.missingSchemaPreflight
+    ? ""
+    : `SysEvents entities::{Product, ProductVariant} EntityTrait
+REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_events"]
+async fn verify_required_schema(database: &DatabaseConnection)
+Product::find() ProductVariant::find() SysEvents::find()
+schema_preflight_error("products") schema_preflight_error("product_variants") schema_preflight_error("sys_events")
+run platform migrations before starting the service Product catalog database schema preflight passed`;
+  const startupOrder = options.misorderedSchemaPreflight
+    ? `verify_required_schema(&database).await?;
+let database = connect_database(&config).await?;
+let outbox = Arc::new(OutboxTransport::new(database.clone()));
+let mut server = Server::builder();`
+    : `let database = connect_database(&config).await?;
+verify_required_schema(&database).await?;
+let outbox = Arc::new(OutboxTransport::new(database.clone()));
+let mut server = Server::builder();`;
   const secretLeak = options.leakedSecret ? "bearer_token = %token" : "";
   write(
     root,
@@ -50,8 +67,10 @@ tonic = { workspace = true, features = ["tls-ring"] }`,
 ${ownerComposition}
 ${authentication}
 ${security}
+${schemaPreflight}
+${startupOrder}
 ${secretLeak}
-Server::builder() ServerTlsConfig::new().identity(identity) .serve_with_shutdown(config.bind, shutdown_signal())
+ServerTlsConfig::new().identity(identity) .serve_with_shutdown(config.bind, shutdown_signal())
 DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL"
 BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN"
 TRUSTED_SERVICE_ACTOR_ENV: &str = "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR"
@@ -63,13 +82,13 @@ struct RedactedSecret(String) formatter.write_str("[REDACTED]") database_target 
 map_err(|_| anyhow!("Product catalog PostgreSQL connection failed"))
 service_name: "rustok-product-catalog-service".to_string() rustok_telemetry::init(telemetry_config)? rustok_telemetry::otel::shutdown().await
 tokio::signal::ctrl_c() SignalKind::terminate() Product catalog gRPC service shutdown requested
-secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_target_excludes_credentials plaintext_requires_explicit_loopback_bind tls_requires_certificate_and_key_as_a_pair trusted_service_actor_is_server_configured_and_bounded
+secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_target_excludes_credentials required_schema_tables_are_owner_and_outbox_tables plaintext_requires_explicit_loopback_bind tls_requires_certificate_and_key_as_a_pair trusted_service_actor_is_server_configured_and_bounded
 `,
   );
   write(
     root,
     "crates/rustok-product-catalog-service/README.md",
-    `standalone provider-side deployment unit CatalogService ProductCatalogGrpcService ProductCatalogGrpcBearerInterceptor OutboxTransport read-only does not run migrations at startup RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR cargo run -p rustok-product-catalog-service does not claim this command was executed boundary_ready`,
+    `standalone provider-side deployment unit CatalogService ProductCatalogGrpcService ProductCatalogGrpcBearerInterceptor OutboxTransport read-only does not run migrations at startup ## Schema preflight products product_variants sys_events before tonic starts listening does not silently continue with partial readiness RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR cargo run -p rustok-product-catalog-service does not claim this command was executed boundary_ready`,
   );
 
   write(
@@ -91,6 +110,16 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
         provider_host_authenticator: "ProductCatalogGrpcBearerInterceptor",
         provider_host_trusted_actor_env:
           "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR",
+        provider_host_schema_preflight_tables: [
+          "products",
+          "product_variants",
+          "sys_events",
+        ],
+        provider_host_schema_preflight_order:
+          "after_connect_before_owner_and_listener",
+        provider_host_schema_preflight_status: options.falseSchemaExecution
+          ? "runtime_verified"
+          : "source_complete_execution_pending",
         provider_host_status: options.falseExecution
           ? "runtime_verified"
           : "source_complete_execution_pending",
@@ -102,7 +131,7 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
     "crates/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
-      : "standalone Product catalog service host is source-complete rustok-product-catalog-service OutboxTransport TLS-by-default provider-host execution evidence remains open Product remains `boundary_ready` cargo run -p rustok-product-catalog-service verify-product-catalog-grpc-service-host.mjs",
+      : "standalone Product catalog service host is source-complete rustok-product-catalog-service OutboxTransport TLS-by-default schema preflight is source-complete products product_variants sys_events schema-preflight execution evidence remains open provider-host execution evidence remains open Product remains `boundary_ready` cargo run -p rustok-product-catalog-service verify-product-catalog-grpc-service-host.mjs",
   );
   return root;
 }
@@ -148,8 +177,20 @@ test("guard rejects unauthenticated provider host", () => {
   reject({ missingAuthentication: true }, /owner gRPC host composition|secret and authority/);
 });
 
+test("guard rejects missing schema preflight", () => {
+  reject({ missingSchemaPreflight: true }, /Product service schema preflight/);
+});
+
+test("guard rejects schema preflight after owner composition", () => {
+  reject({ misorderedSchemaPreflight: true }, /startup preflight order/);
+});
+
 test("guard rejects credential logging", () => {
   reject({ leakedSecret: true }, /ownership and secret boundary/);
+});
+
+test("guard rejects premature schema-preflight execution claim", () => {
+  reject({ falseSchemaExecution: true }, /provider_host_schema_preflight_status/);
 });
 
 test("guard rejects premature host execution claim", () => {
