@@ -5,7 +5,10 @@ mod category {
     include!("category.rs");
     include!("category_visibility_list.rs");
 }
-mod category_audience;
+mod category_audience {
+    include!("category_audience.rs");
+    include!("category_audience_owner.rs");
+}
 mod category_audience_read {
     include!("category_audience_read.rs");
     include!("category_audience_read_inline.rs");
@@ -76,6 +79,7 @@ mod topic {
 }
 mod topic_audience {
     include!("topic_audience.rs");
+    include!("topic_audience_owner.rs");
 }
 mod topic_audience_visibility;
 mod topic_audience_list;
@@ -96,7 +100,8 @@ pub mod widget_contract;
 
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
-    ForumCategoryAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+    ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService,
+    SetForumCategoryAudiencePolicyInput,
 };
 pub use category_audience_read::{
     ForumCategoryAudiencePage, ForumCategoryAudienceReadService,
@@ -172,7 +177,8 @@ pub use storefront_read_state::{
 };
 pub use subscription::SubscriptionService;
 pub use topic_audience::{
-    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyService, SetForumTopicAudiencePolicyInput,
+    ForumTopicAudiencePolicy, ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
+    SetForumTopicAudiencePolicyInput,
 };
 pub use topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
