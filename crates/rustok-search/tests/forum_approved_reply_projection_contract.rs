@@ -1,4 +1,8 @@
 const FORUM_SOURCE: &str = include_str!("../../rustok-forum/src/search_projection.rs");
+const PUBLIC_DISCOVERY: &str =
+    include_str!("../../rustok-forum/src/services/public_discovery.rs");
+const REPLY_AUDIENCE_READ: &str =
+    include_str!("../../rustok-forum/src/services/reply_audience_read.rs");
 const FORUM_REPLY_UPDATE: &str = include_str!("../../rustok-forum/src/services/reply_inline.rs");
 const SEARCH_PROJECTOR: &str = include_str!("../src/forum_projector.rs");
 const SEARCH_ENGINE: &str = include_str!("../src/engine.rs");
@@ -9,6 +13,10 @@ fn require(source: &str, marker: &str) {
     assert!(source.contains(marker), "missing source marker: {marker}");
 }
 
+fn reject(source: &str, marker: &str) {
+    assert!(!source.contains(marker), "forbidden source marker: {marker}");
+}
+
 #[test]
 fn forum_source_publishes_only_exact_public_approved_reply_documents() {
     for marker in [
@@ -16,7 +24,9 @@ fn forum_source_publishes_only_exact_public_approved_reply_documents() {
         "forum_reply_body::Entity::find()",
         "ProjectionCandidate::Reply",
         "ProjectionCursor::Reply",
-        "if owner.status != ReplyStatus::Approved",
+        ".get_public_reply_with_locale_fallback(",
+        "Some(&[ReplyStatus::Approved])",
+        "if reply.effective_locale != locale",
         ".get_public_topic_with_locale_fallback(",
         ".get_public_category_with_locale_fallback(",
         "document_key: format!(\"forum_reply:{reply_id}:{locale}\")",
@@ -26,6 +36,22 @@ fn forum_source_publishes_only_exact_public_approved_reply_documents() {
         "\"is_solution\": is_solution",
     ] {
         require(FORUM_SOURCE, marker);
+    }
+    reject(FORUM_SOURCE, "forum_reply::Entity::find()");
+
+    for marker in [
+        "pub async fn get_public_reply_with_locale_fallback",
+        ".get_public_storefront_visible_with_locale_fallback(",
+    ] {
+        require(PUBLIC_DISCOVERY, marker);
+    }
+    for marker in [
+        "pub async fn get_public_storefront_visible_with_locale_fallback",
+        "statuses.is_some_and(|allowed| !allowed.contains(&reply.status))",
+        ".is_topic_visible(tenant_id, reply.topic_id, channel_slug, &viewer)",
+        ".get_with_locale_fallback(",
+    ] {
+        require(REPLY_AUDIENCE_READ, marker);
     }
 }
 
