@@ -20,12 +20,14 @@ pub mod error;
 pub mod migrations;
 pub mod ports;
 mod public_error;
+mod runtime;
 mod seo_targets;
 pub mod services;
 
 pub use error::{CommerceError, CommerceResult};
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
+pub use runtime::{ProductCatalogReadProfile, ProductCatalogReadRuntime};
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     ProductAttributeFilter, ProductCatalogSchemaService, StorefrontProductList,

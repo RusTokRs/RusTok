@@ -1,0 +1,60 @@
+use std::sync::Arc;
+
+use rustok_outbox::TransactionalEventBus;
+use sea_orm::DatabaseConnection;
+
+use crate::{CatalogService, ProductCatalogReadPort};
+
+/// Host-selected execution profile for the Product catalog read boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProductCatalogReadProfile {
+    EmbeddedNative,
+    External,
+}
+
+impl ProductCatalogReadProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::EmbeddedNative => "embedded_native",
+            Self::External => "external",
+        }
+    }
+}
+
+/// Canonical host-composed Product catalog read capability.
+///
+/// Consumers receive this wrapper rather than constructing `CatalogService` directly. A host can
+/// therefore replace the embedded provider with a remote adapter without changing consumer code.
+#[derive(Clone)]
+pub struct ProductCatalogReadRuntime {
+    read_port: Arc<dyn ProductCatalogReadPort>,
+    profile: ProductCatalogReadProfile,
+}
+
+impl ProductCatalogReadRuntime {
+    pub fn new(
+        read_port: Arc<dyn ProductCatalogReadPort>,
+        profile: ProductCatalogReadProfile,
+    ) -> Self {
+        Self { read_port, profile }
+    }
+
+    pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self::new(
+            Arc::new(CatalogService::new(db, event_bus)),
+            ProductCatalogReadProfile::EmbeddedNative,
+        )
+    }
+
+    pub fn external(read_port: Arc<dyn ProductCatalogReadPort>) -> Self {
+        Self::new(read_port, ProductCatalogReadProfile::External)
+    }
+
+    pub fn read_port(&self) -> Arc<dyn ProductCatalogReadPort> {
+        self.read_port.clone()
+    }
+
+    pub const fn profile(&self) -> ProductCatalogReadProfile {
+        self.profile
+    }
+}
