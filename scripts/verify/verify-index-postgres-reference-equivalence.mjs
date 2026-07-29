@@ -76,7 +76,7 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-postgres-reference-equivalence.mjs'",
 ]);
 requireMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
-  'Status: `fixture_and_capture_source_complete_owner_execution_pending`',
+  'Status: `fixture_capture_and_admission_source_complete_owner_execution_pending`',
   'compares the complete `IndexQueryPage`',
   'does not introduce Testcontainers or a second database stack',
   'Not run by the implementation agent',
