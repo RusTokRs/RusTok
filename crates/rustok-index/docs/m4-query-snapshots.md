@@ -61,23 +61,24 @@ These tests are source evidence only until the repository owner executes them.
 ## Static query contract
 
 `scripts/verify/verify-index-query-contract.mjs` is the unified M4 static entry point.
-It runs the planner, compiler, result decoder, many-link filtering, and retained
-snapshot guards in deterministic order. The individual scripts remain available for
-focused diagnostics.
+It runs the planner, compiler, result decoder, many-link filtering, retained snapshot,
+and PostgreSQL/reference-equivalence guards in deterministic order. The individual
+scripts remain available for focused diagnostics.
 
 ## Boundary
 
-This slice does not:
+This snapshot slice does not:
 
 - connect to PostgreSQL, prepare statements, or execute SQL;
 - adapt SeaORM bind values or rows;
-- prove PostgreSQL output equals the test-only reference engine;
+- itself prove PostgreSQL output equals the reference fixture;
 - add many-link ordering;
 - publish `IndexQueryPort` or cut over a consumer;
 - change migrations or partition lifecycle state.
 
-The combined roadmap item for plan/SQL snapshots and PostgreSQL/reference-engine
-equivalence remains open until live equivalence evidence is implemented and executed.
+Plan/SQL snapshot source is complete. The separate owner-run equivalence fixture is
+also source complete, while live execution and retained equivalence evidence remain
+open.
 
 ## Owner validation
 
@@ -90,6 +91,8 @@ cargo test -p rustok-index query_snapshot_tests -- --nocapture
 cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... \
+  cargo test -p rustok-index postgres_query_port_matches_reference_fixture -- --nocapture
 cargo check -p rustok-index --all-targets
 node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
@@ -97,5 +100,6 @@ node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
 node scripts/verify/verify-index-many-link-filtering.mjs
 node scripts/verify/verify-index-query-snapshots.mjs
+node scripts/verify/verify-index-postgres-reference-equivalence.mjs
 cargo xtask module validate index
 ```
