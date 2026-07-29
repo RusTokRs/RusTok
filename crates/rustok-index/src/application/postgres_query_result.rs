@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -57,10 +57,6 @@ impl CompiledPostgresRow {
     }
 }
 
-/// Opaque page-execution contract produced only by `SchemaRegistry`.
-///
-/// The wrapper deliberately has no serde implementation so untrusted bytes cannot
-/// replace controlled SQL, bind values, or the requested page size before execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledPostgresPageQuery {
     compiled: CompiledPostgresQuery,
@@ -312,7 +308,7 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
         output_alias: identity_alias(&plan.root_alias),
         relation_alias: plan.root_alias.clone(),
     });
-    columns.extend(plan.joins.iter().map(|join| CompiledQueryColumn::EntityId {
+    columns.extend(plan.outer_joins().map(|join| CompiledQueryColumn::EntityId {
         output_alias: identity_alias(&join.alias),
         relation_alias: join.alias.clone(),
     }));
@@ -390,7 +386,7 @@ fn decode_row(
         }
     }
 
-    let root_entity_id = root_entity_id.flatten().ok_or_else(|| {
+    let root_entity_id = root_entity_id.ok_or_else(|| {
         PostgresQueryDecodeError::MissingColumn(identity_alias(&plan.root_alias))
     })?;
     let mut fields = Vec::with_capacity(plan.projection.len());
@@ -466,6 +462,11 @@ fn decode_field(
         }
     };
 
+    if missing_relation && !matches!(value, IndexValue::Null) {
+        return Err(PostgresQueryDecodeError::InvalidFieldValue {
+            path: field.path.clone(),
+        });
+    }
     if matches!(value, IndexValue::Null) && !field.nullable && !missing_relation {
         return Err(PostgresQueryDecodeError::UnexpectedFieldNull {
             path: field.path.clone(),
@@ -480,11 +481,8 @@ fn decode_field(
 }
 
 fn valid_field_value(field: &PlannedField, value: &IndexValue, missing_relation: bool) -> bool {
-    if missing_relation {
-        return matches!(value, IndexValue::Null);
-    }
     match value {
-        IndexValue::Null => field.nullable,
+        IndexValue::Null => field.nullable || missing_relation,
         IndexValue::List(values) => {
             field.cardinality == FieldCardinality::Many
                 && values
