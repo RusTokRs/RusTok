@@ -4,51 +4,249 @@
   "role": "provider",
   "status": "boundary_ready",
   "contract_version": "product.catalog_read.v1",
-  "ports": [{"name":"ProductCatalogReadPort","owner":"product","operations":["read_product_projection","read_variant_product_projection","list_published_products"],"context":"rustok_api::ports::PortContext","error":"rustok_api::ports::PortError","idempotency_required":false,"deadline_required":true}],
+  "ports": [
+    {
+      "name": "ProductCatalogReadPort",
+      "owner": "product",
+      "operations": [
+        "read_product_projection",
+        "read_variant_product_projection",
+        "list_published_products"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
   "consumers": [
-    {"module":"commerce","profile":"checkout_product_projection","degraded_modes":[],"fallback_profiles":["embedded_native"]},
-    {"module":"marketplace-listing","profile":"listing_product_projection","degraded_modes":[],"fallback_profiles":["embedded_native"]},
-    {"module":"ai-product","profile":"ai_product_generation_context","degraded_modes":["generate_from_prompt_only","skip_catalog_enrichment","require_operator_review"],"fallback_profiles":["embedded_native"]}
+    {
+      "module": "commerce",
+      "profile": "checkout_product_projection",
+      "degraded_modes": [],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    },
+    {
+      "module": "marketplace-listing",
+      "profile": "listing_product_projection",
+      "degraded_modes": [],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    },
+    {
+      "module": "ai-product",
+      "profile": "ai_product_generation_context",
+      "degraded_modes": [
+        "generate_from_prompt_only",
+        "skip_catalog_enrichment",
+        "require_operator_review"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    }
   ],
   "evidence": {
-    "local_plan":"crates/rustok-product/docs/implementation-plan.md",
-    "central_board":"docs/modules/registry.md",
-    "verifier":"scripts/verify/verify-ecommerce-fba-registries.mjs",
-    "runtime_composition_verifier":"scripts/verify/verify-product-catalog-read-runtime-composition.mjs",
-    "native_checkout_runtime_verifier":"scripts/verify/verify-product-native-checkout-catalog-runtime.mjs",
-    "http_checkout_runtime_verifier":"scripts/verify/verify-product-http-checkout-catalog-runtime.mjs",
-    "graphql_checkout_runtime_verifier":"scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs",
-    "grpc_transport_verifier":"scripts/verify/verify-product-catalog-grpc-transport.mjs",
-    "grpc_deployment_verifier":"scripts/verify/verify-product-catalog-grpc-deployment.mjs",
-    "grpc_authentication_verifier":"scripts/verify/verify-product-catalog-grpc-authentication.mjs",
-    "grpc_service_host_verifier":"scripts/verify/verify-product-catalog-grpc-service-host.mjs",
-    "grpc_maintainer_test_attestation":"crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
-    "grpc_maintainer_test_attestation_verifier":"scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
-    "remote_consumer_behavior_verifier":"scripts/verify/verify-product-remote-consumer-behavior.mjs",
-    "runtime_contract_smoke":"crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
-    "runtime_contract_smoke_runner":"scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
-    "runtime_fallback_smoke":"crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
-    "runtime_fallback_smoke_runner":"scripts/verify/verify-product-runtime-fallback-smoke.mjs"
+    "local_plan": "crates/rustok-product/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "runtime_composition_verifier": "scripts/verify/verify-product-catalog-read-runtime-composition.mjs",
+    "native_checkout_runtime_verifier": "scripts/verify/verify-product-native-checkout-catalog-runtime.mjs",
+    "http_checkout_runtime_verifier": "scripts/verify/verify-product-http-checkout-catalog-runtime.mjs",
+    "graphql_checkout_runtime_verifier": "scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs",
+    "grpc_transport_verifier": "scripts/verify/verify-product-catalog-grpc-transport.mjs",
+    "grpc_deployment_verifier": "scripts/verify/verify-product-catalog-grpc-deployment.mjs",
+    "grpc_authentication_verifier": "scripts/verify/verify-product-catalog-grpc-authentication.mjs",
+    "grpc_service_host_verifier": "scripts/verify/verify-product-catalog-grpc-service-host.mjs",
+    "grpc_maintainer_test_attestation": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
+    "grpc_maintainer_test_attestation_verifier": "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
+    "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
+    "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
+    "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+    "runtime_fallback_smoke": "crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
+    "runtime_fallback_smoke_runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs"
   },
-  "runtime_composition": {"runtime":"ProductCatalogReadRuntime","source":"crates/rustok-product/src/runtime.rs","host_composition":"apps/server/src/services/commerce_provider_runtime.rs","profiles":["embedded_native","external"],"source_complete_consumers":["ai-product","marketplace-listing","order-storefront-native","commerce-checkout-http","commerce-checkout-graphql"],"pending_consumers":[],"status":"source_complete_consumer_cutover_complete"},
-  "external_transport": {
-    "crate":"rustok-product-transport","source":"crates/rustok-product-transport","protocol":"tonic_grpc_json_owner_contract","client":"GrpcProductCatalogReadProvider","connection_config":"GrpcProductCatalogReadConnectionConfig","client_authentication":"ProductCatalogGrpcBearerToken","server":"ProductCatalogGrpcService","server_authenticator":"ProductCatalogGrpcBearerInterceptor","trusted_authority":"TrustedProductCatalogAuthority",
-    "authentication_metadata":["authorization","x-rustok-tenant-id"],
-    "authentication_assertions":["constant_time_complete_authorization_compare","tenant_uuid_validated","trusted_service_actor_server_configured","secret_debug_redacted","authentication_failure_secret_not_echoed"],
-    "proto":"crates/rustok-product-transport/proto/rustok/product/product_catalog.proto","conformance_test":"crates/rustok-product-transport/tests/port_conformance.rs","host_deployment":"apps/server/src/services/product_catalog_deployment.rs","runtime_factory":"ProductCatalogReadRuntime::external","provider_selector_env":"RUSTOK_PRODUCT_CATALOG_PROVIDER","endpoint_env":"RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT","bearer_token_env":"RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN","authentication_status":"source_complete_execution_pending",
-    "provider_host_crate":"rustok-product-catalog-service","provider_host_source":"crates/rustok-product-catalog-service/src/main.rs","provider_host_binary":"rustok-product-catalog-service","provider_host_owner_service":"CatalogService","provider_host_event_transport":"OutboxTransport","provider_host_database":"postgresql","provider_host_transport_security":"tls_or_explicit_loopback","provider_host_authenticator":"ProductCatalogGrpcBearerInterceptor","provider_host_trusted_actor_env":"RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR","provider_host_migrations":"external_precondition","provider_host_schema_preflight_tables":["products","product_variants","sys_events"],"provider_host_schema_preflight_order":"after_connect_before_owner_and_listener","provider_host_schema_preflight_status":"source_complete_execution_pending","provider_host_status":"source_complete_execution_pending",
-    "maintainer_test_status":"passed_no_raw_logs_end_to_end_pending","provider_host_unit_test_status":"maintainer_attested_passed_no_raw_logs","authentication_test_status":"maintainer_attested_passed_no_raw_logs","port_conformance_test_status":"maintainer_attested_passed_no_raw_logs","status":"runtime_wired_execution_pending"
-  },
-  "remote_consumer_behavior": {"status":"source_complete_execution_pending","transport_profile":"grpc_loopback_external_runtime","commerce_test":"crates/rustok-commerce/tests/product_remote_consumer_behavior.rs","ai_source_test":"crates/rustok-ai/src/direct_product_attributes.rs","failure_profiles":["unavailable","timeout"],"assertions":["commerce_hard_dependency_no_cart_snapshot_fallback","commerce_typed_boundary_error_preserved","ai_catalog_enrichment_skipped","ai_typed_degraded_error_preserved","ai_operator_review_required","ai_persistence_none"],"maintainer_harness_status":"passed_no_raw_logs_end_to_end_pending","attested_at":"2026-07-29T16:33:00+03:00","separate_process_end_to_end_status":"pending"},
-  "maintainer_test_attestation": {"status":"passed_no_raw_logs_end_to_end_pending","source":"crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json","verifier":"scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs","attested_at":"2026-07-29T16:33:00+03:00","observed_repository_head":"6655bda2068911bf010be2d950638a4473f953f1","executed_command_count":9,"cargo_lock_package_entry":"present","raw_logs_retained":false,"agent_independently_verified":false,"remaining_gates":["standalone_provider_postgresql_schema_preflight_runtime_evidence","authenticated_separate_process_commerce_end_to_end_evidence","authenticated_separate_process_ai_end_to_end_evidence","retained_runtime_logs_or_ci_artifacts_for_transport_promotion"]},
-  "in_process_provider_impl": {"service":"CatalogService","runtime":"ProductCatalogReadRuntime","profile":"embedded_native","source":"crates/rustok-product/src/ports.rs","status":"implemented"},
-  "contract_tests": {
-    "status":"planned_cases_locked","source":"crates/rustok-product/contracts/product-fba-registry.json","runner":"scripts/verify/verify-ecommerce-fba-registries.mjs","execution_attestation":"maintainer_attested_passed_no_raw_logs","profiles":["in_process","remote_adapter_placeholder","grpc_loopback"],
-    "cases":[
-      {"operation":"read_product_projection","profiles":["in_process","remote_adapter_placeholder","grpc_loopback"],"assertions":["typed_port_error_mapping","context_deadline_preserved","trusted_authority_replaces_actor"]},
-      {"operation":"read_variant_product_projection","profiles":["in_process","remote_adapter_placeholder","grpc_loopback"],"assertions":["typed_port_error_mapping","context_deadline_preserved","variant_to_product_owner_resolution","trusted_authority_replaces_actor"]},
-      {"operation":"list_published_products","profiles":["in_process","remote_adapter_placeholder","grpc_loopback"],"assertions":["typed_port_error_mapping","context_deadline_preserved","trusted_authority_replaces_actor"]}
+  "runtime_composition": {
+    "runtime": "ProductCatalogReadRuntime",
+    "source": "crates/rustok-product/src/runtime.rs",
+    "host_composition": "apps/server/src/services/commerce_provider_runtime.rs",
+    "profiles": [
+      "embedded_native",
+      "external"
     ],
-    "fallback_smoke":{"status":"planned_runtime_pending","profiles":["embedded_native"],"degraded_modes":["generate_from_prompt_only","skip_catalog_enrichment","require_operator_review"]}
+    "source_complete_consumers": [
+      "ai-product",
+      "marketplace-listing",
+      "order-storefront-native",
+      "commerce-checkout-http",
+      "commerce-checkout-graphql"
+    ],
+    "pending_consumers": [],
+    "status": "source_complete_consumer_cutover_complete"
+  },
+  "external_transport": {
+    "crate": "rustok-product-transport",
+    "source": "crates/rustok-product-transport",
+    "protocol": "tonic_grpc_json_owner_contract",
+    "client": "GrpcProductCatalogReadProvider",
+    "connection_config": "GrpcProductCatalogReadConnectionConfig",
+    "client_authentication": "ProductCatalogGrpcBearerToken",
+    "server": "ProductCatalogGrpcService",
+    "server_authenticator": "ProductCatalogGrpcBearerInterceptor",
+    "trusted_authority": "TrustedProductCatalogAuthority",
+    "authentication_metadata": [
+      "authorization",
+      "x-rustok-tenant-id"
+    ],
+    "authentication_assertions": [
+      "constant_time_complete_authorization_compare",
+      "tenant_uuid_validated",
+      "trusted_service_actor_server_configured",
+      "secret_debug_redacted",
+      "authentication_failure_secret_not_echoed"
+    ],
+    "proto": "crates/rustok-product-transport/proto/rustok/product/product_catalog.proto",
+    "conformance_test": "crates/rustok-product-transport/tests/port_conformance.rs",
+    "host_deployment": "apps/server/src/services/product_catalog_deployment.rs",
+    "runtime_factory": "ProductCatalogReadRuntime::external",
+    "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
+    "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
+    "bearer_token_env": "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
+    "authentication_status": "source_complete_execution_pending",
+    "provider_host_crate": "rustok-product-catalog-service",
+    "provider_host_source": "crates/rustok-product-catalog-service/src/main.rs",
+    "provider_host_binary": "rustok-product-catalog-service",
+    "provider_host_owner_service": "CatalogService",
+    "provider_host_event_transport": "OutboxTransport",
+    "provider_host_database": "postgresql",
+    "provider_host_transport_security": "tls_or_explicit_loopback",
+    "provider_host_authenticator": "ProductCatalogGrpcBearerInterceptor",
+    "provider_host_trusted_actor_env": "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR",
+    "provider_host_migrations": "external_precondition",
+    "provider_host_schema_preflight_tables": [
+      "products",
+      "product_variants",
+      "sys_events"
+    ],
+    "provider_host_schema_preflight_order": "after_connect_before_owner_and_listener",
+    "provider_host_schema_preflight_status": "source_complete_execution_pending",
+    "provider_host_status": "source_complete_execution_pending",
+    "maintainer_test_status": "passed_no_raw_logs_end_to_end_pending",
+    "provider_host_unit_test_status": "maintainer_attested_passed_no_raw_logs",
+    "authentication_test_status": "maintainer_attested_passed_no_raw_logs",
+    "port_conformance_test_status": "maintainer_attested_passed_no_raw_logs",
+    "status": "runtime_wired_execution_pending"
+  },
+  "remote_consumer_behavior": {
+    "status": "source_complete_execution_pending",
+    "transport_profile": "grpc_loopback_external_runtime",
+    "commerce_test": "crates/rustok-commerce/tests/product_remote_consumer_behavior.rs",
+    "ai_source_test": "crates/rustok-ai/src/direct_product_attributes.rs",
+    "failure_profiles": [
+      "unavailable",
+      "timeout"
+    ],
+    "assertions": [
+      "commerce_hard_dependency_no_cart_snapshot_fallback",
+      "commerce_typed_boundary_error_preserved",
+      "ai_catalog_enrichment_skipped",
+      "ai_typed_degraded_error_preserved",
+      "ai_operator_review_required",
+      "ai_persistence_none"
+    ],
+    "maintainer_harness_status": "passed_no_raw_logs_end_to_end_pending",
+    "attested_at": "2026-07-29T16:33:00+03:00",
+    "separate_process_end_to_end_status": "pending"
+  },
+  "maintainer_test_attestation": {
+    "status": "passed_no_raw_logs_end_to_end_pending",
+    "source": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
+    "verifier": "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
+    "attested_at": "2026-07-29T16:33:00+03:00",
+    "observed_repository_head": "6655bda2068911bf010be2d950638a4473f953f1",
+    "executed_command_count": 9,
+    "cargo_lock_package_entry": "present",
+    "raw_logs_retained": false,
+    "agent_independently_verified": false,
+    "remaining_gates": [
+      "standalone_provider_postgresql_schema_preflight_runtime_evidence",
+      "authenticated_separate_process_commerce_end_to_end_evidence",
+      "authenticated_separate_process_ai_end_to_end_evidence",
+      "retained_runtime_logs_or_ci_artifacts_for_transport_promotion"
+    ]
+  },
+  "in_process_provider_impl": {
+    "service": "CatalogService",
+    "runtime": "ProductCatalogReadRuntime",
+    "profile": "embedded_native",
+    "source": "crates/rustok-product/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-product/contracts/product-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "execution_attestation": "maintainer_attested_passed_no_raw_logs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder",
+      "grpc_loopback"
+    ],
+    "cases": [
+      {
+        "operation": "read_product_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder",
+          "grpc_loopback"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "trusted_authority_replaces_actor"
+        ]
+      },
+      {
+        "operation": "read_variant_product_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder",
+          "grpc_loopback"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "variant_to_product_owner_resolution",
+          "trusted_authority_replaces_actor"
+        ]
+      },
+      {
+        "operation": "list_published_products",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder",
+          "grpc_loopback"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "trusted_authority_replaces_actor"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned_runtime_pending",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "generate_from_prompt_only",
+        "skip_catalog_enrichment",
+        "require_operator_review"
+      ]
+    }
   }
 }
