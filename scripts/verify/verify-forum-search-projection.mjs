@@ -34,6 +34,7 @@ const providerPath = "crates/rustok-forum/src/search_projection.rs";
 const forumLibPath = "crates/rustok-forum/src/lib.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
 const invalidationPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
+const visibilityBulkPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
 const upstreamPath = "crates/rustok-forum/contracts/forum-public-discovery-seo.json";
 const notePath = "crates/rustok-forum/docs/forum-20bj-search-projection.md";
 
@@ -47,6 +48,7 @@ const forumLib = read(forumLibPath);
 const note = read(notePath);
 let contract = null;
 let invalidation = null;
+let visibilityBulk = null;
 let upstream = null;
 try {
   contract = JSON.parse(read(contractPath));
@@ -57,6 +59,11 @@ try {
   invalidation = JSON.parse(read(invalidationPath));
 } catch (error) {
   failures.push(`${invalidationPath}: invalid JSON: ${error.message}`);
+}
+try {
+  visibilityBulk = JSON.parse(read(visibilityBulkPath));
+} catch (error) {
+  failures.push(`${visibilityBulkPath}: invalid JSON: ${error.message}`);
 }
 try {
   upstream = JSON.parse(read(upstreamPath));
@@ -182,11 +189,14 @@ if (contract) {
   if (contract.upstream_task !== "FORUM-20BI") {
     failures.push(`${contractPath}: unexpected upstream task`);
   }
-  if (contract.downstream_task !== "FORUM-20BL") {
+  if (contract.downstream_task !== "FORUM-20BM") {
     failures.push(`${contractPath}: unexpected downstream task`);
   }
   if (contract.invalidation_contract !== invalidationPath) {
     failures.push(`${contractPath}: invalidation contract handoff drift`);
+  }
+  if (contract.visibility_scoped_bulk_read_contract !== visibilityBulkPath) {
+    failures.push(`${contractPath}: visible bulk read contract handoff drift`);
   }
   for (const key of [
     "neutral_capability_has_no_forum_dependency",
@@ -246,6 +256,12 @@ if (contract) {
   if (contract.ingestion_boundary?.completion_contract !== invalidationPath) {
     failures.push(`${contractPath}: completion contract drift`);
   }
+  if (contract.downstream_handoff?.completion_contract !== visibilityBulkPath) {
+    failures.push(`${contractPath}: downstream visible bulk completion drift`);
+  }
+  if (contract.remaining_scope?.includes("add visibility-scoped category and all-read commands")) {
+    failures.push(`${contractPath}: completed visible bulk scope remains listed`);
+  }
   for (const [key, expected] of Object.entries({
     forum_to_search_workspace_dependency_added: false,
     forum_module_declares_core_search_dependency: false,
@@ -267,11 +283,23 @@ if (invalidation) {
   if (invalidation.upstream_task !== "FORUM-20BJ") {
     failures.push(`${invalidationPath}: unexpected upstream task`);
   }
-  if (invalidation.downstream_task !== "FORUM-20BL") {
+  if (invalidation.downstream_task !== "FORUM-20BM") {
     failures.push(`${invalidationPath}: unexpected downstream task`);
   }
   if (invalidation.upstream_contract !== contractPath) {
     failures.push(`${invalidationPath}: upstream contract drift`);
+  }
+  if (invalidation.visibility_scoped_bulk_read_contract !== visibilityBulkPath) {
+    failures.push(`${invalidationPath}: visible bulk read handoff drift`);
+  }
+}
+
+if (visibilityBulk) {
+  if (visibilityBulk.task !== "FORUM-20BL") {
+    failures.push(`${visibilityBulkPath}: unexpected task`);
+  }
+  if (visibilityBulk.upstream_task !== "FORUM-20BK") {
+    failures.push(`${visibilityBulkPath}: unexpected upstream task`);
   }
 }
 
