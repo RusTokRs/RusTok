@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use ::rustok_api::{PortContext, PortError, PortErrorKind};
 use ::rustok_order::{
-    ListOrderChangesInput, ListOrderProjectionsRequest, ListOrderReturnsInput, ListOrdersInput,
+    ListOrderChangeProjectionsRequest, ListOrderChangesInput, ListOrderProjectionsRequest,
+    ListOrderReturnProjectionsRequest, ListOrderReturnsInput, ListOrdersInput,
     OrderChangeResponse, OrderReadPort, OrderResponse, OrderReturnResponse,
-    ReadOrderProjectionRequest,
+    ReadOrderChangeProjectionRequest, ReadOrderProjectionRequest,
+    ReadOrderReturnProjectionRequest,
 };
 use ::rustok_outbox::TransactionalEventBus;
 use ::sea_orm::{DatabaseConnection, DbErr};
@@ -24,27 +26,20 @@ const GRAPHQL_ORDER_READ_BOUNDARY: &str = "commerce_graphql_order_read_shim";
 
 /// Compatibility facade for the legacy safe-query source.
 ///
-/// Complete order detail/list projections are routed through the typed owner
-/// boundary. Return and order-change reads remain on the concrete owner service
-/// until their wider owner contracts are published.
+/// Complete order, return, and order-change projection reads are routed through
+/// the typed owner boundary. The facade stores no concrete owner service.
 pub(crate) struct OrderService {
-    db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
     order_reads: Arc<dyn OrderReadPort>,
 }
 
 impl OrderService {
     pub(crate) fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         let order_reads = crate::graphql_runtime::order_read_runtime_for_current_graphql_scope(
-            db.clone(),
-            event_bus.clone(),
-        )
-        .order_read_port();
-        Self {
             db,
             event_bus,
-            order_reads,
-        }
+        )
+        .order_read_port();
+        Self { order_reads }
     }
 
     pub(crate) async fn get_order_with_locale_fallback(
@@ -54,8 +49,8 @@ impl OrderService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> OrderResult<OrderResponse> {
-        let context =
-            graphql_order_read_context(tenant_id, locale, "read_order_projection", order_id);
+        const OPERATION: &str = "read_order_projection";
+        let context = graphql_order_read_context(tenant_id, Some(locale), OPERATION, order_id);
         self.order_reads
             .read_order_projection(
                 context.clone(),
@@ -65,7 +60,14 @@ impl OrderService {
                 },
             )
             .await
-            .map_err(|error| map_order_read_port_error(error, &context, Some(order_id)))
+            .map_err(|error| {
+                map_order_read_port_error(
+                    error,
+                    &context,
+                    OPERATION,
+                    GraphqlOrderReadResource::Order(order_id),
+                )
+            })
     }
 
     pub(crate) async fn list_orders_with_locale_fallback(
@@ -75,12 +77,8 @@ impl OrderService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> OrderResult<(Vec<OrderResponse>, u64)> {
-        let context = graphql_order_read_context(
-            tenant_id,
-            locale,
-            "list_order_projections",
-            tenant_id,
-        );
+        const OPERATION: &str = "list_order_projections";
+        let context = graphql_order_read_context(tenant_id, Some(locale), OPERATION, tenant_id);
         let page = self
             .order_reads
             .list_order_projections(
@@ -94,7 +92,14 @@ impl OrderService {
                 },
             )
             .await
-            .map_err(|error| map_order_read_port_error(error, &context, None))?;
+            .map_err(|error| {
+                map_order_read_port_error(
+                    error,
+                    &context,
+                    OPERATION,
+                    GraphqlOrderReadResource::None,
+                )
+            })?;
         Ok((page.items, page.total))
     }
 
@@ -103,9 +108,22 @@ impl OrderService {
         tenant_id: Uuid,
         change_id: Uuid,
     ) -> OrderResult<OrderChangeResponse> {
-        self.concrete_owner_service()
-            .get_order_change(tenant_id, change_id)
+        const OPERATION: &str = "read_order_change_projection";
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, change_id);
+        self.order_reads
+            .read_order_change_projection(
+                context.clone(),
+                ReadOrderChangeProjectionRequest { change_id },
+            )
             .await
+            .map_err(|error| {
+                map_order_read_port_error(
+                    error,
+                    &context,
+                    OPERATION,
+                    GraphqlOrderReadResource::Change(change_id),
+                )
+            })
     }
 
     pub(crate) async fn list_order_changes(
@@ -113,9 +131,30 @@ impl OrderService {
         tenant_id: Uuid,
         input: ListOrderChangesInput,
     ) -> OrderResult<(Vec<OrderChangeResponse>, u64)> {
-        self.concrete_owner_service()
-            .list_order_changes(tenant_id, input)
+        const OPERATION: &str = "list_order_change_projections";
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, tenant_id);
+        let page = self
+            .order_reads
+            .list_order_change_projections(
+                context.clone(),
+                ListOrderChangeProjectionsRequest {
+                    page: input.page,
+                    per_page: input.per_page,
+                    order_id: input.order_id,
+                    status: input.status,
+                    change_type: input.change_type,
+                },
+            )
             .await
+            .map_err(|error| {
+                map_order_read_port_error(
+                    error,
+                    &context,
+                    OPERATION,
+                    GraphqlOrderReadResource::None,
+                )
+            })?;
+        Ok((page.items, page.total))
     }
 
     pub(crate) async fn get_return(
@@ -123,9 +162,22 @@ impl OrderService {
         tenant_id: Uuid,
         return_id: Uuid,
     ) -> OrderResult<OrderReturnResponse> {
-        self.concrete_owner_service()
-            .get_return(tenant_id, return_id)
+        const OPERATION: &str = "read_order_return_projection";
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, return_id);
+        self.order_reads
+            .read_order_return_projection(
+                context.clone(),
+                ReadOrderReturnProjectionRequest { return_id },
+            )
             .await
+            .map_err(|error| {
+                map_order_read_port_error(
+                    error,
+                    &context,
+                    OPERATION,
+                    GraphqlOrderReadResource::Return(return_id),
+                )
+            })
     }
 
     pub(crate) async fn list_returns(
@@ -133,24 +185,51 @@ impl OrderService {
         tenant_id: Uuid,
         input: ListOrderReturnsInput,
     ) -> OrderResult<(Vec<OrderReturnResponse>, u64)> {
-        self.concrete_owner_service()
-            .list_returns(tenant_id, input)
+        const OPERATION: &str = "list_order_return_projections";
+        let context = graphql_order_read_context(tenant_id, None, OPERATION, tenant_id);
+        let page = self
+            .order_reads
+            .list_order_return_projections(
+                context.clone(),
+                ListOrderReturnProjectionsRequest {
+                    page: input.page,
+                    per_page: input.per_page,
+                    order_id: input.order_id,
+                    status: input.status,
+                },
+            )
             .await
+            .map_err(|error| {
+                map_order_read_port_error(
+                    error,
+                    &context,
+                    OPERATION,
+                    GraphqlOrderReadResource::None,
+                )
+            })?;
+        Ok((page.items, page.total))
     }
+}
 
-    fn concrete_owner_service(&self) -> ::rustok_order::OrderService {
-        ::rustok_order::OrderService::new(self.db.clone(), self.event_bus.clone())
-    }
+#[derive(Clone, Copy)]
+enum GraphqlOrderReadResource {
+    Order(Uuid),
+    Return(Uuid),
+    Change(Uuid),
+    None,
 }
 
 fn graphql_order_read_context(
     tenant_id: Uuid,
-    locale: &str,
+    explicit_locale: Option<&str>,
     operation: &'static str,
     resource_id: Uuid,
 ) -> PortContext {
     let call_context =
         crate::graphql_runtime::order_read_call_context_for_current_graphql_scope();
+    let locale = explicit_locale
+        .or_else(|| call_context.locale())
+        .unwrap_or("und");
     let context = PortContext::new(
         tenant_id.to_string(),
         call_context.actor(),
@@ -167,7 +246,8 @@ fn graphql_order_read_context(
 fn map_order_read_port_error(
     error: PortError,
     context: &PortContext,
-    order_id: Option<Uuid>,
+    operation: &'static str,
+    resource: GraphqlOrderReadResource,
 ) -> OrderError {
     let error_kind = match &error.kind {
         PortErrorKind::Validation => "validation",
@@ -178,12 +258,24 @@ fn map_order_read_port_error(
         PortErrorKind::Timeout => "timeout",
         PortErrorKind::InvariantViolation => "invariant_violation",
     };
+    let (order_id, return_id, change_id) = match resource {
+        GraphqlOrderReadResource::Order(id) => (Some(id), None, None),
+        GraphqlOrderReadResource::Return(id) => (None, Some(id), None),
+        GraphqlOrderReadResource::Change(id) => (None, None, Some(id)),
+        GraphqlOrderReadResource::None => (None, None, None),
+    };
     tracing::error!(
         owner = "rustok_order",
-        owner_operation = %context.correlation_id,
+        owner_operation = operation,
         correlation_id = %context.correlation_id,
         tenant_id = %context.tenant_id,
         order_id = ?order_id,
+        return_id = ?return_id,
+        change_id = ?change_id,
+        actor = ?context.actor,
+        channel = ?context.channel,
+        locale = %context.locale,
+        deadline_ms = ?context.deadline_ms,
         internal_code = %error.code,
         retryable = error.retryable,
         error_kind,
@@ -195,7 +287,12 @@ fn map_order_read_port_error(
         PortErrorKind::Validation | PortErrorKind::Forbidden => {
             OrderError::Validation(error.message)
         }
-        PortErrorKind::NotFound => OrderError::OrderNotFound(order_id.unwrap_or_else(Uuid::nil)),
+        PortErrorKind::NotFound => match resource {
+            GraphqlOrderReadResource::Order(id) => OrderError::OrderNotFound(id),
+            GraphqlOrderReadResource::Return(id) => OrderError::OrderReturnNotFound(id),
+            GraphqlOrderReadResource::Change(id) => OrderError::OrderChangeNotFound(id),
+            GraphqlOrderReadResource::None => OrderError::OrderNotFound(Uuid::nil()),
+        },
         PortErrorKind::Conflict => OrderError::InvalidTransition {
             from: "current".to_string(),
             to: "requested".to_string(),

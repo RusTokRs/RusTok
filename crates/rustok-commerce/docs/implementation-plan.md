@@ -207,8 +207,9 @@ These are source-contract defects, not verification-only tasks.
   and the concrete operations after ownership validation.
 - [x] Cut storefront return and order-change list reads to the same host-selected
   runtime while preserving filters, ordering, complete DTOs, totals, and envelopes.
-- [ ] Cut GraphQL return/order-change detail and list reads to the scoped host-selected
-  runtime without moving mutations.
+- [x] Cut GraphQL return/order-change detail and list reads to the scoped host-selected
+  runtime with validated actor, resolved channel/effective locale context, typed
+  not-found compatibility errors, and no concrete owner service storage.
 - [ ] Audit and cut admin post-order reads separately without moving mutations or
   payment/fulfillment policy.
 - [ ] Retain compile, mounted parity, deadline/failure, restart, and remote-adapter
@@ -570,6 +571,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - [ ] `node scripts/verify/verify-order-read-port.mjs`
+- [ ] `node scripts/verify/verify-commerce-graphql-order-read-shim.mjs`
 - [ ] `node scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`
 - [ ] `node scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs`
 - [ ] `node scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
@@ -609,8 +611,9 @@ Source inspection is not execution evidence.
 - [x] Extend the public-error guard to pricing and `PaymentCollectionPort`, including
   correlation, tenant, operation, stable code, and raw-cause bans.
 - [x] Add static source guards for host-selected complete order and post-order read
-  runtime composition plus admin REST, mounted GraphQL complete order, and storefront
-  order/return/change cutovers without changing mutation, payment, or fulfillment ownership.
+  runtime composition plus admin REST complete order, mounted GraphQL complete/post-order,
+  and storefront order/return/change cutovers without changing mutation, payment, or
+  fulfillment ownership.
 - [ ] Execute the new public-error, typed-lifecycle, storefront-cutover, and order-read
   static guards against a repository checkout and retain their output.
 
@@ -712,21 +715,23 @@ Source inspection is not execution evidence.
     storefront HTTP detail/shared ownership use the typed owner port.
 13. [x] Publish return/order-change detail/list operations on `OrderReadPort` and cut
     storefront return/order-change lists to the host-selected runtime.
-14. [ ] Cut GraphQL return/order-change detail/list reads to the scoped runtime, then
-    audit admin post-order reads separately.
-15. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
-16. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
-17. [x] Mount authenticated request-scoped listing native composition.
-18. [x] Publish listing GraphQL roots and replace the declared-unmounted adapter.
-19. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
+14. [x] Cut GraphQL return/order-change detail/list reads to the scoped runtime with
+    validated actor/channel/effective-locale context and compatible error shapes.
+15. [ ] Audit and cut admin post-order reads without moving mutations or payment/
+    fulfillment policy.
+16. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
+17. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
+18. [x] Mount authenticated request-scoped listing native composition.
+19. [x] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+20. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
     reconciliation surfaces.
-20. [ ] Run static verifiers and fix remaining source drift.
-21. [ ] Compile remaining commerce/order/payment/Marketplace packages and server features.
-22. [ ] Apply clean/upgraded migrations and targeted regression tests.
-23. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
+21. [ ] Run static verifiers and fix remaining source drift.
+22. [ ] Compile remaining commerce/order/payment/Marketplace packages and server features.
+23. [ ] Apply clean/upgraded migrations and targeted regression tests.
+24. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
     transfer, and mounted transport scenarios.
-24. [ ] Execute production-like payment and payout provider evidence.
-25. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+25. [ ] Execute production-like payment and payout provider evidence.
+26. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
 
 ## Completed source waves retained for history
 
@@ -767,9 +772,10 @@ Source inspection is not execution evidence.
 - [x] Harden pricing and payment collection owner-port errors with stable public
   messages plus correlation-aware internal logging.
 - [x] Publish and host-compose `OrderReadPort`, cut complete order projections across
-  admin REST, mounted GraphQL, and storefront HTTP, then extend the same boundary to
-  return/order-change detail/list and cut storefront post-order lists while preserving
-  mutations, refunds, GraphQL/admin post-order compatibility paths, and unvalidated status.
+  admin REST, mounted GraphQL, and storefront HTTP, extend the boundary to
+  return/order-change projections, and cut storefront plus GraphQL post-order reads
+  while preserving mutations, refunds, admin post-order compatibility paths, and
+  unvalidated status.
 
 ## Change rules
 
@@ -799,7 +805,7 @@ Source inspection is not execution evidence.
 - [Fulfillment checkout execution contract](../../rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json)
 - [Marketplace root plan](../../rustok-marketplace/docs/implementation-plan.md)
 - [Marketplace root FBA registry](../../rustok-marketplace/contracts/marketplace-fba-registry.json)
-- [Marketplace ledger FBA registry](../../rustok-marketplace-ledger/contracts/marketplace-fba-registry.json)
+- [Marketplace ledger FBA registry](../../rustok-marketplace/contracts/marketplace-fba-registry.json)
 - [Seller balance transfer contract](../../rustok-marketplace-ledger/contracts/seller-balance-transfer-v1.json)
 - [Marketplace seller plan](../../rustok-marketplace-seller/docs/implementation-plan.md)
 - [Marketplace listing plan](../../rustok-marketplace-listing/docs/implementation-plan.md)

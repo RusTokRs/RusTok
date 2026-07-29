@@ -56,12 +56,12 @@ typed identity exclusively.
 Complete order, return, and order-change projection reads are published through
 `OrderReadPort`. `CommerceOrderReadRuntime` carries one host-selected owner port
 through the default server, `HostRuntimeContext`, Commerce HTTP, and Commerce
-GraphQL schema data. Mounted admin REST and GraphQL complete-order list/detail,
-storefront HTTP order detail/ownership, and storefront return/order-change lists
-use the same port with authenticated actor, resolved channel, deadline, public
-error policy, filters, ordering, pagination total, locale fallback where applicable,
-and ownership behavior preserved. GraphQL and admin post-order reads plus runtime
-evidence remain open and unvalidated.
+GraphQL schema data. Mounted GraphQL complete-order and post-order reads,
+storefront HTTP order detail/ownership and post-order lists, plus admin REST
+complete-order reads use the same port with authenticated actor, resolved channel,
+effective locale context, deadline, public error policy, filters, ordering,
+pagination total, locale fallback where applicable, and ownership behavior
+preserved. Admin post-order reads plus runtime evidence remain open and unvalidated.
 
 ## FFA/FBA boundary
 
@@ -87,6 +87,7 @@ evidence remain open and unvalidated.
 - `scripts/verify/verify-order-admin-boundary.mjs`,
   `scripts/verify/verify-order-storefront-boundary.mjs`,
   `scripts/verify/verify-order-read-port.mjs`,
+  `scripts/verify/verify-commerce-graphql-order-read-shim.mjs`,
   `scripts/verify/verify-commerce-storefront-order-read-cutover.mjs`,
   `scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs`,
   `scripts/verify/verify-commerce-admin-order-route-error-context.mjs`,
@@ -157,7 +158,8 @@ evidence remain open and unvalidated.
   page/per-page handling, owner totals, descending ordering, complete return items,
   and current status/customer/order/type filters.
 - [x] Use `PortContext.locale` and explicit tenant-default fallback only for the
-  currently localized complete-order projection requests.
+  currently localized complete-order projection requests; retain resolved request
+  locale as context for non-localized post-order reads.
 - [x] Require `PortCallPolicy::read()` and parse tenant identity from
   `PortContext` for all six operations.
 - [x] Map every current `OrderError` variant to stable `PortError` policy without
@@ -174,15 +176,17 @@ evidence remain open and unvalidated.
   public envelopes.
 - [x] Cut GraphQL order list/detail over to the host-selected runtime through the
   mounted resolver scope while retaining an embedded-schema in-process fallback.
-- [x] Propagate authenticated actor and request channel into GraphQL order reads;
-  unauthenticated or embedded reads retain explicit service/no-channel fallback.
+- [x] Propagate authenticated actor, request channel, and effective locale into
+  GraphQL order read context; unauthenticated or embedded reads retain explicit
+  service/no-channel and truthful unknown-locale fallback.
 - [x] Cut storefront HTTP order detail and shared ownership reads over to the
   host-selected runtime while preserving customer resolution, locale fallback,
   public envelopes, and the concrete operations that follow ownership validation.
 - [x] Cut storefront return and order-change list reads over to the host-selected
   runtime while preserving filters, ordering, complete DTOs, totals, and envelopes.
-- [ ] Cut GraphQL return/order-change detail and list reads over to the scoped
-  host-selected runtime without changing mutations.
+- [x] Cut GraphQL return/order-change detail and list reads over to the scoped
+  host-selected runtime while preserving typed not-found error shapes and without
+  changing mutations.
 - [ ] Audit and cut admin post-order reads separately without moving mutations or
   payment/fulfillment policy.
 - [ ] Execute compile, mounted parity, deadline/failure, restart, and remote-adapter
@@ -239,23 +243,23 @@ evidence remain open and unvalidated.
    **Done when:** the contract-test matrix has executable remote evidence and
    fallback behavior supports a justified status promotion.
 
-7. **Prove mounted order projection read parity.** Admin REST and mounted GraphQL
-   complete order reads plus storefront order/return/change reads now use the
-   host-selected `CommerceOrderReadRuntime` without concrete `OrderService`
-   projection reads on those paths.
+7. **Prove mounted order projection read parity.** Mounted GraphQL complete-order
+   and post-order reads, storefront order/return/change reads, and admin REST
+   complete-order reads now use the host-selected `CommerceOrderReadRuntime`
+   without concrete `OrderService` projection reads on those paths.
    **Depends on:** compiled order/commerce/server crates and mounted local plus
    remote adapter profiles.
    **Done when:** locale/filter/pagination/authorization/ownership behavior,
    deadlines, stable failure policy, restart, and remote adapter parity are
    retained as execution evidence.
 
-8. **Finish post-order consumer cutover.** GraphQL and admin return/order-change
-   reads still use concrete owner services even though all six typed operations
-   are published.
-   **Depends on:** the host-selected runtime and current transport envelope
+8. **Finish admin post-order consumer cutover.** Admin return/order-change reads
+   still use concrete owner services even though all six typed operations are
+   published and GraphQL/storefront consumers are cut over.
+   **Depends on:** the host-selected runtime and current admin transport envelope
    inventory.
-   **Done when:** mounted GraphQL and admin post-order reads no longer construct
-   foreign owner services, while mutations and payment policy remain unchanged.
+   **Done when:** mounted admin post-order reads no longer construct foreign owner
+   services, while mutations and payment/fulfillment policy remain unchanged.
 
 9. **Keep order and commerce documentation synchronized.** Update local docs,
    manifests, registries, central status, and the umbrella commerce plan whenever
