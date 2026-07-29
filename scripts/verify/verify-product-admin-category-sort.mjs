@@ -25,8 +25,8 @@ function requireText(source, marker, message) {
 
 const files = {
   controls: read("crates/rustok-product/admin/src/catalog_controls.rs"),
-  ui: read("crates/rustok-product/admin/src/ui/leptos.rs"),
-  transport: read("crates/rustok-product/admin/src/transport.rs"),
+  ui: read("crates/rustok-product/admin/src/ui/catalog_admin.rs"),
+  transport: read("crates/rustok-product/admin/src/catalog_transport.rs"),
   graphql: read("crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs"),
   native: read("crates/rustok-product/admin/src/transport/admin_catalog_native.rs"),
   ownerTypes: read("crates/rustok-product/src/services/catalog/types.rs"),
@@ -38,7 +38,7 @@ const files = {
 for (const marker of ["ProductAdminListInput", "category_id", "sort_by", "sort_direction", "published_at", "created_at", "desc", "asc"]) {
   requireText(files.controls, marker, `admin controls must retain ${marker}`);
 }
-for (const marker of ['name="category_id"', 'name="sort_by"', 'name="sort_direction"', "fetch_catalog_search_options", "legacy::ProductAdmin"]) {
+for (const marker of ['name="category_id"', 'name="sort_by"', 'name="sort_direction"', "fetch_catalog_search_options", "super::leptos::ProductAdmin"]) {
   requireText(files.ui, marker, `admin UI must retain ${marker}`);
 }
 for (const marker of ["build_product_admin_list_input", 'browser_query_value("category_id")', "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]) {
