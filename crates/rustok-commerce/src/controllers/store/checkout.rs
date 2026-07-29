@@ -253,29 +253,29 @@ pub async fn complete_cart_checkout(
         runtime.db_clone(),
         runtime.event_bus(),
     );
-    let response =
-        crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input(
-            &storefront_runtime,
-            runtime.payment_provider_registry(),
-            tenant.id,
-            &request_context,
-            auth.0,
-            idempotency_key,
-            checkout_input,
+    let response = crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input_with_product_port(
+        &storefront_runtime,
+        runtime.payment_provider_registry(),
+        runtime.product_catalog_read_port(),
+        tenant.id,
+        &request_context,
+        auth.0,
+        idempotency_key,
+        checkout_input,
+    )
+    .await
+    .map_err(|error| {
+        storefront_checkout_http_error(
+            StorefrontCheckoutErrorContext::new(
+                tenant.id,
+                actor_id,
+                cart_id,
+                &request_context,
+                "complete_cart_checkout",
+            ),
+            error,
         )
-        .await
-        .map_err(|error| {
-            storefront_checkout_http_error(
-                StorefrontCheckoutErrorContext::new(
-                    tenant.id,
-                    actor_id,
-                    cart_id,
-                    &request_context,
-                    "complete_cart_checkout",
-                ),
-                error,
-            )
-        })?;
+    })?;
 
     Ok(Json(response))
 }
