@@ -61,6 +61,7 @@ pub mod config;
 pub mod consumer;
 pub mod contract_consumer;
 pub mod contract_decode_failure;
+pub mod dedup_recovery_window_policy;
 pub mod dlq;
 #[cfg(feature = "iggy")]
 pub mod dlq_duplicate_alert_observer;
@@ -69,6 +70,7 @@ pub mod dlq_duplicate_alert_runtime;
 #[cfg(feature = "iggy")]
 pub mod dlq_duplicate_external_scan;
 pub mod dlq_duplicate_inspection;
+pub mod dlq_duplicate_rolling_window;
 #[cfg(feature = "iggy")]
 mod dlq_publisher;
 pub mod health;
@@ -90,6 +92,11 @@ pub use contract_consumer::{
 };
 pub use contract_decode_failure::{
     ConsumedContractDecodeFailure, ContractDecodeFailureKind,
+};
+pub use dedup_recovery_window_policy::{
+    IggyDedupRecoveryWindowAssessment, IggyDedupRecoveryWindowPolicy,
+    IggyDedupRecoveryWindowPolicyError, IggyDedupRecoveryWindowStatus,
+    IggyDeduplicationConfiguration,
 };
 pub use dlq::{DlqEntry, DlqManager};
 #[cfg(feature = "iggy")]
@@ -113,6 +120,10 @@ pub use dlq_duplicate_external_scan::{
 pub use dlq_duplicate_inspection::{
     DlqDuplicateInspectionError, DlqDuplicateObservation, DlqDuplicateSummary,
     summarize_dlq_duplicates,
+};
+pub use dlq_duplicate_rolling_window::{
+    DlqDuplicateRollingWindow, DlqDuplicateRollingWindowError,
+    DlqDuplicateRollingWindowPolicy, DlqDuplicateRollingWindowSnapshot,
 };
 pub use health::{HealthCheckResult, HealthStatus, health_check};
 pub use partitioning::{calculate_partition, partition_key};

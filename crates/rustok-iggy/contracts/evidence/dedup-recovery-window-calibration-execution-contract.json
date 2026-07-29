@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dedup-recovery-window-calibration-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "source_contract": "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json",
+  "test_target": "dedup_recovery_window_calibration",
+  "case": "reviewed_configuration_covers_recovery_window",
+  "runner": "scripts/evidence/capture-iggy-dedup-recovery-window-calibration.mjs",
+  "verifier": "scripts/verify/verify-iggy-dedup-recovery-window-retained.mjs",
+  "source_verifier": "scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs",
+  "evidence_path": "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution.json",
+  "evidence_status": "runtime_calibration_pending",
+  "command": {
+    "program": "cargo",
+    "args": [
+      "test",
+      "-p",
+      "rustok-iggy",
+      "--test",
+      "dedup_recovery_window_calibration",
+      "--",
+      "reviewed_configuration_covers_recovery_window",
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ]
+  },
+  "required_environment": {
+    "bounds_path": "RUSTOK_IGGY_DEDUP_RECOVERY_BOUNDS_PATH",
+    "config_path": "RUSTOK_IGGY_DEDUP_RECOVERY_CONFIG_PATH",
+    "server_artifact": "RUSTOK_IGGY_DEDUP_RECOVERY_SERVER_ARTIFACT"
+  },
+  "bounds_contract": {
+    "schema_version": 1,
+    "required_fields": [
+      "publication_lease_milliseconds",
+      "process_restart_milliseconds",
+      "transport_reconnect_milliseconds",
+      "operator_recovery_milliseconds",
+      "required_max_entries_per_partition",
+      "capacity_basis"
+    ],
+    "path_outside_repository": true,
+    "full_content_retained": false,
+    "full_file_sha256_retained": false,
+    "canonical_projection_retained": true
+  },
+  "reviewed_configuration": {
+    "section": "system.message_deduplication",
+    "required_enabled": true,
+    "required_positive_fields": [
+      "max_entries",
+      "expiry"
+    ],
+    "config_path_outside_repository": true,
+    "full_content_retained": false,
+    "full_file_sha256_retained": false,
+    "canonical_projection_retained": true
+  },
+  "expected_assessment": {
+    "status": "iggy.dedup_recovery.sufficient",
+    "required_expiry": "checked_sum_of_reviewed_bounds",
+    "configured_expiry_not_below_required": true,
+    "configured_max_entries_not_below_required": true,
+    "stronger_guarantee": false
+  },
+  "runner_requirements": {
+    "clean_working_tree_before": true,
+    "clean_working_tree_after_test": true,
+    "full_git_commit": true,
+    "commit_unchanged": true,
+    "source_hashes_unchanged": true,
+    "exact_case_only": true,
+    "running_one_test_required": true,
+    "skip_rejected": true,
+    "no_clobber_atomic_write_after_pass": true
+  },
+  "retained_packet": {
+    "reviewed_bounds_projection_and_digest": true,
+    "reviewed_configuration_projection_and_digest": true,
+    "reviewed_server_artifact_label": true,
+    "git_toolchain_timestamps": true,
+    "exact_command": true,
+    "current_source_sha256": true,
+    "test_output_sha256_and_bytes": true,
+    "identifier_free_sufficient_assessment": true,
+    "case_result": "pass"
+  },
+  "privacy_exclusions": [
+    "bounds_path",
+    "bounds_full_content",
+    "bounds_full_file_sha256",
+    "config_path",
+    "config_full_content",
+    "config_full_file_sha256",
+    "broker_address",
+    "username",
+    "password",
+    "connection_string",
+    "raw_test_output",
+    "stream_name",
+    "partition_id",
+    "offset",
+    "broker_message_id",
+    "delivery_uuid",
+    "payload",
+    "payload_sha256",
+    "ack_token",
+    "raw_iggy_error"
+  ],
+  "source_files": [
+    "crates/rustok-iggy/src/dedup_recovery_window_policy.rs",
+    "crates/rustok-iggy/src/lib.rs",
+    "crates/rustok-iggy/tests/dedup_recovery_window_calibration.rs",
+    "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json",
+    "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution-contract.json",
+    "scripts/evidence/capture-iggy-dedup-recovery-window-calibration.mjs",
+    "scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs",
+    "scripts/verify/verify-iggy-dedup-recovery-window-retained.mjs"
+  ],
+  "non_claims": [
+    "active_server_configuration_readback",
+    "capacity_basis_correctness_proven",
+    "production_workload_observed",
+    "failover_proven",
+    "multi_replica_proven",
+    "database_broker_transaction",
+    "physical_exactly_once",
+    "profiles_authorization"
+  ]
+}

@@ -85,6 +85,17 @@
     "auto_commit": false,
     "result": "DlqDuplicateSummary"
   },
+  "rolling_window": {
+    "status": "source_complete_scanner_integration_pending",
+    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json",
+    "source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
+    "result": "DlqDuplicateRollingWindowSnapshot",
+    "complete_cycle_retention": true,
+    "history_truncated_after_eviction": true,
+    "identifier_export": false,
+    "moving_cursor": false,
+    "persistence": false
+  },
   "alert_policy": {
     "status": "source_complete_server_observer_execution_pending",
     "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json",
@@ -127,6 +138,8 @@
   "remaining_work": [
     "retained_external_iggy_duplicate_scan_evidence",
     "partition_fairness_or_per_partition_budget_policy",
+    "moving_window_or_per_partition_cursor_policy",
+    "rolling_window_scanner_cursor_persistence_integration",
     "telemetry_and_health_projection",
     "alert_delivery_and_suppression_outside_policy",
     "operator_ack_delete_replay_workflow_outside_inspector",

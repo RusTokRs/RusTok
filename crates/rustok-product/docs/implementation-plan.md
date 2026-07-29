@@ -10,24 +10,36 @@ selected path. The product packages contain no package-local framework or
 framework-specific outbox adapter dependency.
 
 `ProductCatalogReadPort` / `product.catalog_read.v1` is implemented by
-`CatalogService`. Its in-process profile has live PostgreSQL execution evidence,
-while the provider registry and static contract matrix retain the module at
-`boundary_ready` until an external adapter is executed. The composed `rustok-ai`
-consumer has live unavailable/deadline degraded-path evidence; Commerce
-checkout currently treats Product as a hard dependency rather than claiming a
-cart-snapshot fallback that does not exist.
-The port also resolves variant-first consumer input to the owning product
-projection, so checkout consumers do not query product or variant entities.
-The compiled commerce checkout channel-inventory regression executes the
-in-process product projection provider before inventory preflight; it is a
-bounded consumer proof only and does not close the module transport gate.
+`CatalogService`. Its in-process profile has live PostgreSQL execution evidence.
+The Product-owned `ProductCatalogReadRuntime` gives host composition one typed
+profile selector for `embedded_native` or `external` execution. The server
+preserves a runtime already installed in `HostRuntimeContext` or
+`ServerRuntimeContext`, otherwise composes the embedded provider once. AI,
+Marketplace Listing, Order storefront native checkout, Commerce HTTP checkout,
+and mounted Commerce GraphQL checkout consume the host-selected port rather than
+constructing parallel `CatalogService` instances. GraphQL schema data carries the
+Product runtime into a resolver-scoped task-local; directly embedded schemas
+retain an explicit in-process compatibility fallback. The checkout consumer
+source cutover is complete. A concrete external transport adapter has not yet
+been executed, so the provider remains `boundary_ready` rather than
+`transport_verified`.
+
+The composed `rustok-ai` consumer has live unavailable/deadline degraded-path
+evidence. Commerce checkout treats Product as a hard dependency and must not
+claim a cart-snapshot fallback that does not exist. The port resolves
+variant-first consumer input to the owning product projection, so consumers do
+not query product or variant entities. The compiled commerce checkout
+channel-inventory regression executes the in-process product projection provider
+before inventory preflight; it is bounded consumer evidence only and does not
+close the external transport gate.
+
 Product runtime contract, commerce transport, and module metadata remain synchronized.
 The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
 The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, catalog
 search-option discovery, detached-value marker contract, and no-compile schema
 guardrail are source-locked. The complete storefront/admin catalog-controls
-contract now carries snake_case `search`, `category_id`, `sort_by`,
+contract carries snake_case `search`, `category_id`, `sort_by`,
 `sort_direction`, and `attribute_filters` through typed UI state, native and
 GraphQL adapters, Product-owned request models, and shared server-side
 execution. Storefront and admin accept at most eight semicolon-separated
@@ -37,6 +49,7 @@ localized/plain text, integer, decimal, boolean, date, datetime, select, and
 multiselect storage while excluding detached values. JSON attributes are
 explicitly rejected because this contract does not claim unindexed JSON
 comparison semantics. Recheck on 2026-07-29.
+
 Product write GraphQL derives tenant and actor exclusively from authenticated
 contexts. Product-owned `map_product_public_error` is shared by GraphQL and
 native admin/storefront transports; it keeps internal errors in structured logs
@@ -45,6 +58,7 @@ Entity writes that publish product domain events use
 `ProductWriteTransaction` to keep the outbox write and database commit in one transaction.
 Admin and storefront product roots reject an explicit tenant that differs from the
 host-provided `TenantContext` before accessing storage.
+
 Product migrations enforce PostgreSQL-only execution, tenant-scoped
 translation/SKU/tag identity, canonical primary categories, typed EAV option
 relations, bounded JSON inputs, normalized/indexed channel visibility, and a
@@ -67,6 +81,7 @@ The owner-local tenant-storage fixture rejects mixed-tenant product
 translations, category parents, schema/category/attribute relations, EAV
 values, and product-category joins, and verifies owner-derived translation
 isolation for category, attribute, and schema copy.
+
 `product_catalog_read_port_executes_against_postgres` exercises product,
 variant-first, and published-list operations with live price/inventory
 enrichment, tenant isolation, locale fallback, channel filtering, count, and
@@ -77,6 +92,7 @@ promoting the transport status.
 `EXPLAIN (ANALYZE, BUFFERS)` plans for storefront page and count SQL. The
 specialized published/global-visibility index is used at all three page scales;
 the count path uses it at 100k and 1M.
+
 `CatalogService` is separated by responsibility across
 `services/catalog/commands.rs`, `admin_queries.rs`, `attribute_filters.rs`,
 `queries.rs`, `projection.rs`, and `tags.rs` while the public service contract
@@ -98,15 +114,18 @@ rustok-pricing` dependency cycle.
 
 - FFA status: `in_progress` — both owner UI surfaces exist and must preserve
   the core/transport/UI split and native/GraphQL parity.
-- FBA status: `boundary_ready` — read-port policy and metadata are source-locked,
-  the in-process profile is persistence-backed, and the AI consumer degraded
-  path is runtime-verified. Commerce remains an explicit hard dependency and no
-  external adapter is live-verified.
+- FBA status: `boundary_ready` — the read port, in-process persistence profile,
+  Product-owned runtime selector, and all declared consumer source cutovers are
+  complete. Concrete external transport execution remains open.
 - Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
+  `scripts/verify/verify-product-catalog-read-runtime-composition.mjs`,
+  `scripts/verify/verify-product-native-checkout-catalog-runtime.mjs`,
+  `scripts/verify/verify-product-http-checkout-catalog-runtime.mjs`,
+  `scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
   `scripts/verify/verify-product-storefront-boundary.mjs`,
@@ -117,11 +136,13 @@ rustok-pricing` dependency cycle.
 
 ## Open results
 
-1. Keep FBA at `boundary_ready` until a concrete external Product adapter is
-   executed. If Commerce introduces a cart-snapshot degraded policy, add it to
-   the registry only together with live unavailable/deadline execution.
-   `rustok-ai` already has runtime-verified unavailable/deadline behaviour;
-   Pricing is not a `ProductCatalogReadPort` consumer.
+1. Implement a concrete external `ProductCatalogReadPort` transport adapter in a
+   separate transport crate and execute all three operations through it. Preserve
+   serialized `PortContext`, deadlines, typed `PortError`, tenant/locale/channel
+   semantics, variant-to-product resolution, count, and pagination. Execute the
+   declared unavailable/deadline hard-dependency behavior for Commerce and the
+   reviewed degraded behavior for AI. Do not promote above `boundary_ready` from
+   source markers alone.
 2. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
@@ -132,11 +153,24 @@ rustok-pricing` dependency cycle.
 
 ## Verification
 
+- [x] Compose one host-selected `ProductCatalogReadRuntime` and reuse it for AI and Marketplace Listing.
+- [x] Cut Order storefront native checkout over to the composed Product runtime.
+- [x] Cut Commerce HTTP checkout over to the composed Product runtime.
+- [x] Cut mounted Commerce GraphQL checkout over to the composed Product runtime.
+- [ ] Execute a concrete external Product catalog read adapter.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
 - [x] Connect admin search/status/category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
 - [x] Connect typed attribute_filters through storefront/admin UI state, native/GraphQL transports, filterable-definition validation, and Product-owned typed EAV execution.
+- `node scripts/verify/verify-product-catalog-read-runtime-composition.mjs`
+- `node scripts/verify/verify-product-catalog-read-runtime-composition.test.mjs`
+- `node scripts/verify/verify-product-native-checkout-catalog-runtime.mjs`
+- `node scripts/verify/verify-product-native-checkout-catalog-runtime.test.mjs`
+- `node scripts/verify/verify-product-http-checkout-catalog-runtime.mjs`
+- `node scripts/verify/verify-product-http-checkout-catalog-runtime.test.mjs`
+- `node scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs`
+- `node scripts/verify/verify-product-graphql-checkout-catalog-runtime.test.mjs`
 - `node scripts/verify/verify-product-catalog-attribute-filters.mjs`
 - `node scripts/verify/verify-product-catalog-attribute-filters.test.mjs`
 - `node scripts/verify/verify-product-admin-category-sort.mjs`
@@ -153,9 +187,15 @@ rustok-pricing` dependency cycle.
 
 ## Boundaries
 
-- Product owns catalog data and the `ProductCatalogReadPort` implementation.
-- Commerce checkout and AI consume `ProductCatalogReadPort`; Pricing uses
-  Product's public embedded service contract and does not claim a read-port
-  fallback profile. None regain Product DTO or entity ownership.
+- Product owns catalog data, `ProductCatalogReadPort`, and
+  `ProductCatalogReadRuntime` profile selection.
+- The host selects and shares one Product read runtime; consumers receive the
+  public port and must not construct parallel owner services.
+- Order native checkout, Commerce HTTP checkout, mounted Commerce GraphQL
+  checkout, Marketplace Listing, and AI consume Product's public read contract
+  through host composition. Directly embedded GraphQL schemas retain an explicit
+  in-process compatibility fallback. Pricing uses Product's public embedded
+  service contract and does not claim a read-port fallback profile. None regain
+  Product DTO, entity, or storage ownership.
 - Hosts compose product UI packages and pass the effective locale and runtime
   context without adding a package-local locale or transport fallback.

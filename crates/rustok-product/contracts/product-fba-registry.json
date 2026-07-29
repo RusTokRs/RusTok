@@ -29,6 +29,14 @@
       ]
     },
     {
+      "module": "marketplace-listing",
+      "profile": "listing_product_projection",
+      "degraded_modes": [],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    },
+    {
       "module": "ai-product",
       "profile": "ai_product_generation_context",
       "degraded_modes": [
@@ -45,13 +53,37 @@
     "local_plan": "crates/rustok-product/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "runtime_composition_verifier": "scripts/verify/verify-product-catalog-read-runtime-composition.mjs",
+    "native_checkout_runtime_verifier": "scripts/verify/verify-product-native-checkout-catalog-runtime.mjs",
+    "http_checkout_runtime_verifier": "scripts/verify/verify-product-http-checkout-catalog-runtime.mjs",
+    "graphql_checkout_runtime_verifier": "scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
     "runtime_fallback_smoke": "crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
     "runtime_fallback_smoke_runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs"
   },
+  "runtime_composition": {
+    "runtime": "ProductCatalogReadRuntime",
+    "source": "crates/rustok-product/src/runtime.rs",
+    "host_composition": "apps/server/src/services/commerce_provider_runtime.rs",
+    "profiles": [
+      "embedded_native",
+      "external"
+    ],
+    "source_complete_consumers": [
+      "ai-product",
+      "marketplace-listing",
+      "order-storefront-native",
+      "commerce-checkout-http",
+      "commerce-checkout-graphql"
+    ],
+    "pending_consumers": [],
+    "status": "source_complete_consumer_cutover_complete"
+  },
   "in_process_provider_impl": {
     "service": "CatalogService",
+    "runtime": "ProductCatalogReadRuntime",
+    "profile": "embedded_native",
     "source": "crates/rustok-product/src/ports.rs",
     "status": "implemented"
   },

@@ -82,13 +82,28 @@ mutation retry.
   execution, reviewed dedup-disabled configuration projection, current source
   hashes, aggregate two-partition absent-offset assertions, and no-clobber packet
   publication are locked.
+- A pure Iggy dedup recovery-window policy is source-complete. It checked-sums
+  caller-reviewed publication-lease, restart, reconnect, and operator-recovery
+  bounds; requires an explicit maximum distinct-ID count per physical partition;
+  distinguishes disabled, expiry, capacity, combined, and sufficient states; and
+  contains no production default or exactly-once claim.
+- Recovery-window retained calibration tooling is source-complete. A versioned
+  external bounds file and reviewed enabled Iggy configuration are reduced to
+  canonical privacy-safe projections; one exact Rust case must report a
+  sufficient assessment from a clean unchanged commit before a no-clobber packet
+  can be published.
+- A bounded physical-DLQ rolling window is source-complete. It retains opaque
+  observations across complete scan cycles under a checked 10,000-observation
+  cap, detects ordinary and conflicting duplicates split across retained cycles,
+  rejects oversized cycles transactionally, and reports permanent truncation
+  after complete-cycle eviction.
 - Canonical retained packets remain pending and must omit credentials and
-  delivery-level facts, bind reviewed source/configuration digests, and become
-  stale when bound sources change.
+  delivery-level facts, bind reviewed source/configuration/input digests, and
+  become stale when any bound source or reviewed input changes.
 
 ## Physical DLQ duplicate inspection
 
-Two bounded policies are source-complete:
+Two bounded scanner policies are source-complete:
 
 - `global_budget`: one ordered partition allowlist and one shared cap. A busy
   early partition may prevent later partitions from being polled.
@@ -106,10 +121,12 @@ RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_PER_PARTITION_MESSAGES=<positive cap>
 ```
 
 `memory` and `outbox_local` remain intentional not-applicable modes and do not
-resolve Iggy. Both policies use explicit offsets and `auto_commit=false`. Every
-observer cycle reuses the configured start offset; neither policy owns moving
-cursors, stored progress, cross-cycle duplicate state, current-tail coverage, or
-complete-history semantics.
+resolve Iggy. Both scanner policies use explicit offsets and `auto_commit=false`.
+The current observer still reuses one configured start offset and does not own
+moving cursors, stored progress, current-tail coverage, or complete-history
+semantics. The separate rolling state can preserve relationships across complete
+cycles supplied by a future scanner integration, but it does not move or persist
+a cursor itself.
 
 ### Production partition invariant
 
@@ -166,14 +183,81 @@ canonical path, so existing reviewed evidence cannot be replaced.
 
 Runtime execution and the canonical packet remain pending.
 
+### Recovery-window retained calibration
+
+Source-complete paths:
+
+```text
+crates/rustok-iggy/contracts/evidence/
+  dedup-recovery-window-policy-source.json
+  dedup-recovery-window-calibration-execution-contract.json
+crates/rustok-iggy/tests/
+  dedup_recovery_window_calibration.rs
+scripts/evidence/
+  capture-iggy-dedup-recovery-window-calibration.mjs
+scripts/verify/
+  verify-iggy-dedup-recovery-window-policy.mjs
+  verify-iggy-dedup-recovery-window-retained.mjs
+```
+
+The capture requires one reviewed versioned recovery-bounds JSON and one reviewed
+Iggy configuration outside the repository. The bounds projection retains the
+lease, restart, reconnect, operator-recovery, required per-partition entry count,
+capacity-basis label, checked required expiry, and canonical digest. The Iggy
+projection retains only enabled, `max_entries`, `expiry`, normalized milliseconds,
+and its canonical digest.
+
+The exact Rust case is opt-in for ordinary test runs, but retained capture rejects
+a skip and requires `running 1 test`, the exact named pass, a sufficient status,
+an unchanged commit and source hash set, and a clean worktree. It retains no
+input paths, full files, endpoints, credentials, identifiers, broker coordinates,
+payloads, or raw output. Publication is no-clobber.
+
+Runtime calibration and the canonical packet remain pending.
+
+### Bounded rolling duplicate window
+
+Source-complete paths:
+
+```text
+crates/rustok-iggy/src/
+  dlq_duplicate_rolling_window.rs
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-rolling-window-source.json
+scripts/verify/
+  verify-iggy-dlq-duplicate-rolling-window.mjs
+crates/rustok-iggy/docs/
+  dlq-duplicate-rolling-window.md
+crates/rustok-profiles/docs/
+  poison-duplicate-rolling-window-checkpoint.md
+```
+
+`DlqDuplicateRollingWindowPolicy` requires positive explicit cycle and per-cycle
+bounds, caps cycle count at 128, and requires their checked product not to exceed
+10,000 observations. No production default is embedded.
+
+`DlqDuplicateRollingWindow` retains complete cycles and combines all retained
+opaque observations before count-only classification. An oversized cycle leaves
+existing state unchanged. At capacity the oldest complete cycle is evicted, and
+all later snapshots report `history_truncated = true`; an evicted relationship
+may disappear, so the result is never complete-history or current-tail proof.
+
+Scanner collection, independent per-partition cursor advancement, persistence or
+restart-reset semantics, mode-aware server composition, and external-Iggy
+cross-cycle runtime evidence remain pending.
+
 Detailed checkpoints:
 
 - `crates/rustok-profiles/docs/poison-duplicate-external-scan-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-fair-window-external-runtime-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md`
+- `crates/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md`
+- `crates/rustok-profiles/docs/poison-duplicate-rolling-window-checkpoint.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-external-scan.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md`
+- `crates/rustok-iggy/docs/dedup-recovery-window-policy.md`
+- `crates/rustok-iggy/docs/dlq-duplicate-rolling-window.md`
 
 ## Results and next work
 
@@ -213,15 +297,18 @@ Detailed checkpoints:
    best-effort `acknowledged`, process loss, acknowledgement-only recovery, and
    multi-replica ownership on PostgreSQL plus real Iggy.
 
-9. **Prove confirmation-window sufficiency.**
-   Compare dedup `max_entries`/`expiry` against maximum lease, restart,
-   reconnect, and operator recovery horizons before making a stronger duplicate
-   guarantee.
+9. **Execute recovery-window calibration.**
+   Review the production lease, restart, reconnect, operator-response, and
+   per-partition distinct-ID bounds; run the locked sufficient-only capture
+   against a reviewed enabled Iggy configuration; inspect and commit the
+   no-clobber packet; and repeat whenever a bound source, configuration, or input
+   changes. A packet covers only that supplied model.
 
-10. **Design moving duplicate windows or keep fixed snapshots.**
-    A moving per-partition cursor must retain bounded prior identity/digest state
-    so copies split across cycles remain related. Fixed snapshots must not be
-    presented as current-tail or complete-history evidence.
+10. **Integrate the bounded rolling duplicate window.**
+    Feed complete fair scanner cycles without exporting identifiers, define
+    independent per-partition cursor advancement, choose persistence or explicit
+    restart-reset semantics, compose the mode-aware observer, and retain real
+    cross-cycle Iggy evidence. Truncated state must remain visibly incomplete.
 
 11. **Retain production operations.**
     Prove bundled mode, restart, TLS/auth/failover, reconnect, rebalance,
@@ -230,26 +317,25 @@ Detailed checkpoints:
 
 ## Recheck checkpoint — 2026-07-29
 
-- Rechecked the canonical plan and current `main` after the two-partition
-  fair-window harness.
+- Rechecked the canonical plan and current `main` after the retained
+  recovery-window calibration tooling merge.
 - Reconfirmed privacy-before-presentation, owner-scoped writes, Media ownership,
   fail-closed follower reads, no automatic mutation retry, and the rule that
   operational state never authorizes profile presentation.
 - Reconfirmed deterministic same-ID colocation and the production-reachable
   fair/global comparison.
-- Added a locked fair-window execution contract, clean-commit runner, and strict
-  retained verifier.
-- Required exact one-case success, skip rejection, unchanged commit/source
-  hashes, reviewed dedup-disabled configuration projection, and four aggregate
-  absent-offset checkpoints across two partitions.
-- Added no-clobber canonical packet publication through exclusive temporary-file
-  creation and a hard link.
-- Kept runtime execution, canonical retained packets, moving-window state,
-  production recovery-window sufficiency, bundled/TLS/auth, and multi-replica
-  claims open.
-- Tests, Cargo commands, repository source verifiers, external/bundled Iggy,
-  retained capture, and multi-replica scenarios were not run per maintainer
-  instruction.
+- Rechecked the fixed scanner APIs and confirmed that returning one already
+  aggregated summary cannot preserve a duplicate relationship split across
+  advancing scan cycles.
+- Added a pure bounded complete-cycle rolling state with checked memory limits,
+  transactional oversized-cycle rejection, cross-cycle ordinary/conflicting
+  classification, complete-cycle eviction, and permanent truncation metadata.
+- Kept scanner observation feeding, per-partition cursor advancement, state
+  persistence/restart semantics, server composition, external runtime evidence,
+  telemetry/health, bundled/TLS/auth, failover, and multi-replica claims open.
+- Tests, Cargo commands, formatters, repository source verifiers, broker scans,
+  server observers, retained capture, and multi-replica scenarios were not run
+  per maintainer instruction.
 
 ## Verification backlog
 
@@ -259,6 +345,16 @@ cargo xtask module test profiles
 cargo check -p rustok-profiles-storefront --all-targets
 cargo test -p rustok-profiles-storefront
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
+cargo test -p rustok-iggy dlq_duplicate_rolling_window -- --nocapture
+node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
+cargo test -p rustok-iggy dedup_recovery_window_policy -- --nocapture
+cargo test -p rustok-iggy --test dedup_recovery_window_calibration
+node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
+node scripts/verify/verify-iggy-dedup-recovery-window-retained.mjs
+RUSTOK_IGGY_DEDUP_RECOVERY_BOUNDS_PATH=/outside/repository/bounds.json \
+RUSTOK_IGGY_DEDUP_RECOVERY_CONFIG_PATH=/outside/repository/iggy.toml \
+RUSTOK_IGGY_DEDUP_RECOVERY_SERVER_ARTIFACT=reviewed-iggy-build \
+node scripts/evidence/capture-iggy-dedup-recovery-window-calibration.mjs
 cargo test -p rustok-iggy dlq_duplicate_external_scan -- --nocapture
 RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_ADDRESS='host:8090' \
 cargo test -p rustok-iggy --features iggy \
@@ -296,10 +392,17 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
     imply exactly-once without retained broker evidence.
 12. Operational telemetry excludes identities, payloads, broker coordinates,
     claims, credentials, and provider details.
-13. Short dedup or scan sequences do not prove production-window sufficiency.
+13. Short dedup sequences do not prove production-window sufficiency; use a
+    checked additive recovery horizon and an explicit per-partition capacity
+    bound.
 14. Production deterministic broker IDs remain colocated by the publisher's
     one-based modulo partition rule.
 15. Retained evidence is no-clobber, commit-bound, and stale after any bound
-    source change.
-16. Moving duplicate windows require bounded cross-cycle identity state.
-17. Update Profiles and affected owner docs with every boundary change.
+    source or reviewed input change.
+16. Cross-cycle duplicate state must be explicitly bounded and retain complete
+    cycles; partial silent eviction is forbidden.
+17. Any cycle eviction permanently marks the in-memory history truncated, and a
+    truncated snapshot is never current-tail or complete-history evidence.
+18. A sufficient recovery-window assessment covers only the supplied reviewed
+    model and never authorizes Profiles or proves exactly-once.
+19. Update Profiles and affected owner docs with every boundary change.

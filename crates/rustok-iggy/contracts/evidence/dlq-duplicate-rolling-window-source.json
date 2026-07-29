@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dlq-duplicate-rolling-window-source",
+  "status": "source_complete_scanner_integration_pending",
+  "owner": "rustok-iggy",
+  "source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
+  "classifier_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "verifier": "scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs",
+  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-rolling-window.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-rolling-window-checkpoint.md",
+  "public_exports": [
+    "DlqDuplicateRollingWindowPolicy",
+    "DlqDuplicateRollingWindow",
+    "DlqDuplicateRollingWindowSnapshot",
+    "DlqDuplicateRollingWindowError"
+  ],
+  "bounds": {
+    "max_cycles_upper_bound": 128,
+    "total_observation_capacity_upper_bound": 10000,
+    "max_cycles_positive": true,
+    "max_observations_per_cycle_positive": true,
+    "checked_product_required": true,
+    "production_defaults": false
+  },
+  "cycle_semantics": {
+    "input": "one_complete_scan_cycle_of_opaque_duplicate_observations",
+    "empty_cycle_valid": true,
+    "oversized_cycle_rejected_transactionally": true,
+    "oldest_complete_cycle_evicted_at_capacity": true,
+    "duplicate_relationship_retained_across_cycles_while_present": true,
+    "identity_conflict_retained_across_cycles_while_present": true,
+    "partial_cycle_eviction": false
+  },
+  "snapshot_fields": [
+    "summary",
+    "retained_cycles",
+    "retained_observations",
+    "evicted_cycles",
+    "history_truncated"
+  ],
+  "truncation_semantics": {
+    "history_truncated_after_first_eviction": true,
+    "truncated_snapshot_is_complete_history": false,
+    "truncated_snapshot_is_current_tail": false,
+    "evicted_identity_relationship_can_be_lost": true
+  },
+  "privacy_boundary": {
+    "snapshot_excludes": [
+      "broker_address",
+      "stream",
+      "topic",
+      "partition",
+      "offset",
+      "broker_message_id",
+      "payload",
+      "payload_sha256",
+      "receipt_identity",
+      "error_code",
+      "publisher_identity",
+      "timestamp",
+      "credential"
+    ],
+    "observations_not_exported_from_state": true,
+    "identifier_free_snapshot": true,
+    "payload_free_snapshot": true
+  },
+  "mutation_boundary": {
+    "connect_to_broker": false,
+    "poll_messages": false,
+    "store_offsets": false,
+    "acknowledge": false,
+    "publish": false,
+    "delete": false,
+    "purge": false,
+    "replay": false,
+    "retry": false,
+    "mutate_receipts": false,
+    "authorize_profiles": false
+  },
+  "stable_errors": {
+    "invalid_policy": "iggy.dlq_duplicate.rolling_window_policy_invalid",
+    "cycle_too_large": "iggy.dlq_duplicate.rolling_window_cycle_too_large",
+    "count_overflow": "iggy.dlq_duplicate.rolling_window_count_overflow"
+  },
+  "required_source_tests": [
+    "invalid_policy_and_capacity_overflow_fail_closed",
+    "ordinary_duplicate_split_across_cycles_is_detected",
+    "identity_conflict_split_across_cycles_requires_manual_review",
+    "oldest_complete_cycle_eviction_marks_history_truncated",
+    "oversized_cycle_rejection_preserves_existing_state"
+  ],
+  "integration_boundary": {
+    "scanner_collection": "pending",
+    "per_partition_cursor_policy": "pending",
+    "cursor_persistence": false,
+    "restart_recovery": false,
+    "server_observer_composition": "pending",
+    "runtime_evidence": "pending"
+  },
+  "non_claims": [
+    "moving_cursor",
+    "persisted_progress",
+    "restart_safe_state",
+    "current_tail_coverage",
+    "complete_history",
+    "production_retention_sufficiency",
+    "server_observer_integration",
+    "profiles_authorization"
+  ],
+  "remaining_work": [
+    "feed_complete_scanner_cycles_without_identifier_export",
+    "define_per_partition_cursor_advancement",
+    "define_state_persistence_or_restart_reset_semantics",
+    "compose_mode_aware_server_observer",
+    "retain_external_iggy_cross_cycle_runtime_evidence",
+    "define_identifier_free_telemetry_and_health_projection"
+  ],
+  "execution_status": "source_not_run"
+}
