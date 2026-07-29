@@ -44,6 +44,13 @@ function fixture(options = {}) {
   );
   write(
     root,
+    "crates/rustok-product/contracts/product-fba-registry.json",
+    options.omitRegistry
+      ? "{}"
+      : `{"runtime_composition":{"runtime":"ProductCatalogReadRuntime","profiles":["embedded_native","external"],"source_complete_consumers":["ai-product","marketplace-listing"],"pending_consumers":["commerce-checkout-http","commerce-checkout-graphql","order-storefront-native"],"status":"source_complete_consumer_cutover_partial"}}`,
+  );
+  write(
+    root,
     "crates/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
@@ -91,6 +98,10 @@ test("runtime composition guard rejects parallel Marketplace provider", () => {
 
 test("runtime composition guard rejects parallel AI provider", () => {
   reject({ directAi: true }, /parallel AI Product provider/);
+});
+
+test("runtime composition guard rejects missing registry evidence", () => {
+  reject({ omitRegistry: true }, /Product FBA registry/);
 });
 
 test("runtime composition guard rejects missing plan handoff", () => {
