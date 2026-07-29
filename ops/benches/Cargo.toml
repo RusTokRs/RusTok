@@ -65,6 +65,10 @@ path = "src/bin/index_partition_cutover_evidence.rs"
 name = "index-partition-capture-finalize"
 path = "src/bin/index_partition_capture_finalize.rs"
 
+[[bin]]
+name = "index-query-equivalence-capture"
+path = "src/bin/index_query_equivalence_capture.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false
