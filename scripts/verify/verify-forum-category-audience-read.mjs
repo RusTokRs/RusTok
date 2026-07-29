@@ -16,6 +16,9 @@ const visibility = read(
 const owner = read(
   'crates/rustok-forum/src/services/category_audience_read.rs',
 );
+const ownerInline = read(
+  'crates/rustok-forum/src/services/category_audience_read_inline.rs',
+);
 const services = read('crates/rustok-forum/src/services/mod.rs');
 const lib = read('crates/rustok-forum/src/lib.rs');
 const rest = read('crates/rustok-forum/src/controllers/categories.rs');
@@ -97,6 +100,16 @@ requireText(
   'tree metadata recomputation',
 );
 requireText(
+  ownerInline,
+  'get_authenticated_storefront_list_visible_with_audience_context',
+  'storefront selected-category list-scope owner',
+);
+requireText(
+  services,
+  'include!("category_audience_read_inline.rs")',
+  'category read inline composition',
+);
+requireText(
   services,
   'ForumCategoryAudienceReadService',
   'services export',
@@ -170,8 +183,13 @@ requireText(
 );
 requireText(
   nativeAdapter,
-  'visible_category_ids',
-  'native requested-category exact gate',
+  'load_audience_visible_category(',
+  'native selected-category exact gate',
+);
+requireText(
+  nativeAdapter,
+  'get_authenticated_storefront_list_visible_with_audience_context',
+  'native selected-category list-scope owner call',
 );
 
 if (contract.task !== 'FORUM-20BH') throw new Error('unexpected task');
@@ -190,7 +208,8 @@ for (const key of [
   'graphql_storefront_categories_uses_exact_owner',
   'graphql_category_tree_uses_exact_owner',
   'native_storefront_categories_use_exact_owner',
-  'native_requested_category_must_be_in_allowed_sequence',
+  'native_requested_category_uses_exact_single_owner',
+  'native_requested_category_is_not_limited_to_first_page',
 ]) {
   if (!contract.read_boundary[key]) {
     throw new Error(`contract must lock ${key}`);
