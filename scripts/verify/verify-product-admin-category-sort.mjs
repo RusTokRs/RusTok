@@ -38,10 +38,10 @@ const files = {
 for (const marker of ["ProductAdminListInput", "category_id", "sort_by", "sort_direction", "published_at", "created_at", "desc", "asc"]) {
   requireText(files.controls, marker, `admin controls must retain ${marker}`);
 }
-for (const marker of ['name="category_id"', 'name="sort_by"', 'name="sort_direction"', "fetch_catalog_search_options", "super::leptos::ProductAdmin"]) {
+for (const marker of ['name="category_id"', 'name="sort_by"', 'name="sort_direction"', "build_product_admin_list_input", "provide_context(catalog_controls)", "fetch_catalog_search_options", "super::leptos::ProductAdmin"]) {
   requireText(files.ui, marker, `admin UI must retain ${marker}`);
 }
-for (const marker of ["build_product_admin_list_input", 'browser_query_value("category_id")', "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]) {
+for (const marker of ["use_context::<ProductAdminListInput>()", "route_controls.category_id", "route_controls.sort_by", "route_controls.sort_direction", "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]) {
   requireText(files.transport, marker, `admin transport facade must retain ${marker}`);
 }
 for (const marker of ["adminProductCatalog", "AdminProductCatalogFilter", "categoryId", "sortBy", "sortDirection", "primaryCategoryId"]) {
