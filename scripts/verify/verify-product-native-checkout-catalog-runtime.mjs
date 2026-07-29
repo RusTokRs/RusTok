@@ -42,10 +42,12 @@ function findFunctionBody(source, functionName) {
 
 const stagedPath = "crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs";
 const nativePath = "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
+const cargoPath = "crates/rustok-order/storefront/Cargo.toml";
 const registryPath = "crates/rustok-product/contracts/product-fba-registry.json";
 const planPath = "crates/rustok-product/docs/implementation-plan.md";
 const staged = read(stagedPath);
 const native = read(nativePath);
+const cargo = read(cargoPath);
 const registrySource = read(registryPath);
 const plan = read(planPath);
 
@@ -83,6 +85,16 @@ for (const marker of [
 }
 if (native.includes("CatalogService::new")) {
   failures.push("Order native checkout must not construct CatalogService");
+}
+for (const marker of [
+  '"dep:rustok-product"',
+  "rustok-product = { workspace = true, optional = true }",
+]) {
+  requireText(cargo, marker, "Order storefront SSR dependency");
+}
+const hydrateFeature = cargo.match(/hydrate\s*=\s*\[([^\]]*)\]/)?.[1] ?? "";
+if (hydrateFeature.includes("rustok-product")) {
+  failures.push("Order storefront hydrate feature must not include rustok-product backend dependency");
 }
 
 let registry;
