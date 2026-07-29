@@ -51,6 +51,8 @@ const contractPath =
   "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
 const upstreamPath =
   "crates/rustok-forum/contracts/forum-projection-invalidation.json";
+const rebuildPath =
+  "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
 const notePath =
   "crates/rustok-forum/docs/forum-20bl-visibility-scoped-bulk-read.md";
 
@@ -73,15 +75,17 @@ const note = read(notePath);
 
 let contract = null;
 let upstream = null;
-try {
-  contract = JSON.parse(read(contractPath));
-} catch (error) {
-  failures.push(`${contractPath}: invalid JSON: ${error.message}`);
-}
-try {
-  upstream = JSON.parse(read(upstreamPath));
-} catch (error) {
-  failures.push(`${upstreamPath}: invalid JSON: ${error.message}`);
+let rebuild = null;
+for (const [label, source, assign] of [
+  [contractPath, read(contractPath), (value) => { contract = value; }],
+  [upstreamPath, read(upstreamPath), (value) => { upstream = value; }],
+  [rebuildPath, read(rebuildPath), (value) => { rebuild = value; }],
+]) {
+  try {
+    assign(JSON.parse(source));
+  } catch (error) {
+    failures.push(`${label}: invalid JSON: ${error.message}`);
+  }
 }
 
 for (const marker of [
@@ -138,7 +142,6 @@ for (const marker of [
 ]) {
   requireMarker(context, marker, contextPath);
 }
-
 for (const marker of [
   "ForumVisibilityScopedReadStateService",
   "ForumTopicReadTransport::Rest",
@@ -149,10 +152,7 @@ for (const marker of [
 ]) {
   requireMarker(rest, marker, restPath);
 }
-for (const forbidden of [
-  ".mark_category_read(\n",
-  ".mark_all_read(\n",
-]) {
+for (const forbidden of [".mark_category_read(\n", ".mark_all_read(\n"]) {
   rejectMarker(rest, forbidden, restPath);
 }
 
@@ -165,10 +165,7 @@ for (const marker of [
 ]) {
   requireMarker(graphql, marker, graphqlPath);
 }
-for (const forbidden of [
-  ".mark_category_read(\n",
-  ".mark_all_read(\n",
-]) {
+for (const forbidden of [".mark_category_read(\n", ".mark_all_read(\n"]) {
   rejectMarker(graphql, forbidden, graphqlPath);
 }
 requireMarker(runtime, "visibility_scoped_read_state_service", runtimePath);
@@ -225,7 +222,11 @@ for (const marker of [
 ]) {
   requireMarker(sqliteTest, marker, sqliteTestPath);
 }
-requireMarker(transportTest, "category_and_all_read_transports_use_exact_visibility_owner", transportTestPath);
+requireMarker(
+  transportTest,
+  "category_and_all_read_transports_use_exact_visibility_owner",
+  transportTestPath,
+);
 for (const marker of [
   "markForumStorefrontCategoryRead",
   "markAllForumStorefrontTopicsRead",
@@ -249,8 +250,17 @@ if (contract) {
   if (contract.upstream_task !== "FORUM-20BK") {
     failures.push(`${contractPath}: unexpected upstream task`);
   }
-  if (contract.downstream_task !== "FORUM-20BM") {
+  if (contract.downstream_task !== "FORUM-20BN") {
     failures.push(`${contractPath}: unexpected downstream task`);
+  }
+  if (contract.rebuild_scope_preservation_contract !== rebuildPath) {
+    failures.push(`${contractPath}: rebuild preservation handoff drift`);
+  }
+  if (contract.downstream_handoff?.completion_contract !== rebuildPath) {
+    failures.push(`${contractPath}: downstream completion contract drift`);
+  }
+  if (contract.downstream_handoff?.full_rebuild_external_scope_preservation_completed !== true) {
+    failures.push(`${contractPath}: rebuild preservation completion not recorded`);
   }
   for (const key of [
     "category_root_uses_exact_category_audience_owner",
@@ -311,17 +321,41 @@ if (contract) {
       failures.push(`${contractPath}: compatibility ${key} drift`);
     }
   }
+  if (contract.remaining_scope?.includes(
+    "make full multi-source Search rebuild replacement atomic or preserve each prior external scope when a later source fails",
+  )) {
+    failures.push(`${contractPath}: completed rebuild preservation remains listed`);
+  }
 }
 
 if (upstream) {
   if (upstream.visibility_scoped_bulk_read_contract !== contractPath) {
-    failures.push(`${upstreamPath}: completion contract handoff drift`);
+    failures.push(`${upstreamPath}: visible bulk contract handoff drift`);
   }
-  if (upstream.downstream_task !== "FORUM-20BM") {
+  if (upstream.rebuild_scope_preservation_contract !== rebuildPath) {
+    failures.push(`${upstreamPath}: rebuild preservation handoff drift`);
+  }
+  if (upstream.downstream_task !== "FORUM-20BN") {
     failures.push(`${upstreamPath}: downstream task drift`);
   }
   if (upstream.remaining_scope?.includes("add visibility-scoped category and all-read commands")) {
     failures.push(`${upstreamPath}: completed bulk read scope remains listed`);
+  }
+}
+
+if (rebuild) {
+  if (rebuild.task !== "FORUM-20BM") failures.push(`${rebuildPath}: unexpected task`);
+  if (rebuild.upstream_task !== "FORUM-20BL") {
+    failures.push(`${rebuildPath}: unexpected upstream task`);
+  }
+  if (rebuild.downstream_task !== "FORUM-20BN") {
+    failures.push(`${rebuildPath}: downstream task drift`);
+  }
+  if (rebuild.replacement_boundary?.failed_forum_rebuild_keeps_previous_forum_scope !== true) {
+    failures.push(`${rebuildPath}: failed Forum rebuild must preserve previous scope`);
+  }
+  if (rebuild.replacement_boundary?.global_cross_source_atomicity_claimed !== false) {
+    failures.push(`${rebuildPath}: global atomicity must remain explicitly unclaimed`);
   }
 }
 

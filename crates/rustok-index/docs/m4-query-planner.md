@@ -11,7 +11,7 @@ M3 source implementation remains complete through retained bundle review, archiv
 manifest generation, saved-manifest verification, and recursive filesystem drift
 detection. The repository owner still needs to execute and admit one fresh real
 PostgreSQL partition packet. That owner gate blocks production partition lifecycle
-design but does not block database-independent M4 query source work.
+design but does not block M4 query source work.
 
 ## Actualized status
 
@@ -25,7 +25,8 @@ design but does not block database-independent M4 query source work.
 - M4 nested many-link projection aggregation: `source_complete_execution_pending`.
 - M4 PostgreSQL query port and strict row adapter: `source_complete_execution_pending`.
 - M4 retained plan/SQL snapshots: `source_complete_owner_execution_pending`.
-- M4 PostgreSQL/reference-engine equivalence: `open`.
+- M4 PostgreSQL/reference fixture source: `source_complete_owner_execution_pending`.
+- M4 live PostgreSQL/reference execution evidence: `open_owner_action`.
 
 ## Executable plan v4
 
@@ -78,11 +79,11 @@ from `N` to `N + 1`. `decode_postgres_query_page` re-plans and verifies:
 The lookahead row is removed. Cursor pages derive the next scoped cursor from the last
 retained root/order tuple; offset pages report `has_more` without creating a cursor.
 
-`PostgresIndexQueryPort` is now the Index-owned execution boundary. It verifies exact
-active persisted schema contracts for the query tenant, converts every
-`PostgresBindValue` variant, executes page and optional count in one read-only
-repeatable-read PostgreSQL transaction, maps only compiler-declared aliases, and then
-delegates semantic validation and cursor creation to the strict decoder.
+`PostgresIndexQueryPort` is the Index-owned execution boundary. It verifies exact active
+persisted schema contracts for the query tenant, converts every `PostgresBindValue`
+variant, executes page and optional count in one read-only repeatable-read PostgreSQL
+transaction, maps only compiler-declared aliases, and delegates semantic validation and
+cursor creation to the strict decoder.
 
 ## Retained snapshots
 
@@ -96,14 +97,26 @@ canonical query against three retained files:
 The fixture uses fixed identifiers and forbids automatic snapshot rewriting. SQL keeps
 all contract values in `$N` binds.
 
+## PostgreSQL/reference fixture
+
+`postgres_query_port_matches_reference_fixture` creates one isolated PostgreSQL schema,
+applies the canonical Index migrations, persists schemas and records through production
+stores, executes through `PostgresIndexQueryPort`, and compares the complete
+`IndexQueryPage` with an independent in-memory materialization from the same records.
+
+The source scenarios cover scoped cursor continuation, exact count, bounded offset,
+one-link filtering/projection, many-link `Gte`/`Contains`/`Ne`/`IsNull`, and nested
+identity/value alignment. The fixture is env-gated and has not been run by the
+implementation agent.
+
 ## Remaining bounded M4 work
 
-The combined roadmap item remains open until PostgreSQL/reference-engine equivalence is
-implemented and executed. Additional boundaries remain:
+The canonical checklist remains open until the owner runs the fixture and retains live
+PostgreSQL/reference evidence. Additional boundaries remain:
 
 - aggregate ordering semantics for paths traversing `many`;
 - server/storefront/admin/search query-port composition and consumer cutover;
-- live PostgreSQL/reference-engine fixtures and retained execution evidence.
+- retained live equivalence evidence with database identity and result provenance.
 
 The real retained PostgreSQL partition packet remains an independent owner gate for
 production partition lifecycle work.
@@ -120,6 +133,8 @@ cargo test -p rustok-index postgres_compiler_tests -- --nocapture
 cargo test -p rustok-index postgres_many_projection_tests -- --nocapture
 cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo test -p rustok-index query_snapshot_tests -- --nocapture
+RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... \
+  cargo test -p rustok-index postgres_query_port_matches_reference_fixture -- --nocapture
 cargo check -p rustok-index --all-targets
 node scripts/verify/verify-index-query-contract.mjs
 node scripts/verify/verify-index-query-planner.mjs
@@ -127,5 +142,6 @@ node scripts/verify/verify-index-postgres-query-compiler.mjs
 node scripts/verify/verify-index-query-result-decoder.mjs
 node scripts/verify/verify-index-many-link-filtering.mjs
 node scripts/verify/verify-index-query-snapshots.mjs
+node scripts/verify/verify-index-postgres-reference-equivalence.mjs
 cargo xtask module validate index
 ```
