@@ -31,8 +31,8 @@ mutation retry.
 
 ### Social Graph and Index
 
-- Durable command receipts bind a tenant-scoped normalized idempotency key to one
-  complete command identity and share a transaction with relation mutation,
+- Durable command receipts bind one tenant-scoped normalized idempotency key to
+  one complete command identity and share a transaction with relation mutation,
   optional event append, response snapshot, and completion.
 - `social_graph.relation.state_changed` is a sealed persisted-revision fact.
   No-op and receipt replay emit nothing; event failure rolls owner state back.
@@ -78,9 +78,13 @@ mutation retry.
   partition.
 - The fair-window duplicate-scan harness is source-complete for two partitions
   and compares equal per-partition budgets with the ordered global budget.
-- Retained packets must omit credentials and delivery-level facts, bind reviewed
-  source hashes/configuration digests, and become stale when bound sources
-  change.
+- Fair-window clean-commit retained capture is source-complete: exact-case
+  execution, reviewed dedup-disabled configuration projection, current source
+  hashes, aggregate two-partition absent-offset assertions, and no-clobber packet
+  publication are locked.
+- Canonical retained packets remain pending and must omit credentials and
+  delivery-level facts, bind reviewed source/configuration digests, and become
+  stale when bound sources change.
 
 ## Physical DLQ duplicate inspection
 
@@ -116,11 +120,10 @@ partition = (broker_message_id_as_u128 mod partition_count) + 1
 ```
 
 Production copies carrying the same broker UUID are therefore colocated in one
-partition. The scanner still combines observations from every requested
-partition, but production runtime evidence must not claim that
+partition. Runtime evidence must not claim that
 `IggyTransport::move_to_dlq` split one deterministic ID across partitions.
 
-The fair-window runtime source uses a production-reachable fixture instead:
+The fair-window fixture is production-reachable:
 
 ```text
 partition 1: A/A ordinary duplicate plus one unique overflow message
@@ -129,11 +132,39 @@ partition 2: B1/B2 conflicting-payload duplicate
 
 With a cap of two messages per partition, the fair scan observes both duplicate
 groups and the conflict. The ordered global request with four total slots reads
-three messages from partition 1 and only one from partition 2, producing a
-different summary. The fair policy runs twice from offset zero, and stored
+three messages from partition 1 and one from partition 2, producing a different
+summary. The fair policy runs twice from offset zero, and stored
 standalone-consumer offsets must remain absent on both partitions.
 
-Execution and retained capture remain pending.
+### Fair-window retained capture
+
+Source-complete paths:
+
+```text
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-fair-window-external-scan-runtime-source.json
+  dlq-duplicate-fair-window-external-scan-execution-contract.json
+scripts/evidence/
+  capture-iggy-dlq-duplicate-fair-window-external-scan.mjs
+scripts/verify/
+  verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs
+  verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs
+```
+
+The runner requires a clean unchanged commit, one exact passing case, no skip,
+unchanged bound-source hashes, reviewed external Iggy and dedup-disabled
+configuration labels, and a clean worktree after the test.
+
+The packet retains fair/global summaries, four zero stored-offset counts over two
+checked partitions, bounded artifact/toolchain labels, source hashes,
+timestamps, and test-output digest/size. It excludes endpoints, paths,
+credentials, raw output, stream/partition/offset/UUID/payload facts, ack tokens,
+and raw Iggy errors.
+
+Publication is no-clobber: an exclusive temporary file is hard-linked to the
+canonical path, so existing reviewed evidence cannot be replaced.
+
+Runtime execution and the canonical packet remain pending.
 
 Detailed checkpoints:
 
@@ -172,10 +203,10 @@ Detailed checkpoints:
    on reviewed disposable brokers. Retain separate privacy-safe packets and
    reviewed configuration digests.
 
-7. **Add retained fair-window capture.**
-   Require a clean unchanged commit, the exact one-case Cargo command, no skip,
-   two absent-offset partitions, current source hashes, bounded toolchain/server
-   labels, and atomic privacy-safe packet writing.
+7. **Execute and retain the fair-window packet.**
+   Run the locked capture on one clean unchanged commit, inspect the generated
+   no-clobber packet, commit it, and rerun the retained verifier. Source changes
+   invalidate the packet.
 
 8. **Compose receipt-plus-broker recovery evidence.**
    Prove claim -> exact publish -> durable `published` -> source ack ->
@@ -197,25 +228,27 @@ Detailed checkpoints:
     retention, reconciliation, operator cleanup, and bounded replay/rescan
     repair.
 
-## Recheck checkpoint — 2026-07-28
+## Recheck checkpoint — 2026-07-29
 
-- Rechecked the canonical plan and current `main` after the fair-window server
-  integration.
+- Rechecked the canonical plan and current `main` after the two-partition
+  fair-window harness.
 - Reconfirmed privacy-before-presentation, owner-scoped writes, Media ownership,
   fail-closed follower reads, no automatic mutation retry, and the rule that
   operational state never authorizes profile presentation.
-- Rechecked production deterministic DLQ partitioning and corrected the planned
-  runtime claim: production same-ID copies are colocated and are not a valid
-  cross-partition fixture.
-- Added a two-partition fair-window source harness that proves equal partition
-  budgets by comparing fair and global identifier-free summaries.
-- Locked absent standalone-consumer offsets for both partitions across repeated
-  fair scans and the compatibility global scan.
-- Kept runtime execution, retained fair-window capture, moving-window state,
+- Reconfirmed deterministic same-ID colocation and the production-reachable
+  fair/global comparison.
+- Added a locked fair-window execution contract, clean-commit runner, and strict
+  retained verifier.
+- Required exact one-case success, skip rejection, unchanged commit/source
+  hashes, reviewed dedup-disabled configuration projection, and four aggregate
+  absent-offset checkpoints across two partitions.
+- Added no-clobber canonical packet publication through exclusive temporary-file
+  creation and a hard link.
+- Kept runtime execution, canonical retained packets, moving-window state,
   production recovery-window sufficiency, bundled/TLS/auth, and multi-replica
   claims open.
-- Tests, Cargo commands, formatters, repository source verifiers, PostgreSQL,
-  external/bundled Iggy, and multi-replica scenarios were not run per maintainer
+- Tests, Cargo commands, repository source verifiers, external/bundled Iggy,
+  retained capture, and multi-replica scenarios were not run per maintainer
   instruction.
 
 ## Verification backlog
@@ -237,6 +270,7 @@ cargo test -p rustok-server event_dlq_duplicate_alert_observer -- --nocapture
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs
 node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
@@ -265,5 +299,7 @@ node scripts/verify/verify-profiles-storefront-boundary.mjs
 13. Short dedup or scan sequences do not prove production-window sufficiency.
 14. Production deterministic broker IDs remain colocated by the publisher's
     one-based modulo partition rule.
-15. Moving duplicate windows require bounded cross-cycle identity state.
-16. Update Profiles and affected owner docs with every boundary change.
+15. Retained evidence is no-clobber, commit-bound, and stale after any bound
+    source change.
+16. Moving duplicate windows require bounded cross-cycle identity state.
+17. Update Profiles and affected owner docs with every boundary change.

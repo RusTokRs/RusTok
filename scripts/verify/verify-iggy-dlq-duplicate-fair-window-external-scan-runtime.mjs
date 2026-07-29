@@ -12,14 +12,27 @@ const testPath =
 const scannerPath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
 const publisherPath = "crates/rustok-iggy/src/dlq_publisher.rs";
 const transportPath = "crates/rustok-iggy/src/transport.rs";
+const executionContractPath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution-contract.json";
+const runnerPath =
+  "scripts/evidence/capture-iggy-dlq-duplicate-fair-window-external-scan.mjs";
+const retainedVerifierPath =
+  "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs";
+const evidencePath =
+  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution.json";
 const expectedCase =
   "fair_window_scans_each_partition_and_differs_from_global_budget";
 
 const contract = JSON.parse(readFileSync(resolve(root, contractPath), "utf8"));
+const executionContract = JSON.parse(
+  readFileSync(resolve(root, executionContractPath), "utf8"),
+);
 const test = readFileSync(resolve(root, testPath), "utf8");
 const scanner = readFileSync(resolve(root, scannerPath), "utf8");
 const publisher = readFileSync(resolve(root, publisherPath), "utf8");
 const transport = readFileSync(resolve(root, transportPath), "utf8");
+const runner = readFileSync(resolve(root, runnerPath), "utf8");
+const retainedVerifier = readFileSync(resolve(root, retainedVerifierPath), "utf8");
 const failures = [];
 
 const same = (actual, expected) =>
@@ -32,20 +45,6 @@ const forbidText = (name, text, marker) => {
   if (text.includes(marker)) fail(`${name} contains forbidden marker: ${marker}`);
 };
 const count = (text, marker) => text.split(marker).length - 1;
-
-if (
-  contract.schema_version !== 1 ||
-  contract.module !== "iggy" ||
-  contract.packet !==
-    "dlq-duplicate-fair-window-external-scan-runtime-source" ||
-  contract.status !== "source_complete_runtime_pending" ||
-  contract.test_target !== "dlq_duplicate_fair_window_external_scan" ||
-  contract.test !== testPath ||
-  contract.case !== expectedCase ||
-  contract.execution_status !== "not_run"
-) {
-  fail("fair-window runtime contract identity or status drift");
-}
 
 const expectedCommand = {
   program: "cargo",
@@ -64,32 +63,6 @@ const expectedCommand = {
     "--test-threads=1",
   ],
 };
-if (!same(contract.command, expectedCommand)) {
-  fail("fair-window exact Cargo command drift");
-}
-
-if (
-  contract.topology?.domain_partitions !== 2 ||
-  contract.topology?.replication_factor !== 1 ||
-  contract.reviewed_broker_requirement?.message_deduplication_enabled !== false ||
-  contract.fixture_publication?.api !== "IggyTransport::move_to_dlq" ||
-  contract.fixture_publication?.direct_sdk_producer !== false ||
-  contract.fixture_publication?.physical_messages !== 5
-) {
-  fail("fair-window broker, topology, or fixture boundary drift");
-}
-
-if (
-  contract.production_partitioning?.publisher !== "IggyDlqPublisher" ||
-  contract.production_partitioning?.formula !==
-    "(broker_message_id_as_u128 mod partition_count) + 1" ||
-  contract.production_partitioning?.same_broker_message_id_colocated !== true ||
-  contract.production_partitioning
-    ?.same_broker_message_id_split_across_partitions_claimed !== false
-) {
-  fail("production partition invariant drift");
-}
-
 const fairSummary = {
   total_messages: 4,
   unique_message_ids: 2,
@@ -112,6 +85,43 @@ const globalSummary = {
   has_identity_conflicts: false,
   requires_manual_review: false,
 };
+
+if (
+  contract.schema_version !== 2 ||
+  contract.module !== "iggy" ||
+  contract.packet !==
+    "dlq-duplicate-fair-window-external-scan-runtime-source" ||
+  contract.status !== "source_complete_runtime_pending" ||
+  contract.test_target !== "dlq_duplicate_fair_window_external_scan" ||
+  contract.test !== testPath ||
+  contract.case !== expectedCase ||
+  contract.execution_status !== "not_run"
+) {
+  fail("fair-window runtime contract identity or status drift");
+}
+if (!same(contract.command, expectedCommand)) {
+  fail("fair-window exact Cargo command drift");
+}
+if (
+  contract.topology?.domain_partitions !== 2 ||
+  contract.topology?.replication_factor !== 1 ||
+  contract.reviewed_broker_requirement?.message_deduplication_enabled !== false ||
+  contract.fixture_publication?.api !== "IggyTransport::move_to_dlq" ||
+  contract.fixture_publication?.direct_sdk_producer !== false ||
+  contract.fixture_publication?.physical_messages !== 5
+) {
+  fail("fair-window broker, topology, or fixture boundary drift");
+}
+if (
+  contract.production_partitioning?.publisher !== "IggyDlqPublisher" ||
+  contract.production_partitioning?.formula !==
+    "(broker_message_id_as_u128 mod partition_count) + 1" ||
+  contract.production_partitioning?.same_broker_message_id_colocated !== true ||
+  contract.production_partitioning
+    ?.same_broker_message_id_split_across_partitions_claimed !== false
+) {
+  fail("production partition invariant drift");
+}
 if (
   !same(contract.fair_window, {
     partitions: [1, 2],
@@ -152,6 +162,29 @@ if (
   fail("fair-window absent-offset contract drift");
 }
 
+if (
+  contract.retained_execution?.status !==
+    "capture_source_complete_execution_pending" ||
+  contract.retained_execution?.contract !== executionContractPath ||
+  contract.retained_execution?.runner !== runnerPath ||
+  contract.retained_execution?.verifier !== retainedVerifierPath ||
+  contract.retained_execution?.evidence_path !== evidencePath ||
+  contract.retained_execution?.canonical_packet_present !== false ||
+  contract.retained_execution?.no_clobber_write !== true ||
+  executionContract.packet !==
+    "dlq-duplicate-fair-window-external-scan-execution-contract" ||
+  executionContract.status !== "runtime_execution_contract_locked" ||
+  executionContract.source_contract !== contractPath ||
+  executionContract.runner !== runnerPath ||
+  executionContract.verifier !== retainedVerifierPath ||
+  executionContract.evidence_path !== evidencePath ||
+  executionContract.evidence_status !== "runtime_execution_pending" ||
+  executionContract.case !== expectedCase ||
+  !same(executionContract.command, expectedCommand)
+) {
+  fail("fair-window retained execution relationship drift");
+}
+
 for (const marker of [
   '#![cfg(feature = "iggy")]',
   `async fn ${expectedCase}(`,
@@ -173,7 +206,6 @@ for (const marker of [
 ]) {
   requireText("fair-window runtime harness", test, marker);
 }
-
 if (count(test, "#[tokio::test]") !== 1) {
   fail("fair-window harness must contain exactly one runtime case");
 }
@@ -189,7 +221,6 @@ if (count(test, "summarize_window(&fair_policy)") !== 2) {
 if (count(test, "summarize(&global_request)") !== 1) {
   fail("compatibility global request must run once");
 }
-
 for (const marker of [
   "PublishRequest",
   "ExternalConnector",
@@ -230,6 +261,28 @@ for (const marker of [
 ]) {
   requireText("production transport", transport, marker);
 }
+for (const marker of [
+  "ensureCleanCommit()",
+  "sourceHashes()",
+  "requirePassedCase(output)",
+  "writeNoClobber({",
+  'flag: "wx"',
+  "linkSync(temporaryPath, outputPath)",
+  "required_fair_summary: contract.required_fair_summary",
+  "required_global_summary: contract.required_global_summary",
+  "required_offset_observations: contract.required_offset_observations",
+]) {
+  requireText("fair-window retained runner", runner, marker);
+}
+for (const marker of [
+  "currentSourceHashes()",
+  "currentCommit()",
+  "canonical execution JSON is absent",
+  "const forbiddenKeys = new Set(contract.privacy_exclusions ?? [])",
+  "fair-window execution source hashes are stale",
+]) {
+  requireText("fair-window retained verifier", retainedVerifier, marker);
+}
 
 const requiredNonClaims = new Set([
   "runtime_executed",
@@ -268,5 +321,5 @@ if (failures.length) {
 }
 
 console.log(
-  "Iggy fair-window external runtime source verified: two production-routed partitions, equal per-partition caps, fair/global summary divergence, repeated fixed-window equality, absent offsets on both partitions, deterministic same-ID colocation, no direct SDK producer, and no moving-cursor or Profiles claim are locked; runtime execution remains pending.",
+  "Iggy fair-window external runtime source verified: production-routed two-partition fair/global comparison, repeated fixed-window equality, absent offsets, deterministic same-ID colocation, clean-commit no-clobber retained capture, privacy-safe retained verification, and no moving-cursor or Profiles claim are locked; runtime execution remains pending.",
 );

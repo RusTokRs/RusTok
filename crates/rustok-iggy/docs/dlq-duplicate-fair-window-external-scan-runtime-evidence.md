@@ -1,15 +1,17 @@
 # External-Iggy fair-window duplicate scan runtime evidence
 
-Status: **source complete; runtime execution and retained packet pending**.
+Status: **two-partition harness and retained-capture tooling source complete; runtime execution and canonical packet pending**.
 
 ## Purpose
 
-This harness proves the production-reachable difference between the bounded
+This evidence slice proves the production-reachable difference between the bounded
 `fair_window` policy and the compatibility `global_budget` request across two
-physical DLQ partitions.
+physical DLQ partitions. It also defines a clean-commit runner and a strict
+privacy-safe retained packet verifier.
 
-It does not prove moving cursors, complete history, or that one deterministic
-broker message ID can be split across partitions.
+It does not prove moving cursors, complete history, deduplication-window
+sufficiency, or that one deterministic broker message ID can be split across
+partitions.
 
 ## Exact case
 
@@ -23,51 +25,64 @@ Target:
 crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs
 ```
 
-Exact command:
+Exact Cargo command:
 
 ```bash
-RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_ADDRESS='host:8090' \
 cargo test -p rustok-iggy --features iggy \
   --test dlq_duplicate_fair_window_external_scan -- \
   fair_window_scans_each_partition_and_differs_from_global_budget \
   --exact --nocapture --test-threads=1
 ```
 
-Optional credentials:
+The source harness reads:
 
 ```text
-RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_USERNAME
-RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_PASSWORD
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_ADDRESS
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_USERNAME       optional
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_PASSWORD       optional
 ```
 
-The address has no default. Missing configuration skips the source harness, so a
-future retained runner must reject skips and require exactly one passing case.
+The address has no default. Missing configuration skips the source harness, so
+the retained runner rejects skip output and requires exactly one passing test.
 
-## Reviewed broker
+## Reviewed broker and configuration
 
 The broker must be disposable or operator-cleaned and must have Iggy message-ID
 deduplication disabled. The test does not read server configuration.
 
-The harness creates one unique stream with two domain/DLQ partitions and does not
-delete it.
+The retained runner additionally requires:
+
+```text
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_CONFIG_PATH
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_SERVER_ARTIFACT
+```
+
+`CONFIG_PATH` must be an absolute regular file outside the repository. The
+runner reads only `[system.message_deduplication].enabled`, requires `false`,
+and retains only:
+
+```text
+section
+enabled
+canonical_sha256
+```
+
+The full configuration, its path, and its full-file digest are not retained.
+`SERVER_ARTIFACT` is a bounded operator-reviewed version or digest label, not an
+endpoint.
 
 ## Production partition invariant
 
-`IggyTransport::move_to_dlq` uses `IggyDlqPublisher` when a deterministic broker
-message ID is present. The publisher selects:
+`IggyTransport::move_to_dlq` uses `IggyDlqPublisher` for deterministic broker
+message IDs. The publisher selects:
 
 ```text
 partition = (broker_message_id_as_u128 mod partition_count) + 1
 ```
 
-Therefore every physical copy with the same broker message ID is colocated in the
-same partition. The harness deliberately preserves that production invariant and
-does not use a direct SDK fixture producer to force an impossible split.
-
-The scanner still combines observations from every requested partition before
-classification. This matters for one aggregate summary, but production runtime
-evidence must not claim that identical deterministic IDs were physically split
-across partitions.
+Every physical copy with the same broker message ID is therefore colocated in
+one partition. The harness preserves this production invariant and uses no
+direct SDK fixture producer.
 
 ## Fixture
 
@@ -76,16 +91,15 @@ Five messages are published only through production
 
 ```text
 partition 1:
-  A1, A2  same deterministic header UUID and same exact bytes
+  A1, A2  same deterministic UUID and same exact bytes
   C       one additional unique message beyond the fair cap
 
 partition 2:
-  B1, B2  same deterministic header UUID and different exact bytes
+  B1, B2  same deterministic UUID and different exact bytes
 ```
 
-The broker IDs are selected locally so the production modulo rule routes them to
-the intended partition. IDs, payloads, stream names, offsets, and addresses are
-never logged or retained.
+The fixed non-nil UUIDs are checked against the production modulo rule before
+publication.
 
 ## Fair-window proof
 
@@ -112,9 +126,7 @@ has_identity_conflicts = true
 requires_manual_review = true
 ```
 
-This proves that partition 1 cannot consume partition 2's budget: the third
-partition-1 message is outside the fair window while both partition-2 messages are
-included.
+This proves that partition 1 cannot consume partition 2's budget.
 
 ## Compatibility-global comparison
 
@@ -141,12 +153,12 @@ has_identity_conflicts = false
 requires_manual_review = false
 ```
 
-The result must differ from the fair summary. Partition 1 consumes three of the
-four global slots before partition 2 receives one.
+The global result must differ from the fair result.
 
 ## Offset non-mutation
 
-The standalone scanner consumer offset must be absent for partitions 1 and 2:
+The standalone scanner consumer offset must be absent for both configured
+partitions:
 
 ```text
 before fixture publication
@@ -155,30 +167,101 @@ after compatibility global scan
 after second fair scan
 ```
 
-The harness contains no offset store/delete, consumer group, acknowledgement,
-message send through the SDK observer, stream/topic deletion, or purge.
+The retained packet stores only the aggregate assertion that two partitions
+were checked and zero stored offsets were present at every checkpoint. It does
+not retain partition IDs or offset values.
 
-## Privacy and non-claims
+## Retained capture
 
-Only identifier-free aggregate summaries are asserted. The harness does not
-retain or print connection details, stream names, partitions, offsets, UUIDs,
-payloads, payload digests, credentials, or raw Iggy errors.
+Machine contract:
 
-It does not claim:
+```text
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-fair-window-external-scan-execution-contract.json
+```
 
-- runtime execution or retained evidence;
-- active server configuration readback;
-- production history completeness;
-- deduplication-window sufficiency;
-- same-ID cross-partition publication;
-- moving cursors or cross-cycle duplicate accumulation;
-- bundled Iggy, TLS/auth/failover, destructive reconciliation, or Profiles policy.
+Runner:
 
-## Source guard
+```text
+scripts/evidence/
+  capture-iggy-dlq-duplicate-fair-window-external-scan.mjs
+```
+
+Verifier:
+
+```text
+scripts/verify/
+  verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs
+```
+
+Canonical packet path:
+
+```text
+crates/rustok-iggy/contracts/evidence/
+  dlq-duplicate-fair-window-external-scan-execution.json
+```
+
+The runner requires a clean worktree and a full unchanged commit, hashes every
+bound source before and after the exact test, rejects skip output, and records
+bounded Cargo/Rust/Iggy labels plus the test-output digest and byte count.
+
+Packet publication is no-clobber. A temporary file is created with exclusive
+creation and hard-linked to the canonical path. An existing canonical packet is
+never replaced.
+
+Example capture:
+
+```bash
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_ADDRESS='host:8090' \
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_CONFIG_PATH='/outside/repo/iggy.toml' \
+RUSTOK_IGGY_FAIR_WINDOW_SCAN_TEST_SERVER_ARTIFACT='iggy-server-reviewed-build' \
+node scripts/evidence/capture-iggy-dlq-duplicate-fair-window-external-scan.mjs
+```
+
+Source and retained guards:
 
 ```bash
 node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs
+node scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs
 ```
+
+Before execution, the retained verifier succeeds only when the execution
+contract and runner are locked and the canonical packet is absent. After
+execution it additionally requires the packet commit and all source hashes to
+match the current checkout.
+
+## Privacy boundary
+
+The retained packet excludes:
+
+```text
+broker address
+configuration path or full content
+username/password/connection string
+raw test output
+stream name
+partition IDs
+offsets
+broker/delivery UUIDs
+payloads and payload digests
+ack tokens
+raw Iggy errors
+```
+
+It retains only identifier-free fair/global summaries, aggregate absent-offset
+assertions, reviewed configuration projection, bounded artifact/toolchain
+labels, current source hashes, timestamps, and output digest/size.
+
+## Non-claims
+
+This source slice does not claim:
+
+- runtime execution or a canonical retained packet;
+- active server configuration readback;
+- production history completeness or deduplication-window sufficiency;
+- same-ID cross-partition publication;
+- moving cursors or cross-cycle duplicate accumulation;
+- bundled Iggy, TLS/auth/failover, destructive reconciliation, or Profiles policy.
 
 No test, verifier, Cargo command, broker connection, or retained capture was run
 by the implementation agent.
