@@ -30,7 +30,7 @@ const compiler = requireMarkers(compilerPath, [
   'pub enum PostgresQueryBuildError',
   'pub enum PostgresQueryCompileError',
   'pub fn compile_postgres_query(',
-  'CursorCodec::decode_for_query(encoded, query, self)?',
+  'CursorCodec::decode_scoped_for_query(',
   'pub fn compile_postgres(&self)',
   'self.validate_compiler_contract(cursor)?;',
   'super::postgres_query_sql::compile_postgres_plan(self, cursor)',
@@ -107,7 +107,11 @@ for (const [relative, source] of [[compilerPath, compiler], [sqlPath, sql]]) {
 }
 
 requireMarkers('crates/rustok-index/src/application/cursor.rs', [
-  'registry.validate_query(query)?;',
+  'const SCOPED_CURSOR_VERSION: u8 = 2;',
+  'pub fn encode_for_query(',
+  'pub fn decode_scoped_for_query(',
+  'rustok-index-cursor-query-v1',
+  'QueryFingerprintMismatch',
   'OrderValueTypeMismatch',
   'resolve_order_value_type(',
 ]);
@@ -116,7 +120,7 @@ requireMarkers('crates/rustok-index/src/application/postgres_compiler_tests.rs',
   'compiles_one_link_projection_without_interpolating_contract_values',
   'compiles_typed_filters_order_exact_count_and_bounded_offset',
   'compiles_validated_lexicographic_keyset_with_entity_tie_breaker',
-  'rejects_cursor_order_values_with_wrong_types_before_sql_compilation',
+  'rejects_cursor_reuse_across_query_semantics_before_sql_compilation',
   'rejects_many_link_semantics_before_sql_is_emitted',
   'rejects_tampered_path_alias_mapping',
   'assert!(!compiled.sql.contains(&tenant_id.to_string()))',
