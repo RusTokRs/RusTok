@@ -341,6 +341,12 @@ fn identity_alias(relation_alias: &str) -> String {
     format!("__{relation_alias}_entity_id")
 }
 
+fn join_is_projected(plan: &ExecutableQueryPlan, join_path: &[LinkName]) -> bool {
+    plan.projection
+        .iter()
+        .any(|field| field.path.links().starts_with(join_path))
+}
+
 struct DecodedRow {
     item: IndexQueryItem,
     order_values: Vec<IndexValue>,
@@ -375,10 +381,12 @@ fn decode_row(
                 .ok_or_else(|| {
                     PostgresQueryDecodeError::UnknownRelationAlias(relation_alias.clone())
                 })?;
-            relations.push(IndexRelationIdentity {
-                path: join.path.clone(),
-                entity_id: identity,
-            });
+            if join_is_projected(plan, &join.path) {
+                relations.push(IndexRelationIdentity {
+                    path: join.path.clone(),
+                    entity_id: identity,
+                });
+            }
         }
     }
 
