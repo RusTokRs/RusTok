@@ -26,6 +26,7 @@ pub mod email;
 pub mod event_bus;
 pub mod event_delivery_control_adapter;
 pub mod event_delivery_settings_service;
+pub mod event_dlq_duplicate_alert_observability;
 pub mod event_dlq_duplicate_alert_observer;
 #[cfg(feature = "mod-forum")]
 pub mod forum_audience_facts {
