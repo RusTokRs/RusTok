@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 /// Transactional owner facade for topic-local audience replacement.
 ///
 /// The original service remains the read delegate. This facade uses the same
@@ -16,6 +14,15 @@ impl ForumTopicAudiencePolicyOwnerService {
             inner: ForumTopicAudiencePolicyService::new(db.clone()),
             db,
         }
+    }
+
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<ForumTopicAudiencePolicy> {
+        self.inner.get(tenant_id, topic_id, security).await
     }
 
     pub async fn set(
@@ -66,13 +73,5 @@ impl ForumTopicAudiencePolicyOwnerService {
         .await?;
         txn.commit().await?;
         Ok(result)
-    }
-}
-
-impl Deref for ForumTopicAudiencePolicyOwnerService {
-    type Target = ForumTopicAudiencePolicyService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
     }
 }
