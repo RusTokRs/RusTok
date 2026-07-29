@@ -19,19 +19,19 @@ delivered by `FORUM-20BD`.
 - `forumStorefrontAudienceTopics` is an additive public GraphQL field backed by
   the same exact pagination owner. It validates optional tenant scope, reuses
   the route channel, and exposes the existing `ForumTopicConnection` shape.
-- The storefront GraphQL adapter keeps the authenticated exact unread query and
-  switches only its public/personalization-unavailable fallback to
+- The canonical storefront GraphQL adapter keeps the authenticated exact unread
+  query and switches only its public/personalization-unavailable fallback to
   `forumStorefrontAudienceTopics`.
-- Existing exact selected-topic and mark-read owners remain unchanged. Replies
-  are still requested only after the selected-topic owner returns an allowed
-  topic.
+- The canonical native and GraphQL adapters retain their already-migrated exact
+  selected-topic and mark-read operations. Replies are still requested only
+  after the selected-topic owner returns an allowed topic.
 
 ## Compatibility and degraded mode
 
 No migration, dependency, existing GraphQL field, request DTO, response DTO, UI
-model, or compile-profile transport selection changes. The previous transport
-modules remain available for the already-migrated mark-read operations; the
-storefront read selector now calls the exact audience adapters.
+model, transport selector, or compile-profile transport selection changes. The
+canonical native and GraphQL adapter files now own both exact storefront reads
+and their existing mark-read operations; no parallel adapter module remains.
 
 Public topic decisions need no optional host facts. Authenticated native
 locally decidable rules do not call the optional facts provider. Trust,
