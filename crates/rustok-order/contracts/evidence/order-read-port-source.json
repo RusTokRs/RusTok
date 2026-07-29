@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "generated_at": "2026-07-29",
-  "status": "graphql_host_runtime_scoped_unvalidated",
-  "source_base_revision": "c1b7459651bbdaba6bf29a78ae47f15dbb02050d",
+  "status": "graphql_request_context_scoped_unvalidated",
+  "source_base_revision": "aaa613ae4eea8358aba755fbda56b09c4d0f1373",
   "scope": "order detail and filtered list projections for mounted Commerce query consumers",
   "owner": {
     "crate": "rustok-order",
@@ -43,7 +43,10 @@
     "locale_retained": true,
     "correlation_retained": true,
     "deadline_required": true,
-    "admin_deadline_seconds": 2
+    "admin_deadline_seconds": 2,
+    "graphql_actor_source": "validated_auth_context_or_service_actor",
+    "graphql_channel_source": "resolved_request_context_channel_slug",
+    "graphql_embedded_context_fallback": "service_actor_without_channel"
   },
   "runtime_composition": {
     "type": "CommerceOrderReadRuntime",
@@ -53,7 +56,8 @@
     "commerce_http_required": true,
     "commerce_graphql_schema_data_required": true,
     "graphql_resolver_scope_published": true,
-    "graphql_embedded_fallback_retained": true
+    "graphql_embedded_fallback_retained": true,
+    "graphql_request_context_scope_published": true
   },
   "errors": {
     "type": "PortError",
@@ -72,7 +76,7 @@
     "commerce_admin_rest_list_detail": "order_read_port",
     "commerce_admin_rest_cutover_completed": true,
     "commerce_storefront_detail_and_ownership": "concrete_order_service",
-    "commerce_graphql_order_list_detail": "order_read_port_host_runtime",
+    "commerce_graphql_order_list_detail": "order_read_port_host_runtime_with_request_context",
     "commerce_graphql_order_list_detail_cutover_completed": true,
     "runtime_composition_published": true,
     "all_consumer_cutover_completed": false,
@@ -84,7 +88,7 @@
     "admin_detail_fulfillment_lookup": "concrete_fulfillment_service"
   },
   "decision": {
-    "next_slice": "propagate authenticated actor and request channel into GraphQL order PortContext, then cut storefront detail and ownership reads separately",
+    "next_slice": "cut storefront detail and ownership reads to the host-composed order read port without changing mutations or payment and fulfillment ownership",
     "mutation_scope": "unchanged",
     "status_promotion": false
   },

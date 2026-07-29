@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+use ::rustok_api::{PortContext, PortError, PortErrorKind};
 use ::rustok_order::{
     ListOrderChangesInput, ListOrderProjectionsRequest, ListOrderReturnsInput, ListOrdersInput,
     OrderChangeResponse, OrderReadPort, OrderResponse, OrderReturnResponse,
@@ -149,13 +149,19 @@ fn graphql_order_read_context(
     operation: &'static str,
     resource_id: Uuid,
 ) -> PortContext {
-    PortContext::new(
+    let call_context =
+        crate::graphql_runtime::order_read_call_context_for_current_graphql_scope();
+    let context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::service("rustok-commerce.graphql-order-query"),
+        call_context.actor(),
         locale,
         format!("commerce-graphql-order:{operation}:{resource_id}"),
     )
-    .with_deadline(std::time::Duration::from_secs(2))
+    .with_deadline(std::time::Duration::from_secs(2));
+    match call_context.channel() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
 }
 
 fn map_order_read_port_error(
