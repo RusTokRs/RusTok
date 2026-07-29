@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "module": "product",
+  "packet": "product-catalog-separate-process-runtime-contract",
+  "status": "runtime_execution_contract_locked",
+  "runner": "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs",
+  "verifier": "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs",
+  "evidence_path": "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json",
+  "evidence_status": "runtime_execution_pending",
+  "execution_scope": "provider_schema_preflight_authenticated_rpc_and_consumer_remote_startup",
+  "promotion_gate": "does_not_close_commerce_or_ai_business_end_to_end_without_separate_requests",
+  "commands": {
+    "provider": {
+      "program": "cargo",
+      "args": [
+        "run",
+        "-p",
+        "rustok-product-catalog-service"
+      ]
+    },
+    "probe": {
+      "program": "cargo",
+      "args": [
+        "run",
+        "-p",
+        "rustok-product-transport",
+        "--example",
+        "product_catalog_runtime_probe"
+      ]
+    },
+    "consumer": {
+      "program": "cargo",
+      "args": [
+        "run",
+        "-p",
+        "rustok-server",
+        "--no-default-features",
+        "--features",
+        "mod-commerce,mod-ai"
+      ]
+    }
+  },
+  "required_environment": [
+    "RUSTOK_PRODUCT_CATALOG_DATABASE_URL",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_CONSUMER_DATABASE_URL",
+    "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
+    "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR",
+    "RUSTOK_PRODUCT_CATALOG_SERVICE_BIND",
+    "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_TENANT_ID",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_PRODUCT_ID",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_VARIANT_ID"
+  ],
+  "optional_environment": [
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_LOCALE",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_FALLBACK_LOCALE",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_CHANNEL_SLUG",
+    "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_STARTUP_TIMEOUT_MS",
+    "RUSTOK_PRODUCT_CATALOG_EVIDENCE_SHUTDOWN_TIMEOUT_MS"
+  ],
+  "forced_environment": {
+    "RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK": "true",
+    "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK": "true",
+    "RUSTOK_PRODUCT_CATALOG_PROVIDER": "grpc",
+    "RUSTOK_ENV": "development",
+    "RUSTOK_LOG_FORMAT": "json",
+    "OTEL_ENABLED": "false"
+  },
+  "readiness_markers": {
+    "provider": [
+      "Product catalog database schema preflight passed",
+      "Product catalog gRPC service listening"
+    ],
+    "probe": [
+      "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3 product_projection=matched variant_projection=matched published_list=nonempty"
+    ],
+    "consumer": [
+      "Product catalog deployment provider initialized",
+      "RusTok Axum host listening"
+    ]
+  },
+  "source_files": [
+    "crates/rustok-product-catalog-service/src/main.rs",
+    "crates/rustok-product-transport/examples/product_catalog_runtime_probe.rs",
+    "crates/rustok-product-transport/src/auth.rs",
+    "crates/rustok-product-transport/src/client.rs",
+    "crates/rustok-product-transport/src/connection.rs",
+    "crates/rustok-product-transport/src/server.rs",
+    "apps/server/src/services/product_catalog_deployment.rs",
+    "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs"
+  ],
+  "required_metadata": [
+    "git_commit",
+    "started_at",
+    "completed_at",
+    "node_version",
+    "cargo_version",
+    "rustc_version",
+    "source_sha256",
+    "provider_output_sha256",
+    "probe_output_sha256",
+    "consumer_output_sha256"
+  ],
+  "privacy_boundary": {
+    "forbidden_persisted_values": [
+      "database_url",
+      "consumer_database_url",
+      "bearer_token",
+      "tenant_id",
+      "product_id",
+      "variant_id",
+      "raw_process_output",
+      "tls_private_key",
+      "authorization_metadata"
+    ],
+    "persist_environment_names_only": true,
+    "persist_output_hashes_only": true
+  }
+}
