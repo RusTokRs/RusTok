@@ -1,3 +1,4 @@
+mod admin_queries;
 mod commands;
 pub mod helpers;
 mod projection;
@@ -6,8 +7,9 @@ mod tags;
 pub mod types;
 
 pub use types::{
-    ProductTagState, StorefrontProductList, StorefrontProductListItem,
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+    AdminProductList, AdminProductListItem, AdminProductListQuery, ProductTagState,
+    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
+    StorefrontProductSortBy, StorefrontProductSortDirection,
 };
 
 use chrono::Utc;
