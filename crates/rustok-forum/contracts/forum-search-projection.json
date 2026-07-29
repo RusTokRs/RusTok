@@ -3,7 +3,8 @@
   "task": "FORUM-20BJ",
   "upstream_task": "FORUM-20BI",
   "scope": "Wire a Search-owned Forum projection consumer through a Forum-published exact public projection source without copying audience policy into Search persistence or query SQL",
-  "search_source_registry": "crates/rustok-search/src/projection_source.rs",
+  "neutral_projection_capability": "crates/rustok-core/src/search_projection.rs",
+  "search_projection_facade": "crates/rustok-search/src/projection_source.rs",
   "forum_source_provider": "crates/rustok-forum/src/search_projection.rs",
   "forum_source_registration": "crates/rustok-forum/src/lib.rs",
   "search_projector": "crates/rustok-search/src/forum_projector.rs",
@@ -19,6 +20,9 @@
   "source_verifier": "scripts/verify/verify-forum-search-projection.mjs",
   "upstream_contract": "crates/rustok-forum/contracts/forum-public-discovery-seo.json",
   "source_boundary": {
+    "neutral_capability_has_no_forum_dependency": true,
+    "neutral_capability_has_no_search_storage_or_query_logic": true,
+    "search_facade_reexports_neutral_capability": true,
     "module_published_factory_requires_no_database_at_registration": true,
     "duplicate_source_module_registration_rejected": true,
     "runtime_source_materialized_from_listener_database": true,
@@ -73,11 +77,11 @@
     "existing_forum_graphql_fields_changed": false,
     "existing_forum_seo_targets_changed": false,
     "existing_forum_public_discovery_changed": false,
-    "forum_to_search_workspace_dependency_added": true,
+    "forum_to_search_workspace_dependency_added": false,
     "forum_module_declares_core_search_dependency": false,
     "forum_runtime_works_without_search_listener": true,
-    "cargo_lock_regenerated": false,
-    "cargo_lock_reason": "Cargo commands are intentionally not run by the implementation agent; the maintainer must regenerate the workspace lockfile before locked validation.",
+    "cargo_lock_changed": false,
+    "cargo_lock_regeneration_required": false,
     "migration_added": false,
     "public_response_dto_changed": false,
     "legacy_graphql_snapshot_changed": false
@@ -88,7 +92,7 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API, the Search owner plan and the canonical FORUM-20/FORUM-23 ledgers through FORUM-20BJ with conflict-safe repository-local edits after maintainer validation; regenerate Cargo.lock through the maintainer-owned Cargo workflow."
+    "synchronization_debt": "Advance CRATE_API, the Search owner plan and the canonical FORUM-20/FORUM-23 ledgers through FORUM-20BJ with conflict-safe repository-local edits after maintainer validation."
   },
   "remaining_scope": [
     "publish owner-transactional projection invalidation events for category and topic content translations visibility policies tags solution state and tree or route changes",
@@ -103,7 +107,7 @@
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
-      "cargo test -p rustok-search projection_source -- --nocapture",
+      "cargo test -p rustok-core search_projection -- --nocapture",
       "cargo test -p rustok-search forum_projector -- --nocapture",
       "cargo test -p rustok-forum search_projection -- --nocapture",
       "node scripts/verify/verify-forum-public-discovery-seo.mjs",
