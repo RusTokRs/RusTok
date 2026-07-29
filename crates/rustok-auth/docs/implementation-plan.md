@@ -27,16 +27,16 @@ does not create a package-local locale fallback.
 
 ## Open results
 
-1. **Move OAuth application display content to the multilingual database
-   contract.** `oauth_apps.name` and `oauth_apps.description` are currently
-   inline user-facing strings. Introduce an auth-owned translation table with a
-   canonical default locale, tenant-composite integrity, and parity across REST,
-   GraphQL, native admin transport, and both admin hosts. Do not add a JSON or
-   transport-only translation fallback.
-   **Depends on:** the database multilingual contract and an atomic transport/UI
-   cutover.
-   **Done when:** storage, reads, writes, fallback behavior, migration evidence,
-   and all auth-owned transports use the same translation contract.
+1. **Remove implicit OAuth grant expansion for manifest-created applications.**
+   `oauth_apps::Model::supports_grant_type` currently treats an auto-created
+   application that declares only `authorization_code` as also supporting
+   `refresh_token`. This is a compatibility execution path that expands the
+   persisted grant policy instead of enforcing it literally.
+   **Depends on:** updating any manifest producer that genuinely requires
+   refresh rotation to declare `refresh_token` explicitly.
+   **Done when:** grant checks use exact persisted membership, all required
+   producers declare their complete grant set, and regression tests reject an
+   undeclared refresh grant for both manual and auto-created applications.
 
 2. **Capture runtime parity evidence for user and OAuth mutations.** Exercise
    the browser/admin path and the owner-owned GraphQL/native paths for the same
@@ -65,7 +65,9 @@ does not create a package-local locale fallback.
 5. **Keep OAuth bootstrap in the auth-owned CLI adapter.**
    `rustok-cli oauth create-app` creates the development application through
    `rustok-auth/cli`, an explicit database handle, and the tenant-owned default
-   tenant read. The server does not register a task for this operation.
+   tenant read. Base application identity and localized display copy must be
+   persisted in one transaction against the current translation-table schema.
+   The server does not register a task for this operation.
 
 6. **Keep session maintenance in the auth-owned CLI adapter.**
    `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
@@ -92,6 +94,7 @@ does not create a package-local locale fallback.
 - `npm run verify:ai:fba-baseline`
 - `cargo xtask module validate auth`
 - `cargo xtask module test auth`
+- `cargo test -p rustok-auth-cli development_app_uses_current_translation_schema`
 - `cargo check -p rustok-auth-admin`
 - Targeted auth/RBAC server tests when runtime wiring changes.
 
@@ -107,12 +110,12 @@ does not create a package-local locale fallback.
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
-- Status: `in_progress`
-- Last verified at (UTC): `2026-07-20`
-- Scope inspected: `auth ownership; HS256/RS256 JWT configuration and issuer/audience validation; credential-bound password reset; sessions; OAuth apps, code exchange, refresh rotation, consent, scopes and revocation; tenant-composite migrations and queries; RBAC durable-generation invalidation; multilingual database contract; REST/GraphQL/native/server composition`
-- Findings: `P0=0, P1=4, P2=1, P3=2`
-- Fixed in this pass: `added fail-closed tenant-composite OAuth and invite database integrity plus tenant-qualified consent queries; deleted the unbound replayable password-reset path; made RS256 configuration parse and prove its key pair at startup; replaced middleware-shadowed legacy OAuth token handlers with one direct transactional service and deleted superseded issuance methods; made app/consent token revocation atomic`
-- Remaining risks or blockers: `P2 OAuth app name/description still require the planned translation-table cutover; PostgreSQL forward/down migration smoke remains part of the closing migration gate; browser/runtime mutation parity evidence remains an existing promotion requirement; default-feature targeted server test hit environmental LLVM OOM while linking rustok-admin, and the lightweight owner-owned OAuth test target is now explicit P3 verification debt`
-- Evidence: `auth boundary, AI FBA, and runtime-context guards pass; module validate auth passes; rustok-auth unit/migration/JWT suite 34/34 passes; default-feature server attempt reached rustok-admin then failed with rustc-LLVM out of memory; one-job no-default-features retry is active in target/codex-auth-cycle/server-min.*.log`
-- Next action: `finish the one-job minimal server test, run the canonical auth module test, then hand off to core/cache`
-- Resume command: `Get-Content target/codex-auth-cycle/server-min.err.log -Tail 80; Get-Content target/codex-auth-cycle/server-min.out.log -Tail 40`
+- Status: `blocked`
+- Last verified at (UTC): `2026-07-29`
+- Scope inspected: `auth ownership; JWT and credential lifecycle; OAuth app, authorization-code and refresh-token paths; tenant-qualified admin mutations; translation-table migration and runtime localization; auth-owned CLI bootstrap adapter; implicit grant expansion`
+- Findings: `P0=0, P1=6, P2=0, P3=2`
+- Fixed in this pass: `preserved the four previously repaired P1 defects; fixed the post-migration rustok-auth-cli OAuth bootstrap failure by deleting raw writes to removed oauth_apps.name/description columns and persisting the base row plus en translation in one transaction; added a SQLite regression against the current translation-table schema`
+- Remaining risks or blockers: `P1 implicit refresh_token authority remains for auto-created applications whose persisted grant_types omit it; targeted Rust execution is unavailable in the current connector-only environment because local git clone failed DNS resolution and no workflow run exists for the branch yet; PostgreSQL forward/down migration smoke and browser/runtime mutation parity evidence remain required; lightweight owner-owned OAuth code/refresh regression target remains P3 verification debt`
+- Evidence: `source inspection confirms tenant-qualified OAuth client, consent and admin lookups; authorization-code and refresh-token replacements use transactional compare-and-set; oauth_app_translations uses VARCHAR(32), tenant-composite FK and unique tenant/app/locale identity; branch agent/verify-core-auth-cycle-001 commits e4a7fb44902af0dd64e60516444958d440d21535 and 435e5f3a3b02311ca62eaeda5e1d1daef9f97b59 contain the CLI fix and regression; local clone failure was Could not resolve host: github.com and is classified as an environment limitation`
+- Next action: `run the targeted rustok-auth-cli regression and canonical auth module checks; remove implicit refresh grant expansion with explicit producer updates; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
+- Resume command: `cargo test -p rustok-auth-cli development_app_uses_current_translation_schema && cargo xtask module validate auth && cargo xtask module test auth`
