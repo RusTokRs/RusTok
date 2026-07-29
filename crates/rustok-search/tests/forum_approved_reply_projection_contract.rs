@@ -2,6 +2,8 @@ const FORUM_SOURCE: &str = include_str!("../../rustok-forum/src/search_projectio
 const FORUM_REPLY_UPDATE: &str = include_str!("../../rustok-forum/src/services/reply_inline.rs");
 const SEARCH_PROJECTOR: &str = include_str!("../src/forum_projector.rs");
 const SEARCH_ENGINE: &str = include_str!("../src/engine.rs");
+const ADMIN_GLOBAL_SEARCH: &str =
+    include_str!("../../../apps/admin/src/widgets/app_shell/native_server_adapter.rs");
 
 fn require(source: &str, marker: &str) {
     assert!(source.contains(marker), "missing source marker: {marker}");
@@ -57,5 +59,20 @@ fn canonical_reply_route_is_bound_to_result_and_parent_topic_identity() {
         "canonical_url_rejects_spoofed_forum_source_entity_pairs_and_reply_payloads",
     ] {
         require(SEARCH_ENGINE, marker);
+    }
+}
+
+#[test]
+fn admin_global_search_maps_forum_results_to_domain_permissions() {
+    for marker in [
+        "(\"forum_category\", \"forum\" | \"rustok-forum\")",
+        "Permission::FORUM_CATEGORIES_READ",
+        "(\"forum_topic\", \"forum\" | \"rustok-forum\")",
+        "Permission::FORUM_TOPICS_READ",
+        "(\"forum_reply\", \"forum\" | \"rustok-forum\")",
+        "Permission::FORUM_REPLIES_READ",
+        "required_admin_search_permission(\"forum_reply\", \"content\")",
+    ] {
+        require(ADMIN_GLOBAL_SEARCH, marker);
     }
 }
