@@ -77,8 +77,8 @@ satisfy separate logical branches. Positive operators use any-match behavior.
 `IsNull(path, true)` means no reachable non-null value exists.
 
 Many-link `Ne` is intentionally stricter than `NOT EXISTS(Eq)`: it requires at least
-one stored reachable value and also requires that no reachable value is null,
-malformed, or equal to the requested value.
+one stored reachable value and also requires that no reachable value is tagged null or
+equal to the requested value.
 
 Because no many join enters the outer rowset, root keyset/offset pagination,
 one-row lookahead, and `COUNT(*)` remain duplicate free.
