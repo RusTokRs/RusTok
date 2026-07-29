@@ -250,7 +250,7 @@ Detailed checkpoints:
 - `crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md`
 - `crates/rustok-profiles/docs/poison-duplicate-rolling-window-checkpoint.md`
-- `crates/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.dd
+- `crates/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-external-scan.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md`
 - `crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md`
@@ -343,14 +343,14 @@ cargo xtask module validate profiles
 cargo xtask module test profiles
 cargo check -p rustok-profiles-storefront --all-targets
 cargo test -p rustok-profiles-storefront
-RUSTfLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-iggy --all-targets
 cargo test -p rustok-iggy dlq_duplicate_rolling_window -- --nocapture
 cargo test -p rustok-iggy dlq_duplicate_moving_window_scan --features iggy -- --nocapture
 cargo test -p rustok-iggy dlq_duplicate_alert_observer --features iggy -- --nocapture
 cargo test -p rustok-server event_dlq_duplicate_alert_observer -- --nocapture
 node scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs
-node scripts/verify/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
+node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 cargo test -p rustok-iggy dedup_recovery_window_policy -- --nocapture
 cargo test -p rustok-iggy --test dedup_recovery_window_calibration
 node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
