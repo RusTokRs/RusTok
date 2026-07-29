@@ -59,7 +59,7 @@ for (const forbidden of [
   if (capture.includes(forbidden)) fail(`${capturePath} contains forbidden marker ${forbidden}`);
 }
 const descriptorStart = capture.indexOf('struct QueryEquivalenceDescriptor');
-const descriptorEnd = capture.indexOf('pub struct QueryEquivalenceCapture');
+const descriptorEnd = capture.indexOf('pub struct QueryEquivalenceCapture {');
 if (descriptorStart < 0 || descriptorEnd <= descriptorStart) {
   fail(`${capturePath} has no inspectable descriptor contract`);
 }
