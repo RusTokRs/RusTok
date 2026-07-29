@@ -20,7 +20,7 @@ use crate::{
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
 const READ_ONLY_SNAPSHOT_SQL: &str =
-    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY";
+    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY";
 const SELECT_SCHEMA_READINESS_SQL: &str =
     "SELECT schema_fingerprint, schema_json, status FROM index_schemas WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4";
 
@@ -229,7 +229,7 @@ fn compiled_statement(compiled: &CompiledPostgresQuery) -> Statement {
             .iter()
             .cloned()
             .map(postgres_bind_value)
-            .collect(),
+            .collect::<Vec<_>>(),
     )
 }
 
@@ -242,7 +242,7 @@ fn count_statement(compiled: &CompiledPostgresCount) -> Statement {
             .iter()
             .cloned()
             .map(postgres_bind_value)
-            .collect(),
+            .collect::<Vec<_>>(),
     )
 }
 
