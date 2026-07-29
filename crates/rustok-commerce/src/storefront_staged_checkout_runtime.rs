@@ -75,7 +75,7 @@ impl StorefrontStagedCheckoutRuntimeError {
     }
 }
 
-/// Backward-compatible storefront command wrapper using the embedded Product provider.
+/// Backward-compatible storefront command wrapper using the resolver-scoped Product provider.
 pub async fn complete_storefront_checkout(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
@@ -108,8 +108,8 @@ pub async fn complete_storefront_checkout(
 
 /// Host-composed storefront command wrapper.
 ///
-/// Native and future remote-selected transports use this entrypoint so Product execution is chosen
-/// by `ProductCatalogReadRuntime` rather than reconstructed inside Commerce.
+/// Native and remote-selected transports use this entrypoint so Product execution is chosen by
+/// `ProductCatalogReadRuntime` rather than reconstructed inside Commerce.
 pub async fn complete_storefront_checkout_with_product_port(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
@@ -142,7 +142,10 @@ pub async fn complete_storefront_checkout_with_product_port(
     .await
 }
 
-/// Backward-compatible input wrapper using the embedded Product provider.
+/// Resolver-scoped compatibility wrapper.
+///
+/// Mounted GraphQL schemas receive the host-selected Product runtime through the Commerce resolver
+/// scope. Directly embedded schemas retain an explicit in-process fallback.
 pub async fn complete_storefront_checkout_input(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
@@ -152,9 +155,12 @@ pub async fn complete_storefront_checkout_input(
     idempotency_key: impl Into<String>,
     checkout_input: crate::dto::CompleteCheckoutInput,
 ) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontStagedCheckoutRuntimeError> {
-    let product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(
-        rustok_product::CatalogService::new(runtime.db_clone(), runtime.event_bus()),
-    );
+    let product_catalog_read_port =
+        crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+            runtime.db_clone(),
+            runtime.event_bus(),
+        )
+        .read_port();
     complete_storefront_checkout_input_with_product_port(
         runtime,
         payment_provider_registry,

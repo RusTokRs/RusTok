@@ -56,6 +56,7 @@
     "runtime_composition_verifier": "scripts/verify/verify-product-catalog-read-runtime-composition.mjs",
     "native_checkout_runtime_verifier": "scripts/verify/verify-product-native-checkout-catalog-runtime.mjs",
     "http_checkout_runtime_verifier": "scripts/verify/verify-product-http-checkout-catalog-runtime.mjs",
+    "graphql_checkout_runtime_verifier": "scripts/verify/verify-product-graphql-checkout-catalog-runtime.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
     "runtime_fallback_smoke": "crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
@@ -73,12 +74,11 @@
       "ai-product",
       "marketplace-listing",
       "order-storefront-native",
-      "commerce-checkout-http"
-    ],
-    "pending_consumers": [
+      "commerce-checkout-http",
       "commerce-checkout-graphql"
     ],
-    "status": "source_complete_consumer_cutover_partial"
+    "pending_consumers": [],
+    "status": "source_complete_consumer_cutover_complete"
   },
   "in_process_provider_impl": {
     "service": "CatalogService",
