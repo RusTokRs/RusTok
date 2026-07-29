@@ -21,6 +21,7 @@
   "upstream_contract": "crates/rustok-forum/contracts/forum-public-discovery-seo.json",
   "invalidation_contract": "crates/rustok-forum/contracts/forum-projection-invalidation.json",
   "visibility_scoped_bulk_read_contract": "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
+  "rebuild_scope_preservation_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json",
   "source_boundary": {
     "neutral_capability_has_no_forum_dependency": true,
     "neutral_capability_has_no_search_storage_or_query_logic": true,
@@ -45,7 +46,10 @@
     "explicit_forum_rebuild_replaces_scope_after_successful_scan": true,
     "explicit_forum_rebuild_source_failure_keeps_previous_scope": true,
     "full_search_rebuild_includes_forum_after_core_and_blog": true,
-    "full_search_rebuild_source_failure_keeps_previous_forum_scope": false,
+    "full_search_rebuild_source_failure_keeps_previous_forum_scope": true,
+    "direct_search_rebuild_deletes_external_scopes": false,
+    "global_cross_source_atomicity_added": false,
+    "earlier_successful_scope_may_commit_before_later_failure": true,
     "target_refresh_deletes_and_reinserts_in_one_transaction": true,
     "denied_closed_missing_or_deleted_target_removes_stale_documents": true,
     "foreign_or_non_public_source_document_rejected": true,
@@ -78,8 +82,11 @@
   },
   "downstream_handoff": {
     "visibility_scoped_category_and_all_read_commands_completed": true,
-    "completion_task": "FORUM-20BL",
-    "completion_contract": "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json"
+    "visibility_completion_task": "FORUM-20BL",
+    "visibility_completion_contract": "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
+    "full_rebuild_external_scope_preservation_completed": true,
+    "completion_task": "FORUM-20BM",
+    "completion_contract": "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json"
   },
   "compatibility": {
     "existing_search_product_content_blog_projection_changed": false,
@@ -103,24 +110,26 @@
     "upstream_contract_updated": true,
     "crate_api_updated": false,
     "canonical_plan_updated": false,
-    "synchronization_debt": "Advance CRATE_API, the Search owner plan and canonical FORUM-16/FORUM-20/FORUM-23 ledgers through FORUM-20BL with conflict-safe repository-local edits after maintainer validation."
+    "synchronization_debt": "Advance CRATE_API, the Search owner plan and canonical FORUM-16/FORUM-20/FORUM-23 ledgers through FORUM-20BM with conflict-safe repository-local edits after maintainer validation."
   },
   "remaining_scope": [
     "decide whether approved public replies become separate Search documents under FORUM-23",
-    "make full multi-source Search rebuild replacement atomic or preserve each prior external scope when a later source fails",
     "remove the uncompiled legacy GraphQL query snapshot after verifier migration",
-    "capture maintainer-executed PostgreSQL and SQLite projection event cleanup query runtime and exact-visible bulk-read evidence",
+    "capture maintainer-executed PostgreSQL full-rebuild failure preservation and projection cleanup evidence",
+    "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
     "add an explicit Forum translation target invalidation adapter if Forum categories or topics are later registered with the translation control plane"
   ],
-  "downstream_task": "FORUM-20BM",
+  "downstream_task": "FORUM-20BN",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
       "cargo test -p rustok-core search_projection -- --nocapture",
       "cargo test -p rustok-outbox transactional -- --nocapture",
+      "cargo test -p rustok-search --test search_scope_preservation_contract -- --nocapture",
       "cargo test -p rustok-search forum_projector -- --nocapture",
       "cargo test -p rustok-forum projection_invalidation -- --nocapture",
       "cargo test -p rustok-forum --test topic_visibility_bulk_read_state_sqlite -- --nocapture",
+      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
       "node scripts/verify/verify-forum-search-projection.mjs",
       "node scripts/verify/verify-forum-projection-invalidation.mjs",
       "node scripts/verify/verify-forum-visibility-scoped-bulk-read.mjs",
