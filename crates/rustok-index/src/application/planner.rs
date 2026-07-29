@@ -91,7 +91,9 @@ impl ExecutableQueryPlan {
     }
 
     pub(crate) fn join_for_path(&self, path: &[LinkName]) -> Option<&PlannedJoin> {
-        self.joins.iter().find(|join| join.path == path)
+        self.joins
+            .iter()
+            .find(|join| join.path.as_slice() == path)
     }
 
     pub(crate) fn outer_joins(&self) -> impl Iterator<Item = &PlannedJoin> {
