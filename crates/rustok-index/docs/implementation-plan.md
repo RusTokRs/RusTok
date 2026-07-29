@@ -26,7 +26,7 @@ pull requests record checks and PostgreSQL runs that were not executed.
 ## Current state
 
 - Rewrite status: `in_progress`
-- Current milestone: `M4 - Query engine v1 (typed root/one-link semantics added; M3 retained packet owner gate remains open)`
+- Current milestone: `M4 - Query engine v1 (deterministic result decoding added; M3 retained packet owner gate remains open)`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
@@ -54,21 +54,25 @@ pull requests record checks and PostgreSQL runs that were not executed.
 - M4 stable explicit-link relation aliases: `complete`
 - M4 controlled PostgreSQL query compilation: `complete`
 - M4 typed root/one-link query semantics: `complete`
+- M4 deterministic PostgreSQL result decoding: `complete`
 - Production persistence: mutation writes, schema/index coordination, fail-closed
   partition admission, snapshot/query/mutation/maintenance/cutover evidence tooling,
   full-capture orchestration, exact-byte packet assembly, retained bundle review,
   admitted archive manifest generation, saved-manifest verification, recursive
   filesystem integrity checks, typed executable query planning, controlled projection,
-  filtering, ordering, exact-count, keyset, and bounded-offset SQL compilation are
-  implemented; one retained admitted packet, many-link semantics, query execution/row
-  decoding, and production partition lifecycle remain open
+  filtering, ordering, exact-count, keyset, bounded-offset SQL compilation, one-row
+  page lookahead, tagged row decoding, exact-count decoding, and scoped next-cursor
+  construction are implemented; one retained admitted packet, many-link semantics,
+  SQL execution composition, PostgreSQL/reference equivalence, and production
+  partition lifecycle remain open
 
 The production crate contains the generic domain/application core, seven canonical
 M3 tables, an atomic mutation adapter, durable schema leases, secondary-index
 lifecycle management, measured partition admission that emits shadow bootstrap
 plans only, an M4 typed structural query planner with deterministic relation aliases,
-and a controlled PostgreSQL compiler for root and one-cardinality-link filtering,
-projection, ordering, exact count, keyset, and bounded offset semantics.
+a controlled PostgreSQL compiler for root and one-cardinality-link filtering,
+projection, ordering, exact count, keyset, and bounded offset semantics, and a
+strict compiled-row decoder with lookahead pagination and scoped cursor construction.
 Owner-operated evidence tools live under `ops/benches`; they do not become runtime
 storage code.
 
@@ -103,6 +107,7 @@ crates/rustok-index/src/
     planner.rs
     postgres_compiler.rs
     postgres_query_sql.rs
+    postgres_query_result.rs
   migrations/
   infrastructure/postgres/
     mutation_store.rs
@@ -301,9 +306,9 @@ relations.
 - [x] Support root and one-cardinality-link projection, filtering, sorting, exact
       count, and keyset pagination.
 - [x] Keep offset pagination bounded and compatibility-only.
+- [x] Add deterministic root/one-link result decoding and cursor construction.
 - [ ] Add explicit many-link `EXISTS` filtering and nested projection aggregation.
-- [ ] Add result decoding, plan/SQL snapshots, and PostgreSQL/reference-engine
-      equivalence tests.
+- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.
 
 The first M4 slice is database independent. `SchemaRegistry::plan_query` validates
 before planning, assigns stable `t0`, `t1`, ... aliases from sorted explicit link
@@ -319,10 +324,19 @@ separate exact-count statement without pagination leakage. Opaque continuation t
 must pass `SchemaRegistry::compile_postgres_query`, which validates checksum, scope,
 schema fingerprint, order arity, and order-value types before SQL emission.
 
+The result handoff uses `SchemaRegistry::compile_postgres_page_query` to increase only
+the validated page-limit bind by one. `decode_postgres_query_page` rechecks the plan
+fingerprint, deterministic compiled column contract, page size, row count, tagged
+`IndexValue` type/cardinality/nullability, relation identities, and optional count.
+It removes the lookahead row, reports `has_more`, preserves selection order, and emits
+a query-scoped cursor from the last retained root identity plus hidden order values.
+Offset pages use the same lookahead rule but do not synthesize a cursor.
+
 Many-cardinality paths remain fail-closed with `ManyLinkSemanticsPending`; ordinary
 joins would duplicate roots and corrupt negative filters, count, projection, and
-pagination. SQL execution, result decoding, persisted-schema readiness, query-port
-composition, consumer cutover, and PostgreSQL/reference-engine equivalence remain open.
+pagination. SQL execution, direct SeaORM row adaptation, persisted-schema readiness,
+query-port composition, consumer cutover, plan/SQL snapshots, and PostgreSQL/reference-
+engine equivalence remain open.
 
 ### M5 - Incremental ingestion
 
@@ -393,6 +407,7 @@ cargo nextest run --workspace --all-targets --all-features
 cargo test --workspace --doc --all-features
 cargo test -p rustok-index planner_tests -- --nocapture
 cargo test -p rustok-index postgres_compiler_tests -- --nocapture
+cargo test -p rustok-index postgres_query_result_tests -- --nocapture
 cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
@@ -431,6 +446,7 @@ node scripts/verify/verify-index-partition-full-capture.mjs
 node scripts/verify/verify-index-partition-post-inspection-drift.mjs
 node scripts/verify/verify-index-query-planner.mjs
 node scripts/verify/verify-index-postgres-query-compiler.mjs
+node scripts/verify/verify-index-query-result-decoder.mjs
 ```
 
 ## Progress log
@@ -449,8 +465,10 @@ node scripts/verify/verify-index-postgres-query-compiler.mjs
   verification receipts, and exact recursive filesystem snapshot enforcement.
 - 2026-07-29: rechecked the merged M3 source boundary, completed deterministic typed
   M4 planning, controlled projection SQL, root/one-link filters, ordering, separate
-  exact count, validated lexicographic keyset continuation, and bounded offset
-  compatibility. Many-link planning, result decoding, execution composition, and
+  exact count, validated lexicographic keyset continuation, bounded offset
+  compatibility, one-row page lookahead, deterministic tagged-row decoding, exact
+  count decoding, relation identity reconstruction, and scoped next-cursor creation.
+  Many-link planning, direct SQL execution/row adaptation, plan/SQL snapshots, and
   PostgreSQL/reference equivalence remain open.
 - Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
   packet remain for the owner to execute and admit before production partition
