@@ -6,7 +6,7 @@ The binary composes the canonical Product owner service and the replaceable toni
 
 ```text
 PostgreSQL
-   │
+   │ schema preflight
    ▼
 CatalogService
    │ ProductCatalogReadPort
@@ -28,6 +28,16 @@ It does not own Product DTOs, catalog policy, persistence queries, locale/channe
 | `RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR` | Server-owned identity assigned to authenticated calls, for example `rustok-server`. Caller-provided `PortContext.actor`, claims, and roles remain untrusted. |
 
 The database schema must already be migrated by the platform migration workflow. This service does not run migrations at startup.
+
+## Schema preflight
+
+After the PostgreSQL pool connects and before tonic starts listening, the host performs read probes through the canonical owner entities for:
+
+- `products`;
+- `product_variants`;
+- `sys_events`.
+
+This verifies that the Product catalog and transactional outbox schema are visible to the configured database principal. A missing table, incompatible schema, or insufficient read permission aborts startup with a sanitized migration-precondition error. The host does not create, alter, or repair schema and does not silently continue with partial readiness.
 
 ## Listener and TLS
 
@@ -72,4 +82,4 @@ RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true \
 cargo run -p rustok-product-catalog-service
 ```
 
-The implementation agent does not claim this command was executed. Product remains `boundary_ready` until the host and consumers are executed together and retained evidence is committed.
+The implementation agent does not claim this command was executed. Product remains `boundary_ready` until the schema preflight, host, and consumers are executed together and retained evidence is committed.
