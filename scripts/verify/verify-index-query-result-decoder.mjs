@@ -37,6 +37,8 @@ const decoder = requireMarkers(decoderPath, [
   'CursorCodec::encode_for_query(&cursor, query, self)?',
   'root_entity_id.flatten()',
   'if missing_relation {',
+  'fn join_is_projected(',
+  'if join_is_projected(plan, &join.path)',
   'ExactCountContractMismatch',
   'InvalidTaggedValue',
 ]);
