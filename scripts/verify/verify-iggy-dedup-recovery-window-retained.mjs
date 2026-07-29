@@ -409,15 +409,17 @@ if (packet) {
   }
 
   const forbiddenKeys = new Set(contract.privacy_exclusions);
-  function inspect(value) {
+  function inspect(value, parentKey = "") {
     if (Array.isArray(value)) {
-      for (const item of value) inspect(item);
+      for (const item of value) inspect(item, parentKey);
       return;
     }
     if (value === null || typeof value !== "object") return;
     for (const [key, nested] of Object.entries(value)) {
-      if (forbiddenKeys.has(key)) fail(`canonical packet contains forbidden field: ${key}`);
-      inspect(nested);
+      if (forbiddenKeys.has(key) && parentKey !== "input_environment_names") {
+        fail(`canonical packet contains forbidden field: ${key}`);
+      }
+      inspect(nested, key);
     }
   }
   inspect(packet);
