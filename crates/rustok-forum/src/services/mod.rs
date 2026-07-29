@@ -3,6 +3,7 @@
 mod bounded_compat;
 mod category {
     include!("category.rs");
+    include!("category_projection_owner.rs");
     include!("category_visibility_list.rs");
 }
 mod category_audience {
@@ -15,8 +16,14 @@ mod category_audience_read {
 }
 mod category_audience_visibility;
 #[allow(clippy::collapsible_if)]
-mod category_command;
-mod category_lifecycle;
+mod category_command {
+    include!("category_command.rs");
+    include!("category_command_owner.rs");
+}
+mod category_lifecycle {
+    include!("category_lifecycle.rs");
+    include!("category_lifecycle_owner.rs");
+}
 mod category_moderation_audience;
 mod category_owner;
 mod category_policy;
