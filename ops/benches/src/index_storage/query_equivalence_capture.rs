@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     env,
     fs::{self, OpenOptions},
     io::Write as _,
@@ -432,30 +433,26 @@ fn publish_bundle(
         .context("query equivalence output root must have a filename")?;
     let final_root = canonical_parent.join(output_name);
     ensure_output_absent(&final_root)?;
-    let staged_root = canonical_parent.join(format!(
-        ".{}.tmp-{}",
-        output_name.to_string_lossy(),
-        std::process::id()
-    ));
-    ensure_output_absent(&staged_root)?;
-    fs::create_dir(&staged_root)
-        .with_context(|| format!("failed to create staged query equivalence root {staged_root:?}"))?;
+    fs::create_dir(&final_root).with_context(|| {
+        format!("failed to reserve fresh query equivalence output root {final_root:?}")
+    })?;
 
     let result: Result<PathBuf> = (|| {
-        write_new_file(&staged_root.join(STDOUT_FILE), &output.stdout)?;
-        write_new_file(&staged_root.join(STDERR_FILE), &output.stderr)?;
+        write_new_file(&final_root.join(STDOUT_FILE), &output.stdout)?;
+        write_new_file(&final_root.join(STDERR_FILE), &output.stderr)?;
+        ensure_exact_files(&final_root, &[STDERR_FILE, STDOUT_FILE])?;
+
         let mut descriptor_bytes = serde_json::to_vec_pretty(descriptor)?;
         descriptor_bytes.push(b'\n');
-        write_new_file(&staged_root.join(DESCRIPTOR_FILE), &descriptor_bytes)?;
-        fs::rename(&staged_root, &final_root).with_context(|| {
-            format!(
-                "failed to publish query equivalence bundle from {staged_root:?} to {final_root:?}"
-            )
-        })?;
+        write_new_file(&final_root.join(DESCRIPTOR_FILE), &descriptor_bytes)?;
+        ensure_exact_files(
+            &final_root,
+            &[DESCRIPTOR_FILE, STDERR_FILE, STDOUT_FILE],
+        )?;
         Ok(final_root.clone())
     })();
-    if staged_root.exists() {
-        let _ = fs::remove_dir_all(&staged_root);
+    if result.is_err() && final_root.exists() {
+        let _ = fs::remove_dir_all(&final_root);
     }
     result
 }
@@ -470,6 +467,31 @@ fn write_new_file(path: &Path, bytes: &[u8]) -> Result<()> {
         .with_context(|| format!("failed to write retained query equivalence artifact {path:?}"))?;
     file.sync_all()
         .with_context(|| format!("failed to sync retained query equivalence artifact {path:?}"))?;
+    Ok(())
+}
+
+fn ensure_exact_files(root: &Path, expected: &[&str]) -> Result<()> {
+    let expected = expected.iter().map(|value| (*value).to_owned()).collect::<BTreeSet<_>>();
+    let mut actual = BTreeSet::new();
+    for entry in fs::read_dir(root)
+        .with_context(|| format!("failed to inspect query equivalence bundle {root:?}"))?
+    {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        ensure!(
+            file_type.is_file() && !file_type.is_symlink(),
+            "query equivalence bundle entries must be regular non-symlink files"
+        );
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("query equivalence bundle filename must be UTF-8"))?;
+        actual.insert(name);
+    }
+    ensure!(
+        actual == expected,
+        "query equivalence bundle inventory mismatch: expected {expected:?}, got {actual:?}"
+    );
     Ok(())
 }
 
