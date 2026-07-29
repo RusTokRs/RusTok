@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "module": "iggy",
+  "packet": "dedup-recovery-window-policy-source",
+  "status": "source_complete_runtime_calibration_pending",
+  "owner": "rustok-iggy",
+  "source": "crates/rustok-iggy/src/dedup_recovery_window_policy.rs",
+  "verifier": "scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs",
+  "documentation": "crates/rustok-iggy/docs/dedup-recovery-window-policy.md",
+  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md",
+  "public_exports": [
+    "IggyDeduplicationConfiguration",
+    "IggyDedupRecoveryWindowPolicy",
+    "IggyDedupRecoveryWindowAssessment",
+    "IggyDedupRecoveryWindowStatus",
+    "IggyDedupRecoveryWindowPolicyError"
+  ],
+  "required_recovery_horizon_inputs": [
+    "publication_lease",
+    "process_restart",
+    "transport_reconnect",
+    "operator_recovery"
+  ],
+  "required_capacity_input": "maximum_distinct_deterministic_message_ids_per_partition_during_recovery_horizon",
+  "expiry_rule": "checked_sum_of_all_recovery_horizon_inputs",
+  "capacity_rule": "configured_max_entries_not_below_required_per_partition_distinct_ids",
+  "configuration_modes": [
+    "disabled",
+    "enabled_with_positive_max_entries_and_expiry"
+  ],
+  "assessment_statuses": [
+    "disabled",
+    "insufficient_expiry",
+    "insufficient_capacity",
+    "insufficient_expiry_and_capacity",
+    "sufficient"
+  ],
+  "stable_codes": {
+    "disabled": "iggy.dedup_recovery.disabled",
+    "insufficient_expiry": "iggy.dedup_recovery.insufficient_expiry",
+    "insufficient_capacity": "iggy.dedup_recovery.insufficient_capacity",
+    "insufficient_expiry_and_capacity": "iggy.dedup_recovery.insufficient_expiry_and_capacity",
+    "sufficient": "iggy.dedup_recovery.sufficient",
+    "invalid_policy": "iggy.dedup_recovery.policy_invalid",
+    "invalid_configuration": "iggy.dedup_recovery.configuration_invalid",
+    "horizon_overflow": "iggy.dedup_recovery.horizon_overflow"
+  },
+  "required_source_tests": [
+    "invalid_policy_and_configuration_fail_closed",
+    "recovery_horizon_overflow_fails_closed",
+    "disabled_configuration_never_claims_sufficiency",
+    "expiry_and_capacity_deficits_are_distinguished",
+    "exact_boundary_is_sufficient_without_stronger_guarantees"
+  ],
+  "policy_boundary": {
+    "reads_active_iggy_configuration": false,
+    "connects_to_broker": false,
+    "publishes_or_consumes_messages": false,
+    "mutates_receipts_or_offsets": false,
+    "defines_production_defaults": false,
+    "authorizes_profiles_or_social_graph": false,
+    "claims_database_broker_transaction": false,
+    "claims_physical_exactly_once": false
+  },
+  "privacy_boundary": {
+    "identifier_free": true,
+    "payload_free": true,
+    "broker_coordinate_free": true,
+    "credential_free": true,
+    "configuration_path_free": true
+  },
+  "interpretation": {
+    "sufficient_means": "reviewed_expiry_and_capacity_cover_the_supplied_bounded_model",
+    "sufficient_does_not_mean": [
+      "active_configuration_verified",
+      "workload_bound_proven",
+      "failover_proven",
+      "multi_replica_proven",
+      "universal_duplicate_suppression",
+      "exactly_once"
+    ]
+  },
+  "remaining_work": [
+    "supply_reviewed_production_horizon_bounds",
+    "derive_per_partition_distinct_id_capacity_bound",
+    "bind_assessment_to_reviewed_iggy_configuration_digest",
+    "retain_runtime_calibration_packet",
+    "repeat_for_bundled_tls_auth_failover_and_multi_replica_operation"
+  ],
+  "execution_status": "source_not_run"
+}
