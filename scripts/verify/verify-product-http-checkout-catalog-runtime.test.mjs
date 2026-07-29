@@ -52,10 +52,11 @@ function fixture(options = {}) {
         "marketplace-listing",
         "order-storefront-native",
         "commerce-checkout-http",
+        "commerce-checkout-graphql",
       ];
   const pending = options.registryPending
     ? ["commerce-checkout-http", "commerce-checkout-graphql"]
-    : ["commerce-checkout-graphql"];
+    : [];
   write(
     root,
     "crates/rustok-product/contracts/product-fba-registry.json",
@@ -63,7 +64,9 @@ function fixture(options = {}) {
       runtime_composition: {
         source_complete_consumers: complete,
         pending_consumers: pending,
-        status: "source_complete_consumer_cutover_partial",
+        status: options.registryPending
+          ? "source_complete_consumer_cutover_partial"
+          : "source_complete_consumer_cutover_complete",
       },
     }),
   );
@@ -72,7 +75,7 @@ function fixture(options = {}) {
     "crates/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
-      : "Commerce HTTP checkout Commerce GraphQL checkout verify-product-http-checkout-catalog-runtime.mjs remains open only for that surface",
+      : "Commerce HTTP checkout mounted Commerce GraphQL checkout checkout consumer source cutover is complete verify-product-http-checkout-catalog-runtime.mjs",
   );
   return root;
 }
@@ -110,8 +113,8 @@ test("HTTP checkout guard rejects missing host runtime", () => {
   reject({ missingRuntime: true }, /Commerce HTTP runtime/);
 });
 
-test("HTTP checkout guard rejects embedded compatibility call", () => {
-  reject({ embeddedHandler: true }, /embedded compatibility wrapper/);
+test("HTTP checkout guard rejects compatibility call", () => {
+  reject({ embeddedHandler: true }, /compatibility wrapper/);
 });
 
 test("HTTP checkout guard rejects Product construction in composed body", () => {
@@ -119,7 +122,7 @@ test("HTTP checkout guard rejects Product construction in composed body", () => 
 });
 
 test("HTTP checkout guard rejects stale registry pending state", () => {
-  reject({ registryPending: true }, /commerce-checkout-http/);
+  reject({ registryPending: true }, /source-complete|pending checkout consumers/);
 });
 
 test("HTTP checkout guard rejects missing plan handoff", () => {
