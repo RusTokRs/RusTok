@@ -43,8 +43,8 @@ function fixture({ attributeComplete = false, umbrellaComplete = false, includeA
   write(root, "crates/rustok-product/src/services/catalog/queries.rs", `PrimaryCategoryId.eq(category_id) StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt`);
 
   write(root, "crates/rustok-product/admin/src/catalog_controls.rs", `ProductAdminListInput pub category_id: Option<String> pub sort_by: Option<String> pub sort_direction: Option<String>${attribute}`);
-  write(root, "crates/rustok-product/admin/src/ui/leptos.rs", `name="category_id" name="sort_by" name="sort_direction"${attribute}`);
-  write(root, "crates/rustok-product/admin/src/transport.rs", `admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
+  write(root, "crates/rustok-product/admin/src/ui/catalog_admin.rs", `name="category_id" name="sort_by" name="sort_direction"${attribute}`);
+  write(root, "crates/rustok-product/admin/src/catalog_transport.rs", `admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
   write(root, "crates/rustok-product/admin/src/transport/admin_catalog_native.rs", `AdminProductListQuery::try_from_transport list_admin_products_with_query${attribute}`);
   write(root, "crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs", `AdminProductCatalogFilter categoryId sortBy sortDirection${attribute}`);
   write(root, "crates/rustok-product/src/services/catalog/admin_queries.rs", omitAdminSource
