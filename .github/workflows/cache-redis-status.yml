@@ -71,6 +71,27 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+      - name: Correct deterministic patch target
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path("scripts/agent/patch-storefront-search-channel-23b2e1.py")
+          text = target.read_text()
+          old = '''replace_once(
+              "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+              "        use rustok_api::{HostRuntimeContext, TenantContext};\\n",
+              "        use rustok_api::{HostRuntimeContext, RequestContext, TenantContext};\\n",
+          )'''
+          new = '''replace_after(
+              "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+              "async fn storefront_search_native(\\n",
+              "        use rustok_api::{HostRuntimeContext, TenantContext};\\n",
+              "        use rustok_api::{HostRuntimeContext, RequestContext, TenantContext};\\n",
+          )'''
+          if text.count(old) != 1:
+              raise SystemExit("native RequestContext patch target drifted")
+          target.write_text(text.replace(old, new, 1))
+          PY
       - name: Apply deterministic trusted channel patch
         run: python3 scripts/agent/patch-storefront-search-channel-23b2e1.py
       - name: Commit patch and remove temporary agent files
