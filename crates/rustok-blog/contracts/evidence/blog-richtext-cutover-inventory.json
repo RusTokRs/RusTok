@@ -18,6 +18,7 @@
       "path": "crates/rustok-blog/src/richtext.rs",
       "required_markers": [
         "RichTextProfile::Article",
+        "pub fn article_document_from_plain_text(text: &str)",
         "pub fn normalize_article(document: RichTextDocument)",
         "pub fn project_article(document: RichTextDocument)",
         "pub fn project_stored_article(body: &str, format: &str)"

@@ -4,6 +4,41 @@ use rustok_content::{
     RichTextProfile, canonical_json, plain_text, project, validate_and_normalize,
 };
 
+/// Convert normalized plain text into a canonical Blog article document.
+///
+/// Blank lines delimit paragraphs and wrapped non-empty lines are joined with a
+/// single space. This adapter deliberately accepts text only: Markdown aliases,
+/// raw JSON, HTML, and caller-selected richtext profiles remain outside the
+/// owner contract.
+pub fn article_document_from_plain_text(text: &str) -> RichTextDocument {
+    let mut paragraphs = Vec::new();
+    let mut paragraph_lines = Vec::new();
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            if !paragraph_lines.is_empty() {
+                paragraphs.push(paragraph_lines.join(" "));
+                paragraph_lines.clear();
+            }
+        } else {
+            paragraph_lines.push(line);
+        }
+    }
+
+    if !paragraph_lines.is_empty() {
+        paragraphs.push(paragraph_lines.join(" "));
+    }
+
+    RichTextDocument {
+        kind: "doc".to_string(),
+        content: paragraphs
+            .into_iter()
+            .flat_map(|paragraph| RichTextDocument::single_paragraph(paragraph).content)
+            .collect(),
+    }
+}
+
 /// Normalize a Blog article document at the owner boundary.
 ///
 /// The profile is deliberately fixed here: callers cannot select a
@@ -43,7 +78,41 @@ pub fn project_stored_article(body: &str, format: &str) -> BlogResult<(RichTextV
 mod tests {
     use rustok_api::RichTextDocument;
 
-    use super::{canonical_article_body, project_article, project_stored_article};
+    use super::{
+        article_document_from_plain_text, canonical_article_body, normalize_article,
+        project_article, project_stored_article,
+    };
+
+    #[test]
+    fn plain_text_import_builds_canonical_article_paragraphs() {
+        let document = article_document_from_plain_text(
+            "  First line  \n second line\n\n\n  Third paragraph  ",
+        );
+
+        assert_eq!(document.kind, "doc");
+        assert_eq!(document.content.len(), 2);
+        assert_eq!(document.content[0].kind, "paragraph");
+        assert_eq!(
+            document.content[0].content[0].text.as_deref(),
+            Some("First line second line")
+        );
+        assert_eq!(
+            document.content[1].content[0].text.as_deref(),
+            Some("Third paragraph")
+        );
+        assert_eq!(
+            normalize_article(document.clone()).expect("normalize imported document"),
+            document
+        );
+    }
+
+    #[test]
+    fn plain_text_import_returns_empty_canonical_document_for_blank_input() {
+        assert_eq!(
+            article_document_from_plain_text(" \n\n \t"),
+            RichTextDocument::empty()
+        );
+    }
 
     #[test]
     fn article_projection_returns_canonical_document_html_and_text() {

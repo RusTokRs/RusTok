@@ -14,6 +14,7 @@ The Blog article cutover is atomic. A surface is not considered migrated merely 
 ## Implemented boundaries
 
 - `crates/rustok-blog/src/richtext.rs` owns article validation, canonical JSON, HTML projection, and plain-text projection.
+- The same owner module exposes `article_document_from_plain_text` for format-free text import. Blank lines delimit canonical paragraphs; the adapter accepts no Markdown alias, raw JSON, HTML, or caller-selected profile.
 - GraphQL exposes canonical writes and reads while temporary compatibility declarations remain contained in `graphql/types.rs`.
 - Next admin uses a shared `RichTextDocument` editor and consumes `RichTextView`.
 - Blog Leptos storefront GraphQL and native transports now carry the same `RichTextView` plus server-derived plain text; the UI renders only owner-generated HTML.
@@ -23,7 +24,7 @@ The Blog article cutover is atomic. A surface is not considered migrated merely 
 
 1. **Storage schema** — `blog_post_translations` still stores `body` and `body_format`.
 2. **Search projection** — Blog indexing still builds the document body from `bt.body`.
-3. **AI Blog draft writer** — direct Blog draft create/update commands still write Markdown and leave canonical `content` empty.
+3. **AI Blog draft writer** — an owner text-import adapter is available, but direct Blog draft create/update commands still write Markdown compatibility fields and leave canonical `content` empty.
 
 These blockers must be migrated together with the storage transition. Removing GraphQL compatibility fields before them would split the owner contract and make save/reload/index/render behavior inconsistent.
 
