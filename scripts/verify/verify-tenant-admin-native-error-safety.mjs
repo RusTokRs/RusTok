@@ -23,6 +23,13 @@ for (const marker of [
   'const TENANT_ADMIN_OWNER: &str = "rustok_tenant.admin_transport";',
   'const TENANT_ADMIN_BOUNDARY: &str = "tenant_admin_native_transport";',
   'fn tenant_admin_correlation_id()',
+  'fn tenant_admin_scope_matches(',
+  'auth_tenant_id == resolved_tenant_id',
+  'if !tenant_admin_scope_matches(auth.tenant_id, tenant.id)',
+  'auth_tenant_id = %auth.tenant_id',
+  'resolved_tenant_id = %tenant.id',
+  'code = "tenant.admin_tenant_scope_mismatch"',
+  'tenant_admin_scope_requires_matching_tenant',
   'fn tenant_admin_context_error<',
   'fn tenant_admin_owner_error(',
   'fn tenant_admin_internal_error<',
@@ -39,7 +46,11 @@ for (const marker of [
   '"Module configuration is temporarily unavailable"',
   '"Effective module policy is temporarily unavailable"',
 ]) {
-  if (!adapter.includes(marker)) fail(`tenant admin safe error boundary missing ${marker}`);
+  if (!adapter.includes(marker)) fail(`tenant admin safe error or tenant-scope boundary missing ${marker}`);
+}
+
+if (adapter.indexOf('if !tenant_admin_scope_matches(auth.tenant_id, tenant.id)') > adapter.indexOf('let can_read_tenant =')) {
+  fail('tenant scope equality must be enforced before permission admission');
 }
 
 for (const forbidden of [
@@ -62,4 +73,4 @@ for (const operation of mappedOperations) {
   if (!adapter.includes(`"${operation}"`)) fail(`tenant admin operation lacks safe mapping: ${operation}`);
 }
 
-console.log('[verify-tenant-admin-native-error-safety] tenant admin native errors are static publicly and diagnostic privately');
+console.log('[verify-tenant-admin-native-error-safety] tenant admin binds auth to resolved tenant and keeps native errors static publicly');
