@@ -25,6 +25,10 @@ function requireMarker(source, marker, label) {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
+function requireNoMarker(source, marker, label) {
+  if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+}
+
 const commentPath = "crates/rustok-comments/src/entities/comment.rs";
 const threadPath = "crates/rustok-comments/src/entities/comment_thread.rs";
 const identityEntityPath =
@@ -73,6 +77,9 @@ for (const marker of [
 }
 
 for (const marker of [
+  "pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER",
+  "pub(crate) fn is_thread_identity_conflict(",
+  "matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix))",
   "impl ActiveModelBehavior for ActiveModel",
   "serialize_thread_identity(db, &self).await?",
   "matches!(&self.comment_count, ActiveValue::Set(_))",
@@ -84,7 +91,7 @@ for (const marker of [
   "self.comment_count = Set(count)",
   "OnConflict::columns",
   "identity_lock::Entity::update_many()",
-  "comment thread identity {target_type}:{target_id} already belongs to",
+  "{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:{}",
 ]) {
   requireMarker(thread, marker, threadPath);
 }
@@ -110,12 +117,29 @@ if (counterHelperStart === -1) {
   );
   requireMarker(counterHelper, "active.update(txn).await?", `${servicesPath}: counter helper`);
 }
-for (const marker of [
-  "find_or_create_thread_in_tx",
-  "match thread.insert(txn).await",
-  "Err(_) => comment_thread::Entity::find()",
-]) {
-  requireMarker(services, marker, servicesPath);
+
+const findOrCreateStart = services.indexOf("async fn find_or_create_thread_in_tx");
+if (findOrCreateStart === -1) {
+  failures.push(`${servicesPath}: missing find_or_create_thread_in_tx`);
+} else {
+  const findOrCreateEnd = services.indexOf("\n    async fn next_position_in_tx", findOrCreateStart);
+  const findOrCreate = services.slice(
+    findOrCreateStart,
+    findOrCreateEnd === -1 ? services.length : findOrCreateEnd,
+  );
+  for (const marker of [
+    "match thread.insert(txn).await",
+    "Err(error)",
+    "comment_thread::is_thread_identity_conflict(",
+    "&error,",
+    "tenant_id,",
+    "target_type,",
+    "target_id,",
+    "Err(error) => Err(error.into())",
+  ]) {
+    requireMarker(findOrCreate, marker, `${servicesPath}: thread fallback`);
+  }
+  requireNoMarker(findOrCreate, "Err(_) =>", `${servicesPath}: thread fallback`);
 }
 
 for (const marker of [
@@ -182,7 +206,7 @@ for (const marker of [
 }
 
 if (evidence) {
-  if (evidence.schema_version !== 1) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 2) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== "comments" ||
     evidence.surface !== "thread_write_invariants" ||
@@ -198,6 +222,7 @@ if (evidence) {
   for (const [key, expected] of Object.entries({
     position_owner: commentPath,
     counter_and_identity_owner: threadPath,
+    thread_service: servicesPath,
     identity_lock_entity: identityEntityPath,
     counter_repair_migration: counterMigrationPath,
     identity_lock_migration: identityMigrationPath,
@@ -216,6 +241,7 @@ if (evidence) {
     "historical_counter_repair",
     "historical_position_repair",
     "bulk_bypass_rejection",
+    "identity_conflict_only_fallback",
     "postgres_concurrent_create_delete",
     "postgres_concurrent_first_thread_creation",
   ]) {
@@ -232,6 +258,8 @@ for (const marker of [
   "concurrent PostgreSQL",
   "identity-lock",
   "thread_creation_concurrency",
+  "identity-conflict-only fallback",
+  "unrelated storage errors propagate",
 ]) {
   requireMarker(plan, marker, planPath);
 }
