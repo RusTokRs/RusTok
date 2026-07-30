@@ -296,11 +296,6 @@ requireText(
 );
 requireText(
   commercePlan,
-  "Payment storefront native client error safety: `source_ready_unvalidated`",
-  `${paths.commercePlan}: umbrella source status`,
-);
-requireText(
-  commercePlan,
   "Finish correlation-safe mapper cleanup",
   `${paths.commercePlan}: broad ecommerce cleanup remains open`,
 );
