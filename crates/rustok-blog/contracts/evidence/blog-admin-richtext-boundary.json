@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "blog",
   "surface": "leptos_admin_article_richtext_boundary",
   "status": "source_verified_no_compile",
@@ -10,7 +10,8 @@
     "locales": {
       "en": "crates/rustok-blog/admin/locales/en.json",
       "ru": "crates/rustok-blog/admin/locales/ru.json"
-    }
+    },
+    "adapter": "crates/rustok-blog/admin/src/ui/richtext.rs"
   },
   "required_markers": {
     "core": [
@@ -25,6 +26,20 @@
       "<BlogRichTextEditor",
       "document=content",
       "set_document=set_content"
+    ],
+    "adapter": [
+      "pub fn BlogRichTextEditor(",
+      "ReadSignal<RichTextDocument>",
+      "WriteSignal<RichTextDocument>",
+      "mount_richtext_frame",
+      "\"/richtext/frame\"",
+      "\"article\"",
+      "serde_json::from_str::<RichTextDocument>",
+      "set_document.set(document)",
+      "sandbox=\"allow-scripts\"",
+      "referrerpolicy=\"no-referrer\"",
+      "on_cleanup",
+      "dispose_richtext_frame"
     ]
   },
   "forbidden_markers": [
@@ -48,5 +63,10 @@
   "forbidden_locale_keys": [
     "blog.form.bodyFormat",
     "blog.form.rawWarning"
+  ],
+  "forbidden_adapter_markers": [
+    "\"discussion\"",
+    "allow-same-origin",
+    "serde_json::from_str::<serde_json::Value>"
   ]
 }

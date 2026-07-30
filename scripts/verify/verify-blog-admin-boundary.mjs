@@ -46,6 +46,7 @@ const libPath = "crates/rustok-blog/admin/src/lib.rs";
 const corePath = "crates/rustok-blog/admin/src/core.rs";
 const modelPath = "crates/rustok-blog/admin/src/model.rs";
 const uiPath = "crates/rustok-blog/admin/src/ui/leptos.rs";
+const richtextAdapterPath = "crates/rustok-blog/admin/src/ui/richtext.rs";
 const moderationPath = "crates/rustok-blog/admin/src/moderation.rs";
 const transportPath = "crates/rustok-blog/admin/src/transport/mod.rs";
 const graphqlAdapterPath = "crates/rustok-blog/admin/src/transport/graphql_adapter.rs";
@@ -71,6 +72,7 @@ for (const filePath of [
   corePath,
   modelPath,
   uiPath,
+  richtextAdapterPath,
   moderationPath,
   transportPath,
   graphqlAdapterPath,
@@ -93,6 +95,7 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const model = readRepo(modelPath);
 const ui = readRepo(uiPath);
+const richtextAdapter = readRepo(richtextAdapterPath);
 const moderation = readRepo(moderationPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
@@ -225,6 +228,32 @@ assertContains(ui, "let (content, set_content) = signal(RichTextDocument::empty(
 assertContains(ui, "<BlogRichTextEditor", `${uiPath}: UI must render the owner richtext editor`);
 assertContains(ui, "document=content", `${uiPath}: UI must pass canonical document state to the editor`);
 assertContains(ui, "set_document=set_content", `${uiPath}: UI must receive canonical document updates from the editor`);
+for (const [marker, description] of [
+  ["pub fn BlogRichTextEditor(", "owner editor component"],
+  ["ReadSignal<RichTextDocument>", "typed controlled input"],
+  ["WriteSignal<RichTextDocument>", "typed controlled output"],
+  ["serde_json::from_str::<RichTextDocument>", "typed RichTextDocument deserialization"],
+  ["set_document.set(document)", "typed document state update"],
+  ['sandbox="allow-scripts"', "isolated script-only iframe sandbox"],
+  ['referrerpolicy="no-referrer"', "no-referrer iframe policy"],
+  ["on_cleanup", "frame cleanup hook"],
+  ["dispose_richtext_frame", "frame disposal"],
+]) {
+  assertContains(richtextAdapter, marker, `${richtextAdapterPath}: missing ${description}`);
+}
+assertContains(
+  richtextAdapter,
+  /mount_richtext_frame\([\s\S]*?"\/richtext\/frame",\s*"article",/,
+  `${richtextAdapterPath}: owner adapter must mount the fixed Article profile through the canonical frame`,
+);
+assertNotContains(
+  richtextAdapter,
+  /sandbox="[^"]*allow-same-origin/,
+  `${richtextAdapterPath}: owner iframe must not grant allow-same-origin`,
+);
+for (const marker of ['"discussion"', "serde_json::from_str::<serde_json::Value>"]) {
+  assertNotContains(richtextAdapter, marker, `${richtextAdapterPath}: owner Article adapter contains forbidden ${marker}`);
+}
 assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(ui, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
 assertContains(ui, "core::blog_post_admin_editor_form_copy_view", `${uiPath}: UI must use core-owned editor form copy presentation policy`);
@@ -355,7 +384,7 @@ for (const marker of [
 }
 
 if (
-  adminRichtextEvidence.schema_version !== 2 ||
+  adminRichtextEvidence.schema_version !== 3 ||
   adminRichtextEvidence.module !== "blog" ||
   adminRichtextEvidence.surface !== "leptos_admin_article_richtext_boundary" ||
   adminRichtextEvidence.status !== "source_verified_no_compile" ||
@@ -366,6 +395,7 @@ if (
 if (
   adminRichtextEvidence.sources?.core !== corePath ||
   adminRichtextEvidence.sources?.ui !== uiPath ||
+  adminRichtextEvidence.sources?.adapter !== richtextAdapterPath ||
   adminRichtextEvidence.sources?.locales?.en !== adminEnLocalePath ||
   adminRichtextEvidence.sources?.locales?.ru !== adminRuLocalePath ||
   adminRichtextEvidence.verifier !== "scripts/verify/verify-blog-admin-boundary.mjs" ||
@@ -378,6 +408,12 @@ for (const marker of adminRichtextEvidence.required_markers?.core ?? []) {
 }
 for (const marker of adminRichtextEvidence.required_markers?.ui ?? []) {
   assertContains(ui, marker, `${uiPath}: evidence-required canonical UI marker ${marker}`);
+}
+for (const marker of adminRichtextEvidence.required_markers?.adapter ?? []) {
+  assertContains(richtextAdapter, marker, `${richtextAdapterPath}: evidence-required owner adapter marker ${marker}`);
+}
+for (const marker of adminRichtextEvidence.forbidden_adapter_markers ?? []) {
+  assertNotContains(richtextAdapter, marker, `${richtextAdapterPath}: evidence-forbidden owner adapter marker ${marker}`);
 }
 for (const marker of adminRichtextEvidence.forbidden_markers ?? []) {
   assertNotContains(core, marker, `${corePath}: evidence-forbidden legacy richtext marker ${marker}`);

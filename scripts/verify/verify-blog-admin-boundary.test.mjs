@@ -134,6 +134,38 @@ pub fn BlogAdmin() {
 `;
 }
 
+function richtextAdapterSource({
+  wrongProfile = false,
+  unsafeSandbox = false,
+  untypedPayload = false,
+  missingCleanup = false,
+} = {}) {
+  return `
+use rustok_api::RichTextDocument;
+pub fn BlogRichTextEditor(
+    document: ReadSignal<RichTextDocument>,
+    set_document: WriteSignal<RichTextDocument>,
+) {
+    let document_json = "{}";
+    let mounted_handle = mount_richtext_frame(
+        &iframe,
+        "/richtext/frame",
+        "${wrongProfile ? "discussion" : "article"}",
+        document_json,
+        messages_json,
+        true,
+        &on_document_change,
+        &on_error,
+    );
+    ${untypedPayload ? "serde_json::from_str::<serde_json::Value>(document_json);" : "serde_json::from_str::<RichTextDocument>(document_json);"}
+    set_document.set(document);
+    sandbox="${unsafeSandbox ? "allow-scripts allow-same-origin" : "allow-scripts"}";
+    referrerpolicy="no-referrer";
+    ${missingCleanup ? "" : "on_cleanup(move || { dispose_richtext_frame(&mounted_handle); });"}
+}
+`;
+}
+
 function moderationSource({ rawServiceCall = false, omitModeration = false } = {}) {
   if (omitModeration) return "pub fn placeholder() {}";
   return `
@@ -226,6 +258,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-blog/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
   writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/moderation.rs", moderationSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
@@ -247,7 +280,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-blog/admin/locales/en.json", JSON.stringify(localeCatalog));
   writeFixtureFile(root, "crates/rustok-blog/admin/locales/ru.json", JSON.stringify(localeCatalog));
   writeFixtureFile(root, "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json", JSON.stringify({
-    schema_version: 2,
+    schema_version: 3,
     module: "blog",
     surface: "leptos_admin_article_richtext_boundary",
     status: "source_verified_no_compile",
@@ -255,6 +288,7 @@ function withFixture(options = {}) {
     sources: {
       core: "crates/rustok-blog/admin/src/core.rs",
       ui: "crates/rustok-blog/admin/src/ui/leptos.rs",
+      adapter: "crates/rustok-blog/admin/src/ui/richtext.rs",
       locales: {
         en: "crates/rustok-blog/admin/locales/en.json",
         ru: "crates/rustok-blog/admin/locales/ru.json"
@@ -262,8 +296,10 @@ function withFixture(options = {}) {
     },
     required_markers: {
       core: ["RichTextDocument", "content: &'a RichTextDocument", "content: RichTextDocument", "has_required_draft_fields"],
-      ui: ["use super::richtext::BlogRichTextEditor;", "let (content, set_content) = signal(RichTextDocument::empty());", "<BlogRichTextEditor", "document=content", "set_document=set_content"]
+      ui: ["use super::richtext::BlogRichTextEditor;", "let (content, set_content) = signal(RichTextDocument::empty());", "<BlogRichTextEditor", "document=content", "set_document=set_content"],
+      adapter: ["pub fn BlogRichTextEditor(", "ReadSignal<RichTextDocument>", "WriteSignal<RichTextDocument>", "mount_richtext_frame", "\"/richtext/frame\"", "\"article\"", "serde_json::from_str::<RichTextDocument>", "set_document.set(document)", "sandbox=\"allow-scripts\"", "referrerpolicy=\"no-referrer\"", "on_cleanup", "dispose_richtext_frame"]
     },
+    forbidden_adapter_markers: ["\"discussion\"", "allow-same-origin", "serde_json::from_str::<serde_json::Value>"],
     forbidden_markers: ["blog_post_admin_body_format_select_view", "blog_post_admin_body_format_change_view", "normalize_blog_post_body_format", "blog_post_admin_raw_body_warning_view"],
     forbidden_locale_keys: ["blog.form.bodyFormat", "blog.form.rawWarning"],
     verifier: "scripts/verify/verify-blog-admin-boundary.mjs",
@@ -315,6 +351,34 @@ test("blog admin boundary verifier rejects legacy richtext locale keys", () => {
   withRoot({ legacyLocaleKeys: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /canonical richtext locale catalog must not expose legacy key/);
+  });
+});
+
+test("blog admin boundary verifier rejects a non-Article owner editor profile", () => {
+  withRoot({ wrongProfile: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /fixed Article profile|forbidden.*discussion/);
+  });
+});
+
+test("blog admin boundary verifier rejects allow-same-origin on the editor iframe", () => {
+  withRoot({ unsafeSandbox: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not grant allow-same-origin|evidence-forbidden owner adapter marker/);
+  });
+});
+
+test("blog admin boundary verifier rejects untyped editor payload deserialization", () => {
+  withRoot({ untypedPayload: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /typed RichTextDocument deserialization|evidence-required owner adapter marker/);
+  });
+});
+
+test("blog admin boundary verifier rejects missing frame cleanup", () => {
+  withRoot({ missingCleanup: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /frame cleanup hook|frame disposal|evidence-required owner adapter marker/);
   });
 });
 
