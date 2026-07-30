@@ -56,6 +56,14 @@ invokes the pricing owner service, returns the saved owner projection, and prese
 the effective locale plus fallback locale for rule updates. This is static boundary
 evidence only; no live provider-consumer transport execution has been recorded.
 
+Pricing storefront GraphQL public errors are source-hardened at the selected transport
+facade: captured network, HTTP, unauthorized, GraphQL-rejection, and unknown displays
+are mapped to static public messages with a per-call correlation id and bounded request
+shape diagnostics. Pricing admin GraphQL public errors now use the same owner policy for
+bootstrap, active-price-list, product-list, and product-detail reads. Request validation,
+GraphQL documents, native reads, and native-only mutations remain unchanged. Both slices
+are source-ready / unvalidated and do not promote runtime or mounted-parity status.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress` — the owner UI surfaces exist and must retain
@@ -69,11 +77,17 @@ evidence only; no live provider-consumer transport execution has been recorded.
 - Evidence: `crates/rustok-pricing/contracts/pricing-fba-registry.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-runtime-contract-smoke.json`,
+  `crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json`,
+  `crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json`,
   `crates/rustok-pricing/docs/read-local-context.md`,
   `crates/rustok-pricing/docs/write-local-context.md`,
+  `crates/rustok-pricing/docs/storefront-graphql-error-safety.md`,
+  `crates/rustok-pricing/docs/admin-graphql-error-safety.md`,
   `scripts/verify/verify-pricing-read-local-context.mjs`,
   `scripts/verify/verify-pricing-write-local-context.mjs`,
   `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs`,
+  `scripts/verify/verify-pricing-admin-graphql-error-safety.mjs`,
+  `scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs`,
   `scripts/verify/verify-pricing-admin-boundary.mjs`, and
   `scripts/verify/verify-pricing-storefront-boundary.mjs`.
 
@@ -103,19 +117,23 @@ evidence only; no live provider-consumer transport execution has been recorded.
    Dependency: the stable owner transport and product variant data. Verification:
    targeted pricing resolution and money-semantics tests.
 4. Prove canonical pricing diagnostics and retire compatibility bypasses.
-   **Status:** source-complete / unvalidated for root read and write construction.
-   Execute invalid-context, invalid-actor, product/variant mismatch, missing
-   price/list, duplicate identity, inventory conflict, storage, and invariant
-   scenarios and retain traces proving that raw handles, SKUs, UUID-bearing
-   messages, quantities, currencies, prices, and percentages do not cross the
-   canonical boundary. Audit direct `rustok_pricing::ports` callers and either
-   migrate or explicitly accept them. Shared `port.*` admission diagnostics,
-   runtime evidence, and remote-profile parity remain open.
+   **Status:** source-complete / unvalidated for root read/write construction and
+   storefront/admin GraphQL public error envelopes. Execute invalid-context,
+   invalid-actor, product/variant mismatch, missing price/list, duplicate identity,
+   inventory conflict, storage, invariant, network, HTTP, unauthorized, and GraphQL
+   rejection scenarios. Retain traces proving that raw handles, SKUs, UUID-bearing
+   messages, tenant identifiers, locale/search/status values, quantities, currencies,
+   prices, percentages, and GraphQL/HTTP cause text do not cross canonical public
+   boundaries. Audit direct `rustok_pricing::ports` callers and either migrate or
+   explicitly accept them. Shared `port.*` admission diagnostics, runtime evidence,
+   browser evidence, and remote-profile parity remain open.
 
 ## Verification
 
 - `npm run verify:pricing:admin-boundary`
 - `npm run verify:pricing:storefront-boundary`
+- `node scripts/verify/verify-pricing-admin-graphql-error-safety.mjs`
+- `node scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs`
 - `node scripts/verify/verify-pricing-read-local-context.mjs`
 - `node scripts/verify/verify-pricing-write-local-context.mjs`
 - `npm run verify:ecommerce:fba`
@@ -128,5 +146,6 @@ evidence only; no live provider-consumer transport execution has been recorded.
   multi-layer promotions workflow.
 - Hosts only compose owner UI packages and pass effective locale, channel, and
   runtime context without creating package-local fallback chains.
-- Keep raw handles, SKUs, currency values, prices, percentages, and returned pricing
+- Keep raw handles, SKUs, tenant or resource identifiers, locale/search/status values,
+  currency values, prices, percentages, GraphQL/HTTP cause text, and returned pricing
   rows out of owner diagnostics; retain only typed identity and bounded shape facts.

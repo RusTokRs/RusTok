@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-30T18:45:00Z",
+  "status": "pricing_admin_graphql_error_safety_source_unvalidated",
+  "scope": "Pricing-owned admin GraphQL public transport envelope",
+  "operations": [
+    "fetch_bootstrap",
+    "fetch_active_price_lists",
+    "fetch_products",
+    "fetch_product"
+  ],
+  "boundary": "pricing_admin_graphql_transport",
+  "public_messages": {
+    "unavailable": "Pricing admin service is temporarily unavailable",
+    "authentication_required": "Pricing admin authentication is required",
+    "request_rejected": "Pricing admin request could not be completed"
+  },
+  "source_contract": {
+    "context_before_each_graphql_call": true,
+    "unique_correlation_id_per_call": true,
+    "network_static_public_envelope": true,
+    "http_static_public_envelope": true,
+    "authentication_static_public_envelope": true,
+    "graphql_rejection_static_public_envelope": true,
+    "raw_graphql_http_display_public": false,
+    "raw_request_values_logged": false,
+    "private_graphql_error_diagnostics": true,
+    "request_validation_messages_preserved": true,
+    "native_adapter_changed": false,
+    "graphql_documents_changed": false,
+    "transport_selection_changed": false,
+    "fallback_added": false,
+    "native_only_mutations_changed": false
+  },
+  "safe_diagnostics": [
+    "owner",
+    "owner_operation",
+    "correlation_id",
+    "tenant_slug presence and length",
+    "tenant_id presence and length",
+    "resource_id presence and length",
+    "locale presence and length",
+    "search presence and length",
+    "status presence and length",
+    "currency_code presence and length",
+    "region_id presence and length",
+    "price_list_id presence and length",
+    "channel_id presence and length",
+    "channel_slug presence and length",
+    "quantity presence",
+    "error_kind",
+    "stable code",
+    "boundary",
+    "private raw and parsed GraphQL error"
+  ],
+  "forbidden_public_or_structured_values": [
+    "tenant_slug",
+    "tenant_id",
+    "product_id",
+    "locale",
+    "search",
+    "status",
+    "currency_code",
+    "region_id",
+    "price_list_id",
+    "channel_id",
+    "channel_slug",
+    "quantity",
+    "GraphqlHttpError display",
+    "GraphQL server error message",
+    "HTTP status text"
+  ],
+  "preserved": [
+    "Pricing admin GraphQL query documents and variables",
+    "bootstrap, active-price-list, product-list, and product-detail result mapping",
+    "request validation and normalization",
+    "native server-function read behavior",
+    "native-only Pricing admin mutations",
+    "native versus GraphQL selected transport",
+    "absence of fallback"
+  ],
+  "remaining_scope": [
+    "remaining ecommerce adapters and non-PortError public envelopes",
+    "Pricing admin focused verifier execution",
+    "Pricing admin Cargo compilation across default, hydrate, and SSR profiles",
+    "GraphQL/browser runtime and mounted parity evidence"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-pricing-admin-graphql-error-safety.mjs",
+    "node scripts/verify/verify-pricing-admin-boundary.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-pricing-admin",
+    "cargo check -p rustok-pricing-admin --features hydrate",
+    "cargo check -p rustok-pricing-admin --features ssr"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "focused_verifier_run": false,
+    "aggregate_verifier_run": false,
+    "broad_ecommerce_verifier_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  },
+  "execution": []
+}

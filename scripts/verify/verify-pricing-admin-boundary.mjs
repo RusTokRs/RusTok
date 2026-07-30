@@ -5,6 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import "./verify-pricing-admin-graphql-error-safety.mjs";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -42,6 +44,7 @@ const files = {
   core: "crates/rustok-pricing/admin/src/core/mod.rs",
   ui: "crates/rustok-pricing/admin/src/ui/leptos.rs",
   transport: "crates/rustok-pricing/admin/src/transport.rs",
+  graphqlErrorSafety: "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs",
   nativeServerAdapter: "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs",
   legacyApi: "crates/rustok-pricing/admin/src/api.rs",
   implementationPlan: "crates/rustok-pricing/docs/implementation-plan.md",
@@ -61,6 +64,7 @@ const lib = readRepo(files.lib);
 const core = readRepo(files.core);
 const ui = readRepo(files.ui);
 const transport = readRepo(files.transport);
+const graphqlErrorSafety = readRepo(files.graphqlErrorSafety);
 const nativeServerAdapter = readRepo(files.nativeServerAdapter);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
@@ -81,14 +85,18 @@ for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server"]) {
 }
 
 assertContains(transport, "mod native_server_adapter;", `${files.transport}: transport must wire native server adapter`);
+assertContains(transport, "mod graphql_error_safety;", `${files.transport}: transport must wire GraphQL error policy`);
 assertContains(transport, "native_server_adapter::", `${files.transport}: transport facade must delegate through adapter`);
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not import legacy api module`);
 assertNotContains(transport, "#[server", `${files.transport}: transport facade must not own server functions`);
+assertContains(graphqlErrorSafety, "GraphqlHttpError::from_str", `${files.graphqlErrorSafety}: GraphQL policy must classify captured errors`);
+assertContains(graphqlErrorSafety, "Pricing admin request could not be completed", `${files.graphqlErrorSafety}: GraphQL policy must expose bounded messages`);
 assertContains(nativeServerAdapter, "pub enum ApiError", `${files.nativeServerAdapter}: adapter must own shared ApiError envelope`);
 assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: native server adapter must keep server functions`);
 assertNotContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAdapter}: native adapter must not execute the parallel GraphQL contract`);
 
 assertContains(implementationPlan, "verify-pricing-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention pricing admin guardrail`);
+assertContains(implementationPlan, "admin GraphQL public errors", `${files.implementationPlan}: local plan must record GraphQL public error safety`);
 assertContains(registry, "verify-pricing-admin-boundary.mjs", `${files.registry}: central readiness board must mention pricing admin guardrail`);
 assertContains(packageJson, "verify:pricing:admin-boundary", `${files.packageJson}: package scripts must expose pricing admin boundary verification`);
 assertContains(packageJson, "test:verify:pricing:admin-boundary", `${files.packageJson}: package scripts must expose pricing admin fixture tests`);

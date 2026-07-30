@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod graphql_error_safety;
 mod native_server_adapter;
 
 use rustok_ui_transport::UiTransportPath;
@@ -26,7 +27,13 @@ pub async fn fetch_bootstrap(
         UiTransportPath::NativeServer => {
             native_server_adapter::fetch_bootstrap(token, tenant_slug).await
         }
-        UiTransportPath::Graphql => graphql_adapter::fetch_bootstrap(token, tenant_slug).await,
+        UiTransportPath::Graphql => {
+            let context =
+                graphql_error_safety::GraphqlCallContext::for_bootstrap(tenant_slug.as_deref());
+            graphql_adapter::fetch_bootstrap(token, tenant_slug)
+                .await
+                .map_err(|error| context.map_error(error))
+        }
     }
 }
 
@@ -47,6 +54,11 @@ pub async fn fetch_active_price_lists(
             .await
         }
         UiTransportPath::Graphql => {
+            let context = graphql_error_safety::GraphqlCallContext::for_active_price_lists(
+                tenant_slug.as_deref(),
+                channel_id.as_deref(),
+                channel_slug.as_deref(),
+            );
             graphql_adapter::fetch_active_price_lists(
                 token,
                 tenant_slug,
@@ -54,6 +66,7 @@ pub async fn fetch_active_price_lists(
                 graphql_adapter::sanitize_channel_slug(channel_slug),
             )
             .await
+            .map_err(|error| context.map_error(error))
         }
     }
 }
@@ -79,6 +92,13 @@ pub async fn fetch_products(
             .await
         }
         UiTransportPath::Graphql => {
+            let context = graphql_error_safety::GraphqlCallContext::for_products(
+                tenant_slug.as_deref(),
+                tenant_id.as_str(),
+                locale.as_deref(),
+                search.as_deref(),
+                status.as_deref(),
+            );
             graphql_adapter::fetch_products(
                 token,
                 tenant_slug,
@@ -88,6 +108,7 @@ pub async fn fetch_products(
                 status,
             )
             .await
+            .map_err(|error| context.map_error(error))
         }
     }
 }
@@ -124,6 +145,18 @@ pub async fn fetch_product(
             .await
         }
         UiTransportPath::Graphql => {
+            let context = graphql_error_safety::GraphqlCallContext::for_product(
+                tenant_slug.as_deref(),
+                tenant_id.as_str(),
+                id.as_str(),
+                locale.as_deref(),
+                currency_code.as_deref(),
+                region_id.as_deref(),
+                price_list_id.as_deref(),
+                channel_id.as_deref(),
+                channel_slug.as_deref(),
+                quantity.is_some(),
+            );
             let resolution_context = crate::core::sanitize_resolution_context(
                 currency_code,
                 region_id,
@@ -151,6 +184,7 @@ pub async fn fetch_product(
                 resolution_context.as_ref().map(|context| context.quantity),
             )
             .await
+            .map_err(|error| context.map_error(error))
         }
     }
 }
