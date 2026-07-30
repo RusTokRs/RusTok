@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub async fn mark_storefront_category_read_server(
     category_id: String,
     cursor: Option<String>,

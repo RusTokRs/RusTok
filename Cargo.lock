@@ -12317,6 +12317,7 @@ dependencies = [
  "rustok-tenant",
  "sea-orm",
  "serde_json",
+ "tokio",
  "uuid",
 ]
 
@@ -12328,6 +12329,7 @@ dependencies = [
  "chrono",
  "criterion",
  "futures",
+ "hex",
  "rust_decimal",
  "rustok-commerce",
  "rustok-content",
@@ -12945,6 +12947,7 @@ name = "rustok-distribution"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "async-trait",
  "flex",
  "rustok-ai",
  "rustok-ai-translation",
@@ -12997,6 +13000,7 @@ dependencies = [
  "rustok-translation",
  "rustok-workflow",
  "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

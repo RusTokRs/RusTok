@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
