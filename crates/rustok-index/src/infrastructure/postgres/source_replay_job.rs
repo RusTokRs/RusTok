@@ -338,7 +338,7 @@ impl PostgresIndexReplayJobStore {
             attempt_count = 1;
             let job_request = json!({
                 "contract": REPLAY_JOB_REQUEST_CONTRACT,
-                "source_name": request.source_name,
+                "source_name": request.source_name.clone(),
             });
             transaction
                 .execute(Statement::from_sql_and_values(
@@ -518,9 +518,8 @@ async fn lock_replay_scope(
         return Ok(());
     }
     let lock_key = format!(
-        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}",
         request.tenant_id,
-        request.source_name,
         request.schema.module.as_str(),
         request.schema.entity.as_str(),
         request.schema.version.get(),
@@ -581,15 +580,13 @@ fn validate_source_name(source_name: &str) -> Result<(), IndexReplayJobError> {
 }
 
 fn validate_worker_id(worker_id: &str) -> Result<(), IndexReplayJobError> {
-    validate_storage_text(worker_id, MAX_WORKER_ID_BYTES).map_err(|reason| {
-        IndexReplayJobError::InvalidWorkerId { reason }
-    })
+    validate_storage_text(worker_id, MAX_WORKER_ID_BYTES)
+        .map_err(|reason| IndexReplayJobError::InvalidWorkerId { reason })
 }
 
 fn validate_error_code(error_code: &str) -> Result<(), IndexReplayJobError> {
-    validate_storage_text(error_code, MAX_ERROR_CODE_BYTES).map_err(|reason| {
-        IndexReplayJobError::InvalidErrorCode { reason }
-    })
+    validate_storage_text(error_code, MAX_ERROR_CODE_BYTES)
+        .map_err(|reason| IndexReplayJobError::InvalidErrorCode { reason })
 }
 
 fn validate_storage_text(value: &str, max_bytes: usize) -> Result<(), &'static str> {
