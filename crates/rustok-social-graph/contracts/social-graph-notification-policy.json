@@ -27,8 +27,7 @@
     "notification_mute_source": "recipient_id",
     "notification_mute_target": "actor_id",
     "authoritative_owner_result_always_returned": true,
-    "index_shadow_never_authorizes": true,
-    "index_shadow_timeout_ms": 100
+    "index_shadow_never_authorizes": true
   },
   "server_composition": {
     "adapter": "apps/server/src/services/notification_recipient_policy.rs",
@@ -65,6 +64,7 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
+    "bounded shadow latency and resource overhead evidence",
     "authoritative cutover after retained freshness, lag, negative-result safety, and result-parity evidence",
     "default candidate worker enablement after health and lag metrics",
     "friend and follow presentation cutover",
