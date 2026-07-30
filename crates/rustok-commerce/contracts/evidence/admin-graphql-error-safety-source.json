@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0.0",
+  "status": "commerce_admin_graphql_error_safety_source_unvalidated",
+  "captured_at": "2026-07-30",
+  "scope": {
+    "package": "rustok-commerce-admin",
+    "boundary": "commerce_admin_graphql_transport",
+    "shipping_profile_operations": [
+      "fetch_bootstrap",
+      "fetch_shipping_profiles",
+      "fetch_shipping_profile",
+      "create_shipping_profile",
+      "update_shipping_profile",
+      "deactivate_shipping_profile",
+      "reactivate_shipping_profile"
+    ],
+    "browser_order_change_operations": [
+      "fetch_order_changes",
+      "apply_order_change",
+      "cancel_order_change"
+    ],
+    "low_level_error": "rustok_graphql::GraphqlHttpError"
+  },
+  "source_claims": {
+    "graphql_adapter_remains_private": true,
+    "public_wrappers_map_every_graphql_failure": true,
+    "unauthorized_uses_static_public_envelope": true,
+    "network_and_http_failures_use_static_public_envelope": true,
+    "graphql_rejections_use_static_public_envelope": true,
+    "unknown_error_strings_fail_closed": true,
+    "correlation_is_unique_per_graphql_call": true,
+    "raw_error_text_is_internal_only": true,
+    "bearer_tokens_are_not_logged": true,
+    "tenant_slug_values_are_not_logged": true,
+    "tenant_slug_presence_and_length_are_diagnostic_only": true,
+    "tenant_id_is_retained_when_available": true,
+    "native_order_change_selection_and_calls_are_preserved": true,
+    "graphql_queries_variables_and_dto_mapping_are_unchanged": true,
+    "uuid_is_available_to_browser_and_ssr_transport_builds": true
+  },
+  "validation": {
+    "focused_verifier_executed": false,
+    "aggregate_verifier_executed": false,
+    "cargo_check_executed": false,
+    "tests_executed": false,
+    "browser_runtime_trace_retained": false,
+    "ssr_runtime_trace_retained": false,
+    "ci_executed": false
+  },
+  "reviewed_sources": [
+    "crates/rustok-commerce/admin/Cargo.toml",
+    "crates/rustok-commerce/admin/src/transport/mod.rs",
+    "crates/rustok-commerce/admin/src/transport/graphql_adapter.rs",
+    "crates/rustok-commerce/admin/src/transport/graphql_error_safety.rs",
+    "crates/rustok-commerce/admin/src/transport/shipping_profile.rs",
+    "crates/rustok-commerce/admin/src/transport/order_change.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "scripts/verify/verify-commerce-admin-graphql-error-safety.mjs"
+  ],
+  "promotion_gate": "No FFA, FBA, browser, SSR, transport, runtime, or production status is promoted from this source inspection."
+}
