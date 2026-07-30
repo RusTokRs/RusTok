@@ -74,24 +74,7 @@ impl BlogMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
-        let domain_input = DomainUpdatePostInput {
-            locale: input.locale,
-            title: input.title,
-            body: input.body,
-            body_format: input.body_format,
-            content_json: input.content_json,
-            content: input.content,
-            excerpt: input.excerpt,
-            slug: input.slug,
-            tags: input.tags,
-            category_id: input.category_id,
-            featured_image_url: input.featured_image_url,
-            seo_title: input.seo_title,
-            seo_description: input.seo_description,
-            channel_slugs: input.channel_slugs,
-            metadata: None,
-            version: None,
-        };
+        let domain_input: DomainUpdatePostInput = input.into();
 
         service
             .update_post(
@@ -289,6 +272,29 @@ impl BlogMutation {
     }
 }
 
+impl From<UpdatePostInput> for DomainUpdatePostInput {
+    fn from(input: UpdatePostInput) -> Self {
+        Self {
+            locale: input.locale,
+            title: input.title,
+            body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
+            content: input.content,
+            excerpt: input.excerpt,
+            slug: input.slug,
+            tags: input.tags,
+            category_id: input.category_id,
+            featured_image_url: input.featured_image_url,
+            seo_title: input.seo_title,
+            seo_description: input.seo_description,
+            channel_slugs: input.channel_slugs,
+            metadata: None,
+            version: None,
+        }
+    }
+}
+
 fn mutation_tenant_id(
     tenant: &TenantContext,
     auth: &AuthContext,
@@ -326,8 +332,9 @@ fn require_blog_permission(
 
 #[cfg(test)]
 mod tests {
-    use super::mutation_tenant_id;
+    use super::{DomainUpdatePostInput, UpdatePostInput, mutation_tenant_id};
     use rustok_api::{AuthContext, TenantContext};
+    use serde_json::json;
     use uuid::Uuid;
 
     fn tenant(id: Uuid) -> TenantContext {
@@ -365,5 +372,47 @@ mod tests {
             mutation_tenant_id(&tenant(current), &auth(current), Some(Uuid::new_v4())).is_err()
         );
         assert!(mutation_tenant_id(&tenant(current), &auth(Uuid::new_v4()), None).is_err());
+    }
+
+    #[test]
+    fn update_post_input_conversion_preserves_transport_fields() {
+        let input = UpdatePostInput {
+            locale: Some("ru".to_string()),
+            title: Some("Заголовок".to_string()),
+            body: Some("legacy body".to_string()),
+            body_format: Some("markdown".to_string()),
+            content_json: Some(json!({"type": "doc"})),
+            content: None,
+            excerpt: Some("excerpt".to_string()),
+            slug: Some("post".to_string()),
+            status: None,
+            tags: Some(vec!["tag".to_string()]),
+            category_id: Some(Uuid::nil()),
+            featured_image_url: Some("https://example.test/image.png".to_string()),
+            seo_title: Some("SEO".to_string()),
+            seo_description: Some("description".to_string()),
+            channel_slugs: Some(vec!["web".to_string()]),
+        };
+
+        let domain: DomainUpdatePostInput = input.into();
+        assert_eq!(domain.locale.as_deref(), Some("ru"));
+        assert_eq!(domain.title.as_deref(), Some("Заголовок"));
+        assert_eq!(domain.body.as_deref(), Some("legacy body"));
+        assert_eq!(domain.body_format.as_deref(), Some("markdown"));
+        assert_eq!(domain.content_json, Some(json!({"type": "doc"})));
+        assert!(domain.content.is_none());
+        assert_eq!(domain.excerpt.as_deref(), Some("excerpt"));
+        assert_eq!(domain.slug.as_deref(), Some("post"));
+        assert_eq!(domain.tags, Some(vec!["tag".to_string()]));
+        assert_eq!(domain.category_id, Some(Uuid::nil()));
+        assert_eq!(
+            domain.featured_image_url.as_deref(),
+            Some("https://example.test/image.png")
+        );
+        assert_eq!(domain.seo_title.as_deref(), Some("SEO"));
+        assert_eq!(domain.seo_description.as_deref(), Some("description"));
+        assert_eq!(domain.channel_slugs, Some(vec!["web".to_string()]));
+        assert!(domain.metadata.is_none());
+        assert!(domain.version.is_none());
     }
 }

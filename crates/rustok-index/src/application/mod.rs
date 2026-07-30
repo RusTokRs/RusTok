@@ -4,6 +4,7 @@ mod postgres_compiler;
 mod postgres_query_result;
 mod postgres_query_sql;
 mod query_port;
+mod query_runtime;
 mod registry;
 mod source_schema_registry;
 mod validation;
@@ -40,6 +41,7 @@ pub use postgres_query_result::{
 pub use query_port::{
     IndexQueryExecutionError, IndexQueryPort, PersistedSchemaReadinessFailure,
 };
+pub use query_runtime::SharedIndexQueryRuntime;
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
 };

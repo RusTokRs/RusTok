@@ -72,7 +72,89 @@ pub mod mcp_management_guard;
 pub mod mcp_management_mutation_provider;
 pub mod mcp_runtime;
 pub mod mcp_scaffold_workspace;
-pub mod module_event_dispatcher;
+#[path = "module_event_dispatcher.rs"]
+mod module_event_dispatcher_base;
+pub mod module_event_dispatcher {
+    use std::sync::Arc;
+
+    use rustok_auth::AuthConfig;
+    use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
+
+    use crate::common::settings::RustokSettings;
+    use crate::error::{Error, Result};
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    pub use super::module_event_dispatcher_base::{
+        build_module_event_dispatcher, build_shared_runtime_extensions,
+        spawn_module_event_dispatcher,
+    };
+
+    /// Adds host-owned adapters after module/distribution registration and finally
+    /// materializes the canonical Index query runtime from the complete source registry.
+    pub fn build_shared_runtime_extensions_with_host_providers(
+        registry: &ModuleRegistry,
+        settings: &RustokSettings,
+        runtime_ctx: ServerRuntimeContext,
+        auth_config: AuthConfig,
+    ) -> Result<Arc<ModuleRuntimeExtensions>> {
+        let db = runtime_ctx.db_clone();
+        let base = super::module_event_dispatcher_base::build_shared_runtime_extensions_with_host_providers(
+            registry,
+            settings,
+            runtime_ctx,
+            auth_config,
+        )?;
+        let mut extensions = base.as_ref().clone();
+        rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db).map_err(
+            |error| Error::Message(format!("Index query runtime composition failed: {error}")),
+        )?;
+        Ok(Arc::new(extensions))
+    }
+
+    #[cfg(all(test, feature = "mod-social_graph"))]
+    mod tests {
+        use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
+        use rustok_index::{IndexModule, SharedIndexQueryRuntime, SharedIndexSchemaRegistry};
+        use sea_orm::Database;
+
+        use super::build_shared_runtime_extensions_with_host_providers;
+        use crate::auth::AuthConfig;
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+
+        #[tokio::test]
+        async fn host_materializes_index_query_runtime_after_source_registry() {
+            let registry = ModuleRegistry::new()
+                .register(IndexModule)
+                .register(rustok_social_graph::SocialGraphModule);
+            let settings = RustokSettings::default();
+            let db = Database::connect("sqlite::memory:")
+                .await
+                .expect("in-memory sqlite should connect");
+            let runtime_ctx = ServerRuntimeContext::new(db.clone(), settings.clone());
+
+            let extensions = build_shared_runtime_extensions_with_host_providers(
+                &registry,
+                &settings,
+                runtime_ctx,
+                AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            )
+            .expect("host Index runtime should compose");
+
+            assert!(extensions.contains::<SharedIndexSchemaRegistry>());
+            assert!(extensions.contains::<SharedIndexQueryRuntime>());
+            let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
+            assert!(host.shared_get::<SharedIndexQueryRuntime>().is_some());
+        }
+
+        #[test]
+        fn facade_keeps_module_extensions_type_visible() {
+            fn accepts(_: &ModuleRuntimeExtensions) {}
+            let extensions = ModuleRuntimeExtensions::default();
+            accepts(&extensions);
+        }
+    }
+}
 pub mod module_lifecycle;
 #[cfg(feature = "mod-notifications")]
 pub mod notification_candidate_worker;

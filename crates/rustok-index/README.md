@@ -57,23 +57,25 @@ a rewrite goal.
 - M4 deterministic query planning and controlled SQL compilation: complete
 - M4 root/one and many-link query result semantics: complete
 - M4 PostgreSQL query port and row adapter: source complete
+- M4 source-owned registry and server query-runtime composition: source complete
 - Real retained PostgreSQL packet execution: open
-- Query-port server/consumer composition and live equivalence evidence: open
+- Query-port authorization/consumer cutover and live equivalence evidence: open
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
-configuration, scheduler, errors, and server composition have been deleted. M3
-registers the canonical production schema, publishes an Index-owned transactional
-mutation adapter, owns durable schema-application leases, manages deterministic
-schema-derived secondary indexes, and rejects partition rollout until measured
-shadow evidence passes an explicit policy. Owner-operated tooling captures and
-validates the nine-file retained bundle, renders a read-only review, emits an
+configuration, scheduler, and errors from the rejected source-specific design remain
+deleted. M3 registers the canonical production schema, publishes an Index-owned
+transactional mutation adapter, owns durable schema-application leases, manages
+deterministic schema-derived secondary indexes, and rejects partition rollout until
+measured shadow evidence passes an explicit policy. Owner-operated tooling captures
+and validates the nine-file retained bundle, renders a read-only review, emits an
 admitted-only archive manifest outside the bundle, and verifies the saved manifest
 against an exact recursive filesystem snapshot.
 
 M4 now provides deterministic typed planning, controlled PostgreSQL compilation,
 correlated many-link filtering, nested many-link projection aggregation, strict
-result decoding, lookahead pagination, exact count, scoped cursors, and an
-Index-owned PostgreSQL execution port. Server/storefront/admin/search composition,
+result decoding, lookahead pagination, exact count, scoped cursors, an Index-owned
+PostgreSQL execution port, a source-owned immutable schema catalog, and a server-owned
+neutral query runtime. Storefront/admin/search authorization and consumer cutover,
 many-link aggregate ordering policy, live PostgreSQL/reference equivalence, and
 production partition cutover remain open.
 
@@ -151,6 +153,15 @@ compiler-declared UUID/JSONB/bigint aliases, and delegates semantic validation a
 cursor construction to `decode_postgres_query_page`. Authentication and transport
 policy remain caller responsibilities.
 
+`IndexSchemaSourceCatalog` collects owner-published generic contracts during module
+registration and fixes one owner for each complete schema identity across versions.
+`rustok-distribution` materializes all entries through one atomic batch and publishes
+`SharedIndexSchemaRegistry` only for a non-empty catalog. The server then calls the
+Index-owned `materialize_postgres_index_query_runtime`, which binds that exact immutable
+registry to the host database and publishes `SharedIndexQueryRuntime` through
+`ModuleRuntimeExtensions`. Composition performs no SQL and does not claim tenant schema
+readiness; execution still fails closed through the query-port preflight.
+
 ## Current entry points
 
 - `IndexModule`
@@ -165,9 +176,12 @@ policy remain caller responsibilities.
 - `PartitionAdmissionPolicy`, `PartitionEvidence`, `PartitionAdmissionOutcome`,
   `PartitionShadowPlan`, and `evaluate_partition_admission`
 - `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
+- `IndexSchemaSourceCatalog`, `SharedIndexSchemaRegistry`, and
+  `register_index_schema_source`
 - `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
 - `ExecutableQueryPlan`, `CompiledPostgresQuery`, and `CompiledPostgresPageQuery`
-- `IndexQueryPort`, `PostgresIndexQueryPort`, `IndexQueryExecutionError`, and
+- `IndexQueryPort`, `PostgresIndexQueryPort`, `SharedIndexQueryRuntime`,
+  `materialize_postgres_index_query_runtime`, `IndexQueryExecutionError`, and
   `IndexQueryPage`
 - `CursorCodec`, `IndexCursor`, and query-scope cursor validation
 
@@ -203,7 +217,10 @@ policy remain caller responsibilities.
   decoded column contracts, exact count, lookahead, and scoped cursor construction;
 - PostgreSQL-only query execution with exact persisted schema preflight, one
   read-only repeatable-read page/count snapshot, exhaustive bind conversion, and
-  compiler-metadata-driven row mapping.
+  compiler-metadata-driven row mapping;
+- deterministic source ownership, atomic cross-source registry materialization,
+  no false empty runtime, one Index-owned PostgreSQL runtime constructor, and neutral
+  capability transfer into `HostRuntimeContext`.
 
 ## M2 benchmark
 
@@ -222,6 +239,8 @@ DDL remains benchmark-only and must not be copied into production migrations.
 
 - [Module documentation](./docs/README.md)
 - [Live implementation plan](./docs/implementation-plan.md)
+- [M4 source-owned schema registry](./docs/m4-source-schema-registry.md)
+- [M4 query runtime composition](./docs/m4-query-runtime-composition.md)
 - [M4 PostgreSQL query port contract](./docs/m4-postgres-query-port.md)
 - [M4 many-link projection contract](./docs/m4-many-link-projection.md)
 - [M2 storage benchmark contract](./docs/storage-benchmark.md)

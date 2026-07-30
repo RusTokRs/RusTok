@@ -99,18 +99,20 @@ for (const forbidden of [
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-schema-registry.mjs'",
+  "'verify-index-query-runtime-composition.mjs'",
 ]);
 requireMarkers('crates/rustok-index/docs/m4-source-schema-registry.md', [
   'Status: `source_complete_execution_pending`',
   '`social_graph`',
   'entire schema identity across versions',
-  '- construct `PostgresIndexQueryPort`;',
+  '`materialize_postgres_index_query_runtime`',
+  'does not:',
   'Not run by the implementation agent',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
   'M4 source-owned immutable schema registry: `source_complete_execution_pending`',
   '`SharedIndexSchemaRegistry`',
-  'construct an Index-owned query runtime',
+  'M4 server-owned shared query runtime composition: `source_complete_execution_pending`',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.',

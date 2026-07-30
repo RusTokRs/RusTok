@@ -53,30 +53,34 @@ cannot bypass catalog validation with an ad hoc registry.
 
 ## First source publication
 
-With the Social Graph `index` feature enabled, `SocialGraphModule` now declares an
-explicit dependency on core module `index` and publishes
+With the Social Graph `index` feature enabled, `SocialGraphModule` declares an explicit
+dependency on core module `index` and publishes
 `social_graph_relation_index_schema()` under owner slug `social_graph`.
 
 The projector continues using the same owner-defined schema and existing Index-owned
-persistence APIs. This slice does not move source authority into Index and does not make
-the distribution import Social Graph DTOs or construct its schema directly.
+persistence APIs. This boundary does not move source authority into Index and does not make
+the distribution or server import Social Graph DTOs or construct its schema directly.
 
-## Boundary
+## Runtime handoff
 
-This slice does not:
+The follow-up query-runtime slice is now source complete. The server invokes
+`materialize_postgres_index_query_runtime` only after distribution has published the final
+`SharedIndexSchemaRegistry`. That Index-owned materializer binds the immutable registry to
+the host database and publishes `SharedIndexQueryRuntime` without executing SQL or claiming
+tenant readiness. See `m4-query-runtime-composition.md`.
 
-- construct `PostgresIndexQueryPort`;
-- connect the registry to server/storefront/admin/search consumers;
+## Remaining boundary
+
+This registry boundary still does not:
+
+- connect the runtime to storefront/admin/search or other query consumers;
+- authorize callers or construct transport-facing queries;
 - persist tenant schema readiness or replace `PostgresSchemaRegistrationStore`;
 - change mutation delivery, replay, or Social Graph source storage;
 - add schemas for Product, Content, Flex, or other owners;
 - add ordering through a `many` relation;
 - execute PostgreSQL/reference capture or admission;
 - authorize production partition lifecycle work.
-
-The next composition slice may construct an Index-owned query runtime from
-`SharedIndexSchemaRegistry` and the host database without importing any source-domain
-schema builder. Consumer authorization and cutover remain separate changes.
 
 ## Owner validation
 
@@ -93,6 +97,7 @@ cargo check -p rustok-index --all-targets
 cargo check -p rustok-social-graph --features index --all-targets
 cargo check -p rustok-distribution --all-targets
 node scripts/verify/verify-index-source-schema-registry.mjs
+node scripts/verify/verify-index-query-runtime-composition.mjs
 node scripts/verify/verify-index-query-contract.mjs
 cargo xtask module validate index
 ```
