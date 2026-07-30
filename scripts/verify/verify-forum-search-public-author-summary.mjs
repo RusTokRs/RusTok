@@ -25,6 +25,14 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
+function requireOrder(source, first, second, label) {
+  const firstIndex = source.indexOf(first);
+  const secondIndex = source.indexOf(second);
+  if (firstIndex < 0 || secondIndex < 0 || firstIndex >= secondIndex) {
+    failures.push(`${label}: expected ${first} before ${second}`);
+  }
+}
+
 const sourcePath = "crates/rustok-forum/src/search_projection.rs";
 const authorPath = "crates/rustok-forum/src/search_projection_author.rs";
 const forumLibPath = "crates/rustok-forum/src/lib.rs";
@@ -32,6 +40,8 @@ const inboxPath = "crates/rustok-search/src/forum_inbox.rs";
 const ingestionPath = "crates/rustok-search/src/ingestion.rs";
 const profilesPath = "crates/rustok-profiles/src/presentation.rs";
 const profilesMutationPath = "crates/rustok-profiles/src/graphql/mutation.rs";
+const profilesVisibilityWritePath = "crates/rustok-profiles/src/visibility_write.rs";
+const profilesErrorPath = "crates/rustok-profiles/src/error.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-public-author-summary.json";
 const notePath = "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md";
 
@@ -42,6 +52,8 @@ const inbox = read(inboxPath);
 const ingestion = read(ingestionPath);
 const profiles = read(profilesPath);
 const profilesMutation = read(profilesMutationPath);
+const profilesVisibilityWrite = read(profilesVisibilityWritePath);
+const profilesError = read(profilesErrorPath);
 const note = read(notePath);
 let contract = null;
 try {
@@ -97,12 +109,45 @@ for (const marker of [
   requireMarker(profiles, marker, profilesPath);
 }
 for (const marker of [
-  "service.update_profile_visibility",
+  "update_profile_visibility_with_event(",
   "service.update_profile_media",
   "publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?",
   "DomainEvent::ProfileUpdated",
+  "ProfileError::EventPublishUnavailable",
 ]) {
   requireMarker(profilesMutation, marker, profilesMutationPath);
+}
+rejectMarker(profilesMutation, "service.update_profile_visibility(", profilesMutationPath);
+
+for (const marker of [
+  "db.begin().await?",
+  ".update(&txn).await?",
+  ".publish_in_tx(",
+  "txn.rollback().await?",
+  "txn.commit().await?",
+  "ProfileError::EventPublishUnavailable",
+  "Profile visibility event publication failed; rolling back owner write",
+]) {
+  requireMarker(profilesVisibilityWrite, marker, profilesVisibilityWritePath);
+}
+requireOrder(
+  profilesVisibilityWrite,
+  ".publish_in_tx(",
+  "txn.commit().await?",
+  profilesVisibilityWritePath,
+);
+requireOrder(
+  profilesVisibilityWrite,
+  ".update(&txn).await?",
+  ".publish_in_tx(",
+  profilesVisibilityWritePath,
+);
+for (const marker of [
+  "EventPublishUnavailable",
+  '"profiles.event_publish_unavailable"',
+  "Self::PresentationUnavailable | Self::EventPublishUnavailable | Self::Database(_)",
+]) {
+  requireMarker(profilesError, marker, profilesErrorPath);
 }
 
 for (const marker of [
@@ -131,6 +176,8 @@ for (const marker of [
   "forum_author:<user_id>",
   "raw `payload.author_id`",
   "owner-issued monotonic",
+  "same Profiles-owned database transaction",
+  "Other profile summary mutations",
   "does not treat `UserDeleted`",
   "not run by the implementation agent",
 ]) {
@@ -162,6 +209,8 @@ if (contract) {
   for (const key of [
     "profile_updated_is_durable",
     "profile_updated_is_emitted_after_owner_write",
+    "profile_visibility_write_and_event_are_atomic",
+    "visibility_event_failure_rolls_back_owner_write",
     "author_scope_is_tenant_and_user_scoped",
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark",
     "author_change_rebuilds_current_forum_owner_state",
@@ -171,6 +220,9 @@ if (contract) {
     if (contract.redaction_boundary?.[key] !== true) {
       failures.push(`${contractPath}: redaction boundary ${key} drift`);
     }
+  }
+  if (contract.redaction_boundary?.other_profile_update_write_and_event_pairs_are_atomic !== false) {
+    failures.push(`${contractPath}: non-visibility profile mutations must remain a non-claim`);
   }
   if (contract.redaction_boundary?.schema_migration_added !== false) {
     failures.push(`${contractPath}: schema migration must remain absent`);
@@ -188,8 +240,13 @@ if (contract) {
       failures.push(`${contractPath}: compatibility ${key} must remain false`);
     }
   }
-  if (!contract.non_claims?.includes("account deletion redaction is complete")) {
-    failures.push(`${contractPath}: account deletion non-claim is missing`);
+  for (const nonClaim of [
+    "account deletion redaction is complete",
+    "all ProfileUpdated owner writes are transactionally coupled to outbox publication",
+  ]) {
+    if (!contract.non_claims?.includes(nonClaim)) {
+      failures.push(`${contractPath}: missing non-claim ${nonClaim}`);
+    }
   }
   if (contract.downstream_task !== "FORUM-23B") {
     failures.push(`${contractPath}: unexpected downstream task`);
