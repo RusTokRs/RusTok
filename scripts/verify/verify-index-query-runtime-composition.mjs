@@ -110,8 +110,24 @@ for (const relative of [
   }
 }
 
+requireMarkers('xtask/src/server_event_runtime_contracts.rs', [
+  'direct_dispatcher_export',
+  'dispatcher_facade_export',
+  'reviewed base-module facade',
+]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-query-runtime-composition.mjs'",
+]);
+requireMarkers('crates/rustok-index/CRATE_API.md', [
+  '`SharedIndexQueryRuntime`',
+  '`materialize_postgres_index_query_runtime`',
+  'Runtime presence does not claim',
+  'Calling `PostgresIndexQueryPort::new` outside the Index-owned runtime materializer',
+]);
+requireMarkers('crates/rustok-index/README.md', [
+  'M4 source-owned registry and server query-runtime composition: source complete',
+  '`SharedIndexQueryRuntime`',
+  'Composition performs no SQL',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-query-runtime-composition.md', [
   'Status: `source_complete_execution_pending`',
