@@ -107,7 +107,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition query evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow query evidence capture.',
   '- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.',
-  'The ninth M3 slice adds owner-operated baseline/shadow query evidence.',
+  '9. The query runner validates the shadow catalog, executes exact tenant-scoped runs',
+  'read-only, proves semantic parity and one-child pruning, retains full EXPLAIN JSON,',
 ]);
 
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [
