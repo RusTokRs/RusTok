@@ -92,6 +92,11 @@ pub mod module_event_dispatcher {
         include!("forum_search_category_scope.rs");
     }
 
+    #[cfg(feature = "mod-forum")]
+    mod forum_search_result_eligibility {
+        include!("forum_search_result_eligibility.rs");
+    }
+
     pub use super::module_event_dispatcher_base::{
         build_module_event_dispatcher, build_shared_runtime_extensions,
         spawn_module_event_dispatcher,
@@ -122,9 +127,14 @@ pub mod module_event_dispatcher {
                 .cloned();
             let category_scope = forum_search_category_scope::ServerForumSearchCategoryScopePort::shared(
                 db.clone(),
+                audience_facts.clone(),
+            );
+            let result_eligibility = forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::shared(
+                db.clone(),
                 audience_facts,
             );
             extensions.insert(category_scope);
+            extensions.insert(result_eligibility);
         }
 
         rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone()).map_err(
@@ -207,6 +217,8 @@ pub mod module_event_dispatcher {
             assert!(!extensions.contains::<SharedIndexReplayRuntime>());
             #[cfg(feature = "mod-forum")]
             assert!(extensions.contains::<rustok_search::SharedStorefrontSearchCategoryScopePort>());
+            #[cfg(feature = "mod-forum")]
+            assert!(extensions.contains::<rustok_search::SharedStorefrontSearchResultEligibilityPort>());
             #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
             assert!(extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>());
             let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
@@ -215,6 +227,10 @@ pub mod module_event_dispatcher {
             #[cfg(feature = "mod-forum")]
             assert!(host
                 .shared_get::<rustok_search::SharedStorefrontSearchCategoryScopePort>()
+                .is_some());
+            #[cfg(feature = "mod-forum")]
+            assert!(host
+                .shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
                 .is_some());
         }
 
