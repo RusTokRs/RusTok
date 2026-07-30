@@ -41,7 +41,10 @@ rejects reintroduction of body-format selectors and raw-body warnings in both
 core and Leptos UI, removes the dead `blog.form.bodyFormat` and
 `blog.form.rawWarning` locale contract from EN/RU catalogs, and validates
 machine evidence plus self-regression fixtures. The guardrail is part of the
-Blog FBA command chain.
+Blog FBA command chain. The owner adapter itself is now evidence-bound: it must
+mount the canonical frame with the fixed Article profile, round-trip only typed
+`RichTextDocument` payloads, keep an `allow-scripts`-only/no-referrer iframe, and
+dispose the mounted frame during Leptos cleanup.
 
 The Blog FBA source-gate chain is now registry-locked. The package command must
 preserve the exact admin, storefront, GraphQL richtext, offline backfill, Forum UI
@@ -163,9 +166,10 @@ outbox publication.
   registers or exports Forum navigation, GraphQL helpers, reply UI, or legacy
   format adapters, and both owners use the shared richtext lifecycle adapter.
 - Blog admin canonical richtext guardrail: `source_verified_no_compile`; the
-  FFA verifier requires typed document/editor state, rejects removed selector,
-  raw-body helper, and locale-key contracts, validates machine evidence, and has
-  negative fixtures.
+  FFA verifier requires typed document/editor state, a fixed Article frame profile,
+  typed payload deserialization, an isolated no-referrer iframe, and cleanup/dispose;
+  it also rejects removed selector, raw-body helper, and locale-key contracts with
+  machine evidence and focused negative fixtures.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -316,6 +320,9 @@ outbox publication.
 31. Locked the complete Blog FBA self-test chain in registry schema v5 and added
     focused negative fixtures for offline-backfill safety and Forum Next admin
     ownership, including exact leaf-test and consumer-runtime bindings.
+32. Extended the Blog admin canonical-richtext guardrail through the owner adapter
+    itself: fixed Article frame profile, typed document round-trip, isolated
+    no-referrer iframe, cleanup/dispose, evidence schema v3, and negative fixtures.
 
 ## Next results
 
