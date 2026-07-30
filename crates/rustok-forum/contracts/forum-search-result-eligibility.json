@@ -16,9 +16,9 @@
   "owner_note": "crates/rustok-forum/docs/forum-23b2d-search-result-eligibility.md",
   "verifier": "scripts/verify/verify-forum-search-result-eligibility.mjs",
   "bounds": {
-    "maximum_raw_result_rows": 512,
+    "maximum_raw_result_rows": 100,
     "raw_search_page_size": 50,
-    "maximum_owner_candidates": 512,
+    "maximum_owner_candidates": 100,
     "too_broad_query_fails_closed": true,
     "candidate_scan_total_must_remain_stable": true,
     "continuation_page_must_advance": true
