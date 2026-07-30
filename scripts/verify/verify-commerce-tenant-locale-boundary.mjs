@@ -15,6 +15,7 @@ const lib = read('crates/rustok-commerce/src/lib.rs');
 const context = read('crates/rustok-commerce/src/services/context.rs');
 const tests = read('crates/rustok-commerce/tests/context_service_test.rs');
 const support = read('crates/rustok-commerce/tests/support/mod.rs');
+const evidence = read('crates/rustok-commerce/docs/tenant-locale-owner-cutover.md');
 
 if (!cargo.includes('rustok-tenant.workspace = true')) {
   fail('commerce must depend on the tenant owner module in production');
@@ -68,6 +69,17 @@ for (const marker of [
   'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP',
 ]) {
   if (!support.includes(marker)) fail(`commerce tenant fixture schema missing ${marker}`);
+}
+
+for (const marker of [
+  'Status: `source_ready_unvalidated`',
+  'Severity: `P1`',
+  '`TenantReadPort`',
+  '`TenantLocalePolicyPort`',
+  '`pt_br -> pt-BR`',
+  'does not promote Commerce FBA/FFA status',
+]) {
+  if (!evidence.includes(marker)) fail(`commerce tenant locale evidence missing ${marker}`);
 }
 
 console.log('[verify-commerce-tenant-locale-boundary] commerce declares and consumes tenant owner ports with canonical locale semantics');
