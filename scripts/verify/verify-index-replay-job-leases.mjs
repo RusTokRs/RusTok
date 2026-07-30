@@ -51,7 +51,6 @@ for (const forbidden of [
   'rustok_flex',
   'tokio::spawn',
   'loop {',
-  'cancel_requested = TRUE',
   'DELETE FROM index_jobs',
 ]) {
   if (job.includes(forbidden)) fail(`${jobPath} contains forbidden marker ${forbidden}`);
@@ -135,38 +134,25 @@ requireMarkers('crates/rustok-index/docs/m6-replay-job-leases.md', [
   'maintainer-run',
 ]);
 
+requireMarkers('crates/rustok-index/docs/m6-bounded-multipage-runner.md', [
+  '`PostgresIndexReplayRunner::request_cancel`',
+  'cancel_requested = FALSE',
+  'A running cancellation request survives lease expiry and reclaim.',
+]);
+
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',
+  '- M6 bounded multi-page replay and cancellation: `source_complete_owner_execution_pending`',
   '- [x] Add durable schema-scoped rebuild jobs, lease/heartbeat, reclaim, attempt fencing,',
   '- [x] Bind checkpoint reads and writes to the active `(job_id, worker_id, attempt_count)`',
-  '- [ ] Add cancellation, bounded multi-page resume, dry-run, targeted/full/shadow rebuild.',
+  '- [x] Add durable cancellation requests and fenced between-page terminal cancellation.',
   'node scripts/verify/verify-index-replay-job-leases.mjs',
-]);
-
-requireMarkers('crates/rustok-index/README.md', [
-  'Current milestone: `M6 - fenced replay job ownership`',
-  '`PostgresIndexReplayJobStore` owns one schema-scoped `rebuild` job',
-  '`PostgresIndexReplayCheckpointStore` is constructed from the acquired',
-  'stale checkpoint-writer rejection',
-]);
-
-requireMarkers('crates/rustok-index/docs/README.md', [
-  '## M5/M6 source replay and rebuild ownership',
-  '`index_replay_job_v1` request contract',
-  'After reclaim, the old worker cannot advance the durable',
-  'M6 job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',
-]);
-
-requireMarkers('crates/rustok-index/CRATE_API.md', [
-  '`PostgresIndexReplayJobStore`, `IndexReplayJobLeaseRequest`, `IndexReplayJobLease`',
-  '`PostgresIndexReplayCheckpointStore`',
-  '### Replay source, job, and checkpoint',
-  'A stale attempt cannot advance a checkpoint after reclaim.',
 ]);
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-replay-contract.mjs'",
   "'verify-index-replay-job-leases.mjs'",
+  "'verify-index-replay-multipage-runner.mjs'",
 ]);
 
 console.log('[verify-index-replay-job-leases] OK');
