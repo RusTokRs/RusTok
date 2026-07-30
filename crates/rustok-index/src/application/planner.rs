@@ -250,8 +250,12 @@ impl SchemaRegistry {
             .order_by
             .iter()
             .map(|order| {
+                let mut field = planned_field(&referenced_fields, &order.field)?;
+                if order.direction.aggregate().is_some() {
+                    field.nullable = true;
+                }
                 Ok(PlannedOrder {
-                    field: planned_field(&referenced_fields, &order.field)?,
+                    field,
                     direction: order.direction,
                 })
             })
