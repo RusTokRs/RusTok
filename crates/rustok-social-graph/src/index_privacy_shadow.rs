@@ -5,10 +5,6 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use rustok_index::SharedIndexQueryRuntime;
-use rustok_telemetry::social_graph_index_privacy_shadow_metrics::{
-    SocialGraphIndexPrivacyShadowOperation as ShadowOperation,
-    SocialGraphIndexPrivacyShadowOutcome as ShadowOutcome, record_failure, record_observation,
-};
 
 use crate::{
     IndexSocialGraphPrivacyReadPort, SocialGraphFollowBatchRequest, SocialGraphFollowBatchResult,
@@ -18,6 +14,101 @@ use crate::{
 pub const SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET: &str =
     "rustok_social_graph::index_privacy_shadow";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IndexPrivacyShadowOperation {
+    BlocksBetween,
+    SourceMutesTarget,
+    SourceFollowsTarget,
+    SourceFollowsTargets,
+}
+
+impl IndexPrivacyShadowOperation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::BlocksBetween => "blocks_between",
+            Self::SourceMutesTarget => "source_mutes_target",
+            Self::SourceFollowsTarget => "source_follows_target",
+            Self::SourceFollowsTargets => "source_follows_targets",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IndexPrivacyShadowOutcome {
+    MatchPositive,
+    MatchNegative,
+    FalseNegative,
+    FalsePositive,
+    MatchBatchEmpty,
+    MatchBatchNonempty,
+    BatchMissing,
+    BatchExtra,
+    BatchMixed,
+    Error,
+}
+
+impl IndexPrivacyShadowOutcome {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MatchPositive => "match_positive",
+            Self::MatchNegative => "match_negative",
+            Self::FalseNegative => "false_negative",
+            Self::FalsePositive => "false_positive",
+            Self::MatchBatchEmpty => "match_batch_empty",
+            Self::MatchBatchNonempty => "match_batch_nonempty",
+            Self::BatchMissing => "batch_missing",
+            Self::BatchExtra => "batch_extra",
+            Self::BatchMixed => "batch_mixed",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IndexPrivacyShadowFailureCode {
+    Unavailable,
+    ContractInvalid,
+    Other,
+}
+
+impl IndexPrivacyShadowFailureCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "social_graph.index_privacy_unavailable",
+            Self::ContractInvalid => "social_graph.index_privacy_contract_invalid",
+            Self::Other => "other",
+        }
+    }
+
+    fn from_port_error(error: &PortError) -> Self {
+        match error.code.as_str() {
+            "social_graph.index_privacy_unavailable" => Self::Unavailable,
+            "social_graph.index_privacy_contract_invalid" => Self::ContractInvalid,
+            _ => Self::Other,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IndexPrivacyShadowObservation {
+    pub operation: IndexPrivacyShadowOperation,
+    pub outcome: IndexPrivacyShadowOutcome,
+    pub comparison_duration: Duration,
+    pub failure_code: Option<IndexPrivacyShadowFailureCode>,
+    pub retryable: Option<bool>,
+}
+
+pub trait IndexPrivacyShadowObserver: Send + Sync {
+    fn observe(&self, observation: IndexPrivacyShadowObservation);
+}
+
+#[derive(Default)]
+struct NoopIndexPrivacyShadowObserver;
+
+impl IndexPrivacyShadowObserver for NoopIndexPrivacyShadowObserver {
+    fn observe(&self, _observation: IndexPrivacyShadowObservation) {}
+}
+
 /// Non-authoritative parity observer for Social Graph privacy reads.
 ///
 /// The owner port always determines the returned result. Index is queried only after the
@@ -26,6 +117,7 @@ pub const SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET: &str =
 pub struct IndexShadowSocialGraphPrivacyReadPort {
     authoritative: Arc<dyn SocialGraphPrivacyReadPort>,
     projected: Arc<dyn SocialGraphPrivacyReadPort>,
+    observer: Arc<dyn IndexPrivacyShadowObserver>,
 }
 
 impl IndexShadowSocialGraphPrivacyReadPort {
@@ -33,9 +125,22 @@ impl IndexShadowSocialGraphPrivacyReadPort {
         authoritative: Arc<dyn SocialGraphPrivacyReadPort>,
         runtime: SharedIndexQueryRuntime,
     ) -> Self {
+        Self::with_observer(
+            authoritative,
+            runtime,
+            Arc::new(NoopIndexPrivacyShadowObserver),
+        )
+    }
+
+    pub fn with_observer(
+        authoritative: Arc<dyn SocialGraphPrivacyReadPort>,
+        runtime: SharedIndexQueryRuntime,
+        observer: Arc<dyn IndexPrivacyShadowObserver>,
+    ) -> Self {
         Self {
             authoritative,
             projected: Arc::new(IndexSocialGraphPrivacyReadPort::new(runtime)),
+            observer,
         }
     }
 
@@ -43,10 +148,12 @@ impl IndexShadowSocialGraphPrivacyReadPort {
     fn from_ports(
         authoritative: Arc<dyn SocialGraphPrivacyReadPort>,
         projected: Arc<dyn SocialGraphPrivacyReadPort>,
+        observer: Arc<dyn IndexPrivacyShadowObserver>,
     ) -> Self {
         Self {
             authoritative,
             projected,
+            observer,
         }
     }
 }
@@ -65,7 +172,8 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         let started_at = Instant::now();
         let projected = self.projected.blocks_between(context, request).await;
         observe_bool(
-            ShadowOperation::BlocksBetween,
+            self.observer.as_ref(),
+            IndexPrivacyShadowOperation::BlocksBetween,
             authoritative,
             projected,
             started_at.elapsed(),
@@ -85,7 +193,8 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         let started_at = Instant::now();
         let projected = self.projected.source_mutes_target(context, request).await;
         observe_bool(
-            ShadowOperation::SourceMutesTarget,
+            self.observer.as_ref(),
+            IndexPrivacyShadowOperation::SourceMutesTarget,
             authoritative,
             projected,
             started_at.elapsed(),
@@ -105,7 +214,8 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         let started_at = Instant::now();
         let projected = self.projected.source_follows_target(context, request).await;
         observe_bool(
-            ShadowOperation::SourceFollowsTarget,
+            self.observer.as_ref(),
+            IndexPrivacyShadowOperation::SourceFollowsTarget,
             authoritative,
             projected,
             started_at.elapsed(),
@@ -125,7 +235,8 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
         let started_at = Instant::now();
         let projected = self.projected.source_follows_targets(context, request).await;
         observe_batch(
-            ShadowOperation::SourceFollowsTargets,
+            self.observer.as_ref(),
+            IndexPrivacyShadowOperation::SourceFollowsTargets,
             &authoritative,
             projected,
             started_at.elapsed(),
@@ -135,7 +246,8 @@ impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort {
 }
 
 fn observe_bool(
-    operation: ShadowOperation,
+    observer: &dyn IndexPrivacyShadowObserver,
+    operation: IndexPrivacyShadowOperation,
     authoritative: bool,
     projected: Result<bool, PortError>,
     comparison_duration: Duration,
@@ -143,9 +255,16 @@ fn observe_bool(
     match projected {
         Ok(projected) => {
             let outcome = classify_bool(authoritative, projected);
-            record_observation(operation, outcome, comparison_duration);
+            observer.observe(IndexPrivacyShadowObservation {
+                operation,
+                outcome,
+                comparison_duration,
+                failure_code: None,
+                retryable: None,
+            });
             match outcome {
-                ShadowOutcome::MatchPositive | ShadowOutcome::MatchNegative => {
+                IndexPrivacyShadowOutcome::MatchPositive
+                | IndexPrivacyShadowOutcome::MatchNegative => {
                     tracing::debug!(
                         target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
                         operation = operation.as_str(),
@@ -170,17 +289,19 @@ fn observe_bool(
             }
         }
         Err(error) => {
-            record_failure(
+            let failure_code = IndexPrivacyShadowFailureCode::from_port_error(&error);
+            observer.observe(IndexPrivacyShadowObservation {
                 operation,
-                &error.code,
-                error.retryable,
+                outcome: IndexPrivacyShadowOutcome::Error,
                 comparison_duration,
-            );
+                failure_code: Some(failure_code),
+                retryable: Some(error.retryable),
+            });
             tracing::warn!(
                 target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
                 operation = operation.as_str(),
-                outcome = ShadowOutcome::Error.as_str(),
-                error_code = %error.code,
+                outcome = IndexPrivacyShadowOutcome::Error.as_str(),
+                error_code = failure_code.as_str(),
                 retryable = error.retryable,
                 comparison_duration_ms = comparison_duration.as_millis() as u64,
                 "Social Graph Index privacy shadow read failed"
@@ -189,17 +310,18 @@ fn observe_bool(
     }
 }
 
-fn classify_bool(authoritative: bool, projected: bool) -> ShadowOutcome {
+fn classify_bool(authoritative: bool, projected: bool) -> IndexPrivacyShadowOutcome {
     match (authoritative, projected) {
-        (true, true) => ShadowOutcome::MatchPositive,
-        (false, false) => ShadowOutcome::MatchNegative,
-        (true, false) => ShadowOutcome::FalseNegative,
-        (false, true) => ShadowOutcome::FalsePositive,
+        (true, true) => IndexPrivacyShadowOutcome::MatchPositive,
+        (false, false) => IndexPrivacyShadowOutcome::MatchNegative,
+        (true, false) => IndexPrivacyShadowOutcome::FalseNegative,
+        (false, true) => IndexPrivacyShadowOutcome::FalsePositive,
     }
 }
 
 fn observe_batch(
-    operation: ShadowOperation,
+    observer: &dyn IndexPrivacyShadowObserver,
+    operation: IndexPrivacyShadowOperation,
     authoritative: &SocialGraphFollowBatchResult,
     projected: Result<SocialGraphFollowBatchResult, PortError>,
     comparison_duration: Duration,
@@ -207,9 +329,16 @@ fn observe_batch(
     match projected {
         Ok(projected) => {
             let outcome = classify_batch(authoritative, &projected);
-            record_observation(operation, outcome, comparison_duration);
+            observer.observe(IndexPrivacyShadowObservation {
+                operation,
+                outcome,
+                comparison_duration,
+                failure_code: None,
+                retryable: None,
+            });
             match outcome {
-                ShadowOutcome::MatchBatchEmpty | ShadowOutcome::MatchBatchNonempty => {
+                IndexPrivacyShadowOutcome::MatchBatchEmpty
+                | IndexPrivacyShadowOutcome::MatchBatchNonempty => {
                     tracing::debug!(
                         target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
                         operation = operation.as_str(),
@@ -234,17 +363,19 @@ fn observe_batch(
             }
         }
         Err(error) => {
-            record_failure(
+            let failure_code = IndexPrivacyShadowFailureCode::from_port_error(&error);
+            observer.observe(IndexPrivacyShadowObservation {
                 operation,
-                &error.code,
-                error.retryable,
+                outcome: IndexPrivacyShadowOutcome::Error,
                 comparison_duration,
-            );
+                failure_code: Some(failure_code),
+                retryable: Some(error.retryable),
+            });
             tracing::warn!(
                 target: SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET,
                 operation = operation.as_str(),
-                outcome = ShadowOutcome::Error.as_str(),
-                error_code = %error.code,
+                outcome = IndexPrivacyShadowOutcome::Error.as_str(),
+                error_code = failure_code.as_str(),
                 retryable = error.retryable,
                 comparison_duration_ms = comparison_duration.as_millis() as u64,
                 "Social Graph Index privacy shadow read failed"
@@ -256,7 +387,7 @@ fn observe_batch(
 fn classify_batch(
     authoritative: &SocialGraphFollowBatchResult,
     projected: &SocialGraphFollowBatchResult,
-) -> ShadowOutcome {
+) -> IndexPrivacyShadowOutcome {
     let authoritative = authoritative
         .followed_target_user_ids
         .iter()
@@ -270,24 +401,25 @@ fn classify_batch(
 
     if authoritative == projected {
         return if authoritative.is_empty() {
-            ShadowOutcome::MatchBatchEmpty
+            IndexPrivacyShadowOutcome::MatchBatchEmpty
         } else {
-            ShadowOutcome::MatchBatchNonempty
+            IndexPrivacyShadowOutcome::MatchBatchNonempty
         };
     }
 
     let has_missing = authoritative.difference(&projected).next().is_some();
     let has_extra = projected.difference(&authoritative).next().is_some();
     match (has_missing, has_extra) {
-        (true, false) => ShadowOutcome::BatchMissing,
-        (false, true) => ShadowOutcome::BatchExtra,
-        (true, true) => ShadowOutcome::BatchMixed,
+        (true, false) => IndexPrivacyShadowOutcome::BatchMissing,
+        (false, true) => IndexPrivacyShadowOutcome::BatchExtra,
+        (true, true) => IndexPrivacyShadowOutcome::BatchMixed,
         (false, false) => unreachable!("unequal sets must have a missing or extra value"),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use async_trait::async_trait;
@@ -354,6 +486,20 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct RecordingObserver {
+        observations: Mutex<Vec<IndexPrivacyShadowObservation>>,
+    }
+
+    impl IndexPrivacyShadowObserver for RecordingObserver {
+        fn observe(&self, observation: IndexPrivacyShadowObservation) {
+            self.observations
+                .lock()
+                .expect("observation lock")
+                .push(observation);
+        }
+    }
+
     fn context() -> PortContext {
         PortContext::new(
             Uuid::from_u128(1).to_string(),
@@ -386,38 +532,51 @@ mod tests {
 
     #[test]
     fn boolean_outcomes_distinguish_negative_safety() {
-        assert_eq!(classify_bool(true, true), ShadowOutcome::MatchPositive);
-        assert_eq!(classify_bool(false, false), ShadowOutcome::MatchNegative);
-        assert_eq!(classify_bool(true, false), ShadowOutcome::FalseNegative);
-        assert_eq!(classify_bool(false, true), ShadowOutcome::FalsePositive);
+        assert_eq!(
+            classify_bool(true, true),
+            IndexPrivacyShadowOutcome::MatchPositive
+        );
+        assert_eq!(
+            classify_bool(false, false),
+            IndexPrivacyShadowOutcome::MatchNegative
+        );
+        assert_eq!(
+            classify_bool(true, false),
+            IndexPrivacyShadowOutcome::FalseNegative
+        );
+        assert_eq!(
+            classify_bool(false, true),
+            IndexPrivacyShadowOutcome::FalsePositive
+        );
     }
 
     #[test]
     fn batch_outcomes_distinguish_missing_extra_and_mixed() {
         assert_eq!(
             classify_batch(&batch(&[]), &batch(&[])),
-            ShadowOutcome::MatchBatchEmpty
+            IndexPrivacyShadowOutcome::MatchBatchEmpty
         );
         assert_eq!(
             classify_batch(&batch(&[1]), &batch(&[1])),
-            ShadowOutcome::MatchBatchNonempty
+            IndexPrivacyShadowOutcome::MatchBatchNonempty
         );
         assert_eq!(
             classify_batch(&batch(&[1, 2]), &batch(&[1])),
-            ShadowOutcome::BatchMissing
+            IndexPrivacyShadowOutcome::BatchMissing
         );
         assert_eq!(
             classify_batch(&batch(&[1]), &batch(&[1, 2])),
-            ShadowOutcome::BatchExtra
+            IndexPrivacyShadowOutcome::BatchExtra
         );
         assert_eq!(
             classify_batch(&batch(&[1, 2]), &batch(&[2, 3])),
-            ShadowOutcome::BatchMixed
+            IndexPrivacyShadowOutcome::BatchMixed
         );
     }
 
     #[tokio::test]
-    async fn mismatch_returns_authoritative_boolean() {
+    async fn mismatch_returns_authoritative_boolean_and_observes_false_negative() {
+        let observer = Arc::new(RecordingObserver::default());
         let shadow = IndexShadowSocialGraphPrivacyReadPort::from_ports(
             Arc::new(FixedPrivacyPort {
                 boolean: true,
@@ -429,14 +588,23 @@ mod tests {
                 batch: Vec::new(),
                 fail: false,
             }),
+            observer.clone(),
         );
 
         assert!(shadow.blocks_between(context(), pair()).await.unwrap());
+        let observations = observer.observations.lock().expect("observation lock");
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].outcome,
+            IndexPrivacyShadowOutcome::FalseNegative
+        );
+        assert_eq!(observations[0].failure_code, None);
     }
 
     #[tokio::test]
-    async fn projected_error_returns_authoritative_batch() {
+    async fn projected_error_returns_authoritative_batch_and_bounded_failure() {
         let expected = vec![Uuid::from_u128(4), Uuid::from_u128(5)];
+        let observer = Arc::new(RecordingObserver::default());
         let shadow = IndexShadowSocialGraphPrivacyReadPort::from_ports(
             Arc::new(FixedPrivacyPort {
                 boolean: true,
@@ -448,6 +616,7 @@ mod tests {
                 batch: Vec::new(),
                 fail: true,
             }),
+            observer.clone(),
         );
 
         let result = shadow
@@ -462,5 +631,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.followed_target_user_ids, expected);
+        let observations = observer.observations.lock().expect("observation lock");
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].outcome, IndexPrivacyShadowOutcome::Error);
+        assert_eq!(
+            observations[0].failure_code,
+            Some(IndexPrivacyShadowFailureCode::Unavailable)
+        );
+        assert_eq!(observations[0].retryable, Some(true));
     }
 }
