@@ -140,14 +140,7 @@ fn map_cart_transport_error(
         boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
         "storefront commerce cart transport failed"
     );
-    match failed_path {
-        rustok_ui_transport::UiTransportPath::NativeServer => {
-            ApiError::ServerFn("Storefront cart data is temporarily unavailable".to_string())
-        }
-        rustok_ui_transport::UiTransportPath::Graphql => {
-            ApiError::Graphql("Storefront cart data is temporarily unavailable".to_string())
-        }
-    }
+    ApiError::ServerFn("Storefront cart data is temporarily unavailable".to_string())
 }
 
 fn map_payment_transport_error(error: rustok_ui_transport::UiTransportError) -> ApiError {
