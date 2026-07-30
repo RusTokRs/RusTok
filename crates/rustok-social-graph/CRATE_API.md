@@ -23,6 +23,10 @@ writes fail closed until a transactional event bus is supplied.
 SocialGraphService::with_event_bus(DatabaseConnection, TransactionalEventBus) creates the
 write-capable owner service used by GraphQL and native storefront composition.
 
+SocialGraphRelationEventMaintenanceService::with_outbox(DatabaseConnection) creates the
+owner-local operational replay service with the canonical transactional outbox. CLI and host
+adapters must use this constructor instead of constructing transport outside Social Graph.
+
 - `SocialGraphCommandPort::set_relation` owns validated, idempotent relation commands.
 - `SocialGraphPrivacyReadPort` owns block, mute, and bounded directional follow policy reads.
 - `IndexSocialGraphPrivacyReadPort` is the typed Index projection reader.
@@ -60,6 +64,14 @@ write-capable owner service used by GraphQL and native storefront composition.
   and rolls relation plus receipt back together.
 - Bounded Social Graph replay republishes the same sealed facts. Consumers must handle
   duplicate/stale delivery through monotonic revision.
+- The replay port accepts service/system actors only, selects one tenant-scoped UUID-cursor
+  page, enforces the 1000-row maximum, and returns the last selected relation as the next
+  explicit cursor.
+- Dry-run selects and reports one page without publishing. A live page publishes every fact
+  through the transactional outbox and rolls the whole page back if one append fails.
+- `rustok-cli social_graph relation-event-replay` is the canonical operational adapter. It
+  requires a tenant, supports an optional cursor and bounded limit, processes one page per
+  invocation, and never reads owner-private tables or constructs outbox transport itself.
 - Social Graph persistence remains authoritative for drift repair.
 
 ## Optional Index projection
@@ -266,6 +278,8 @@ receipt, broker, or lag state.
 - Publishing arbitrary strings or publishing after relation commit.
 - Emitting an event for receipt replay or persisted-state no-op.
 - Reading Social Graph tables from Profiles, Index, or another consumer.
+- Constructing replay outbox transport in CLI or host code instead of using
+  `SocialGraphRelationEventMaintenanceService::with_outbox`.
 - Constructing `PostgresIndexQueryPort` in Social Graph or bypassing
   `SharedIndexQueryRuntime`.
 - Returning the Index result from the privacy shadow instead of the owner result.
