@@ -115,7 +115,9 @@ impl SettingsValidator for EmailSettingsValidator {
             ));
         }
 
-        if let Some(from) = email_string(settings, "from_address", &["smtp", "from"])
+        if let Some(from) = settings
+            .get("from_address")
+            .and_then(Value::as_str)
             .or_else(|| settings.get("from").and_then(Value::as_str))
         {
             if !from.contains('@') {
@@ -292,21 +294,19 @@ impl SettingsService {
     fn yaml_defaults_for(ctx: &ServerRuntimeContext, cat: &str) -> Value {
         let rs = ctx.settings();
         match cat {
-            category::EMAIL => email_public_projection(&serde_json::json!({
+            category::EMAIL => serde_json::json!({
                 "enabled": rs.email.enabled,
-                "provider": match rs.email.provider {
+                "provider": match &rs.email.provider {
                     crate::common::settings::EmailProvider::Smtp => "smtp",
                     crate::common::settings::EmailProvider::None => "none",
                 },
-                "smtp": {
-                    "host": rs.email.smtp.host,
-                    "port": rs.email.smtp.port,
-                    "username": rs.email.smtp.username,
-                    "password": rs.email.smtp.password,
-                },
-                "from": rs.email.from,
-                "reset_base_url": rs.email.reset_base_url,
-            })),
+                "smtp_host": rs.email.smtp.host.clone(),
+                "smtp_port": rs.email.smtp.port,
+                "smtp_username": rs.email.smtp.username.clone(),
+                "from_address": rs.email.from.clone(),
+                "reset_base_url": rs.email.reset_base_url.clone(),
+                "password_configured": !rs.email.smtp.password.is_empty(),
+            }),
             category::SEARCH => serde_json::to_value(&rs.search).unwrap_or(Value::Null),
             category::RATE_LIMIT => serde_json::to_value(&rs.rate_limit).unwrap_or(Value::Null),
             category::FEATURES => serde_json::to_value(&rs.features).unwrap_or(Value::Null),
@@ -361,8 +361,13 @@ fn email_public_projection(value: &Value) -> Value {
         .get("reset_base_url")
         .and_then(Value::as_str)
         .unwrap_or("/reset-password");
-    let password_configured = email_string(value, "smtp_password", &["smtp", "password"])
-        .is_some_and(|secret| !secret.is_empty());
+    let password_configured = value
+        .get("password_configured")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| {
+            email_string(value, "smtp_password", &["smtp", "password"])
+                .is_some_and(|secret| !secret.is_empty())
+        });
 
     serde_json::json!({
         "enabled": enabled,
