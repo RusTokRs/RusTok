@@ -94,20 +94,8 @@ jobs:
                   raise RuntimeError(f'{label} hotfix expected once, got {source.count(old)}')
               source = source.replace(old, new, 1)
 
-          orchestration_old = r'''once(orch, '''            body: Set(translation.body.clone()),
-            body_format: Set(translation.body_format.clone()),
-            created_at: Set(translation.created_at),
-''', '''            body: Set(translation.body.clone()),
-            created_at: Set(translation.created_at),
-''')'''
-          orchestration_new = r'''once(orch, '''            seo_description: Set(None),
-            body: Set(translation.body.clone()),
-            body_format: Set(translation.body_format.clone()),
-            created_at: Set(translation.created_at),
-''', '''            seo_description: Set(None),
-            body: Set(translation.body.clone()),
-            created_at: Set(translation.created_at),
-''')'''
+          orchestration_old = "once(orch, '''            body: Set(translation.body.clone()),\n            body_format: Set(translation.body_format.clone()),\n            created_at: Set(translation.created_at),\n''', '''            body: Set(translation.body.clone()),\n            created_at: Set(translation.created_at),\n''')"
+          orchestration_new = "once(orch, '''            seo_description: Set(None),\n            body: Set(translation.body.clone()),\n            body_format: Set(translation.body_format.clone()),\n            created_at: Set(translation.created_at),\n''', '''            seo_description: Set(None),\n            body: Set(translation.body.clone()),\n            created_at: Set(translation.created_at),\n''')"
           if source.count(orchestration_old) != 1:
               raise RuntimeError(
                   f'orchestration Blog storage hotfix expected once, got {source.count(orchestration_old)}'
