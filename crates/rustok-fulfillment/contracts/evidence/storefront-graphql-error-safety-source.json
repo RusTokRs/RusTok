@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "fulfillment_storefront_graphql_error_safety_source_unvalidated",
+  "scope": "fulfillment-owned storefront GraphQL shipping-selection transport",
+  "owner": "rustok_fulfillment.storefront",
+  "boundary": "fulfillment_storefront_graphql_transport",
+  "operations": [
+    "select_storefront_shipping_option"
+  ],
+  "source_contract": {
+    "graphql_variant_static_public_envelopes": true,
+    "typed_graphql_error_policy": true,
+    "per_call_correlation_id": true,
+    "safe_request_shape_logging": true,
+    "raw_graphql_detail_internal_only": true,
+    "validation_variant_changed": false,
+    "native_variant_changed": false,
+    "transport_selection_changed": false,
+    "graphql_document_changed": false,
+    "request_response_dto_changed": false,
+    "native_server_functions_changed": false,
+    "raw_graphql_detail_public": false
+  },
+  "stable_public_messages": {
+    "network_or_http": "Shipping selection is temporarily unavailable",
+    "unauthorized": "Shipping selection authentication is required",
+    "graphql_rejection_or_unknown": "Shipping selection request could not be completed"
+  },
+  "internal_diagnostics": {
+    "raw_graphql_error": true,
+    "parsed_graphql_error": true,
+    "owner_operation": true,
+    "correlation_id": true,
+    "tenant_slug_value": false,
+    "tenant_slug_configured_and_length": true,
+    "cart_id_value": false,
+    "cart_id_length": true,
+    "delivery_group_count": true,
+    "shipping_profile_slug_value": false,
+    "shipping_profile_slug_length": true,
+    "seller_id_value": false,
+    "seller_id_presence": true,
+    "shipping_option_id_value": false,
+    "shipping_option_id_presence": true
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-fulfillment-storefront-graphql-error-safety.mjs",
+    "node scripts/verify/verify-fulfillment-storefront-native-error-safety.mjs",
+    "node scripts/verify/verify-fulfillment-storefront-boundary.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-fulfillment-storefront",
+    "cargo check -p rustok-fulfillment-storefront --features hydrate",
+    "cargo check -p rustok-fulfillment-storefront --features ssr"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "browser_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}

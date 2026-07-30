@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import "./verify-fulfillment-storefront-native-error-safety.mjs";
+import "./verify-fulfillment-storefront-graphql-error-safety.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -134,6 +135,7 @@ for (const marker of [
   "build_shipping_selection_updates",
   "impl ShippingSelectionError",
   "mod graphql_adapter;",
+  "mod graphql_error_safety;",
   "mod native_server_adapter;",
 ]) {
   assertContains(transport, marker, `${transportPath}: expected owner transport facade marker ${marker}`);

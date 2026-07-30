@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod graphql_error_safety;
 mod native_server_adapter;
 
 use std::fmt::{Display, Formatter};
@@ -81,7 +82,12 @@ pub async fn select_shipping_option(
         "fulfillment",
         selected_transport_path(),
         move || native_server_adapter::select_shipping_option(native_request),
-        move || graphql_adapter::select_shipping_option(request),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::new(&request);
+            graphql_adapter::select_shipping_option(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
     )
     .await
 }
