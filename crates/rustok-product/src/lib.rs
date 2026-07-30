@@ -35,6 +35,10 @@ pub use services::{
     StorefrontProductSortDirection,
 };
 
+/// Typed marker proving that `ProductModule` participated in runtime extension registration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProductRuntimeSelected;
+
 pub struct ProductModule;
 
 #[async_trait]
@@ -80,7 +84,9 @@ impl RusToKModule for ProductModule {
                     "product SEO target registration failed: {error}"
                 ))
             },
-        )
+        )?;
+        extensions.insert(ProductRuntimeSelected);
+        Ok(())
     }
 }
 
