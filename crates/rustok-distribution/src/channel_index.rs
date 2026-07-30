@@ -76,6 +76,7 @@ fn sales_channel_schema() -> Result<IndexSchema, SalesChannelIndexBridgeError> {
             .map_err(SalesChannelIndexBridgeError::InvalidContract)?,
         locale_mode: LocaleMode::None,
         fields: vec![
+            field("id", IndexValueType::Uuid, true, true)?,
             field("slug", IndexValueType::String, true, true)?,
             field("name", IndexValueType::String, true, true)?,
             field("is_active", IndexValueType::Boolean, true, true)?,
@@ -355,6 +356,7 @@ impl SalesChannelRow {
         )
         .map_err(|_| SalesChannelIndexBridgeError::InvalidRow)?;
         let fields = BTreeMap::from([
+            (field_name("id")?, IndexValue::Uuid(self.channel_id)),
             (field_name("slug")?, IndexValue::String(self.slug)),
             (field_name("name")?, IndexValue::String(self.name)),
             (field_name("is_active")?, IndexValue::Boolean(self.is_active)),
@@ -417,8 +419,12 @@ mod tests {
         let schema = sales_channel_schema().unwrap();
         assert_eq!(schema.reference, sales_channel_schema_ref().unwrap());
         assert_eq!(schema.locale_mode, LocaleMode::None);
-        assert_eq!(schema.fields.len(), 5);
+        assert_eq!(schema.fields.len(), 6);
         assert!(schema.links.is_empty());
+        assert!(schema
+            .fields
+            .iter()
+            .any(|field| field.name.as_str() == "id"));
         assert!(schema
             .fields
             .iter()
