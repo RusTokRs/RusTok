@@ -42,6 +42,17 @@ impl ForumStorefrontSearchQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        if input
+            .tenant_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some_and(|value| value != tenant.id.to_string())
+        {
+            return Err(FieldError::new(
+                "tenantId does not match the authenticated request tenant",
+            ));
+        }
         let request_context = ctx.data::<RequestContext>()?.clone();
         let auth = ctx.data_opt::<AuthContext>().cloned();
         let category_scope_port = ctx
@@ -95,9 +106,11 @@ impl ForumStorefrontSearchQuery {
         );
         let query_log_id = execution.query_log_id.map(|value| value.to_string());
         let preset_key = execution.preset_key;
+        let elapsed_ms = execution.elapsed_ms;
         let mut payload: SearchPreviewPayload = execution.result.into();
         payload.query_log_id = query_log_id;
         payload.preset_key = preset_key;
+        payload.took_ms = payload.took_ms.max(elapsed_ms);
         Ok(payload)
     }
 }
