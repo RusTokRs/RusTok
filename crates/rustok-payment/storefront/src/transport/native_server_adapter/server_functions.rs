@@ -9,6 +9,96 @@ use super::super::{
     PaymentTransportError, RefundSummary, RefundSummaryFetchRequest,
 };
 
+#[cfg(feature = "ssr")]
+const PAYMENT_STOREFRONT_NATIVE_OWNER: &str = "rustok_payment.storefront";
+#[cfg(feature = "ssr")]
+const PAYMENT_STOREFRONT_NATIVE_BOUNDARY: &str = "payment_storefront_native_transport";
+
+#[cfg(feature = "ssr")]
+fn map_request_context_error<E: std::fmt::Debug>(
+    owner_operation: &'static str,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation,
+        code = "payment.storefront_request_context_unavailable",
+        boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "payment storefront request context extraction failed"
+    );
+    ServerFnError::new("Payment storefront request context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_tenant_context_error<E: std::fmt::Debug>(
+    request_context: &rustok_api::RequestContext,
+    owner_operation: &'static str,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation,
+        correlation_id = %request_context.correlation_id,
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        locale = %request_context.locale,
+        code = "payment.storefront_tenant_context_unavailable",
+        boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "payment storefront tenant context extraction failed"
+    );
+    ServerFnError::new("Payment storefront tenant context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_auth_context_error<E: std::fmt::Debug>(
+    request_context: &rustok_api::RequestContext,
+    tenant_id: Uuid,
+    owner_operation: &'static str,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation,
+        correlation_id = %request_context.correlation_id,
+        tenant_id = %tenant_id,
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        locale = %request_context.locale,
+        code = "payment.storefront_auth_context_unavailable",
+        boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "payment storefront authentication context extraction failed"
+    );
+    ServerFnError::new("Payment storefront authentication context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_owner_runtime_error<E: std::fmt::Debug>(
+    request_context: &rustok_api::RequestContext,
+    tenant_id: Uuid,
+    owner_operation: &'static str,
+    code: &'static str,
+    public_message: &'static str,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation,
+        correlation_id = %request_context.correlation_id,
+        tenant_id = %tenant_id,
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        locale = %request_context.locale,
+        code,
+        boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "payment storefront owner runtime call failed"
+    );
+    ServerFnError::new(public_message)
+}
+
 pub async fn fetch_refund_summary_server(
     request: RefundSummaryFetchRequest,
 ) -> Result<RefundSummary, PaymentTransportError> {
@@ -25,16 +115,20 @@ async fn storefront_refund_summary_native(
     {
         use rustok_commerce::storefront_checkout_runtime;
 
-        let runtime = checkout_runtime()?;
+        let owner_operation = "read_storefront_order_refunds";
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_request_context_error(owner_operation, error))?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_tenant_context_error(&request_context, owner_operation, error))?;
+        let tenant_id = tenant.id;
+        let runtime = checkout_runtime(&request_context, tenant_id, owner_operation)?;
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                map_auth_context_error(&request_context, tenant_id, owner_operation, error)
+            })?;
         let order_id = Uuid::parse_str(request.order_id.trim())
             .map_err(|_| ServerFnError::new("order_id must be a valid UUID"))?;
 
@@ -46,7 +140,16 @@ async fn storefront_refund_summary_native(
             order_id,
         )
         .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        .map_err(|error| {
+            map_owner_runtime_error(
+                &request_context,
+                tenant_id,
+                owner_operation,
+                "payment.storefront_refund_summary_unavailable",
+                "Storefront refund summary is temporarily unavailable",
+                error,
+            )
+        })?;
 
         Ok(summarize_native_refunds(items, total))
     }
@@ -75,13 +178,20 @@ async fn storefront_payment_collection_native(
     {
         use rustok_commerce::storefront_checkout_runtime;
 
-        let runtime = checkout_runtime()?;
+        let owner_operation = "read_storefront_payment_collection";
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .map_err(|error| map_request_context_error(owner_operation, error))?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_tenant_context_error(&request_context, owner_operation, error))?;
+        let tenant_id = tenant.id;
+        let runtime = checkout_runtime(&request_context, tenant_id, owner_operation)?;
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                map_auth_context_error(&request_context, tenant_id, owner_operation, error)
+            })?;
         let cart_id = Uuid::parse_str(request.cart_id.trim())
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
 
@@ -90,7 +200,16 @@ async fn storefront_payment_collection_native(
         )
         .await
         .map(|collection| collection.map(map_payment_collection))
-        .map_err(|error| ServerFnError::new(error.to_string()))
+        .map_err(|error| {
+            map_owner_runtime_error(
+                &request_context,
+                tenant_id,
+                owner_operation,
+                "payment.storefront_collection_unavailable",
+                "Storefront payment collection is temporarily unavailable",
+                error,
+            )
+        })
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -119,16 +238,20 @@ async fn storefront_payment_create_collection_native(
             self, StorefrontPaymentCollectionCommand,
         };
 
-        let runtime = checkout_runtime()?;
+        let owner_operation = "create_storefront_payment_collection";
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_request_context_error(owner_operation, error))?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_tenant_context_error(&request_context, owner_operation, error))?;
+        let tenant_id = tenant.id;
+        let runtime = checkout_runtime(&request_context, tenant_id, owner_operation)?;
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                map_auth_context_error(&request_context, tenant_id, owner_operation, error)
+            })?;
         let cart_id = Uuid::parse_str(request.cart_id.trim())
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
         let metadata = request.metadata;
@@ -149,7 +272,16 @@ async fn storefront_payment_create_collection_native(
             },
         )
         .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        .map_err(|error| {
+            map_owner_runtime_error(
+                &request_context,
+                tenant_id,
+                owner_operation,
+                "payment.storefront_collection_create_failed",
+                "Storefront payment collection is temporarily unavailable",
+                error,
+            )
+        })?;
 
         Ok(map_payment_collection(collection))
     }
@@ -163,8 +295,11 @@ async fn storefront_payment_create_collection_native(
 }
 
 #[cfg(feature = "ssr")]
-fn checkout_runtime()
--> Result<rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime, ServerFnError> {
+fn checkout_runtime(
+    request_context: &rustok_api::RequestContext,
+    tenant_id: Uuid,
+    owner_operation: &'static str,
+) -> Result<rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime, ServerFnError> {
     use leptos::prelude::expect_context;
     use rustok_api::HostRuntimeContext;
     use rustok_outbox::TransactionalEventBus;
@@ -173,9 +308,19 @@ fn checkout_runtime()
     let event_bus = runtime_ctx
         .shared_get::<TransactionalEventBus>()
         .ok_or_else(|| {
-            ServerFnError::new(
-                "payment storefront native transport requires TransactionalEventBus in host runtime context",
-            )
+            tracing::error!(
+                owner = PAYMENT_STOREFRONT_NATIVE_OWNER,
+                owner_operation,
+                correlation_id = %request_context.correlation_id,
+                tenant_id = %tenant_id,
+                channel_id = ?request_context.channel_id,
+                channel_slug = ?request_context.channel_slug,
+                locale = %request_context.locale,
+                code = "payment.storefront_runtime_unavailable",
+                boundary = PAYMENT_STOREFRONT_NATIVE_BOUNDARY,
+                "payment storefront TransactionalEventBus is unavailable"
+            );
+            ServerFnError::new("Payment storefront runtime is temporarily unavailable")
         })?;
 
     Ok(
