@@ -12,10 +12,10 @@ PostgreSQL storage, mutation, schema-registration, lease, secondary-index, and m
 partition-admission boundaries. M4 owns typed query planning, controlled SQL compilation,
 strict decoding, PostgreSQL execution, source-owned schema catalog composition, and the
 neutral shared query runtime. M5/M6 own the neutral replay-source catalog, bounded scan/load
-contracts, one-page replay orchestration, durable schema-scoped replay job ownership, and
-lease-fenced rebuild checkpoints. Source-specific Product, Content, Flex, search,
-migration, scheduler, and long-running worker implementations remain outside the engine
-core.
+contracts, one-page and bounded multi-page replay orchestration, durable schema-scoped replay
+job ownership, lease-fenced checkpoints, cancellation, and host-published replay capability.
+Source-specific Product, Content, Flex, search, scheduler, and long-running worker
+implementations remain outside the engine core.
 
 ## Primary Public Types
 
@@ -71,6 +71,12 @@ core.
 - `PostgresIndexReplayJobStore`, `IndexReplayJobLeaseRequest`, `IndexReplayJobLease`
 - `IndexReplayJobAcquireOutcome`, `IndexReplayJobError`
 - `PostgresIndexReplayCheckpointStore`
+- `PostgresIndexReplayRunner`, `IndexReplayRunRequest`, `IndexReplayRunOutcome`
+- `IndexReplayRunStatus`, `IndexReplayCancelOutcome`, `IndexReplayTerminalState`
+- `IndexReplayRunError`
+- `SharedIndexReplayRuntime`
+- `materialize_postgres_index_replay_runtime`
+- `IndexReplayRuntimeCompositionError`
 - `PostgresSchemaRegistrationStore`, `PersistedSchemaRegistrationOutcome`, `SchemaRegistrationError`
 - `PostgresSchemaLeaseStore`, `SchemaApplicationLeaseRequest`, `SchemaApplicationLease`
 - `SchemaLeaseAcquireOutcome`, `SchemaLeaseError`
@@ -81,6 +87,10 @@ core.
 - `PartitionMeasurementCoverage`, `PartitionShadowEvidence`, `PartitionEvidence`
 - `PartitionAdmissionReason`, `PartitionAdmissionOutcome`, `PartitionRelationPlan`
 - `PartitionShadowPlan`, `PartitionAdmissionError`, `evaluate_partition_admission`
+
+`IndexReplayOperatorRuntime`, `IndexReplayOperatorContext`, and
+`IndexReplayOperatorError` are server-owned guarded composition types. They are intentionally
+not part of the engine crate API.
 
 ## Contract Status
 
@@ -114,11 +124,12 @@ SQL, and transfers the neutral capability through `ModuleRuntimeExtensions` and
 `HostRuntimeContext`. Runtime presence does not claim PostgreSQL backend support for a test
 connection, persisted tenant schema readiness, authorization, or successful query execution.
 
-M5/M6 source replay is source complete through the fenced one-page boundary.
-`IndexSourceCatalog` fixes one replay source for every exact schema and complete schema identity
-across versions, and materialization requires the corresponding owner-published schema with the
-same owner. Cursor scans, targeted loads, cursor bytes, page/key counts, tenant/schema scope,
-returned keys, and continuation progress are bounded.
+M5/M6 replay source, execution, ownership, and cancellation are source complete through the
+bounded host-composition boundary. `IndexSourceCatalog` fixes one replay source for every exact
+schema and complete schema identity across versions. `materialize_index_source_registry`
+requires every source schema to be owner-published with the same owner and returns no false
+runtime for an absent or empty source catalog. Cursor scans, targeted loads, cursor bytes,
+page/key counts, tenant/schema scope, returned keys, and continuation progress are bounded.
 
 `IndexReplayWorker::run_next_page` reads one checkpoint, scans one page, validates every
 non-nil unique event UUID before the first write, applies mutations sequentially through an
@@ -136,10 +147,26 @@ writes lock and validate the exact `(job_id, worker_id, attempt_count)` before a
 checkpoint. Terminal success requires the same active lease and an exact durable null-cursor
 checkpoint.
 
-A scheduler, bounded multi-page runner, cancellation, retry/backoff/dead-letter policy,
-locale/partition replay dimensions, direct server binding of job requests to the materialized
-source registry, production source adapters, and retained multi-instance PostgreSQL evidence
-remain open.
+`PostgresIndexReplayRunner` resolves the source only from `SharedIndexSourceRegistry`, executes
+at most 1024 pages per invocation, heartbeats between pages, yields unfinished work to an
+immediately claimable pending attempt, and observes durable cancellation before and after page
+work. Cancellation committed first cannot be overwritten by success, failure, or yield.
+
+The server freezes `SharedIndexSourceRegistry` after module registration, calls
+`materialize_postgres_index_replay_runtime`, and publishes `SharedIndexReplayRuntime` only when
+both immutable schema and source registries exist. It then publishes the guarded
+`IndexReplayOperatorRuntime`, which requires an exact request-bound tenant/actor permission
+snapshot and `modules:manage` before delegating bounded run or cancellation. Transport adapters
+must not call the raw shared replay runtime directly.
+
+Runtime composition performs no SQL and starts no task. Runtime presence does not claim tenant
+schema readiness, source availability, scheduler ownership, graceful shutdown, command
+transport authorization, successful replay, or retained PostgreSQL evidence.
+
+Still open are in-page interruption/timeouts, authorized GraphQL/HTTP/CLI command surfaces,
+automatic retry/backoff and dead-letter state, host scheduling and task shutdown ownership,
+locale/partition replay dimensions, production source adapters, reconciliation/drift repair,
+and retained multi-instance PostgreSQL evidence.
 
 Exact Decimal tagged-order transport is source-complete. Aggregate cursor continuation,
 retained PostgreSQL/reference aggregate evidence, additional source schemas, transport
@@ -175,11 +202,16 @@ builders or DTOs.
 - One exact schema and complete schema identity cannot move between replay sources across
   versions.
 - Replay-source materialization rejects unpublished schemas and schema/source owner drift.
+- `materialize_index_source_registry` returns `None` for an absent or empty source catalog.
 - `SharedIndexQueryRuntime` exposes only the transport-neutral `IndexQueryPort` capability.
 - `materialize_postgres_index_query_runtime` is the production constructor for the PostgreSQL
-  runtime and fails when the runtime is already present.
-- Runtime composition performs no SQL and does not replace tenant-scoped persisted schema
-  registration or preflight.
+  query runtime and fails when the runtime is already present.
+- `SharedIndexReplayRuntime` exposes only bounded `run` and `request_cancel` operations.
+- `materialize_postgres_index_replay_runtime` requires the immutable source registry and fails
+  if the schema registry is missing or the replay runtime already exists.
+- The server publishes `IndexReplayOperatorRuntime` after the raw replay runtime and requires
+  an exact request-bound tenant/actor permission snapshot plus `modules:manage`.
+- Runtime composition performs no SQL and starts no task.
 - Executable hosts transfer capabilities through the existing typed runtime-extension seam.
 
 ### Replay source, job, and checkpoint
@@ -210,6 +242,11 @@ builders or DTOs.
 - A stale attempt cannot advance a checkpoint after reclaim.
 - Successful job completion requires the active attempt and the exact rebuild checkpoint with a
   JSON null cursor.
+- Bounded runs derive source ownership from the materialized registry, never caller input.
+- A run processes at most its validated page budget and heartbeats only between pages.
+- A cancellation request committed first wins over success, failure, and pending yield.
+- The guarded server runtime rejects cross-tenant invocation and missing request-bound authority
+  before delegating to the Index runtime.
 
 ### Query input and execution
 
@@ -271,8 +308,9 @@ builders or DTOs.
 - Replay event IDs are non-nil and unique inside one page and remain stable across retry.
 - Durable replay checkpoint progression is ordered after mutation outcomes and fenced by the
   active replay job attempt.
+- A guarded replay invocation cannot widen its request-bound tenant scope.
 - Generic engine types remain source-domain agnostic.
-- Runtime composition is not an authorization decision or persisted-readiness assertion.
+- Runtime composition is not a persisted-readiness assertion, scheduler, or evidence claim.
 
 ## Query Planning, Compilation, and Decoding
 
@@ -306,7 +344,11 @@ builders or DTOs.
   progression failures.
 - `IndexReplayJobError` defines job request, schema readiness, stored job, checkpoint completion,
   lease loss, and storage failures.
-- `IndexQueryRuntimeCompositionError` rejects duplicate shared runtime materialization.
+- `IndexReplayRunError` defines run bounds, cancellation identity, page failure, lease loss, and
+  replay job failures.
+- `IndexReplayRuntimeCompositionError` rejects duplicate runtime publication and a source runtime
+  without the immutable schema registry.
+- `IndexQueryRuntimeCompositionError` rejects duplicate shared query runtime materialization.
 - `RecordValidationError`, `QueryValidationError`, and `AggregateOrderValidationError` define
   registry-backed data/query failures and the bounded aggregate-order policy.
 - `CursorCodecError` and `CursorValidationError` separate malformed cursors from scope, schema,
@@ -329,10 +371,13 @@ builders or DTOs.
 - Creating an unfenced `PostgresIndexReplayCheckpointStore` without an acquired job lease.
 - Advancing a checkpoint before every page mutation result is durable.
 - Generating a new event UUID when replaying the same logical mutation and source version.
-- Treating one-page replay and durable leases as a completed scheduler or multi-page worker.
+- Treating a bounded replay runtime as a completed scheduler, retry policy, or background worker.
 - Treating in-memory registry composition as tenant-scoped persisted schema readiness.
 - Constructing an ad hoc `SchemaRegistry` or `SharedIndexSchemaRegistry` in server/consumer code.
 - Calling `PostgresIndexQueryPort::new` outside the Index-owned runtime materializer.
+- Calling `PostgresIndexReplayRunner::new` outside the Index-owned replay runtime materializer.
+- Letting GraphQL, HTTP, CLI, or admin transports call `SharedIndexReplayRuntime` instead of the
+  server-owned guarded `IndexReplayOperatorRuntime`.
 - Treating `SharedIndexQueryRuntime` presence as authorization or proof that a tenant query works.
 - Publishing a consumer query without owner/transport authorization and bounded error mapping.
 - Using plain `asc` / `desc`, link ordinal, first related row, or caller SQL as a many-order policy.
