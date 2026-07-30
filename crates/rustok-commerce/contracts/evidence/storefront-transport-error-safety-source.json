@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "storefront_transport_error_safety_source_unvalidated",
+  "scope": "mounted commerce storefront aggregate cart and payment transport error mapping",
+  "source_contract": {
+    "native_static_public_envelopes": true,
+    "native_context_logging": true,
+    "native_correlation_logging": true,
+    "native_tenant_logging": true,
+    "native_channel_logging": true,
+    "native_locale_logging": true,
+    "shared_static_public_envelopes": true,
+    "shared_transport_path_logging": true,
+    "cart_validation_compatibility_preserved": true,
+    "foreign_transport_error_text_public": false,
+    "checkout_dto_changed": false,
+    "transport_selection_changed": false
+  },
+  "stable_public_messages": {
+    "invalid_cart_selection": "Invalid cart selection",
+    "cart_unavailable": "Storefront cart data is temporarily unavailable",
+    "payment_collection_unavailable": "Storefront payment collection is temporarily unavailable"
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-commerce-storefront-transport-error-safety.mjs",
+    "node scripts/verify/verify-commerce-storefront-transport-handoff.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-commerce-storefront --all-features"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false
+  }
+}
