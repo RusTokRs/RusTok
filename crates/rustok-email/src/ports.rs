@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -17,7 +17,7 @@ pub const DEFAULT_EMAIL_IDEMPOTENCY_TTL: Duration = Duration::from_secs(24 * 60 
 pub const MAX_EMAIL_IDEMPOTENCY_KEY_BYTES: usize = 256;
 pub const MAX_EMAIL_TENANT_ID_BYTES: usize = 128;
 pub const MAX_EMAIL_TEMPLATE_ID_BYTES: usize = 256;
-pub const MAX_EMAIL_LOCALE_BYTES: usize = 64;
+pub const MAX_EMAIL_LOCALE_BYTES: usize = 32;
 pub const MAX_EMAIL_RECIPIENT_BYTES: usize = 320;
 pub const MAX_EMAIL_VARS_BYTES: usize = 64 * 1_024;
 
