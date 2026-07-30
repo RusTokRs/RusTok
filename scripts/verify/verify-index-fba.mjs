@@ -111,7 +111,7 @@ if (!normalizedPlan.includes('Backward compatibility with the rejected implement
 }
 
 for (const marker of [
-  '- Current milestone: `M3 - PostgreSQL storage engine`',
+  '- Current milestone: `M4 - Query engine v1 (',
   '- M2 storage benchmark: `complete`',
   '- M2 storage decision: `JSONB accepted; rejected prototypes removed`',
   '- M3 storage-schema foundation: `complete`',
