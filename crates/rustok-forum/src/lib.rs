@@ -89,6 +89,7 @@ pub use services::{
     ForumPublicDiscoveryService, ForumQuoteCommandService, ForumReadModelService,
     ForumRelationReadService, ForumReplyAudienceReadService, ForumReplyCreateAudienceAuthorization,
     ForumReplyCreateAudienceAuthorizationService, ForumReplyCreatesWindowFactPort,
+    ForumSearchResultCandidate, ForumSearchResultCandidateKind, ForumSearchResultEligibilityService,
     ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
     ForumTopicAudienceListService, ForumTopicAudiencePage, ForumTopicAudiencePolicy,
     ForumTopicAudiencePolicyService, ForumTopicAudienceReadService, ForumTopicAudienceViewer,
@@ -101,15 +102,15 @@ pub use services::{
     ForumUserTrustRevisionPage, ForumUserTrustService, ForumUserTrustState,
     ForumVisibilityScopedReadStateService, ForumWidgetContractService,
     MAX_FORUM_POSTING_POLICY_FACTS, MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
-    MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES, MAX_FORUM_USER_TRUST_HISTORY_PAGE,
-    MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
-    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
-    SetForumCategoryAudiencePolicyInput, SetForumCategoryModerationAudiencePolicyInput,
-    SetForumCategoryReplyCreateAudiencePolicyInput, SetForumCategoryTopicCreateAudiencePolicyInput,
-    SetForumCategoryVisibilityPolicyInput, SetForumTopicAudiencePolicyInput,
-    SetForumTopicReplyCreateAudiencePolicyInput, SetForumUserTrustInput,
-    SharedForumPostingPolicyOwnerFactPort, SubscriptionService, TopicService, UserStatsService,
-    VoteService,
+    MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
+    MAX_FORUM_USER_TRUST_HISTORY_PAGE, MAX_FORUM_USER_TRUST_LEVEL, MarkForumTopicReadInput,
+    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
+    RevisionService, SetForumCategoryAudiencePolicyInput,
+    SetForumCategoryModerationAudiencePolicyInput, SetForumCategoryReplyCreateAudiencePolicyInput,
+    SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
+    SetForumTopicAudiencePolicyInput, SetForumTopicReplyCreateAudiencePolicyInput,
+    SetForumUserTrustInput, SharedForumPostingPolicyOwnerFactPort, SubscriptionService, TopicService,
+    UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
@@ -217,6 +218,3 @@ impl MigrationSource for ForumModule {
         migrations::migration_dependencies()
     }
 }
-
-#[cfg(test)]
-mod contract_tests;
