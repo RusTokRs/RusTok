@@ -27,6 +27,7 @@ use sea_orm::DatabaseConnection;
 
 pub const NOTIFICATION_CANDIDATE_WORKER_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED";
+#[cfg(feature = "mod-social_graph")]
 pub const SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED_ENV: &str =
     "RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED";
 const RECIPIENT_POLICY_DEADLINE: Duration = Duration::from_secs(2);
@@ -170,6 +171,7 @@ impl ServerNotificationRecipientPolicy {
     }
 }
 
+#[cfg(feature = "mod-social_graph")]
 pub(crate) fn social_graph_index_privacy_shadow_enabled() -> Result<bool, String> {
     match std::env::var(SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED_ENV) {
         Ok(value) => parse_bool(SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED_ENV, &value),
@@ -284,6 +286,7 @@ fn candidate_worker_enabled_from_environment() -> bool {
     }
 }
 
+#[cfg(feature = "mod-social_graph")]
 fn parse_bool(variable: &str, value: &str) -> Result<bool, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
