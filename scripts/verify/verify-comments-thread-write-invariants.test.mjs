@@ -28,12 +28,14 @@ function fixture({
   missingIdentityClassifier = false,
   missingClassifierUuidValidation = false,
   missingClassifierUnitHarness = false,
+  missingClassifierTestRegistration = false,
   broadInsertFallback = false,
   missingStoragePropagation = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-comments-thread-invariants-"));
   const commentPath = "crates/rustok-comments/src/entities/comment.rs";
   const threadPath = "crates/rustok-comments/src/entities/comment_thread.rs";
+  const entitiesModulePath = "crates/rustok-comments/src/entities/mod.rs";
   const classifierTestPath =
     "crates/rustok-comments/src/entities/thread_insert_error_tests.rs";
   const identityEntityPath =
@@ -110,6 +112,18 @@ function fixture({
       ${missingIdentityRowLock ? "" : "identity_lock::Entity::update_many();"}
       {THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:{}
     `,
+  );
+
+  write(
+    root,
+    entitiesModulePath,
+    missingClassifierTestRegistration
+      ? "pub mod comment_thread;"
+      : `
+          pub mod comment_thread;
+          #[cfg(test)]
+          mod thread_insert_error_tests;
+        `,
   );
 
   write(
@@ -266,6 +280,7 @@ function fixture({
         position_owner: commentPath,
         counter_and_identity_owner: threadPath,
         thread_service: servicesPath,
+        entities_module: entitiesModulePath,
         classifier_unit_test: classifierTestPath,
         identity_lock_entity: identityEntityPath,
         counter_repair_migration: counterMigrationPath,
@@ -381,6 +396,13 @@ test("rejects a missing identity classifier unit harness", () => {
   expectFailure(
     { missingClassifierUnitHarness: true },
     /missing thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid/,
+  );
+});
+
+test("rejects an unregistered identity classifier unit harness", () => {
+  expectFailure(
+    { missingClassifierTestRegistration: true },
+    /missing #\[cfg\(test\)\]|missing mod thread_insert_error_tests;/,
   );
 });
 
