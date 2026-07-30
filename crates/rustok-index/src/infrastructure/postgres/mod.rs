@@ -5,6 +5,7 @@ mod query_runtime;
 mod schema_lease;
 mod schema_registration;
 mod secondary_index;
+mod source_replay;
 
 #[cfg(test)]
 mod mutation_store_tests;
@@ -44,3 +45,4 @@ pub use secondary_index::{
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
 };
+pub use source_replay::PostgresIndexReplayCheckpointStore;
