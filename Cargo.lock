@@ -12536,6 +12536,7 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 
@@ -12769,6 +12770,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -12941,6 +12943,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 
@@ -13479,6 +13482,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 
@@ -14210,6 +14214,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
+ "uuid",
 ]
 
 [[package]]

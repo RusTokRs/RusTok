@@ -32,3 +32,4 @@ rustok-core = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+uuid.workspace = true

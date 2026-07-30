@@ -19,7 +19,7 @@ use rustok_ai_product::{
     PRODUCT_COPY_TOOL_NAME, validate_product_attributes_payload, validate_product_copy_payload,
 };
 use rustok_api::{PortActor, PortContext};
-use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
+use crate::rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
 use rustok_core::infer_user_role_from_permissions;
 use rustok_mcp::alloy_tools::{AlloyMcpState, ValidateScriptRequest, alloy_validate_script};
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
@@ -783,7 +783,7 @@ impl DirectTaskHandler for BlogDraftHandler {
                         locale: Some(request.resolved_locale.clone()),
                         title: Some(title.clone()),
                         content: Some(
-                            rustok_blog::richtext::article_document_from_plain_text(&body),
+                            crate::rustok_blog::richtext::article_document_from_plain_text(&body),
                         ),
                         excerpt: excerpt.clone(),
                         slug: slug.clone(),
@@ -986,7 +986,7 @@ struct BlogSourceContent {
 }
 
 fn resolve_blog_source_content(
-    existing_post: Option<&rustok_blog::PostResponse>,
+    existing_post: Option<&crate::rustok_blog::PostResponse>,
     input: &AiBlogDraftTaskInput,
     target_locale: &str,
 ) -> AiResult<BlogSourceContent> {
@@ -1029,7 +1029,7 @@ async fn generate_blog_draft(
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
-    existing_post: Option<&rustok_blog::PostResponse>,
+    existing_post: Option<&crate::rustok_blog::PostResponse>,
     source: &BlogSourceContent,
     copy_instructions: Option<&str>,
 ) -> AiResult<GeneratedBlogDraft> {
@@ -1392,7 +1392,7 @@ fn build_blog_draft_create_input(
     Ok(CreatePostInput {
         locale: locale.to_string(),
         title: title.to_string(),
-        content: rustok_blog::richtext::article_document_from_plain_text(body),
+        content: crate::rustok_blog::richtext::article_document_from_plain_text(body),
         excerpt: excerpt.map(ToString::to_string),
         slug: slug.map(ToString::to_string),
         publish: false,
@@ -2154,7 +2154,7 @@ mod tests {
             .up(&manager)
             .await
             .expect("outbox migration");
-        for migration in rustok_blog::migrations::migrations() {
+        for migration in crate::rustok_blog::migrations::migrations() {
             migration.up(&manager).await.expect("blog migration");
         }
 
@@ -2522,6 +2522,7 @@ mod tests {
                 base_url: "https://assets.example.test/media".to_string(),
                 fsync: false,
             },
+            ..Default::default()
         })
         .await
         .expect("media fixture storage");
