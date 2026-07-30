@@ -82,6 +82,8 @@ pub enum PostgresQueryCompileError {
     CursorContextMismatch,
     #[error("many-cardinality ordering requires an explicit aggregate policy: {0:?}")]
     ManyLinkOrderingPending(FieldPath),
+    #[error("aggregate ordering requires a many-cardinality path: {0:?}")]
+    AggregateOrderingWithoutManyLink(FieldPath),
     #[error("query plan has no join contract for path {0:?}")]
     MissingJoinPlan(Vec<LinkName>),
     #[error("query plan many-link traversal metadata is inconsistent for path {0:?}")]
@@ -231,10 +233,20 @@ impl ExecutableQueryPlan {
                     order.field.path.clone(),
                 ));
             }
-            if order.field.traverses_many {
-                return Err(PostgresQueryCompileError::ManyLinkOrderingPending(
-                    order.field.path.clone(),
-                ));
+            match (order.field.traverses_many, order.direction.aggregate()) {
+                (true, None) => {
+                    return Err(PostgresQueryCompileError::ManyLinkOrderingPending(
+                        order.field.path.clone(),
+                    ));
+                }
+                (false, Some(_)) => {
+                    return Err(
+                        PostgresQueryCompileError::AggregateOrderingWithoutManyLink(
+                            order.field.path.clone(),
+                        ),
+                    );
+                }
+                _ => {}
             }
         }
         if let Some(filter) = &self.filter {
