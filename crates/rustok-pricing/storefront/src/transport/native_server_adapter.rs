@@ -18,6 +18,103 @@ use crate::model::{
 #[cfg(feature = "ssr")]
 use crate::model::{PricingEffectivePrice, PricingPrice};
 
+#[cfg(feature = "ssr")]
+const PRICING_STOREFRONT_NATIVE_OWNER: &str = "rustok_pricing.storefront";
+#[cfg(feature = "ssr")]
+const PRICING_STOREFRONT_NATIVE_BOUNDARY: &str = "pricing_storefront_native_transport";
+
+#[cfg(feature = "ssr")]
+fn map_runtime_dependency_error(dependency: &'static str) -> ServerFnError {
+    tracing::error!(
+        owner = PRICING_STOREFRONT_NATIVE_OWNER,
+        owner_operation = "storefront_pricing_native",
+        dependency,
+        code = "pricing.storefront_runtime_unavailable",
+        boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY,
+        "pricing storefront native runtime dependency is unavailable"
+    );
+    ServerFnError::new("Storefront pricing is temporarily unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn record_optional_request_context_error<E: std::fmt::Display>(error: E) {
+    tracing::warn!(
+        error = %error,
+        owner = PRICING_STOREFRONT_NATIVE_OWNER,
+        owner_operation = "storefront_pricing_native",
+        code = "pricing.storefront_request_context_unavailable",
+        boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY,
+        "optional pricing storefront request context extraction failed"
+    );
+}
+
+#[cfg(feature = "ssr")]
+fn map_tenant_context_error<E: std::fmt::Display>(
+    request_context: Option<&rustok_api::RequestContext>,
+    error: E,
+) -> ServerFnError {
+    if let Some(request_context) = request_context {
+        tracing::error!(
+            error = %error,
+            owner = PRICING_STOREFRONT_NATIVE_OWNER,
+            owner_operation = "storefront_pricing_native",
+            correlation_id = %request_context.correlation_id,
+            tenant_id = %request_context.tenant_id,
+            channel_id = ?request_context.channel_id,
+            channel_slug = ?request_context.channel_slug,
+            locale = %request_context.locale,
+            code = "pricing.storefront_tenant_context_unavailable",
+            boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY,
+            "pricing storefront tenant context extraction failed"
+        );
+    } else {
+        tracing::error!(
+            error = %error,
+            owner = PRICING_STOREFRONT_NATIVE_OWNER,
+            owner_operation = "storefront_pricing_native",
+            code = "pricing.storefront_tenant_context_unavailable",
+            boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY,
+            "pricing storefront tenant context extraction failed without request context"
+        );
+    }
+    ServerFnError::new("Pricing storefront context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_owner_runtime_error<E: std::fmt::Display>(
+    operation: &'static str,
+    tenant_id: Uuid,
+    request_context: Option<&rustok_api::RequestContext>,
+    error: E,
+) -> ServerFnError {
+    if let Some(request_context) = request_context {
+        tracing::error!(
+            error = %error,
+            owner = PRICING_STOREFRONT_NATIVE_OWNER,
+            owner_operation = operation,
+            correlation_id = %request_context.correlation_id,
+            tenant_id = %tenant_id,
+            channel_id = ?request_context.channel_id,
+            channel_slug = ?request_context.channel_slug,
+            locale = %request_context.locale,
+            code = "pricing.storefront_owner_runtime_failed",
+            boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY,
+            "pricing storefront owner operation failed"
+        );
+    } else {
+        tracing::error!(
+            error = %error,
+            owner = PRICING_STOREFRONT_NATIVE_OWNER,
+            owner_operation = operation,
+            tenant_id = %tenant_id,
+            code = "pricing.storefront_owner_runtime_failed",
+            boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY,
+            "pricing storefront owner operation failed without request context"
+        );
+    }
+    ServerFnError::new("Storefront pricing is temporarily unavailable")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
     Graphql(String),
@@ -199,18 +296,18 @@ async fn storefront_pricing_native(
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "pricing/storefront-data requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
         let db = runtime_ctx.db_clone();
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+        let request_context = match leptos_axum::extract::<rustok_api::RequestContext>().await {
+            Ok(request_context) => Some(request_context),
+            Err(error) => {
+                record_optional_request_context_error(error);
+                None
+            }
+        };
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_tenant_context_error(request_context.as_ref(), error))?;
         let requested_locale = resolve_requested_locale(
             query.locale,
             request_context.as_ref().map(|ctx| ctx.locale.as_str()),
@@ -268,7 +365,14 @@ async fn storefront_pricing_native(
         let (available_channels, _) = channel_service
             .list_channels(tenant.id, 1, 250)
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                map_owner_runtime_error(
+                    "list_channels",
+                    tenant.id,
+                    request_context.as_ref(),
+                    error,
+                )
+            })?;
         let active_price_lists = service
             .list_active_price_lists_for_channel(
                 tenant.id,
@@ -278,7 +382,14 @@ async fn storefront_pricing_native(
                 Some(tenant.default_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| {
+                map_owner_runtime_error(
+                    "list_active_price_lists_for_channel",
+                    tenant.id,
+                    request_context.as_ref(),
+                    error,
+                )
+            })?
             .into_iter()
             .map(map_native_price_list_option)
             .collect();
@@ -292,7 +403,14 @@ async fn storefront_pricing_native(
                 8,
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                map_owner_runtime_error(
+                    "list_published_product_pricing_with_locale_fallback",
+                    tenant.id,
+                    request_context.as_ref(),
+                    error,
+                )
+            })?;
         let resolved_handle = query
             .selected_handle
             .as_deref()
@@ -310,18 +428,39 @@ async fn storefront_pricing_native(
                     selected_channel_slug.as_deref(),
                 )
                 .await
-                .map_err(ServerFnError::new)?
+                .map_err(|error| {
+                    map_owner_runtime_error(
+                        "get_published_product_pricing_by_handle_with_locale_fallback",
+                        tenant.id,
+                        request_context.as_ref(),
+                        error,
+                    )
+                })?
                 .map(map_native_detail);
 
             if let (Some(detail_ref), Some(context)) =
                 (detail.as_mut(), native_resolution_context.as_ref())
             {
                 for variant in &mut detail_ref.variants {
-                    let variant_id = Uuid::parse_str(&variant.id).map_err(ServerFnError::new)?;
+                    let variant_id = Uuid::parse_str(&variant.id).map_err(|error| {
+                        map_owner_runtime_error(
+                            "parse_pricing_variant_id",
+                            tenant.id,
+                            request_context.as_ref(),
+                            error,
+                        )
+                    })?;
                     let effective_price = service
                         .resolve_variant_price(tenant.id, variant_id, context.clone())
                         .await
-                        .map_err(ServerFnError::new)?;
+                        .map_err(|error| {
+                            map_owner_runtime_error(
+                                "resolve_variant_price",
+                                tenant.id,
+                                request_context.as_ref(),
+                                error,
+                            )
+                        })?;
                     variant.effective_price = effective_price.map(map_native_effective_price);
                 }
             }
