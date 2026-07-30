@@ -106,7 +106,8 @@ requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M3 partition maintenance evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow ordinary-VACUUM maintenance evidence capture.',
   '- [ ] Execute retained PostgreSQL cutover evidence.',
-  'The eleventh M3 slice adds owner-operated ordinary-VACUUM maintenance evidence.',
+  '11. The maintenance runner revalidates the manifest and retained shadow catalog,',
+  'creates isolated ordinary and tenant-hash clone pairs, applies identical committed',
 ]);
 
 requireMarkers('scripts/verify/index-storage-tooling.mjs', [
