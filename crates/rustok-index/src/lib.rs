@@ -3,9 +3,10 @@
 //! The active implementation contains the database-independent generic engine
 //! core under [`domain`] and [`application`], the canonical M3 PostgreSQL
 //! storage-schema migrations, atomic mutation persistence, tenant-scoped source
-//! schema registration, durable schema-application leases, schema-derived
-//! secondary-index lifecycle, fail-closed measured partition admission, and the
-//! PostgreSQL execution adapter for structured Index queries.
+//! schema registration, bounded source replay/load contracts, durable
+//! schema-application leases, schema-derived secondary-index lifecycle,
+//! fail-closed measured partition admission, and the PostgreSQL execution adapter
+//! for structured Index queries.
 
 use async_trait::async_trait;
 use rustok_core::{
@@ -65,6 +66,7 @@ impl RusToKModule for IndexModule {
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
         extensions.get_or_insert_with::<IndexSchemaSourceCatalog, _>(IndexSchemaSourceCatalog::new);
+        extensions.get_or_insert_with::<IndexSourceCatalog, _>(IndexSourceCatalog::new);
         Ok(())
     }
 }
