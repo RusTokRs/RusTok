@@ -3,9 +3,10 @@
 Status: `source_complete_owner_execution_pending`
 
 This slice composes the existing one-page replay worker, fenced rebuild jobs, mutation
-store, and lease-bound checkpoint store into one bounded PostgreSQL runner. It does not
-add a scheduler, background task, automatic retry/backoff, cancellation command, dry-run,
-or production source adapter.
+store, and lease-bound checkpoint store into one bounded PostgreSQL runner. It includes
+durable cancellation requests and between-page terminal cancellation. It does not add a
+scheduler, background task, automatic retry/backoff, in-page interruption, dry-run, or
+production source adapter.
 
 ## Request bounds
 
@@ -26,29 +27,52 @@ therefore uses the same source identity as page execution and checkpoint persist
 For an acquired `IndexReplayJobLease`, the runner:
 
 1. constructs `PostgresIndexReplayCheckpointStore` from that exact lease;
-2. executes no more than the requested page budget through
+2. observes and terminalizes a previously requested cancellation before each page;
+3. executes no more than the requested page budget through
    `IndexReplayWorker::run_next_page`;
-3. extends the lease between pages at the requested completed-page cadence;
-4. accumulates applied, duplicate, stale, mutation, page, and heartbeat counts;
-5. calls fenced terminal success only after the one-page worker persisted a JSON `null`
+4. extends the lease between pages at the requested completed-page cadence;
+5. observes cancellation again after heartbeat and after every completed page;
+6. accumulates applied, duplicate, stale, mutation, page, and heartbeat counts;
+7. calls fenced terminal success only after the one-page worker persisted a JSON `null`
    cursor;
-6. when the page budget ends with continuation, atomically returns the same job to
+8. when the page budget ends with continuation, atomically returns the same job to
    `pending`, clears lease ownership, and makes it immediately claimable for resume.
 
-A page itself is not interrupted by a heartbeat task. Operators must choose a lease
-longer than the maximum admitted source-page and mutation-commit duration. Heartbeats
-protect bounded work between pages; retained timing evidence remains an owner step.
+A page itself is not interrupted by a heartbeat or cancellation task. Operators must
+choose a lease longer than the maximum admitted source-page and mutation/checkpoint
+commit duration. A cancellation requested during a page is observed after that page's
+idempotent mutations and checkpoint are durable.
+
+## Cancellation contract
+
+`PostgresIndexReplayRunner::request_cancel` accepts one non-nil tenant and job UUID. It
+locks the exact `rebuild` job before changing state:
+
+- a `pending` job becomes terminal `cancelled` immediately;
+- a `running` job retains its current owner and records `cancel_requested = TRUE`;
+- `succeeded`, `failed`, and `cancelled` return their typed terminal state;
+- an unknown tenant/job pair returns `NotFound`.
+
+The active owner terminalizes a running request only when the exact job UUID, worker ID,
+attempt count, running state, and unexpired lease still match. Cancellation clears lease
+ownership, preserves the durable checkpoint, records `completed_at`, and stores no error
+payload.
+
+Success, page failure, and pending-yield SQL all require
+`cancel_requested = FALSE`. This makes cancellation linear with every competing terminal
+or resume transition: a cancellation committed first cannot be overwritten by success,
+failure, or `pending`; a terminal transition committed first makes a later request return
+that terminal state.
 
 ## Resume and attempt fencing
 
 A yielded job keeps the same job UUID and durable checkpoint, but the next acquisition
-increments `attempt_count`. The old attempt cannot heartbeat, yield, fail, complete, or
-advance the checkpoint after the new attempt is claimed.
+increments `attempt_count`. The old attempt cannot heartbeat, yield, fail, complete,
+cancel, or advance the checkpoint after the new attempt is claimed.
 
-Yield uses all existing ownership predicates: tenant, job UUID, `kind = 'rebuild'`,
-`state = 'running'`, worker ID, attempt count, and an unexpired lease. If any predicate
-fails, the runner returns explicit lease loss and does not publish a false pending or
-terminal state.
+A running cancellation request survives lease expiry and reclaim. The next owner sees the
+persisted flag before reading the source and terminalizes the job with the incremented
+attempt fence.
 
 ## Failure boundary
 
@@ -57,21 +81,22 @@ Source, mutation, and checkpoint failures are recorded as one bounded
 detail object containing only the dependency code and retryable classification. No raw
 database, transport, or source-domain message is persisted.
 
-Checkpoint failures classified as `checkpoint_lease_lost`, heartbeat loss, terminal
-completion loss, and yield loss return explicit `IndexReplayRunError::LeaseLost` instead
-of attempting a stale failure write. A later owner reclaims the expired job through the
-existing attempt fence.
+Cancellation takes precedence when it races with page failure. Checkpoint failures
+classified as `checkpoint_lease_lost`, heartbeat loss, terminal completion loss, yield
+loss, and cancellation ownership loss return explicit `IndexReplayRunError::LeaseLost`
+instead of attempting a stale state write.
 
 ## Still open
 
-- cancellation request observation and terminal cancellation;
+- interruption or timeout of one currently executing source page;
 - automatic bounded retry/backoff and dead-letter scheduling;
-- a host scheduler, command surface, and graceful process shutdown ownership;
+- a host scheduler, command/transport authorization, and graceful process shutdown;
 - direct server-composition publication of the runner;
 - dry-run and targeted/full/shadow rebuild modes;
 - locale and partition checkpoint dimensions;
 - Product and later source adapters;
-- retained PostgreSQL crash, lease-expiry, restart, timing, and multi-instance evidence.
+- retained PostgreSQL cancellation, crash, lease-expiry, restart, timing, and
+  multi-instance evidence.
 
 ## Owner validation
 

@@ -17,7 +17,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::{
-    IndexReplayRunError, IndexReplayRunRequest, IndexReplayRunStatus, PostgresIndexReplayRunner,
+    IndexReplayCancelOutcome, IndexReplayJobAcquireOutcome, IndexReplayJobLeaseRequest,
+    IndexReplayRunError, IndexReplayRunRequest, IndexReplayRunStatus, PostgresIndexReplayJobStore,
+    PostgresIndexReplayRunner,
 };
 use crate::{
     EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexMutation,
@@ -34,6 +36,7 @@ struct PagedSource {
     calls: Arc<AtomicUsize>,
     page_count: usize,
     expire_lease_on_call: Option<usize>,
+    request_cancel_on_call: Option<usize>,
 }
 
 #[async_trait]
@@ -51,6 +54,15 @@ impl IndexSource for PagedSource {
                 ))
                 .await
                 .expect("test source should expire the active replay lease");
+        }
+        if self.request_cancel_on_call == Some(call) {
+            self.db
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    "UPDATE index_jobs SET cancel_requested = TRUE WHERE kind = 'rebuild' AND state = 'running'".to_owned(),
+                ))
+                .await
+                .expect("test source should request cancellation");
         }
 
         let page = request
@@ -89,7 +101,11 @@ struct Fixture {
 }
 
 impl Fixture {
-    async fn new(page_count: usize, expire_lease_on_call: Option<usize>) -> Self {
+    async fn new(
+        page_count: usize,
+        expire_lease_on_call: Option<usize>,
+        request_cancel_on_call: Option<usize>,
+    ) -> Self {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite should connect");
@@ -142,6 +158,7 @@ impl Fixture {
                     calls: calls.clone(),
                     page_count,
                     expire_lease_on_call,
+                    request_cancel_on_call,
                 },
             )
             .unwrap();
@@ -242,7 +259,7 @@ async fn scalar_string(db: &DatabaseConnection, sql: &str) -> String {
 
 #[tokio::test]
 async fn bounded_run_yields_pending_and_resumes_with_a_new_attempt() {
-    let fixture = Fixture::new(3, None).await;
+    let fixture = Fixture::new(3, None, None).await;
     let first = fixture.runner.run(fixture.request("worker-a", 2, 1)).await.unwrap();
     assert_eq!(first.status(), IndexReplayRunStatus::Yielded);
     assert_eq!(first.pages_processed(), 2);
@@ -267,7 +284,7 @@ async fn bounded_run_yields_pending_and_resumes_with_a_new_attempt() {
     assert_eq!(
         scalar_i64(
             &fixture.db,
-            "SELECT COUNT(*) AS value FROM index_jobs WHERE kind = 'rebuild' AND state = 'succeeded' AND completed_at IS NOT NULL",
+            "SELECT COUNT(*) AS value FROM index_jobs WHERE kind = 'rebuild' AND state = 'succeeded' AND completed_at IS NOT NULL AND cancel_requested = FALSE",
         )
         .await,
         1,
@@ -275,8 +292,103 @@ async fn bounded_run_yields_pending_and_resumes_with_a_new_attempt() {
 }
 
 #[tokio::test]
+async fn pending_cancel_request_terminalizes_without_a_worker() {
+    let fixture = Fixture::new(3, None, None).await;
+    let first = fixture.runner.run(fixture.request("worker-a", 1, 1)).await.unwrap();
+    assert_eq!(first.status(), IndexReplayRunStatus::Yielded);
+    let job_id = first.job_id().unwrap();
+    assert_eq!(
+        fixture
+            .runner
+            .request_cancel(Uuid::parse_str(TENANT).unwrap(), job_id)
+            .await
+            .unwrap(),
+        IndexReplayCancelOutcome::Cancelled,
+    );
+    assert_eq!(
+        scalar_i64(
+            &fixture.db,
+            "SELECT COUNT(*) AS value FROM index_jobs WHERE kind = 'rebuild' AND state = 'cancelled' AND cancel_requested = TRUE AND completed_at IS NOT NULL AND lease_owner IS NULL",
+        )
+        .await,
+        1,
+    );
+}
+
+#[tokio::test]
+async fn running_cancel_request_is_observed_after_the_current_page() {
+    let fixture = Fixture::new(3, None, Some(0)).await;
+    let outcome = fixture.runner.run(fixture.request("worker-a", 3, 1)).await.unwrap();
+    assert_eq!(outcome.status(), IndexReplayRunStatus::Cancelled);
+    assert_eq!(outcome.pages_processed(), 1);
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        scalar_i64(
+            &fixture.db,
+            "SELECT COUNT(*) AS value FROM index_jobs WHERE kind = 'rebuild' AND state = 'cancelled' AND cancel_requested = TRUE AND completed_at IS NOT NULL",
+        )
+        .await,
+        1,
+    );
+    assert_eq!(
+        scalar_string(
+            &fixture.db,
+            "SELECT CAST(cursor AS TEXT) AS value FROM index_checkpoints WHERE checkpoint_kind = 'rebuild'",
+        )
+        .await,
+        "1",
+    );
+}
+
+#[tokio::test]
+async fn requested_running_cancel_survives_reclaim_and_fences_the_old_attempt() {
+    let fixture = Fixture::new(3, None, None).await;
+    let job_store = PostgresIndexReplayJobStore::new(fixture.db.clone());
+    let lease_request = IndexReplayJobLeaseRequest::new(
+        Uuid::parse_str(TENANT).unwrap(),
+        schema_ref(),
+        "product-primary",
+        "worker-a",
+        Duration::from_secs(60),
+    )
+    .unwrap();
+    let first = match job_store.acquire(&lease_request).await.unwrap() {
+        IndexReplayJobAcquireOutcome::Acquired(lease) => lease,
+        outcome => panic!("first worker should acquire replay job, got {outcome:?}"),
+    };
+    assert_eq!(
+        fixture
+            .runner
+            .request_cancel(Uuid::parse_str(TENANT).unwrap(), first.job_id())
+            .await
+            .unwrap(),
+        IndexReplayCancelOutcome::Requested,
+    );
+    fixture
+        .db
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE index_jobs SET lease_expires_at = datetime('now', '-1 second') WHERE tenant_id = ?1 AND job_id = ?2",
+            vec![TENANT.to_owned().into(), first.job_id().to_string().into()],
+        ))
+        .await
+        .unwrap();
+
+    let second = fixture.runner.run(fixture.request("worker-b", 3, 1)).await.unwrap();
+    assert_eq!(second.status(), IndexReplayRunStatus::Cancelled);
+    assert_eq!(second.job_id(), Some(first.job_id()));
+    assert_eq!(second.attempt_count(), Some(2));
+    assert_eq!(second.pages_processed(), 0);
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        job_store.heartbeat(&first, Duration::from_secs(60)).await,
+        Err(super::IndexReplayJobError::LeaseLost),
+    );
+}
+
+#[tokio::test]
 async fn lease_loss_during_a_page_does_not_publish_failure_or_advance_cursor() {
-    let fixture = Fixture::new(2, Some(1)).await;
+    let fixture = Fixture::new(2, Some(1), None).await;
     let error = fixture
         .runner
         .run(fixture.request("worker-a", 2, 1))
