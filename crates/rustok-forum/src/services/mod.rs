@@ -31,8 +31,8 @@ mod category_policy;
 mod category_reply_create_audience;
 mod category_search_audience_scope;
 mod category_search_scope {
-    include!("category_search_scope.rs");
     include!("category_search_scope_visible.rs");
+    include!("category_search_scope.rs");
 }
 mod category_topic_create_audience;
 mod category_tree {
