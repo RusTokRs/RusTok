@@ -8,8 +8,19 @@ mod admin_catalog_graphql;
 mod admin_catalog_native;
 #[path = "transport/graphql_error_safety.rs"]
 mod graphql_error_safety;
+#[path = "transport/graphql_fallback_mutation_error_safety.rs"]
+mod graphql_fallback_mutation_error_safety;
+#[path = "transport/graphql_fallback_mutations.rs"]
+mod graphql_fallback_mutations;
 
 pub(crate) use legacy::*;
+pub(crate) use graphql_fallback_mutations::{
+    bind_category_attribute, bind_schema_attribute, clear_detached_product_attribute_values,
+    create_attribute_schema, create_catalog_category, create_category_attribute_group,
+    create_product_attribute, create_product_attribute_option,
+    create_product_attribute_schema_group, save_product_attribute_values,
+    set_category_schema_mode,
+};
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
