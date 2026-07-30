@@ -13,6 +13,7 @@ mod m20260729_000010_enforce_single_default_channel;
 mod m20260729_000011_enforce_channel_relation_tenant_integrity;
 mod m20260729_000012_enforce_single_active_policy_set;
 mod m20260729_000013_enforce_channel_target_selection_integrity;
+mod m20260730_000014_seal_channel_selection_integrity;
 #[cfg(test)]
 mod test_fixture_oauth_apps_table;
 
@@ -42,6 +43,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ));
     migrations.push(Box::new(
         m20260729_000013_enforce_channel_target_selection_integrity::Migration,
+    ));
+    migrations.push(Box::new(
+        m20260730_000014_seal_channel_selection_integrity::Migration,
     ));
     migrations
 }
