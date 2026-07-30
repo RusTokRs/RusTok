@@ -181,6 +181,7 @@ fn observe_batch(
 mod tests {
     use std::time::Duration;
 
+    use async_trait::async_trait;
     use rustok_api::PortActor;
     use uuid::Uuid;
 
