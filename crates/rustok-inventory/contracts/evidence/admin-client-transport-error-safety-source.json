@@ -26,6 +26,7 @@
     "operation_count": 8,
     "context_created_before_native_call": true,
     "raw_server_fn_string_public": false,
+    "public_error_payload_constructible": false,
     "static_public_message": true,
     "original_error_logged_privately": true,
     "per_call_correlation_logging": true,
