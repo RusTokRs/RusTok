@@ -14,6 +14,10 @@ RusToK.
   analytics, diagnostics, and rebuild behavior.
 - Execute PostgreSQL FTS with `tsvector`, `websearch_to_tsquery`, `ts_rank_cd`,
   highlights, typo-tolerant fallback, filters, sorting, and facets.
+- Interpret the bounded `category_ids` query field across owner projections:
+  normalized product-category relations remain authoritative for products, while
+  public Forum category/topic/reply documents use their exact projected category
+  identity. Owner subtree expansion remains outside the Search engine.
 - Consume product-owned high-load projections from `rustok-index` without
   exposing index runtime types to Search consumers.
 - Consume Blog lifecycle and scoped rebuild events into Search-owned documents.
@@ -123,6 +127,10 @@ transport-local Blog route builder, or compatibility URL implementation.
 - Blog projection follows the active PostgreSQL `search_path` and removes stale
   documents before source lookup.
 - Product filters use normalized category, channel, and attribute projections.
+- Exact Forum category filtering reuses `category_ids`: category documents match
+  their document identifier and topic/reply documents match the public
+  `facets.category_id` value. Search does not resolve descendants or copy Forum
+  tree policy.
 - GraphQL and native Leptos transports expose the same normalized query/result
   fields.
 - The Search admin native adapter is split into focused API, read, write,
@@ -146,7 +154,9 @@ transport-local Blog route builder, or compatibility URL implementation.
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `node scripts/verify/verify-search-blog-projection.mjs`
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
+- `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`
+- `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
 - `cargo xtask module validate search`
 
 ## Docs
