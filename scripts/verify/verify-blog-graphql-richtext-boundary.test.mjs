@@ -61,6 +61,8 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
         }
     }
 }
+
+fn mutation_tenant_id() {}
 `;
 
 const passing = await runFixture({
@@ -99,6 +101,23 @@ const resolverFieldAccess = await runFixture({
 assert.notEqual(resolverFieldAccess.status, 0);
 assert.match(resolverFieldAccess.stderr, /must not wire richtext fields inside the async resolver/);
 
+const mutationHelperLeak = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: canonicalMutation.replace(
+    'fn mutation_tenant_id() {}',
+    'fn mutation_tenant_id() { let _legacy = input.content_json; }',
+  ),
+});
+assert.notEqual(mutationHelperLeak.status, 0);
+assert.match(mutationHelperLeak.stderr, /must stay confined to types\.rs or the isolated UpdatePostInput conversion/);
+
+const conversionFieldRemoved = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: canonicalMutation.replace('            body_format: input.body_format,\n', ''),
+});
+assert.notEqual(conversionFieldRemoved.status, 0);
+assert.match(conversionFieldRemoved.stderr, /update the evidence status and tighten this guardrail/);
+
 const newAlias = await runFixture({
   typesSource: canonicalTypes,
   mutationSource: canonicalMutation,
@@ -117,7 +136,7 @@ const legacyLeak = await runFixture({
   },
 });
 assert.notEqual(legacyLeak.status, 0);
-assert.match(legacyLeak.stderr, /must stay confined to the adapter allowlist/);
+assert.match(legacyLeak.stderr, /must stay confined to types\.rs or the isolated UpdatePostInput conversion/);
 
 const legacyRemoved = await runFixture({
   typesSource: canonicalTypes.replace('pub body_format: String,', ''),
