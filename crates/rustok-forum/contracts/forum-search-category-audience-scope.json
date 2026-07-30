@@ -5,7 +5,10 @@
   "scope": "Apply the complete delivered inherited Forum category audience decision before category subtrees are exposed to a Search caller",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "base_scope_owner": "crates/rustok-forum/src/services/category_search_scope.rs",
+  "visible_tree_expander": "crates/rustok-forum/src/services/category_search_scope_visible.rs",
   "audience_scope_owner": "crates/rustok-forum/src/services/category_search_audience_scope.rs",
+  "audience_read_owner": "crates/rustok-forum/src/services/category_audience_read.rs",
+  "audience_read_search_extension": "crates/rustok-forum/src/services/category_audience_read_search.rs",
   "audience_visibility_owner": "crates/rustok-forum/src/services/category_audience_visibility.rs",
   "owner_export": "crates/rustok-forum/src/services/mod.rs",
   "owner_note": "crates/rustok-forum/docs/forum-23b2b-category-audience-scope.md",
@@ -20,6 +23,7 @@
     "requires_forum_categories_list": true,
     "public_viewer_supported": true,
     "authenticated_viewer_requires_exact_port_context": true,
+    "reuses_canonical_category_audience_read_owner": true,
     "reuses_public_authenticated_floor": true,
     "reuses_inherited_richer_category_layers": true,
     "supports_role_selector": true,
@@ -37,7 +41,8 @@
     "requested_roots_preserve_first_occurrence_order": true,
     "visible_children_preserve_canonical_tree_order": true,
     "overlapping_roots_are_deduplicated": true,
-    "expanded_output_is_deterministic_preorder": true
+    "expanded_output_is_deterministic_preorder": true,
+    "shared_b2a_hierarchy_expander_is_reused": true
   },
   "integration_boundary": {
     "search_imports_forum": false,
