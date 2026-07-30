@@ -84,7 +84,7 @@ async fn forum_storefront_search_native(
             request,
         )
         .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        .map_err(|error| ServerFnError::new(public_execution_error(error)))?;
 
         Ok(map_search_result(
             execution.result,
@@ -99,6 +99,23 @@ async fn forum_storefront_search_native(
         Err(ServerFnError::new(
             "search/forum-storefront-search requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn public_execution_error(error: rustok_search::ForumStorefrontSearchExecutionError) -> String {
+    match error {
+        rustok_search::ForumStorefrontSearchExecutionError::Validation(message) => message,
+        rustok_search::ForumStorefrontSearchExecutionError::Scope(error) => error.message,
+        rustok_search::ForumStorefrontSearchExecutionError::Search(
+            rustok_core::Error::Validation(message)
+            | rustok_core::Error::NotFound(message)
+            | rustok_core::Error::InvalidIdFormat(message),
+        ) => message,
+        rustok_search::ForumStorefrontSearchExecutionError::Search(_)
+        | rustok_search::ForumStorefrontSearchExecutionError::Database(_) => {
+            "Forum storefront Search is temporarily unavailable".to_string()
+        }
     }
 }
 
