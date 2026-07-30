@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import "./verify-product-storefront-catalog-native-error-safety.mjs";
+import "./verify-product-storefront-graphql-error-safety.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -157,6 +158,7 @@ assertContains(transport, "CatalogListInput", `${transportPath}: transport facad
 assertContains(transport, "mod catalog_list_native;", `${transportPath}: transport facade must wire the owner-native catalog list path`);
 assertContains(transport, "catalog_list_native::fetch_products", `${transportPath}: selected native path must execute the owner-native catalog list`);
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
+assertContains(transport, "mod graphql_error_safety;", `${transportPath}: transport facade must wire GraphQL error safety`);
 assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must wire native server adapter`);
 assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not import legacy api module`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: GraphQL adapter must expose GraphQL request path`);

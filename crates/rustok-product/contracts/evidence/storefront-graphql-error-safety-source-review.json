@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "product_storefront_graphql_error_safety_source_reviewed_unvalidated",
+  "base_main_sha": "aef96f57d3babc2efdc65cc0c57cfea6fb48b5ad",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-product/storefront/Cargo.toml",
+    "crates/rustok-product/storefront/src/catalog_controls.rs",
+    "crates/rustok-product/storefront/src/core.rs",
+    "crates/rustok-product/storefront/src/transport/mod.rs",
+    "crates/rustok-product/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-product/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-product/storefront/src/transport/catalog_list_native.rs",
+    "crates/rustok-product/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "crates/rustok-graphql/src/lib.rs",
+    "scripts/verify/verify-product-storefront-boundary.mjs",
+    "scripts/verify/verify-product-storefront-catalog-native-error-safety.mjs"
+  ],
+  "findings": [
+    {
+      "id": "product-storefront-graphql-public-detail",
+      "severity": "p1",
+      "finding": "The product storefront facade delegated both selected GraphQL closures directly to the private adapter, whose GraphqlHttpError conversion retained display text in UiTransportError.graphql_error.",
+      "resolution": "Create owner-specific per-call contexts at the public consumer boundary and map only ApiError::Graphql to static public envelopes."
+    },
+    {
+      "id": "product-storefront-multi-request-catalog",
+      "severity": "contract",
+      "finding": "fetch_products may execute catalog list, selected detail, and pricing GraphQL requests under one public operation.",
+      "resolution": "Sanitize once at the facade operation boundary without changing the four private GraphQL documents, request order, DTO mapping, or pricing-context construction."
+    },
+    {
+      "id": "product-storefront-correlation-context",
+      "severity": "contract",
+      "finding": "The client-side GraphQL path had no product-owner correlation event and could expose raw query or HTTP detail.",
+      "resolution": "Generate a unique per-call correlation id and retain only optional-field presence, string lengths, and collection counts in internal diagnostics."
+    }
+  ],
+  "preserved_behavior": [
+    "explicit feature-based transport selection",
+    "no native-to-GraphQL fallback",
+    "private GraphQL adapter and four documents",
+    "typed catalog controls and pagination constants",
+    "product detail and pricing request order",
+    "request and response DTOs",
+    "pricing-context derivation",
+    "native catalog-list and search-options paths",
+    "native error-safety policy"
+  ],
+  "execution": {
+    "commands": [],
+    "tests": [],
+    "verifiers": [],
+    "cargo": [],
+    "format": [],
+    "workflows": [],
+    "ci": []
+  },
+  "claims": {
+    "source_reviewed": true,
+    "source_ready": true,
+    "compiled": false,
+    "runtime_verified": false,
+    "mounted_parity_verified": false,
+    "ffa_promoted": false,
+    "fba_promoted": false,
+    "production_promoted": false
+  }
+}
