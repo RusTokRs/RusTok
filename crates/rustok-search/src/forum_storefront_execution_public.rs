@@ -9,7 +9,12 @@ impl ForumStorefrontSearchExecutionError {
     pub fn public_message(&self) -> String {
         match self {
             Self::Validation(message) => message.clone(),
-            Self::Scope(error) => error.message.clone(),
+            Self::Scope(error) => match error.kind {
+                rustok_api::PortErrorKind::Validation
+                | rustok_api::PortErrorKind::NotFound
+                | rustok_api::PortErrorKind::Forbidden => error.message.clone(),
+                _ => FORUM_STOREFRONT_SEARCH_UNAVAILABLE.to_string(),
+            },
             Self::Search(
                 rustok_core::Error::Validation(message)
                 | rustok_core::Error::NotFound(message)
