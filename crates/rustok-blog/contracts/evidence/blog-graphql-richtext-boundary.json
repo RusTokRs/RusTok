@@ -6,7 +6,8 @@
   "canonical_contract": {
     "write": "rustok_api::RichTextDocument",
     "read": "rustok_api::RichTextView",
-    "plain_text": "server-derived"
+    "plain_text": "server-derived",
+    "resolver_conversion": "typed input.into() delegation"
   },
   "scan_scope": "crates/rustok-blog/src/graphql/**/*.rs",
   "legacy_adapter_fields": [
@@ -22,6 +23,8 @@
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
   "test_coverage": [
     "canonical RichTextDocument/RichTextView fields are required",
+    "create and update resolvers delegate conversion through input.into()",
+    "async resolvers do not read or map richtext fields directly",
     "all Blog GraphQL Rust files are scanned recursively",
     "legacy fields are rejected outside the explicit adapter allowlist",
     "new legacy aliases are rejected in every GraphQL file",
