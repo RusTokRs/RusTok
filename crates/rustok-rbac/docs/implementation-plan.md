@@ -229,6 +229,25 @@ The ownership boundary is:
 - [ ] Complete native operator parity evidence before considering FFA
   `parity_verified`.
 
+## Tenant trust boundary correction (2026-07-31)
+
+- Status: `source_ready_unvalidated`.
+- Severity: `P0` for authenticated/resolved tenant mismatch; `P1` for raw native
+  context-error serialization.
+- [x] RBAC Admin bootstrap now requires authenticated and middleware-resolved
+  tenant equality before `SETTINGS_READ` permission admission or tenant data use.
+- [x] Mismatches fail closed with a static public response and structured tenant
+  diagnostics.
+- [x] Auth and tenant extractor failures return fixed public messages; typed
+  causes stay in server diagnostics.
+- [x] `scripts/verify/verify-rbac-admin-tenant-scope.mjs` locks ordering, public
+  error safety, direct tracing dependency and exactly one routed bootstrap guard.
+- [x] Focused unit coverage retains matching and mismatched tenant cases.
+- [ ] Same-SHA `rustfmt`, `cargo check -p rustok-rbac-admin --features ssr`,
+  focused unit execution and composed native parity remain required.
+- This correction is part of the active `core/tenant` cross-module work unit and
+  does not mark the later `core/rbac` queue item completed or in progress.
+
 ## Verification commands
 
 - Contract tests cover every public use case.
@@ -236,9 +255,11 @@ The ownership boundary is:
 ```bash
 cargo fmt --all -- --check
 cargo check -p rustok-rbac --all-features
+cargo check -p rustok-rbac-admin --features ssr
 cargo check -p rustok-rbac-cli
 cargo check -p rustok-server --lib
 cargo test -p rustok-rbac --all-features
+cargo test -p rustok-rbac-admin --features ssr rbac_admin_scope_requires_matching_tenant -- --nocapture
 cargo test -p rustok-migrations --lib rbac_system_role_repair_tests
 cargo test -p rustok-rbac-cli
 cargo test -p rustok-server --lib rbac
@@ -252,6 +273,7 @@ cargo clippy -p rustok-rbac-cli -- -D warnings
 cargo clippy -p rustok-server --lib -- -D warnings
 cargo xtask module validate rbac
 cargo xtask module test rbac
+node scripts/verify/verify-rbac-admin-tenant-scope.mjs
 npm run verify:rbac:admin-boundary
 npm run verify:rbac:fba
 ```
