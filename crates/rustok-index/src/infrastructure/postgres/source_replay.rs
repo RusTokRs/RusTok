@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use serde_json::Value as JsonValue;
 
@@ -10,8 +11,13 @@ use crate::{
     IndexReplayFailure, IndexReplayMutationOutcome, IndexReplayMutationSink, SchemaRegistry,
 };
 
-use super::mutation_store::{
-    MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
+use super::{
+    mutation_store::{
+        MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
+    },
+    source_replay_job::{
+        assert_active_replay_job_lease, IndexReplayJobError, IndexReplayJobLease,
+    },
 };
 
 #[async_trait]
@@ -40,11 +46,16 @@ impl IndexReplayMutationSink for PostgresMutationStore {
 #[derive(Clone)]
 pub struct PostgresIndexReplayCheckpointStore {
     db: DatabaseConnection,
+    lease: IndexReplayJobLease,
 }
 
 impl PostgresIndexReplayCheckpointStore {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(db: DatabaseConnection, lease: IndexReplayJobLease) -> Self {
+        Self { db, lease }
+    }
+
+    pub fn lease(&self) -> &IndexReplayJobLease {
+        &self.lease
     }
 }
 
@@ -54,77 +65,173 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
         &self,
         key: &IndexReplayCheckpointKey,
     ) -> Result<Option<IndexReplayCheckpoint>, IndexReplayFailure> {
-        let backend = self.db.get_database_backend();
-        ensure_supported_backend(backend)?;
-        let row = self
+        validate_checkpoint_identity(&self.lease, key)?;
+        let transaction = self
             .db
-            .query_one(Statement::from_sql_and_values(
-                backend,
-                select_checkpoint_sql(backend),
-                checkpoint_key_values(key, backend),
-            ))
+            .begin()
             .await
             .map_err(|error| checkpoint_storage_failure("checkpoint_read_failed", error))?;
-        let Some(row) = row else {
-            return Ok(None);
-        };
+        let result = async {
+            let backend = transaction.get_database_backend();
+            ensure_supported_backend(backend)?;
+            assert_active_replay_job_lease(&transaction, &self.lease, backend)
+                .await
+                .map_err(classify_job_lease_failure)?;
+            let row = transaction
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    select_checkpoint_sql(backend),
+                    checkpoint_key_values(key, backend),
+                ))
+                .await
+                .map_err(|error| checkpoint_storage_failure("checkpoint_read_failed", error))?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
 
-        let cursor_json: JsonValue = row
-            .try_get("", "cursor")
-            .map_err(|error| checkpoint_contract_failure("checkpoint_cursor_invalid", error))?;
-        let cursor = serde_json::from_value(cursor_json)
-            .map_err(|error| checkpoint_contract_failure("checkpoint_cursor_invalid", error))?;
-        let source_version_text: Option<String> = row
-            .try_get("", "source_version_text")
-            .map_err(|error| {
-                checkpoint_contract_failure("checkpoint_source_version_invalid", error)
+            let cursor_json: JsonValue = row.try_get("", "cursor").map_err(|error| {
+                checkpoint_contract_failure("checkpoint_cursor_invalid", error)
             })?;
-        let source_version = source_version_text
-            .map(|value| {
-                value.parse::<u64>().map_err(|error| {
+            let cursor = serde_json::from_value(cursor_json).map_err(|error| {
+                checkpoint_contract_failure("checkpoint_cursor_invalid", error)
+            })?;
+            let source_version_text: Option<String> = row
+                .try_get("", "source_version_text")
+                .map_err(|error| {
                     checkpoint_contract_failure("checkpoint_source_version_invalid", error)
+                })?;
+            let source_version = source_version_text
+                .map(|value| {
+                    value.parse::<u64>().map_err(|error| {
+                        checkpoint_contract_failure("checkpoint_source_version_invalid", error)
+                    })
                 })
-            })
-            .transpose()?;
-        let last_delivery_id: Option<String> = row
-            .try_get("", "last_delivery_id")
-            .map_err(|error| checkpoint_contract_failure("checkpoint_delivery_invalid", error))?;
+                .transpose()?;
+            let last_delivery_id: Option<String> = row.try_get("", "last_delivery_id").map_err(
+                |error| checkpoint_contract_failure("checkpoint_delivery_invalid", error),
+            )?;
 
-        IndexReplayCheckpoint::new(key.clone(), cursor, source_version, last_delivery_id)
-            .map(Some)
-            .map_err(|error| checkpoint_contract_failure("checkpoint_contract_invalid", error))
+            IndexReplayCheckpoint::new(key.clone(), cursor, source_version, last_delivery_id)
+                .map(Some)
+                .map_err(|error| {
+                    checkpoint_contract_failure("checkpoint_contract_invalid", error)
+                })
+        }
+        .await;
+
+        match result {
+            Ok(checkpoint) => {
+                transaction
+                    .commit()
+                    .await
+                    .map_err(|error| checkpoint_storage_failure("checkpoint_read_failed", error))?;
+                Ok(checkpoint)
+            }
+            Err(error) => {
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|rollback| {
+                        checkpoint_storage_failure("checkpoint_read_rollback_failed", rollback)
+                    })?;
+                Err(error)
+            }
+        }
     }
 
     async fn commit_replay_checkpoint(
         &self,
         checkpoint: &IndexReplayCheckpoint,
     ) -> Result<(), IndexReplayFailure> {
-        let backend = self.db.get_database_backend();
-        ensure_supported_backend(backend)?;
-        let cursor = serde_json::to_value(checkpoint.cursor())
-            .map_err(|error| checkpoint_contract_failure("checkpoint_cursor_invalid", error))?;
-        let mut values = checkpoint_key_values(checkpoint.key(), backend);
-        values.push(SqlValue::Json(Some(Box::new(cursor))));
-        values.push(optional_source_version_value(
-            checkpoint.source_version(),
-            backend,
-        )?);
-        values.push(
-            checkpoint
-                .last_delivery_id()
-                .map(str::to_owned)
-                .into(),
-        );
-
-        self.db
-            .execute(Statement::from_sql_and_values(
-                backend,
-                upsert_checkpoint_sql(backend),
-                values,
-            ))
+        validate_checkpoint_identity(&self.lease, checkpoint.key())?;
+        let transaction = self
+            .db
+            .begin()
             .await
             .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error))?;
-        Ok(())
+        let result = async {
+            let backend = transaction.get_database_backend();
+            ensure_supported_backend(backend)?;
+            assert_active_replay_job_lease(&transaction, &self.lease, backend)
+                .await
+                .map_err(classify_job_lease_failure)?;
+            let cursor = serde_json::to_value(checkpoint.cursor()).map_err(|error| {
+                checkpoint_contract_failure("checkpoint_cursor_invalid", error)
+            })?;
+            let mut values = checkpoint_key_values(checkpoint.key(), backend);
+            values.push(SqlValue::Json(Some(Box::new(cursor))));
+            values.push(optional_source_version_value(
+                checkpoint.source_version(),
+                backend,
+            )?);
+            values.push(
+                checkpoint
+                    .last_delivery_id()
+                    .map(str::to_owned)
+                    .into(),
+            );
+
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    upsert_checkpoint_sql(backend),
+                    values,
+                ))
+                .await
+                .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error))?;
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => transaction
+                .commit()
+                .await
+                .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error)),
+            Err(error) => {
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|rollback| {
+                        checkpoint_storage_failure("checkpoint_commit_rollback_failed", rollback)
+                    })?;
+                Err(error)
+            }
+        }
+    }
+}
+
+fn validate_checkpoint_identity(
+    lease: &IndexReplayJobLease,
+    key: &IndexReplayCheckpointKey,
+) -> Result<(), IndexReplayFailure> {
+    if key.tenant_id() != lease.tenant_id()
+        || key.source_name() != lease.source_name()
+        || key.schema() != lease.schema()
+    {
+        return Err(IndexReplayFailure::permanent_static(
+            "checkpoint_lease_identity_mismatch",
+        ));
+    }
+    Ok(())
+}
+
+fn classify_job_lease_failure(error: IndexReplayJobError) -> IndexReplayFailure {
+    let (retryable, code) = match &error {
+        IndexReplayJobError::Storage(_) => (true, "checkpoint_lease_storage_retryable"),
+        IndexReplayJobError::LeaseLost => (false, "checkpoint_lease_lost"),
+        _ => (false, "checkpoint_lease_contract_invalid"),
+    };
+    tracing::error!(
+        error = ?error,
+        replay_failure_code = code,
+        replay_failure_retryable = retryable,
+        "Index replay checkpoint lease validation failed"
+    );
+    if retryable {
+        IndexReplayFailure::retryable_static(code)
+    } else {
+        IndexReplayFailure::permanent_static(code)
     }
 }
 
