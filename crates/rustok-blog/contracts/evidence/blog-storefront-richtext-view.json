@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "owner": "rustok-blog",
+  "boundary": "storefront-post-richtext-view",
+  "status": "source_verified_no_compile",
+  "scope": [
+    "crates/rustok-blog/storefront/src/model.rs",
+    "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-blog/storefront/src/ui/leptos.rs"
+  ],
+  "contract": {
+    "graphql_owner_view": true,
+    "native_owner_view": true,
+    "server_html_render": true,
+    "plain_text_fallback": true,
+    "legacy_body_transport": false,
+    "legacy_body_format_transport": false,
+    "local_format_renderer": false
+  },
+  "canonical_contract": {
+    "read": "rustok_api::RichTextView",
+    "html": "server-derived",
+    "plain_text": "server-derived"
+  },
+  "guardrail": "scripts/verify/verify-blog-storefront-boundary.mjs",
+  "guardrail_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
+  "validation": {
+    "tests_run": false,
+    "verifier_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  },
+  "remaining": [
+    "remove now-unused legacy body-format summarizer helpers from storefront core",
+    "finish storage and remaining Leptos/Search/AI/SEO cutover atomically"
+  ]
+}
