@@ -102,6 +102,11 @@ jobs:
               )
           source = source.replace(orchestration_old, orchestration_new, 1)
 
+          dto_test_old = '        assert!(encoded.get("body").is_none());\n        assert!(encoded.get("body_format").is_none());\n        assert!(encoded.get("content_json").is_none());\n'
+          if source.count(dto_test_old) != 1:
+              raise RuntimeError(f'dto legacy-key test hotfix expected once, got {source.count(dto_test_old)}')
+          source = source.replace(dto_test_old, '', 1)
+
           path.write_text(source, encoding='utf-8')
           PY
           rm scripts/agent/blog_richtext_storage_cutover.part*
