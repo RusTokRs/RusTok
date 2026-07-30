@@ -55,7 +55,7 @@ for (const [value, label] of [
   ['"Customer information is temporarily unavailable"', "customer public envelope"],
   ['"Cart is temporarily unavailable"', "cart storage public envelope"],
   ["error = ?error", "original cause diagnostics"],
-  ["correlation_id = ?request_context.map", "correlation diagnostics"],
+  ["request_tenant_id = ?request_context.map", "request tenant diagnostics"],
   ["tenant_id = %tenant_id", "tenant diagnostics"],
   ["owner_code = %error.code", "pricing owner code diagnostics"],
   ["ServerFnError::new(error.message)", "sanitized pricing message forwarding"],
@@ -68,6 +68,7 @@ for (const value of [
   "ServerFnError::new(format!(",
   "Err(ServerFnError::new(err.to_string()))",
   'requires TransactionalEventBus in host runtime context',
+  "request_context.correlation_id",
 ]) forbidText(safe, value, "safe cart SSR adapter");
 
 for (const [value, label] of [
