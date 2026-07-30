@@ -4,7 +4,7 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-Latest slice: `FORUM-23A4`
+Latest slice: `FORUM-23A5`
 
 This slice advances the canonical `FORUM-23` visibility-aware Search track. Public Forum topic
 and approved-reply documents obtain author presentation from the Profiles owner instead of
@@ -61,15 +61,23 @@ publication fails, the media owner write is rolled back. A new public avatar the
 commit while Forum Search retains the previous `avatar_media_id` because its invalidation was lost.
 Banner remains owner data and is never serialized into Forum Search.
 
-Visibility, handle, content, and media paths use the shared transactional publisher in
+`FORUM-23A5` applies the same rule to `update_my_profile_locale`. The preferred locale is normalized
+before the owner transaction. The tenant-scoped profile row, revision timestamp, and durable
+`ProfileUpdated` envelope then commit together. If publication fails, the locale write is rolled
+back. The path preserves the existing selection-only rule: changing preferred locale does not copy,
+insert, or update localized display content. A locale change can therefore switch the public
+fallback `display_name` without leaving Forum Search on the previous owner presentation because its
+invalidation was lost.
+
+Visibility, handle, content, locale, and media paths use the shared transactional publisher in
 `crates/rustok-profiles/src/profile_updated_event.rs`, so their event envelope and retryable error
-classification cannot drift independently. Profile upsert and locale mutations still publish
-after their owner writes and are not claimed to be transactionally coupled.
+classification cannot drift independently. Profile upsert still publishes after its owner writes
+and is not claimed to be transactionally coupled.
 
 The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
 consumer rebuilds the Forum tenant projection from current owner state, so committed visibility,
-handle, public display-name, and avatar changes replace stale Search presentation.
+handle, public display-name, locale-selection, and avatar changes replace stale Search presentation.
 
 The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
 inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
@@ -99,7 +107,7 @@ Existing Search document rows are replaced by the next Forum rebuild or relevant
 
 - owner-issued monotonic projection revisions across Forum producers;
 - an owner-ordered profile or account deletion invalidation contract;
-- transactionally couple profile upsert and locale summary updates to their owner events;
+- transactionally couple profile upsert to its owner event;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;

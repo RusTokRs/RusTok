@@ -10,6 +10,7 @@ pub mod error;
 pub mod graphql;
 mod handle_write;
 pub mod loader;
+mod locale_write;
 pub mod media;
 mod media_write;
 pub mod migrations;

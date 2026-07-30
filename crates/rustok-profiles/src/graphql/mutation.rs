@@ -15,8 +15,9 @@ use uuid::Uuid;
 use crate::{
     ProfileError, ProfileMediaSlot, ProfileOperation, ProfileOperationTimer, ProfileRecord,
     ProfileResult, ProfileService, content_write::update_profile_content_with_event,
-    handle_write::update_profile_handle_with_event, media_write::update_profile_media_with_event,
-    validate_profile_media_asset, visibility_write::update_profile_visibility_with_event,
+    handle_write::update_profile_handle_with_event, locale_write::update_profile_locale_with_event,
+    media_write::update_profile_media_with_event, validate_profile_media_asset,
+    visibility_write::update_profile_visibility_with_event,
 };
 
 use super::{MODULE_SLUG, types::*};
@@ -138,21 +139,22 @@ impl ProfilesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let service = ProfileService::new(db.clone());
 
         let profile = observe_profile_write(
             ProfileOperation::UpdateLocale,
             tenant.id,
             auth.user_id,
-            service.update_profile_locale(
+            update_profile_locale_with_event(
+                db,
+                event_bus,
                 tenant.id,
+                auth.user_id,
                 auth.user_id,
                 preferred_locale.as_deref(),
                 Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
-        publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
     }

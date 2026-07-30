@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "task": "FORUM-23A",
-  "latest_slice": "FORUM-23A4",
+  "latest_slice": "FORUM-23A5",
   "upstream_task": "FORUM-20BQ",
   "status": "source_complete_execution_pending",
   "scope": "Project privacy-aware public author summaries into Forum topic and approved-reply Search documents and durably redact them after Profiles owner changes",
@@ -13,6 +13,7 @@
   "profiles_visibility_event_owner": "crates/rustok-profiles/src/visibility_write.rs",
   "profiles_handle_event_owner": "crates/rustok-profiles/src/handle_write.rs",
   "profiles_content_event_owner": "crates/rustok-profiles/src/content_write.rs",
+  "profiles_locale_event_owner": "crates/rustok-profiles/src/locale_write.rs",
   "profiles_media_event_owner": "crates/rustok-profiles/src/media_write.rs",
   "search_inbox": "crates/rustok-search/src/forum_inbox.rs",
   "search_ingestion": "crates/rustok-search/src/ingestion.rs",
@@ -49,6 +50,9 @@
     "handle_event_failure_rolls_back_owner_write": true,
     "profile_content_write_and_event_are_atomic": true,
     "content_event_failure_rolls_back_owner_write": true,
+    "profile_locale_write_and_event_are_atomic": true,
+    "locale_event_failure_rolls_back_owner_write": true,
+    "locale_write_does_not_create_translations": true,
     "profile_media_write_and_event_are_atomic": true,
     "media_event_failure_rolls_back_owner_write": true,
     "remaining_profile_summary_write_and_event_pairs_are_atomic": false,
@@ -71,7 +75,7 @@
   "remaining_scope": [
     "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
     "define an owner-ordered profile or account deletion projection invalidation contract",
-    "make profile upsert and locale summary update events atomic with their owner writes",
+    "make profile upsert summary update event atomic with its owner writes",
     "add bounded category-subtree tag locale date solved kind channel/group and attachment filters",
     "add member index projections",
     "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
@@ -94,7 +98,7 @@
     "UserDeleted is sufficient to prove Profiles state has already been removed",
     "account deletion redaction is complete",
     "all ProfileUpdated owner writes are transactionally coupled to outbox publication",
-    "profile upsert and locale updates are transactionally coupled to ProfileUpdated publication",
+    "profile upsert is transactionally coupled to ProfileUpdated publication",
     "general cross-producer owner revision ordering is complete"
   ],
   "downstream_task": "FORUM-23B"
