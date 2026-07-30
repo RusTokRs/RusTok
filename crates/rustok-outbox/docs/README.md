@@ -31,6 +31,14 @@ infrastructure for the platform event runtime.
 - A transient error leaves the event in `pending`, increments `retry_count`, writes `last_error`, clears the claim and sets `next_attempt_at`.
 - A terminal error moves the event to `failed`/DLQ, saves `last_error`, clears the claim and is reflected in metrics/admin DLQ surface.
 
+## Tenant and authorization boundary
+
+- Tenant-facing DLQ list and native dashboard reads always derive tenant scope from the trusted request context. They do not accept a client-selected tenant identifier.
+- DLQ inspection requires `logs:read`; replay/requeue is a state-changing operator action and requires `logs:manage`.
+- Replay looks up the event by both event id and trusted tenant scope. Missing and cross-tenant targets fail closed as not found.
+- Native pending, dispatched, failed and retry counters require tenant context and filter both current root-envelope and legacy nested-envelope tenant shapes in `sys_events.payload`.
+- A platform-global operational view is not exposed through tenant admin transport. Platform on-call investigation uses owner metrics, health and controlled database/operator procedures.
+
 ## Incident response
 
 Primary owner for outbox/event delivery is the Platform foundation on-call. Escalation path: owner of `crates/rustok-outbox`, then owner of server runtime composition.
@@ -60,6 +68,7 @@ When backlog, retry or DLQ grows:
 - `cargo xtask module test outbox`
 - `node scripts/verify/verify-outbox-admin-boundary.mjs`
 - `node scripts/verify/verify-outbox-admin-boundary.test.mjs`
+- `node scripts/verify/verify-outbox-dlq-tenant-rbac.mjs`
 - `npm run verify:outbox:fba`
 - targeted event-runtime tests for transactional publish, relay and backlog semantics
 
