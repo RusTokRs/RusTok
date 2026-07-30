@@ -3,6 +3,8 @@ use uuid::Uuid;
 
 const PRODUCT_ADMIN_GRAPHQL_OWNER: &str = "rustok_product.admin";
 const PRODUCT_ADMIN_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_reads";
+const PRODUCT_ADMIN_CATEGORY_GRAPHQL_BOUNDARY: &str =
+    "product_admin_category_graphql_reads";
 const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str =
     "Product admin service is temporarily unavailable";
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str =
@@ -10,11 +12,13 @@ const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str =
 
 pub(super) struct GraphqlReadContext {
     operation: &'static str,
+    boundary: &'static str,
     correlation_id: String,
     token_present: bool,
     tenant_slug_length: Option<usize>,
     tenant_id_length: Option<usize>,
     resource_id_length: Option<usize>,
+    category_id_length: Option<usize>,
     locale_length: Option<usize>,
     search_length: Option<usize>,
     status_length: Option<usize>,
@@ -85,14 +89,114 @@ impl GraphqlReadContext {
         context
     }
 
+    pub(super) fn for_product_attributes(
+        token: Option<&str>,
+        tenant_slug: Option<&str>,
+        tenant_id: &str,
+        locale: &str,
+    ) -> Self {
+        Self::for_category_tenant_locale(
+            "fetch_product_attributes",
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+        )
+    }
+
+    pub(super) fn for_catalog_categories(
+        token: Option<&str>,
+        tenant_slug: Option<&str>,
+        tenant_id: &str,
+        locale: &str,
+    ) -> Self {
+        Self::for_category_tenant_locale(
+            "fetch_catalog_categories",
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+        )
+    }
+
+    pub(super) fn for_attribute_schemas(
+        token: Option<&str>,
+        tenant_slug: Option<&str>,
+        tenant_id: &str,
+        locale: &str,
+    ) -> Self {
+        Self::for_category_tenant_locale(
+            "fetch_attribute_schemas",
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+        )
+    }
+
+    pub(super) fn for_effective_product_form(
+        token: Option<&str>,
+        tenant_slug: Option<&str>,
+        tenant_id: &str,
+        product_id: Option<&str>,
+        category_id: Option<&str>,
+        locale: &str,
+    ) -> Self {
+        let mut context = Self::for_category_tenant_locale(
+            "fetch_effective_product_form",
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+        );
+        context.resource_id_length = text_length(product_id);
+        context.category_id_length = text_length(category_id);
+        context
+    }
+
+    pub(super) fn for_product_attribute_values(
+        token: Option<&str>,
+        tenant_slug: Option<&str>,
+        tenant_id: &str,
+        product_id: &str,
+        locale: &str,
+    ) -> Self {
+        let mut context = Self::for_category_tenant_locale(
+            "fetch_product_attribute_values",
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+        );
+        context.resource_id_length = Some(product_id.chars().count());
+        context
+    }
+
+    fn for_category_tenant_locale(
+        operation: &'static str,
+        token: Option<&str>,
+        tenant_slug: Option<&str>,
+        tenant_id: &str,
+        locale: &str,
+    ) -> Self {
+        let mut context = Self::new(operation, token, tenant_slug);
+        context.boundary = PRODUCT_ADMIN_CATEGORY_GRAPHQL_BOUNDARY;
+        context.tenant_id_length = Some(tenant_id.chars().count());
+        context.locale_length = Some(locale.chars().count());
+        context.native_fallback_attempted = true;
+        context
+    }
+
     fn new(operation: &'static str, token: Option<&str>, tenant_slug: Option<&str>) -> Self {
         Self {
             operation,
+            boundary: PRODUCT_ADMIN_GRAPHQL_BOUNDARY,
             correlation_id: format!("product-admin-graphql:{operation}:{}", Uuid::new_v4()),
             token_present: token.is_some(),
             tenant_slug_length: text_length(tenant_slug),
             tenant_id_length: None,
             resource_id_length: None,
+            category_id_length: None,
             locale_length: None,
             search_length: None,
             status_length: None,
@@ -142,6 +246,8 @@ impl GraphqlReadContext {
                 tenant_id_length = ?self.tenant_id_length,
                 resource_id_present = self.resource_id_length.is_some(),
                 resource_id_length = ?self.resource_id_length,
+                category_id_present = self.category_id_length.is_some(),
+                category_id_length = ?self.category_id_length,
                 locale_present = self.locale_length.is_some(),
                 locale_length = ?self.locale_length,
                 search_present = self.search_length.is_some(),
@@ -153,7 +259,7 @@ impl GraphqlReadContext {
                 native_fallback_attempted = self.native_fallback_attempted,
                 error_kind,
                 code,
-                boundary = PRODUCT_ADMIN_GRAPHQL_BOUNDARY,
+                boundary = self.boundary,
                 "product admin GraphQL read failed"
             );
         } else {
@@ -169,6 +275,8 @@ impl GraphqlReadContext {
                 tenant_id_length = ?self.tenant_id_length,
                 resource_id_present = self.resource_id_length.is_some(),
                 resource_id_length = ?self.resource_id_length,
+                category_id_present = self.category_id_length.is_some(),
+                category_id_length = ?self.category_id_length,
                 locale_present = self.locale_length.is_some(),
                 locale_length = ?self.locale_length,
                 search_present = self.search_length.is_some(),
@@ -180,7 +288,7 @@ impl GraphqlReadContext {
                 native_fallback_attempted = self.native_fallback_attempted,
                 error_kind,
                 code,
-                boundary = PRODUCT_ADMIN_GRAPHQL_BOUNDARY,
+                boundary = self.boundary,
                 "product admin GraphQL read was rejected"
             );
         }
