@@ -9,23 +9,24 @@ taxonomy through its public boundary. Native `#[server]` and GraphQL remain
 parallel transports over the same owner services.
 
 The neutral `rustok-api::richtext` contract and executable
-`rustok-content::richtext` profiles are now available. Blog comments are
-already a typed consumer of the Comments owner: comment writes use
-`RichTextDocument`, and moderation responses return `RichTextView` plus the
-server-derived plain text. Blog posts remain on their separate article
-cutover. The owner now has a fixed `article` profile boundary, canonical
-write/read projections, and a format-free plain-text import adapter. The Blog
-GraphQL adapter already exposes canonical `RichTextDocument` writes and
-`RichTextView` reads. Temporary `body`, `body_format`, and `content_json`
-transport declarations, projections, and compatibility conversions are now
-confined to `graphql/types.rs`. Both create/update conversions are guarded
-exactly beside the GraphQL input types; create has an integration regression test
-for explicit fields, canonical content, and temporary legacy defaults, while
-update retains its colocated unit regression test. `graphql/mutation.rs` only
-delegates typed `input.into()` values to the owner service and contains no legacy
-richtext field access or conversion implementation. The executable guardrail
-scans every other GraphQL file, rejects new aliases, and is registered with its
-regression test in `verify:blog:fba`.
+`rustok-content::richtext` profiles are available. Blog comments are a typed
+consumer of the Comments owner: comment writes use `RichTextDocument`, and
+moderation responses return `RichTextView` plus server-derived plain text. The
+Blog article source cutover is complete: owner and GraphQL writes accept only
+the fixed `article` document, reads expose `RichTextView` plus derived text, and
+`body`, `body_format`, `content_json`, Markdown aliases, and raw JSON transport
+paths are absent from production DTOs. The GraphQL mutation layer delegates
+typed `input.into()` values and the recursive guardrail requires the removed
+fields to remain absent.
+
+The owner-specific offline backfill at
+`crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs` now closes the
+pre-migration operational gap. It is dry-run by default, scans the real Blog
+owner tables, emits a content-free NDJSON report, requires `--apply` for writes,
+requires a separate `--allow-markdown-plain-text` acknowledgement for lossy
+historical Markdown handling, uses optimistic updates, and verifies the result
+again. It neither executes the irreversible migration nor triggers Search
+reindex; those remain explicit operator steps.
 
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
@@ -113,6 +114,9 @@ outbox publication.
 - Blog article richtext cutover: `implemented_source_verified_no_compile`;
   target-only owner/storage/GraphQL/Search/AI/storefront source is implemented,
   the irreversible migration is fail-closed, and execution is user-owned.
+- Blog article offline backfill: `executable_no_run`; dry-run preflight,
+  content-free reporting, explicit apply/Markdown acknowledgement, optimistic
+  writes, and post-apply verification are implemented.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -136,14 +140,12 @@ outbox publication.
   `source_verified_no_compile`, execution is user-owned.
 - Blog SEO projection consumes server-derived plain text and no longer reads the
   legacy post body.
-- Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
-  the single temporary `types.rs` adapter/conversion owner, symmetric create/update
-  conversion regression coverage, resolver delegation, verifier, self-test, and
-  npm/FBA registration are implemented; execution is user-owned.
+- Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical-only
+  create/update fields, typed conversion, resolver delegation, recursive absence
+  guards, verifier, self-test, and npm/FBA registration are implemented.
 - AI Blog draft owner writes: `source_verified_no_compile`; generated create/update
-  text is converted to `RichTextDocument` before the Blog service call, existing
-  source content prefers server-derived plain text, and the remaining direct-task
-  Markdown-shaped fields are contained behind the adapter.
+  text is converted directly to `RichTextDocument`, existing source content uses
+  server-derived plain text, and no Markdown-shaped compatibility adapter remains.
 
 ## Evidence and guardrails
 
@@ -157,6 +159,7 @@ outbox publication.
 - `crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
 - `crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
 - `crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json`
+- `crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json`
 - `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
@@ -164,6 +167,7 @@ outbox publication.
 - `scripts/verify/verify-blog-category-search-reindex.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs`
+- `scripts/verify/verify-blog-richtext-offline-backfill.mjs`
 - `scripts/verify/verify-blog-fba.mjs`
 - `scripts/verify/verify-blog-admin-boundary.mjs`
 - `scripts/verify/verify-blog-storefront-boundary.mjs`
@@ -236,6 +240,10 @@ outbox publication.
 23. Completed the target-only Blog article source cutover: added a fail-closed
     irreversible storage migration, removed owner/GraphQL/AI/Search compatibility,
     deleted storefront summarizers, and guarded Forum-to-Blog orchestration.
+24. Added the owner-specific Blog article offline backfill: dry-run-first scanning
+    of current owner tables, content-free NDJSON reporting, explicit apply and
+    Markdown acknowledgement, fail-closed format/profile validation, optimistic
+    batch writes, and post-apply verification.
 
 ## Next results
 
@@ -258,12 +266,14 @@ outbox publication.
    reads, moderation, pagination, independent create commands, duplicate event
    delivery, concurrent counters, missing-post retry, rollback, and outbox
    publication.
-6. **Execute and retain Blog article richtext cutover evidence.** The target-only
-   source and irreversible fail-closed migration are implemented. Run migration
-   preflight, convert rejected legacy rows offline, execute the migration, and
-   retain Next/Leptos save-reload-SSR, GraphQL/native, Search reindex/rollback,
-   AI draft persistence, and browser evidence on the same commit. **Done when:**
-   the migration has executed on representative PostgreSQL data and no runtime
+6. **Execute and retain Blog article richtext cutover evidence.** Run the new
+   owner-specific offline backfill in default dry-run mode and retain its NDJSON
+   report. Resolve unknown formats manually; use `--allow-markdown-plain-text`
+   only after accepting literal-text conversion, then rerun with `--apply`.
+   Execute the irreversible migration, perform Blog Search reindex/rollback, and
+   retain Next/Leptos save-reload-SSR, GraphQL/native, AI draft persistence, and
+   browser evidence on the same commit. **Done when:** representative PostgreSQL
+   rows pass post-apply verification, the migration has executed, and no runtime
    path accepts Markdown, format aliases, or raw JSON.
 
 ## Verification
@@ -283,6 +293,8 @@ outbox publication.
 - `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `npm run verify:blog:graphql-richtext-boundary`
 - `npm run test:verify:blog:graphql-richtext-boundary`
+- `npm run verify:blog:richtext-offline-backfill`
+- `cargo run -p rustok-blog --bin blog_article_richtext_backfill -- --help`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `node scripts/verify/verify-comments-thread-write-invariants.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "blog",
   "surface": "article_richtext_cutover",
   "status": "implemented_source_verified_no_compile",
@@ -48,6 +48,25 @@
         "convert stored Blog article bodies before retrying the migration"
       ],
       "forbidden_markers": []
+    },
+    {
+      "name": "offline_backfill",
+      "status": "executable_no_run",
+      "path": "crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs",
+      "required_markers": [
+        "const TARGET_FORMAT: &str = \"richtext\";",
+        "async fn preflight_pass(",
+        "async fn apply_pass(",
+        "async fn optimistic_update(",
+        "--allow-markdown-plain-text",
+        "post-apply verification failed"
+      ],
+      "forbidden_markers": [
+        "rustok_content::entities",
+        "validate_and_sanitize_rt_json",
+        "persist_checkpoint",
+        "checkpoint_file"
+      ]
     },
     {
       "name": "graphql_transport",
@@ -206,6 +225,7 @@
     "seo_uses_server_derived_plain_text",
     "ai_blog_drafts_write_richtext_document",
     "all_admin_and_storefront_paths_render_server_projection",
-    "no_markdown_format_alias_or_raw_json_write_path_remains"
+    "no_markdown_format_alias_or_raw_json_write_path_remains",
+    "legacy_rows_have_owner_specific_dry_run_backfill"
   ]
 }

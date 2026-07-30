@@ -40,7 +40,7 @@ sameSet(dependency.fallback_profiles, provider.consumers?.find(c => c.module ===
 sameSet(dependency.degraded_modes, provider.consumers?.find(c => c.module === 'blog')?.degraded_modes ?? [], 'consumer/provider degraded modes');
 if (dependency.context !== 'rustok_api::ports::PortContext' || dependency.error !== 'rustok_api::ports::PortError') fail('consumer context/error drift');
 
-if (richtextInventory.schema_version !== 2) fail('richtext cutover inventory schema_version drift');
+if (richtextInventory.schema_version !== 3) fail('richtext cutover inventory schema_version drift');
 if (richtextInventory.module !== 'blog' || richtextInventory.surface !== 'article_richtext_cutover') fail('richtext cutover inventory identity drift');
 if (richtextInventory.status !== 'implemented_source_verified_no_compile') fail('richtext cutover inventory status drift');
 if (richtextInventory.compile_policy !== 'not_run_by_request' || richtextInventory.atomicity !== 'required') fail('richtext cutover inventory execution/atomicity drift');
@@ -52,6 +52,7 @@ if (richtextInventory.owner_contract?.write !== 'rustok_api::RichTextDocument'
 }
 const allowedRichtextStatuses = new Set([
   'implemented_source_verified_no_compile',
+  'executable_no_run',
   'contained_compatibility',
   'legacy_blocker',
 ]);
@@ -73,6 +74,7 @@ for (const requiredCheck of [
   'owner_article_projection',
   'storage_schema',
   'storage_migration',
+  'offline_backfill',
   'graphql_transport',
   'next_admin',
   'leptos_storefront_model',
@@ -91,6 +93,7 @@ hasAll(
   richtextInventory.completion_conditions ?? [],
   [
     'storage_schema_uses_canonical_document_and_server_plain_text',
+    'legacy_rows_have_owner_specific_dry_run_backfill',
     'search_indexes_server_derived_plain_text',
     'seo_uses_server_derived_plain_text',
     'ai_blog_drafts_write_richtext_document',
@@ -104,6 +107,9 @@ hasAll(
   [
     richtextInventoryPath,
     'Storage schema',
+    'crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs',
+    'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
+    'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
     'Search projection',
     'SEO projection',
     'AI Blog draft writer',
