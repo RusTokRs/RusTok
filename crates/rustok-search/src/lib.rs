@@ -11,6 +11,7 @@ pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
 pub mod forum_storefront_execution;
+mod forum_storefront_execution_public;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
