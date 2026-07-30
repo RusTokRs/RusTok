@@ -1,87 +1,101 @@
-# M4 Social Graph privacy consumer cutover
+# M4 Social Graph privacy parity shadow
 
 Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-This slice provides the first authorized production consumer source for
-`SharedIndexQueryRuntime`. It can move Social Graph block/mute reads used by notification
-recipient policy from direct owner-table reads to the generic Index query port while keeping
-Social Graph as the contract and replay owner.
+This slice provides the first production-shaped consumer of `SharedIndexQueryRuntime`
+without granting an eventually consistent projection privacy authority. Social Graph remains
+the sole decision source for notification block/mute policy; Index is queried only as a
+comparison shadow.
 
-Activation is intentionally default-off. The final host selects the Index-backed policy only
-when `RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED=true`. Before activation, the existing
-authoritative owner read path remains in place. This avoids making an ordinary deployment
-unavailable while the projection worker is still default-off and live readiness/freshness
-evidence remains an owner action.
+The shadow is default-off and activates only with
+`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED=true`. It exists to collect operational
+parity signals before any authoritative cutover is considered.
 
-## Owner adapter
+## Typed Index adapter
 
 `IndexSocialGraphPrivacyReadPort` implements the existing
-`SocialGraphPrivacyReadPort` contract. It receives only a clone of the neutral
+`SocialGraphPrivacyReadPort` contract. It receives only the neutral
 `SharedIndexQueryRuntime`; it does not receive a database connection, construct
 `PostgresIndexQueryPort`, or read `social_graph_relations`.
 
 The adapter builds typed queries against the owner-published
 `rustok-social-graph::relation@1` schema:
 
-- block suppression checks `relation_kind = block` and accepts a block in either direction;
-- mute suppression remains directional from notification recipient to actor;
-- point follow reads remain directional and retain source-actor authorization;
-- bounded follow batches retain the existing maximum of 100 targets, deduplicate input,
-  query through `In`, validate every projected UUID, and return deterministic sorted IDs.
+- block checks `relation_kind = block` and accept a block in either direction;
+- mute remains directional from notification recipient to actor;
+- point follow remains directional and retains source-actor authorization;
+- bounded follow batches retain the 100-target maximum, deduplicate input, use typed `In`,
+  validate every projected UUID, and return deterministic sorted IDs.
 
-Inactive relations are absent because owner projection publishes an Index tombstone for an
-inactive revision. The adapter therefore does not add an independent active-state field or
-reinterpret source revision.
+Inactive relations are absent because the owner projection publishes an Index tombstone for
+an inactive revision. Relation revision remains Index `source_version`; the adapter does not
+invent a selectable revision field.
 
-## Authorization and failure contract
+## Non-authoritative shadow
 
-Every method preserves `PortCallPolicy::read`, tenant parsing, self-relation rejection, and
-the existing user/source actor rule for follow reads. Notification policy calls use the
-existing bounded service actor and matching tenant context.
+`IndexShadowSocialGraphPrivacyReadPort` wraps two ports:
 
-`SchemaNotReady` and Index storage failures map to retryable
-`social_graph.index_privacy_unavailable`. Query-plan, compiler, decoder, backend, and
-projected-result contract failures map to the non-retryable invariant code
-`social_graph.index_privacy_contract_invalid`.
+- the authoritative owner `SocialGraphPrivacyReadPort`;
+- the typed `IndexSocialGraphPrivacyReadPort` projection adapter.
 
-After activation, notification policy therefore uses retryable fail-closed behavior: it does
-not authorize from missing or stale Index state, does not convert a failed block/mute read
-into `Allow`, and does not silently fall back to Social Graph tables.
+Each method executes the owner read first. If that read fails, the existing owner error is
+returned and no projection result can replace it. After owner success, the shadow executes
+the equivalent Index read, records only bounded operation/result information, and always
+returns the owner result.
 
-## Final host composition
+Index mismatch, missing tenant schema, storage failure, or contract error is observational
+only in this slice. It never authorizes, suppresses, widens, or otherwise changes notification
+policy. Logs contain operation, booleans/counts, bounded stable error code, and retryability;
+they contain no tenant, user, relation, entity, payload, SQL, or storage details.
 
-The server facade keeps the existing provider bootstrap as an internal base step, then:
+## Server composition
 
-1. materializes the canonical PostgreSQL `SharedIndexQueryRuntime`;
-2. parses the explicit default-off activation flag;
-3. when disabled, preserves the authoritative owner policy from the base bootstrap;
-4. when enabled, requires the shared runtime and recomposes
-   `ServerNotificationRecipientPolicy` with `IndexSocialGraphPrivacyReadPort`;
-5. preserves explicitly registered `NotificationBlockReadRuntime` or
-   `NotificationMuteReadRuntime` overrides;
-6. publishes only the selected final extension set.
+The final server facade:
 
-An invalid activation value fails bootstrap. Once the flag is enabled, a missing shared
-runtime also fails bootstrap and no owner-table fallback remains in that activated path.
+1. completes ordinary provider composition;
+2. materializes `SharedIndexQueryRuntime` from the source-owned registry and host database;
+3. parses the default-off shadow flag;
+4. when disabled, publishes the unchanged owner-backed notification policy;
+5. when enabled, requires the shared runtime and recomposes the policy with
+   `IndexShadowSocialGraphPrivacyReadPort`;
+6. preserves explicitly registered `NotificationBlockReadRuntime` and
+   `NotificationMuteReadRuntime` overrides.
+
+An invalid flag or missing runtime while shadow is enabled fails bootstrap. The shadow still
+uses the authoritative owner result for every policy decision.
+
+## Why authoritative cutover remains blocked
+
+A successful Index query can still be stale without returning an error. Therefore an absent
+projected block or mute cannot safely prove absence in authoritative Social Graph storage.
+Schema readiness alone does not provide per-tenant catch-up, bounded lag, or negative-result
+safety.
+
+Before cutover, the owner must retain evidence for:
+
+- current per-tenant projection watermark and bounded lag;
+- replay/repair behavior after missing or corrupted projection state;
+- positive and negative block/mute result parity;
+- behavior during worker outage, reconnect, restart, and backlog catch-up;
+- acceptable shadow latency and resource overhead;
+- an explicit fail-closed freshness policy for negative projection results.
 
 ## Boundary
 
 This slice does not:
 
-- activate Index privacy reads by default;
-- claim that the default-off projection consumer is already healthy or caught up;
+- make Index authoritative for notification privacy;
+- change the policy result based on Index mismatch or failure;
+- activate the shadow by default;
 - move Social Graph source authority or replay ownership into Index;
-- change relation commands, revision checks, event publication, projection, or DLQ handling;
+- change commands, revision checks, event publication, projection, or DLQ handling;
 - use Index for revision-bearing `SocialGraphFollowReadPort` results;
 - cut profile privacy, presentation authorization, GraphQL, storefront, or admin reads over;
-- enable the notification candidate worker by default;
-- claim projection freshness, PostgreSQL execution evidence, or live equivalence;
+- enable the Social Graph projection worker or notification candidate worker by default;
+- claim PostgreSQL execution, live parity, freshness, or retained evidence;
 - add many-link aggregate ordering or another source schema.
-
-Activation requires retained projection readiness, lag, and result-parity evidence plus an
-operator decision to set the flag on the consuming host.
 
 ## Owner validation
 
