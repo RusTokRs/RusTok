@@ -64,6 +64,12 @@ pub async fn resolve_storefront_search_result_candidates(
             ),
         ));
     }
+    let port = port.ok_or_else(|| {
+        PortError::unavailable(
+            "forum.search_result_eligibility.owner_unavailable",
+            "Forum Search result eligibility is temporarily unavailable",
+        )
+    })?;
     if request.candidates.is_empty() {
         return Ok(Vec::new());
     }
@@ -91,12 +97,6 @@ pub async fn resolve_storefront_search_result_candidates(
     }
 
     let requested = request.candidates.iter().copied().collect::<HashSet<_>>();
-    let port = port.ok_or_else(|| {
-        PortError::unavailable(
-            "forum.search_result_eligibility.owner_unavailable",
-            "Forum Search result eligibility is temporarily unavailable",
-        )
-    })?;
     let allowed = port.filter_forum_result_candidates(request).await?;
     if allowed.len() > MAX_FORUM_SEARCH_RESULT_CANDIDATES {
         return Err(PortError::invariant_violation(
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_empty_scope_requires_owner_port() {
+    async fn explicit_scope_requires_owner_port() {
         let error = resolve_storefront_search_result_candidates(
             None,
             request(vec![candidate(
@@ -170,13 +170,22 @@ mod tests {
             )]),
         )
         .await
-        .expect_err("explicit Forum candidates must fail closed without the owner");
+        .expect_err("explicit Forum scope must fail closed without the owner");
 
         assert_eq!(error.kind, rustok_api::PortErrorKind::Unavailable);
     }
 
     #[tokio::test]
-    async fn empty_scope_skips_owner_port() {
+    async fn empty_scope_still_requires_owner_composition() {
+        let error = resolve_storefront_search_result_candidates(None, request(Vec::new()))
+            .await
+            .expect_err("explicit Forum scope must require its owner even without candidates");
+
+        assert_eq!(error.kind, rustok_api::PortErrorKind::Unavailable);
+    }
+
+    #[tokio::test]
+    async fn empty_scope_skips_owner_call() {
         let calls = Arc::new(AtomicUsize::new(0));
         let port: SharedStorefrontSearchResultEligibilityPort = Arc::new(CountingPort {
             calls: calls.clone(),
