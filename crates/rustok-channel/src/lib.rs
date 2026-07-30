@@ -38,8 +38,15 @@ pub use services::ChannelService;
 pub use target_type::ChannelTargetType;
 
 use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{
+    ModuleRuntimeExtensions,
+    module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule},
+};
 use sea_orm_migration::MigrationTrait;
+
+/// Typed marker proving that `ChannelModule` participated in runtime extension registration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ChannelRuntimeSelected;
 
 pub struct ChannelModule;
 
@@ -73,6 +80,14 @@ impl RusToKModule for ChannelModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        extensions.insert(ChannelRuntimeSelected);
+        Ok(())
     }
 
     async fn health(&self) -> HealthStatus {
