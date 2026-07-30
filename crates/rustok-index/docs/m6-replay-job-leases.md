@@ -23,9 +23,14 @@ The persisted schema must exist and remain active before a job can be acquired.
 
 ## Claim and fencing
 
-Acquisition serializes the tenant/source/schema scope with a PostgreSQL transaction
-advisory lock. A pending job becomes claimable after `available_at`; a running job
-becomes reclaimable after `lease_expires_at`. Reclaim increments `attempt_count`.
+Acquisition serializes the complete tenant/exact-schema scope with a PostgreSQL
+transaction advisory lock before validating the stored source owner. The lock is
+intentionally broader than the request source name: two concurrent requests that claim
+different source names for the same schema cannot create parallel jobs. Once serialized,
+a source mismatch fails closed.
+
+A pending job becomes claimable after `available_at`; a running job becomes reclaimable
+after `lease_expires_at`. Reclaim increments `attempt_count`.
 
 Every heartbeat and terminal update matches all of:
 
