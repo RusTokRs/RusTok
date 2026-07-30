@@ -1,5 +1,4 @@
 use chrono::Utc;
-use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -8,8 +7,8 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::{
-    ProfileError, ProfileOperation, ProfileOperationTimer, ProfileRecord, ProfileResult,
-    ProfileService, ProfileVisibility, entities,
+    ProfileError, ProfileRecord, ProfileResult, ProfileService, ProfileVisibility, entities,
+    profile_updated_event::publish_profile_updated_in_tx,
 };
 
 pub(crate) async fn update_profile_visibility_with_event(
@@ -33,35 +32,17 @@ pub(crate) async fn update_profile_visibility_with_event(
     active.updated_at = Set(Utc::now().into());
     let profile = active.update(&txn).await?;
 
-    let publish_timer = ProfileOperationTimer::start(
-        ProfileOperation::PublishUpdatedEvent,
-        tenant_id,
-        profile.user_id,
-    );
-    if let Err(error) = event_bus
-        .publish_in_tx(
-            &txn,
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProfileUpdated {
-                user_id: profile.user_id,
-                handle: profile.handle.clone(),
-                locale: profile.preferred_locale.clone(),
-            },
-        )
-        .await
+    if let Err(error) =
+        publish_profile_updated_in_tx(event_bus, &txn, tenant_id, actor_id, &profile).await
     {
-        publish_timer.finish_failure(ProfileError::EventPublishUnavailable.code(), true);
         tracing::error!(
             tenant_id = %tenant_id,
             user_id = %profile.user_id,
-            error = %error,
             "Profile visibility event publication failed; rolling back owner write"
         );
         txn.rollback().await?;
-        return Err(ProfileError::EventPublishUnavailable);
+        return Err(error);
     }
-    publish_timer.finish_success();
     txn.commit().await?;
 
     ProfileService::new(db.clone())
