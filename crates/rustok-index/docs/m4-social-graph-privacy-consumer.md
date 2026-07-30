@@ -33,29 +33,39 @@ Inactive relations are absent because the owner projection publishes an Index to
 an inactive revision. Relation revision remains Index `source_version`; the adapter does not
 invent a selectable revision field.
 
-## Non-authoritative shadow
+## Non-authoritative shadow and observation contract
 
-`IndexShadowSocialGraphPrivacyReadPort` wraps two ports:
+`IndexShadowSocialGraphPrivacyReadPort` wraps the authoritative owner port plus the typed
+Index projection adapter. Every method executes the owner read first. If that read fails, the
+owner error is returned and no projection result can replace it. After owner success, the
+shadow executes the equivalent Index read and always returns the owner result.
 
-- the authoritative owner `SocialGraphPrivacyReadPort`;
-- the typed `IndexSocialGraphPrivacyReadPort` projection adapter.
+The Social Graph crate classifies the comparison into a neutral
+`IndexPrivacyShadowObservation`. The observation contains only a fixed operation, fixed
+outcome, comparison duration, optional bounded failure code, and optional retryability. The
+owner crate does not import `rustok-telemetry` and does not know about Prometheus.
 
-Each method executes the owner read first. If that read fails, the existing owner error is
-returned and no projection result can replace it. After owner success, the shadow executes
-the equivalent Index read, records only bounded operation/result information, and always
-returns the owner result.
+Boolean outcomes are `match_positive`, `match_negative`, `false_negative`, and
+`false_positive`. A `false_negative` means authoritative Social Graph returned true while
+Index returned false; this is the critical negative-result safety signal for a future privacy
+cutover.
 
-Index mismatch, missing tenant schema, storage failure, or contract error is observational
-only in this slice. It never authorizes, suppresses, widens, or otherwise changes notification
-policy. Logs contain operation, fixed outcome, booleans/counts, bounded stable error code,
+Follow-batch IDs are compared as sets and classified as `match_batch_empty`,
+`match_batch_nonempty`, `batch_missing`, `batch_extra`, or `batch_mixed`. `batch_missing`
+means Index omitted at least one owner-confirmed target; `batch_extra` means Index returned
+only additional targets; `batch_mixed` contains both directions of drift.
+
+Index mismatch, missing tenant schema, storage failure, or contract error remains
+observational. It never authorizes, suppresses, widens, or otherwise changes notification
+policy. Logs contain operation, fixed outcome, booleans/counts, bounded failure code,
 retryability, and comparison duration. They contain no tenant, user, relation, entity,
 payload, SQL, or storage details.
 
-## Bounded Prometheus telemetry
+## Host-owned Prometheus adapter
 
-The shadow records through `rustok-telemetry` and the single Prometheus registry. Enabling the
-shadow requires successful collector registration; metrics-disabled or uninitialized telemetry
-fails shadow activation rather than silently running an unmeasured evidence mode.
+`rustok-server` owns the adapter from `IndexPrivacyShadowObservation` to
+`rustok-telemetry`. This keeps the Social Graph owner contract telemetry-neutral while using
+the single process Prometheus registry.
 
 The collector publishes four metric families:
 
@@ -64,24 +74,16 @@ The collector publishes four metric families:
 - `rustok_social_graph_index_privacy_shadow_comparison_duration_seconds{operation,outcome}`;
 - `rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds{operation,outcome}`.
 
-Operations are fixed to block, mute, point-follow, and follow-batch reads. Boolean outcomes
-separate `match_positive`, `match_negative`, `false_negative`, and `false_positive`. A
-`false_negative` means authoritative Social Graph returned true while Index returned false;
-this is the critical negative-result safety signal for a future privacy cutover.
-
-Batch comparison treats IDs as sets and records `match_batch_empty`, `match_batch_nonempty`,
-`batch_missing`, `batch_extra`, or `batch_mixed`. `batch_missing` means Index omitted at least
-one owner-confirmed target; `batch_extra` means Index returned only additional targets;
-`batch_mixed` contains both directions of drift.
-
-Projection failures increment the observation outcome `error` plus a failure counter. Error
-labels are bounded to `social_graph.index_privacy_unavailable`,
+Projection failures use the observation outcome `error` plus a failure counter. Error labels
+are bounded to `social_graph.index_privacy_unavailable`,
 `social_graph.index_privacy_contract_invalid`, or `other`. Tenant and user identifiers,
 relation/entity IDs, payloads, SQL, and raw storage errors are forbidden labels.
 
-These metrics are measurement source only. This slice does not define a scrape window,
-minimum sample count, pass threshold, retained capture bundle, review report, or admission
-receipt.
+Enabling the shadow requires successful collector registration. Metrics-disabled or
+uninitialized telemetry fails shadow activation rather than silently running an unmeasured
+evidence mode. These metrics are measurement source only; this slice does not define a scrape
+window, minimum sample count, pass threshold, retained capture bundle, review report, or
+admission receipt.
 
 ## Server composition
 
@@ -93,12 +95,13 @@ The final server facade:
 4. when disabled, publishes the unchanged owner-backed notification policy;
 5. when enabled, requires successful privacy-shadow metrics registration;
 6. requires the shared query runtime and recomposes the policy with
-   `IndexShadowSocialGraphPrivacyReadPort`;
+   `IndexShadowSocialGraphPrivacyReadPort` plus the host-owned Prometheus adapter;
 7. preserves explicitly registered `NotificationBlockReadRuntime` and
    `NotificationMuteReadRuntime` overrides.
 
-An invalid flag, unavailable metrics registry, or missing runtime while shadow is enabled fails
-bootstrap. The shadow still uses the authoritative owner result for every policy decision.
+An invalid flag, unavailable metrics registry, or missing runtime while shadow is enabled
+fails bootstrap. The shadow still uses the authoritative owner result for every policy
+decision.
 
 ## Why authoritative cutover remains blocked
 
