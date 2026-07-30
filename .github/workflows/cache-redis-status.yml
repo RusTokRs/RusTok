@@ -71,44 +71,15 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - name: Correct deterministic patch target
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          target = Path("scripts/agent/patch-storefront-search-channel-23b2e1.py")
-          text = target.read_text()
-          helper_old = '''    count = after.count(old)
-              if count != 1:
-                  raise SystemExit(
-                      f"{path}: expected one replacement after anchor, found {count}\\n{old}"
-                  )
-              target.write_text(before + after.replace(old, new, 1))'''
-          helper_new = '''    if old not in after:
-                  raise SystemExit(f"{path}: replacement missing after anchor\\n{old}")
-              target.write_text(before + after.replace(old, new, 1))'''
-          call_old = '''replace_once(
-              "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
-              "        use rustok_api::{HostRuntimeContext, TenantContext};\\n",
-              "        use rustok_api::{HostRuntimeContext, RequestContext, TenantContext};\\n",
-          )'''
-          call_new = '''replace_after(
-              "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
-              "async fn storefront_search_native(\\n",
-              "        use rustok_api::{HostRuntimeContext, TenantContext};\\n",
-              "        use rustok_api::{HostRuntimeContext, RequestContext, TenantContext};\\n",
-          )'''
-          if text.count(helper_old) != 1:
-              raise SystemExit("replace_after helper drifted")
-          if text.count(call_old) != 1:
-              raise SystemExit("native RequestContext patch target drifted")
-          target.write_text(text.replace(helper_old, helper_new, 1).replace(call_old, call_new, 1))
-          PY
+      - name: Correct deterministic patch targets
+        run: python3 scripts/agent/fix-patch-storefront-search-channel-23b2e1.py
       - name: Apply deterministic trusted channel patch
         run: python3 scripts/agent/patch-storefront-search-channel-23b2e1.py
       - name: Commit patch and remove temporary agent files
         run: |
           git checkout origin/main -- .github/workflows/cache-redis-status.yml
           rm scripts/agent/patch-storefront-search-channel-23b2e1.py
+          rm scripts/agent/fix-patch-storefront-search-channel-23b2e1.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add crates/rustok-search crates/rustok-forum scripts/verify .github/workflows/cache-redis-status.yml scripts/agent
