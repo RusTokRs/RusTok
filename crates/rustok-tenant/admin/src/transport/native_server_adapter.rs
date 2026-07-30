@@ -60,6 +60,11 @@ fn tenant_admin_correlation_id() -> String {
 }
 
 #[cfg(feature = "ssr")]
+fn tenant_admin_scope_matches(auth_tenant_id: uuid::Uuid, resolved_tenant_id: uuid::Uuid) -> bool {
+    auth_tenant_id == resolved_tenant_id
+}
+
+#[cfg(feature = "ssr")]
 fn tenant_admin_context_error<E: std::fmt::Debug>(
     error: E,
     context_kind: &'static str,
@@ -178,6 +183,20 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
                     "Tenant context is temporarily unavailable",
                 )
             })?;
+
+        if !tenant_admin_scope_matches(auth.tenant_id, tenant.id) {
+            tracing::warn!(
+                owner = TENANT_ADMIN_OWNER,
+                owner_operation = "tenant_bootstrap_native",
+                correlation_id,
+                auth_tenant_id = %auth.tenant_id,
+                resolved_tenant_id = %tenant.id,
+                code = "tenant.admin_tenant_scope_mismatch",
+                boundary = TENANT_ADMIN_BOUNDARY,
+                "tenant admin auth and resolved tenant scopes do not match"
+            );
+            return Err(ServerFnError::new("Tenant admin access is denied"));
+        }
 
         let can_read_tenant = has_any_effective_permission(
             &auth.permissions,
@@ -334,5 +353,18 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
         Err(ServerFnError::new(
             "rustok-tenant-admin requires the `ssr` feature for native bootstrap",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::tenant_admin_scope_matches;
+    use uuid::Uuid;
+
+    #[test]
+    fn tenant_admin_scope_requires_matching_tenant() {
+        let tenant_id = Uuid::new_v4();
+        assert!(tenant_admin_scope_matches(tenant_id, tenant_id));
+        assert!(!tenant_admin_scope_matches(tenant_id, Uuid::new_v4()));
     }
 }
