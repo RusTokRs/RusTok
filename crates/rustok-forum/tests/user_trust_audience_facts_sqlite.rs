@@ -10,7 +10,7 @@ use rustok_forum::{
     SharedForumAudienceFactsPort,
 };
 use sea_orm::{ConnectionTrait, Database};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 async fn setup() -> (sea_orm::DatabaseConnection, Uuid, Uuid, Uuid) {

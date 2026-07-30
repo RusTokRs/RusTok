@@ -397,10 +397,12 @@ pub fn route_segment_or_default(value: Option<String>, default_segment: &str) ->
         .unwrap_or_else(|| default_segment.to_string())
 }
 
+#[allow(dead_code)]
 pub fn body_or_fallback(value: Option<String>, fallback: &str) -> String {
     fallback_text(value, fallback)
 }
 
+#[allow(dead_code)]
 pub fn summarized_body_or_fallback(
     body: Option<String>,
     body_format: &str,
@@ -413,6 +415,7 @@ pub fn summarized_body_or_fallback(
     )
 }
 
+#[allow(dead_code)]
 pub fn summarize_content(content: &str, format: &str, fallback_template: &str) -> String {
     if format.eq_ignore_ascii_case("markdown") {
         return content.trim().to_string();

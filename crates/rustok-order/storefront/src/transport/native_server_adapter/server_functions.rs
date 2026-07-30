@@ -143,7 +143,6 @@ fn native_checkout_runtime_error(
         error = ?error,
         owner = ORDER_STOREFRONT_NATIVE_OWNER,
         owner_operation = "complete_storefront_checkout",
-        correlation_id = %request_context.correlation_id,
         tenant_id = %tenant_id,
         channel_id = ?request_context.channel_id,
         channel_slug = ?request_context.channel_slug,

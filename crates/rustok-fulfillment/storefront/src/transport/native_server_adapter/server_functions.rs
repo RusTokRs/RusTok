@@ -77,7 +77,6 @@ fn map_owner_runtime_error<E: std::fmt::Debug>(
             error = ?error,
             owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
             owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
-            correlation_id = %request_context.correlation_id,
             tenant_id = %tenant_id,
             channel_id = ?request_context.channel_id,
             channel_slug = ?request_context.channel_slug,
