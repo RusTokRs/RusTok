@@ -5,6 +5,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+pub use rustok_blog_owner::migrations;
 pub use rustok_blog_owner::{CreatePostInput, UpdatePostInput};
 
 #[derive(Debug, Clone)]
