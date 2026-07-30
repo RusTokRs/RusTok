@@ -48,6 +48,10 @@ preserve the exact admin, storefront, GraphQL richtext, offline backfill, Forum 
 ownership, and consumer runtime-order sequence; the FBA verifier also checks every
 registered verifier/evidence path. Storefront can no longer disappear from the
 aggregate gate while the module still claims `core_transport_ui` readiness.
+The exact-chain policy now lives in a pure source module shared by the aggregate
+verifier and its self-regression fixture. Negative cases cover missing storefront
+execution, package/registry order drift, source-gate path drift, missing files, and
+self-test binding drift without requiring product compilation or database access.
 
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
@@ -131,9 +135,10 @@ outbox publication.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v2
-  locks the exact package order and requires admin, storefront, GraphQL richtext,
-  offline backfill, Forum ownership, and consumer runtime-order gates.
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v3
+  locks the exact package order, source-gate paths, and aggregate self-test binding
+  for admin, storefront, GraphQL richtext, offline backfill, Forum ownership, and
+  consumer runtime-order gates.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
@@ -295,6 +300,9 @@ outbox publication.
 28. Locked the Blog FBA package command to registry schema v2 and restored the
     missing storefront boundary gate, with exact ordered-step and source-path
     validation in the aggregate verifier.
+29. Extracted the exact Blog FBA chain policy into a pure module and added an
+    aggregate self-regression fixture for missing storefront execution, package or
+    registry order drift, source-path drift, missing files, and self-test binding.
 
 ## Next results
 

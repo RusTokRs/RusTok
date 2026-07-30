@@ -1,3 +1,4 @@
+mod aggregate_error_safety;
 mod graphql_adapter;
 mod native_server_adapter;
 mod shared_adapter;
@@ -18,6 +19,7 @@ use shared_adapter::ApiError;
 pub async fn fetch_storefront_commerce(
     request: FetchCommerceRequest,
 ) -> Result<StorefrontCommerceData, ApiError> {
+    let error_context = aggregate_error_safety::AggregateFetchErrorContext::new(&request);
     let native_request = request.clone();
     execute_selected_transport(
         "commerce",
@@ -26,7 +28,7 @@ pub async fn fetch_storefront_commerce(
         move || graphql_adapter::fetch_storefront_commerce(request),
     )
     .await
-    .map_err(ApiError::from)
+    .map_err(|error| error_context.map_error(error))
 }
 
 pub async fn create_storefront_payment_collection(

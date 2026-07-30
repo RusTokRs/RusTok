@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23A8",
+  "status": "source_complete_execution_pending",
+  "scope": "Prevent repository production code from bypassing durable Forum Search invalidation through direct non-event ProfileService mutation methods",
+  "owner_definition_path": "crates/rustok-profiles/src/services.rs",
+  "graphql_runtime_path": "crates/rustok-profiles/src/graphql/mutation.rs",
+  "cli_backfill_runtime_path": "crates/rustok-profiles/cli/src/lib.rs",
+  "source_gate_verifier": "scripts/verify/verify-forum-search-profile-service-mutation-boundary.mjs",
+  "owner_note": "crates/rustok-forum/docs/forum-23a8-profile-service-mutation-boundary.md",
+  "direct_non_event_methods": [
+    "upsert_profile",
+    "update_profile_handle",
+    "update_profile_content",
+    "update_profile_locale",
+    "update_profile_visibility",
+    "update_profile_media",
+    "backfill_profile"
+  ],
+  "transactional_runtime_helpers": [
+    "upsert_profile_with_event",
+    "update_profile_handle_with_event",
+    "update_profile_content_with_event",
+    "update_profile_locale_with_event",
+    "update_profile_visibility_with_event",
+    "update_profile_media_with_event",
+    "backfill_profile_with_event"
+  ],
+  "source_boundary": {
+    "repository_production_call_sites_are_forbidden": true,
+    "owner_definition_file_is_the_only_production_exemption": true,
+    "graphql_self_service_uses_transactional_helpers": true,
+    "cli_backfill_uses_transactional_helper": true,
+    "tests_may_use_direct_service_methods": true,
+    "test_fixture_example_and_benchmark_paths_are_excluded": true,
+    "ufcs_profile_service_calls_are_scanned": true,
+    "method_call_syntax_is_scanned": true
+  },
+  "call_site_review": {
+    "reviewed_ref": "31df77f3cd7b6294af04af81bf73eadb1a0c9e72",
+    "production_direct_call_count": 0,
+    "definition_file_count": 1,
+    "known_non_definition_call_sites_are_tests_or_verifiers": true
+  },
+  "compatibility": {
+    "public_rust_method_signatures_changed": false,
+    "forum_graphql_changed": false,
+    "forum_rest_changed": false,
+    "search_query_api_changed": false,
+    "search_document_schema_changed": false,
+    "database_migration_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "replace the source-level gate with compile-time restricted or intrinsically event-aware ProfileService mutation APIs",
+    "define an owner-ordered profile or account deletion projection invalidation contract",
+    "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
+    "add bounded category-subtree tag locale date solved kind channel group and attachment filters",
+    "add member index projections",
+    "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
+  ],
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "node scripts/verify/verify-forum-search-profile-service-mutation-boundary.mjs",
+      "node scripts/verify/verify-forum-search-public-author-summary.mjs",
+      "cargo check -p rustok-profiles --all-targets",
+      "cargo check -p rustok-profiles-cli --all-targets",
+      "cargo xtask module validate profiles",
+      "cargo xtask module validate forum"
+    ]
+  },
+  "non_claims": {
+    "direct_methods_are_compile_time_private": true,
+    "external_downstream_repositories_are_scanned": true,
+    "runtime_verification_was_executed": true,
+    "account_deletion_redaction_is_complete": true,
+    "general_cross_producer_owner_revision_ordering_is_complete": true
+  },
+  "downstream_task": "FORUM-23A9"
+}
