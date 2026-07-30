@@ -1,7 +1,4 @@
-use std::collections::HashSet;
-
 use crate::dto::CategoryTreeNode;
-use crate::error::ForumResult;
 
 /// Converts an already-authorized canonical category tree into the bounded
 /// Search category scope without re-evaluating owner visibility policy.
