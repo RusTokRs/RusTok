@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-30T19:52:00Z",
+  "status": "product_admin_primary_graphql_mutation_error_safety_source_unvalidated",
+  "scope": "Product Admin primary GraphQL mutation public envelopes",
+  "operations": [
+    "create_product",
+    "update_product",
+    "change_product_status",
+    "delete_product"
+  ],
+  "boundary": "product_admin_primary_graphql_mutations",
+  "public_policy": {
+    "network": "Network error",
+    "http": "Http error: Product admin service is temporarily unavailable",
+    "unauthorized": "Unauthorized",
+    "graphql": "GraphQL error: Product admin request could not be completed"
+  },
+  "source_contract": {
+    "context_before_graphql_call": true,
+    "unique_correlation_id": true,
+    "typed_graphql_error_classification": true,
+    "network_static_public_envelope": true,
+    "http_static_public_envelope": true,
+    "unauthorized_static_public_envelope": true,
+    "graphql_static_public_envelope": true,
+    "raw_http_status_public": false,
+    "raw_graphql_message_public": false,
+    "private_typed_error_diagnostics": true,
+    "safe_request_shape_only": true,
+    "result_types_changed": false,
+    "graphql_documents_changed": false,
+    "graphql_variables_changed": false,
+    "mutation_input_mapping_changed": false,
+    "owner_policy_changed": false,
+    "retry_added": false,
+    "fallback_added": false
+  },
+  "safe_diagnostics": [
+    "owner",
+    "owner_operation",
+    "correlation_id",
+    "token_present",
+    "tenant_slug_present",
+    "tenant_slug_length",
+    "tenant_id_length",
+    "actor_id_length",
+    "resource_id_present",
+    "resource_id_length",
+    "status_present",
+    "status_length",
+    "draft_present",
+    "error_kind",
+    "code",
+    "boundary",
+    "private_typed_graphql_error"
+  ],
+  "forbidden_public_or_structured_values": [
+    "token",
+    "tenant_slug",
+    "tenant_id",
+    "user_id",
+    "product_id",
+    "status",
+    "product draft fields",
+    "HTTP status text",
+    "GraphQL server message"
+  ],
+  "preserved": [
+    "ProductDetail and boolean mutation result types",
+    "CreateProductInput and UpdateProductInput construction",
+    "tenant and actor GraphQL variables",
+    "create, update, status and delete mutation documents",
+    "UI command composition",
+    "absence of retry or fallback behavior"
+  ],
+  "remaining_scope": [
+    "Product Admin category, schema and attribute-value GraphQL mutations",
+    "Product Admin browser and mounted transport evidence",
+    "remaining ecommerce non-PortError public envelopes"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
+    "node scripts/verify/verify-product-admin-category-read-error-safety.mjs",
+    "node scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "node scripts/verify/verify-product-admin-boundary.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-product-admin",
+    "cargo check -p rustok-product-admin --features hydrate",
+    "cargo check -p rustok-product-admin --features ssr"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "focused_verifier_run": false,
+    "read_verifiers_run": false,
+    "aggregate_verifier_run": false,
+    "broad_ecommerce_verifier_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "browser_runtime_proven": false,
+    "mounted_transport_proven": false
+  },
+  "execution": []
+}
