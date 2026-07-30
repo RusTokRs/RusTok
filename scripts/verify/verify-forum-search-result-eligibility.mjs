@@ -181,6 +181,8 @@ requireAll(
     "MAX_FORUM_SEARCH_RESULT_CANDIDATES",
     "narrow the query or category scope",
     "candidate snapshot changed during bounded eligibility evaluation",
+    "item.locale.clone()",
+    "candidate scan returned a duplicate raw row",
     "resolve_storefront_search_result_candidates",
     '"forum_category" => true',
     '"forum_topic" | "forum_reply"',
@@ -222,6 +224,9 @@ requireAll(
     "filter_public_storefront_visible",
     "is_tenant_module_enabled",
     "Forum Search result eligibility is unavailable",
+    "auth_tenant_mismatch",
+    "request_tenant_mismatch",
+    "request_actor_mismatch",
   ],
   paths.serverAdapter,
 );
@@ -351,6 +356,18 @@ if (contract) {
   }
   if (contract.bounds?.raw_search_page_size !== 50) {
     failures.push(`${paths.contract}: raw page-size drift`);
+  }
+  if (contract.bounds?.raw_row_identity_includes_locale !== true) {
+    failures.push(`${paths.contract}: raw row locale identity drift`);
+  }
+  for (const key of [
+    "auth_tenant_must_match",
+    "request_context_tenant_must_match",
+    "request_context_actor_must_match_auth",
+  ]) {
+    if (contract.transport_authority?.[key] !== true) {
+      failures.push(`${paths.contract}: transport_authority ${key} drift`);
+    }
   }
   for (const key of [
     "topic_reuses_exact_storefront_topic_audience_visibility",

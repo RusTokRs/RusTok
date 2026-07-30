@@ -21,7 +21,8 @@
     "maximum_owner_candidates": 100,
     "too_broad_query_fails_closed": true,
     "candidate_scan_total_must_remain_stable": true,
-    "continuation_page_must_advance": true
+    "continuation_page_must_advance": true,
+    "raw_row_identity_includes_locale": true
   },
   "candidate_contract": {
     "search_owned_kinds": [
@@ -57,7 +58,10 @@
     "authenticated_owner_context_has_deadline": true,
     "authenticated_owner_context_preserves_permission_claims": true,
     "graphql_and_native_share_one_execution_owner": true,
-    "public_error_messages_are_bounded": true
+    "public_error_messages_are_bounded": true,
+    "auth_tenant_must_match": true,
+    "request_context_tenant_must_match": true,
+    "request_context_actor_must_match_auth": true
   },
   "search_semantics": {
     "raw_query_uses_existing_dictionary_preset_ranking_and_postgres_search": true,

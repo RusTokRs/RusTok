@@ -342,7 +342,7 @@ async fn execute_result_eligible_search(
 }
 
 fn register_raw_rows(
-    seen: &mut HashSet<(String, String, Uuid)>,
+    seen: &mut HashSet<(String, String, Uuid, Option<String>)>,
     items: &[SearchResultItem],
 ) -> Result<(), ForumStorefrontSearchExecutionError> {
     for item in items {
@@ -350,6 +350,7 @@ fn register_raw_rows(
             item.source_module.clone(),
             item.entity_type.clone(),
             item.id,
+            item.locale.clone(),
         )) {
             return Err(ForumStorefrontSearchExecutionError::Invariant(
                 "Forum storefront Search candidate scan returned a duplicate raw row",

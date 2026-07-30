@@ -58,6 +58,32 @@ impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilit
                 "Forum Search result eligibility requires a locale",
             ));
         }
+        if request
+            .auth
+            .as_ref()
+            .is_some_and(|auth| auth.tenant_id != request.tenant_id)
+        {
+            return Err(PortError::validation(
+                "forum.search_result_eligibility.auth_tenant_mismatch",
+                "Forum Search result eligibility auth tenant does not match the request",
+            ));
+        }
+        if let Some(context) = request.request_context.as_ref() {
+            if context.tenant_id != request.tenant_id {
+                return Err(PortError::validation(
+                    "forum.search_result_eligibility.request_tenant_mismatch",
+                    "Forum Search result eligibility request tenant does not match the request",
+                ));
+            }
+            if let Some(auth) = request.auth.as_ref()
+                && context.user_id != Some(auth.user_id)
+            {
+                return Err(PortError::validation(
+                    "forum.search_result_eligibility.request_actor_mismatch",
+                    "Forum Search result eligibility request actor does not match auth",
+                ));
+            }
+        }
         let forum_candidates = request
             .candidates
             .iter()
