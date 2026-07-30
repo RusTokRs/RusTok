@@ -60,7 +60,7 @@ const source = requireMarkers(sourcePath, [
   'product_schema_ref(2)',
   'product_variant_schema_ref(1)',
   'product_variant_schema_ref(2)',
-  'scalar_field("channel_restricted",',
+  '"channel_restricted",',
   'many_field("allowed_channel_slugs", IndexValueType::String, true)?',
   'many_field("variant_ids", IndexValueType::Uuid, true)?',
   'name: link_name("variants")?',
