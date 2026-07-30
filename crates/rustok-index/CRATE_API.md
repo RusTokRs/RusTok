@@ -25,7 +25,8 @@ and scheduler implementations remain outside the engine core.
 - `IndexSchema`, `IndexField`, `IndexLink`, `SchemaFingerprint`
 - `IndexRecord`, `IndexLinkValue`, `LinkedEntityKey`
 - `IndexMutation`
-- `IndexQueryScope`, `IndexQuery`, `FilterExpr`, `OrderExpr`, `OrderDirection`, `Pagination`
+- `IndexQueryScope`, `IndexQuery`, `FilterExpr`, `OrderExpr`, `OrderDirection`,
+  `ManyOrderAggregate`, `Pagination`
 - `DomainError`
 
 ### Application
@@ -35,7 +36,7 @@ and scheduler implementations remain outside the engine core.
 - `IndexSchemaSourceCatalog`, `IndexSchemaSourceDescriptor`, `IndexSchemaSourceError`
 - `SharedIndexSchemaRegistry`
 - `register_index_schema_source`, `materialize_index_schema_registry`
-- `RecordValidationError`, `QueryValidationError`
+- `RecordValidationError`, `QueryValidationError`, `AggregateOrderValidationError`
 - `IndexCursor`, `CursorCodec`, `CursorCodecError`, `CursorValidationError`
 - `ExecutableQueryPlan`, `PlannedJoin`, `PlannedField`, `PlannedManyProjection`, `PlannedOrder`
 - `QueryPlanFingerprint`, `QueryPlanError`
@@ -79,9 +80,10 @@ and partition admission remain Index-owned and fail closed on identity or eviden
 
 M4 provides validated executable plans, controlled PostgreSQL SQL and ordered binds,
 root/one-link projection and ordering, correlated many-link filtering, deterministic nested
-many-link projection aggregates, exact count, bounded offset, query-scoped keyset pagination,
-one-row lookahead, strict row decoding, and PostgreSQL execution through one read-only
-repeatable-read snapshot.
+many-link projection aggregates, explicit `min` / `max` many-link ordering for bounded offset
+pages, exact count, query-scoped keyset pagination for ordinary order expressions, one-row
+lookahead, strict row decoding, and PostgreSQL execution through one read-only repeatable-read
+snapshot.
 
 Source modules now publish generic schema contracts through `IndexSchemaSourceCatalog`.
 The catalog fixes one owner for every exact schema reference and for the complete schema
@@ -96,8 +98,9 @@ SQL, and transfers the neutral capability through `ModuleRuntimeExtensions` and
 `HostRuntimeContext`. Runtime presence does not claim PostgreSQL backend support for a test
 connection, persisted tenant schema readiness, authorization, or successful query execution.
 
-Many-link aggregate ordering, additional source schemas, transport authorization, first
-storefront/admin/search consumer cutover, and live PostgreSQL/reference evidence remain open.
+Aggregate cursor continuation, retained PostgreSQL/reference aggregate evidence, additional
+source schemas, transport authorization, and first storefront/admin/search authoritative
+consumer cutover remain open.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`, `DocumentType`, old
 ports/adapters, source DTOs/indexers/models/migrations, `IndexerRuntimeConfig`,
@@ -135,6 +138,14 @@ builders or DTOs.
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
 - Selected, filtered, and ordered fields resolve through registered typed paths.
 - Query shape, depth, selected fields, ordering expressions, page size, and offset are bounded.
+- Plain `asc` / `desc` through a `many` path remains ambiguous and rejected.
+- Explicit `min_asc`, `min_desc`, `max_asc`, and `max_desc` are accepted only for sortable
+  scalar integer, decimal, string, or timestamp fields reached through at least one `many`
+  link and only with bounded offset pagination.
+- Empty or all-null aggregate relation sets produce a nullable derived order value; ascending
+  uses `NULLS LAST`, descending uses `NULLS FIRST`, and root entity ID remains the final tie-break.
+- Boolean, UUID, list-valued, singular-path, cursor-paginated, and unsortable aggregate orders
+  fail closed.
 - `SchemaRegistry::compile_postgres_page_query` preserves the compiled query and changes only
   the validated page-limit bind from `N` to `N + 1`.
 - `CompiledPostgresQuery::many_relations` binds every aggregate alias to exact plan metadata.
@@ -171,7 +182,8 @@ builders or DTOs.
   rows or exact counts.
 - Projection through `many` paths returns deterministic nested items with complete identity
   chains and aligned tagged values.
-- Sorting through a `many` link remains rejected until an explicit aggregate policy is added.
+- Ordering through `many` paths requires an explicit supported `min` / `max` mode; implicit
+  first-row, link-ordinal, and storage-order semantics remain forbidden.
 - Source versions and tombstones prevent stale mutation overwrite.
 - Generic engine types remain source-domain agnostic.
 - Runtime composition is not an authorization decision or persisted-readiness assertion.
@@ -180,13 +192,18 @@ builders or DTOs.
 
 - `SchemaRegistry::plan_query` validates first, assigns stable aliases, resolves joins, propagates
   `traverses_many`, captures typed fields, groups many projections, and emits a v4 fingerprint.
+- Aggregate-aware validation preserves legacy planner error variants for ordinary queries and
+  marks derived many-order values nullable without changing the `PlannedOrder` shape.
 - Many-traversing filters compile as independent nested correlated `EXISTS` chains.
 - Many projections compile as correlated JSONB aggregates outside the outer root rowset and use
   stored link ordinal, entity identity, and locale for deterministic item order.
+- Explicit many ordering compiles as a correlated typed `MIN` / `MAX` scalar subquery outside
+  the outer root rowset; the selected order column remains tagged `IndexValue` JSONB.
 - `decode_postgres_query_page` re-plans and verifies the plan fingerprint, scalar/many metadata,
   tagged values, nested identity/value arity, uniqueness, page bounds, and optional exact count.
 - Cursor pages remove lookahead and produce a next scoped cursor from the last retained
-  entity/order tuple; offset pages report `has_more` without a cursor.
+  entity/order tuple for ordinary ordering; aggregate cursor pages remain rejected.
+- Offset pages report `has_more` without a cursor.
 
 ## Errors / Failure Codes
 
@@ -195,7 +212,8 @@ builders or DTOs.
 - `IndexSchemaSourceError` defines invalid owner identity, duplicate exact ownership, owner drift
   across schema versions, empty materialization, invalid schema, and registry failures.
 - `IndexQueryRuntimeCompositionError` currently rejects duplicate shared runtime materialization.
-- `RecordValidationError` and `QueryValidationError` define registry-backed data/query failures.
+- `RecordValidationError`, `QueryValidationError`, and `AggregateOrderValidationError` define
+  registry-backed data/query failures and the bounded aggregate-order policy.
 - `CursorCodecError` and `CursorValidationError` separate malformed cursors from scope, schema,
   fingerprint, query-shape, arity, and value-type mismatches.
 - `QueryPlanError`, `PostgresQueryBuildError`, and `PostgresQueryCompileError` separate
@@ -217,9 +235,6 @@ builders or DTOs.
 - Calling `PostgresIndexQueryPort::new` outside the Index-owned runtime materializer.
 - Treating `SharedIndexQueryRuntime` presence as authorization or proof that a tenant query works.
 - Publishing a consumer query without owner/transport authorization and bounded error mapping.
+- Using plain `asc` / `desc`, link ordinal, first related row, or caller SQL as a many-order policy.
+- Treating a source-complete aggregate compiler as PostgreSQL/reference execution evidence.
 - Executing compiler SQL outside `PostgresIndexQueryPort` or splitting page/count snapshots.
-- Accepting cursors without verifying tenant, schema, fingerprint, locale, filters, order shape,
-  value types, and entity tie-breaker identity.
-- Compiling many filters as outer joins or flattening many projection into independent arrays.
-- Sorting through a `many` relation without an explicit aggregate policy.
-- Restoring deleted v1/source-specific code as a compatibility layer.
