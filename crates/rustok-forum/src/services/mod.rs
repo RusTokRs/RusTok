@@ -28,6 +28,7 @@ mod category_moderation_audience;
 mod category_owner;
 mod category_policy;
 mod category_reply_create_audience;
+mod category_search_audience_scope;
 mod category_search_scope;
 mod category_topic_create_audience;
 mod category_tree {
@@ -133,6 +134,7 @@ pub use category_reply_create_audience::{
     ForumCategoryReplyCreateAudiencePolicy, ForumCategoryReplyCreateAudiencePolicyLayer,
     ForumCategoryReplyCreateAudiencePolicyService, SetForumCategoryReplyCreateAudiencePolicyInput,
 };
+pub use category_search_audience_scope::ForumSearchCategoryAudienceScopeService;
 pub use category_search_scope::{
     ForumSearchCategoryScope, ForumSearchCategoryScopeService, MAX_FORUM_SEARCH_CATEGORY_ROOTS,
 };
