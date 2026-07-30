@@ -1,0 +1,50 @@
+{
+  "status": "commerce_admin_promotion_client_transport_error_safety_source_unvalidated",
+  "reviewed_at": "2026-07-30",
+  "boundary": "commerce_admin_promotion_client_transport",
+  "public_error_type": "ApiError",
+  "public_message": "Commerce admin promotion request could not be completed",
+  "covered_operations": [
+    "preview_cart_promotion",
+    "apply_cart_promotion"
+  ],
+  "confirmed_gap": {
+    "native_api_error_returned_directly": true,
+    "native_error_payload_type": "ApiError::ServerFn(String)",
+    "facade_mapping_before_slice": false
+  },
+  "source_contract": {
+    "native_adapters_changed": false,
+    "server_functions_changed": false,
+    "order_change_transport_changed": false,
+    "request_response_dto_changed": false,
+    "api_error_contract_preserved": true,
+    "operation_count": 2,
+    "context_created_before_native_call": true,
+    "raw_native_error_public": false,
+    "static_public_message": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "cart_id_values_logged": false,
+    "promotion_payload_values_logged": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "remaining": [
+    "Run the focused promotion client transport verifier",
+    "Run the existing promotion native error-safety verifier",
+    "Compile the Commerce admin package for hydrate and ssr profiles",
+    "Retain mounted preview and apply failure evidence",
+    "Continue the broad ecommerce mapper cleanup in other owner and transport boundaries"
+  ]
+}
