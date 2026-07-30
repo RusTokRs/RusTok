@@ -39,6 +39,16 @@ Embedded summaries require invalidation when profile presentation changes. Profi
 and media changes. Search now treats that owner event as a Forum projection event whenever the
 Forum source is composed.
 
+The privacy-critical `update_my_profile_visibility` path writes the new visibility and the
+`ProfileUpdated` outbox envelope in the same Profiles-owned database transaction. If outbox
+publication fails, the visibility write is explicitly rolled back and the mutation returns a
+retryable owner error. A successful private visibility change therefore cannot commit without the
+durable invalidation consumed by Forum Search.
+
+Other profile summary mutations still publish their update event after the owner write and are
+not claimed to be transactionally coupled in this slice. Closing that non-ACL freshness gap
+remains follow-up work.
+
 The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
 consumer rebuilds the Forum tenant projection from current owner state, so a profile changed to
@@ -72,6 +82,7 @@ document rows are replaced by the next Forum rebuild or relevant durable event.
 
 - owner-issued monotonic projection revisions across Forum producers;
 - an owner-ordered profile or account deletion invalidation contract;
+- transactionally couple non-visibility profile summary updates to their owner events;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;
@@ -84,10 +95,12 @@ Not run by the implementation agent, per maintainer instruction.
 Suggested commands:
 
 ```bash
+cargo test -p rustok-profiles error -- --nocapture
 cargo test -p rustok-forum search_projection_author -- --nocapture
 cargo test -p rustok-search forum_inbox -- --nocapture
 cargo test -p rustok-search ingestion -- --nocapture
 node scripts/verify/verify-forum-search-public-author-summary.mjs
 node scripts/verify/verify-forum-search-projection.mjs
+cargo xtask module validate profiles
 cargo xtask module validate forum
 ```
