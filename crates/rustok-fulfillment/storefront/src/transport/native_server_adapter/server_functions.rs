@@ -6,6 +6,100 @@ use uuid::Uuid;
 use super::super::build_shipping_selection_updates;
 use super::super::{SelectShippingOptionRequest, ShippingSelectionTransportError};
 
+#[cfg(feature = "ssr")]
+const FULFILLMENT_STOREFRONT_NATIVE_OWNER: &str = "rustok_fulfillment.storefront";
+#[cfg(feature = "ssr")]
+const FULFILLMENT_STOREFRONT_NATIVE_OPERATION: &str = "select_storefront_shipping_option";
+#[cfg(feature = "ssr")]
+const FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY: &str = "fulfillment_storefront_native_transport";
+
+#[cfg(feature = "ssr")]
+fn map_runtime_dependency_error(dependency: &'static str) -> ServerFnError {
+    tracing::error!(
+        owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
+        dependency,
+        code = "fulfillment.storefront_runtime_unavailable",
+        boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "fulfillment storefront runtime dependency is unavailable"
+    );
+    ServerFnError::new("Shipping selection is temporarily unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_tenant_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
+        code = "fulfillment.storefront_tenant_context_unavailable",
+        boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "fulfillment storefront tenant context extraction failed"
+    );
+    ServerFnError::new("Shipping selection context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_auth_context_error<E: std::fmt::Debug>(tenant_id: Uuid, error: E) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
+        tenant_id = %tenant_id,
+        code = "fulfillment.storefront_auth_context_unavailable",
+        boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "fulfillment storefront authentication context extraction failed"
+    );
+    ServerFnError::new("Shipping selection context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn record_optional_request_context_error<E: std::fmt::Debug>(tenant_id: Uuid, error: E) {
+    tracing::warn!(
+        error = ?error,
+        owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
+        owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
+        tenant_id = %tenant_id,
+        code = "fulfillment.storefront_request_context_unavailable",
+        boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
+        "optional fulfillment storefront request context extraction failed"
+    );
+}
+
+#[cfg(feature = "ssr")]
+fn map_owner_runtime_error<E: std::fmt::Debug>(
+    request_context: Option<&rustok_api::RequestContext>,
+    tenant_id: Uuid,
+    error: E,
+) -> ServerFnError {
+    if let Some(request_context) = request_context {
+        tracing::error!(
+            error = ?error,
+            owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
+            owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
+            correlation_id = %request_context.correlation_id,
+            tenant_id = %tenant_id,
+            channel_id = ?request_context.channel_id,
+            channel_slug = ?request_context.channel_slug,
+            locale = %request_context.locale,
+            code = "fulfillment.storefront_shipping_selection_failed",
+            boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
+            "fulfillment storefront owner runtime call failed"
+        );
+    } else {
+        tracing::error!(
+            error = ?error,
+            owner = FULFILLMENT_STOREFRONT_NATIVE_OWNER,
+            owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
+            tenant_id = %tenant_id,
+            code = "fulfillment.storefront_shipping_selection_failed",
+            boundary = FULFILLMENT_STOREFRONT_NATIVE_BOUNDARY,
+            "fulfillment storefront owner runtime call failed without request context"
+        );
+    }
+    ServerFnError::new("Shipping selection is temporarily unavailable")
+}
+
 pub async fn select_shipping_option_server(
     request: SelectShippingOptionRequest,
 ) -> Result<(), ShippingSelectionTransportError> {
@@ -30,24 +124,25 @@ async fn storefront_fulfillment_select_shipping_option_native(
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "fulfillment/select-shipping-option requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
         let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
             runtime_ctx.db_clone(),
             event_bus,
         );
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(map_tenant_context_error)?;
+        let tenant_id = tenant.id;
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+            .map_err(|error| map_auth_context_error(tenant_id, error))?;
+        let request_context = match leptos_axum::extract::<rustok_api::RequestContext>().await {
+            Ok(request_context) => Some(request_context),
+            Err(error) => {
+                record_optional_request_context_error(tenant_id, error);
+                None
+            }
+        };
         let cart_id = Uuid::parse_str(request.cart_id.trim())
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
 
@@ -77,7 +172,7 @@ async fn storefront_fulfillment_select_shipping_option_native(
             },
         )
         .await
-        .map_err(|error| ServerFnError::new(error.to_string()))
+        .map_err(|error| map_owner_runtime_error(request_context.as_ref(), tenant_id, error))
     }
     #[cfg(not(feature = "ssr"))]
     {
