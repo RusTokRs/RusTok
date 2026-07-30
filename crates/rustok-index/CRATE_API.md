@@ -98,9 +98,9 @@ SQL, and transfers the neutral capability through `ModuleRuntimeExtensions` and
 `HostRuntimeContext`. Runtime presence does not claim PostgreSQL backend support for a test
 connection, persisted tenant schema readiness, authorization, or successful query execution.
 
-Aggregate cursor continuation, retained PostgreSQL/reference aggregate evidence, additional
-source schemas, transport authorization, and first storefront/admin/search authoritative
-consumer cutover remain open.
+Exact Decimal tagged-order transport, aggregate cursor continuation, retained
+PostgreSQL/reference aggregate evidence, additional source schemas, transport authorization,
+and first storefront/admin/search authoritative consumer cutover remain open.
 
 No compatibility contract exists for deleted behavior. `IndexDocument`, `DocumentType`, old
 ports/adapters, source DTOs/indexers/models/migrations, `IndexerRuntimeConfig`,
@@ -140,12 +140,12 @@ builders or DTOs.
 - Query shape, depth, selected fields, ordering expressions, page size, and offset are bounded.
 - Plain `asc` / `desc` through a `many` path remains ambiguous and rejected.
 - Explicit `min_asc`, `min_desc`, `max_asc`, and `max_desc` are accepted only for sortable
-  scalar integer, decimal, string, or timestamp fields reached through at least one `many`
-  link and only with bounded offset pagination.
+  scalar integer, string, or timestamp fields reached through at least one `many` link and only
+  with bounded offset pagination.
 - Empty or all-null aggregate relation sets produce a nullable derived order value; ascending
   uses `NULLS LAST`, descending uses `NULLS FIRST`, and root entity ID remains the final tie-break.
-- Boolean, UUID, list-valued, singular-path, cursor-paginated, and unsortable aggregate orders
-  fail closed.
+- Boolean, Decimal, UUID, list-valued, singular-path, cursor-paginated, and unsortable aggregate
+  orders fail closed. Decimal requires a separate exact tagged-wire contract before enablement.
 - `SchemaRegistry::compile_postgres_page_query` preserves the compiled query and changes only
   the validated page-limit bind from `N` to `N + 1`.
 - `CompiledPostgresQuery::many_relations` binds every aggregate alias to exact plan metadata.
@@ -198,7 +198,8 @@ builders or DTOs.
 - Many projections compile as correlated JSONB aggregates outside the outer root rowset and use
   stored link ordinal, entity identity, and locale for deterministic item order.
 - Explicit many ordering compiles as a correlated typed `MIN` / `MAX` scalar subquery outside
-  the outer root rowset; the selected order column remains tagged `IndexValue` JSONB.
+  the outer root rowset; the selected order column remains tagged `IndexValue` JSONB for the
+  currently admitted integer, string, and timestamp wire types.
 - `decode_postgres_query_page` re-plans and verifies the plan fingerprint, scalar/many metadata,
   tagged values, nested identity/value arity, uniqueness, page bounds, and optional exact count.
 - Cursor pages remove lookahead and produce a next scoped cursor from the last retained
@@ -236,5 +237,6 @@ builders or DTOs.
 - Treating `SharedIndexQueryRuntime` presence as authorization or proof that a tenant query works.
 - Publishing a consumer query without owner/transport authorization and bounded error mapping.
 - Using plain `asc` / `desc`, link ordinal, first related row, or caller SQL as a many-order policy.
+- Enabling Decimal aggregate ordering before an exact tagged-order wire contract is source-complete.
 - Treating a source-complete aggregate compiler as PostgreSQL/reference execution evidence.
 - Executing compiler SQL outside `PostgresIndexQueryPort` or splitting page/count snapshots.
