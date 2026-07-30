@@ -2,8 +2,9 @@
 
 This slice establishes the source-owned read boundary used by incremental ingestion,
 rebuild, reconciliation, and repair workers. It also adds one bounded replay-page
-executor and PostgreSQL checkpoint adapter. It does not claim fenced job ownership,
-a scheduler, a long-running replay command, or production consumer cutover.
+executor, schema-scoped durable replay job claims, and a lease-bound PostgreSQL
+checkpoint adapter. It does not claim a scheduler, multi-page replay loop,
+cancellation command, or production consumer cutover.
 
 ## Ownership
 
@@ -82,12 +83,24 @@ The checkpoint source-version watermark is inherited from the stored row and adv
 with the maximum observed page version; a lower-version or empty final page cannot
 regress it. The last delivery ID is likewise retained for an empty final page.
 
-`PostgresIndexReplayCheckpointStore` writes the existing `index_checkpoints` rebuild
-row. JSON `null` represents a completed cursor. Empty final pages preserve the last
-stored source version and delivery ID through `COALESCE`, while still marking the cursor
-complete. The locale and partition storage dimensions remain the reserved empty values
-until a separately admitted locale/partition replay contract exists. This adapter does
-not claim a job lease or global worker owner.
+## Fenced job and checkpoint ownership
+
+`PostgresIndexReplayJobStore` owns one exact tenant/source/schema rebuild job. It
+validates the `index_replay_job_v1` request, requires an active persisted schema,
+serializes acquisition with a PostgreSQL advisory lock, heartbeats an unexpired lease,
+and reclaims expired attempts with an incremented attempt fence.
+
+`PostgresIndexReplayCheckpointStore` is constructed from the acquired
+`IndexReplayJobLease`. Before each checkpoint read or write it validates and locks the
+exact `(job_id, worker_id, attempt_count)`. Another tenant, source, or schema is rejected
+before opening the transaction. A stale worker may complete an already-started
+idempotent mutation write, but it cannot advance the durable cursor.
+
+The checkpoint row uses JSON `null` for completion. Locale and partition dimensions
+remain reserved empty values until separately admitted contracts exist. A replay job
+can enter `succeeded` only while its lease remains active and its exact durable rebuild
+checkpoint exists with a null cursor. See
+[`m6-replay-job-leases.md`](./m6-replay-job-leases.md) for the full fencing boundary.
 
 ## Failures
 
@@ -96,16 +109,18 @@ classify it as `Retryable` or `Permanent`. Raw database, transport, or source-do
 errors remain in owner logs and do not cross the neutral contract.
 
 Mutation validation/delivery rejection is permanent. Transient storage, concurrent
-mutation, inbox-completion, and checkpoint I/O failures are retryable. The future fenced
-job worker will map retryable failures to bounded backoff and permanent failures to
-durable terminal state; this slice does not define that scheduling policy.
+mutation, inbox-completion, and checkpoint I/O failures are retryable. Lease loss is
+terminal for the current attempt. A future bounded multi-page runner will map retryable
+failures to bounded backoff and permanent failures to durable terminal state; this
+slice does not define that scheduling policy.
 
 ## Still open
 
 - mutation-source event registry and broker acknowledgement orchestration;
-- fenced `index_jobs` claims, leases, heartbeat, cancellation, and global ownership;
-- a bounded multi-page loop, resume command, dry-run, targeted/full/shadow modes, and
-  retry/dead-letter scheduling;
+- binding replay job requests directly to the materialized source registry in server
+  composition;
+- a bounded multi-page loop, heartbeat cadence, graceful lease loss, cancellation,
+  resume command, dry-run, targeted/full/shadow modes, and retry/dead-letter scheduling;
 - locale/partition replay checkpoint dimensions;
 - reconciliation, drift repair, retained freshness/outage/recovery evidence, and
   incremental/rebuild equivalence;
@@ -115,9 +130,11 @@ durable terminal state; this slice does not define that scheduling policy.
 
 ```bash
 node scripts/verify/verify-index-source-replay-contract.mjs
+node scripts/verify/verify-index-replay-job-leases.mjs
 cargo check -p rustok-index --all-targets
 cargo test -p rustok-index source_registry --lib -- --nocapture
 cargo test -p rustok-index source_replay --lib -- --nocapture
+cargo test -p rustok-index source_replay_job --lib -- --nocapture
 ```
 
 These commands remain maintainer-run for this slice.
