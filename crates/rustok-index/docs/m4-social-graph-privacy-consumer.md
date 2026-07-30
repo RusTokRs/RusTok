@@ -42,13 +42,14 @@ invent a selectable revision field.
 
 Each method executes the owner read first. If that read fails, the existing owner error is
 returned and no projection result can replace it. After owner success, the shadow executes
-the equivalent Index read, records only bounded operation/result information, and always
-returns the owner result.
+the equivalent Index read with a hard 100 ms comparison timeout, records only bounded
+operation/result information, and always returns the owner result.
 
-Index mismatch, missing tenant schema, storage failure, or contract error is observational
-only in this slice. It never authorizes, suppresses, widens, or otherwise changes notification
-policy. Logs contain operation, booleans/counts, bounded stable error code, and retryability;
-they contain no tenant, user, relation, entity, payload, SQL, or storage details.
+Index mismatch, timeout, missing tenant schema, storage failure, or contract error is
+observational only in this slice. It never authorizes, suppresses, widens, or otherwise
+changes notification policy. Logs contain operation, booleans/counts, bounded stable error
+code, retryability, or the fixed timeout; they contain no tenant, user, relation, entity,
+payload, SQL, or storage details.
 
 ## Server composition
 
@@ -64,7 +65,8 @@ The final server facade:
    `NotificationMuteReadRuntime` overrides.
 
 An invalid flag or missing runtime while shadow is enabled fails bootstrap. The shadow still
-uses the authoritative owner result for every policy decision.
+uses the authoritative owner result for every policy decision, and a slow comparison is
+cancelled after 100 ms.
 
 ## Why authoritative cutover remains blocked
 
@@ -87,7 +89,7 @@ Before cutover, the owner must retain evidence for:
 This slice does not:
 
 - make Index authoritative for notification privacy;
-- change the policy result based on Index mismatch or failure;
+- change the policy result based on Index mismatch, timeout, or failure;
 - activate the shadow by default;
 - move Social Graph source authority or replay ownership into Index;
 - change commands, revision checks, event publication, projection, or DLQ handling;
