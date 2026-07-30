@@ -47,8 +47,9 @@ for (const [value, label] of [
   ['"Storefront tenant context is temporarily unavailable"', 'native tenant-context public envelope'],
   ['.map_err(map_storefront_native_request_context_error)?', 'native request-context mapping'],
   ['map_storefront_native_tenant_context_error(&request_context, error)', 'native tenant-context mapping'],
-  ['correlation_id = %request_context.correlation_id', 'native correlation log'],
-  ['tenant_id = %tenant_id', 'native tenant log'],
+  ['request_tenant_id = %request_context.tenant_id', 'native request tenant identity log'],
+  ['user_id = ?request_context.user_id', 'native request user identity log'],
+  ['tenant_id = %tenant_id', 'native resolved tenant log'],
   ['channel_id = ?request_context.channel_id', 'native channel id log'],
   ['channel_slug = ?request_context.channel_slug', 'native channel slug log'],
   ['locale = %request_context.locale', 'native locale log'],
@@ -64,12 +65,17 @@ for (const [value, label] of [
   ['"Storefront payment collection is temporarily unavailable"', 'native payment public envelope'],
 ]) requireText(native, value, label);
 
+if (countText(native, 'user_id = ?request_context.user_id') !== 3) {
+  failures.push('native tenant, validation, and owner diagnostics must all retain request user identity');
+}
+
 for (const value of [
+  'request_context.correlation_id',
   '.map_err(ServerFnError::new)',
   '.map_err(|err| ServerFnError::new(err.to_string()))',
   'ServerFnError::new(error.to_string())',
   'ServerFnError::new(err.to_string())',
-]) forbidText(native, value, 'native raw public transport mapping');
+]) forbidText(native, value, 'native stale context or raw public transport mapping');
 
 if (countText(native, 'ApiError::ServerFn(error.to_string())') !== 1) {
   failures.push(
@@ -102,6 +108,9 @@ for (const value of [
   'ApiError::Graphql("Storefront cart data is temporarily unavailable".to_string())',
 ]) forbidText(shared, value, 'shared raw transport cause or variant drift');
 
+if (evidence.schema_version !== 3) {
+  failures.push(`evidence schema_version mismatch: ${evidence.schema_version}`);
+}
 if (evidence.status !== 'storefront_transport_error_safety_source_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
@@ -111,6 +120,8 @@ for (const [key, expected] of Object.entries({
   native_request_context_static_public_envelope: true,
   native_tenant_context_static_public_envelope: true,
   native_context_extraction_raw_text_public: false,
+  native_correlation_logging: false,
+  native_request_identity_logging: true,
   shared_static_public_envelopes: true,
   shared_raw_cause_logging: false,
   cart_error_variant_preserved: true,
@@ -150,5 +161,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ commerce storefront request/tenant context plus cart/payment transport failures retain SSR diagnostics, existing error variants, and static public envelopes without client-side raw causes; runtime evidence remains open',
+  '✔ commerce storefront request/tenant context plus cart/payment transport failures retain actual request identity, static public envelopes, and no client-side raw causes; runtime evidence remains open',
 );
