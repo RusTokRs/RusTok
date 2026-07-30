@@ -6,6 +6,69 @@ use crate::model::{ProductList, ProductListItem, StorefrontProductsData};
 
 use super::native_server_adapter::{self, ApiError};
 
+#[cfg(feature = "ssr")]
+const PRODUCT_STOREFRONT_CATALOG_OWNER: &str = "rustok_product.storefront";
+#[cfg(feature = "ssr")]
+const PRODUCT_STOREFRONT_CATALOG_OPERATION: &str = "storefront_catalog_list";
+#[cfg(feature = "ssr")]
+const PRODUCT_STOREFRONT_CATALOG_BOUNDARY: &str = "product_storefront_catalog_list_native";
+
+#[cfg(feature = "ssr")]
+fn map_runtime_dependency_error(dependency: &'static str) -> ServerFnError {
+    tracing::error!(
+        owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
+        owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
+        dependency,
+        code = "product.storefront_catalog_runtime_unavailable",
+        boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
+        "product storefront catalog runtime dependency is unavailable"
+    );
+    ServerFnError::new("Product catalog is temporarily unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn record_optional_request_context_error<E: std::fmt::Debug>(error: E) {
+    tracing::warn!(
+        error = ?error,
+        owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
+        owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
+        code = "product.storefront_catalog_request_context_unavailable",
+        boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
+        "optional product storefront catalog request context extraction failed"
+    );
+}
+
+#[cfg(feature = "ssr")]
+fn map_tenant_context_error<E: std::fmt::Debug>(
+    request_context: Option<&rustok_api::RequestContext>,
+    error: E,
+) -> ServerFnError {
+    if let Some(request_context) = request_context {
+        tracing::error!(
+            error = ?error,
+            owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
+            owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
+            correlation_id = %request_context.correlation_id,
+            channel_id = ?request_context.channel_id,
+            channel_slug = ?request_context.channel_slug,
+            locale = %request_context.locale,
+            code = "product.storefront_catalog_tenant_context_unavailable",
+            boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
+            "product storefront catalog tenant context extraction failed"
+        );
+    } else {
+        tracing::error!(
+            error = ?error,
+            owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
+            owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
+            code = "product.storefront_catalog_tenant_context_unavailable",
+            boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
+            "product storefront catalog tenant context extraction failed without request context"
+        );
+    }
+    ServerFnError::new("Product catalog context is unavailable")
+}
+
 pub async fn fetch_products(
     mut request: FetchRequest,
     controls: CatalogListInput,
@@ -113,17 +176,17 @@ async fn storefront_catalog_list_native(
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "product/storefront catalog list requires TransactionalEventBus in host runtime context",
-                )
-            })?;
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+            .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
+        let request_context = match leptos_axum::extract::<rustok_api::RequestContext>().await {
+            Ok(request_context) => Some(request_context),
+            Err(error) => {
+                record_optional_request_context_error(error);
+                None
+            }
+        };
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| map_tenant_context_error(request_context.as_ref(), error))?;
         let requested_locale = crate::core::resolve_requested_locale(
             locale,
             request_context
