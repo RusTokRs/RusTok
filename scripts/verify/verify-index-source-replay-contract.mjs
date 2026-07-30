@@ -75,8 +75,11 @@ const worker = requireMarkers(workerPath, [
   'pub async fn run_next_page(',
   'load_replay_checkpoint(&checkpoint_key)',
   'IndexReplayPageStatus::AlreadyComplete',
+  'let mut event_ids = BTreeSet::new();',
+  'event_id.is_nil()',
+  'DuplicateReplayEventId',
   '.apply_replay_mutation(',
-  'mutation.event_id().to_string()',
+  'last_delivery_id = Some(event_id.to_string())',
   '.commit_replay_checkpoint(&checkpoint)',
   'IndexReplayPageStatus::Complete',
   'IndexReplayPageStatus::Advanced',
@@ -87,6 +90,7 @@ const worker = requireMarkers(workerPath, [
 for (const forbidden of [
   'DatabaseConnection',
   'PostgresMutationStore',
+  'partition_key',
   'index_jobs',
   'tokio::spawn',
   'SELECT ',
@@ -113,7 +117,7 @@ const postgres = requireMarkers(postgresPath, [
   'impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore',
   'SELECT cursor, CAST(source_version AS TEXT)',
   'INSERT INTO index_checkpoints',
-  "'rebuild'",
+  '"rebuild".into()',
   'ON CONFLICT (tenant_id, checkpoint_kind, source_name',
   'cursor = excluded.cursor',
   'COALESCE(excluded.source_version, index_checkpoints.source_version)',
@@ -127,9 +131,20 @@ for (const forbidden of ['tokio::spawn', 'index_jobs', 'DELETE FROM index_checkp
   }
 }
 
+const testsPath = 'crates/rustok-index/src/application/source_replay_tests.rs';
+requireMarkers(testsPath, [
+  'replay_page_commits_checkpoint_after_mutations',
+  'checkpoint_failure_replays_the_same_event_delivery',
+  'completed_checkpoint_skips_the_source',
+  'nil_replay_event_is_rejected_before_persistence',
+  'vec!["mutation", "checkpoint"]',
+  'vec![event_id, event_id]',
+]);
+
 requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'mod source_registry;',
   'mod source_replay;',
+  'mod source_replay_tests;',
   'IndexSourceCatalog',
   'SharedIndexSourceRegistry',
   'IndexReplayWorker',
@@ -152,8 +167,10 @@ requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
   'at most 8 KiB',
   '`Retryable` or `Permanent`',
   '`IndexReplayWorker::run_next_page` executes exactly one bounded source page',
+  'same non-nil event UUID for the same logical entity mutation and source version',
   'Commit the next cursor only after every mutation result is durable',
-  'existing inbox identity makes the same event deliveries idempotent',
+  'existing inbox identity makes the same stable event deliveries idempotent',
+  'reserved empty values',
   'does not claim a job lease or global worker owner',
   'maintainer-run',
 ]);
