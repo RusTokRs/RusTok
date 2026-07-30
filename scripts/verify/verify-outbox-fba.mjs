@@ -18,7 +18,7 @@ const pkg = json('package.json');
 const lib = read('crates/rustok-outbox/src/lib.rs');
 const ports = read('crates/rustok-outbox/src/ports.rs');
 const serverRelayWorker = read('apps/server/src/services/event_transport_factory.rs');
-if (pkg.scripts?.['verify:outbox:fba'] !== 'node scripts/verify/verify-outbox-fba.mjs' && npm run verify:owner:fba-runtime-order') fail('package script verify:outbox:fba drift');
+if (pkg.scripts?.['verify:outbox:fba'] !== 'node scripts/verify/verify-outbox-fba.mjs && npm run verify:owner:fba-runtime-order') fail('package script verify:outbox:fba drift');
 if (registry.schema_version !== 1 || registry.module !== 'outbox' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'outbox.relay_control.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
