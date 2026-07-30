@@ -18,13 +18,16 @@ canonical-document write/read projection for the Next admin contract. The Blog
 GraphQL adapter already exposes canonical `RichTextDocument` writes and
 `RichTextView` reads. Temporary `body`, `body_format`, and `content_json`
 transport declarations, projections, and compatibility conversions are now
-confined to `graphql/types.rs`. `graphql/mutation.rs` only delegates typed
-`input.into()` values to the owner service and contains no legacy richtext field
-access or conversion implementation. The executable guardrail scans every other
-GraphQL file, rejects new aliases, and is registered with its regression test in
-`verify:blog:fba`. Do not add new `rt_json`/Markdown aliases, `content_json`
-fields, or local renderers; the Leptos/storefront and storage-schema cutover must
-finish atomically.
+confined to `graphql/types.rs`. Both create/update conversions are guarded
+exactly beside the GraphQL input types; create has an integration regression test
+for explicit fields, canonical content, and temporary legacy defaults, while
+update retains its colocated unit regression test. `graphql/mutation.rs` only
+delegates typed `input.into()` values to the owner service and contains no legacy
+richtext field access or conversion implementation. The executable guardrail
+scans every other GraphQL file, rejects new aliases, and is registered with its
+regression test in `verify:blog:fba`. Do not add new `rt_json`/Markdown aliases,
+`content_json` fields, or local renderers; the Leptos/storefront and storage-schema
+cutover must finish atomically.
 
 The host GraphQL composition binds `rustok-profiles::ProfileSummaryLoader` to
 the current request audience. Existing Blog post/list author batches therefore
@@ -108,9 +111,9 @@ outbox publication.
   server-rendered `RichTextView` HTML; no format selector or local post
   renderer remains in that path.
 - Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
-  the single temporary `types.rs` adapter/conversion owner, resolver delegation,
-  verifier, self-test, and npm/FBA registration are implemented; execution is
-  user-owned.
+  the single temporary `types.rs` adapter/conversion owner, symmetric create/update
+  conversion regression coverage, resolver delegation, verifier, self-test, and
+  npm/FBA registration are implemented; execution is user-owned.
 
 ## Evidence and guardrails
 
@@ -179,6 +182,10 @@ outbox publication.
 17. Moved the update compatibility conversion and its regression test beside the
     GraphQL input types, removed all legacy richtext access from `mutation.rs`,
     and tightened the guardrail to one adapter/conversion owner file.
+18. Added symmetric create/update GraphQL input conversion regression coverage:
+    canonical create payload preservation, temporary legacy defaults, exact
+    mapping checks, and ownership guards that keep both conversions out of
+    `mutation.rs`.
 
 ## Next results
 
