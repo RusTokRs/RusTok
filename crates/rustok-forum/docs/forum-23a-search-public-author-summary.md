@@ -55,7 +55,7 @@ prove that the Profiles owner has already removed or hidden its state.
 Topic and approved-reply documents now use:
 
 - `payload.author` for the bounded public summary or `null`;
-- `facets.author_id` only when the Profiles owner returned a public summary;
+- `facets.author_id` with a non-null value only when the Profiles owner returned a public summary;
 - `facets.has_public_author` as an explicit filterable boolean;
 - the Search `handle` column for the permitted public handle.
 
