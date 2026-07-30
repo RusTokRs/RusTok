@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This source slice covers the public Inventory Admin transport facade in
+This source slice covers the eight public Inventory Admin transport operations in
 `crates/rustok-inventory/admin/src/transport/mod.rs`.
 
 Covered operations:
@@ -44,8 +44,8 @@ with:
 Tenant, product, variant, locale, search, status, and numeric values are not
 written to the client transport diagnostic event.
 
-The public error remains `InventoryTransportError`, but its displayed message is
-always:
+`InventoryTransportError::ServerFn` is now a unit variant. No caller can attach a
+raw string payload to the public error. Its displayed message is always:
 
 `Inventory admin request could not be completed`
 
