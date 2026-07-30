@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "status": "commerce_storefront_aggregate_error_safety_source_unvalidated",
+  "generated_at_utc": "2026-07-30T16:42:00Z",
+  "scope": "Commerce-owned fetch_storefront_commerce public transport envelope",
+  "operation": "fetch_storefront_commerce",
+  "boundary": "commerce_storefront_aggregate_public_transport",
+  "public_messages": {
+    "invalid_cart_selection": "Invalid cart selection",
+    "aggregate_unavailable": "Storefront commerce data is temporarily unavailable"
+  },
+  "source_contract": {
+    "aggregate_fetch_context_before_transport": true,
+    "unique_correlation_id": true,
+    "cart_validation_static_public_envelope": true,
+    "unavailable_static_public_envelope": true,
+    "failed_path_api_error_variant_preserved": true,
+    "ui_transport_display_public": false,
+    "raw_request_values_logged": false,
+    "private_transport_error_diagnostics": true,
+    "owner_command_wrappers_changed": false,
+    "graphql_adapter_changed": false,
+    "native_adapter_changed": false,
+    "shared_aggregate_composition_changed": false,
+    "transport_selection_changed": false,
+    "fallback_added": false
+  },
+  "safe_diagnostics": [
+    "owner",
+    "owner_operation",
+    "correlation_id",
+    "tenant_slug_configured",
+    "tenant_slug_length",
+    "selected_cart_id_present",
+    "selected_cart_id_length",
+    "locale_present",
+    "locale_length",
+    "failed_path",
+    "fallback_attempted",
+    "stable_code",
+    "boundary",
+    "private_ui_transport_error"
+  ],
+  "forbidden_public_or_structured_request_values": [
+    "tenant_slug",
+    "selected_cart_id",
+    "locale",
+    "native_error",
+    "graphql_error",
+    "UiTransportError display"
+  ],
+  "remaining_scope": [
+    "replace generic UiTransportError display mapping for create_storefront_payment_collection",
+    "replace generic UiTransportError display mapping for select_storefront_shipping_option",
+    "replace generic UiTransportError display mapping for complete_storefront_checkout",
+    "finish remaining ecommerce adapters and non-PortError public envelopes"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "focused_verifier_run": false,
+    "aggregate_verifier_run": false,
+    "broad_ecommerce_verifier_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  },
+  "execution": []
+}
