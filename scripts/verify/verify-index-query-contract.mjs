@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const scripts = [
+  'verify-index-implementation-plan-cursor.mjs',
   'verify-index-query-planner.mjs',
   'verify-index-postgres-query-compiler.mjs',
   'verify-index-query-result-decoder.mjs',
