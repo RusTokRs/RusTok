@@ -43,6 +43,23 @@ category, does not serialize bootstrap `search.api_key`, filters historical gene
 Search rows from list responses, and rejects generic Search reads and writes before
 database access.
 
+Periodic release verification found two unresolved runtime boundaries. Public
+GraphQL and native storefront Search accept `channel_id` from caller input rather
+than deriving it from trusted `RequestContext`, while `PgSearchEngine` applies the
+channel only to attribute filters, facets, and sorting—not to the ranked product
+result set. Product search documents also omit the canonical
+`metadata.channel_visibility.allowed_channel_slugs` projection, so an active
+product can remain searchable in a channel where the Commerce storefront would
+hide it.
+
+The durable projection contract is also incomplete. The generic
+`search_projection_inbox` and watermark schema exists, but only Forum events use
+it and its background reconciler. Content, Product, Blog, locale, tenant, and
+ordinary reindex work can still run directly through the process-local event
+handler. Terminal handler failure or broadcast lag is logged but has no durable
+Search consumer receipt, automatic retry lane, or guaranteed source rebuild, so a
+projection can remain stale after recovery.
+
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`.
@@ -77,6 +94,8 @@ database access.
   scope; enabling the module rebuilds it from retained owner rows.
 - Targeted Blog reindex deletes stale documents before source lookup, so a missing
   owner post cannot leave obsolete search data behind.
+- Storefront channel authority and product visibility remain `blocked`.
+- Durable non-Forum projection replay/recovery remains `blocked`.
 
 ## Deployment and connector boundary
 
@@ -124,20 +143,33 @@ rebuild behavior through replayable event transport.
 
 ## Next results
 
-1. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
+1. **Close storefront channel authority and visibility.** Derive channel identity
+   from trusted `RequestContext` for GraphQL and native storefront surfaces,
+   denormalize canonical product channel visibility into Search-owned documents,
+   backfill existing documents safely, and make base results, totals, facets,
+   typo fallback, and attribute operations use one fail-closed channel predicate.
+   **Done when:** caller-supplied channel IDs cannot select another channel and a
+   restricted product is absent from every Search response outside its allowed
+   channel.
+2. **Generalize durable Search projection recovery.** Use the existing generic
+   inbox/watermark schema for Content, Product, Blog, locale, tenant, and reindex
+   events; add bounded retry, dead-letter diagnostics, ordered replay, restart and
+   lag recovery, and source-of-truth rebuild evidence.
+   **Done when:** terminal handler failure, transport lag, duplicate/out-of-order
+   delivery, and process restart cannot leave a stale projection without an
+   observable durable recovery action.
+3. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
    storefront Search, native storefront Search, Search admin preview, and admin
    global search against projected product, content, and Blog documents. Retain
    proof that malformed Blog payloads remain non-navigable everywhere.
-2. **Verify click analytics.** Confirm every Search surface records the canonical
+4. **Verify click analytics.** Confirm every Search surface records the canonical
    href without reconstructing routes in analytics code.
-3. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
+5. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
    and retain migration/`pg_trgm`, event-delivery, targeted missing-post cleanup,
    module-disable cleanup, and category reindex results.
-4. **Execute live provider evidence.** Run query and suggestion providers under
+6. **Execute live provider evidence.** Run query and suggestion providers under
    deadline, error, locale, tenant, channel, ranking, and catalog-filter conditions.
-5. **Harden operations.** Add bounded ingestion/rebuild retry and DLQ behavior with
-   observable lag, consistency, and recovery outcomes.
-6. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
+7. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
    connectors must not bypass Search ports, owner URL mapping, or PostgreSQL
    baseline selection.
 
@@ -164,12 +196,12 @@ rebuild behavior through replayable event transport.
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
-- Status: `in_progress`
+- Status: `blocked`
 - Last verified at (UTC): `2026-07-30`
-- Scope inspected: `Search settings ownership, generic platform settings projection, owner Search GraphQL/settings service, FBA guard and carried event-delivery/rebuild concerns`
-- Findings: `P0=0, P1=1, P2=0, P3=0`
-- Fixed in this pass: `removed the non-authoritative generic platform_settings/search category, blocked read/write/list projection of historical generic Search rows, and added an owner-boundary FBA guard`
-- Remaining risks or blockers: `tenant/locale/channel isolation, event replay/rebuild, deletion, duplicate and out-of-order delivery, connector boundaries, click analytics and operational recovery still require source and live-evidence inspection`
-- Evidence: `source inspection confirms SearchSettingsService/search_settings is the owner path; the generic service now validates category before DB access and the standard Search FBA verifier rejects any restored rs.search projection`
-- Next action: `run same-SHA Search FBA and targeted settings tests, merge the focused P1 fix, then trace every ingestion/rebuild publisher-consumer path on a fresh branch`
-- Resume command: `cargo test -p rustok-server settings_service && npm run verify:search:fba && node scripts/verify/verify-search-blog-projection.mjs`
+- Scope inspected: `Search settings ownership, GraphQL/native storefront trust, PostgreSQL query channel semantics, product visibility projection, event dispatch, durable inbox/reconciliation, projection transactions, locale/delete/rebuild paths, connector and UI boundaries`
+- Findings: `P0=0, P1=3, P2=0, P3=1`
+- Fixed in this pass: `merged PR #2557 / commit 2a40ffc372449d6729b7d86fd6135b49555f7e9a, removing the non-authoritative generic platform_settings/search secret-bearing path and adding an owner-boundary guard`
+- Remaining risks or blockers: `P1: public GraphQL and native storefront Search trust caller channel_id and PgSearchEngine does not apply channel visibility to the base product result set; P1: non-Forum Search projections lack a durable consumer receipt, retry/DLQ lane and guaranteed replay/rebuild after terminal handler failure or broadcast lag; P3: projector_legacy.rs remains a production implementation behind a compatibility-named facade and should be replaced rather than wrapped`
+- Evidence: `source audit confirms RequestContext owns trusted channel id/slug, storefront Search instead passes normalized caller input, base FTS/typo CTEs filter only tenant/locale/query, and canonical Commerce visibility uses metadata.channel_visibility.allowed_channel_slugs; search_projection_inbox is generic but ForumProjectionInbox/Reconciler and its server worker are Forum-only; PR #2557 had a conflict-free three-file diff, while broad Cargo gates were blocked by unrelated repository compilation, Cargo.lock/Athanor, expired-advisory and invalid-MSRV workflow failures`
+- Next action: `on a fresh branch, implement one Search-owned denormalized channel-visibility contract across projector/backfill/query and trusted storefront adapters with PostgreSQL evidence; separately generalize the existing durable projection inbox/reconciler to every Search source and retain outage/restart/replay evidence`
+- Resume command: `rg "channel_id: input.channel_id" crates/rustok-search/src/graphql/query.rs crates/rustok-search/storefront/src/transport/native_server_adapter.rs && rg "query.channel_id" crates/rustok-search/src/pg_engine.rs && rg "let _ = handler.handle_with_retry|ForumProjectionInbox|ForumProjectionReconciler" crates/rustok-core/src/events/handler.rs crates/rustok-search/src apps/server/src/services`
