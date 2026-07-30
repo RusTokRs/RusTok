@@ -33,11 +33,11 @@ impl OrderChangeClientErrorContext {
             operation: "fetch_order_changes",
             correlation_id: order_change_client_correlation_id("fetch_order_changes"),
             token_present: token.is_some(),
-            tenant_slug_length: tenant_slug.map(str::chars).map(Iterator::count),
+            tenant_slug_length: tenant_slug.map(|value| value.chars().count()),
             tenant_id_length: tenant_id.chars().count(),
-            order_id_length: order_id.map(str::chars).map(Iterator::count),
+            order_id_length: order_id.map(|value| value.chars().count()),
             order_change_id_length: None,
-            status_length: status.map(str::chars).map(Iterator::count),
+            status_length: status.map(|value| value.chars().count()),
             payload_present: false,
         }
     }
@@ -83,7 +83,7 @@ impl OrderChangeClientErrorContext {
             operation,
             correlation_id: order_change_client_correlation_id(operation),
             token_present: token.is_some(),
-            tenant_slug_length: tenant_slug.map(str::chars).map(Iterator::count),
+            tenant_slug_length: tenant_slug.map(|value| value.chars().count()),
             tenant_id_length: tenant_id.chars().count(),
             order_id_length: None,
             order_change_id_length: Some(order_change_id.chars().count()),
