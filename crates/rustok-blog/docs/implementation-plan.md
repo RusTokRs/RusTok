@@ -16,12 +16,27 @@ server-derived plain text. Blog posts remain on their separate article
 cutover. The owner now has a fixed `article` profile boundary and a
 canonical-document write/read projection for the Next admin contract. The Blog
 GraphQL adapter already exposes canonical `RichTextDocument` writes and
-`RichTextView` reads, while `body`, `body_format`, and `content_json` remain
-temporary adapter fields confined to `graphql/types.rs` and
-`graphql/mutation.rs`. An executable guardrail plus its regression test prevents
-new aliases and is registered in `verify:blog:fba`. Do not add new
-`rt_json`/Markdown aliases, `content_json` fields, or local renderers; the
-Leptos/storefront and storage-schema cutover must finish atomically.
+`RichTextView` reads. Temporary `body`, `body_format`, and `content_json`
+transport declarations, projections, and compatibility conversions are now
+confined to `graphql/types.rs`. Both create/update conversions are guarded
+exactly beside the GraphQL input types; create has an integration regression test
+for explicit fields, canonical content, and temporary legacy defaults, while
+update retains its colocated unit regression test. `graphql/mutation.rs` only
+delegates typed `input.into()` values to the owner service and contains no legacy
+richtext field access or conversion implementation. The executable guardrail
+scans every other GraphQL file, rejects new aliases, and is registered with its
+regression test in `verify:blog:fba`.
+
+The Blog storefront selected-post path now consumes the owner read projection
+across both transports. GraphQL requests `content { document html }` plus
+`contentPlainText`; native SSR maps `PostResponse.content` and
+`content_plain_text`; Leptos renders only server-rendered `RichTextView` HTML and
+uses server-derived plain text when the projection is absent. The storefront DTO
+and active UI path no longer expose or interpret `body` / `bodyFormat`. The
+now-unused pure-core body-format summarizer remains to be removed, and the
+storage, remaining Leptos, Search, AI, and SEO cutover must still finish
+atomically. Do not add new `rt_json`/Markdown aliases, `content_json` fields, or
+local renderers.
 
 The host GraphQL composition binds `rustok-profiles::ProfileSummaryLoader` to
 the current request audience. Existing Blog post/list author batches therefore
@@ -104,9 +119,13 @@ outbox publication.
 - Blog Next post forms use one shared `RichTextDocument` editor and consume
   server-rendered `RichTextView` HTML; no format selector or local post
   renderer remains in that path.
+- Blog storefront selected posts consume the same server-rendered `RichTextView`
+  HTML and server-derived plain text through GraphQL and native SSR;
+  `source_verified_no_compile`, execution is user-owned.
 - Blog GraphQL richtext boundary: `source_verified_no_compile`; canonical fields,
-  the temporary legacy-file allowlist, verifier, self-test, and npm/FBA
-  registration are implemented; execution is user-owned.
+  the single temporary `types.rs` adapter/conversion owner, symmetric create/update
+  conversion regression coverage, resolver delegation, verifier, self-test, and
+  npm/FBA registration are implemented; execution is user-owned.
 
 ## Evidence and guardrails
 
@@ -118,6 +137,7 @@ outbox publication.
 - `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
 - `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
 - `crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
+- `crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
@@ -169,6 +189,20 @@ outbox publication.
 15. Added a Blog GraphQL richtext containment boundary: machine-readable evidence,
     an executable canonical-field/legacy-alias guardrail, self-regression coverage,
     named npm commands, and inclusion in the Blog FBA verification chain.
+16. Narrowed the GraphQL legacy allowance from all of `mutation.rs` to the exact
+    `UpdatePostInput` compatibility conversion, while keeping every resolver and
+    production helper under recursive leak detection.
+17. Moved the update compatibility conversion and its regression test beside the
+    GraphQL input types, removed all legacy richtext access from `mutation.rs`,
+    and tightened the guardrail to one adapter/conversion owner file.
+18. Added symmetric create/update GraphQL input conversion regression coverage:
+    canonical create payload preservation, temporary legacy defaults, exact
+    mapping checks, and ownership guards that keep both conversions out of
+    `mutation.rs`.
+19. Migrated the Blog storefront selected-post read path to the owner projection:
+    GraphQL and native SSR now return `RichTextView` plus server-derived plain
+    text, Leptos renders owner HTML with a plain-text fallback, and the active
+    storefront DTO/UI path no longer accepts `body` or `bodyFormat`.
 
 ## Next results
 
@@ -191,14 +225,15 @@ outbox publication.
    delivery, concurrent counters, missing-post retry, rollback, and outbox
    publication.
 6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
-   boundary and Next admin slice implemented; storage/Leptos/storefront parity
-   remains.** The registered GraphQL guardrail is a containment measure, not the
-   completed cutover. Replace the string body plus `content_json` transport
-   everywhere with `RichTextDocument`, assign the `article` profile in the owner
-   service, migrate `blog_post_translations` and relevant revision/audit data, and
-   use the canonical server HTML/plain-text projections for admin, both
-   storefronts, Search, AI/SEO, and the already-typed Comments integration. The
-   Blog package must not own Forum editor/API code.
+   boundary, Next admin slice, and Blog storefront read slice implemented;
+   storage, remaining Leptos, Search, AI, and SEO parity remains.** The registered
+   GraphQL/storefront guardrails are containment measures, not the completed
+   cutover. Replace the string body plus `content_json` transport everywhere with
+   `RichTextDocument`, assign the `article` profile in the owner service, migrate
+   `blog_post_translations` and relevant revision/audit data, remove the unused
+   storefront format summarizer, and use the canonical server HTML/plain-text
+   projections for every remaining consumer and the already-typed Comments
+   integration. The Blog package must not own Forum editor/API code.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and target `rustok-api`/`rustok-content` contracts.

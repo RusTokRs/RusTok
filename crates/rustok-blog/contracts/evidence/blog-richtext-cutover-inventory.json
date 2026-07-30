@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "article_richtext_cutover",
+  "status": "in_progress_source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "atomicity": "required",
+  "owner_contract": {
+    "write": "rustok_api::RichTextDocument",
+    "read": "rustok_api::RichTextView",
+    "plain_text": "server_derived",
+    "profile": "article"
+  },
+  "checks": [
+    {
+      "name": "owner_article_projection",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/src/richtext.rs",
+      "required_markers": [
+        "RichTextProfile::Article",
+        "pub fn article_document_from_plain_text(text: &str)",
+        "pub fn normalize_article(document: RichTextDocument)",
+        "pub fn project_article(document: RichTextDocument)",
+        "pub fn project_stored_article(body: &str, format: &str)"
+      ],
+      "forbidden_markers": []
+    },
+    {
+      "name": "storage_schema",
+      "status": "legacy_blocker",
+      "path": "crates/rustok-blog/src/entities/blog_post_translation.rs",
+      "required_markers": [
+        "pub body: String",
+        "pub body_format: String"
+      ],
+      "forbidden_markers": [
+        "pub content: RichTextDocument",
+        "pub content_plain_text: String"
+      ]
+    },
+    {
+      "name": "graphql_transport",
+      "status": "contained_compatibility",
+      "path": "crates/rustok-blog/src/graphql/types.rs",
+      "required_markers": [
+        "pub content: Option<RichTextView>",
+        "pub content_plain_text: Option<String>",
+        "pub content: Option<RichTextDocument>",
+        "pub body: Option<String>",
+        "pub content_json: Option<Value>"
+      ],
+      "forbidden_markers": [
+        "rt_json",
+        "markdown_body",
+        "raw_content_json"
+      ]
+    },
+    {
+      "name": "next_admin",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/admin/src/model.rs",
+      "required_markers": [
+        "pub content: Option<RichTextView>",
+        "pub content_plain_text: Option<String>",
+        "pub content: RichTextDocument"
+      ],
+      "forbidden_markers": [
+        "pub body:",
+        "pub body_format:"
+      ]
+    },
+    {
+      "name": "leptos_storefront_model",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/storefront/src/model.rs",
+      "required_markers": [
+        "use rustok_api::RichTextView",
+        "pub content: Option<RichTextView>",
+        "pub content_plain_text: Option<String>"
+      ],
+      "forbidden_markers": [
+        "pub body:",
+        "pub body_format:"
+      ]
+    },
+    {
+      "name": "leptos_storefront_graphql",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+      "required_markers": [
+        "content { document html } contentPlainText"
+      ],
+      "forbidden_markers": [
+        " body bodyFormat "
+      ]
+    },
+    {
+      "name": "leptos_storefront_native",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+      "required_markers": [
+        "content: post.content",
+        "content_plain_text: post.content_plain_text"
+      ],
+      "forbidden_markers": [
+        "body: Some(post.body)",
+        "body_format: post.body_format"
+      ]
+    },
+    {
+      "name": "leptos_storefront_rendering",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/storefront/src/ui/leptos.rs",
+      "required_markers": [
+        "inner_html=content.html",
+        "post.content_plain_text"
+      ],
+      "forbidden_markers": [
+        "post.body_format",
+        "summarized_body_or_fallback("
+      ]
+    },
+    {
+      "name": "search_projection",
+      "status": "legacy_blocker",
+      "path": "crates/rustok-search/src/blog_projector.rs",
+      "required_markers": [
+        "COALESCE(bt.body, '')"
+      ],
+      "forbidden_markers": []
+    },
+    {
+      "name": "seo_projection",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/src/seo_targets.rs",
+      "required_markers": [
+        "post.content_plain_text.as_deref().and_then(summarize_text)"
+      ],
+      "forbidden_markers": [
+        "summarize_text(post.body.as_str())"
+      ]
+    },
+    {
+      "name": "ai_blog_draft_writer",
+      "status": "legacy_blocker",
+      "path": "crates/rustok-ai/src/direct.rs",
+      "required_markers": [
+        "body_format: Some(CONTENT_FORMAT_MARKDOWN.to_string())",
+        "content: None",
+        "body_format: CONTENT_FORMAT_MARKDOWN.to_string()"
+      ],
+      "forbidden_markers": []
+    }
+  ],
+  "blocking_surfaces": [
+    "storage_schema",
+    "search_projection",
+    "ai_blog_draft_writer"
+  ],
+  "completion_conditions": [
+    "storage_schema_uses_canonical_document_and_server_plain_text",
+    "graphql_legacy_transport_fields_removed_atomically",
+    "search_indexes_server_derived_plain_text",
+    "seo_uses_server_derived_plain_text",
+    "ai_blog_drafts_write_richtext_document",
+    "all_admin_and_storefront_paths_render_server_projection",
+    "no_markdown_format_alias_or_raw_json_write_path_remains"
+  ]
+}

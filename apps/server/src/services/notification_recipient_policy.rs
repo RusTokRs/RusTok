@@ -4,6 +4,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_core::ModuleRuntimeExtensions;
+#[cfg(feature = "mod-social_graph")]
+use rustok_index::SharedIndexQueryRuntime;
 use rustok_notifications::{
     NotificationBlockReadPort, NotificationBlockReadRuntime, NotificationMuteReadPort,
     NotificationMuteReadRuntime, NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
@@ -15,14 +17,28 @@ use rustok_profiles::{
     ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest,
     ProfilePrivacyRuntime, ProfilePrivacyService,
 };
+#[cfg(feature = "mod-social_graph")]
+use rustok_social_graph::{
+    IndexPrivacyShadowFailureCode, IndexPrivacyShadowObservation, IndexPrivacyShadowObserver,
+    IndexPrivacyShadowOperation, IndexPrivacyShadowOutcome,
+    IndexShadowSocialGraphPrivacyReadPort,
+};
 use rustok_social_graph::{
     SocialGraphPairRequest, SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime,
     SocialGraphService,
+};
+#[cfg(feature = "mod-social_graph")]
+use rustok_telemetry::social_graph_index_privacy_shadow_metrics::{
+    SocialGraphIndexPrivacyShadowOperation as MetricOperation,
+    SocialGraphIndexPrivacyShadowOutcome as MetricOutcome, record_failure, record_observation,
 };
 use sea_orm::DatabaseConnection;
 
 pub const NOTIFICATION_CANDIDATE_WORKER_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED";
+#[cfg(feature = "mod-social_graph")]
+pub const SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED_ENV: &str =
+    "RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED";
 const RECIPIENT_POLICY_DEADLINE: Duration = Duration::from_secs(2);
 const RECIPIENT_POLICY_ACTOR: &str = "notifications-recipient-policy";
 
@@ -78,6 +94,65 @@ impl NotificationMuteReadPort for SocialGraphNotificationMuteAdapter {
     }
 }
 
+#[cfg(feature = "mod-social_graph")]
+struct TelemetryIndexPrivacyShadowObserver;
+
+#[cfg(feature = "mod-social_graph")]
+impl IndexPrivacyShadowObserver for TelemetryIndexPrivacyShadowObserver {
+    fn observe(&self, observation: IndexPrivacyShadowObservation) {
+        let operation = metric_operation(observation.operation);
+        match (
+            observation.outcome,
+            observation.failure_code,
+            observation.retryable,
+        ) {
+            (IndexPrivacyShadowOutcome::Error, Some(code), Some(retryable)) => record_failure(
+                operation,
+                code.as_str(),
+                retryable,
+                observation.comparison_duration,
+            ),
+            (IndexPrivacyShadowOutcome::Error, _, _) => record_failure(
+                operation,
+                IndexPrivacyShadowFailureCode::Other.as_str(),
+                false,
+                observation.comparison_duration,
+            ),
+            (outcome, _, _) => record_observation(
+                operation,
+                metric_outcome(outcome),
+                observation.comparison_duration,
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "mod-social_graph")]
+fn metric_operation(operation: IndexPrivacyShadowOperation) -> MetricOperation {
+    match operation {
+        IndexPrivacyShadowOperation::BlocksBetween => MetricOperation::BlocksBetween,
+        IndexPrivacyShadowOperation::SourceMutesTarget => MetricOperation::SourceMutesTarget,
+        IndexPrivacyShadowOperation::SourceFollowsTarget => MetricOperation::SourceFollowsTarget,
+        IndexPrivacyShadowOperation::SourceFollowsTargets => MetricOperation::SourceFollowsTargets,
+    }
+}
+
+#[cfg(feature = "mod-social_graph")]
+fn metric_outcome(outcome: IndexPrivacyShadowOutcome) -> MetricOutcome {
+    match outcome {
+        IndexPrivacyShadowOutcome::MatchPositive => MetricOutcome::MatchPositive,
+        IndexPrivacyShadowOutcome::MatchNegative => MetricOutcome::MatchNegative,
+        IndexPrivacyShadowOutcome::FalseNegative => MetricOutcome::FalseNegative,
+        IndexPrivacyShadowOutcome::FalsePositive => MetricOutcome::FalsePositive,
+        IndexPrivacyShadowOutcome::MatchBatchEmpty => MetricOutcome::MatchBatchEmpty,
+        IndexPrivacyShadowOutcome::MatchBatchNonempty => MetricOutcome::MatchBatchNonempty,
+        IndexPrivacyShadowOutcome::BatchMissing => MetricOutcome::BatchMissing,
+        IndexPrivacyShadowOutcome::BatchExtra => MetricOutcome::BatchExtra,
+        IndexPrivacyShadowOutcome::BatchMixed => MetricOutcome::BatchMixed,
+        IndexPrivacyShadowOutcome::Error => MetricOutcome::Error,
+    }
+}
+
 #[derive(Clone)]
 pub struct ServerNotificationRecipientPolicy {
     profiles: ProfilePrivacyRuntime,
@@ -90,10 +165,44 @@ impl ServerNotificationRecipientPolicy {
         db: DatabaseConnection,
         extensions: &ModuleRuntimeExtensions,
     ) -> NotificationRecipientPolicyRuntime {
+        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> =
+            Arc::new(SocialGraphService::new(db.clone()));
+        Self::compose_with_graph(
+            db,
+            extensions,
+            SocialGraphPrivacyRuntime::new(graph_port),
+        )
+    }
+
+    #[cfg(feature = "mod-social_graph")]
+    pub fn compose_with_index_shadow_runtime(
+        db: DatabaseConnection,
+        extensions: &ModuleRuntimeExtensions,
+        runtime: SharedIndexQueryRuntime,
+    ) -> NotificationRecipientPolicyRuntime {
+        let authoritative: Arc<dyn SocialGraphPrivacyReadPort> =
+            Arc::new(SocialGraphService::new(db.clone()));
+        let shadow: Arc<dyn SocialGraphPrivacyReadPort> = Arc::new(
+            IndexShadowSocialGraphPrivacyReadPort::with_observer(
+                authoritative,
+                runtime,
+                Arc::new(TelemetryIndexPrivacyShadowObserver),
+            ),
+        );
+        Self::compose_with_graph(
+            db,
+            extensions,
+            SocialGraphPrivacyRuntime::new(shadow),
+        )
+    }
+
+    fn compose_with_graph(
+        db: DatabaseConnection,
+        extensions: &ModuleRuntimeExtensions,
+        graph: SocialGraphPrivacyRuntime,
+    ) -> NotificationRecipientPolicyRuntime {
         let profile_port: Arc<dyn ProfilePrivacyReadPort> =
-            Arc::new(ProfilePrivacyService::new(db.clone()));
-        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> = Arc::new(SocialGraphService::new(db));
-        let graph = SocialGraphPrivacyRuntime::new(graph_port);
+            Arc::new(ProfilePrivacyService::new(db));
         let blocks = extensions
             .get::<NotificationBlockReadRuntime>()
             .cloned()
@@ -131,6 +240,17 @@ impl ServerNotificationRecipientPolicy {
             ),
         )
         .with_deadline(RECIPIENT_POLICY_DEADLINE)
+    }
+}
+
+#[cfg(feature = "mod-social_graph")]
+pub(crate) fn social_graph_index_privacy_shadow_enabled() -> Result<bool, String> {
+    match std::env::var(SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED_ENV) {
+        Ok(value) => parse_bool(SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED_ENV, &value),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(error) => Err(format!(
+            "failed to read {SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED_ENV}: {error}"
+        )),
     }
 }
 
@@ -235,6 +355,17 @@ fn candidate_worker_enabled_from_environment() -> bool {
             );
             false
         }
+    }
+}
+
+#[cfg(feature = "mod-social_graph")]
+fn parse_bool(variable: &str, value: &str) -> Result<bool, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "" | "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(format!(
+            "{variable} must be one of true/false, 1/0, yes/no, or on/off"
+        )),
     }
 }
 

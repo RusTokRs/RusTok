@@ -92,7 +92,7 @@ mod-translation = [
 ]
 mod-seo       = ["dep:rustok-seo", "mod-content", "rustok-distribution/mod-seo"]
 mod-workflow  = ["dep:rustok-workflow", "rustok-distribution/mod-workflow"]
-mod-ai        = ["rustok-distribution/mod-ai"]
+mod-ai        = ["dep:rustok-ai", "rustok-distribution/mod-ai"]
 ai-translation = ["mod-ai", "mod-translation", "rustok-distribution/ai-translation"]
 
 [dependencies]
@@ -156,7 +156,7 @@ rustok-search = { workspace = true, features = ["graphql"] }
 rustok-tenant.workspace = true
 rustok-rbac = { workspace = true, features = ["graphql"] }
 rustok-mcp = { workspace = true, features = ["graphql"] }
-rustok-ai = { workspace = true, features = ["graphql"] }
+rustok-ai = { workspace = true, features = ["graphql"], optional = true }
 rustok-runtime.workspace = true
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true

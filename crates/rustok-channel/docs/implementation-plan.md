@@ -25,6 +25,15 @@ five-second database reconciliation performs a safe namespace-wide local clear
 when delivery was missed, the generation regressed, or a replica starts from an
 unverified baseline. The worker runtime is a critical host guardrail.
 
+PR #2469 stages database-owned fail-closed invariants found in cycle-001.
+PostgreSQL and SQLite serialize default-channel, active-policy-set and
+primary-target promotion; host target claims are rebuilt from authoritative
+channel rows and uniquely scoped by tenant; OAuth bindings and policy actions
+reject cross-tenant relations and incompatible parent tenant moves. Historical
+duplicates or mismatches block the migration instead of being silently
+rewritten. The changes are not part of `main` and are not compiled/live verified
+until the queued migration and cache workflows complete successfully on one SHA.
+
 The source now includes eleven durable-recovery evidence layers:
 
 - SQLite reader tests prove that independent replica handles observe committed
@@ -101,7 +110,31 @@ contracts documented and source-locked.
 
 ## Open results
 
-1. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
+1. **Move channel display copy to locale-attributed storage.** `channels.slug`
+   remains the language-neutral identity, while `channels.name` is still
+   human-facing copy in the base row. Add tenant-composite
+   `channel_translations`, backfill legacy copy with truthful provenance, require
+   a host-resolved effective locale for writes, and return exact-locale/fallback
+   projections consistently from REST, native server functions, owner ports,
+   cache values and admin UI. Policy-set display names must be classified and
+   cut over in the same owner migration if they are tenant-visible copy.
+   **Depends on:** the accepted multilingual database contract and translation
+   control-plane boundary.
+   **Done when:** base rows are language-neutral, locale columns are at least
+   `VARCHAR(32)`, writes are atomic with translations, and runtime tests cover
+   requested -> tenant default -> first available selection without returning
+   storage-only `und` as a request fallback.
+
+2. **Merge and verify the tenant/concurrency invariant fix.** PR #2469 adds
+   database-owned default/active/primary promotion, host-claim serialization,
+   tenant relation guards, historical-data preflights and an SQLite transaction
+   seal. Fix every channel-specific compile, migration, PostgreSQL or Redis
+   failure before merging; do not treat queued or cancelled jobs as evidence.
+   **Depends on:** a Rust 1.96 runner plus PostgreSQL 17 and Redis 7 jobs.
+   **Done when:** the relevant jobs pass on one PR SHA and the source changes are
+   merged into `main` without weakening the fail-closed migrations.
+
+3. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
    server two-replica, lagged-listener resolved-value, PostgreSQL, Redis readiness,
    Redis restart and cache-owned latency/circuit scenarios on one reconciled
    `main` revision, then fix every format, compile, test or Clippy failure before
@@ -111,7 +144,7 @@ contracts documented and source-locked.
    **Done when:** `compiled-contract`, `postgres-channel`, and `live-redis` pass
    on the same revision and the result is recorded without copying raw logs.
 
-2. **Collect full runtime evidence for channel resolution.** Exercise
+4. **Collect full runtime evidence for channel resolution.** Exercise
    `ChannelReadPort` and server middleware with real locale/OAuth facts, policy
    selection, inactive/degraded behavior, cache isolation, generation rollover,
    and the durable cross-replica behavior before promotion beyond
@@ -120,14 +153,14 @@ contracts documented and source-locked.
    **Done when:** targeted Rust middleware/port tests provide reproducible
    runtime evidence for every published read and fallback profile.
 
-3. **Extend channel-aware proof points only with owner evidence.** New domain
+5. **Extend channel-aware proof points only with owner evidence.** New domain
    reads must use the already resolved `ChannelContext`, local tests, and local
    documentation; they must not introduce a second channel-selection mechanism.
    **Depends on:** the consuming module's public contract.
    **Done when:** the proof-point verifier and affected module docs identify the
    same resolved-channel source and visibility behavior.
 
-4. **Defer richer target or connector taxonomy until pressure is concrete.**
+6. **Defer richer target or connector taxonomy until pressure is concrete.**
    Do not add speculative target types or connector abstraction merely to expand
    the model.
    **Depends on:** a demonstrated runtime/product need.
@@ -141,6 +174,7 @@ contracts documented and source-locked.
 - `npm run verify:channel:resolution-contract`
 - `npm run verify:channel:proof-points`
 - `cargo check -p rustok-channel --lib`
+- `cargo test -p rustok-channel --lib`
 - `cargo test -p rustok-channel invalidation_generation --lib`
 - `cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib`
 - `cargo test -p rustok-server channel_cache_invalidation --lib`
@@ -153,12 +187,13 @@ contracts documented and source-locked.
 - `cargo clippy -p rustok-channel --lib -- -D warnings`
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
-- Targeted policy-lifecycle tests.
+- Targeted policy-lifecycle and migration-invariant tests.
 
 ## References
 
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 - [Cache operations and recovery runbook](../../rustok-cache/docs/operations.md)
+- [Multilingual database contract audit](../../../docs/architecture/database-multilingual-audit.md)
 
 ## Change rules
 
@@ -169,3 +204,18 @@ contracts documented and source-locked.
    selection documentation with a public contract change.
 4. Update this status block and `docs/modules/registry.md` with an FFA/FBA
    boundary change.
+5. Keep channel base rows language-neutral; tenant-visible display copy belongs
+   to locale-attributed owner translations.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `blocked`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `channel ownership and transport boundaries; tenant-scoped reads/writes; OAuth and policy relation integrity; default/active/primary selection concurrency; host claim uniqueness; durable invalidation and migration replay; cache dimensions; multilingual database contract`
+- Findings: `P0=0, P1=5, P2=0, P3=1`
+- Fixed in this pass: `staged PR #2469 with DB-owned single-default, single-active-policy and single-primary promotion; tenant-scoped host claims; cross-tenant OAuth/policy guards; fail-fast historical preflights; replay-safe claim rebuild and SQLite transaction seal; isolated legacy OAuth fixture normalization to cfg(test)`
+- Remaining risks or blockers: `P1 channel-display-name multilingual cutover is open; the four staged tenant/concurrency P1 fixes are not in main and remain unverified because Actions jobs on SHA 53ce761f7801d8893278744b84051325f2439ede are queued; local clone/build is unavailable because github.com DNS resolution fails`
+- Evidence: `owner service, REST/native adapters, ChannelReadPort, navigation consumer, resolution pipeline, all channel migrations, durable invalidation tests, SeaORM 1.1 migration transaction behavior, cache workflow, migration workflow and multilingual database audit were inspected; draft PR #2469 and runs 30517068108/30517068093 contain the pending source evidence`
+- Next action: `resume PR #2469 when a runner is available, fix every channel-specific failure, merge only after same-SHA evidence, then implement the channel translation cutover before closing-gate completion`
+- Resume command: `cargo xtask module validate channel && cargo xtask module test channel && cargo test -p rustok-channel --lib`

@@ -6,7 +6,8 @@
   "canonical_contract": {
     "write": "rustok_api::RichTextDocument",
     "read": "rustok_api::RichTextView",
-    "plain_text": "server-derived"
+    "plain_text": "server-derived",
+    "resolver_conversion": "typed input.into() delegation"
   },
   "scan_scope": "crates/rustok-blog/src/graphql/**/*.rs",
   "legacy_adapter_fields": [
@@ -15,15 +16,33 @@
     "content_json"
   ],
   "legacy_adapter_files": [
-    "crates/rustok-blog/src/graphql/types.rs",
-    "crates/rustok-blog/src/graphql/mutation.rs"
+    "crates/rustok-blog/src/graphql/types.rs"
+  ],
+  "conversion_owner": {
+    "file": "crates/rustok-blog/src/graphql/types.rs",
+    "scopes": [
+      "impl From<CreatePostInput> for DomainCreatePostInput",
+      "impl From<UpdatePostInput> for DomainUpdatePostInput"
+    ],
+    "reason": "temporary GraphQL-to-owner compatibility conversions"
+  },
+  "conversion_tests": [
+    "crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs",
+    "crates/rustok-blog/src/graphql/types.rs #[cfg(test)] update conversion module"
   ],
   "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
   "test_coverage": [
     "canonical RichTextDocument/RichTextView fields are required",
+    "create and update resolvers delegate conversion through input.into()",
+    "mutation resolvers do not own transport conversion or access richtext fields directly",
+    "retained create and update conversions live beside GraphQL input types",
+    "create conversion preserves explicit transport fields and canonical RichTextDocument",
+    "create conversion retains the temporary empty-body and Markdown-format defaults",
+    "update conversion retains its field-preservation regression test beside the input type",
     "all Blog GraphQL Rust files are scanned recursively",
-    "legacy fields are rejected outside the explicit adapter allowlist",
+    "legacy fields are rejected outside types.rs",
+    "retained legacy declarations and both conversion mappings are checked exactly",
     "new legacy aliases are rejected in every GraphQL file",
     "legacy field removal requires evidence and guardrail tightening"
   ],
