@@ -26,12 +26,10 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF NEW.index_revision <= OLD.index_revision THEN
-        IF OLD.index_revision = 9223372036854775807 THEN
-            RAISE EXCEPTION 'product index revision exhausted for product %', OLD.id;
-        END IF;
-        NEW.index_revision := OLD.index_revision + 1;
+    IF OLD.index_revision = 9223372036854775807 THEN
+        RAISE EXCEPTION 'product index revision exhausted for product %', OLD.id;
     END IF;
+    NEW.index_revision := OLD.index_revision + 1;
     RETURN NEW;
 END;
 $$;
