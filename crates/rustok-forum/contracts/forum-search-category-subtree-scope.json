@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2A",
+  "status": "source_complete_execution_pending",
+  "scope": "Publish a Forum-owned bounded category-subtree scope for caller-composed Search queries without adding a Search-to-Forum dependency",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner_service": "crates/rustok-forum/src/services/category_search_scope.rs",
+  "owner_export": "crates/rustok-forum/src/services/mod.rs",
+  "exact_filter_contract": "crates/rustok-forum/contracts/forum-search-exact-category-filter.json",
+  "search_query_contract": "crates/rustok-search/src/engine.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2-category-subtree-scope.md",
+  "verifier": "scripts/verify/verify-forum-search-category-subtree-scope.mjs",
+  "bounds": {
+    "raw_root_ids": 10,
+    "tenant_tree_nodes": 512,
+    "tree_depth": 16,
+    "expanded_ids": 512
+  },
+  "authorization": {
+    "requires_forum_categories_list": true,
+    "uses_existing_inherited_public_authenticated_visibility": true,
+    "excludes_archived_categories": true,
+    "missing_foreign_hidden_or_archived_root_is_not_found": true,
+    "hidden_or_archived_branch_is_pruned": true,
+    "excluded_ancestor_blocks_selected_descendant": true
+  },
+  "ordering": {
+    "raw_root_bound_is_checked_before_deduplication": true,
+    "requested_roots_preserve_first_occurrence_order": true,
+    "children_follow_owner_position_then_id_order": true,
+    "overlapping_roots_are_deduplicated": true,
+    "expanded_output_is_deterministic_preorder": true
+  },
+  "integration_boundary": {
+    "forum_imports_search": false,
+    "search_imports_forum": false,
+    "returns_ids_for_search_query_category_ids": true,
+    "search_reads_forum_tree_at_query_time": false,
+    "host_search_composition_complete": false
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "search_query_shape_changed": false,
+    "forum_projection_shape_changed": false,
+    "database_migration_added": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false,
+    "exact_category_filter_preserved": true
+  },
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-forum category_search_scope -- --nocapture",
+      "node scripts/verify/verify-forum-search-category-subtree-scope.mjs",
+      "node scripts/verify/verify-forum-search-exact-category-filter.mjs",
+      "cargo xtask module validate forum"
+    ]
+  },
+  "remaining_scope": [
+    "compose the owner-expanded IDs into a Forum Search entrypoint before Search execution",
+    "apply the complete richer Forum audience decision for role trust channel group and explicit-user selectors",
+    "add author tag locale date solved kind channel group and attachment-presence filters",
+    "complete owner-issued projection revision ordering reconciliation and deletion or ACL cleanup",
+    "capture maintainer-executed PostgreSQL query and result evidence"
+  ],
+  "non_claims": [
+    "FORUM-23 is complete",
+    "the public Search entrypoint expands category roots",
+    "richer channel group trust or explicit-user audience authorization is complete",
+    "runtime verification was executed"
+  ]
+}
