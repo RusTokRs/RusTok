@@ -230,18 +230,15 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
 
         let db = runtime_ctx.db_clone();
         let service = TenantService::new(db.clone());
-        let tenant_record = service
-            .get_tenant(tenant.id)
-            .await
-            .map_err(|error| {
-                tenant_admin_owner_error(
-                    error,
-                    "get_tenant",
-                    correlation_id.as_str(),
-                    tenant.id,
-                    "Tenant data is temporarily unavailable",
-                )
-            })?;
+        let tenant_record = service.get_tenant(tenant.id).await.map_err(|error| {
+            tenant_admin_owner_error(
+                error,
+                "get_tenant",
+                correlation_id.as_str(),
+                tenant.id,
+                "Tenant data is temporarily unavailable",
+            )
+        })?;
         let explicit_modules = service
             .list_tenant_modules(tenant.id)
             .await
@@ -273,8 +270,8 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
                     "Module composition is temporarily unavailable",
                 )
             })?;
-        let manifest: RuntimeModulesManifest = serde_json::from_value(snapshot.manifest).map_err(
-            |error| {
+        let manifest: RuntimeModulesManifest =
+            serde_json::from_value(snapshot.manifest).map_err(|error| {
                 tenant_admin_internal_error(
                     error,
                     "decode_active_manifest",
@@ -283,8 +280,7 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
                     "tenant.admin_manifest_invalid",
                     "Module configuration is temporarily unavailable",
                 )
-            },
-        )?;
+            })?;
         let manifest_defaults = manifest
             .settings
             .default_enabled
