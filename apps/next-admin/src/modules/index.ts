@@ -5,6 +5,7 @@ import '@rustok/cache-admin/register';
 import '../../packages/commerce/src';
 import '../../packages/email/src';
 import '@rustok/events-admin/register';
+import '../../packages/forum/src';
 import '@rustok/iggy-connector-admin';
 import '../../packages/rbac/src';
 import '../../packages/rustok-product/src';
