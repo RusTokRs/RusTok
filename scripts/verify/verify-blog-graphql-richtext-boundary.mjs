@@ -7,6 +7,9 @@ import { join, relative, sep } from 'node:path';
 const GRAPHQL_ROOT = 'crates/rustok-blog/src/graphql';
 const TYPES_PATH = `${GRAPHQL_ROOT}/types.rs`;
 const MUTATION_PATH = `${GRAPHQL_ROOT}/mutation.rs`;
+const CREATE_CONVERSION_TEST_PATH =
+  'crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs';
+const CREATE_CONVERSION_START = 'impl From<CreatePostInput> for DomainCreatePostInput {';
 const UPDATE_CONVERSION_START = 'impl From<UpdatePostInput> for DomainUpdatePostInput {';
 const UPDATE_CONVERSION_END = '#[cfg(test)]\nmod tests {';
 
@@ -49,8 +52,14 @@ const sources = new Map(await Promise.all(
 
 const typesSource = sources.get(TYPES_PATH);
 const mutationSource = sources.get(MUTATION_PATH);
+const createConversionTestSource = await readFile(CREATE_CONVERSION_TEST_PATH, 'utf8')
+  .catch(() => '');
 assert.ok(typesSource, `${TYPES_PATH} must remain part of the Blog GraphQL boundary`);
 assert.ok(mutationSource, `${MUTATION_PATH} must remain part of the Blog GraphQL boundary`);
+assert.ok(
+  createConversionTestSource,
+  `${CREATE_CONVERSION_TEST_PATH} must cover CreatePostInput transport conversion`,
+);
 
 const canonicalTypeChecks = [
   'pub content: Option<RichTextView>',
@@ -65,16 +74,28 @@ for (const needle of canonicalTypeChecks) {
   );
 }
 
+const createConversion = sourceRange(
+  typesSource,
+  CREATE_CONVERSION_START,
+  UPDATE_CONVERSION_START,
+  TYPES_PATH,
+);
 const updateConversion = sourceRange(
   typesSource,
   UPDATE_CONVERSION_START,
   UPDATE_CONVERSION_END,
   TYPES_PATH,
 );
-assert.ok(
-  !mutationSource.includes(UPDATE_CONVERSION_START),
-  'Blog GraphQL mutation resolvers must not own UpdatePostInput transport conversion',
-);
+
+for (const [input, marker] of [
+  ['CreatePostInput', CREATE_CONVERSION_START],
+  ['UpdatePostInput', UPDATE_CONVERSION_START],
+]) {
+  assert.ok(
+    !mutationSource.includes(marker),
+    `Blog GraphQL mutation resolvers must not own ${input} transport conversion`,
+  );
+}
 
 const resolverSources = new Map([
   [
@@ -118,16 +139,52 @@ for (const declaration of retainedLegacyDeclarations) {
   );
 }
 
-const retainedConversionMappings = [
-  'body: input.body',
-  'body_format: input.body_format',
-  'content_json: input.content_json',
-  'content: input.content',
+const retainedConversionMappings = new Map([
+  [
+    'CreatePostInput',
+    {
+      source: createConversion.source,
+      mappings: [
+        'body: input.body.unwrap_or_default()',
+        '.unwrap_or_else(|| rustok_core::CONTENT_FORMAT_MARKDOWN.to_string())',
+        'content_json: input.content_json',
+        'content: input.content',
+      ],
+    },
+  ],
+  [
+    'UpdatePostInput',
+    {
+      source: updateConversion.source,
+      mappings: [
+        'body: input.body',
+        'body_format: input.body_format',
+        'content_json: input.content_json',
+        'content: input.content',
+      ],
+    },
+  ],
+]);
+
+for (const [input, { source, mappings }] of retainedConversionMappings) {
+  for (const mapping of mappings) {
+    assert.ok(
+      source.includes(mapping),
+      `${TYPES_PATH} ${input} conversion no longer contains ${mapping}; update the evidence status and tighten this guardrail`,
+    );
+  }
+}
+
+const createConversionTestChecks = [
+  'create_post_input_conversion_preserves_transport_fields',
+  'create_post_input_conversion_applies_legacy_defaults',
+  'RichTextDocument::single_paragraph',
+  'rustok_core::CONTENT_FORMAT_MARKDOWN',
 ];
-for (const mapping of retainedConversionMappings) {
+for (const needle of createConversionTestChecks) {
   assert.ok(
-    updateConversion.source.includes(mapping),
-    `${TYPES_PATH} UpdatePostInput conversion no longer contains ${mapping}; update the evidence status and tighten this guardrail`,
+    createConversionTestSource.includes(needle),
+    `${CREATE_CONVERSION_TEST_PATH} is missing create conversion coverage: ${needle}`,
   );
 }
 
