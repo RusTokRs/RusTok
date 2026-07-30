@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -59,22 +59,27 @@
     ],
     "source_gates": {
       "admin_boundary": {
+        "package_script": "verify:blog:admin-boundary",
         "verifier": "scripts/verify/verify-blog-admin-boundary.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json"
       },
       "storefront_boundary": {
+        "package_script": "verify:blog:storefront-boundary",
         "verifier": "scripts/verify/verify-blog-storefront-boundary.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
       },
       "graphql_richtext_boundary": {
+        "package_script": "verify:blog:graphql-richtext-boundary",
         "verifier": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json"
       },
       "richtext_offline_backfill": {
+        "package_script": "verify:blog:richtext-offline-backfill",
         "verifier": "scripts/verify/verify-blog-richtext-offline-backfill.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json"
       },
       "forum_ui_ownership": {
+        "package_script": "verify:blog:forum-ui-ownership",
         "verifier": "scripts/verify/verify-blog-forum-ui-ownership.mjs",
         "evidence": "crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json"
       }

@@ -12,22 +12,27 @@ export const BLOG_FBA_VERIFICATION_STEPS = [
 
 export const BLOG_FBA_SOURCE_GATES = {
   admin_boundary: {
+    package_script: 'verify:blog:admin-boundary',
     verifier: 'scripts/verify/verify-blog-admin-boundary.mjs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json',
   },
   storefront_boundary: {
+    package_script: 'verify:blog:storefront-boundary',
     verifier: 'scripts/verify/verify-blog-storefront-boundary.mjs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json',
   },
   graphql_richtext_boundary: {
+    package_script: 'verify:blog:graphql-richtext-boundary',
     verifier: 'scripts/verify/verify-blog-graphql-richtext-boundary.mjs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json',
   },
   richtext_offline_backfill: {
+    package_script: 'verify:blog:richtext-offline-backfill',
     verifier: 'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
   },
   forum_ui_ownership: {
+    package_script: 'verify:blog:forum-ui-ownership',
     verifier: 'scripts/verify/verify-blog-forum-ui-ownership.mjs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json',
   },
@@ -81,9 +86,21 @@ export function collectBlogFbaVerificationChainFailures({
 
   for (const [gateName, expectedGate] of Object.entries(BLOG_FBA_SOURCE_GATES)) {
     const gate = sourceGates[gateName];
+    if (gate?.package_script !== expectedGate.package_script) {
+      failures.push(`registry source gate ${gateName} package script drift`);
+    }
     if (gate?.verifier !== expectedGate.verifier || gate?.evidence !== expectedGate.evidence) {
       failures.push(`registry source gate ${gateName} path drift`);
     }
+
+    const leafCommand = packageJson?.scripts?.[expectedGate.package_script];
+    const expectedLeafCommand = `node ${expectedGate.verifier}`;
+    if (typeof leafCommand !== 'string') {
+      failures.push(`package.json missing source gate script ${expectedGate.package_script}`);
+    } else if (leafCommand !== expectedLeafCommand) {
+      failures.push(`package source gate ${gateName} command drift`);
+    }
+
     for (const filePath of [expectedGate.verifier, expectedGate.evidence]) {
       if (!existsSync(filePath)) {
         failures.push(`registry source gate ${gateName} missing ${filePath}`);

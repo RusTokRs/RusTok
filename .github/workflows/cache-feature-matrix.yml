@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cache-feature-matrix-${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +23,6 @@ concurrency:
 
 jobs:
   memory-only:
-    if: github.head_ref != 'agent/blog-fba-leaf-script-binding-20260730'
     name: Memory-only cache contract
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -42,86 +41,3 @@ jobs:
         run: cargo test -p rustok-cache --no-default-features
       - name: Clippy all targets without Redis
         run: cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings
-
-  blog-fba-leaf-script-binding:
-    if: github.head_ref == 'agent/blog-fba-leaf-script-binding-20260730'
-    name: Bind Blog FBA leaf verifier scripts
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: agent/blog-fba-leaf-script-binding-20260730
-          fetch-depth: 0
-      - name: Apply fail-closed source transform
-        run: python3 .github/scripts/blog_fba_leaf_script_binding_transform.py
-      - name: Validate source contracts
-        shell: bash
-        run: |
-          node --check scripts/verify/blog-fba-verification-chain.mjs
-          node --check scripts/verify/verify-blog-fba.mjs
-          node --check scripts/verify/verify-blog-fba.test.mjs
-          python3 <<'PY'
-          from pathlib import Path
-          import json
-
-          registry = json.loads(Path('crates/rustok-blog/contracts/blog-fba-registry.json').read_text())
-          package = json.loads(Path('package.json').read_text())
-          if registry['schema_version'] != 4:
-              raise RuntimeError('Blog FBA registry schema version drift')
-          gates = registry['verification_chain']['source_gates']
-          if set(gates) != {
-              'admin_boundary',
-              'storefront_boundary',
-              'graphql_richtext_boundary',
-              'richtext_offline_backfill',
-              'forum_ui_ownership',
-          }:
-              raise RuntimeError('Blog FBA source gate set drift')
-          for name, gate in gates.items():
-              script = gate.get('package_script')
-              command = package['scripts'].get(script)
-              expected = f"node {gate['verifier']}"
-              if command != expected:
-                  raise RuntimeError(f'{name}: leaf script binding drift: {command!r} != {expected!r}')
-          policy = Path('scripts/verify/blog-fba-verification-chain.mjs').read_text()
-          fixture = Path('scripts/verify/verify-blog-fba.test.mjs').read_text()
-          plan = Path('crates/rustok-blog/docs/implementation-plan.md').read_text()
-          for marker in [
-              'package source gate ${gateName} command drift',
-              'package.json missing source gate script ${expectedGate.package_script}',
-              'registry source gate ${gateName} package script drift',
-          ]:
-              if marker not in policy:
-                  raise RuntimeError(f'missing policy marker: {marker}')
-          for marker in [
-              'rejects registry leaf-script drift',
-              'rejects a repointed leaf verifier command',
-              'rejects a missing leaf verifier script',
-          ]:
-              if marker not in fixture:
-                  raise RuntimeError(f'missing fixture marker: {marker}')
-          if '30. Bound every registered Blog FBA leaf npm script' not in plan:
-              raise RuntimeError('Blog implementation plan slice #30 missing')
-          PY
-          git diff --check
-      - name: Commit Blog FBA leaf binding
-        shell: bash
-        run: |
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/cache-feature-matrix.yml
-          rm .github/scripts/blog_fba_leaf_script_binding_transform.py
-          node --check scripts/verify/blog-fba-verification-chain.mjs
-          node --check scripts/verify/verify-blog-fba.mjs
-          node --check scripts/verify/verify-blog-fba.test.mjs
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/rustok-blog/contracts/blog-fba-registry.json \
-            crates/rustok-blog/docs/implementation-plan.md \
-            scripts/verify/blog-fba-verification-chain.mjs \
-            scripts/verify/verify-blog-fba.mjs \
-            scripts/verify/verify-blog-fba.test.mjs \
-            .github/workflows/cache-feature-matrix.yml \
-            .github/scripts/blog_fba_leaf_script_binding_transform.py
-          git commit -m "test(blog): bind FBA leaf verifier scripts"
-          git push origin HEAD:agent/blog-fba-leaf-script-binding-20260730
