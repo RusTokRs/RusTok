@@ -112,29 +112,6 @@ function validateRunner(runner) {
   }
 }
 
-function publishBundle(config, descriptor, startBytes, endBytes) {
-  ensureAbsent(config.outputRoot, 'privacy-shadow evidence output');
-  const parent = path.dirname(config.outputRoot);
-  fs.mkdirSync(parent, { recursive: true });
-  const parentMetadata = fs.lstatSync(parent);
-  ensure(parentMetadata.isDirectory() && !parentMetadata.isSymbolicLink(), 'output parent must be a regular non-symlink directory');
-  const finalRoot = path.join(fs.realpathSync(parent), path.basename(config.outputRoot));
-  ensureAbsent(finalRoot, 'privacy-shadow evidence output');
-  fs.mkdirSync(finalRoot);
-
-  try {
-    writeNewFile(path.join(finalRoot, START_FILE), startBytes, 'privacy-shadow start snapshot');
-    writeNewFile(path.join(finalRoot, END_FILE), endBytes, 'privacy-shadow end snapshot');
-    ensureInventory(finalRoot, [END_FILE, START_FILE]);
-    writeJsonNew(path.join(finalRoot, DESCRIPTOR_FILE), descriptor, 'privacy-shadow capture descriptor');
-    ensureInventory(finalRoot, [DESCRIPTOR_FILE, END_FILE, START_FILE]);
-    return finalRoot;
-  } catch (error) {
-    fs.rmSync(finalRoot, { recursive: true, force: true });
-    throw error;
-  }
-}
-
 function main() {
   const config = loadConfig();
   ensureAbsent(config.outputRoot, 'privacy-shadow evidence output');
@@ -183,6 +160,29 @@ function main() {
   console.log(
     `privacy shadow evidence capture complete: commit=${config.commit} run_key=${config.runKey} observations=${metrics.totals.observations} output=${outputRoot}`,
   );
+}
+
+function publishBundle(config, descriptor, startBytes, endBytes) {
+  ensureAbsent(config.outputRoot, 'privacy-shadow evidence output');
+  const parent = path.dirname(config.outputRoot);
+  fs.mkdirSync(parent, { recursive: true });
+  const parentMetadata = fs.lstatSync(parent);
+  ensure(parentMetadata.isDirectory() && !parentMetadata.isSymbolicLink(), 'output parent must be a regular non-symlink directory');
+  const finalRoot = path.join(fs.realpathSync(parent), path.basename(config.outputRoot));
+  ensureAbsent(finalRoot, 'privacy-shadow evidence output');
+  fs.mkdirSync(finalRoot);
+
+  try {
+    writeNewFile(path.join(finalRoot, START_FILE), startBytes, 'privacy-shadow start snapshot');
+    writeNewFile(path.join(finalRoot, END_FILE), endBytes, 'privacy-shadow end snapshot');
+    ensureInventory(finalRoot, [END_FILE, START_FILE]);
+    writeJsonNew(path.join(finalRoot, DESCRIPTOR_FILE), descriptor, 'privacy-shadow capture descriptor');
+    ensureInventory(finalRoot, [DESCRIPTOR_FILE, END_FILE, START_FILE]);
+    return finalRoot;
+  } catch (error) {
+    fs.rmSync(finalRoot, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 try {
