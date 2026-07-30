@@ -22,7 +22,83 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  blog-admin-richtext-owner-adapter:
+    if: github.head_ref == 'agent/blog-admin-richtext-owner-adapter-20260730'
+    name: Guard Blog admin richtext owner adapter
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply fail-closed source transform
+        run: python3 scripts/agent-blog-admin-richtext-owner-adapter.py
+      - name: Validate source contracts
+        run: |
+          node --check scripts/verify/verify-blog-admin-boundary.mjs
+          node --check scripts/verify/verify-blog-admin-boundary.test.mjs
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = json.loads(Path('crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json').read_text())
+          assert evidence['schema_version'] == 3
+          assert evidence['sources']['adapter'] == 'crates/rustok-blog/admin/src/ui/richtext.rs'
+          markers = evidence['required_markers']['adapter']
+          for marker in [
+              '"article"',
+              'serde_json::from_str::<RichTextDocument>',
+              'sandbox="allow-scripts"',
+              'referrerpolicy="no-referrer"',
+              'on_cleanup',
+              'dispose_richtext_frame',
+          ]:
+              assert marker in markers, marker
+          forbidden = evidence['forbidden_adapter_markers']
+          for marker in ['"discussion"', 'allow-same-origin', 'serde_json::from_str::<serde_json::Value>']:
+              assert marker in forbidden, marker
+
+          verifier = Path('scripts/verify/verify-blog-admin-boundary.mjs').read_text()
+          fixture = Path('scripts/verify/verify-blog-admin-boundary.test.mjs').read_text()
+          plan = Path('crates/rustok-blog/docs/implementation-plan.md').read_text()
+          for marker in [
+              'const richtextAdapterPath',
+              'owner adapter must mount the fixed Article profile',
+              'owner iframe must not grant allow-same-origin',
+              'required_markers?.adapter',
+              'forbidden_adapter_markers',
+          ]:
+              assert marker in verifier, marker
+          for marker in [
+              'richtextAdapterSource',
+              'wrongProfile',
+              'unsafeSandbox',
+              'untypedPayload',
+              'missingCleanup',
+          ]:
+              assert marker in fixture, marker
+          assert '32. Extended the Blog admin canonical-richtext guardrail' in plan
+          PY
+          git diff --check
+      - name: Commit Blog admin richtext owner-adapter guard
+        run: |
+          git rm scripts/agent-blog-admin-richtext-owner-adapter.py
+          git checkout origin/main -- .github/workflows/cache-feature-matrix.yml
+          git add crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json
+          git add crates/rustok-blog/docs/implementation-plan.md
+          git add scripts/verify/verify-blog-admin-boundary.mjs
+          git add scripts/verify/verify-blog-admin-boundary.test.mjs
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(blog): guard admin richtext owner adapter"
+          git push origin HEAD:${{ github.head_ref }}
+
   memory-only:
+    if: github.head_ref != 'agent/blog-admin-richtext-owner-adapter-20260730'
     name: Memory-only cache contract
     runs-on: ubuntu-latest
     timeout-minutes: 20
