@@ -1,4 +1,5 @@
 mod aggregate_error_safety;
+mod checkout_completion_command_error_safety;
 mod graphql_adapter;
 mod native_server_adapter;
 mod payment_collection_command_error_safety;
@@ -15,7 +16,7 @@ use crate::model::{
 use rustok_fulfillment_storefront::transport::select_shipping_option;
 use rustok_order_storefront::transport::complete_checkout;
 use rustok_payment_storefront::transport::create_payment_collection;
-use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
+use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
 use shared_adapter::ApiError;
 
 pub async fn fetch_storefront_commerce(
@@ -59,7 +60,13 @@ pub async fn select_storefront_shipping_option(
 pub async fn complete_storefront_checkout(
     request: CheckoutCompletionCommandRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    complete_checkout(request).await.map_err(ApiError::from)
+    let error_context =
+        checkout_completion_command_error_safety::CheckoutCompletionCommandErrorContext::new(
+            &request,
+        );
+    complete_checkout(request)
+        .await
+        .map_err(|error| error_context.map_error(error))
 }
 
 fn selected_transport_path() -> UiTransportPath {
@@ -70,15 +77,6 @@ fn selected_transport_path() -> UiTransportPath {
     #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     {
         UiTransportPath::Graphql
-    }
-}
-
-impl From<UiTransportError> for ApiError {
-    fn from(value: UiTransportError) -> Self {
-        match value.failed_path {
-            UiTransportPath::NativeServer => Self::ServerFn(value.to_string()),
-            UiTransportPath::Graphql => Self::Graphql(value.to_string()),
-        }
     }
 }
 
