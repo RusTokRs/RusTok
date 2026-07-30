@@ -165,10 +165,6 @@ if (contract) {
   if (contract.owner_definition_path !== servicesPath) {
     failures.push(`${contractPath}: unexpected owner definition path`);
   }
-  if (contract.source_gate_verifier !== path.relative(root, import.meta.filename ?? "")) {
-    // import.meta.filename is not available on every supported Node release, so the
-    // canonical path is checked explicitly below instead of relying on this branch.
-  }
   if (
     contract.source_gate_verifier !==
     "scripts/verify/verify-forum-search-profile-service-mutation-boundary.mjs"
