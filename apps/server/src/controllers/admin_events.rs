@@ -1,10 +1,10 @@
-use crate::error::Error;
-use crate::error::Result;
+use crate::error::{Error, Result, http_error};
 use axum::{
     Json,
     extract::{Path, Query, State},
 };
 use chrono::{DateTime, Utc};
+use rustok_api::{Action, Permission, Resource, has_effective_permission};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{
@@ -17,12 +17,13 @@ use std::time::Instant;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::extractors::rbac::RequireLogsRead;
+use crate::extractors::{
+    auth::CurrentUser, rbac::RequireLogsRead, tenant::CurrentTenant,
+};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Deserialize)]
 pub struct DlqQuery {
-    pub tenant_id: Option<Uuid>,
     pub event_type: Option<String>,
     pub created_after: Option<DateTime<Utc>>,
     #[serde(default = "default_limit")]
@@ -55,12 +56,11 @@ pub struct DlqReplayResponse {
     get,
     path = "/api/admin/events/dlq",
     params(
-        ("tenant_id" = Option<Uuid>, Query, description = "Filter by tenant UUID"),
         ("event_type" = Option<String>, Query, description = "Filter by event type"),
         ("limit" = Option<u64>, Query, description = "Maximum number of results (1-200)"),
     ),
     responses(
-        (status = 200, description = "DLQ event list", body = DlqListResponse),
+        (status = 200, description = "Tenant-scoped DLQ event list", body = DlqListResponse),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
     ),
@@ -69,6 +69,7 @@ pub struct DlqReplayResponse {
 )]
 pub async fn list_dlq(
     State(ctx): State<ServerRuntimeContext>,
+    CurrentTenant(tenant): CurrentTenant,
     _user: RequireLogsRead,
     Query(query): Query<DlqQuery>,
 ) -> Result<Json<DlqListResponse>> {
@@ -77,6 +78,10 @@ pub async fn list_dlq(
 
     let mut db_query = entity::Entity::find()
         .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+        .filter(sys_event_tenant_condition(
+            ctx.db().get_database_backend(),
+            tenant.id,
+        ))
         .order_by_desc(entity::Column::CreatedAt)
         .limit(limit);
 
@@ -86,13 +91,6 @@ pub async fn list_dlq(
 
     if let Some(created_after) = query.created_after {
         db_query = db_query.filter(entity::Column::CreatedAt.gte(created_after));
-    }
-
-    if let Some(tenant_id) = query.tenant_id {
-        db_query = db_query.filter(sys_event_tenant_condition(
-            ctx.db().get_database_backend(),
-            tenant_id,
-        ));
     }
 
     let query_started_at = Instant::now();
@@ -138,28 +136,39 @@ pub async fn list_dlq(
     post,
     path = "/api/admin/events/dlq/{id}/replay",
     params(
-        ("id" = Uuid, Path, description = "DLQ event UUID to replay"),
+        ("id" = Uuid, Path, description = "Tenant-owned DLQ event UUID to replay"),
     ),
     responses(
         (status = 200, description = "Event requeued for processing", body = DlqReplayResponse),
         (status = 400, description = "Event is not in failed status"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "Event not found"),
+        (status = 403, description = "logs:manage required"),
+        (status = 404, description = "Tenant-owned event not found"),
     ),
     security(("bearer_auth" = [])),
     tag = "admin"
 )]
 pub async fn replay_dlq_event(
     State(ctx): State<ServerRuntimeContext>,
-    _user: RequireLogsRead,
+    CurrentTenant(tenant): CurrentTenant,
+    user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<DlqReplayResponse>> {
-    let model = entity::Entity::find_by_id(id)
+    let required_permission = Permission::new(Resource::Logs, Action::Manage);
+    if !has_effective_permission(&user.permissions, &required_permission) {
+        return Err(forbidden_error("Permission denied: logs:manage required"));
+    }
+
+    let model = entity::Entity::find()
+        .filter(entity::Column::Id.eq(id))
+        .filter(sys_event_tenant_condition(
+            ctx.db().get_database_backend(),
+            tenant.id,
+        ))
         .one(ctx.db())
         .await
         .map_err(|e| Error::BadRequest(format!("Failed to fetch sys_event: {e}")))?
-        .ok_or_else(|| Error::NotFound)?;
+        .ok_or(Error::NotFound)?;
 
     if model.status != SysEventStatus::Failed {
         return Err(Error::BadRequest(
@@ -201,13 +210,48 @@ fn default_limit() -> u64 {
 }
 
 fn sys_event_tenant_condition(backend: DbBackend, tenant_id: Uuid) -> SimpleExpr {
-    let tenant_id = tenant_id.to_string();
-    let sql = match backend {
-        DbBackend::Sqlite => {
-            "json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1"
-        }
-        _ => "payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1",
-    };
+    Expr::cust_with_values(
+        sys_event_tenant_sql(backend),
+        vec![Value::from(tenant_id.to_string())],
+    )
+}
 
-    Expr::cust_with_values(sql, vec![Value::from(tenant_id)])
+fn sys_event_tenant_sql(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Sqlite => {
+            "(json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1)"
+        }
+        _ => "(payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1)",
+    }
+}
+
+fn forbidden_error(description: impl Into<String>) -> Error {
+    http_error(rustok_web::HttpError::forbidden("forbidden", description))
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{Action, Permission, Resource};
+    use sea_orm::DbBackend;
+
+    use super::sys_event_tenant_sql;
+
+    #[test]
+    fn dlq_replay_permission_is_manage_not_read() {
+        assert_ne!(
+            Permission::new(Resource::Logs, Action::Manage),
+            Permission::LOGS_READ
+        );
+    }
+
+    #[test]
+    fn tenant_condition_covers_current_and_legacy_envelope_shapes() {
+        for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
+            let sql = sys_event_tenant_sql(backend);
+            assert!(sql.starts_with('('));
+            assert!(sql.ends_with(')'));
+            assert!(sql.contains("tenant_id"));
+            assert!(sql.contains("event"));
+        }
+    }
 }
