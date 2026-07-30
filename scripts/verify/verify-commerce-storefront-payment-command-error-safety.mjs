@@ -76,14 +76,19 @@ if (commandStart < 0 || commandEnd < 0) {
   forbidText(command, "error.to_string()", `${transportPath}: direct payment display mapping`);
 }
 
-if (countText(transport, ".map_err(ApiError::from)") !== 1) {
+if (countText(transport, ".map_err(ApiError::from)") !== 0) {
   failures.push(
-    `${transportPath}: exactly checkout completion must remain on the generic mapper`,
+    `${transportPath}: no Commerce owner wrapper may remain on the generic mapper`,
   );
 }
+forbidText(
+  transport,
+  "impl From<UiTransportError> for ApiError",
+  `${transportPath}: generic UiTransportError display mapper`,
+);
 for (const marker of [
   "select_shipping_option(request.owner_request)",
-  "complete_checkout(request).await.map_err(ApiError::from)",
+  "complete_checkout(request)",
 ]) requireText(transport, marker, `${transportPath}: preserved later command boundary`);
 
 for (const [marker, label] of [
@@ -222,5 +227,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ commerce storefront payment collection command uses correlation-safe static public envelopes; checkout and runtime evidence remain open",
+  "✔ commerce storefront payment collection command uses correlation-safe static public envelopes; no generic Commerce owner wrapper remains and runtime evidence stays open",
 );
