@@ -11,6 +11,7 @@ on:
       - "apps/storefront/docs/implementation-plan.md"
       - "apps/server/tests/lifecycle_bypass_guard.rs"
       - "apps/server/src/services/tenant_locale_generation*.rs"
+      - "scripts/verify/verify-tenant-admin-native-error-safety.mjs"
       - "scripts/verify/verify-tenant-fba.mjs"
       - "scripts/verify/verify-tenant-locale-policy-migration.mjs"
       - "scripts/verify/verify-tenant-hardening-workflow.mjs"
@@ -26,6 +27,7 @@ on:
       - "apps/storefront/docs/implementation-plan.md"
       - "apps/server/tests/lifecycle_bypass_guard.rs"
       - "apps/server/src/services/tenant_locale_generation*.rs"
+      - "scripts/verify/verify-tenant-admin-native-error-safety.mjs"
       - "scripts/verify/verify-tenant-fba.mjs"
       - "scripts/verify/verify-tenant-locale-policy-migration.mjs"
       - "scripts/verify/verify-tenant-hardening-workflow.mjs"
@@ -35,7 +37,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: tenant-hardening-${{ github.workflow }}-${{ github.ref }}
@@ -77,55 +79,10 @@ jobs:
         with:
           shared-key: tenant-hardening
       - name: Format focused tenant files
-        run: rustfmt --edition 2024 $TENANT_RUST_FILES
-      - name: Update tenant verification handoff
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              target = Path(path)
-              text = target.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one handoff marker, found {count}: {old[:80]!r}")
-              target.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          plan = "crates/rustok-tenant/docs/implementation-plan.md"
-          replace_once(
-              plan,
-              "The configured slug remains isolated to the GraphQL\ntransport as a host-routing hint. The tenant FBA verifier forbids slug arguments\nand `get_tenant_by_slug` in the native adapter.\n",
-              "The configured slug remains isolated to the GraphQL\ntransport as a host-routing hint. The tenant FBA verifier forbids slug arguments\nand `get_tenant_by_slug` in the native adapter.\n\nThe Tenant Admin bootstrap no longer reconstructs effective module availability\nfrom raw `tenant_modules` rows. It resolves the active composition snapshot and\nuses `ModuleControlPlane::effective_policy(...).resolve_enabled(tenant.id)`, while\nraw overrides remain explanatory metadata only. Manifest defaults and dependency\nclosure therefore match the server and storefront control-plane contract.\n",
-          )
-          replace_once(plan, "- trusted storefront native module-state reads through resolved `TenantContext`,\n  with configured slug use restricted to the GraphQL transport branch;\n", "- trusted storefront native module-state reads through resolved `TenantContext`,\n  with configured slug use restricted to the GraphQL transport branch;\n- effective Tenant Admin module badges from the active composition and\n  `ModuleControlPlane`, never raw tenant override rows as policy authority;\n")
-          replace_once(plan, "- Findings: `P0=0, P1=7, P2=1, P3=0`", "- Findings: `P0=0, P1=8, P2=1, P3=0`")
-          replace_once(plan, "made storefront native enabled-module reads use resolved TenantContext instead of a client slug; added MySQL", "made storefront native enabled-module reads use resolved TenantContext instead of a client slug; made Tenant Admin render ModuleControlPlane effective policy instead of raw tenant overrides; added MySQL")
-          replace_once(plan, "lifecycle/storefront compilation and real MySQL migration evidence is pending", "lifecycle/tenant-admin/storefront compilation and real MySQL migration evidence is pending")
-          replace_once(plan, "storefront native adapter has no tenant argument and extracts rustok_api::TenantContext before list_tenant_modules(tenant.id);", "storefront native adapter has no tenant argument and extracts rustok_api::TenantContext before list_tenant_modules(tenant.id); Tenant Admin resolves the active composition through ModuleControlPlane and uses resolve_enabled(tenant.id) for badges;")
-
-          master = "docs/verification/PLATFORM_VERIFICATION_PLAN.md"
-          replace_once(master, "a storefront native module-state reader that trusted a client slug instead of resolved TenantContext, missing MySQL", "a storefront native module-state reader that trusted a client slug instead of resolved TenantContext, a Tenant Admin projection that treated raw tenant overrides as effective policy, missing MySQL")
-          replace_once(master, "`core/tenant` remains in progress after seven fixed P1 findings and one fixed P2:", "`core/tenant` remains in progress after eight fixed P1 findings and one fixed P2:")
-          replace_once(master, "`TenantContext` scope for native storefront module-state reads; equivalent\none-default-locale enforcement", "`TenantContext` scope for native storefront module-state reads; control-plane effective\nmodule policy for Tenant Admin badges; equivalent one-default-locale enforcement")
-          replace_once(master, "Same-SHA Rust, both PostgreSQL races, PostgreSQL fixture, real MySQL, storefront/native\nparity, Redis recovery", "Same-SHA Rust, both PostgreSQL races, PostgreSQL fixture, real MySQL, tenant-admin/storefront/native\nparity, Redis recovery")
-          PY
-      - name: Publish focused formatting and handoff
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git diff --check
-          if git diff --quiet -- $TENANT_RUST_FILES crates/rustok-tenant/docs/implementation-plan.md docs/verification/PLATFORM_VERIFICATION_PLAN.md; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- $TENANT_RUST_FILES crates/rustok-tenant/docs/implementation-plan.md docs/verification/PLATFORM_VERIFICATION_PLAN.md
-          git commit -m "style(tenant): format and sync verification handoff"
-          git push origin "HEAD:${HEAD_BRANCH}"
+        run: rustfmt --edition 2024 --check $TENANT_RUST_FILES
       - name: Static tenant contracts
         run: |
+          node scripts/verify/verify-tenant-admin-native-error-safety.mjs
           node scripts/verify/verify-tenant-locale-policy-migration.mjs
           node scripts/verify/verify-tenant-hardening-workflow.mjs
           npm run verify:tenant:fba
