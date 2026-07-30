@@ -9,6 +9,7 @@
     "position_owner": "crates/rustok-comments/src/entities/comment.rs",
     "counter_and_identity_owner": "crates/rustok-comments/src/entities/comment_thread.rs",
     "thread_service": "crates/rustok-comments/src/services.rs",
+    "entities_module": "crates/rustok-comments/src/entities/mod.rs",
     "classifier_unit_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
     "identity_lock_entity": "crates/rustok-comments/src/entities/comment_thread_identity_lock.rs",
     "counter_repair_migration": "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs",
@@ -61,7 +62,7 @@
     }
   ],
   "runtime_promotion_requirements": [
-    "execute cargo test -p rustok-comments --lib thread_identity_conflict_classifier",
+    "execute cargo test -p rustok-comments --lib thread_insert_error_tests",
     "execute cargo test -p rustok-comments --test thread_write_invariants",
     "execute cargo test -p rustok-comments --test thread_creation_concurrency",
     "execute both env-gated PostgreSQL targets with RUSTOK_COMMENTS_TEST_DATABASE_URL",
