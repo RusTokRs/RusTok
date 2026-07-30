@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-cart`
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-31
 
 ## Current state
 
@@ -51,6 +51,10 @@ transport `status` fields remain strings for backward compatibility.
 - Storefront repricing calls the pricing-owned `PricingReadPort` with a
   variant-first request and full resolved-price projection; it no longer calls
   `PricingService::resolve_variant_price` directly.
+- Storefront native client error safety: `source_ready_unvalidated` — fetch,
+  decrement, and remove preserve validation messages while technical native
+  failures are remapped before `UiTransportError` aggregation to one static
+  public envelope with correlation-aware, shape-only private diagnostics.
 - The compiled commerce checkout channel-inventory regression executes the
   in-process cart checkout provider before product and inventory preflight.
   It is bounded provider-consumer evidence; lifecycle recovery and fallback

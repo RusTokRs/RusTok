@@ -48,9 +48,18 @@ for (const [value, label] of [
   ["graphql_adapter::decrement_line_item(request)", "decrement adapter preservation"],
   ["graphql_adapter::remove_line_item(request)", "remove adapter preservation"],
   [".map_err(|error| context.map_error(error))", "consumer-boundary mapping"],
-  ["move || native_server_adapter::fetch_cart(native_request)", "native fetch preservation"],
-  ["move || native_server_adapter::decrement_line_item(native_request)", "native decrement preservation"],
-  ["move || native_server_adapter::remove_line_item(native_request)", "native remove preservation"],
+  ["NativeClientErrorContext::fetch_cart(&native_request)", "native fetch context preservation"],
+  ["native_server_adapter::fetch_cart(native_request)", "native fetch preservation"],
+  [
+    "NativeClientErrorContext::decrement_line_item(",
+    "native decrement context preservation",
+  ],
+  [
+    "native_server_adapter::decrement_line_item(native_request)",
+    "native decrement preservation",
+  ],
+  ["NativeClientErrorContext::remove_line_item(", "native remove context preservation"],
+  ["native_server_adapter::remove_line_item(native_request)", "native remove preservation"],
 ]) requireText(transport, value, label);
 forbidText(transport, "move || graphql_adapter::", "unsanitized GraphQL closure");
 
