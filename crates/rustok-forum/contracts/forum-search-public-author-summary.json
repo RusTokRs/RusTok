@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "task": "FORUM-23A",
-  "latest_slice": "FORUM-23A5",
+  "latest_slice": "FORUM-23A6",
   "upstream_task": "FORUM-20BQ",
   "status": "source_complete_execution_pending",
   "scope": "Project privacy-aware public author summaries into Forum topic and approved-reply Search documents and durably redact them after Profiles owner changes",
@@ -15,6 +15,7 @@
   "profiles_content_event_owner": "crates/rustok-profiles/src/content_write.rs",
   "profiles_locale_event_owner": "crates/rustok-profiles/src/locale_write.rs",
   "profiles_media_event_owner": "crates/rustok-profiles/src/media_write.rs",
+  "profiles_upsert_event_owner": "crates/rustok-profiles/src/upsert_write.rs",
   "search_inbox": "crates/rustok-search/src/forum_inbox.rs",
   "search_ingestion": "crates/rustok-search/src/ingestion.rs",
   "owner_note": "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md",
@@ -55,7 +56,11 @@
     "locale_write_does_not_create_translations": true,
     "profile_media_write_and_event_are_atomic": true,
     "media_event_failure_rolls_back_owner_write": true,
-    "remaining_profile_summary_write_and_event_pairs_are_atomic": false,
+    "profile_upsert_write_and_event_are_atomic": true,
+    "upsert_event_failure_rolls_back_owner_write": true,
+    "upsert_couples_profile_translation_tags_and_event": true,
+    "upsert_media_validation_precedes_owner_transaction": true,
+    "remaining_profile_summary_write_and_event_pairs_are_atomic": true,
     "author_scope_is_tenant_and_user_scoped": true,
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark": true,
     "author_change_rebuilds_current_forum_owner_state": true,
@@ -75,7 +80,7 @@
   "remaining_scope": [
     "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
     "define an owner-ordered profile or account deletion projection invalidation contract",
-    "make profile upsert summary update event atomic with its owner writes",
+    "define durable Search invalidation for CLI backfill profile creation or prove rebuild coverage",
     "add bounded category-subtree tag locale date solved kind channel/group and attachment filters",
     "add member index projections",
     "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
@@ -97,8 +102,8 @@
   "non_claims": [
     "UserDeleted is sufficient to prove Profiles state has already been removed",
     "account deletion redaction is complete",
-    "all ProfileUpdated owner writes are transactionally coupled to outbox publication",
-    "profile upsert is transactionally coupled to ProfileUpdated publication",
+    "CLI backfill profile creation publishes ProfileUpdated",
+    "all Profiles owner writes trigger durable Forum Search invalidation",
     "general cross-producer owner revision ordering is complete"
   ],
   "downstream_task": "FORUM-23B"
