@@ -94,8 +94,8 @@ const source = requireMarkers(sourcePath, [
   'impl IndexSource for ProductPostgresIndexSource',
   'p.tenant_id,',
   'p.index_revision,',
-  '(p.index_revision, p.id, t.locale) > ($2, $3, $4)',
-  'ORDER BY p.index_revision ASC, p.id ASC, t.locale ASC',
+  '(p.id, t.locale) > ($2, $3)',
+  'ORDER BY p.id ASC, t.locale ASC',
   'request.limit() + 1',
   'WITH requested(product_id, locale) AS (VALUES {})',
   'JOIN requested r ON r.product_id = p.id AND r.locale = t.locale',
@@ -104,7 +104,7 @@ const source = requireMarkers(sourcePath, [
   'product_index_backend_unsupported',
   'product_schema_is_locale_required_and_scalar_only',
   'replay_event_identity_is_stable_and_revision_sensitive',
-  'cursor_rejects_zero_revision_nil_product_and_noncanonical_locale',
+  'cursor_rejects_nil_product_and_noncanonical_locale',
 ]);
 forbidMarkers(sourcePath, source, [
   'index_entities',
@@ -112,6 +112,8 @@ forbidMarkers(sourcePath, source, [
   'index_jobs',
   'index_checkpoints',
   'SELECT *',
+  'ORDER BY p.index_revision',
+  '(p.index_revision, p.id, t.locale)',
   'tokio::spawn',
   'tokio::time::sleep',
   'loop {',
@@ -123,18 +125,29 @@ const migrationPath =
 const migration = requireMarkers(migrationPath, [
   'ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1',
   'chk_products_index_revision_positive',
-  'CREATE INDEX idx_products_index_replay',
-  'ON products (tenant_id, index_revision, id)',
   'trg_products_bump_index_revision',
   'trg_product_translations_bump_index_revision',
   'AFTER INSERT OR UPDATE OR DELETE ON product_translations',
 ]);
 forbidMarkers(migrationPath, migration, [
+  'idx_products_index_replay',
   'index_entities',
   'index_links',
   'index_jobs',
   'index_checkpoints',
 ]);
+requireMarkers(
+  'crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs',
+  ['UNIQUE (tenant_id, id)'],
+);
+requireMarkers(
+  'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
+  [
+    '.name("idx_product_trans_unique")',
+    '.col(ProductTranslations::ProductId)',
+    '.col(ProductTranslations::Locale)',
+  ],
+);
 requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
   'mod m20260730_000001_add_product_index_revision;',
   'Box::new(m20260730_000001_add_product_index_revision::Migration)',
@@ -181,7 +194,8 @@ requireMarkers('crates/rustok-index/docs/m7-product-source.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`rustok-product::product@1`',
   '`ProductPostgresIndexSource`',
-  '`idx_products_index_replay (tenant_id, index_revision, id)`',
+  'stable `(product_id, locale)` identity',
+  'it is not the scan cursor.',
   'Product hard deletes do not yet emit durable Index tombstones.',
   'Runtime capability presence does not establish persisted schema readiness.',
   'maintainer-run',
@@ -189,6 +203,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-source.md', [
 requireMarkers('crates/rustok-product/README.md', [
   'publish one owner-generic locale-required',
   '`index_revision`',
+  '`(product_id, locale)`',
   'Hard-delete tombstones',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
