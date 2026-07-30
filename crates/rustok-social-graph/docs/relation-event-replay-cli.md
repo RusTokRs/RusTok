@@ -14,10 +14,10 @@ It exposes the existing `SocialGraphRelationEventMaintenancePort` through the ca
 
 ## Required and optional options
 
-- `--tenant-id <uuid>` is mandatory and selects exactly one tenant.
-- `--after-relation-id <uuid>` is optional. Omit it for the first page; use only the returned `next_after_relation_id` to continue.
-- `--limit <1..1000>` is optional and defaults to `100`.
-- `--dry-run` validates and selects the page without publishing any events.
+- --tenant-id <uuid> is mandatory and selects exactly one tenant.
+- --after-relation-id <uuid> is optional. Omit it for the first page; use only the returned `next_after_relation_id` to continue.
+- --limit <1..1000> is optional and defaults to `100`.
+- --dry-run validates and selects the page without publishing any events.
 
 The command uses a system actor, a 30-second deadline, and a stable idempotency key derived from tenant, cursor, limit, and dry-run state. User actors are rejected by the owner port. The owner query remains tenant-scoped, ordered by relation UUID, and bounded to one page.
 
