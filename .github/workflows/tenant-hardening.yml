@@ -10,6 +10,7 @@ on:
       - "apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"
       - "apps/storefront/docs/implementation-plan.md"
       - "apps/server/tests/lifecycle_bypass_guard.rs"
+      - "apps/server/src/services/tenant_locale_generation*.rs"
       - "scripts/verify/verify-tenant-fba.mjs"
       - "scripts/verify/verify-tenant-locale-policy-migration.mjs"
       - "scripts/verify/verify-tenant-hardening-workflow.mjs"
@@ -24,6 +25,7 @@ on:
       - "apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"
       - "apps/storefront/docs/implementation-plan.md"
       - "apps/server/tests/lifecycle_bypass_guard.rs"
+      - "apps/server/src/services/tenant_locale_generation*.rs"
       - "scripts/verify/verify-tenant-fba.mjs"
       - "scripts/verify/verify-tenant-locale-policy-migration.mjs"
       - "scripts/verify/verify-tenant-hardening-workflow.mjs"
@@ -142,3 +144,38 @@ jobs:
         run: cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture
       - name: Concurrent locale-policy idempotency
         run: cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture
+
+  redis-recovery:
+    name: Tenant locale Redis recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      RUSTOK_CACHE_REAL_REDIS_URL: redis://127.0.0.1:6379/
+      RUSTOK_CACHE_REDIS_SERVER_BIN: /usr/bin/redis-server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tenant-hardening-redis
+      - name: Install Redis controls
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server redis-tools
+          redis-cli -h 127.0.0.1 -p 6379 ping
+      - name: Tenant locale generation source guards
+        run: cargo test -p rustok-server --test tenant_locale_generation_guard
+      - name: Tenant locale live Redis recovery
+        run: cargo test -p rustok-server tenant_locale_generation --lib -- --ignored --nocapture --test-threads=1
