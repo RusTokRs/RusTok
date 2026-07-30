@@ -18,7 +18,7 @@ The Blog article cutover is atomic. A surface is not considered migrated merely 
 - GraphQL exposes canonical writes and reads while temporary compatibility declarations remain contained in `graphql/types.rs`.
 - Next admin uses a shared `RichTextDocument` editor and consumes `RichTextView`.
 - Blog Leptos storefront GraphQL and native transports now carry the same `RichTextView` plus server-derived plain text; the UI renders only owner-generated HTML.
-- Blog SEO description, OpenGraph, structured-data, and template-field fallback now summarize `PostResponse.content_plain_text`; legacy `PostResponse.body` is not read by the SEO projection.
+- **SEO projection** now summarizes `PostResponse.content_plain_text` for descriptions, OpenGraph, structured data, and template fields; legacy `PostResponse.body` is not read.
 - **Search projection** now parses canonical storage rows as `RichTextDocument` and derives their body through `rustok-content::plain_text` with the fixed `Article` profile in the same projector transaction. Legacy storage rows retain a contained raw-body fallback until the storage migration removes `body_format`.
 
 ## Blocking surfaces
