@@ -49,6 +49,14 @@ fixture `scripts/verify/verify-search-canonical-url-contract.test.mjs`. Exact
 leaf commands `verify:search:canonical-url` and `test:verify:search:canonical-url`
 are locked into the Search FBA verify/test chains.
 
+Blog lifecycle projection is also Search-owned. Its retained executable harness
+is `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
+guarded by `scripts/verify/verify-search-blog-projection.mjs` and focused fixture
+`scripts/verify/verify-search-blog-projection.test.mjs`. Exact commands
+`verify:search:blog-projection` and `test:verify:search:blog-projection` are locked
+into the Search FBA verify/test chains after canonical navigation. This source
+registration does not record routing or PostgreSQL execution.
+
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
 mutation and Blog reindex publication share one transaction; authorization
@@ -119,6 +127,12 @@ fixture stale after the verifier gained Forum reply and admin permission checks.
 Slice 38 repairs the owner fixture, adds exact Search leaf commands, and locks
 their order into the Search FBA package chains without promoting runtime status.
 
+The continuation audit at `9dcbcf31e527a406cb9556bdc2e20165c141e6bf`
+found the remaining Search-owned Blog projection harness, verifier, and focused
+fixture outside the Search FBA package chains and without named npm leaf commands.
+Slice 39 registers that owner evidence and exact order while leaving routing and
+PostgreSQL execution in maintainer-owned `Next results`.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -132,8 +146,9 @@ their order into the Search FBA package chains without promoting runtime status.
 - Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
   npm leaf commands, and aggregate FBA registration are locked; execution is
   maintainer-owned.
-- Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
-  maintainer-owned.
+- Search Blog projection harness: Search-owned `executable_no_run`; evidence,
+  verifier, focused fixture, exact npm leaf commands, test targets, and Search FBA
+  ordering are locked. Routing and PostgreSQL execution remain maintainer-owned.
 - Blog article richtext cutover: `implemented_source_verified_no_compile`.
 - Blog article offline backfill: `executable_no_run`.
 - Next admin Forum UI ownership: `source_verified_no_compile`.
@@ -186,6 +201,7 @@ their order into the Search FBA package chains without promoting runtime status.
 - `scripts/verify/verify-blog-admin-boundary.mjs`
 - `scripts/verify/verify-comments-thread-write-invariants.mjs`
 - `scripts/verify/verify-search-blog-projection.mjs`
+- `scripts/verify/verify-search-blog-projection.test.mjs`
 - `scripts/verify/verify-search-canonical-url-contract.mjs`
 - `scripts/verify/verify-search-canonical-url-contract.test.mjs`
 
@@ -249,6 +265,9 @@ their order into the Search FBA package chains without promoting runtime status.
 38. Kept canonical navigation with the Search owner, repaired its stale positive
     fixture for Forum/admin expansion, added exact Search verify/test leaf commands,
     and locked both commands into the Search FBA package chains.
+39. Registered the existing Search-owned Blog projection harness as a first-class
+    Search FBA leaf, bound evidence/verifier/fixture/test targets and exact package
+    order, and kept routing plus PostgreSQL execution explicitly pending.
 
 ## Next results
 
@@ -300,6 +319,8 @@ should run the relevant subset, including:
 - `npm run test:verify:blog:fba`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
+- `npm run verify:search:blog-projection`
+- `npm run test:verify:search:blog-projection`
 - `npm run verify:search:fba`
 - `npm run test:verify:search:fba`
 - `cargo run -p rustok-blog --bin blog_article_richtext_backfill -- --help`
@@ -318,8 +339,6 @@ should run the relevant subset, including:
 - `node packages/richtext/test/browser-spike.mjs`
 - `npm run verify:comments:fba`
 - `npm run verify:consumer:fba-runtime-order`
-- `node scripts/verify/verify-search-blog-projection.mjs`
-- `node scripts/verify/verify-search-blog-projection.test.mjs`
 - `cargo xtask module validate blog`
 
 ## References
