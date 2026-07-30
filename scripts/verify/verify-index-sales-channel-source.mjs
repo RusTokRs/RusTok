@@ -41,6 +41,13 @@ forbidMarkers(channelRootPath, channelRoot, [
   'register_index_schema_source',
   'PostgresIndexSourceFactory',
 ]);
+const channelEntityPath = 'crates/rustok-channel/src/entities/channel.rs';
+const channelEntity = requireMarkers(channelEntityPath, [
+  'pub id: Uuid,',
+  'pub tenant_id: Uuid,',
+  'pub slug: String,',
+]);
+forbidMarkers(channelEntityPath, channelEntity, ['index_revision']);
 requireMarkers('crates/rustok-channel/tests/index_selection.rs', [
   'channel_module_publishes_only_a_typed_selection_marker_for_index_bridges',
   'assert!(extensions.contains::<ChannelRuntimeSelected>());',
@@ -102,8 +109,10 @@ const source = requireMarkers(sourcePath, [
   'register_postgres_index_source_factory(',
   'entity: EntityName::new("sales_channel")?',
   'locale_mode: LocaleMode::None',
+  'field("id", IndexValueType::Uuid, true, true)?',
   'field("slug", IndexValueType::String, true, true)?',
   'field("is_active", IndexValueType::Boolean, true, true)?',
+  'field_name("id")?, IndexValue::Uuid(self.channel_id)',
   'impl PostgresIndexSourceFactory for SalesChannelPostgresIndexSourceFactory',
   'impl IndexSource for SalesChannelPostgresIndexSource',
   'FROM channels c',
@@ -118,6 +127,7 @@ const source = requireMarkers(sourcePath, [
   'locale: None',
   'links: Vec::new()',
   '#[serde(deny_unknown_fields)]',
+  'assert_eq!(schema.fields.len(), 6);',
   'selected_sales_channel_schema_is_nonlocalized_and_link_free',
   'selected_sales_channel_cursor_rejects_nil_and_unknown_fields',
   'selected_sales_channel_bridge_skips_partial_registry_without_channel_module',
@@ -149,12 +159,21 @@ requireMarkers('crates/rustok-distribution/tests/channel_index.rs', [
   'factory.factory_name() == "sales-channel-postgres-primary"',
 ]);
 
+requireMarkers('crates/rustok-channel/README.md', [
+  '`channels.index_revision`',
+  '`ChannelRuntimeSelected`',
+  '`rustok-channel::sales_channel@1`',
+  'stable `channel_id` ordering',
+  'does not depend on `rustok-index`',
+]);
 requireMarkers('crates/rustok-index/docs/m7-sales-channel-source.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`rustok-channel::sales_channel@1`',
+  '`id: uuid`',
+  'future link schemas can target stable Channel UUID identity',
   'stable `channel_id` UUID order',
   '`index_revision` is the mutation `source_version`; it is not the scan cursor.',
-  'The schema is link-free.',
+  'The schema itself is link-free.',
   'Channel hard-delete tombstones',
   'Runtime capability presence does not establish persisted schema readiness.',
   'maintainer-run',
