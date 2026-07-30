@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::domain::{
     FieldCardinality, FieldName, FieldPath, IndexQuery, IndexValueType, LinkCardinality, LinkName,
-    SchemaRef,
+    Pagination, SchemaRef,
 };
 
 use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
@@ -17,6 +17,8 @@ pub enum AggregateOrderValidationError {
     AggregateRequiresManyLink(FieldPath),
     #[error("many-link aggregate ordering requires an ordered scalar field: {0:?}")]
     AggregateRequiresOrderedScalar(FieldPath),
+    #[error("many-link aggregate ordering currently requires bounded offset pagination")]
+    AggregateRequiresOffsetPagination,
 }
 
 impl SchemaRegistry {
@@ -27,6 +29,10 @@ impl SchemaRegistry {
     /// reject every many-link order as ambiguous. Planning and execution use this
     /// stronger boundary so aggregate ordering cannot silently inherit first-row
     /// or storage-order semantics.
+    ///
+    /// This first bounded policy supports offset pages only. Aggregate cursor
+    /// encoding and continuation remain a separate contract because they must bind
+    /// the derived value without changing legacy cursor semantics.
     pub fn validate_query_with_aggregate_ordering(
         &self,
         query: &IndexQuery,
@@ -34,6 +40,14 @@ impl SchemaRegistry {
         query
             .validate_shape()
             .map_err(QueryValidationError::from)?;
+
+        let has_aggregate = query
+            .order_by
+            .iter()
+            .any(|order| order.direction.aggregate().is_some());
+        if has_aggregate && !matches!(query.pagination, Pagination::Offset { .. }) {
+            return Err(AggregateOrderValidationError::AggregateRequiresOffsetPagination);
+        }
 
         let mut ordinary = query.clone();
         ordinary
@@ -60,7 +74,7 @@ impl SchemaRegistry {
                 .into());
             }
             if resolved.cardinality != FieldCardinality::One
-                || !is_ordered_type(resolved.value_type)
+                || !is_aggregate_ordered_type(resolved.value_type)
             {
                 return Err(
                     AggregateOrderValidationError::AggregateRequiresOrderedScalar(
@@ -129,13 +143,12 @@ fn resolve_order_field(
     })
 }
 
-fn is_ordered_type(value_type: IndexValueType) -> bool {
+fn is_aggregate_ordered_type(value_type: IndexValueType) -> bool {
     matches!(
         value_type,
         IndexValueType::Integer
             | IndexValueType::Decimal
             | IndexValueType::String
-            | IndexValueType::Uuid
             | IndexValueType::Timestamp
     )
 }
@@ -212,9 +225,9 @@ mod tests {
             fields: vec![FieldPath::new(FieldName::new("id").unwrap())],
             filter: None,
             order_by: vec![OrderExpr { field, direction }],
-            pagination: Pagination::Cursor {
-                first: 20,
-                after: None,
+            pagination: Pagination::Offset {
+                limit: 20,
+                offset: 0,
             },
             include_exact_count: false,
         }
@@ -257,11 +270,17 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_requires_sortable_ordered_scalar() {
+    fn aggregate_requires_supported_sortable_scalar() {
         let boolean = registry(IndexValueType::Boolean, true);
         assert!(matches!(
             boolean
                 .validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, true)),
+            Err(AggregateOrderValidationError::AggregateRequiresOrderedScalar(_))
+        ));
+
+        let uuid = registry(IndexValueType::Uuid, true);
+        assert!(matches!(
+            uuid.validate_query_with_aggregate_ordering(&query(OrderDirection::MaxAsc, true)),
             Err(AggregateOrderValidationError::AggregateRequiresOrderedScalar(_))
         ));
 
@@ -273,5 +292,19 @@ mod tests {
                 QueryValidationError::FieldNotSortable { .. }
             ))
         ));
+    }
+
+    #[test]
+    fn aggregate_cursor_pagination_remains_rejected() {
+        let registry = registry(IndexValueType::Integer, true);
+        let mut query = query(OrderDirection::MinAsc, true);
+        query.pagination = Pagination::Cursor {
+            first: 20,
+            after: None,
+        };
+        assert_eq!(
+            registry.validate_query_with_aggregate_ordering(&query),
+            Err(AggregateOrderValidationError::AggregateRequiresOffsetPagination)
+        );
     }
 }
