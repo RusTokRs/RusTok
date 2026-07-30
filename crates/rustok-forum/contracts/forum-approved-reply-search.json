@@ -69,7 +69,7 @@
     "out_of_order_owner_revision_guard_added": false,
     "new_root_domain_event_added": false,
     "new_reindex_target_string_added": false,
-    "search_schema_migration_added": true
+    "search_schema_migration_added": false
   },
   "canonical_url_boundary": {
     "canonical_pair_required": true,
@@ -103,7 +103,7 @@
     "public_response_dto_changed": false,
     "workspace_dependency_changed": false,
     "cargo_lock_changed": false,
-    "migration_added": true,
+    "migration_added": false,
     "ffa_status_changed": false,
     "fba_status_changed": false,
     "legacy_graphql_snapshot_removed": true
@@ -128,7 +128,7 @@
     "capture maintainer-executed PostgreSQL projection ordering cleanup approved-reply and Search query evidence",
     "capture maintainer-executed SQLite exact-visible bulk-read evidence"
   ],
-  "downstream_task": "FORUM-20BQ",
+  "downstream_task": "FORUM-20BP",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
