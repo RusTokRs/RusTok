@@ -1,0 +1,137 @@
+use std::sync::Arc;
+
+use rustok_core::ModuleRuntimeExtensions;
+use sea_orm::DatabaseConnection;
+use thiserror::Error;
+
+use crate::application::{SharedIndexQueryRuntime, SharedIndexSchemaRegistry};
+
+use super::PostgresIndexQueryPort;
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum IndexQueryRuntimeCompositionError {
+    #[error("shared Index query runtime is already materialized")]
+    AlreadyMaterialized,
+}
+
+/// Materializes the canonical PostgreSQL-backed query runtime from the complete source registry.
+///
+/// Absence of a source registry is represented as `Ok(None)` and never produces an empty or
+/// partially useful runtime. The function performs no database I/O and makes no tenant schema
+/// readiness claim; those checks remain inside [`PostgresIndexQueryPort::execute_query`].
+pub fn materialize_postgres_index_query_runtime(
+    extensions: &mut ModuleRuntimeExtensions,
+    db: DatabaseConnection,
+) -> Result<Option<SharedIndexQueryRuntime>, IndexQueryRuntimeCompositionError> {
+    if extensions.contains::<SharedIndexQueryRuntime>() {
+        return Err(IndexQueryRuntimeCompositionError::AlreadyMaterialized);
+    }
+
+    let Some(registry) = extensions.get::<SharedIndexSchemaRegistry>().cloned() else {
+        return Ok(None);
+    };
+
+    let runtime = SharedIndexQueryRuntime::new(Arc::new(PostgresIndexQueryPort::new(
+        db,
+        registry.shared(),
+    )));
+    extensions.insert(runtime.clone());
+    Ok(Some(runtime))
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_core::ModuleRuntimeExtensions;
+    use sea_orm::Database;
+
+    use crate::{
+        EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexValueType,
+        LocaleMode, ModuleName, SchemaRef, SchemaVersion, SharedIndexQueryRuntime,
+        materialize_index_schema_registry, register_index_schema_source,
+    };
+
+    use super::{
+        IndexQueryRuntimeCompositionError, materialize_postgres_index_query_runtime,
+    };
+
+    fn schema() -> IndexSchema {
+        IndexSchema {
+            reference: SchemaRef {
+                module: ModuleName::new("runtime-owner").unwrap(),
+                entity: EntityName::new("item").unwrap(),
+                version: SchemaVersion::INITIAL,
+            },
+            locale_mode: LocaleMode::None,
+            fields: vec![IndexField {
+                name: FieldName::new("id").unwrap(),
+                value_type: IndexValueType::Uuid,
+                cardinality: FieldCardinality::One,
+                nullable: false,
+                selectable: true,
+                filterable: true,
+                sortable: true,
+            }],
+            links: Vec::new(),
+        }
+    }
+
+    async fn connection() -> sea_orm::DatabaseConnection {
+        Database::connect("sqlite::memory:")
+            .await
+            .expect("test connection should initialize")
+    }
+
+    #[tokio::test]
+    async fn missing_source_registry_does_not_publish_false_runtime() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        let runtime = materialize_postgres_index_query_runtime(&mut extensions, connection().await)
+            .expect("missing registry should be accepted");
+
+        assert!(runtime.is_none());
+        assert!(!extensions.contains::<SharedIndexQueryRuntime>());
+    }
+
+    #[tokio::test]
+    async fn complete_source_registry_materializes_one_shared_runtime() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        register_index_schema_source(&mut extensions, "runtime_owner", schema())
+            .expect("source schema should register");
+        let registry = materialize_index_schema_registry(&extensions)
+            .expect("source registry should validate")
+            .expect("non-empty source registry should materialize");
+        extensions.insert(registry);
+
+        let runtime = materialize_postgres_index_query_runtime(&mut extensions, connection().await)
+            .expect("query runtime should materialize")
+            .expect("registry should produce a runtime");
+
+        assert!(extensions.contains::<SharedIndexQueryRuntime>());
+        assert!(Arc::ptr_eq(
+            &runtime.shared_port(),
+            &extensions
+                .get::<SharedIndexQueryRuntime>()
+                .expect("runtime should be published")
+                .shared_port(),
+        ));
+    }
+
+    #[tokio::test]
+    async fn duplicate_query_runtime_materialization_fails_closed() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        register_index_schema_source(&mut extensions, "runtime_owner", schema()).unwrap();
+        let registry = materialize_index_schema_registry(&extensions)
+            .unwrap()
+            .expect("registry");
+        extensions.insert(registry);
+        materialize_postgres_index_query_runtime(&mut extensions, connection().await)
+            .expect("first materialization")
+            .expect("runtime");
+
+        let error = materialize_postgres_index_query_runtime(&mut extensions, connection().await)
+            .expect_err("duplicate materialization must fail");
+        assert_eq!(
+            error,
+            IndexQueryRuntimeCompositionError::AlreadyMaterialized
+        );
+    }
+}
