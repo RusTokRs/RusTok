@@ -94,6 +94,26 @@ jobs:
                   raise RuntimeError(f'{label} hotfix expected once, got {source.count(old)}')
               source = source.replace(old, new, 1)
 
+          orchestration_old = """once(orch, '''            body: Set(translation.body.clone()),
+              body_format: Set(translation.body_format.clone()),
+              created_at: Set(translation.created_at),
+          ''', '''            body: Set(translation.body.clone()),
+              created_at: Set(translation.created_at),
+          ''')"""
+          orchestration_new = """once(orch, '''            seo_description: Set(None),
+              body: Set(translation.body.clone()),
+              body_format: Set(translation.body_format.clone()),
+              created_at: Set(translation.created_at),
+          ''', '''            seo_description: Set(None),
+              body: Set(translation.body.clone()),
+              created_at: Set(translation.created_at),
+          ''')"""
+          if source.count(orchestration_old) != 1:
+              raise RuntimeError(
+                  f'orchestration Blog storage hotfix expected once, got {source.count(orchestration_old)}'
+              )
+          source = source.replace(orchestration_old, orchestration_new, 1)
+
           path.write_text(source, encoding='utf-8')
           PY
           rm scripts/agent/blog_richtext_storage_cutover.part*
