@@ -34,12 +34,15 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ];
     #[cfg(test)]
     migrations.push(Box::new(test_fixture_oauth_apps_table::Migration));
-    migrations.extend([
-        Box::new(m20260729_000011_enforce_channel_relation_tenant_integrity::Migration)
-            as Box<dyn MigrationTrait>,
-        Box::new(m20260729_000012_enforce_single_active_policy_set::Migration),
-        Box::new(m20260729_000013_enforce_channel_target_selection_integrity::Migration),
-    ]);
+    migrations.push(Box::new(
+        m20260729_000011_enforce_channel_relation_tenant_integrity::Migration,
+    ));
+    migrations.push(Box::new(
+        m20260729_000012_enforce_single_active_policy_set::Migration,
+    ));
+    migrations.push(Box::new(
+        m20260729_000013_enforce_channel_target_selection_integrity::Migration,
+    ));
     migrations
 }
 
