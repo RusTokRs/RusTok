@@ -38,6 +38,11 @@ jobs:
           rm -f scripts/agent/blog_richtext_storage_cutover.py.gz.b64
           rm -f scripts/agent/archive-link.md
           python3 scripts/agent/apply_blog_richtext_storage_cutover.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('crates/rustok-blog/src/dto/post.rs')
+          path.write_text(path.read_text(encoding='utf-8').rstrip() + '\n', encoding='utf-8')
+          PY
           git diff --check
       - name: Commit source cutover
         shell: bash
