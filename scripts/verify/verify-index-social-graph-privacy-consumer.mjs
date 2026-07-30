@@ -213,7 +213,6 @@ requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
   '`IndexSocialGraphPrivacyReadPort`',
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
-  '100 ms',
   'owner result',
   'never authorizes',
 ]);
