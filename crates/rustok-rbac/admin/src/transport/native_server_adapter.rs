@@ -4,6 +4,55 @@ use crate::model::RbacAdminBootstrap;
 #[cfg(feature = "ssr")]
 use crate::model::{RbacModulePermissionGroup, RbacRoleInfo};
 
+#[cfg(feature = "ssr")]
+const RBAC_ADMIN_BOUNDARY: &str = "rbac_admin_native_transport";
+
+#[cfg(feature = "ssr")]
+fn rbac_admin_scope_matches<T: PartialEq>(
+    auth_tenant_id: &T,
+    resolved_tenant_id: &T,
+) -> bool {
+    auth_tenant_id == resolved_tenant_id
+}
+
+#[cfg(feature = "ssr")]
+fn require_rbac_admin_tenant_scope<T>(
+    auth_tenant_id: &T,
+    resolved_tenant_id: &T,
+) -> Result<(), ServerFnError>
+where
+    T: PartialEq + std::fmt::Display,
+{
+    if rbac_admin_scope_matches(auth_tenant_id, resolved_tenant_id) {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        auth_tenant_id = %auth_tenant_id,
+        resolved_tenant_id = %resolved_tenant_id,
+        code = "rbac.admin_tenant_scope_mismatch",
+        boundary = RBAC_ADMIN_BOUNDARY,
+        "RBAC admin permissions cannot cross the resolved tenant boundary"
+    );
+    Err(ServerFnError::new("RBAC admin access is denied"))
+}
+
+#[cfg(feature = "ssr")]
+fn rbac_admin_context_error<E: std::fmt::Debug>(
+    error: E,
+    context_kind: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        context_kind,
+        code = "rbac.admin_context_unavailable",
+        boundary = RBAC_ADMIN_BOUNDARY,
+        "RBAC admin request context extraction failed"
+    );
+    ServerFnError::new(public_message)
+}
+
 #[server(prefix = "/api/fn", endpoint = "rbac/bootstrap")]
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -14,10 +63,23 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                rbac_admin_context_error(
+                    error,
+                    "auth",
+                    "RBAC authentication context is temporarily unavailable",
+                )
+            })?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                rbac_admin_context_error(
+                    error,
+                    "tenant",
+                    "RBAC tenant context is temporarily unavailable",
+                )
+            })?;
+        require_rbac_admin_tenant_scope(&auth.tenant_id, &tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new(
@@ -97,5 +159,18 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
         Err(ServerFnError::new(
             "rustok-rbac-admin requires the `ssr` feature for native bootstrap",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::{rbac_admin_scope_matches, require_rbac_admin_tenant_scope};
+
+    #[test]
+    fn rbac_admin_scope_requires_matching_tenant() {
+        assert!(rbac_admin_scope_matches(&"tenant-a", &"tenant-a"));
+        assert!(!rbac_admin_scope_matches(&"tenant-a", &"tenant-b"));
+        assert!(require_rbac_admin_tenant_scope(&"tenant-a", &"tenant-a").is_ok());
+        assert!(require_rbac_admin_tenant_scope(&"tenant-a", &"tenant-b").is_err());
     }
 }
