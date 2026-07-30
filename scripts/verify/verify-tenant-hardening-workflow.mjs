@@ -20,12 +20,14 @@ for (const marker of [
   'redis-recovery:',
   'TENANT_RUST_FILES:',
   'rustfmt --edition 2024 $TENANT_RUST_FILES',
+  'crates/rustok-tenant/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-tenant/tests/locale_policy_concurrency_postgres.rs',
   'crates/rustok-tenant/tests/tenant_ensure_concurrency_postgres.rs',
   'node scripts/verify/verify-tenant-locale-policy-migration.mjs',
   'npm run verify:tenant:fba',
   'node scripts/verify/verify-tenant-hardening-workflow.mjs',
   'cargo check -p rustok-tenant --tests',
+  'cargo check -p rustok-tenant-admin --features ssr',
   'cargo check -p rustok-storefront',
   'cargo test -p rustok-auth-cli oauth_create_app -- --nocapture',
   'cargo test -p rustok-server --test lifecycle_bypass_guard',
@@ -52,5 +54,5 @@ if (workflow.includes('cargo test -p rustok-tenant --test tenant_ensure_concurre
 }
 
 console.log(
-  '[verify-tenant-hardening-workflow] focused tenant, storefront, PostgreSQL and Redis evidence workflow is retained',
+  '[verify-tenant-hardening-workflow] focused tenant admin/storefront, PostgreSQL and Redis evidence workflow is retained',
 );
