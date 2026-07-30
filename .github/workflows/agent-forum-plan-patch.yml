@@ -6,12 +6,21 @@ on:
       - agent/forum-search-result-eligibility-23b2d
     paths:
       - .github/workflows/agent-forum-plan-patch.yml
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+    paths:
+      - .github/workflows/agent-forum-plan-patch.yml
 
 permissions:
   contents: write
 
 jobs:
   patch-plan:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +37,7 @@ jobs:
           text = path.read_text()
 
           replacements = [
-              (
-                  "last_reviewed: 2026-07-30",
-                  "last_reviewed: 2026-07-31",
-              ),
+              ("last_reviewed: 2026-07-30", "last_reviewed: 2026-07-31"),
               (
                   "| `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 adds exact Forum category filtering; FORUM-23B2A publishes a bounded Forum-owned public/authenticated category-subtree scope; FORUM-23B2B applies the complete delivered richer category audience decision before subtree IDs leave Forum; FORUM-23B2C composes that scope into explicit GraphQL and native Forum-only storefront Search execution. Topic/reply Search eligibility, trusted channel authority, remaining filters, owner revision ordering/reconciliation and maintainer runtime evidence remain. |",
                   "| `FORUM-23` | `in_progress` | FORUM-23A through FORUM-23A11 harden public-author Search projections and durable privacy invalidation; FORUM-23B1 adds exact Forum category filtering; FORUM-23B2A publishes a bounded Forum-owned public/authenticated category-subtree scope; FORUM-23B2B applies the complete delivered richer category audience decision before subtree IDs leave Forum; FORUM-23B2C composes that scope into explicit GraphQL and native Forum-only storefront Search execution; FORUM-23B2D applies exact topic-local and approved-reply result eligibility before visible Search totals, facets and pagination. Trusted channel authority, remaining filters, owner revision ordering/reconciliation and maintainer runtime evidence remain. |",
