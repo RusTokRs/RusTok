@@ -105,6 +105,10 @@ may be stale and therefore cannot prove that no current block or mute exists.
 - Every method executes the owner read first.
 - Owner error is returned unchanged.
 - After owner success, the same request is issued to Index for comparison.
+- The projected comparison receives only the remaining caller deadline budget measured from
+  entry to the shadow wrapper.
+- Budget exhaustion or projected timeout records retryable
+  `social_graph.index_privacy_unavailable` without changing the owner result.
 - All four methods return the owner result; the Index shadow never authorizes or suppresses.
 - Boolean comparisons classify `match_positive`, `match_negative`, `false_negative`, or
   `false_positive`.

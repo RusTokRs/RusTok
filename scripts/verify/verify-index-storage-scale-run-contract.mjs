@@ -180,8 +180,12 @@ requireMarkers(contractWorkflow, 'scale workflow contract workflow', [
 ]);
 
 requireMarkers(readme, 'Index README', [
-  'M2 replacement evidence and storage ADR: pending',
+  'M2 PostgreSQL storage benchmark: complete',
+  'M2 accepted storage model: JSONB',
   '[M2 replacement evidence runbook](./docs/storage-evidence-runbook.md)',
+]);
+forbidMarkers(readme, 'Index README', [
+  'M2 replacement evidence and storage ADR: pending',
 ]);
 requireMarkers(runbook, 'replacement evidence runbook', [
   'Pull requests run only the lightweight contract job.',
@@ -189,6 +193,11 @@ requireMarkers(runbook, 'replacement evidence runbook', [
   'One dispatch uses one selected Git ref and fans out `100k` and `1m` from the same checkout SHA.',
   'Do not combine artifacts from different run IDs or commit SHAs.',
   'Successful evidence and comparison artifacts are retained for 90 days.',
+  'The canonical replacement run is `30222913450`',
+  'The accepted ADR selects JSONB.',
+  'M2 is complete.',
+]);
+forbidMarkers(runbook, 'replacement evidence runbook', [
   'M2 remains open until the replacement packets are archived, the comparison is reviewed, and the ADR is accepted.',
 ]);
 
