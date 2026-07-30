@@ -12,6 +12,7 @@
   "index_privacy": "crates/rustok-social-graph/src/index_privacy.rs",
   "index_privacy_shadow": "crates/rustok-social-graph/src/index_privacy_shadow.rs",
   "index_privacy_shadow_metrics": "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs",
+  "index_privacy_shadow_metrics_adapter": "apps/server/src/services/notification_recipient_policy.rs",
   "relation_state": {
     "table": "social_graph_relations",
     "kinds": ["block", "mute"],
@@ -49,6 +50,8 @@
   },
   "telemetry": {
     "single_registry": true,
+    "owner_observation_contract": "crates/rustok-social-graph/src/index_privacy_shadow.rs",
+    "prometheus_adapter_owner": "rustok-server",
     "observations_metric": "rustok_social_graph_index_privacy_shadow_observations_total",
     "failures_metric": "rustok_social_graph_index_privacy_shadow_failures_total",
     "duration_metric": "rustok_social_graph_index_privacy_shadow_comparison_duration_seconds",
