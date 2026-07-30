@@ -7,6 +7,8 @@ on:
       - "crates/rustok-tenant/**"
       - "crates/rustok-auth/cli/**"
       - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/rustok-module.toml"
+      - "crates/rustok-commerce/src/lib.rs"
       - "crates/rustok-commerce/src/services/context.rs"
       - "crates/rustok-commerce/tests/context_service_test.rs"
       - "crates/rustok-commerce/tests/support/mod.rs"
@@ -28,6 +30,8 @@ on:
       - "crates/rustok-tenant/**"
       - "crates/rustok-auth/cli/**"
       - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/rustok-module.toml"
+      - "crates/rustok-commerce/src/lib.rs"
       - "crates/rustok-commerce/src/services/context.rs"
       - "crates/rustok-commerce/tests/context_service_test.rs"
       - "crates/rustok-commerce/tests/support/mod.rs"
@@ -58,6 +62,7 @@ env:
     apps/storefront/src/shared/context/enabled_modules.rs
     apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs
     crates/rustok-auth/cli/src/lib.rs
+    crates/rustok-commerce/src/lib.rs
     crates/rustok-commerce/src/services/context.rs
     crates/rustok-commerce/tests/context_service_test.rs
     crates/rustok-commerce/tests/support/mod.rs
@@ -119,6 +124,7 @@ jobs:
         run: |
           cargo xtask module validate tenant
           cargo xtask module validate auth
+          cargo xtask module validate commerce
 
   postgres-concurrency:
     name: PostgreSQL tenant concurrency
