@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0.0",
+  "status": "payment_checkout_execution_admission_context_source_unvalidated",
+  "captured_at": "2026-07-30",
+  "scope": {
+    "owner": "rustok_payment",
+    "boundary": "checkout_payment_execution_port",
+    "consumer": "rustok_commerce staged checkout",
+    "operations": [
+      "prepare_checkout_collection",
+      "authorize_checkout_collection",
+      "capture_checkout_collection",
+      "read_checkout_collection"
+    ]
+  },
+  "source_claims": {
+    "read_policy_rejections_are_context_logged": true,
+    "write_policy_rejections_are_context_logged": true,
+    "write_semantics_rejections_are_context_logged": true,
+    "original_port_error_is_returned_without_remap": true,
+    "correlation_tenant_actor_channel_locale_are_retained": true,
+    "causation_trace_idempotency_deadline_are_retained": true,
+    "typed_kind_code_message_and_retryability_are_retained": true,
+    "existing_owner_delegation_and_local_outcome_mapping_are_preserved": true,
+    "raw_request_strings_and_metadata_are_not_logged": true,
+    "checkout_payment_compensation_admission_is_out_of_scope": true
+  },
+  "validation": {
+    "focused_verifier_executed": false,
+    "aggregate_verifier_executed": false,
+    "cargo_check_executed": false,
+    "tests_executed": false,
+    "runtime_failure_injection_executed": false,
+    "ci_executed": false
+  },
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-payment/src/checkout_execution.rs",
+    "crates/rustok-payment/src/checkout_execution/port_impl.rs",
+    "crates/rustok-payment/src/checkout_execution/validation_errors.rs",
+    "crates/rustok-payment/src/checkout_compensation.rs",
+    "scripts/verify/verify-payment-checkout-execution-local-context.mjs"
+  ],
+  "promotion_gate": "No FFA, FBA, transport, runtime, browser, SSR, or production status is promoted from this source inspection."
+}

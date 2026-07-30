@@ -82,6 +82,103 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
+fn require_checkout_payment_read_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context
+        .require_policy(PortCallPolicy::read())
+        .inspect_err(|error| {
+            log_checkout_payment_execution_admission_rejection(
+                context,
+                owner_operation,
+                "policy",
+                error,
+            );
+        })
+}
+
+fn require_checkout_payment_write_admission(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<(), PortError> {
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_checkout_payment_execution_admission_rejection(
+                context,
+                owner_operation,
+                "policy",
+                error,
+            );
+        })?;
+    context.require_write_semantics().inspect_err(|error| {
+        log_checkout_payment_execution_admission_rejection(
+            context,
+            owner_operation,
+            "write_semantics",
+            error,
+        );
+    })
+}
+
+fn log_checkout_payment_execution_admission_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    admission: &'static str,
+    error: &PortError,
+) {
+    let technical_failure = matches!(
+        &error.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
+    );
+    if technical_failure {
+        tracing::error!(
+            error = ?error,
+            owner = "rustok_payment",
+            operation = owner_operation,
+            admission,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = "checkout_payment_execution_port",
+            "payment checkout execution admission failed"
+        );
+    } else {
+        tracing::warn!(
+            error = ?error,
+            owner = "rustok_payment",
+            operation = owner_operation,
+            admission,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            actor = ?context.actor,
+            channel = ?context.channel,
+            locale = %context.locale,
+            causation_id = ?context.causation_id,
+            traceparent = ?context.traceparent,
+            idempotency_key = ?context.idempotency_key,
+            deadline_ms = ?context.deadline_ms,
+            internal_code = %error.code,
+            internal_message = %error.message,
+            error_kind = ?error.kind,
+            retryable = error.retryable,
+            boundary = "checkout_payment_execution_port",
+            "payment checkout execution admission was rejected"
+        );
+    }
+}
+
 fn require_operation_context(
     context: &PortContext,
     owner_operation: &'static str,
