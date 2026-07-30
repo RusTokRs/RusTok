@@ -18,6 +18,7 @@
 - Publish `ProfileMediaPublicImageProvider` as the transport-neutral runtime seam for embedded or extracted Media presentation providers.
 - Provide explicit backfill helpers for provisioning missing profiles from existing user/customer data.
 - Expose `ProfileMutationService` as the preferred production mutation boundary; its constructor requires a database connection and transactional event bus, and every mutation delegates to an owner-write/outbox transaction.
+- Keep the older mutation methods on `ProfileService` only as deprecated compatibility shims. New callers must use the corresponding event-aware `ProfileMutationService` methods; repository production call sites are rejected by the Forum Search mutation boundary verifier.
 - Expose a request-scoped GraphQL `ProfileSummaryLoader` for host applications that need DataLoader-based batching and caching.
 - Expose module-owned GraphQL transport for self-service and public profile lookups, including targeted profile update mutations.
 - Publish a module-owned Leptos storefront profile page with explicit native/GraphQL transport selection and follow/unfollow controls.
@@ -46,8 +47,8 @@
 ## Entry points
 
 - `ProfilesModule`
-- `ProfileService`
-- `ProfileMutationService`
+- `ProfileService` for reads, normalization, planning, and deprecated mutation compatibility only
+- `ProfileMutationService` for production profile writes
 - `ProfilesReader`
 - `ProfilePrivacyService`
 - `ProfilePrivacyReadPort`

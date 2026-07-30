@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23A10",
+  "status": "source_complete_execution_pending",
+  "scope": "Deprecate legacy non-event ProfileService mutation methods in favor of the event-aware ProfileMutationService while retaining source compatibility",
+  "owner_definition_path": "crates/rustok-profiles/src/services.rs",
+  "preferred_mutation_api": "crates/rustok-profiles/src/mutations.rs",
+  "profiles_readme": "crates/rustok-profiles/README.md",
+  "legacy_source_gate_contract": "crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json",
+  "event_aware_api_contract": "crates/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json",
+  "owner_note": "crates/rustok-forum/docs/forum-23a10-profile-legacy-mutation-deprecation.md",
+  "verifier": "scripts/verify/verify-forum-search-profile-legacy-mutation-deprecation.mjs",
+  "deprecated_methods": {
+    "upsert_profile": "ProfileMutationService::upsert_profile_with_event",
+    "update_profile_handle": "ProfileMutationService::update_profile_handle_with_event",
+    "update_profile_content": "ProfileMutationService::update_profile_content_with_event",
+    "update_profile_locale": "ProfileMutationService::update_profile_locale_with_event",
+    "update_profile_visibility": "ProfileMutationService::update_profile_visibility_with_event",
+    "update_profile_media": "ProfileMutationService::update_profile_media_with_event",
+    "backfill_profile": "ProfileMutationService::backfill_profile_with_event"
+  },
+  "deprecation_boundary": {
+    "legacy_method_signatures_are_retained": true,
+    "legacy_methods_emit_rust_deprecation_diagnostics": true,
+    "each_diagnostic_names_the_event_aware_replacement": true,
+    "each_diagnostic_explains_atomic_owner_write_event_coupling": true,
+    "repository_production_call_sites_remain_forbidden": true,
+    "graphql_self_service_uses_event_aware_facade": true,
+    "cli_backfill_uses_event_aware_facade": true,
+    "profile_read_and_planning_methods_are_not_deprecated": true,
+    "legacy_backfill_internal_call_is_locally_allow_deprecated": true,
+    "profiles_readme_documents_compatibility_shim_status": true
+  },
+  "compatibility": {
+    "legacy_profile_service_methods_removed": false,
+    "legacy_method_signatures_changed": false,
+    "profile_read_api_changed": false,
+    "graphql_schema_changed": false,
+    "forum_rest_changed": false,
+    "search_query_api_changed": false,
+    "search_document_schema_changed": false,
+    "database_migration_added": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "remove or compile-time restrict the deprecated ProfileService mutation methods in a breaking API window",
+    "migrate intentional integration-test legacy callers to ProfileMutationService before removal",
+    "define an owner-ordered profile or account deletion projection invalidation contract",
+    "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
+    "add bounded category-subtree tag locale date solved kind channel group and attachment filters",
+    "add member index projections",
+    "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
+  ],
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "node scripts/verify/verify-forum-search-profile-legacy-mutation-deprecation.mjs",
+      "node scripts/verify/verify-forum-search-profile-event-aware-mutation-api.mjs",
+      "node scripts/verify/verify-forum-search-profile-service-mutation-boundary.mjs",
+      "node scripts/verify/verify-forum-search-public-author-summary.mjs",
+      "cargo check -p rustok-profiles --all-targets",
+      "cargo check -p rustok-profiles-cli --all-targets",
+      "cargo xtask module validate profiles",
+      "cargo xtask module validate forum"
+    ]
+  },
+  "non_claims": {
+    "legacy_methods_are_compile_time_private": true,
+    "legacy_methods_are_event_aware": true,
+    "external_downstream_crates_cannot_call_legacy_methods": true,
+    "deprecation_warnings_are_denied_workspace_wide": true,
+    "runtime_verification_was_executed": true,
+    "account_deletion_redaction_is_complete": true,
+    "general_cross_producer_owner_revision_ordering_is_complete": true
+  },
+  "downstream_task": "FORUM-23A11"
+}
