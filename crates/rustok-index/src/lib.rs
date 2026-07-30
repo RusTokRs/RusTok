@@ -3,10 +3,10 @@
 //! The active implementation contains the database-independent generic engine
 //! core under [`domain`] and [`application`], the canonical M3 PostgreSQL
 //! storage-schema migrations, atomic mutation persistence, tenant-scoped source
-//! schema registration, bounded source replay/load contracts, durable
-//! schema-application leases, schema-derived secondary-index lifecycle,
-//! fail-closed measured partition admission, and the PostgreSQL execution adapter
-//! for structured Index queries.
+//! schema registration, bounded source replay/load contracts, one-page replay
+//! orchestration with durable checkpoint progression, durable schema-application
+//! leases, schema-derived secondary-index lifecycle, fail-closed measured partition
+//! admission, and the PostgreSQL execution adapter for structured Index queries.
 
 use async_trait::async_trait;
 use rustok_core::{
@@ -29,10 +29,11 @@ pub use infrastructure::postgres::{
     PartitionAdmissionPolicy, PartitionAdmissionReason, PartitionBaselineEvidence,
     PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
     PartitionShadowEvidence, PartitionShadowPlan, PartitionStrategy,
-    PersistedSchemaRegistrationOutcome, PostgresIndexQueryPort, PostgresMutationStore,
-    PostgresSchemaLeaseStore, PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager,
-    SchemaApplicationLease, SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome,
-    SchemaLeaseError, SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
+    PersistedSchemaRegistrationOutcome, PostgresIndexQueryPort,
+    PostgresIndexReplayCheckpointStore, PostgresMutationStore, PostgresSchemaLeaseStore,
+    PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager, SchemaApplicationLease,
+    SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome, SchemaLeaseError,
+    SchemaRegistrationError, SecondaryIndexClaimOutcome, SecondaryIndexError,
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
 };
