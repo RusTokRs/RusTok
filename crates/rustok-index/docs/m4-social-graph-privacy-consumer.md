@@ -4,10 +4,16 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
-This slice is the first authorized production consumer of `SharedIndexQueryRuntime`.
-It moves the default Social Graph block/mute reads used by notification recipient policy
-from direct owner-table reads to the generic Index query port while keeping Social Graph
-as the contract and replay owner.
+This slice provides the first authorized production consumer source for
+`SharedIndexQueryRuntime`. It can move Social Graph block/mute reads used by notification
+recipient policy from direct owner-table reads to the generic Index query port while keeping
+Social Graph as the contract and replay owner.
+
+Activation is intentionally default-off. The final host selects the Index-backed policy only
+when `RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_READS_ENABLED=true`. Before activation, the existing
+authoritative owner read path remains in place. This avoids making an ordinary deployment
+unavailable while the projection worker is still default-off and live readiness/freshness
+evidence remains an owner action.
 
 ## Owner adapter
 
@@ -40,30 +46,32 @@ existing bounded service actor and matching tenant context.
 projected-result contract failures map to the non-retryable invariant code
 `social_graph.index_privacy_contract_invalid`.
 
-The notification policy therefore uses retryable fail-closed behavior: it does not authorize
-from missing or stale Index state, does not convert a failed block/mute read into `Allow`, and
-does not silently fall back to Social Graph tables in the final executable host.
+After activation, notification policy therefore uses retryable fail-closed behavior: it does
+not authorize from missing or stale Index state, does not convert a failed block/mute read
+into `Allow`, and does not silently fall back to Social Graph tables.
 
 ## Final host composition
 
 The server facade keeps the existing provider bootstrap as an internal base step, then:
 
 1. materializes the canonical PostgreSQL `SharedIndexQueryRuntime`;
-2. requires that runtime when Social Graph, Profiles, and Notifications are compiled;
-3. recomposes `ServerNotificationRecipientPolicy` with
-   `IndexSocialGraphPrivacyReadPort`;
-4. preserves explicitly registered `NotificationBlockReadRuntime` or
+2. parses the explicit default-off activation flag;
+3. when disabled, preserves the authoritative owner policy from the base bootstrap;
+4. when enabled, requires the shared runtime and recomposes
+   `ServerNotificationRecipientPolicy` with `IndexSocialGraphPrivacyReadPort`;
+5. preserves explicitly registered `NotificationBlockReadRuntime` or
    `NotificationMuteReadRuntime` overrides;
-5. publishes only the recomposed final extension set.
+6. publishes only the selected final extension set.
 
-The temporary DB-backed policy constructed inside the private base bootstrap never escapes
-that function. Missing shared runtime fails server bootstrap rather than retaining the old
-read path.
+An invalid activation value fails bootstrap. Once the flag is enabled, a missing shared
+runtime also fails bootstrap and no owner-table fallback remains in that activated path.
 
 ## Boundary
 
 This slice does not:
 
+- activate Index privacy reads by default;
+- claim that the default-off projection consumer is already healthy or caught up;
 - move Social Graph source authority or replay ownership into Index;
 - change relation commands, revision checks, event publication, projection, or DLQ handling;
 - use Index for revision-bearing `SocialGraphFollowReadPort` results;
@@ -71,6 +79,9 @@ This slice does not:
 - enable the notification candidate worker by default;
 - claim projection freshness, PostgreSQL execution evidence, or live equivalence;
 - add many-link aggregate ordering or another source schema.
+
+Activation requires retained projection readiness, lag, and result-parity evidence plus an
+operator decision to set the flag on the consuming host.
 
 ## Owner validation
 
