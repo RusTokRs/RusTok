@@ -61,6 +61,27 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(&format!(
             r#"
+            CREATE OR REPLACE FUNCTION channel_promote_single_default()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.is_default THEN
+                    UPDATE channels
+                       SET is_default = FALSE,
+                           updated_at = CURRENT_TIMESTAMP
+                     WHERE tenant_id = NEW.tenant_id
+                       AND id <> NEW.id
+                       AND is_default;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            DROP TRIGGER IF EXISTS channels_promote_single_default ON channels;
+            CREATE TRIGGER channels_promote_single_default
+            BEFORE INSERT OR UPDATE OF is_default, tenant_id ON channels
+            FOR EACH ROW
+            EXECUTE FUNCTION channel_promote_single_default();
+
             CREATE UNIQUE INDEX {UNIQUE_DEFAULT_INDEX}
                 ON channels (tenant_id)
                 WHERE is_default;
@@ -75,6 +96,30 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(&format!(
             r#"
+            CREATE TRIGGER IF NOT EXISTS channels_promote_single_default_insert
+            BEFORE INSERT ON channels
+            WHEN NEW.is_default = 1
+            BEGIN
+                UPDATE channels
+                   SET is_default = 0,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE tenant_id = NEW.tenant_id
+                   AND id <> NEW.id
+                   AND is_default = 1;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS channels_promote_single_default_update
+            BEFORE UPDATE OF is_default, tenant_id ON channels
+            WHEN NEW.is_default = 1
+            BEGIN
+                UPDATE channels
+                   SET is_default = 0,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE tenant_id = NEW.tenant_id
+                   AND id <> NEW.id
+                   AND is_default = 1;
+            END;
+
             CREATE UNIQUE INDEX IF NOT EXISTS {UNIQUE_DEFAULT_INDEX}
                 ON channels (tenant_id)
                 WHERE is_default = 1;
@@ -118,7 +163,8 @@ mod tests {
             CREATE TABLE channels (
                 id TEXT PRIMARY KEY NOT NULL,
                 tenant_id TEXT NOT NULL,
-                is_default INTEGER NOT NULL
+                is_default INTEGER NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             "#,
         )
@@ -142,8 +188,21 @@ mod tests {
         Ok(())
     }
 
+    async fn default_count(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) -> i64 {
+        db.query_one(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS count FROM channels WHERE tenant_id = ?1 AND is_default = 1",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .expect("default count query")
+        .expect("default count row")
+        .try_get("", "count")
+        .expect("default count")
+    }
+
     #[tokio::test]
-    async fn sqlite_rejects_a_second_default_for_the_same_tenant() {
+    async fn sqlite_promotion_demotes_the_previous_default() {
         let db = sqlite_channels_schema().await;
         Migration
             .up(&SchemaManager::new(&db))
@@ -151,14 +210,29 @@ mod tests {
             .expect("single-default invariant");
 
         let tenant_id = Uuid::new_v4();
-        insert_channel(&db, Uuid::new_v4(), tenant_id, true)
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+        insert_channel(&db, first_id, tenant_id, true)
             .await
             .expect("first default");
-        assert!(
-            insert_channel(&db, Uuid::new_v4(), tenant_id, true)
-                .await
-                .is_err()
-        );
+        insert_channel(&db, second_id, tenant_id, true)
+            .await
+            .expect("promoted default");
+
+        assert_eq!(default_count(&db, tenant_id).await, 1);
+        let promoted: i64 = db
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT is_default FROM channels WHERE id = ?1",
+                vec![second_id.into()],
+            ))
+            .await
+            .expect("promoted query")
+            .expect("promoted row")
+            .try_get("", "is_default")
+            .expect("promoted flag");
+        assert_eq!(promoted, 1);
+
         insert_channel(&db, Uuid::new_v4(), tenant_id, false)
             .await
             .expect("non-default channel");
