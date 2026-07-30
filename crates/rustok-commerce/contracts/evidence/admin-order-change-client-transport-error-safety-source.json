@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "status": "commerce_admin_order_change_client_transport_error_safety_source_unvalidated",
+  "owner": "rustok-commerce",
+  "boundary": "commerce_admin_order_change_client_transport",
+  "public_message": "Commerce admin order-change request could not be completed",
+  "operations": [
+    "fetch_order_changes",
+    "apply_order_change",
+    "cancel_order_change"
+  ],
+  "source_contract": {
+    "native_adapters_changed": false,
+    "server_functions_changed": false,
+    "graphql_transport_changed": false,
+    "promotion_transport_changed": false,
+    "request_response_dto_changed": false,
+    "api_error_contract_preserved": true,
+    "operation_count": 3,
+    "context_created_before_native_call": true,
+    "raw_native_error_public": false,
+    "static_public_message": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "token_values_logged": false,
+    "tenant_values_logged": false,
+    "order_values_logged": false,
+    "status_values_logged": false,
+    "action_payload_values_logged": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "notes": [
+    "The GraphQL branches retain their existing correlation-aware map_graphql_error policy.",
+    "Only final native ApiError results are remapped at the public order-change facade.",
+    "The shared default and SSR native adapters remain unchanged.",
+    "No FFA or FBA status is promoted from source inspection."
+  ]
+}
