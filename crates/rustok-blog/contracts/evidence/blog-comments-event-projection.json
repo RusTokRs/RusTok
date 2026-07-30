@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "comments_event_projection",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "owner": "rustok-blog",
+  "provider": "rustok-comments",
+  "events": [
+    "comment.created",
+    "comment.deleted"
+  ],
+  "production_contract": {
+    "handler": "crates/rustok-blog/src/services/comment_projection.rs",
+    "service_export": "crates/rustok-blog/src/services/mod.rs",
+    "delivery_entity": "crates/rustok-blog/src/entities/blog_comment_projection_delivery.rs",
+    "delivery_migration": "crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs",
+    "migration_registry": "crates/rustok-blog/src/migrations/mod.rs",
+    "module_registration": "crates/rustok-blog/src/lib.rs",
+    "consumer_registry": "crates/rustok-blog/contracts/blog-fba-registry.json"
+  },
+  "cases": [
+    {
+      "name": "blog_post_target_filter",
+      "expected": "only Comments lifecycle events whose target_type is blog_post are projected"
+    },
+    {
+      "name": "created_deleted_delta",
+      "expected": "comment.created increments by one and comment.deleted decrements by one"
+    },
+    {
+      "name": "envelope_idempotency",
+      "expected": "the event envelope id is the delivery-ledger primary key and an existing delivery is acknowledged without another counter update"
+    },
+    {
+      "name": "atomic_counter_delivery_outbox",
+      "expected": "the optimistic counter update, delivery insert, and BlogPostUpdated outbox publication share one database transaction"
+    },
+    {
+      "name": "tenant_scoped_optimistic_update",
+      "expected": "the post lookup and update require tenant identity and the observed post version, with a bounded retry loop"
+    },
+    {
+      "name": "missing_post_retry",
+      "expected": "a missing tenant post returns an error before the delivery marker is committed so the event runtime can retry"
+    },
+    {
+      "name": "non_negative_count",
+      "expected": "delete projection floors the Blog-owned comment count at zero"
+    },
+    {
+      "name": "module_listener_registration",
+      "expected": "Blog registers BlogCommentProjectionHandler through the module event-listener registry"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute duplicate and out-of-order comment.created/comment.deleted deliveries against PostgreSQL",
+    "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
+    "retain missing-post retry and later recovery evidence",
+    "retain concurrent optimistic-update exhaustion and retry evidence",
+    "retain host event-dispatch registration and restart recovery evidence"
+  ]
+}
