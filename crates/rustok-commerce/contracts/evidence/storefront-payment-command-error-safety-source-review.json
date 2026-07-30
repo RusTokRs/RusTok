@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "status": "commerce_storefront_payment_command_error_safety_source_reviewed_unvalidated",
+  "reviewed_at_utc": "2026-07-30T17:07:00Z",
+  "review_base": "1a39055c4d64bb6c19c81c34a4e0371f1ca262e1",
+  "scope": "Commerce storefront payment collection command public transport envelope",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs",
+    "crates/rustok-payment/storefront/src/transport.rs",
+    "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-payment/storefront/src/transport/graphql_error_safety.rs",
+    "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "crates/rustok-commerce/storefront/Cargo.toml",
+    "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
+  ],
+  "findings": [
+    {
+      "id": "payment-command-public-display-leak",
+      "severity": "confirmed",
+      "finding": "create_storefront_payment_collection converted the payment owner UiTransportError through ApiError::from, publishing the full transport display with path metadata and nested owner message."
+    },
+    {
+      "id": "owner-error-safety",
+      "severity": "preserved",
+      "finding": "Payment native and GraphQL adapters already produce bounded validation and static runtime envelopes before the final Commerce wrapper."
+    },
+    {
+      "id": "validation-compatibility",
+      "severity": "preserved",
+      "finding": "Both payment owner paths use the exact cart_id must be a valid UUID validation envelope, allowing a structural Commerce mapping to Invalid cart selection."
+    },
+    {
+      "id": "minimal-boundary-fix",
+      "severity": "selected",
+      "finding": "A Commerce-owned context around the payment command wrapper is the smallest compatible fix; payment mutation, metadata, DTO, owner adapters, and the two remaining Commerce command wrappers do not need changes."
+    },
+    {
+      "id": "safe-request-shape",
+      "severity": "confirmed",
+      "finding": "Diagnostics retain only correlation, tenant/cart/metadata field lengths, path, fallback, stable code, and the private UiTransportError; no raw cart or metadata value is recorded as a structured field."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-commerce/contracts/evidence/storefront-payment-command-error-safety-source-review.json",
+    "crates/rustok-commerce/contracts/evidence/storefront-payment-command-error-safety-source.json",
+    "crates/rustok-commerce/docs/storefront-payment-collection-command-error-safety.md",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/rustok-commerce/storefront/src/transport/payment_collection_command_error_safety.rs",
+    "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-payment-command-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
+  ],
+  "preserved": [
+    "PaymentCollectionCreateRequest and response DTOs",
+    "payment-owned command metadata",
+    "payment GraphQL mutation and native server function",
+    "payment owner validation and static runtime messages",
+    "native versus GraphQL feature selection",
+    "absence of native-to-GraphQL fallback",
+    "shipping option selection wrapper",
+    "checkout completion wrapper"
+  ],
+  "remaining_scope": [
+    "Commerce storefront shipping selection command public envelope",
+    "Commerce storefront checkout completion command public envelope",
+    "Pricing storefront and other remaining ecommerce adapters",
+    "remaining non-PortError public envelopes"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}

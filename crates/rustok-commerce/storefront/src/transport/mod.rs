@@ -1,6 +1,7 @@
 mod aggregate_error_safety;
 mod graphql_adapter;
 mod native_server_adapter;
+mod payment_collection_command_error_safety;
 mod shared_adapter;
 
 use crate::core::{
@@ -34,9 +35,13 @@ pub async fn fetch_storefront_commerce(
 pub async fn create_storefront_payment_collection(
     request: PaymentCollectionCommandRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
+    let error_context =
+        payment_collection_command_error_safety::PaymentCollectionCommandErrorContext::new(
+            &request,
+        );
     create_payment_collection(request)
         .await
-        .map_err(ApiError::from)
+        .map_err(|error| error_context.map_error(error))
 }
 
 #[allow(dead_code)]
