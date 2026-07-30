@@ -31,6 +31,7 @@ pub mod projector;
 pub mod ranking;
 pub mod search_settings;
 pub mod storefront_category_scope;
+pub mod storefront_result_eligibility;
 pub mod suggestions;
 
 pub use analytics::{
@@ -77,6 +78,12 @@ pub use storefront_category_scope::{
     FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
     StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
     StorefrontSearchTransport, resolve_storefront_search_category_ids,
+};
+pub use storefront_result_eligibility::{
+    MAX_FORUM_SEARCH_RESULT_CANDIDATES, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
+    resolve_storefront_search_result_candidates,
 };
 pub use suggestions::{
     SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,
