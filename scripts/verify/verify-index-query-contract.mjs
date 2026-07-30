@@ -22,6 +22,7 @@ const scripts = [
   'verify-index-replay-multipage-runner.mjs',
   'verify-index-replay-runtime-composition.mjs',
   'verify-index-product-source.mjs',
+  'verify-index-product-variant-source.mjs',
   'verify-index-query-runtime-composition.mjs',
   'verify-index-social-graph-privacy-consumer.mjs',
   'verify-social-graph-privacy-shadow-evidence.mjs',
