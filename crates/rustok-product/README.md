@@ -41,6 +41,12 @@
   Product revision so versioned Product graph links cannot reuse a stale source
   version. Both values remain storage-internal and are not exposed through
   Product DTOs or SeaORM write models.
+- Own retained hard-delete replay state in `product_index_tombstones` and
+  `product_variant_index_tombstones`. Physical Product deletion retains every
+  current translation locale, direct translation deletion retains the exact
+  removed locale, and ProductVariant deletion retains its non-localized key.
+  Recreated identities must receive an `index_revision` strictly above the
+  retained delete before the tombstone is cleared.
 - Publish only a neutral `ProductRuntimeSelected` marker for selected
   cross-module composition. The Product crate does not depend on `rustok-index`
   and does not construct generic Index mutations.
@@ -53,9 +59,12 @@
   identity-ready schemas. Product v2 exposes normalized channel visibility
   scalars and a many-cardinality Product-to-ProductVariant link; ProductVariant
   v2 adds its stable UUID identity field.
-- Product/ProductVariant hard-delete tombstones, incremental event ingestion,
-  durable Product/ProductVariant-to-SalesChannel relations, and authoritative
-  Index consumer cutover remain later Index/reconciliation slices.
+- The selected bridge emits `IndexMutation::Upsert` for live owner rows and
+  `IndexMutation::Delete` for retained hard-delete identities without changing
+  schema fingerprints, source names, cursor shapes, or replay event domains.
+  Incremental event ingestion, tombstone retention/purge admission, durable
+  Product/ProductVariant-to-SalesChannel relations, and authoritative Index
+  consumer cutover remain later Index/reconciliation slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
@@ -154,5 +163,6 @@
 
 See also `docs/README.md`, the Index
 [M7 Product source contract](../rustok-index/docs/m7-product-source.md),
-[M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md), and
-[M7 versioned Product graph contract](../rustok-index/docs/m7-product-graph-source.md).
+[M7 ProductVariant source contract](../rustok-index/docs/m7-product-variant-source.md),
+[M7 versioned Product graph contract](../rustok-index/docs/m7-product-graph-source.md), and
+[M7 Product tombstone replay contract](../rustok-index/docs/m7-product-tombstone-source.md).

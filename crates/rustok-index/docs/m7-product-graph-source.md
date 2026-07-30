@@ -67,6 +67,13 @@ not advance Product revision because they do not change Product link membership.
 The existing Product row trigger still enforces exactly `OLD.index_revision + 1` and fails on
 revision exhaustion.
 
+## Durable hard-delete continuation
+
+The follow-up [Product tombstone replay contract](m7-product-tombstone-source.md) retains exact
+Product translation and ProductVariant identities after physical deletion. The same two stable
+sources now emit versioned `IndexMutation::Delete` values without changing any v1/v2 schema
+fingerprint, source name, cursor shape, or event domain.
+
 ## Why there is no Product-to-SalesChannel link yet
 
 The current owner-authoritative visibility model stores Channel slugs in Product metadata, not
@@ -82,21 +89,23 @@ the `channels` table and does not depend on `rustok-channel`.
 
 ## Ownership
 
-`rustok-product` owns Product/Variant storage, normalized metadata, monotonic revisions, and the
-Variant-membership revision trigger. It still has no dependency on `rustok-index`.
+`rustok-product` owns Product/Variant storage, normalized metadata, monotonic revisions,
+Variant-membership revision, and retained hard-delete identities. It still has no dependency on
+`rustok-index`.
 
 `rustok-distribution` owns the selected generic conversion adapter because it composes Product
 and Index contracts. Index core and server remain Product-agnostic.
 
 ## Explicitly open
 
-- Product, translation, and ProductVariant hard-delete tombstones;
 - incremental event ingestion and broker acknowledgement;
+- tombstone retention/purge admission after consumer checkpoints are proven newer;
 - a durable Product/ProductVariant-to-SalesChannel relation and revision contract;
 - persisted per-tenant v2 schema application;
 - repeatable-read replay snapshot and concurrent membership reconciliation semantics;
 - authoritative Storefront query cutover;
-- retained PostgreSQL replay, freshness, restart, drift, and equivalence evidence;
+- retained PostgreSQL replay, hard-delete/recreate, freshness, restart, drift, and equivalence
+  evidence;
 - retry/backoff/dead-letter scheduling and graceful host task ownership.
 
 Runtime schema/source presence does not establish persisted schema readiness. Consumers must not
