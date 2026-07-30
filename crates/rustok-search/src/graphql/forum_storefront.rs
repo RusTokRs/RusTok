@@ -216,5 +216,9 @@ fn map_execution_error(error: ForumStorefrontSearchExecutionError) -> FieldError
             tracing::error!(error = ?error, "Forum storefront Search database failure");
             <FieldError as GraphQLError>::internal_error(FORUM_STOREFRONT_SEARCH_UNAVAILABLE)
         }
+        ForumStorefrontSearchExecutionError::Invariant(message) => {
+            tracing::error!(message, "Forum storefront Search invariant failed");
+            <FieldError as GraphQLError>::internal_error(FORUM_STOREFRONT_SEARCH_UNAVAILABLE)
+        }
     }
 }
