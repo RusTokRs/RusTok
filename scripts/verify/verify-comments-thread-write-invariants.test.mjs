@@ -25,6 +25,9 @@ function fixture({
   missingPostgresHarness = false,
   missingIdentityRowLock = false,
   missingFirstThreadHarness = false,
+  missingIdentityClassifier = false,
+  broadInsertFallback = false,
+  missingStoragePropagation = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-comments-thread-invariants-"));
   const commentPath = "crates/rustok-comments/src/entities/comment.rs";
@@ -65,6 +68,16 @@ function fixture({
     root,
     threadPath,
     `
+      ${
+        missingIdentityClassifier
+          ? ""
+          : `
+            pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER: &str = "comment_thread_identity_conflict";
+            pub(crate) fn is_thread_identity_conflict(error: &DbErr) {
+              matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix));
+            }
+          `
+      }
       impl ActiveModelBehavior for ActiveModel {
         async fn before_save() {
           serialize_thread_identity(db, &self).await?;
@@ -82,7 +95,7 @@ function fixture({
       }
       OnConflict::columns;
       ${missingIdentityRowLock ? "" : "identity_lock::Entity::update_many();"}
-      comment thread identity {target_type}:{target_id} already belongs to
+      {THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:{}
     `,
   );
   write(
@@ -100,9 +113,26 @@ function fixture({
     root,
     servicesPath,
     `
-      find_or_create_thread_in_tx
-      match thread.insert(txn).await
-      Err(_) => comment_thread::Entity::find()
+      async fn find_or_create_thread_in_tx() {
+        match thread.insert(txn).await {
+          Ok(thread) => Ok(thread),
+          ${
+            broadInsertFallback
+              ? "Err(_) => comment_thread::Entity::find()"
+              : `
+                Err(error)
+                  if comment_thread::is_thread_identity_conflict(
+                    &error,
+                    tenant_id,
+                    target_type,
+                    target_id,
+                  ) => comment_thread::Entity::find(),
+                ${missingStoragePropagation ? "" : "Err(error) => Err(error.into()),"}
+              `
+          }
+        }
+      }
+      async fn next_position_in_tx() {}
       async fn update_thread_counters_in_tx() {
         active.update(txn).await?;
       }
@@ -189,7 +219,7 @@ function fixture({
     root,
     evidencePath,
     JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       module: "comments",
       surface: "thread_write_invariants",
       status: "executable_no_run",
@@ -198,6 +228,7 @@ function fixture({
       production_contract: {
         position_owner: commentPath,
         counter_and_identity_owner: threadPath,
+        thread_service: servicesPath,
         identity_lock_entity: identityEntityPath,
         counter_repair_migration: counterMigrationPath,
         identity_lock_migration: identityMigrationPath,
@@ -213,6 +244,7 @@ function fixture({
         { name: "historical_counter_repair" },
         { name: "historical_position_repair" },
         { name: "bulk_bypass_rejection" },
+        { name: "identity_conflict_only_fallback" },
         { name: "postgres_concurrent_create_delete" },
         { name: "postgres_concurrent_first_thread_creation" },
       ],
@@ -221,7 +253,7 @@ function fixture({
   write(
     root,
     "crates/rustok-comments/docs/implementation-plan.md",
-    "comments-thread-write-invariants.json thread_write_invariants ActiveModelBehavior UNIQUE(thread_id, position) RUSTOK_COMMENTS_TEST_DATABASE_URL concurrent PostgreSQL identity-lock thread_creation_concurrency",
+    "comments-thread-write-invariants.json thread_write_invariants ActiveModelBehavior UNIQUE(thread_id, position) RUSTOK_COMMENTS_TEST_DATABASE_URL concurrent PostgreSQL identity-lock thread_creation_concurrency identity-conflict-only fallback unrelated storage errors propagate",
   );
 
   return root;
@@ -312,6 +344,39 @@ test("rejects missing first-thread concurrency harness", () => {
     const result = run(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing postgres_concurrent_first_comments_share_one_thread/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a broad insert fallback", () => {
+  const root = fixture({ broadInsertFallback: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /forbidden Err\(_\) =>/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a missing identity-conflict classifier", () => {
+  const root = fixture({ missingIdentityClassifier: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing pub\(crate\) const THREAD_IDENTITY_CONFLICT_MARKER/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects missing unrelated storage error propagation", () => {
+  const root = fixture({ missingStoragePropagation: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing Err\(error\) => Err\(error\.into\(\)\)/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

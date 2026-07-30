@@ -7,6 +7,21 @@ use uuid::Uuid;
 
 use crate::dto::CommentThreadStatus;
 
+pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER: &str =
+    "comment_thread_identity_conflict";
+
+pub(crate) fn is_thread_identity_conflict(
+    error: &DbErr,
+    tenant_id: Uuid,
+    target_type: &str,
+    target_id: Uuid,
+) -> bool {
+    let expected_prefix = format!(
+        "{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:"
+    );
+    matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix))
+}
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "comment_threads")]
 pub struct Model {
@@ -159,11 +174,11 @@ where
         .one(db)
         .await?
     {
-        // Returning an application DbErr before the INSERT statement keeps the
-        // surrounding PostgreSQL transaction usable. The service's existing
-        // find-or-create fallback then loads this canonical thread.
+        // Returning an owner-classified application DbErr before the INSERT keeps
+        // the surrounding PostgreSQL transaction usable. The service retries the
+        // canonical lookup only for this exact identity and propagates other errors.
         return Err(DbErr::Custom(format!(
-            "comment thread identity {target_type}:{target_id} already belongs to {}",
+            "{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:{}",
             existing.id
         )));
     }
