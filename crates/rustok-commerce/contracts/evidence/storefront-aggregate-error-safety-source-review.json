@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "status": "commerce_storefront_aggregate_error_safety_source_reviewed_unvalidated",
+  "reviewed_at_utc": "2026-07-30T16:42:00Z",
+  "review_base": "31df77f3cd7b6294af04af81bf73eadb1a0c9e72",
+  "scope": "Commerce storefront aggregate fetch public transport envelope",
+  "reviewed_sources": [
+    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/rustok-commerce/storefront/src/core/requests.rs",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs",
+    "crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-commerce/storefront/src/transport/shared_adapter.rs",
+    "crates/rustok-ui-transport/src/lib.rs",
+    "crates/rustok-commerce/storefront/Cargo.toml",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
+  ],
+  "findings": [
+    {
+      "id": "aggregate-public-display-leak",
+      "severity": "confirmed",
+      "finding": "fetch_storefront_commerce converted the final UiTransportError through ApiError::from, exposing the full transport Display envelope with path and nested error text."
+    },
+    {
+      "id": "downstream-owner-safety",
+      "severity": "preserved",
+      "finding": "Cart and Payment aggregate composition already mapped owner failures to static messages before the final Commerce transport wrapper."
+    },
+    {
+      "id": "validation-compatibility",
+      "severity": "preserved",
+      "finding": "Native Invalid cart selection and GraphQL cart_id UUID validation are recognized at the final aggregate boundary and unified as ApiError::Validation with a static public message."
+    },
+    {
+      "id": "minimal-boundary-fix",
+      "severity": "selected",
+      "finding": "A Commerce-owned aggregate context after execute_selected_transport is the smallest fix; private adapters, shared composition, DTOs, transport selection, and owner command wrappers do not need changes."
+    },
+    {
+      "id": "safe-request-shape",
+      "severity": "confirmed",
+      "finding": "Diagnostics retain only correlation, optional-field presence and lengths, path, fallback, stable code, and private UiTransportError diagnostics; raw tenant slug, cart id, and locale are not structured fields."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source-review.json",
+    "crates/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source.json",
+    "crates/rustok-commerce/docs/storefront-aggregate-public-error-safety.md",
+    "crates/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs",
+    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
+    "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
+  ],
+  "preserved": [
+    "FetchCommerceRequest and StorefrontCommerceData DTOs",
+    "native and GraphQL aggregate adapters",
+    "Cart and Payment owner composition",
+    "native versus GraphQL transport selection",
+    "absence of native-to-GraphQL fallback",
+    "payment collection, shipping selection, and checkout completion command wrappers"
+  ],
+  "remaining_scope": [
+    "Commerce storefront payment collection command public envelope",
+    "Commerce storefront shipping selection command public envelope",
+    "Commerce storefront checkout completion command public envelope",
+    "remaining ecommerce adapters and non-PortError public envelopes"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}
