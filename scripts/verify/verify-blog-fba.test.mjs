@@ -151,6 +151,16 @@ test('Blog FBA verification-chain policy rejects a missing leaf verifier script'
   );
 });
 
+test('Blog FBA verification-chain policy rejects a missing registered verifier file', () => {
+  const existingPaths = canonicalExistingPaths();
+  existingPaths.delete(BLOG_FBA_SOURCE_GATES.storefront_boundary.verifier);
+  assert.ok(
+    failures({ existingPaths }).includes(
+      `registry source gate storefront_boundary missing ${BLOG_FBA_SOURCE_GATES.storefront_boundary.verifier}`,
+    ),
+  );
+});
+
 test('Blog FBA verification-chain policy rejects a missing leaf self-test file', () => {
   const existingPaths = canonicalExistingPaths();
   existingPaths.delete(BLOG_FBA_SOURCE_GATES.richtext_offline_backfill.self_test);
@@ -159,6 +169,12 @@ test('Blog FBA verification-chain policy rejects a missing leaf self-test file',
       `registry source gate richtext_offline_backfill missing ${BLOG_FBA_SOURCE_GATES.richtext_offline_backfill.self_test}`,
     ),
   );
+});
+
+test('Blog FBA verification-chain policy rejects aggregate self-test path drift', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.self_test = 'scripts/verify/wrong-blog-fba.test.mjs';
+  assert.ok(failures({ registry }).includes('verification chain self-test path drift'));
 });
 
 test('Blog FBA verification-chain policy rejects consumer runtime self-test drift', () => {
