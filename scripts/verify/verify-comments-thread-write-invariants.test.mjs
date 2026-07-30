@@ -26,12 +26,18 @@ function fixture({
   missingIdentityRowLock = false,
   missingFirstThreadHarness = false,
   missingIdentityClassifier = false,
+  missingClassifierUuidValidation = false,
+  missingClassifierUnitHarness = false,
+  missingClassifierTestRegistration = false,
   broadInsertFallback = false,
   missingStoragePropagation = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-comments-thread-invariants-"));
   const commentPath = "crates/rustok-comments/src/entities/comment.rs";
   const threadPath = "crates/rustok-comments/src/entities/comment_thread.rs";
+  const entitiesModulePath = "crates/rustok-comments/src/entities/mod.rs";
+  const classifierTestPath =
+    "crates/rustok-comments/src/entities/thread_insert_error_tests.rs";
   const identityEntityPath =
     "crates/rustok-comments/src/entities/comment_thread_identity_lock.rs";
   const servicesPath = "crates/rustok-comments/src/services.rs";
@@ -64,20 +70,29 @@ function fixture({
       }
     `,
   );
+
+  const classifier = missingIdentityClassifier
+    ? ""
+    : missingClassifierUuidValidation
+      ? `
+          pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER: &str = "comment_thread_identity_conflict";
+          pub(crate) fn is_thread_identity_conflict(error: &DbErr) {
+            matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix));
+          }
+        `
+      : `
+          pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER: &str = "comment_thread_identity_conflict";
+          pub(crate) fn is_thread_identity_conflict(error: &DbErr) {
+            let DbErr::Custom(message) = error else { return false; };
+            let Some(existing_thread_id) = message.strip_prefix(&expected_prefix) else { return false; };
+            Uuid::parse_str(existing_thread_id).is_ok();
+          }
+        `;
   write(
     root,
     threadPath,
     `
-      ${
-        missingIdentityClassifier
-          ? ""
-          : `
-            pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER: &str = "comment_thread_identity_conflict";
-            pub(crate) fn is_thread_identity_conflict(error: &DbErr) {
-              matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix));
-            }
-          `
-      }
+      ${classifier}
       impl ActiveModelBehavior for ActiveModel {
         async fn before_save() {
           serialize_thread_identity(db, &self).await?;
@@ -98,6 +113,35 @@ function fixture({
       {THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:{}
     `,
   );
+
+  write(
+    root,
+    entitiesModulePath,
+    missingClassifierTestRegistration
+      ? "pub mod comment_thread;"
+      : `
+          pub mod comment_thread;
+          #[cfg(test)]
+          mod thread_insert_error_tests;
+        `,
+  );
+
+  write(
+    root,
+    classifierTestPath,
+    missingClassifierUnitHarness
+      ? ""
+      : `
+          thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid
+          thread_identity_conflict_classifier_rejects_malformed_owner_uuid
+          thread_identity_conflict_classifier_rejects_wrong_scope
+          unrelated_custom_error_remains_a_database_error
+          THREAD_IDENTITY_CONFLICT_MARKER
+          is_thread_identity_conflict(
+          CommentsError::Database(DbErr::Custom(message))
+        `,
+  );
+
   write(
     root,
     identityEntityPath,
@@ -109,6 +153,7 @@ function fixture({
       impl ActiveModelBehavior for ActiveModel
     `,
   );
+
   write(
     root,
     servicesPath,
@@ -139,6 +184,7 @@ function fixture({
       fn next_item() {}
     `,
   );
+
   write(
     root,
     counterMigrationPath,
@@ -154,6 +200,7 @@ function fixture({
       ${nonUniqueIndex ? "" : ".unique();"}
     `,
   );
+
   write(
     root,
     identityMigrationPath,
@@ -166,6 +213,7 @@ function fixture({
       .unique()
     `,
   );
+
   write(
     root,
     migrationRegistryPath,
@@ -176,6 +224,7 @@ function fixture({
       Box::new(m20260723_000009_add_comment_thread_identity_locks::Migration)
     `,
   );
+
   write(
     root,
     writeTestPath,
@@ -198,6 +247,7 @@ function fixture({
       }
     `,
   );
+
   write(
     root,
     firstThreadTestPath,
@@ -215,11 +265,12 @@ function fixture({
         RUSTOK_COMMENTS_TEST_DATABASE_URL
       `,
   );
+
   write(
     root,
     evidencePath,
     JSON.stringify({
-      schema_version: 2,
+      schema_version: 3,
       module: "comments",
       surface: "thread_write_invariants",
       status: "executable_no_run",
@@ -229,6 +280,8 @@ function fixture({
         position_owner: commentPath,
         counter_and_identity_owner: threadPath,
         thread_service: servicesPath,
+        entities_module: entitiesModulePath,
+        classifier_unit_test: classifierTestPath,
         identity_lock_entity: identityEntityPath,
         counter_repair_migration: counterMigrationPath,
         identity_lock_migration: identityMigrationPath,
@@ -245,15 +298,17 @@ function fixture({
         { name: "historical_position_repair" },
         { name: "bulk_bypass_rejection" },
         { name: "identity_conflict_only_fallback" },
+        { name: "identity_conflict_marker_structure" },
         { name: "postgres_concurrent_create_delete" },
         { name: "postgres_concurrent_first_thread_creation" },
       ],
     }),
   );
+
   write(
     root,
     "crates/rustok-comments/docs/implementation-plan.md",
-    "comments-thread-write-invariants.json thread_write_invariants ActiveModelBehavior UNIQUE(thread_id, position) RUSTOK_COMMENTS_TEST_DATABASE_URL concurrent PostgreSQL identity-lock thread_creation_concurrency identity-conflict-only fallback unrelated storage errors propagate",
+    "comments-thread-write-invariants.json thread_write_invariants ActiveModelBehavior UNIQUE(thread_id, position) RUSTOK_COMMENTS_TEST_DATABASE_URL concurrent PostgreSQL identity-lock thread_creation_concurrency thread_insert_error_tests identity-conflict-only fallback valid canonical thread UUID unrelated storage errors propagate",
   );
 
   return root;
@@ -267,6 +322,17 @@ function run(root) {
   });
 }
 
+function expectFailure(options, pattern) {
+  const root = fixture(options);
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    if (pattern) assert.match(result.stderr, pattern);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 test("thread write verifier accepts the owner invariant contract", () => {
   const root = fixture();
   try {
@@ -278,106 +344,71 @@ test("thread write verifier accepts the owner invariant contract", () => {
 });
 
 test("rejects position allocation without tenant lock", () => {
-  const root = fixture({ missingPositionTenantLock: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure({ missingPositionTenantLock: true });
 });
 
 test("rejects counter writes without activation guard", () => {
-  const root = fixture({ missingCounterActivationGuard: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure({ missingCounterActivationGuard: true });
 });
 
 test("rejects a counter owner without exact active count", () => {
-  const root = fixture({ missingExactCount: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure({ missingExactCount: true });
 });
 
 test("rejects a non-unique position index", () => {
-  const root = fixture({ nonUniqueIndex: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure({ nonUniqueIndex: true });
 });
 
 test("rejects missing PostgreSQL write concurrency harness", () => {
-  const root = fixture({ missingPostgresHarness: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure({ missingPostgresHarness: true });
 });
 
 test("rejects missing identity row lock", () => {
-  const root = fixture({ missingIdentityRowLock: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing identity_lock::Entity::update_many/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure({ missingIdentityRowLock: true }, /missing identity_lock::Entity::update_many/);
 });
 
 test("rejects missing first-thread concurrency harness", () => {
-  const root = fixture({ missingFirstThreadHarness: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing postgres_concurrent_first_comments_share_one_thread/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure(
+    { missingFirstThreadHarness: true },
+    /missing postgres_concurrent_first_comments_share_one_thread/,
+  );
 });
 
 test("rejects a broad insert fallback", () => {
-  const root = fixture({ broadInsertFallback: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /forbidden Err\(_\) =>/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure({ broadInsertFallback: true }, /forbidden Err\(_\) =>/);
 });
 
 test("rejects a missing identity-conflict classifier", () => {
-  const root = fixture({ missingIdentityClassifier: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing pub\(crate\) const THREAD_IDENTITY_CONFLICT_MARKER/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure(
+    { missingIdentityClassifier: true },
+    /missing pub\(crate\) const THREAD_IDENTITY_CONFLICT_MARKER/,
+  );
+});
+
+test("rejects a prefix-only identity-conflict classifier", () => {
+  expectFailure(
+    { missingClassifierUuidValidation: true },
+    /missing let DbErr::Custom\(message\) = error else|forbidden message\.starts_with/,
+  );
+});
+
+test("rejects a missing identity classifier unit harness", () => {
+  expectFailure(
+    { missingClassifierUnitHarness: true },
+    /missing thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid/,
+  );
+});
+
+test("rejects an unregistered identity classifier unit harness", () => {
+  expectFailure(
+    { missingClassifierTestRegistration: true },
+    /missing #\[cfg\(test\)\]|missing mod thread_insert_error_tests;/,
+  );
 });
 
 test("rejects missing unrelated storage error propagation", () => {
-  const root = fixture({ missingStoragePropagation: true });
-  try {
-    const result = run(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing Err\(error\) => Err\(error\.into\(\)\)/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  expectFailure(
+    { missingStoragePropagation: true },
+    /missing Err\(error\) => Err\(error\.into\(\)\)/,
+  );
 });

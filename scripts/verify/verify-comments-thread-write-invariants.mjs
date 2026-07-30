@@ -31,6 +31,9 @@ function requireNoMarker(source, marker, label) {
 
 const commentPath = "crates/rustok-comments/src/entities/comment.rs";
 const threadPath = "crates/rustok-comments/src/entities/comment_thread.rs";
+const entitiesModulePath = "crates/rustok-comments/src/entities/mod.rs";
+const classifierTestPath =
+  "crates/rustok-comments/src/entities/thread_insert_error_tests.rs";
 const identityEntityPath =
   "crates/rustok-comments/src/entities/comment_thread_identity_lock.rs";
 const servicesPath = "crates/rustok-comments/src/services.rs";
@@ -48,6 +51,8 @@ const planPath = "crates/rustok-comments/docs/implementation-plan.md";
 
 const comment = read(commentPath);
 const thread = read(threadPath);
+const entitiesModule = read(entitiesModulePath);
+const classifierTest = read(classifierTestPath);
 const identityEntity = read(identityEntityPath);
 const services = read(servicesPath);
 const counterMigration = read(counterMigrationPath);
@@ -79,7 +84,9 @@ for (const marker of [
 for (const marker of [
   "pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER",
   "pub(crate) fn is_thread_identity_conflict(",
-  "matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix))",
+  "let DbErr::Custom(message) = error else",
+  "message.strip_prefix(&expected_prefix)",
+  "Uuid::parse_str(existing_thread_id).is_ok()",
   "impl ActiveModelBehavior for ActiveModel",
   "serialize_thread_identity(db, &self).await?",
   "matches!(&self.comment_count, ActiveValue::Set(_))",
@@ -94,6 +101,30 @@ for (const marker of [
   "{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:{}",
 ]) {
   requireMarker(thread, marker, threadPath);
+}
+requireNoMarker(
+  thread,
+  "message.starts_with(&expected_prefix)",
+  `${threadPath}: identity classifier`,
+);
+
+for (const marker of [
+  "#[cfg(test)]",
+  "mod thread_insert_error_tests;",
+]) {
+  requireMarker(entitiesModule, marker, entitiesModulePath);
+}
+
+for (const marker of [
+  "thread_identity_conflict_classifier_accepts_exact_scope_and_owner_uuid",
+  "thread_identity_conflict_classifier_rejects_malformed_owner_uuid",
+  "thread_identity_conflict_classifier_rejects_wrong_scope",
+  "unrelated_custom_error_remains_a_database_error",
+  "THREAD_IDENTITY_CONFLICT_MARKER",
+  "is_thread_identity_conflict(",
+  "CommentsError::Database(DbErr::Custom(message))",
+]) {
+  requireMarker(classifierTest, marker, classifierTestPath);
 }
 
 for (const marker of [
@@ -206,7 +237,7 @@ for (const marker of [
 }
 
 if (evidence) {
-  if (evidence.schema_version !== 2) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 3) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== "comments" ||
     evidence.surface !== "thread_write_invariants" ||
@@ -223,6 +254,8 @@ if (evidence) {
     position_owner: commentPath,
     counter_and_identity_owner: threadPath,
     thread_service: servicesPath,
+    entities_module: entitiesModulePath,
+    classifier_unit_test: classifierTestPath,
     identity_lock_entity: identityEntityPath,
     counter_repair_migration: counterMigrationPath,
     identity_lock_migration: identityMigrationPath,
@@ -242,6 +275,7 @@ if (evidence) {
     "historical_position_repair",
     "bulk_bypass_rejection",
     "identity_conflict_only_fallback",
+    "identity_conflict_marker_structure",
     "postgres_concurrent_create_delete",
     "postgres_concurrent_first_thread_creation",
   ]) {
@@ -258,7 +292,9 @@ for (const marker of [
   "concurrent PostgreSQL",
   "identity-lock",
   "thread_creation_concurrency",
+  "thread_insert_error_tests",
   "identity-conflict-only fallback",
+  "valid canonical thread UUID",
   "unrelated storage errors propagate",
 ]) {
   requireMarker(plan, marker, planPath);

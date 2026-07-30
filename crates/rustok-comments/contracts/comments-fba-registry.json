@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "comments",
   "role": "provider",
   "status": "boundary_ready",
@@ -65,6 +65,7 @@
     "thread_write_invariants": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json",
     "thread_write_invariants_runner": "scripts/verify/verify-comments-thread-write-invariants.mjs",
     "thread_write_invariants_self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
+    "thread_insert_error_classifier_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
     "thread_write_invariants_test": "crates/rustok-comments/tests/thread_write_invariants.rs",
     "thread_creation_concurrency_test": "crates/rustok-comments/tests/thread_creation_concurrency.rs"
   },
@@ -86,6 +87,7 @@
         "test_package_script": "test:verify:comments:thread-write-invariants",
         "verifier": "scripts/verify/verify-comments-thread-write-invariants.mjs",
         "self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
+        "unit_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
         "evidence": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json"
       }
     }

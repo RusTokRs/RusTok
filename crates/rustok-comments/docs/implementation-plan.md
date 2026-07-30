@@ -25,8 +25,10 @@ thread insert, `comment_thread::ActiveModelBehavior` upserts a persistent
 and checks for the canonical thread. A concurrent creator receives an owner-
 classified application `DbErr` before its SQL INSERT, leaving the PostgreSQL
 transaction usable. `find_or_create_thread_in_tx` performs canonical lookup only
-for the exact tenant/target identity marker; unrelated storage errors propagate
-through `CommentsError::Database` instead of becoming `CommentThreadNotFound`.
+for the exact tenant/target identity marker followed by one valid canonical thread
+UUID; malformed or wrong-scope markers are rejected. Unrelated storage errors
+propagate through `CommentsError::Database` instead of becoming
+`CommentThreadNotFound`.
 
 Append-only migrations repair historical counters, deterministically renumber
 historical positions, enforce `UNIQUE(thread_id, position)`, and create the unique
@@ -49,26 +51,33 @@ before the schema column is dropped.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CommentsThreadPort` / `comments.thread.v1` in
   `crates/rustok-comments/contracts/comments-fba-registry.json`.
-- Comments FBA registry schema v2 locks the exact verify/test package order,
+- Comments FBA registry schema v3 locks the exact verify/test package order,
   thread-invariant leaf commands, verifier, focused self-test, evidence path,
-  and the shared owner runtime-order gate.
+  strict classifier unit harness, and the shared owner runtime-order gate.
 - Static and runtime-order evidence:
   `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json`
   and `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
-- Thread write invariant evidence schema v2:
+- Thread write invariant evidence schema v3:
   `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
   with status `executable_no_run`.
 - Thread invariant source gate:
   `scripts/verify/verify-comments-thread-write-invariants.mjs` with focused
   self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`.
-  It locks the identity-conflict-only fallback and verifies that unrelated
-  storage errors propagate; broad `Err(_)` fallback is forbidden.
+  It locks the identity-conflict-only fallback, requires a valid canonical thread
+  UUID suffix, verifies that unrelated storage errors propagate, and forbids broad
+  `Err(_)` fallback or prefix-only classification.
+- Classifier unit harness:
+  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`, registered by
+  `#[cfg(test)] mod thread_insert_error_tests;` in the entities module. It records
+  exact-scope acceptance, malformed-owner rejection, wrong-scope rejection, and
+  unrelated `DbErr` preservation as database failure. It is written but not run.
 - Exact leaf commands: `verify:comments:thread-write-invariants` and
   `test:verify:comments:thread-write-invariants`; both are registered in
   `verify:comments:fba` / `test:verify:comments:fba` before the shared owner
   runtime-order gate.
 - Executable targets:
-  `crates/rustok-comments/tests/thread_write_invariants.rs` and
+  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`,
+  `crates/rustok-comments/tests/thread_write_invariants.rs`, and
   `crates/rustok-comments/tests/thread_creation_concurrency.rs`.
 - Both PostgreSQL targets use two independent one-connection pools, an isolated
   schema, and `RUSTOK_COMMENTS_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
@@ -95,8 +104,14 @@ classifier, narrows fallback to that exact identity conflict, propagates unrelat
 storage errors, upgrades retained evidence to schema v2, and adds focused negative
 guards without recording Rust or PostgreSQL execution.
 
-No verifier, Rust test, PostgreSQL target, compile, workflow, or CI execution is
-recorded by this source-only slice.
+The continuation audit at `48d478dc2e4ef55dc6015ba8038dde59c908990a`
+found that the new classifier accepted any custom error beginning with the expected
+scope prefix, including a malformed or empty canonical-thread suffix, and had no
+Rust unit harness retained by the FBA source gate. Slice 13 requires one valid UUID
+suffix, adds and registers `thread_insert_error_tests`, upgrades registry and
+evidence to schema v3, and adds focused regressions for prefix-only parsing,
+missing test source, and missing test-module registration. No unit test, verifier,
+compile, database, workflow, or CI execution is recorded.
 
 ## Completed implementation slices
 
@@ -130,6 +145,10 @@ recorded by this source-only slice.
     fallback to that exact tenant/target conflict, propagated every unrelated
     insert `DbErr`, upgraded thread evidence to schema v2, and added focused
     regression guards for the classifier, broad catch, and propagation branch.
+13. Hardened the identity classifier from prefix-only matching to exact scope plus
+    a valid canonical thread UUID, added and registered a four-case Rust unit
+    harness, upgraded registry/evidence schema v3, and retained the harness in the
+    existing FBA leaf.
 
 ## Open results
 
@@ -139,13 +158,14 @@ recorded by this source-only slice.
    **Done when:** runtime evidence confirms the owner locks under real concurrent
    PostgreSQL transactions.
 
-2. **Execute fallback-class runtime evidence.** The source-level
-   identity-conflict-only fallback is complete. Inject or reproduce an unrelated
-   thread insert `DbErr` and retain evidence that it propagates as a database
-   failure rather than becoming `CommentThreadNotFound`; also retain the canonical
-   concurrent identity-conflict lookup path.
-   **Done when:** runtime evidence proves unrelated storage errors propagate and
-   the expected first-thread race still returns one canonical thread.
+2. **Execute fallback-class runtime evidence.** The strict source classifier and
+   pure Rust harness are written but not executed. Run the classifier harness,
+   inject or reproduce an unrelated thread insert `DbErr`, and retain evidence that
+   it propagates as a database failure rather than becoming
+   `CommentThreadNotFound`; also retain the canonical concurrent identity-conflict
+   lookup path.
+   **Done when:** executed evidence proves exact marker parsing, unrelated storage
+   error propagation, and one canonical thread for the expected first-thread race.
 
 3. **Implement and execute the Blog reply-count event projection.** Consume
    `comment.created` and `comment.deleted` idempotently, publish the Blog-owned
@@ -190,6 +210,7 @@ should run the relevant subset, including:
 - `npm run test:verify:comments:thread-write-invariants`
 - `npm run verify:comments:fba`
 - `npm run test:verify:comments:fba`
+- `cargo test -p rustok-comments --lib thread_insert_error_tests`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_write_invariants postgres_concurrent_creates_and_delete_preserve_thread_invariants`
 - `RUSTOK_COMMENTS_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-comments --test thread_creation_concurrency`
@@ -210,7 +231,8 @@ should run the relevant subset, including:
 3. Status-only and metadata-only thread updates must not set `comment_count`.
 4. Preserve the identity-lock before first-thread insert and keep its unique
    `(tenant_id, target_type, target_id)` key.
-5. Keep the owner-classified identity marker scoped to tenant and target, and never
-   restore a broad insert-error fallback.
+5. Keep the owner-classified identity marker scoped to tenant and target, require
+   exactly one valid canonical thread UUID suffix, and never restore prefix-only or
+   broad insert-error fallback.
 6. Keep migrations append-only and preserve both database uniqueness invariants.
 7. Update local/central contracts when the Comments boundary changes.
