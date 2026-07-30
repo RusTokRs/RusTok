@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cache-feature-matrix-${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +23,6 @@ concurrency:
 
 jobs:
   memory-only:
-    if: github.head_ref != 'agent/blog-admin-richtext-locale-cutover-20260730'
     name: Memory-only cache contract
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -42,65 +41,3 @@ jobs:
         run: cargo test -p rustok-cache --no-default-features
       - name: Clippy all targets without Redis
         run: cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings
-
-  blog-admin-richtext-locale-cutover:
-    if: github.head_ref == 'agent/blog-admin-richtext-locale-cutover-20260730'
-    name: Cut over Blog admin richtext locale contract
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: agent/blog-admin-richtext-locale-cutover-20260730
-          fetch-depth: 0
-      - name: Extract and apply fail-closed source transform
-        shell: bash
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          source = Path('.github/workflows/cache-redis-status.yml').read_text()
-          start_marker = "          python3 <<'PY'\n"
-          end_marker = "\n          PY\n\n          node --check"
-          start = source.index(start_marker) + len(start_marker)
-          end = source.index(end_marker, start)
-          block = source[start:end]
-          lines = []
-          for line in block.splitlines():
-              lines.append(line[10:] if line.startswith('          ') else line)
-          Path('/tmp/blog_locale_cutover.py').write_text('\n'.join(lines) + '\n')
-          PY
-          python3 /tmp/blog_locale_cutover.py
-          node --check scripts/verify/verify-blog-admin-boundary.mjs
-          node --check scripts/verify/verify-blog-admin-boundary.test.mjs
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          for path in [
-              'crates/rustok-blog/admin/locales/en.json',
-              'crates/rustok-blog/admin/locales/ru.json',
-              'crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json',
-          ]:
-              json.loads(Path(path).read_text())
-          PY
-          git diff --check
-      - name: Commit locale contract cutover
-        shell: bash
-        run: |
-          git fetch origin main
-          git checkout origin/main -- \
-            .github/workflows/cache-feature-matrix.yml \
-            .github/workflows/cache-redis-status.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            .github/workflows/cache-feature-matrix.yml \
-            .github/workflows/cache-redis-status.yml \
-            crates/rustok-blog/admin/locales/en.json \
-            crates/rustok-blog/admin/locales/ru.json \
-            crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json \
-            crates/rustok-blog/docs/implementation-plan.md \
-            scripts/verify/verify-blog-admin-boundary.mjs \
-            scripts/verify/verify-blog-admin-boundary.test.mjs
-          git diff --cached --check
-          git commit -m "fix(blog): remove legacy admin richtext locale contract"
-          git push origin HEAD:agent/blog-admin-richtext-locale-cutover-20260730

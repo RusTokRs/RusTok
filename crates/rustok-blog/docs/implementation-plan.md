@@ -38,8 +38,10 @@ profile selection remains owner-specific (`article` versus `discussion`).
 The Blog admin FFA guardrail now matches the canonical article editor. It
 requires typed `RichTextDocument` state and the owner `BlogRichTextEditor`,
 rejects reintroduction of body-format selectors and raw-body warnings in both
-core and Leptos UI, and validates machine evidence plus self-regression
-fixtures. The guardrail is part of the Blog FBA command chain.
+core and Leptos UI, removes the dead `blog.form.bodyFormat` and
+`blog.form.rawWarning` locale contract from EN/RU catalogs, and validates
+machine evidence plus self-regression fixtures. The guardrail is part of the
+Blog FBA command chain.
 
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
@@ -135,8 +137,9 @@ outbox publication.
   registers or exports Forum navigation, GraphQL helpers, reply UI, or legacy
   format adapters, and both owners use the shared richtext lifecycle adapter.
 - Blog admin canonical richtext guardrail: `source_verified_no_compile`; the
-  FFA verifier requires typed document/editor state, rejects removed selector
-  and raw-body helpers, validates machine evidence, and has negative fixtures.
+  FFA verifier requires typed document/editor state, rejects removed selector,
+  raw-body helper, and locale-key contracts, validates machine evidence, and has
+  negative fixtures.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -273,6 +276,9 @@ outbox publication.
 26. Reconciled the Blog admin FFA guardrail with the canonical article editor:
     removed stale required legacy helpers, added typed editor/document evidence,
     negative regression fixtures, and FBA-chain execution.
+27. Removed dead body-format/raw-payload EN/RU locale keys and extended the
+    canonical admin evidence, verifier, and self-test to fail closed if those
+    legacy UI contracts return.
 
 ## Next results
 
