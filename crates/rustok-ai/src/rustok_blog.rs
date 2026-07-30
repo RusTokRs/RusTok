@@ -101,10 +101,12 @@ fn canonicalize_create_input(input: &mut CreatePostInput) {
 }
 
 fn canonicalize_update_input(input: &mut UpdatePostInput) {
-    if input.content.is_none()
-        && let Some(body) = input.body.as_deref()
-    {
-        input.content = Some(rustok_blog_owner::richtext::article_document_from_plain_text(body));
+    if input.content.is_none() {
+        if let Some(body) = input.body.as_deref() {
+            input.content = Some(
+                rustok_blog_owner::richtext::article_document_from_plain_text(body),
+            );
+        }
     }
 
     if input.content.is_some() {
@@ -116,7 +118,9 @@ fn canonicalize_update_input(input: &mut UpdatePostInput) {
 
 #[cfg(test)]
 mod tests {
-    use super::{CreatePostInput, UpdatePostInput, canonicalize_create_input, canonicalize_update_input};
+    use super::{
+        CreatePostInput, UpdatePostInput, canonicalize_create_input, canonicalize_update_input,
+    };
 
     #[test]
     fn create_input_reaches_owner_as_canonical_article_content() {
