@@ -39,11 +39,62 @@ jobs:
           from pathlib import Path
           path = Path('scripts/agent/apply_blog_richtext_storage_cutover.py')
           source = path.read_text(encoding='utf-8')
-          old = r'''once(svc, "            body,\n            body_format,\n            content_json,\n            content,\n", "            content,\n")'''
-          new = r'''once(svc, "        let CreatePostInput {\n            locale,\n            title,\n            body,\n            body_format,\n            content_json,\n            content,\n", "        let CreatePostInput {\n            locale,\n            title,\n            content,\n")'''
-          if source.count(old) != 1:
-              raise RuntimeError(f'owner create hotfix expected once, got {source.count(old)}')
-          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          owner_old = r'''once(svc, "            body,\n            body_format,\n            content_json,\n            content,\n", "            content,\n")'''
+          owner_new = r'''once(svc, "        let CreatePostInput {\n            locale,\n            title,\n            body,\n            body_format,\n            content_json,\n            content,\n", "        let CreatePostInput {\n            locale,\n            title,\n            content,\n")'''
+          if source.count(owner_old) != 1:
+              raise RuntimeError(f'owner create hotfix expected once, got {source.count(owner_old)}')
+          source = source.replace(owner_old, owner_new, 1)
+
+          create_old = """once(gql, '''    pub body: Option<String>,
+              pub body_format: Option<String>,
+              pub content_json: Option<Value>,
+              pub content: Option<RichTextDocument>,
+          ''', '''    pub content: RichTextDocument,
+          ''')"""
+          create_new = """once(gql, '''#[derive(InputObject)]
+          pub struct CreatePostInput {
+              pub locale: String,
+              pub title: String,
+              pub body: Option<String>,
+              pub body_format: Option<String>,
+              pub content_json: Option<Value>,
+              pub content: Option<RichTextDocument>,
+          ''', '''#[derive(InputObject)]
+          pub struct CreatePostInput {
+              pub locale: String,
+              pub title: String,
+              pub content: RichTextDocument,
+          ''')"""
+          update_old = """once(gql, '''    pub body: Option<String>,
+              pub body_format: Option<String>,
+              pub content_json: Option<Value>,
+              pub content: Option<RichTextDocument>,
+          ''', '''    pub content: Option<RichTextDocument>,
+          ''')"""
+          update_new = """once(gql, '''#[derive(InputObject)]
+          pub struct UpdatePostInput {
+              pub locale: Option<String>,
+              pub title: Option<String>,
+              pub body: Option<String>,
+              pub body_format: Option<String>,
+              pub content_json: Option<Value>,
+              pub content: Option<RichTextDocument>,
+          ''', '''#[derive(InputObject)]
+          pub struct UpdatePostInput {
+              pub locale: Option<String>,
+              pub title: Option<String>,
+              pub content: Option<RichTextDocument>,
+          ''')"""
+          for label, old, new in [
+              ('graphql create', create_old, create_new),
+              ('graphql update', update_old, update_new),
+          ]:
+              if source.count(old) != 1:
+                  raise RuntimeError(f'{label} hotfix expected once, got {source.count(old)}')
+              source = source.replace(old, new, 1)
+
+          path.write_text(source, encoding='utf-8')
           PY
           rm scripts/agent/blog_richtext_storage_cutover.part*
           rm -f scripts/agent/blog_richtext_storage_cutover.py.gz.b64
