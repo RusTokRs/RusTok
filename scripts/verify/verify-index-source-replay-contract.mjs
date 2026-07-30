@@ -121,7 +121,12 @@ const postgres = requireMarkers(postgresPath, [
   'impl IndexReplayMutationSink for PostgresMutationStore',
   'MutationDelivery::from_event(source_name, mutation.clone())',
   'pub struct PostgresIndexReplayCheckpointStore',
+  'lease: IndexReplayJobLease',
+  'pub fn new(db: DatabaseConnection, lease: IndexReplayJobLease)',
   'impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore',
+  'validate_checkpoint_identity(&self.lease, key)?;',
+  'validate_checkpoint_identity(&self.lease, checkpoint.key())?;',
+  'assert_active_replay_job_lease(&transaction, &self.lease, backend)',
   'SELECT cursor, CAST(source_version AS TEXT)',
   'INSERT INTO index_checkpoints',
   '"rebuild".into()',
@@ -129,10 +134,12 @@ const postgres = requireMarkers(postgresPath, [
   'cursor = excluded.cursor',
   'COALESCE(excluded.source_version, index_checkpoints.source_version)',
   'COALESCE(excluded.last_delivery_id, index_checkpoints.last_delivery_id)',
+  'checkpoint_lease_identity_mismatch',
+  'checkpoint_lease_lost',
   'IndexReplayFailure::retryable_static',
   'IndexReplayFailure::permanent_static',
 ]);
-for (const forbidden of ['tokio::spawn', 'index_jobs', 'DELETE FROM index_checkpoints']) {
+for (const forbidden of ['tokio::spawn', 'DELETE FROM index_checkpoints']) {
   if (postgres.includes(forbidden)) {
     fail(`${postgresPath} contains forbidden scheduler/destructive marker ${forbidden}`);
   }
@@ -162,12 +169,15 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
 ]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay;',
+  'mod source_replay_job;',
   'PostgresIndexReplayCheckpointStore',
+  'PostgresIndexReplayJobStore',
 ]);
 requireMarkers('crates/rustok-index/src/lib.rs', [
   'get_or_insert_with::<IndexSchemaSourceCatalog',
   'get_or_insert_with::<IndexSourceCatalog',
   'PostgresIndexReplayCheckpointStore',
+  'PostgresIndexReplayJobStore',
 ]);
 requireMarkers('crates/rustok-index/Cargo.toml', [
   'tracing.workspace = true',
@@ -181,23 +191,27 @@ requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
   'same non-nil event UUID for the same logical entity mutation and source version',
   'Commit the next cursor only after every mutation result is durable',
   'existing inbox identity makes the same stable event deliveries idempotent',
+  '`PostgresIndexReplayJobStore` owns one exact tenant/source/schema rebuild job',
+  '`PostgresIndexReplayCheckpointStore` is constructed from the acquired',
+  'it cannot advance the durable cursor',
   'reserved empty values',
-  'does not claim a job lease or global worker owner',
   'maintainer-run',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
   '- M5/M6 bounded source replay contract: `source_complete_worker_pending`',
-  '- M6 one-page replay and durable checkpoint progression: `source_complete_fenced_job_worker_pending`',
+  '- M6 one-page replay and durable checkpoint progression: `source_complete`',
+  '- M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',
   '- [x] Add a source replay registry with bounded failure classification.',
   '- [x] Add cursor-based `IndexSource::scan` and targeted `load` contracts.',
   '- [x] Add a durable rebuild checkpoint read/write adapter over `index_checkpoints`.',
   '- [x] Add a bounded worker that applies source pages through `PostgresMutationStore` and',
-  '- [ ] Add durable jobs, leases, heartbeat, attempt fencing, and global ownership.',
-  'No fenced job runner, scheduler, lease owner, long-running',
+  '- [x] Add durable schema-scoped rebuild jobs, lease/heartbeat, reclaim, attempt fencing,',
+  '- [ ] Add cancellation, bounded multi-page resume, dry-run, targeted/full/shadow rebuild.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-schema-registry.mjs'",
   "'verify-index-source-replay-contract.mjs'",
+  "'verify-index-replay-job-leases.mjs'",
   "'verify-index-query-runtime-composition.mjs'",
 ]);
 
