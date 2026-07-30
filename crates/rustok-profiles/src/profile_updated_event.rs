@@ -14,6 +14,23 @@ pub(crate) async fn publish_profile_updated_in_tx(
     actor_id: Uuid,
     profile: &entities::profile::Model,
 ) -> ProfileResult<()> {
+    publish_profile_updated_with_actor_in_tx(
+        event_bus,
+        txn,
+        tenant_id,
+        Some(actor_id),
+        profile,
+    )
+    .await
+}
+
+pub(crate) async fn publish_profile_updated_with_actor_in_tx(
+    event_bus: &TransactionalEventBus,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    profile: &entities::profile::Model,
+) -> ProfileResult<()> {
     let timer = ProfileOperationTimer::start(
         ProfileOperation::PublishUpdatedEvent,
         tenant_id,
@@ -23,7 +40,7 @@ pub(crate) async fn publish_profile_updated_in_tx(
         .publish_in_tx(
             txn,
             tenant_id,
-            Some(actor_id),
+            actor_id,
             DomainEvent::ProfileUpdated {
                 user_id: profile.user_id,
                 handle: profile.handle.clone(),
