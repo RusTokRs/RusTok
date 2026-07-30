@@ -55,7 +55,10 @@ GraphQL load protection is field-aware over the host `SharedApiRateLimiter`.
 Exceeded responses expose matching GraphQL `retryAfter` and HTTP `Retry-After`;
 backend failure is fail-closed. The retained no-compile harness is
 `blog-graphql-rate-limit-runtime-harness.json`, guarded by
-`verify-blog-graphql-rate-limit.mjs`.
+`verify-blog-graphql-rate-limit.mjs` and its focused fixture
+`verify-blog-graphql-rate-limit.test.mjs`. Both are registered as the
+`graphql_rate_limit` leaf gate in the Blog FBA verify/test chain; mounted Redis
+execution remains maintainer-owned.
 
 ### AI Blog owner boundary
 
@@ -93,17 +96,26 @@ present but had no named npm leaf commands and were absent from the registry-own
 Blog FBA chain. Slice 36 registers that existing evidence without changing the
 runtime contract or promoting its execution status.
 
+The continuation audit at `e1cd838c4cb2580f271f8c58708416067057e530`
+found the same aggregate omission for GraphQL load protection: the executable
+no-compile harness, verifier, and focused negative fixture existed, but had no
+named npm leaf commands and were absent from the registry-owned Blog FBA chain.
+Slice 37 registers that source gate while preserving mounted Redis execution as
+a separate maintainer-owned result.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v7
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v8
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, and aggregate/consumer bindings for admin, storefront, category
-  Search reindex, GraphQL richtext, AI richtext, offline backfill, Forum ownership,
-  and runtime order.
+  Search reindex, GraphQL rate limiting, GraphQL richtext, AI richtext, offline
+  backfill, Forum ownership, and runtime order.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
-- Rate-limit harness: `executable_no_compile`; execution is maintainer-owned.
+- Rate-limit harness: `executable_no_compile`; evidence, verifier, self-test,
+  npm leaf commands, and aggregate FBA registration are locked; execution is
+  maintainer-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
   maintainer-owned.
 - Blog article richtext cutover: `implemented_source_verified_no_compile`.
@@ -138,6 +150,7 @@ runtime contract or promoting its execution status.
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
+- `scripts/verify/verify-blog-graphql-rate-limit.test.mjs`
 - `scripts/verify/verify-blog-category-search-reindex.mjs`
 - `scripts/verify/verify-blog-category-search-reindex.test.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.mjs`
@@ -211,6 +224,9 @@ runtime contract or promoting its execution status.
 36. Registered the existing category/Search contract as a first-class Blog FBA
     leaf gate, added exact verify/test npm commands, bound its evidence path in
     registry schema v7, and locked aggregate order through the shared chain policy.
+37. Registered the existing GraphQL rate-limit harness as a first-class Blog FBA
+    leaf gate, added exact verify/test npm commands, bound its evidence path in
+    registry schema v8, and kept mounted Redis execution explicitly pending.
 
 ## Next results
 
@@ -244,7 +260,8 @@ should run the relevant subset, including:
 
 - `npm run verify:blog:category-search-reindex`
 - `npm run test:verify:blog:category-search-reindex`
-- `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
+- `npm run verify:blog:graphql-rate-limit`
+- `npm run test:verify:blog:graphql-rate-limit`
 - `npm run verify:blog:graphql-richtext-boundary`
 - `npm run test:verify:blog:graphql-richtext-boundary`
 - `npm run verify:blog:storefront-boundary`
