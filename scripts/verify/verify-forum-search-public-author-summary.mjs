@@ -31,6 +31,7 @@ const forumLibPath = "crates/rustok-forum/src/lib.rs";
 const inboxPath = "crates/rustok-search/src/forum_inbox.rs";
 const ingestionPath = "crates/rustok-search/src/ingestion.rs";
 const profilesPath = "crates/rustok-profiles/src/presentation.rs";
+const profilesMutationPath = "crates/rustok-profiles/src/graphql/mutation.rs";
 const contractPath = "crates/rustok-forum/contracts/forum-search-public-author-summary.json";
 const notePath = "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md";
 
@@ -40,6 +41,7 @@ const forumLib = read(forumLibPath);
 const inbox = read(inboxPath);
 const ingestion = read(ingestionPath);
 const profiles = read(profilesPath);
+const profilesMutation = read(profilesMutationPath);
 const note = read(notePath);
 let contract = null;
 try {
@@ -94,11 +96,18 @@ for (const marker of [
 ]) {
   requireMarker(profiles, marker, profilesPath);
 }
+for (const marker of [
+  "service.update_profile_visibility",
+  "service.update_profile_media",
+  "publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?",
+  "DomainEvent::ProfileUpdated",
+]) {
+  requireMarker(profilesMutation, marker, profilesMutationPath);
+}
 
 for (const marker of [
   "Author(Uuid)",
   "DomainEvent::ProfileUpdated { user_id, .. }",
-  "DomainEvent::UserDeleted { user_id }",
   "AUTHOR_SCOPE_PREFIX",
   "scope_key.starts_with(AUTHOR_SCOPE_PREFIX)",
   "return Ok(None);",
@@ -106,14 +115,15 @@ for (const marker of [
 ]) {
   requireMarker(inbox, marker, inboxPath);
 }
+rejectMarker(inbox, "DomainEvent::UserDeleted", inboxPath);
 for (const marker of [
   "DomainEvent::ProfileUpdated { .. }",
-  "DomainEvent::UserDeleted { .. }",
   '"rebuild_forum_author_projection"',
   "projector.rebuild_tenant(envelope.tenant_id).await",
 ]) {
   requireMarker(ingestion, marker, ingestionPath);
 }
+rejectMarker(ingestion, "DomainEvent::UserDeleted", ingestionPath);
 
 for (const marker of [
   "FORUM-23A",
@@ -121,6 +131,7 @@ for (const marker of [
   "forum_author:<user_id>",
   "raw `payload.author_id`",
   "owner-issued monotonic",
+  "does not treat `UserDeleted`",
   "not run by the implementation agent",
 ]) {
   requireMarker(note, marker, notePath);
@@ -150,7 +161,7 @@ if (contract) {
   }
   for (const key of [
     "profile_updated_is_durable",
-    "user_deleted_is_durable",
+    "profile_updated_is_emitted_after_owner_write",
     "author_scope_is_tenant_and_user_scoped",
     "author_scope_is_not_suppressed_by_forum_wall_clock_watermark",
     "author_change_rebuilds_current_forum_owner_state",
@@ -176,6 +187,9 @@ if (contract) {
     if (contract.compatibility?.[key] !== false) {
       failures.push(`${contractPath}: compatibility ${key} must remain false`);
     }
+  }
+  if (!contract.non_claims?.includes("account deletion redaction is complete")) {
+    failures.push(`${contractPath}: account deletion non-claim is missing`);
   }
   if (contract.downstream_task !== "FORUM-23B") {
     failures.push(`${contractPath}: unexpected downstream task`);
