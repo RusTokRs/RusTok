@@ -27,14 +27,18 @@ jobs:
       - name: Apply fail-closed source transform
         shell: bash
         run: |
+          wc -c scripts/agent/blog_richtext_storage_cutover.part*
+          sha256sum scripts/agent/blog_richtext_storage_cutover.part*
           cat scripts/agent/blog_richtext_storage_cutover.part* > /tmp/blog-cutover.b64
+          wc -c /tmp/blog-cutover.b64
+          sha256sum /tmp/blog-cutover.b64
           test "$(wc -c < /tmp/blog-cutover.b64)" -eq 15044
           test "$(sha256sum /tmp/blog-cutover.b64 | cut -d' ' -f1)" = "66c6f00ff5207058459541fe8b1f52ca2fa0a55343a3c51686d23a0a42c74741"
           base64 --decode /tmp/blog-cutover.b64 | gzip --decompress > scripts/agent/apply_blog_richtext_storage_cutover.py
           rm scripts/agent/blog_richtext_storage_cutover.part*
           rm -f scripts/agent/blog_richtext_storage_cutover.py.gz.b64
           rm -f scripts/agent/archive-link.md
-          python scripts/agent/apply_blog_richtext_storage_cutover.py
+          python3 scripts/agent/apply_blog_richtext_storage_cutover.py
           git diff --check
       - name: Commit source cutover
         shell: bash
