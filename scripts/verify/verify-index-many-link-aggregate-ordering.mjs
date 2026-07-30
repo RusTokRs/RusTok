@@ -46,7 +46,7 @@ const validation = requireMarkers(validationPath, [
   'AggregateRequiresOffsetPagination',
   'pub fn validate_query_with_aggregate_ordering',
   'order.direction.aggregate().is_some()',
-  'Pagination::Offset { .. }',
+  'matches!(&query.pagination, Pagination::Offset { .. })',
   'self.validate_query(&ordinary)?;',
   'resolved.traverses_many',
   'IndexValueType::Integer',
@@ -121,11 +121,45 @@ for (const referencePath of [
   ]);
 }
 
+const contractPath = 'crates/rustok-index/contracts/m4-many-link-aggregate-ordering.json';
+const contract = JSON.parse(read(contractPath));
+if (contract.schema_version !== 1 || contract.owner !== 'rustok-index') {
+  fail(`${contractPath} identity drifted`);
+}
+if (contract.status !== 'source_complete_execution_pending') {
+  fail(`${contractPath} must remain execution pending`);
+}
+if (JSON.stringify(contract.query_contract?.many_link_modes)
+  !== JSON.stringify(['min_asc', 'min_desc', 'max_asc', 'max_desc'])) {
+  fail(`${contractPath} aggregate modes drifted`);
+}
+if (contract.query_contract?.plain_many_link_asc_desc_rejected !== true
+  || contract.query_contract?.aggregate_requires_many_link !== true
+  || contract.query_contract?.aggregate_cursor_supported !== false
+  || contract.query_contract?.pagination !== 'bounded_offset') {
+  fail(`${contractPath} query boundary drifted`);
+}
+if (JSON.stringify(contract.supported_terminal_types)
+  !== JSON.stringify(['integer', 'decimal', 'string', 'timestamp'])) {
+  fail(`${contractPath} supported type contract drifted`);
+}
+if (contract.postgresql?.strategy !== 'correlated_scalar_subquery'
+  || contract.postgresql?.outer_many_join !== false
+  || contract.postgresql?.caller_sql !== false
+  || contract.postgresql?.implicit_first_row !== false
+  || contract.postgresql?.implicit_link_ordinal !== false) {
+  fail(`${contractPath} PostgreSQL boundary drifted`);
+}
+for (const key of ['cargo_run', 'tests_run', 'postgresql_run', 'node_verifiers_run', 'workflows_run', 'ci_run']) {
+  if (contract.validation?.[key] !== false) fail(`${contractPath} must not claim ${key}`);
+}
+
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-many-link-aggregate-ordering.mjs'",
 ]);
 requireMarkers('crates/rustok-index/docs/m4-many-link-aggregate-ordering.md', [
   'Status: `source_complete_execution_pending`',
+  '`crates/rustok-index/contracts/m4-many-link-aggregate-ordering.json`',
   '`min_asc`',
   '`max_desc`',
   'bounded offset',
