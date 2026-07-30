@@ -47,7 +47,9 @@ precedes lookup; parent and translation operations are tenant-scoped; a name
 that cannot derive a route key requires a non-empty ASCII slug; service and HTTP
 pagination clamp `per_page` to `1..100`. The retained source contract is
 `blog-category-search-reindex-contract.json`, verified by
-`verify-blog-category-search-reindex.mjs`.
+`verify-blog-category-search-reindex.mjs` and its focused fixture
+`verify-blog-category-search-reindex.test.mjs`. Both are registered as the
+`category_search_reindex` leaf gate in the Blog FBA verify/test chain.
 
 GraphQL load protection is field-aware over the host `SharedApiRateLimiter`.
 Exceeded responses expose matching GraphQL `retryAfter` and HTTP `Retry-After`;
@@ -85,14 +87,21 @@ exact owner-only surface to machine evidence and a negative fixture, reconciles
 the richtext source inventory, and registers the new gate in the Blog FBA
 verify/test chain.
 
+The continuation audit at `ce3b1690bbf7d67e5ea80cad071180deae7e62dc`
+found that the category/Search source contract and focused negative fixture were
+present but had no named npm leaf commands and were absent from the registry-owned
+Blog FBA chain. Slice 36 registers that existing evidence without changing the
+runtime contract or promoting its execution status.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v6
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v7
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
-  self-tests, and aggregate/consumer bindings for admin, storefront, GraphQL
-  richtext, AI richtext, offline backfill, Forum ownership, and runtime order.
+  self-tests, and aggregate/consumer bindings for admin, storefront, category
+  Search reindex, GraphQL richtext, AI richtext, offline backfill, Forum ownership,
+  and runtime order.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; execution is maintainer-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
@@ -105,7 +114,8 @@ verify/test chain.
 - Blog storefront richtext boundary: `source_verified_no_compile`.
 - AI Blog draft owner writes and shim: `source_verified_no_compile`.
 - Comments thread write invariants: `executable_no_run`.
-- Category search reindex: `source_verified_no_compile`.
+- Category search reindex: `source_verified_no_compile`; evidence, verifier,
+  self-test, npm leaf commands, and aggregate FBA registration are locked.
 - Canonical Search URL: `source_verified_no_compile`.
 
 ## Evidence and guardrails
@@ -129,6 +139,7 @@ verify/test chain.
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `scripts/verify/verify-blog-category-search-reindex.mjs`
+- `scripts/verify/verify-blog-category-search-reindex.test.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs`
 - `scripts/verify/verify-blog-storefront-boundary.mjs`
@@ -197,6 +208,9 @@ verify/test chain.
 35. Audited the AI Blog owner shim, removed the accidental unused `migrations`
     re-export, added machine evidence plus fail-closed verifier/fixture, reconciled
     the richtext inventory, and registered the gate in registry schema v6.
+36. Registered the existing category/Search contract as a first-class Blog FBA
+    leaf gate, added exact verify/test npm commands, bound its evidence path in
+    registry schema v7, and locked aggregate order through the shared chain policy.
 
 ## Next results
 
@@ -228,8 +242,8 @@ verify/test chain.
 Execution is intentionally not recorded by this source-only update. Maintainers
 should run the relevant subset, including:
 
-- `node scripts/verify/verify-blog-category-search-reindex.mjs`
-- `node scripts/verify/verify-blog-category-search-reindex.test.mjs`
+- `npm run verify:blog:category-search-reindex`
+- `npm run test:verify:blog:category-search-reindex`
 - `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `npm run verify:blog:graphql-richtext-boundary`
 - `npm run test:verify:blog:graphql-richtext-boundary`
