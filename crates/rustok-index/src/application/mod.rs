@@ -8,6 +8,7 @@ mod query_port;
 mod query_runtime;
 mod registry;
 mod source_registry;
+mod source_replay;
 mod source_schema_registry;
 mod validation;
 
@@ -55,6 +56,12 @@ pub use source_registry::{
     IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest,
     IndexSourcePage, IndexSourceScanRequest, SharedIndexSourceRegistry,
     materialize_index_source_registry, register_index_source,
+};
+pub use source_replay::{
+    IndexReplayCheckpoint, IndexReplayCheckpointKey, IndexReplayCheckpointStore, IndexReplayError,
+    IndexReplayFailure, IndexReplayFailureKind, IndexReplayMutationOutcome,
+    IndexReplayMutationSink, IndexReplayPageOutcome, IndexReplayPageRequest,
+    IndexReplayPageStatus, IndexReplayWorker,
 };
 pub use source_schema_registry::{
     IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,
