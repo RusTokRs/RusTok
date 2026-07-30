@@ -41,9 +41,14 @@ pub(crate) fn validate_server_event_runtime_contract(manifest_path: &Path) -> Re
             legacy_search_dispatcher_path.display()
         );
     }
-    if !services_mod.contains("pub mod module_event_dispatcher;") {
+    let direct_dispatcher_export = services_mod.contains("pub mod module_event_dispatcher;");
+    let dispatcher_facade_export = services_mod.contains("#[path = \"module_event_dispatcher.rs\"]")
+        && services_mod.contains("mod module_event_dispatcher_base;")
+        && services_mod.contains("pub mod module_event_dispatcher {")
+        && services_mod.contains("pub use super::module_event_dispatcher_base::{");
+    if !direct_dispatcher_export && !dispatcher_facade_export {
         anyhow::bail!(
-            "Server event runtime contract drift: {} must export module_event_dispatcher",
+            "Server event runtime contract drift: {} must export module_event_dispatcher directly or through the reviewed base-module facade",
             services_mod_path.display()
         );
     }
