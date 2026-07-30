@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "payment_storefront_graphql_error_safety_source_unvalidated",
+  "scope": "payment-owned storefront GraphQL transport consumer for refund summary and payment collection read/create",
+  "source_contract": {
+    "private_graphql_adapter_preserved": true,
+    "public_consumer_safety_policy": true,
+    "typed_graphql_error_round_trip": true,
+    "unique_call_correlation": true,
+    "tenant_configuration_shape_logging": true,
+    "network_static_public_envelope": true,
+    "http_static_public_envelope": true,
+    "unauthorized_static_public_envelope": true,
+    "graphql_rejection_static_public_envelope": true,
+    "unknown_static_public_envelope": true,
+    "validation_error_pass_through": true,
+    "native_transport_changed": false,
+    "transport_selection_changed": false,
+    "request_response_dto_changed": false,
+    "graphql_query_changed": false,
+    "raw_graphql_error_public": false,
+    "raw_tenant_slug_logged": false
+  },
+  "stable_public_messages": {
+    "network_unavailable": "Payment storefront is temporarily unavailable",
+    "http_unavailable": "Payment storefront is temporarily unavailable",
+    "authentication_required": "Payment storefront authentication is required",
+    "graphql_request_rejected": "Payment storefront request could not be completed",
+    "unknown_failure": "Payment storefront request could not be completed"
+  },
+  "covered_operations": [
+    "create_storefront_payment_collection",
+    "read_storefront_payment_collection",
+    "read_storefront_order_refunds"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-payment-storefront-graphql-error-safety.mjs",
+    "node scripts/verify/verify-payment-storefront-native-error-safety.mjs",
+    "node scripts/verify/verify-payment-storefront-boundary.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-payment-storefront",
+    "cargo check -p rustok-payment-storefront --features hydrate",
+    "cargo check -p rustok-payment-storefront --features ssr"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "browser_runtime_proven": false,
+    "graphql_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}
