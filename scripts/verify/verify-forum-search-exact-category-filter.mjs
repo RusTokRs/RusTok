@@ -15,6 +15,7 @@ const graphqlTypesPath = "crates/rustok-search/src/graphql/types.rs";
 const graphqlQueryPath = "crates/rustok-search/src/graphql/query.rs";
 const pgEnginePath = "crates/rustok-search/src/pg_engine.rs";
 const searchReadmePath = "crates/rustok-search/README.md";
+const searchPlanPath = "crates/rustok-search/docs/implementation-plan.md";
 const contractPath = "crates/rustok-forum/contracts/forum-search-exact-category-filter.json";
 const notePath = "crates/rustok-forum/docs/forum-23b1-exact-category-filter.md";
 const verifierPath = "scripts/verify/verify-forum-search-exact-category-filter.mjs";
@@ -72,6 +73,7 @@ const graphqlTypes = read(graphqlTypesPath);
 const graphqlQuery = read(graphqlQueryPath);
 const pgEngine = read(pgEnginePath);
 const searchReadme = read(searchReadmePath);
+const searchPlan = read(searchPlanPath);
 const note = read(notePath);
 const contract = parseJson(contractPath);
 
@@ -91,13 +93,14 @@ requireAll(
     'const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category"',
     'const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic"',
     'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
-    '"category_id": topic.category_id',
-    '"category_id": topic.category_id',
     'document_id: category.id',
     "Some(&[ReplyStatus::Approved])",
   ],
   projectionPath,
 );
+if ((projection.match(/"category_id": topic\.category_id/g) ?? []).length < 2) {
+  failures.push(`${projectionPath}: topic and reply documents must both project category_id`);
+}
 
 requireAll(
   queryContract,
@@ -175,6 +178,16 @@ requireAll(
   searchReadmePath,
 );
 requireAll(
+  searchPlan,
+  [
+    "Exact Forum category filter status: `source_complete_execution_pending`",
+    "forum-search-exact-category-filter.json",
+    "Reused bounded `category_ids` for exact Forum category",
+    "Complete Forum category-subtree filtering",
+  ],
+  searchPlanPath,
+);
+requireAll(
   note,
   [
     "FORUM-23B1",
@@ -203,6 +216,7 @@ if (contract) {
     search_graphql_normalization: graphqlQueryPath,
     postgres_filter_owner: pgEnginePath,
     search_readme: searchReadmePath,
+    search_plan: searchPlanPath,
     owner_note: notePath,
     verifier: verifierPath,
   };
