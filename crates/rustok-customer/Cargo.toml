@@ -24,3 +24,4 @@ validator.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 rustok-test-utils.workspace = true
+rustok-outbox.workspace = true

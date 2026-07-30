@@ -10,15 +10,20 @@ use uuid::Uuid;
 mod support;
 
 async fn create_profile(
-    service: &ProfileService,
+    db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     user_id: Uuid,
     label: &str,
     visibility: ProfileVisibility,
 ) {
-    service
-        .upsert_profile(
+    let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+        rustok_outbox::OutboxTransport::new(db.clone()),
+    ));
+    let mutations = rustok_profiles::ProfileMutationService::new(db, &event_bus);
+    mutations
+        .upsert_profile_with_event(
             tenant_id,
+            user_id,
             user_id,
             UpsertProfileInput {
                 handle: format!("{label}-{}", &user_id.simple().to_string()[..8]),
@@ -63,14 +68,14 @@ fn key(tenant_id: Uuid, user_id: Uuid) -> ProfileSummaryLoaderKey {
 async fn default_summary_loader_is_anonymous_and_fail_closed() {
     let db = support::setup_profiles_test_db().await;
     let tenant_id = Uuid::new_v4();
-    let service = ProfileService::new(db.clone());
+    let _service = ProfileService::new(db.clone());
     let public_id = Uuid::new_v4();
     let authenticated_id = Uuid::new_v4();
     let private_id = Uuid::new_v4();
     let hidden_id = Uuid::new_v4();
 
     create_profile(
-        &service,
+        &db,
         tenant_id,
         public_id,
         "public",
@@ -78,7 +83,7 @@ async fn default_summary_loader_is_anonymous_and_fail_closed() {
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         authenticated_id,
         "authenticated",
@@ -86,7 +91,7 @@ async fn default_summary_loader_is_anonymous_and_fail_closed() {
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         private_id,
         "private",
@@ -94,7 +99,7 @@ async fn default_summary_loader_is_anonymous_and_fail_closed() {
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         hidden_id,
         "hidden",
@@ -124,14 +129,14 @@ async fn default_summary_loader_is_anonymous_and_fail_closed() {
 async fn authenticated_summary_loader_allows_authenticated_and_owner_private_profiles() {
     let db = support::setup_profiles_test_db().await;
     let tenant_id = Uuid::new_v4();
-    let service = ProfileService::new(db.clone());
+    let _service = ProfileService::new(db.clone());
     let actor_id = Uuid::new_v4();
     let public_id = Uuid::new_v4();
     let authenticated_id = Uuid::new_v4();
     let other_private_id = Uuid::new_v4();
 
     create_profile(
-        &service,
+        &db,
         tenant_id,
         actor_id,
         "owner-private",
@@ -139,7 +144,7 @@ async fn authenticated_summary_loader_allows_authenticated_and_owner_private_pro
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         public_id,
         "public",
@@ -147,7 +152,7 @@ async fn authenticated_summary_loader_allows_authenticated_and_owner_private_pro
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         authenticated_id,
         "authenticated",
@@ -155,7 +160,7 @@ async fn authenticated_summary_loader_allows_authenticated_and_owner_private_pro
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         other_private_id,
         "other-private",

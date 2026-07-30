@@ -26,16 +26,21 @@ fn profile_input(
 }
 
 async fn create_profile(
-    service: &ProfileService,
+    db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     user_id: Uuid,
     handle: &str,
     display_name: &str,
     visibility: ProfileVisibility,
 ) {
-    service
-        .upsert_profile(
+    let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+        rustok_outbox::OutboxTransport::new(db.clone()),
+    ));
+    let mutations = rustok_profiles::ProfileMutationService::new(db, &event_bus);
+    mutations
+        .upsert_profile_with_event(
             tenant_id,
+            user_id,
             user_id,
             profile_input(handle, display_name, visibility),
             Some("en"),
@@ -62,7 +67,7 @@ async fn hide_profile(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, user_id
 #[tokio::test]
 async fn presentation_service_filters_summaries_for_every_audience_class() {
     let db = support::setup_profiles_test_db().await;
-    let service = ProfileService::new(db.clone());
+    let _service = ProfileService::new(db.clone());
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
     let public_id = Uuid::new_v4();
@@ -72,7 +77,7 @@ async fn presentation_service_filters_summaries_for_every_audience_class() {
     let cross_tenant_id = Uuid::new_v4();
 
     create_profile(
-        &service,
+        &db,
         tenant_id,
         public_id,
         "public-profile",
@@ -81,7 +86,7 @@ async fn presentation_service_filters_summaries_for_every_audience_class() {
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         authenticated_id,
         "authenticated-profile",
@@ -90,7 +95,7 @@ async fn presentation_service_filters_summaries_for_every_audience_class() {
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         private_id,
         "private-profile",
@@ -99,7 +104,7 @@ async fn presentation_service_filters_summaries_for_every_audience_class() {
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         hidden_id,
         "hidden-profile",
@@ -109,7 +114,7 @@ async fn presentation_service_filters_summaries_for_every_audience_class() {
     .await;
     hide_profile(&db, tenant_id, hidden_id).await;
     create_profile(
-        &service,
+        &db,
         other_tenant_id,
         cross_tenant_id,
         "cross-tenant-profile",
@@ -182,13 +187,13 @@ async fn presentation_service_filters_summaries_for_every_audience_class() {
 #[tokio::test]
 async fn presentation_handle_lookup_hides_private_and_hidden_profiles() {
     let db = support::setup_profiles_test_db().await;
-    let service = ProfileService::new(db.clone());
+    let _service = ProfileService::new(db.clone());
     let tenant_id = Uuid::new_v4();
     let private_id = Uuid::new_v4();
     let hidden_id = Uuid::new_v4();
 
     create_profile(
-        &service,
+        &db,
         tenant_id,
         private_id,
         "private-handle",
@@ -197,7 +202,7 @@ async fn presentation_handle_lookup_hides_private_and_hidden_profiles() {
     )
     .await;
     create_profile(
-        &service,
+        &db,
         tenant_id,
         hidden_id,
         "hidden-handle",
@@ -242,12 +247,12 @@ async fn presentation_handle_lookup_hides_private_and_hidden_profiles() {
 #[tokio::test]
 async fn single_summary_uses_the_same_policy_as_the_batch_path() {
     let db = support::setup_profiles_test_db().await;
-    let service = ProfileService::new(db.clone());
+    let _service = ProfileService::new(db.clone());
     let tenant_id = Uuid::new_v4();
     let private_id = Uuid::new_v4();
 
     create_profile(
-        &service,
+        &db,
         tenant_id,
         private_id,
         "single-private",

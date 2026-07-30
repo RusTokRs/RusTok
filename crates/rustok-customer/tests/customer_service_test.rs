@@ -339,7 +339,7 @@ async fn customer_bridge_returns_profile_summary_when_linked_user_has_profile() 
     let db = setup_test_db().await;
     support::ensure_customer_schema(&db).await;
     let customer_service = CustomerService::new(db.clone());
-    let profile_service = ProfileService::new(db);
+    let profile_service = ProfileService::new(db.clone());
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
@@ -353,9 +353,14 @@ async fn customer_bridge_returns_profile_summary_when_linked_user_has_profile() 
         )
         .await
         .unwrap();
-    profile_service
-        .upsert_profile(
+    let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+        rustok_outbox::OutboxTransport::new(db.clone()),
+    ));
+    let profile_mutations = rustok_profiles::ProfileMutationService::new(&db, &event_bus);
+    profile_mutations
+        .upsert_profile_with_event(
             tenant_id,
+            user_id,
             user_id,
             UpsertProfileInput {
                 handle: "customer-user".to_string(),

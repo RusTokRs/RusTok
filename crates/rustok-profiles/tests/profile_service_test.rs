@@ -1,24 +1,23 @@
 use async_graphql::dataloader::DataLoader;
 use chrono::Utc;
-use rustok_profiles::ProfilesReader;
+use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
 use rustok_profiles::entities;
 use rustok_profiles::error::ProfileError;
 use rustok_profiles::services::ProfileService;
-use rustok_profiles::{ProfileSummaryLoader, ProfileSummaryLoaderKey};
+use rustok_profiles::{ProfileMutationService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
 mod support;
 
-async fn setup() -> ProfileService {
-    setup_with_db().await.1
-}
-
-async fn setup_with_db() -> (DatabaseConnection, ProfileService) {
+async fn setup_context() -> (DatabaseConnection, ProfileService, TransactionalEventBus) {
     let db = support::setup_profiles_test_db().await;
     let service = ProfileService::new(db.clone());
-    (db, service)
+    let event_bus = TransactionalEventBus::new(std::sync::Arc::new(
+        rustok_outbox::OutboxTransport::new(db.clone()),
+    ));
+    (db, service, event_bus)
 }
 
 fn profile_input() -> UpsertProfileInput {
@@ -58,12 +57,13 @@ async fn insert_translation(
 
 #[tokio::test]
 async fn upsert_and_get_profile_by_user() {
-    let service = setup().await;
+    let (db, service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
-    let created = service
-        .upsert_profile(tenant_id, user_id, profile_input(), Some("en"))
+    let created = mutations
+        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
         .await
         .unwrap();
 
@@ -92,12 +92,13 @@ async fn upsert_and_get_profile_by_user() {
 
 #[tokio::test]
 async fn get_profile_by_handle_normalizes_lookup() {
-    let service = setup().await;
+    let (db, service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
-    service
-        .upsert_profile(tenant_id, user_id, profile_input(), Some("en"))
+    mutations
+        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
         .await
         .unwrap();
 
@@ -112,18 +113,22 @@ async fn get_profile_by_handle_normalizes_lookup() {
 
 #[tokio::test]
 async fn duplicate_handle_is_rejected_per_tenant() {
-    let service = setup().await;
+    let (db, _service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
+    let first_user_id = Uuid::new_v4();
+    let second_user_id = Uuid::new_v4();
 
-    service
-        .upsert_profile(tenant_id, Uuid::new_v4(), profile_input(), Some("en"))
+    mutations
+        .upsert_profile_with_event(tenant_id, first_user_id, first_user_id, profile_input(), Some("en"))
         .await
         .unwrap();
 
-    let error = service
-        .upsert_profile(
+    let error = mutations
+        .upsert_profile_with_event(
             tenant_id,
-            Uuid::new_v4(),
+            second_user_id,
+            second_user_id,
             UpsertProfileInput {
                 handle: "creator-one".to_string(),
                 display_name: "Second User".to_string(),
@@ -147,12 +152,13 @@ async fn duplicate_handle_is_rejected_per_tenant() {
 
 #[tokio::test]
 async fn summary_uses_profile_reader_path() {
-    let service = setup().await;
+    let (db, service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
-    service
-        .upsert_profile(tenant_id, user_id, profile_input(), Some("en"))
+    mutations
+        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
         .await
         .unwrap();
 
@@ -173,15 +179,17 @@ async fn summary_uses_profile_reader_path() {
 
 #[tokio::test]
 async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
-    let (db, service) = setup_with_db().await;
+    let (db, service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let first_user_id = Uuid::new_v4();
     let second_user_id = Uuid::new_v4();
     let missing_user_id = Uuid::new_v4();
 
-    service
-        .upsert_profile(
+    mutations
+        .upsert_profile_with_event(
             tenant_id,
+            first_user_id,
             first_user_id,
             UpsertProfileInput {
                 handle: "creator-one".to_string(),
@@ -197,9 +205,10 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
         )
         .await
         .unwrap();
-    service
-        .upsert_profile(
+    mutations
+        .upsert_profile_with_event(
             tenant_id,
+            second_user_id,
             second_user_id,
             UpsertProfileInput {
                 handle: "creator-two".to_string(),
@@ -257,15 +266,17 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
 
 #[tokio::test]
 async fn dataloader_batches_profile_summary_requests() {
-    let (db, service) = setup_with_db().await;
+    let (db, _service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let first_user_id = Uuid::new_v4();
     let second_user_id = Uuid::new_v4();
     let missing_user_id = Uuid::new_v4();
 
-    service
-        .upsert_profile(
+    mutations
+        .upsert_profile_with_event(
             tenant_id,
+            first_user_id,
             first_user_id,
             UpsertProfileInput {
                 handle: "loader-one".to_string(),
@@ -281,9 +292,10 @@ async fn dataloader_batches_profile_summary_requests() {
         )
         .await
         .unwrap();
-    service
-        .upsert_profile(
+    mutations
+        .upsert_profile_with_event(
             tenant_id,
+            second_user_id,
             second_user_id,
             UpsertProfileInput {
                 handle: "loader-two".to_string(),
@@ -384,26 +396,28 @@ async fn dataloader_batches_profile_summary_requests() {
 
 #[tokio::test]
 async fn targeted_updates_modify_existing_profile() {
-    let service = setup().await;
+    let (db, _service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let avatar_media_id = Uuid::new_v4();
     let banner_media_id = Uuid::new_v4();
 
-    service
-        .upsert_profile(tenant_id, user_id, profile_input(), Some("en"))
+    mutations
+        .upsert_profile_with_event(tenant_id, user_id, user_id, profile_input(), Some("en"))
         .await
         .unwrap();
 
-    let updated = service
-        .update_profile_handle(tenant_id, user_id, "updated-handle", Some("en"))
+    let updated = mutations
+        .update_profile_handle_with_event(tenant_id, user_id, user_id, "updated-handle", Some("en"))
         .await
         .unwrap();
     assert_eq!(updated.handle, "updated-handle");
 
-    let updated = service
-        .update_profile_content(
+    let updated = mutations
+        .update_profile_content_with_event(
             tenant_id,
+            user_id,
             user_id,
             "Updated Name",
             Some("Updated bio"),
@@ -414,21 +428,22 @@ async fn targeted_updates_modify_existing_profile() {
     assert_eq!(updated.display_name, "Updated Name");
     assert_eq!(updated.bio.as_deref(), Some("Updated bio"));
 
-    let updated = service
-        .update_profile_locale(tenant_id, user_id, Some("fr"), Some("en"))
+    let updated = mutations
+        .update_profile_locale_with_event(tenant_id, user_id, user_id, Some("fr"), Some("en"))
         .await
         .unwrap();
     assert_eq!(updated.preferred_locale.as_deref(), Some("fr"));
 
-    let updated = service
-        .update_profile_visibility(tenant_id, user_id, ProfileVisibility::Private, Some("en"))
+    let updated = mutations
+        .update_profile_visibility_with_event(tenant_id, user_id, user_id, ProfileVisibility::Private, Some("en"))
         .await
         .unwrap();
     assert_eq!(updated.visibility, ProfileVisibility::Private);
 
-    let updated = service
-        .update_profile_media(
+    let updated = mutations
+        .update_profile_media_with_event(
             tenant_id,
+            user_id,
             user_id,
             Some(avatar_media_id),
             Some(banner_media_id),
@@ -442,12 +457,13 @@ async fn targeted_updates_modify_existing_profile() {
 
 #[tokio::test]
 async fn targeted_updates_require_existing_profile() {
-    let service = setup().await;
+    let (db, _service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
-    let error = service
-        .update_profile_handle(tenant_id, user_id, "missing-user", Some("en"))
+    let error = mutations
+        .update_profile_handle_with_event(tenant_id, user_id, user_id, "missing-user", Some("en"))
         .await
         .unwrap_err();
 
@@ -456,12 +472,13 @@ async fn targeted_updates_require_existing_profile() {
 
 #[tokio::test]
 async fn backfill_profile_creates_missing_profile_with_generated_handle() {
-    let service = setup().await;
+    let (db, _service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
-    let result = service
-        .backfill_profile(
+    let result = mutations
+        .backfill_profile_with_event(
             tenant_id,
             user_id,
             "jane.doe@example.com",
@@ -483,13 +500,14 @@ async fn backfill_profile_creates_missing_profile_with_generated_handle() {
 
 #[tokio::test]
 async fn backfill_profile_uses_suffix_and_skips_existing_profile() {
-    let service = setup().await;
+    let (db, _service, event_bus) = setup_context().await;
+    let mutations = ProfileMutationService::new(&db, &event_bus);
     let tenant_id = Uuid::new_v4();
     let first_user_id = Uuid::new_v4();
     let second_user_id = Uuid::new_v4();
 
-    let first = service
-        .backfill_profile(
+    let first = mutations
+        .backfill_profile_with_event(
             tenant_id,
             first_user_id,
             "same@example.com",
@@ -500,8 +518,8 @@ async fn backfill_profile_uses_suffix_and_skips_existing_profile() {
         )
         .await
         .unwrap();
-    let second = service
-        .backfill_profile(
+    let second = mutations
+        .backfill_profile_with_event(
             tenant_id,
             second_user_id,
             "same@example.com",
@@ -512,8 +530,8 @@ async fn backfill_profile_uses_suffix_and_skips_existing_profile() {
         )
         .await
         .unwrap();
-    let repeat = service
-        .backfill_profile(
+    let repeat = mutations
+        .backfill_profile_with_event(
             tenant_id,
             second_user_id,
             "changed@example.com",

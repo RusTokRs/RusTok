@@ -12921,6 +12921,7 @@ dependencies = [
  "chrono",
  "rustok-api",
  "rustok-core",
+ "rustok-outbox",
  "rustok-profiles",
  "rustok-test-utils",
  "sea-orm",
