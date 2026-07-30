@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 
 const files = {
+  storefrontSrc: "crates/rustok-blog/storefront/src",
   lib: "crates/rustok-blog/storefront/src/lib.rs",
   core: "crates/rustok-blog/storefront/src/core.rs",
   pagination: "crates/rustok-blog/storefront/src/comments_pagination.rs",
@@ -20,17 +22,23 @@ const files = {
   verifierTest: "scripts/verify/verify-blog-storefront-boundary.test.mjs",
 };
 
+const legacySummarizerMarkers = [
+  "body_or_fallback",
+  "summarized_body_or_fallback",
+  "summarize_content",
+];
+
 function fail(message) {
   console.error("blog storefront boundary verification failed:");
   console.error(`- ${message}`);
   process.exit(1);
 }
 
-function text(path) {
+function text(filePath) {
   try {
-    return readFileSync(path, "utf8");
+    return readFileSync(filePath, "utf8");
   } catch (error) {
-    fail(`${path}: ${error.message}`);
+    fail(`${filePath}: ${error.message}`);
   }
 }
 
@@ -40,6 +48,14 @@ function assertContains(source, needle, message) {
 
 function assertNotContains(source, needle, message) {
   if (source.includes(needle)) fail(message);
+}
+
+function rustFilesUnder(root) {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(root, entry.name).replaceAll("\\", "/");
+    if (entry.isDirectory()) return rustFilesUnder(entryPath);
+    return entry.isFile() && entry.name.endsWith(".rs") ? [entryPath] : [];
+  });
 }
 
 const lib = text(files.lib);
@@ -71,6 +87,26 @@ for (const marker of ["leptos::", "view!", "#[server", "ServerFnError"]) {
   assertNotContains(core, marker, `${files.core}: core must remain framework/server-function free (${marker})`);
   assertNotContains(pagination, marker, `${files.pagination}: pagination policy must remain framework/server-function free (${marker})`);
 }
+
+for (const marker of [
+  "pub fn body_or_fallback",
+  "pub fn summarized_body_or_fallback",
+  "pub fn summarize_content",
+]) {
+  assertContains(core, marker, `${files.core}: quarantined legacy summarizer definition drift (${marker})`);
+}
+for (const rustFile of rustFilesUnder(files.storefrontSrc)) {
+  if (rustFile === files.core) continue;
+  const source = text(rustFile);
+  for (const marker of legacySummarizerMarkers) {
+    assertNotContains(
+      source,
+      marker,
+      `${rustFile}: active storefront code must not consume quarantined legacy summarizer ${marker}`,
+    );
+  }
+}
+
 for (const marker of [
   "COMMENTS_PAGE_QUERY_KEY: &str = \"commentsPage\"",
   "COMMENTS_PAGE_SIZE: u64 = 20",
@@ -100,7 +136,6 @@ assertContains(ui, "comments_pagination::comments_page_query_intent", `${files.u
 assertContains(ui, "let content = post.content;", `${files.ui}: UI must consume RichTextView from the storefront DTO`);
 assertContains(ui, "post.content_plain_text", `${files.ui}: UI must retain server-derived plain-text fallback`);
 assertContains(ui, "inner_html=content.html", `${files.ui}: UI must render owner-generated HTML`);
-assertNotContains(ui, "summarized_body_or_fallback", `${files.ui}: UI must not locally interpret body formats`);
 assertNotContains(ui, "post.body", `${files.ui}: UI must not read legacy body`);
 assertNotContains(ui, "body_format", `${files.ui}: UI must not read legacy body format`);
 assertNotContains(ui, "crate::api", `${files.ui}: UI must not call legacy api module`);
@@ -161,10 +196,22 @@ for (const marker of [
 if (evidence.status !== "source_verified_no_compile") {
   fail(`${files.evidence}: status must remain source_verified_no_compile until maintainer execution`);
 }
-for (const field of ["graphql_owner_view", "native_owner_view", "server_html_render", "plain_text_fallback"]) {
+for (const field of [
+  "graphql_owner_view",
+  "native_owner_view",
+  "server_html_render",
+  "plain_text_fallback",
+  "legacy_summarizer_quarantined",
+]) {
   if (evidence.contract?.[field] !== true) {
     fail(`${files.evidence}: contract.${field} must be true`);
   }
+}
+if (JSON.stringify(evidence.legacy_summarizer_quarantine?.allowed_files) !== JSON.stringify([files.core])) {
+  fail(`${files.evidence}: legacy summarizer quarantine must allow only ${files.core}`);
+}
+if ((evidence.legacy_summarizer_quarantine?.active_consumers ?? []).length !== 0) {
+  fail(`${files.evidence}: legacy summarizer quarantine must have no active consumers`);
 }
 if (evidence.validation?.tests_run !== false || evidence.validation?.verifier_run !== false || evidence.validation?.cargo_run !== false) {
   fail(`${files.evidence}: validation flags must record that execution remains maintainer-owned`);
@@ -180,6 +227,7 @@ assertContains(verifierTest, "rejects legacy api module", `${files.verifierTest}
 assertContains(verifierTest, "rejects missing public comments parity", `${files.verifierTest}: fixture tests must reject missing comments parity`);
 assertContains(verifierTest, "rejects missing comment pagination parity", `${files.verifierTest}: fixture tests must reject missing pagination parity`);
 assertContains(verifierTest, "rejects legacy richtext transport", `${files.verifierTest}: fixture tests must reject legacy richtext transport`);
+assertContains(verifierTest, "rejects legacy richtext summarizer consumer", `${files.verifierTest}: fixture tests must reject legacy summarizer consumers`);
 
 const scripts = pkg.scripts ?? {};
 if (scripts["verify:blog:storefront-boundary"] !== "node scripts/verify/verify-blog-storefront-boundary.mjs") {

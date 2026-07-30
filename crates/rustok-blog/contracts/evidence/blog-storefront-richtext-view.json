@@ -4,6 +4,7 @@
   "boundary": "storefront-post-richtext-view",
   "status": "source_verified_no_compile",
   "scope": [
+    "crates/rustok-blog/storefront/src/core.rs",
     "crates/rustok-blog/storefront/src/model.rs",
     "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
     "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
@@ -16,12 +17,25 @@
     "plain_text_fallback": true,
     "legacy_body_transport": false,
     "legacy_body_format_transport": false,
-    "local_format_renderer": false
+    "local_format_renderer": false,
+    "legacy_summarizer_quarantined": true
   },
   "canonical_contract": {
     "read": "rustok_api::RichTextView",
     "html": "server-derived",
     "plain_text": "server-derived"
+  },
+  "legacy_summarizer_quarantine": {
+    "allowed_files": [
+      "crates/rustok-blog/storefront/src/core.rs"
+    ],
+    "active_consumers": [],
+    "forbidden_outside_owner_file": [
+      "body_or_fallback",
+      "summarized_body_or_fallback",
+      "summarize_content"
+    ],
+    "reason": "temporary dead-code quarantine pending safe physical deletion from the large pure-core file"
   },
   "guardrail": "scripts/verify/verify-blog-storefront-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
@@ -34,7 +48,7 @@
     "ci_run": false
   },
   "remaining": [
-    "remove now-unused legacy body-format summarizer helpers from storefront core",
-    "finish storage and remaining Leptos/Search/AI/SEO cutover atomically"
+    "physically remove quarantined legacy body-format summarizer helpers from storefront core",
+    "finish storage, AI draft writes, remaining Leptos cleanup, and final compatibility removal atomically"
   ]
 }
