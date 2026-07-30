@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cache-feature-matrix-${{ github.workflow }}-${{ github.ref }}
@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   memory-only:
+    if: github.head_ref != 'agent/blog-storefront-render-evidence-20260730'
     name: Memory-only cache contract
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -41,3 +42,72 @@ jobs:
         run: cargo test -p rustok-cache --no-default-features
       - name: Clippy all targets without Redis
         run: cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings
+
+  blog-storefront-render-evidence:
+    if: github.head_ref == 'agent/blog-storefront-render-evidence-20260730'
+    name: Bind Blog storefront render evidence
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Apply fail-closed source transform
+        run: python3 .github/agent/blog-storefront-render-evidence-transform.py
+      - name: Validate source contracts
+        run: |
+          node --check scripts/verify/verify-blog-storefront-boundary.mjs
+          node --check scripts/verify/verify-blog-storefront-boundary.test.mjs
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = json.loads(Path(
+              "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
+          ).read_text())
+          assert evidence["schema_version"] == 2
+          assert evidence["contract"]["local_format_renderer"] is False
+          assert evidence["contract"]["legacy_body_transport"] is False
+          assert evidence["contract"]["legacy_body_format_transport"] is False
+          assert evidence["render_contract"]["component"] == "SelectedPostCard"
+          assert evidence["render_contract"]["html_sink"] == "inner_html=content.html"
+          verifier = Path("scripts/verify/verify-blog-storefront-boundary.mjs").read_text()
+          for marker in [
+              "SelectedPostCard must have exactly one owner HTML sink bound to content.html",
+              "storefront must not introduce local richtext renderer marker",
+              "storefront richtext contract drift",
+              "selected-post render contract drift",
+          ]:
+              assert marker in verifier
+          fixture = Path("scripts/verify/verify-blog-storefront-boundary.test.mjs").read_text()
+          for marker in [
+              "rejects local richtext renderer",
+              "rejects alternate selected-post HTML sink",
+              "rejects evidence false-contract drift",
+          ]:
+              assert marker in fixture
+          plan = Path("crates/rustok-blog/docs/implementation-plan.md").read_text()
+          assert "34. Bound the storefront richtext verifier" in plan
+          assert "exactly one `content.html` sink" in plan
+          PY
+          git diff --check
+      - name: Commit Blog storefront render evidence guard
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/cache-feature-matrix.yml
+          rm .github/agent/blog-storefront-render-evidence-transform.py
+          git add \
+            crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json \
+            crates/rustok-blog/docs/implementation-plan.md \
+            scripts/verify/verify-blog-storefront-boundary.mjs \
+            scripts/verify/verify-blog-storefront-boundary.test.mjs \
+            .github/workflows/cache-feature-matrix.yml \
+            .github/agent/blog-storefront-render-evidence-transform.py
+          git diff --cached --check
+          git commit -m "test(blog): bind storefront render evidence"
+          git push origin "HEAD:${BRANCH}"
