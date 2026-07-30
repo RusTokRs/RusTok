@@ -6,6 +6,14 @@
 - [x] Host checks tenant enablement of the `product` module and passes only effective locale from `UiRouteContext`; no local locale fallback.
 - [x] Product storefront metadata uses native `#[server]` first and parallel public GraphQL `storefrontCatalogSearchOptions(locale: String!)`; fast boundary guardrails fix wiring without long Rust compilation.
 
+## Tenant module-state trust update (2026-07-30)
+
+- [x] Native `storefront/list-enabled-modules` no longer accepts a client-provided tenant slug.
+- [x] The SSR adapter extracts the middleware-resolved `rustok_api::TenantContext` and reads module state only for `tenant.id`.
+- [x] The configured tenant slug remains limited to the GraphQL transport request where it is a host-routing hint, not native write/read authority.
+- [x] `verify-tenant-fba.mjs` rejects `tenant_slug`, `get_tenant_by_slug`, or a slug argument in the native adapter and requires the trusted context extraction.
+- [ ] Same-SHA storefront compilation and native/GraphQL parity execution remain required before the storefront wave can be completed.
+
 ## Focus
 
 Develop `apps/storefront` as a stable SSR storefront with predictable performance, safe user input handling, and unified contracts with the backend.

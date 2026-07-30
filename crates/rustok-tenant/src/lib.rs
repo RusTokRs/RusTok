@@ -8,7 +8,7 @@ pub mod services;
 mod settings_schema;
 
 pub use dto::{
-    CreateTenantInput, TenantModuleResponse, TenantResponse, ToggleModuleInput, UpdateTenantInput,
+    CreateTenantInput, TenantModuleResponse, TenantResponse, UpdateTenantInput,
 };
 pub use error::TenantError;
 pub use ports::*;

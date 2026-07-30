@@ -64,10 +64,11 @@ does not create a package-local locale fallback.
 
 5. **Keep OAuth bootstrap in the auth-owned CLI adapter.**
    `rustok-cli oauth create-app` creates the development application through
-   `rustok-auth/cli`, an explicit database handle, and the tenant-owned default
-   tenant read. Base application identity and localized display copy must be
-   persisted in one transaction against the current translation-table schema.
-   The server does not register a task for this operation.
+   `rustok-auth/cli`, an explicit database handle, and a required explicit
+   `--tenant-id`. It must never infer the first active tenant for a credential
+   write. Base application identity and localized display copy are persisted in
+   one transaction against the current translation-table schema. The server does
+   not register a task for this operation.
 
 6. **Keep session maintenance in the auth-owned CLI adapter.**
    `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
@@ -94,6 +95,7 @@ does not create a package-local locale fallback.
 - `npm run verify:ai:fba-baseline`
 - `cargo xtask module validate auth`
 - `cargo xtask module test auth`
+- `cargo test -p rustok-auth-cli oauth_create_app -- --nocapture`
 - `cargo test -p rustok-auth-cli development_app_uses_current_translation_schema`
 - `cargo check -p rustok-auth-admin`
 - Targeted auth/RBAC server tests when runtime wiring changes.
@@ -111,11 +113,11 @@ does not create a package-local locale fallback.
 
 - Cycle: `cycle-001`
 - Status: `blocked`
-- Last verified at (UTC): `2026-07-29`
-- Scope inspected: `auth ownership; JWT and credential lifecycle; OAuth app, authorization-code and refresh-token paths; tenant-qualified admin mutations; translation-table migration and runtime localization; auth-owned CLI bootstrap adapter; implicit grant expansion`
-- Findings: `P0=0, P1=6, P2=0, P3=2`
-- Fixed in this pass: `preserved the four previously repaired P1 defects; fixed the post-migration rustok-auth-cli OAuth bootstrap failure by deleting raw writes to removed oauth_apps.name/description columns and persisting the base row plus en translation in one transaction; added a SQLite regression against the current translation-table schema`
-- Remaining risks or blockers: `P1 implicit refresh_token authority remains for auto-created applications whose persisted grant_types omit it; targeted Rust execution is unavailable in the current connector-only environment because local git clone failed DNS resolution and no workflow run exists for the branch yet; PostgreSQL forward/down migration smoke and browser/runtime mutation parity evidence remain required; lightweight owner-owned OAuth code/refresh regression target remains P3 verification debt`
-- Evidence: `source inspection confirms tenant-qualified OAuth client, consent and admin lookups; authorization-code and refresh-token replacements use transactional compare-and-set; oauth_app_translations uses VARCHAR(32), tenant-composite FK and unique tenant/app/locale identity; fresh branch agent/auth-cli-bootstrap-fresh commits d6db4de9a648936d60923fc575dc233b907490b5 and bd84902d928d0a4998940243a39b51dad10c2b8d contain the CLI fix and regression; local clone failure was Could not resolve host: github.com and is classified as an environment limitation`
-- Next action: `run the targeted rustok-auth-cli regression and canonical auth module checks; remove implicit refresh grant expansion with explicit producer updates; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
-- Resume command: `cargo test -p rustok-auth-cli development_app_uses_current_translation_schema && cargo xtask module validate auth && cargo xtask module test auth`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `auth ownership; JWT and credential lifecycle; OAuth app, authorization-code and refresh-token paths; tenant-qualified admin mutations; translation-table migration and runtime localization; auth-owned CLI bootstrap adapter; explicit operational tenant selection; implicit grant expansion`
+- Findings: `P0=0, P1=7, P2=0, P3=2`
+- Fixed in this pass: `preserved the four previously repaired P1 defects; fixed the post-migration rustok-auth-cli OAuth bootstrap failure by deleting raw writes to removed oauth_apps.name/description columns and persisting the base row plus en translation in one transaction; added a SQLite regression against the current translation-table schema; removed first-active-tenant inference from oauth create-app and required an explicit tenant UUID before credential persistence, with missing, invalid and valid UUID regressions`
+- Remaining risks or blockers: `P1 implicit refresh_token authority remains for auto-created applications whose persisted grant_types omit it; same-SHA auth CLI execution is pending in GitHub Actions; PostgreSQL forward/down migration smoke and browser/runtime mutation parity evidence remain required; lightweight owner-owned OAuth code/refresh regression target remains P3 verification debt`
+- Evidence: `source inspection confirms tenant-qualified OAuth client, consent and admin lookups; authorization-code and refresh-token replacements use transactional compare-and-set; oauth_app_translations uses VARCHAR(32), tenant-composite FK and unique tenant/app/locale identity; auth CLI no longer imports rustok-tenant or rustok-api, requires --tenant-id before OAuth credential writes and contains explicit missing/invalid/valid UUID unit cases; tenant FBA guard forbids read_default_active_tenant in the credential path; connector-only local execution remains unavailable because github.com DNS resolution fails and is classified as an environment limitation`
+- Next action: `run the targeted rustok-auth-cli regressions and canonical auth module checks; remove implicit refresh grant expansion with explicit producer updates; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
+- Resume command: `cargo test -p rustok-auth-cli oauth_create_app -- --nocapture && cargo test -p rustok-auth-cli development_app_uses_current_translation_schema && cargo xtask module validate auth && cargo xtask module test auth`

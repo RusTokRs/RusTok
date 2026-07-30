@@ -1,14 +1,10 @@
 //! External operational command adapters for `rustok-auth`.
 
-use std::time::Duration;
-
-use rustok_api::{PortActor, PortContext};
 use rustok_auth::{generate_refresh_token, hash_password};
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
-use rustok_tenant::{TenantReadPort, TenantService};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
 };
@@ -28,7 +24,7 @@ impl CommandProvider for AuthCommandProvider {
             CommandDescriptor::new(
                 "oauth",
                 "create-app",
-                "Create an OAuth application for local development or bootstrap operations",
+                "Create an OAuth application for an explicitly selected tenant",
             ),
             CommandDescriptor::new("auth", "sessions-cleanup", "Remove expired auth sessions"),
         ]
@@ -49,8 +45,8 @@ impl CommandProvider for AuthCommandProvider {
 impl AuthCommandProvider {
     async fn create_app(&self, args: serde_json::Value) -> CliCoreResult<CommandOutcome> {
         let options = options(&args)?;
+        let tenant_id = required_tenant_id(options)?;
         let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
-        let tenant_id = resolve_tenant_id(&db, options).await?;
         let name = option(options, "name")
             .unwrap_or("Development App")
             .to_string();
@@ -176,28 +172,15 @@ async fn create_development_app(
     })
 }
 
-async fn resolve_tenant_id(
-    db: &DatabaseConnection,
+fn required_tenant_id(
     options: &serde_json::Map<String, serde_json::Value>,
 ) -> CliCoreResult<Uuid> {
-    if let Some(raw) = option(options, "tenant_id") {
-        return Uuid::parse_str(raw).map_err(|_| CliCoreError::InvalidInput {
-            message: "--tenant-id must be a UUID".to_string(),
-        });
-    }
-    TenantService::new(db.clone())
-        .read_default_active_tenant(
-            PortContext::new(
-                "platform",
-                PortActor::system(),
-                DEVELOPMENT_APP_LOCALE,
-                "oauth-create-app",
-            )
-            .with_deadline(Duration::from_secs(5)),
-        )
-        .await
-        .map(|tenant| tenant.id)
-        .map_err(|error| command_failed(error.message))
+    let raw = option(options, "tenant_id").ok_or_else(|| CliCoreError::InvalidInput {
+        message: "--tenant-id is required for oauth create-app".to_string(),
+    })?;
+    Uuid::parse_str(raw).map_err(|_| CliCoreError::InvalidInput {
+        message: "--tenant-id must be a UUID".to_string(),
+    })
 }
 
 fn options(args: &serde_json::Value) -> CliCoreResult<&serde_json::Map<String, serde_json::Value>> {
@@ -233,9 +216,42 @@ fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEVELOPMENT_APP_LOCALE, create_development_app};
+    use super::{DEVELOPMENT_APP_LOCALE, create_development_app, required_tenant_id};
+    use rustok_cli_core::CliCoreError;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use uuid::Uuid;
+
+    #[test]
+    fn oauth_create_app_requires_explicit_tenant_id() {
+        let options = serde_json::Map::new();
+        assert!(matches!(
+            required_tenant_id(&options),
+            Err(CliCoreError::InvalidInput { message })
+                if message == "--tenant-id is required for oauth create-app"
+        ));
+    }
+
+    #[test]
+    fn oauth_create_app_rejects_invalid_tenant_id() {
+        let mut options = serde_json::Map::new();
+        options.insert("tenant_id".to_string(), serde_json::json!("not-a-uuid"));
+        assert!(matches!(
+            required_tenant_id(&options),
+            Err(CliCoreError::InvalidInput { message })
+                if message == "--tenant-id must be a UUID"
+        ));
+    }
+
+    #[test]
+    fn oauth_create_app_accepts_explicit_tenant_id() {
+        let tenant_id = Uuid::new_v4();
+        let mut options = serde_json::Map::new();
+        options.insert(
+            "tenant_id".to_string(),
+            serde_json::json!(tenant_id.to_string()),
+        );
+        assert_eq!(required_tenant_id(&options).expect("tenant id"), tenant_id);
+    }
 
     #[tokio::test]
     async fn development_app_uses_current_translation_schema() {

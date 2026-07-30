@@ -56,18 +56,19 @@ impl EnabledModulesContext {
 }
 
 pub async fn fetch_enabled_modules() -> Result<Vec<String>, ApiError> {
-    let Some(tenant_slug) = configured_tenant_slug() else {
-        return Ok(Vec::new());
-    };
-
     match selected_transport_path() {
-        UiTransportPath::NativeServer => fetch_enabled_modules_server(tenant_slug).await,
-        UiTransportPath::Graphql => fetch_enabled_modules_graphql(tenant_slug).await,
+        UiTransportPath::NativeServer => fetch_enabled_modules_server().await,
+        UiTransportPath::Graphql => {
+            let Some(tenant_slug) = configured_tenant_slug() else {
+                return Ok(Vec::new());
+            };
+            fetch_enabled_modules_graphql(tenant_slug).await
+        }
     }
 }
 
-pub async fn fetch_enabled_modules_server(tenant_slug: String) -> Result<Vec<String>, ApiError> {
-    super::enabled_modules_native_server_adapter::list_enabled_modules(tenant_slug)
+pub async fn fetch_enabled_modules_server() -> Result<Vec<String>, ApiError> {
+    super::enabled_modules_native_server_adapter::list_enabled_modules()
         .await
         .map_err(ApiError::from)
 }

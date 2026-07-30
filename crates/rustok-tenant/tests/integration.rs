@@ -5,7 +5,7 @@ use rustok_outbox::SysEvents;
 use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, PortErrorKind, ReplaceTenantLocalePolicyRequest,
     TenantError, TenantLocale, TenantLocalePolicyEntry, TenantLocalePolicyPort, TenantReadPort,
-    TenantReadRequest, TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
+    TenantReadRequest, TenantReadSelector, TenantService, UpdateTenantInput,
 };
 use sea_orm::{
     ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait, QueryOrder,
@@ -415,56 +415,6 @@ async fn tenant_read_port_resolves_domain_and_validates_blank_domain() {
 }
 
 #[tokio::test]
-#[allow(deprecated)]
-async fn module_toggle_flow_legacy() {
-    let db = setup_db().await;
-    let service = TenantService::new(db);
-
-    let tenant = service
-        .create_tenant(CreateTenantInput {
-            name: "Toggle Test".to_string(),
-            slug: "toggle-test".to_string(),
-            domain: None,
-        })
-        .await
-        .expect("tenant should be created");
-
-    let enabled = service
-        .toggle_module(
-            tenant.id,
-            ToggleModuleInput {
-                module_slug: "blog".to_string(),
-                enabled: true,
-            },
-        )
-        .await
-        .expect("module should be enabled");
-
-    assert!(enabled.enabled);
-
-    let disabled = service
-        .toggle_module(
-            tenant.id,
-            ToggleModuleInput {
-                module_slug: "blog".to_string(),
-                enabled: false,
-            },
-        )
-        .await
-        .expect("module should be disabled");
-
-    assert_eq!(disabled.id, enabled.id);
-    assert!(!disabled.enabled);
-
-    let modules = service
-        .list_tenant_modules(tenant.id)
-        .await
-        .expect("tenant modules should list");
-    assert_eq!(modules.len(), 1);
-    assert!(!modules[0].enabled);
-}
-
-#[tokio::test]
 async fn tenant_locale_policy_port_replaces_with_cas_and_replays_idempotently() {
     let db = setup_db().await;
     let service = TenantService::new(db);
@@ -591,7 +541,6 @@ async fn tenant_locale_policy_rejects_und_invalid_fallback_and_key_reuse() {
 }
 
 #[tokio::test]
-#[allow(deprecated)]
 async fn tenant_mutations_always_publish_outbox_events() {
     let db = setup_db().await;
     let service = TenantService::new(db.clone());
@@ -618,24 +567,13 @@ async fn tenant_mutations_always_publish_outbox_events() {
         .await
         .expect("tenant should be updated");
 
-    service
-        .toggle_module(
-            tenant.id,
-            ToggleModuleInput {
-                module_slug: "blog".to_string(),
-                enabled: true,
-            },
-        )
-        .await
-        .expect("module should be toggled");
-
     let events = SysEvents::find()
         .order_by_asc(outbox_entity::Column::CreatedAt)
         .all(&db)
         .await
         .expect("outbox events should load");
 
-    assert_eq!(events.len(), 3);
+    assert_eq!(events.len(), 2);
     assert!(
         events
             .iter()
@@ -645,23 +583,5 @@ async fn tenant_mutations_always_publish_outbox_events() {
         events
             .iter()
             .any(|event| event.event_type == "tenant.updated")
-    );
-    assert!(
-        events
-            .iter()
-            .any(|event| event.event_type == "tenant.module.toggled")
-    );
-
-    let module_toggle_payload = events
-        .iter()
-        .find(|event| event.event_type == "tenant.module.toggled")
-        .expect("tenant module toggle event must exist");
-    assert_eq!(
-        module_toggle_payload.payload["event"]["data"]["module_slug"],
-        "blog"
-    );
-    assert_eq!(
-        module_toggle_payload.payload["event"]["data"]["enabled"],
-        serde_json::json!(true)
     );
 }

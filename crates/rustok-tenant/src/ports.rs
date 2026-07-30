@@ -177,9 +177,23 @@ impl TenantLocalePolicyPort for crate::TenantService {
                 )
             })?
             .to_string();
-        self.replace_locale_policy_owned(tenant_id, request, &idempotency_key)
-            .await
-            .map_err(map_tenant_error)
+
+        let first_result = self
+            .replace_locale_policy_owned(tenant_id, request.clone(), &idempotency_key)
+            .await;
+        let result = match first_result {
+            // Another replica may commit the same idempotent request after this
+            // transaction checked the receipt but before it acquired the tenant
+            // row lock. Re-read once so the durable receipt, rather than a stale
+            // expected revision, remains authoritative for the public port.
+            Err(crate::TenantError::LocalePolicyConflict { .. }) => {
+                self.replace_locale_policy_owned(tenant_id, request, &idempotency_key)
+                    .await
+            }
+            other => other,
+        };
+
+        result.map_err(map_tenant_error)
     }
 }
 
