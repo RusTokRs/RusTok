@@ -9,7 +9,7 @@ description = "Selected RusToK distribution module composition"
 default = []
 mod-cart = ["dep:rustok-cart"]
 mod-customer = ["dep:rustok-customer"]
-mod-product = ["dep:rustok-product", "rustok-product/index", "mod-taxonomy"]
+mod-product = ["dep:rustok-product", "mod-taxonomy"]
 mod-profiles = ["dep:rustok-profiles", "mod-media", "mod-taxonomy"]
 mod-groups = ["dep:rustok-groups"]
 mod-region = ["dep:rustok-region"]
@@ -46,6 +46,8 @@ mod-ai = ["dep:rustok-ai", "rustok-ai/server"]
 ai-translation = ["mod-ai", "mod-translation", "dep:rustok-ai-translation"]
 
 [dependencies]
+async-trait.workspace = true
+sea-orm.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
 rustok-modules.workspace = true
@@ -104,7 +106,5 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-async-trait.workspace = true
-sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tokio.workspace = true
