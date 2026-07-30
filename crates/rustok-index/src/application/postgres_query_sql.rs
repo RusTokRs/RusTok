@@ -576,8 +576,9 @@ fn compile_many_order_aggregate(
         terminal.scalar,
         predicates.join(" AND ")
     );
+    let wire_value = aggregate_order_wire_value(field.value_type, &scalar);
     let raw = format!(
-        "CASE WHEN {scalar} IS NULL THEN NULL ELSE jsonb_build_object('type', '{}', 'value', to_jsonb({scalar})) END",
+        "CASE WHEN {scalar} IS NULL THEN NULL ELSE jsonb_build_object('type', '{}', 'value', {wire_value}) END",
         value_type_tag(field.value_type),
     );
     Ok(FieldSql {
@@ -587,6 +588,13 @@ fn compile_many_order_aggregate(
         type_text: "NULL::text".to_owned(),
         null_predicate: format!("{scalar} IS NULL"),
     })
+}
+
+fn aggregate_order_wire_value(value_type: IndexValueType, scalar: &str) -> String {
+    match value_type {
+        IndexValueType::Decimal => format!("to_jsonb(({scalar})::text)"),
+        _ => format!("to_jsonb({scalar})"),
+    }
 }
 
 fn compile_keyset(
