@@ -5,6 +5,7 @@
   "scope": "Provide a public Profiles mutation API whose construction requires the durable event bus and route repository production profile writes through it",
   "mutation_facade": "crates/rustok-profiles/src/mutations.rs",
   "profiles_public_api": "crates/rustok-profiles/src/lib.rs",
+  "profiles_readme": "crates/rustok-profiles/README.md",
   "graphql_runtime": "crates/rustok-profiles/src/graphql/mutation.rs",
   "cli_backfill_runtime": "crates/rustok-profiles/cli/src/lib.rs",
   "legacy_source_gate_contract": "crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json",
@@ -30,6 +31,7 @@
     "graphql_media_validation_precedes_facade_write": true,
     "cli_backfill_uses_facade": true,
     "cli_backfill_system_actor_semantics_are_preserved": true,
+    "profiles_readme_documents_preferred_facade": true,
     "legacy_repository_production_calls_remain_source_gated": true,
     "compatible_free_backfill_helper_remains_event_aware": true
   },
