@@ -28,6 +28,14 @@ or host-specific UI wiring.
 - event-driven ingestion is published by the module via `SearchModule::register_event_listeners(...)` and connected by the server through `ModuleRegistry`, without a separate host-owned search dispatcher;
 - domain modules deliver changes through the ingestion path without knowing about the active engine.
 
+## Connector credential boundary
+
+- `search.api_key` is a private bootstrap credential in server YAML/environment configuration. It is not a tenant-managed `platform_settings` field and is never returned by the generic settings GraphQL API.
+- `SettingsService` confines raw values to private storage/fallback helpers. Public `get`, `get_all`, and `update` results remove `api_key` and expose only `api_key_configured: bool`.
+- Generic tenant settings updates that include `api_key` fail closed. The computed `api_key_configured` marker is read-only and is removed before storage.
+- GraphQL settings query and mutation resolvers delegate projection to `SettingsService`; they do not read the bootstrap credential or own redaction logic.
+- Existing historical rows remain inaccessible through the public projection. Physical removal from the platform-owned `platform_settings` table requires an append-only platform migration and must not be implemented as a Search-owned cross-table migration.
+
 ## Projection correctness
 
 - Search projector operations are tenant-scoped: ingestion always takes `tenant_id` from `EventEnvelope`, and `PgSearchEngine` requires `SearchQuery.tenant_id`.
@@ -57,6 +65,8 @@ or host-specific UI wiring.
 - `cargo xtask module validate search`
 - `cargo xtask module test search`
 - `cargo test -p rustok-search -- --include-ignored --nocapture` with live PostgreSQL `DATABASE_URL`
+- `node scripts/verify/verify-search-settings-secret-projection.mjs`
+- `npm run verify:search:fba`
 - targeted tests for query normalization, ranking profiles, rebuild flows and diagnostics surfaces
 
 ## Related documents
