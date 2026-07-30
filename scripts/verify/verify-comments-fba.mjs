@@ -4,6 +4,7 @@ function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
 function fail(message) { console.error(`[verify-comments-fba] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) { for (const s of snippets) if (!text.includes(s)) fail(`${label} missing ${s}`); }
+function hasNone(text, snippets, label) { for (const s of snippets) if (text.includes(s)) fail(`${label} contains forbidden ${s}`); }
 function sameList(actual, expected) { return JSON.stringify(actual) === JSON.stringify(expected); }
 
 const registryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
@@ -109,8 +110,10 @@ hasAll(services, [
   '.publish_in_tx(',
   'find_or_create_thread_in_tx',
   'match thread.insert(txn).await',
-  'Err(_) => comment_thread::Entity::find()',
+  'comment_thread::is_thread_identity_conflict(',
+  'Err(error) => Err(error.into())',
 ], 'comments owner service');
+hasNone(services, ['Err(_) => comment_thread::Entity::find()'], 'comments owner service');
 const lifecycleEvents = registry.events ?? [];
 if (lifecycleEvents.map(event => event.type).sort().join('|') !== 'comment.created|comment.deleted') fail('comments lifecycle event registry drift');
 for (const event of lifecycleEvents) {
@@ -158,6 +161,7 @@ if (registry.evidence.thread_write_invariants_runner !== threadWriteVerifierPath
 if (registry.evidence.thread_write_invariants_self_test !== threadWriteSelfTestPath) fail('thread write self-test path drift');
 if (registry.evidence.thread_write_invariants_test !== 'crates/rustok-comments/tests/thread_write_invariants.rs') fail('thread write test path drift');
 if (registry.evidence.thread_creation_concurrency_test !== 'crates/rustok-comments/tests/thread_creation_concurrency.rs') fail('thread creation test path drift');
+if (threadWriteEvidence.schema_version !== 2) fail('thread write evidence schema_version drift');
 if (threadWriteEvidence.module !== 'comments' || threadWriteEvidence.surface !== 'thread_write_invariants' || threadWriteEvidence.owner !== 'rustok-comments') fail('thread write evidence identity drift');
 if (threadWriteEvidence.status !== 'executable_no_run' || threadWriteEvidence.compile_policy !== 'not_run_by_request') fail('thread write evidence status drift');
 const threadWriteCases = threadWriteEvidence.cases.map(c => c.name).sort().join('|');
@@ -166,6 +170,7 @@ if (threadWriteCases !== [
   'exact_active_comment_count',
   'historical_counter_repair',
   'historical_position_repair',
+  'identity_conflict_only_fallback',
   'postgres_concurrent_create_delete',
   'postgres_concurrent_first_thread_creation',
   'serialized_position_allocation',
@@ -176,6 +181,7 @@ const threadContract = threadWriteEvidence.production_contract ?? {};
 for (const [key, expected] of Object.entries({
   position_owner: 'crates/rustok-comments/src/entities/comment.rs',
   counter_and_identity_owner: 'crates/rustok-comments/src/entities/comment_thread.rs',
+  thread_service: 'crates/rustok-comments/src/services.rs',
   identity_lock_entity: 'crates/rustok-comments/src/entities/comment_thread_identity_lock.rs',
   counter_repair_migration: 'crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs',
   identity_lock_migration: 'crates/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs',
@@ -198,15 +204,29 @@ hasAll(positionOwner, [
 ], 'comment position owner');
 const threadOwner = read(threadContract.counter_and_identity_owner);
 hasAll(threadOwner, [
+  'pub(crate) const THREAD_IDENTITY_CONFLICT_MARKER',
+  'pub(crate) fn is_thread_identity_conflict(',
+  'matches!(error, DbErr::Custom(message) if message.starts_with(&expected_prefix))',
   'serialize_thread_identity(db, &self).await?',
   'matches!(&self.comment_count, ActiveValue::Set(_))',
   'OnConflict::columns',
   'identity_lock::Entity::update_many()',
-  'comment thread identity {target_type}:{target_id} already belongs to',
+  '{THREAD_IDENTITY_CONFLICT_MARKER}:{tenant_id}:{target_type}:{target_id}:{}',
   'DeletedAt.is_null()',
   '.count(db)',
   'self.comment_count = Set(count)',
 ], 'comment thread owner');
+const threadService = read(threadContract.thread_service);
+hasAll(threadService, [
+  'match thread.insert(txn).await',
+  'comment_thread::is_thread_identity_conflict(',
+  '&error,',
+  'tenant_id,',
+  'target_type,',
+  'target_id,',
+  'Err(error) => Err(error.into())',
+], 'comment thread service fallback');
+hasNone(threadService, ['Err(_) => comment_thread::Entity::find()'], 'comment thread service fallback');
 const identityEntity = read(threadContract.identity_lock_entity);
 hasAll(identityEntity, [
   '#[sea_orm(table_name = "comment_thread_identity_locks")]',
@@ -263,6 +283,9 @@ hasAll(firstThreadTest, [
 const threadWriteVerifier = read(threadWriteVerifierPath);
 hasAll(threadWriteVerifier, [
   'identity_lock::Entity::update_many()',
+  'comment_thread::is_thread_identity_conflict(',
+  'Err(error) => Err(error.into())',
+  'identity_conflict_only_fallback',
   'postgres_concurrent_first_comments_share_one_thread',
   'status_only_thread_update_preserves_comment_count',
   'postgres_concurrent_creates_and_delete_preserve_thread_invariants',
@@ -272,6 +295,9 @@ hasAll(threadWriteSelfTest, [
   'thread write verifier accepts the owner invariant contract',
   'rejects position allocation without tenant lock',
   'rejects missing first-thread concurrency harness',
+  'rejects a broad insert fallback',
+  'rejects a missing identity-conflict classifier',
+  'rejects missing unrelated storage error propagation',
 ], 'thread write invariant self-test');
 
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
@@ -288,6 +314,8 @@ hasAll(plan, [
   'concurrent PostgreSQL',
   'identity-lock',
   'thread_creation_concurrency',
+  'identity-conflict-only fallback',
+  'unrelated storage errors propagate',
   'verify:comments:thread-write-invariants',
   'test:verify:comments:thread-write-invariants',
   'test:verify:comments:fba',
@@ -295,4 +323,4 @@ hasAll(plan, [
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, transactional thread writes, and first-thread identity serialization are consistent');
+console.log('[verify-comments-fba] comments FBA provider metadata, exact thread-invariant source-gate chain, runtime-order evidence, transactional thread writes, narrow identity-conflict fallback, and first-thread identity serialization are consistent');
