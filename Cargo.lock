@@ -12813,6 +12813,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -13214,6 +13215,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "rustok-ui-transport",
  "serde",
+ "tracing",
  "uuid",
  "web-sys",
 ]
@@ -13608,6 +13610,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 
@@ -14385,6 +14388,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
  "web-sys",
 ]
@@ -14479,6 +14483,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "rustok-ui-transport",
  "serde",
+ "tracing",
  "uuid",
 ]
 
