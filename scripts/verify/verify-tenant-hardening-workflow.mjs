@@ -16,6 +16,7 @@ for (const marker of [
   '"modules.toml.example"',
   '"crates/rustok-tenant/**"',
   '"crates/rustok-auth/cli/**"',
+  '"crates/rustok-auth/admin/**"',
   '"crates/rustok-commerce/Cargo.toml"',
   '"crates/rustok-commerce/rustok-module.toml"',
   '"crates/rustok-commerce/src/lib.rs"',
@@ -25,6 +26,7 @@ for (const marker of [
   '"crates/rustok-commerce/docs/tenant-locale-owner-cutover.md"',
   '"apps/storefront/src/shared/context/enabled_modules.rs"',
   '"apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"',
+  '"scripts/verify/verify-auth-admin-tenant-scope.mjs"',
   '"scripts/verify/verify-commerce-tenant-locale-boundary.mjs"',
   '"scripts/verify/verify-tenant-admin-native-error-safety.mjs"',
   'focused-contract:',
@@ -32,6 +34,7 @@ for (const marker of [
   'redis-recovery:',
   'TENANT_RUST_FILES:',
   'rustfmt --edition 2024 --config skip_children=true --check $TENANT_RUST_FILES',
+  'crates/rustok-auth/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-commerce/src/lib.rs',
   'crates/rustok-commerce/src/services/context.rs',
   'crates/rustok-commerce/tests/context_service_test.rs',
@@ -39,6 +42,7 @@ for (const marker of [
   'crates/rustok-tenant/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-tenant/tests/locale_policy_concurrency_postgres.rs',
   'crates/rustok-tenant/tests/tenant_ensure_concurrency_postgres.rs',
+  'node scripts/verify/verify-auth-admin-tenant-scope.mjs',
   'node scripts/verify/verify-commerce-tenant-locale-boundary.mjs',
   'node scripts/verify/verify-tenant-admin-native-error-safety.mjs',
   'node scripts/verify/verify-tenant-locale-policy-migration.mjs',
@@ -47,6 +51,8 @@ for (const marker of [
   'cargo check -p rustok-tenant --tests',
   'cargo check -p rustok-tenant-admin --features ssr',
   'cargo test -p rustok-tenant-admin --features ssr tenant_admin_scope_requires_matching_tenant -- --nocapture',
+  'cargo check -p rustok-auth-admin --features ssr',
+  'cargo test -p rustok-auth-admin --features ssr auth_admin_scope_requires_matching_tenant -- --nocapture',
   'cargo check -p rustok-commerce --test context_service_test',
   'cargo test -p rustok-commerce --test context_service_test -- --nocapture',
   'cargo check -p rustok-storefront',
@@ -85,5 +91,5 @@ if (workflow.includes('cargo test -p rustok-tenant --test tenant_ensure_concurre
 }
 
 console.log(
-  '[verify-tenant-hardening-workflow] read-only tenant admin/commerce/storefront, PostgreSQL and Redis evidence workflow is retained',
+  '[verify-tenant-hardening-workflow] read-only tenant/auth admin/commerce/storefront, PostgreSQL and Redis evidence workflow is retained',
 );
