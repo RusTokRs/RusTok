@@ -16,8 +16,10 @@ Blog article source cutover is complete: owner and GraphQL writes accept only
 the fixed `article` document, reads expose `RichTextView` plus derived text, and
 `body`, `body_format`, `content_json`, Markdown aliases, and raw JSON transport
 paths are absent from production DTOs. The GraphQL mutation layer delegates
-typed `input.into()` values and the recursive guardrail requires the removed
-fields to remain absent.
+typed `input.into()` values through exact create/update owner conversions. The
+recursive guardrail now evidence-locks both conversion scopes, requires direct
+`content: input.content` mapping and both create/update regression markers, and
+keeps the removed fields absent.
 
 The owner-specific offline backfill at
 `crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs` now closes the
@@ -323,6 +325,9 @@ outbox publication.
 32. Extended the Blog admin canonical-richtext guardrail through the owner adapter
     itself: fixed Article frame profile, typed document round-trip, isolated
     no-referrer iframe, cleanup/dispose, evidence schema v3, and negative fixtures.
+33. Bound the GraphQL target-only richtext verifier to evidence schema v3, exact
+    create/update conversion scopes, direct canonical content mapping, and both
+    conversion regression markers, with focused negative fixtures for each drift.
 
 ## Next results
 
