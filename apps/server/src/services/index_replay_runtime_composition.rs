@@ -1,25 +1,130 @@
+use std::fmt;
+
+use rustok_api::{Permission, has_effective_permission};
 use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::DatabaseConnection;
+use thiserror::Error;
+use uuid::Uuid;
 
-use crate::error::{Error, Result};
+use crate::error::{Error as ServerError, Result};
+use crate::services::rbac_request_scope::permissions_for;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndexReplayOperatorContext {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+}
+
+impl IndexReplayOperatorContext {
+    pub fn new(tenant_id: Uuid, actor_id: Uuid) -> Result<Self, IndexReplayOperatorError> {
+        if tenant_id.is_nil() || actor_id.is_nil() {
+            return Err(IndexReplayOperatorError::InvalidContext);
+        }
+        Ok(Self {
+            tenant_id,
+            actor_id,
+        })
+    }
+
+    pub fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    pub fn actor_id(&self) -> Uuid {
+        self.actor_id
+    }
+
+    fn authorize_for(&self, requested_tenant: Uuid) -> Result<(), IndexReplayOperatorError> {
+        if requested_tenant != self.tenant_id {
+            return Err(IndexReplayOperatorError::TenantMismatch);
+        }
+        let permissions = permissions_for(&self.tenant_id, &self.actor_id)
+            .ok_or(IndexReplayOperatorError::MissingRequestAuthority)?;
+        if !has_effective_permission(&permissions, &Permission::MODULES_MANAGE) {
+            return Err(IndexReplayOperatorError::Forbidden);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum IndexReplayOperatorError {
+    #[error("Index replay operator tenant and actor must not be nil")]
+    InvalidContext,
+    #[error("Index replay request tenant does not match the authorized operator tenant")]
+    TenantMismatch,
+    #[error("Index replay operations require a request-bound effective permission snapshot")]
+    MissingRequestAuthority,
+    #[error("modules:manage is required for Index replay operations")]
+    Forbidden,
+    #[error(transparent)]
+    Replay(#[from] rustok_index::IndexReplayRunError),
+}
+
+/// Server-owned guarded operator boundary over the canonical Index replay runtime.
+///
+/// Transport adapters must provide an exact request-bound tenant/actor context. The boundary
+/// accepts only `modules:manage`, rejects cross-tenant requests before database access, and exposes
+/// no connection, source registry, scheduler, or worker-spawn handle.
+#[derive(Clone)]
+pub struct IndexReplayOperatorRuntime {
+    inner: rustok_index::SharedIndexReplayRuntime,
+}
+
+impl IndexReplayOperatorRuntime {
+    fn new(inner: rustok_index::SharedIndexReplayRuntime) -> Self {
+        Self { inner }
+    }
+
+    pub async fn run(
+        &self,
+        context: IndexReplayOperatorContext,
+        request: rustok_index::IndexReplayRunRequest,
+    ) -> Result<rustok_index::IndexReplayRunOutcome, IndexReplayOperatorError> {
+        context.authorize_for(request.page_request().tenant_id())?;
+        self.inner.run(request).await.map_err(Into::into)
+    }
+
+    pub async fn request_cancel(
+        &self,
+        context: IndexReplayOperatorContext,
+        job_id: Uuid,
+    ) -> Result<rustok_index::IndexReplayCancelOutcome, IndexReplayOperatorError> {
+        context.authorize_for(context.tenant_id())?;
+        self.inner
+            .request_cancel(context.tenant_id(), job_id)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+impl fmt::Debug for IndexReplayOperatorRuntime {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("IndexReplayOperatorRuntime")
+            .finish_non_exhaustive()
+    }
+}
 
 /// Materializes the host-owned Index replay capability after all modules have registered sources.
 ///
 /// This function performs no database I/O and starts no worker. It only freezes the complete
 /// source catalog, binds the immutable schema/source registries to the host database, and publishes
-/// the bounded operator capability through `ModuleRuntimeExtensions`.
+/// the guarded bounded operator capability through `ModuleRuntimeExtensions`.
 pub(crate) fn materialize_index_replay_runtime(
     extensions: &mut ModuleRuntimeExtensions,
     db: DatabaseConnection,
 ) -> Result<()> {
-    if extensions.contains::<rustok_index::SharedIndexSourceRegistry>() {
-        return Err(Error::Message(
-            "shared Index source registry is already materialized".to_string(),
+    if extensions.contains::<rustok_index::SharedIndexSourceRegistry>()
+        || extensions.contains::<IndexReplayOperatorRuntime>()
+    {
+        return Err(ServerError::Message(
+            "shared Index replay runtime is already materialized".to_string(),
         ));
     }
 
     let sources = rustok_index::materialize_index_source_registry(extensions).map_err(|error| {
-        Error::Message(format!(
+        ServerError::Message(format!(
             "Index replay source registry materialization failed: {error}"
         ))
     })?;
@@ -27,18 +132,22 @@ pub(crate) fn materialize_index_replay_runtime(
         extensions.insert(sources);
     }
 
-    rustok_index::materialize_postgres_index_replay_runtime(extensions, db).map_err(|error| {
-        Error::Message(format!(
-            "Index replay runtime composition failed: {error}"
-        ))
-    })?;
+    let runtime = rustok_index::materialize_postgres_index_replay_runtime(extensions, db).map_err(
+        |error| ServerError::Message(format!("Index replay runtime composition failed: {error}")),
+    )?;
+    if let Some(runtime) = runtime {
+        extensions.insert(IndexReplayOperatorRuntime::new(runtime));
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
-    use rustok_core::{MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule};
+    use rustok_api::Permission;
+    use rustok_core::{
+        MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule, UserRole,
+    };
     use rustok_index::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexSource,
         IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
@@ -48,8 +157,13 @@ mod tests {
     };
     use sea_orm::Database;
     use sea_orm_migration::MigrationTrait;
+    use uuid::Uuid;
 
-    use super::materialize_index_replay_runtime;
+    use super::{
+        IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
+        materialize_index_replay_runtime,
+    };
+    use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
     struct DemoReplayModule;
     struct NoopSource;
@@ -158,10 +272,11 @@ mod tests {
             .expect("missing sources should remain optional");
         assert!(!extensions.contains::<SharedIndexSourceRegistry>());
         assert!(!extensions.contains::<SharedIndexReplayRuntime>());
+        assert!(!extensions.contains::<IndexReplayOperatorRuntime>());
     }
 
     #[tokio::test]
-    async fn complete_source_catalog_publishes_replay_runtime_to_host_context() {
+    async fn complete_source_catalog_publishes_guarded_runtime_to_host_context() {
         let registry = ModuleRegistry::new()
             .register(IndexModule)
             .register(DemoReplayModule);
@@ -177,9 +292,10 @@ mod tests {
             .expect("complete replay runtime should compose");
         assert!(extensions.contains::<SharedIndexSourceRegistry>());
         assert!(extensions.contains::<SharedIndexReplayRuntime>());
+        assert!(extensions.contains::<IndexReplayOperatorRuntime>());
 
         let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
-        assert!(host.shared_get::<SharedIndexReplayRuntime>().is_some());
+        assert!(host.shared_get::<IndexReplayOperatorRuntime>().is_some());
     }
 
     #[tokio::test]
@@ -198,5 +314,61 @@ mod tests {
         let error = materialize_index_replay_runtime(&mut extensions, db)
             .expect_err("duplicate replay materialization must fail");
         assert!(error.to_string().contains("already materialized"));
+    }
+
+    #[tokio::test]
+    async fn operator_authorization_requires_exact_tenant_actor_and_modules_manage() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = IndexReplayOperatorContext::new(tenant_id, actor_id).unwrap();
+        assert!(matches!(
+            context.authorize_for(tenant_id),
+            Err(IndexReplayOperatorError::MissingRequestAuthority)
+        ));
+
+        with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_READ],
+                UserRole::Admin,
+            )),
+            async {
+                assert!(matches!(
+                    context.authorize_for(tenant_id),
+                    Err(IndexReplayOperatorError::Forbidden)
+                ));
+            },
+        )
+        .await;
+
+        with_rbac_request_scope(
+            Some(RbacRequestScope::new(
+                tenant_id,
+                actor_id,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )),
+            async {
+                assert!(context.authorize_for(tenant_id).is_ok());
+                assert!(matches!(
+                    context.authorize_for(Uuid::new_v4()),
+                    Err(IndexReplayOperatorError::TenantMismatch)
+                ));
+            },
+        )
+        .await;
+    }
+
+    #[test]
+    fn operator_context_rejects_nil_identity() {
+        assert!(matches!(
+            IndexReplayOperatorContext::new(Uuid::nil(), Uuid::new_v4()),
+            Err(IndexReplayOperatorError::InvalidContext)
+        ));
+        assert!(matches!(
+            IndexReplayOperatorContext::new(Uuid::new_v4(), Uuid::nil()),
+            Err(IndexReplayOperatorError::InvalidContext)
+        ));
     }
 }
