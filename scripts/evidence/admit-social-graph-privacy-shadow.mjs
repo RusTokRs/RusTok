@@ -17,6 +17,7 @@ import {
   ensure,
   ensureAbsent,
   ensureInventory,
+  parseSnapshot,
   parseUtc,
   readStableRegularFile,
   resolveReceiptPath,
@@ -28,6 +29,7 @@ import {
   validateRunKey,
   writeJsonNew,
 } from './lib/social-graph-privacy-shadow-evidence.mjs';
+import { canonicalizeSnapshot } from './lib/social-graph-privacy-shadow-canonical.mjs';
 
 const ADMISSION_OPT_IN = 'SOCIAL_GRAPH_PRIVACY_SHADOW_ALLOW_ADMISSION';
 const BUNDLE_ENV = 'SOCIAL_GRAPH_PRIVACY_SHADOW_BUNDLE';
@@ -125,6 +127,16 @@ function main() {
     MAX_SNAPSHOT_BYTES,
     'privacy-shadow end snapshot',
   );
+  const parsedStart = parseSnapshot(startBytes);
+  const parsedEnd = parseSnapshot(endBytes);
+  ensure(
+    canonicalizeSnapshot(parsedStart).equals(startBytes),
+    'retained start snapshot is not the canonical shadow-only export',
+  );
+  ensure(
+    canonicalizeSnapshot(parsedEnd).equals(endBytes),
+    'retained end snapshot is not the canonical shadow-only export',
+  );
   let descriptor;
   try {
     descriptor = JSON.parse(descriptorBytes.toString('utf8'));
@@ -135,6 +147,7 @@ function main() {
   const completedAt = parseUtc(descriptor.completed_at, 'completed_at');
   const endedAt = parseUtc(descriptor.window?.ended_at, 'window.ended_at');
   ensure(completedAt.getTime() >= endedAt.getTime(), 'capture completed_at precedes window end');
+  ensure(completedAt.getTime() <= Date.now() + TIMESTAMP_SKEW_SECONDS * 1000, 'capture completed_at is implausibly in the future');
   validateRunner(descriptor.runner, 'capture_runner');
   const metrics = validateCaptureDescriptor(
     descriptor,
