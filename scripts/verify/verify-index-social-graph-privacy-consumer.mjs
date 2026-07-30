@@ -61,23 +61,80 @@ for (const forbidden of [
   if (adapter.includes(forbidden)) fail(`${adapterPath} contains forbidden marker ${forbidden}`);
 }
 
+const metricsPath = 'crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs';
+const metrics = requireMarkers(metricsPath, [
+  'pub enum SocialGraphIndexPrivacyShadowOperation',
+  'pub enum SocialGraphIndexPrivacyShadowOutcome',
+  'MatchPositive',
+  'MatchNegative',
+  'FalseNegative',
+  'FalsePositive',
+  'MatchBatchEmpty',
+  'MatchBatchNonempty',
+  'BatchMissing',
+  'BatchExtra',
+  'BatchMixed',
+  'rustok_social_graph_index_privacy_shadow_observations_total',
+  'rustok_social_graph_index_privacy_shadow_failures_total',
+  'rustok_social_graph_index_privacy_shadow_comparison_duration_seconds',
+  'rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds',
+  '&["operation", "outcome"]',
+  '&["operation", "error_code", "retryable"]',
+  'pub fn ensure_registered()',
+  'crate::register_runtime_collector',
+  'pub fn record_observation(',
+  'pub fn record_failure(',
+  'fn bounded_error_code(',
+  '"social_graph.index_privacy_unavailable"',
+  '"social_graph.index_privacy_contract_invalid"',
+  '_ => "other"',
+  'error_code_label_is_bounded',
+]);
+for (const forbidden of [
+  'tenant_id',
+  'source_user_id',
+  'target_user_id',
+  'relation_id',
+  'entity_id',
+  'payload',
+  'sql',
+  'storage_error',
+]) {
+  if (metrics.includes(forbidden)) fail(`${metricsPath} contains forbidden identity/cardinality marker ${forbidden}`);
+}
+requireMarkers('crates/rustok-telemetry/src/lib.rs', [
+  'pub mod social_graph_index_privacy_shadow_metrics;',
+]);
+requireMarkers('crates/rustok-social-graph/Cargo.toml', [
+  'rustok-telemetry = { workspace = true, optional = true }',
+  'index = ["dep:rustok-index", "dep:rustok-telemetry"]',
+]);
+
 const shadowPath = 'crates/rustok-social-graph/src/index_privacy_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
+  'pub const SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET',
+  'rustok_social_graph::index_privacy_shadow',
   'pub struct IndexShadowSocialGraphPrivacyReadPort',
   'authoritative: Arc<dyn SocialGraphPrivacyReadPort>',
   'projected: Arc<dyn SocialGraphPrivacyReadPort>',
   'projected: Arc::new(IndexSocialGraphPrivacyReadPort::new(runtime))',
-  'fn from_ports(',
   'impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort',
   '.blocks_between(context.clone(), request)',
   '.source_mutes_target(context.clone(), request)',
   '.source_follows_target(context.clone(), request)',
   '.source_follows_targets(context.clone(), request.clone())',
-  'observe_bool(',
-  'observe_batch(',
+  'let started_at = Instant::now();',
+  'record_observation(operation, outcome, comparison_duration)',
+  'record_failure(',
+  'ShadowOutcome::FalseNegative',
+  'ShadowOutcome::FalsePositive',
+  'ShadowOutcome::BatchMissing',
+  'ShadowOutcome::BatchExtra',
+  'ShadowOutcome::BatchMixed',
   'Ok(authoritative)',
-  'Social Graph Index privacy shadow mismatch',
-  'Social Graph Index privacy shadow read failed',
+  'comparison_duration_ms',
+  'boolean_outcomes_distinguish_negative_safety',
+  'batch_outcomes_distinguish_missing_extra_and_mixed',
   'mismatch_returns_authoritative_boolean',
   'projected_error_returns_authoritative_batch',
 ]);
@@ -130,6 +187,8 @@ const finalHostPath = 'apps/server/src/services/mod.rs';
 const finalHost = requireMarkers(finalHostPath, [
   'materialize_postgres_index_query_runtime(&mut extensions, db.clone())',
   'social_graph_index_privacy_shadow_enabled()',
+  'social_graph_index_privacy_shadow_metrics::ensure_registered()',
+  'Social Graph Index privacy shadow metrics registration failed',
   'Index query runtime is required when Social Graph Index privacy shadow is enabled',
   'get::<rustok_index::SharedIndexQueryRuntime>()',
   'compose_with_index_shadow_runtime(',
@@ -138,6 +197,7 @@ const finalHost = requireMarkers(finalHostPath, [
 requireOrder(finalHostPath, finalHost, [
   'materialize_postgres_index_query_runtime(&mut extensions, db.clone())',
   'social_graph_index_privacy_shadow_enabled()',
+  'social_graph_index_privacy_shadow_metrics::ensure_registered()',
   'get::<rustok_index::SharedIndexQueryRuntime>()',
   'compose_with_index_shadow_runtime(',
   'extensions.insert(policy);',
@@ -149,9 +209,10 @@ for (const forbidden of ['SocialGraphService::new', 'PostgresIndexQueryPort::new
 
 const contractPath = 'crates/rustok-social-graph/contracts/social-graph-notification-policy.json';
 const contract = JSON.parse(read(contractPath));
-if (contract.schema_version !== 3) fail(`${contractPath} must use schema_version 3`);
+if (contract.schema_version !== 4) fail(`${contractPath} must use schema_version 4`);
 if (contract.index_privacy !== adapterPath) fail(`${contractPath} must point to the Index adapter`);
 if (contract.index_privacy_shadow !== shadowPath) fail(`${contractPath} must point to the shadow wrapper`);
+if (contract.index_privacy_shadow_metrics !== metricsPath) fail(`${contractPath} must point to the telemetry collector`);
 if (contract.privacy_semantics?.authoritative_owner_result_always_returned !== true) {
   fail(`${contractPath} must retain the owner result as authoritative`);
 }
@@ -173,25 +234,49 @@ if (contract.server_composition?.index_privacy_shadow_default_enabled !== false)
 if (contract.server_composition?.owner_policy_remains_authoritative !== true) {
   fail(`${contractPath} must keep the owner policy authoritative`);
 }
+if (contract.server_composition?.index_privacy_shadow_metrics_required_when_enabled !== true) {
+  fail(`${contractPath} must require metrics registration for an enabled shadow`);
+}
+for (const metric of [
+  'rustok_social_graph_index_privacy_shadow_observations_total',
+  'rustok_social_graph_index_privacy_shadow_failures_total',
+  'rustok_social_graph_index_privacy_shadow_comparison_duration_seconds',
+  'rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds',
+]) {
+  if (!Object.values(contract.telemetry ?? {}).flat().includes(metric)) {
+    fail(`${contractPath} must retain metric ${metric}`);
+  }
+}
+for (const outcome of ['false_negative', 'false_positive', 'batch_missing', 'batch_extra', 'batch_mixed']) {
+  if (!contract.telemetry?.outcomes?.includes(outcome)) fail(`${contractPath} must retain outcome ${outcome}`);
+}
+for (const label of ['tenant_id', 'source_user_id', 'target_user_id', 'relation_id', 'entity_id']) {
+  if (!contract.telemetry?.identity_labels_forbidden?.includes(label)) {
+    fail(`${contractPath} must forbid identity label ${label}`);
+  }
+}
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-social-graph-privacy-consumer.mjs'",
 ]);
 requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
-  'Status: `source_complete_execution_pending`',
+  'Status: `source_complete_metrics_execution_pending`',
   '`IndexSocialGraphPrivacyReadPort`',
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
   'default-off',
   'always returns the owner result',
-  'never authorizes',
+  '`false_negative`',
+  '`batch_missing`',
+  'single Prometheus registry',
   'Not run by the implementation agent',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
-  'M4 first consumer parity shadow: `source_complete_execution_pending`',
+  'M4 first consumer parity shadow: `source_complete_metrics_execution_pending`',
   '`IndexShadowSocialGraphPrivacyReadPort`',
   'notification block/mute policy',
   'default-off shadow gate',
+  'bounded Prometheus outcomes',
 ]);
 requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
   '`IndexSocialGraphPrivacyReadPort`',
@@ -199,6 +284,14 @@ requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
   '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
   'owner result',
   'never authorizes',
+  '`false_negative`',
+  '`batch_mixed`',
+]);
+requireMarkers('crates/rustok-telemetry/CRATE_API.md', [
+  '`social_graph_index_privacy_shadow_metrics`',
+  '`rustok_social_graph_index_privacy_shadow_observations_total`',
+  '`false_negative`',
+  'tenant and user identifiers',
 ]);
 
 console.log('[verify-index-social-graph-privacy-consumer] OK');
