@@ -21,6 +21,7 @@ pub mod index_privacy;
 #[cfg(feature = "index")]
 pub mod index_privacy_shadow;
 pub mod maintenance;
+mod maintenance_runtime;
 pub mod migrations;
 pub mod model;
 pub mod observability;
