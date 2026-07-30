@@ -12,6 +12,8 @@ use rustok_events::{DomainEvent, EventEnvelope};
 
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FULL_SCOPE_KEY: &str = "forum";
+const CATEGORY_SCOPE_PREFIX: &str = "forum_category:";
+const AUTHOR_SCOPE_PREFIX: &str = "forum_author:";
 const MAX_ERROR_CHARS: usize = 2_000;
 const MAX_ATTEMPTS: u32 = 12;
 const RETRY_BASE_SECONDS: i64 = 5;
@@ -21,6 +23,7 @@ const RETRY_MAX_SECONDS: i64 = 300;
 pub(crate) enum ForumProjectionScope {
     Full,
     Category(Uuid),
+    Author(Uuid),
 }
 
 impl ForumProjectionScope {
@@ -35,6 +38,7 @@ impl ForumProjectionScope {
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
             | DomainEvent::TenantUpdated { .. } => Some(Self::Full),
+            DomainEvent::ProfileUpdated { user_id, .. } => Some(Self::Author(*user_id)),
             DomainEvent::TenantModuleToggled { module_slug, .. } if module_slug == "forum" => {
                 Some(Self::Full)
             }
@@ -53,7 +57,8 @@ impl ForumProjectionScope {
     fn key(&self) -> String {
         match self {
             Self::Full => FULL_SCOPE_KEY.to_string(),
-            Self::Category(category_id) => format!("forum_category:{category_id}"),
+            Self::Category(category_id) => format!("{CATEGORY_SCOPE_PREFIX}{category_id}"),
+            Self::Author(user_id) => format!("{AUTHOR_SCOPE_PREFIX}{user_id}"),
         }
     }
 }
@@ -372,12 +377,24 @@ async fn load_effective_watermark(
     tenant_id: Uuid,
     scope_key: &str,
 ) -> Result<Option<(DateTime<Utc>, Uuid)>> {
+    if scope_key.starts_with(AUTHOR_SCOPE_PREFIX) {
+        // Profile privacy changes are redaction barriers. They always rebuild from
+        // current owner state and must not be discarded because an unrelated Forum
+        // producer emitted a later wall-clock timestamp.
+        return Ok(None);
+    }
+
     let scope_watermark = load_watermark(transaction, tenant_id, scope_key).await?;
     if scope_key == FULL_SCOPE_KEY {
         return Ok(scope_watermark);
     }
-    let full_scope_watermark = load_watermark(transaction, tenant_id, FULL_SCOPE_KEY).await?;
-    Ok(max_watermark(scope_watermark, full_scope_watermark))
+    if scope_key.starts_with(CATEGORY_SCOPE_PREFIX) {
+        let full_scope_watermark = load_watermark(transaction, tenant_id, FULL_SCOPE_KEY).await?;
+        return Ok(max_watermark(scope_watermark, full_scope_watermark));
+    }
+    Err(Error::Validation(format!(
+        "Unsupported Forum projection watermark scope `{scope_key}`"
+    )))
 }
 
 async fn load_watermark(
@@ -527,6 +544,22 @@ mod tests {
             }),
             Some(ForumProjectionScope::Category(category_id))
         );
+    }
+
+    #[test]
+    fn profile_changes_have_redaction_barrier_scope() {
+        let user_id = Uuid::new_v4();
+        assert_eq!(
+            ForumProjectionScope::for_event(&DomainEvent::ProfileUpdated {
+                user_id,
+                handle: "safe-author".to_string(),
+                locale: Some("en".to_string()),
+            }),
+            Some(ForumProjectionScope::Author(user_id))
+        );
+        assert!(ForumProjectionScope::Author(user_id)
+            .key()
+            .starts_with(AUTHOR_SCOPE_PREFIX));
     }
 
     #[test]
