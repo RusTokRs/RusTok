@@ -6,11 +6,16 @@ on:
     paths:
       - "crates/rustok-tenant/**"
       - "crates/rustok-auth/cli/**"
+      - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/src/services/context.rs"
+      - "crates/rustok-commerce/tests/context_service_test.rs"
+      - "crates/rustok-commerce/tests/support/mod.rs"
       - "apps/storefront/src/shared/context/enabled_modules.rs"
       - "apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"
       - "apps/storefront/docs/implementation-plan.md"
       - "apps/server/tests/lifecycle_bypass_guard.rs"
       - "apps/server/src/services/tenant_locale_generation*.rs"
+      - "scripts/verify/verify-commerce-tenant-locale-boundary.mjs"
       - "scripts/verify/verify-tenant-admin-native-error-safety.mjs"
       - "scripts/verify/verify-tenant-fba.mjs"
       - "scripts/verify/verify-tenant-locale-policy-migration.mjs"
@@ -22,11 +27,16 @@ on:
     paths:
       - "crates/rustok-tenant/**"
       - "crates/rustok-auth/cli/**"
+      - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/src/services/context.rs"
+      - "crates/rustok-commerce/tests/context_service_test.rs"
+      - "crates/rustok-commerce/tests/support/mod.rs"
       - "apps/storefront/src/shared/context/enabled_modules.rs"
       - "apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs"
       - "apps/storefront/docs/implementation-plan.md"
       - "apps/server/tests/lifecycle_bypass_guard.rs"
       - "apps/server/src/services/tenant_locale_generation*.rs"
+      - "scripts/verify/verify-commerce-tenant-locale-boundary.mjs"
       - "scripts/verify/verify-tenant-admin-native-error-safety.mjs"
       - "scripts/verify/verify-tenant-fba.mjs"
       - "scripts/verify/verify-tenant-locale-policy-migration.mjs"
@@ -48,6 +58,9 @@ env:
     apps/storefront/src/shared/context/enabled_modules.rs
     apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs
     crates/rustok-auth/cli/src/lib.rs
+    crates/rustok-commerce/src/services/context.rs
+    crates/rustok-commerce/tests/context_service_test.rs
+    crates/rustok-commerce/tests/support/mod.rs
     crates/rustok-tenant/admin/src/transport/native_server_adapter.rs
     crates/rustok-tenant/src/dto/mod.rs
     crates/rustok-tenant/src/lib.rs
@@ -82,19 +95,22 @@ jobs:
         run: rustfmt --edition 2024 --check $TENANT_RUST_FILES
       - name: Static tenant contracts
         run: |
+          node scripts/verify/verify-commerce-tenant-locale-boundary.mjs
           node scripts/verify/verify-tenant-admin-native-error-safety.mjs
           node scripts/verify/verify-tenant-locale-policy-migration.mjs
           node scripts/verify/verify-tenant-hardening-workflow.mjs
           npm run verify:tenant:fba
-      - name: Compile tenant, admin and storefront boundaries
+      - name: Compile tenant, admin, commerce and storefront boundaries
         run: |
           cargo check -p rustok-tenant --tests
           cargo check -p rustok-tenant-admin --features ssr
+          cargo check -p rustok-commerce --test context_service_test
           cargo check -p rustok-storefront
           cargo check -p rustok-auth-cli --tests
       - name: Focused unit and lifecycle guards
         run: |
           cargo test -p rustok-tenant-admin --features ssr tenant_admin_scope_requires_matching_tenant -- --nocapture
+          cargo test -p rustok-commerce --test context_service_test -- --nocapture
           cargo test -p rustok-auth-cli oauth_create_app -- --nocapture
           cargo test -p rustok-tenant tenant_locale_policy --test integration -- --nocapture
           cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture
