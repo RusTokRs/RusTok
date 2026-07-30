@@ -7,6 +7,7 @@ mod postgres_query_sql;
 mod query_port;
 mod query_runtime;
 mod registry;
+mod source_event_id;
 mod source_registry;
 mod source_replay;
 mod source_schema_registry;
@@ -52,6 +53,9 @@ pub use query_port::{
 pub use query_runtime::SharedIndexQueryRuntime;
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
+};
+pub use source_event_id::{
+    IndexSourceEventIdError, derive_index_source_event_id,
 };
 pub use source_registry::{
     IndexSource, IndexSourceCatalog, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
