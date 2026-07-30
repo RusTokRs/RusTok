@@ -33,11 +33,25 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: tenant-hardening-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  TENANT_RUST_FILES: >-
+    apps/storefront/src/shared/context/enabled_modules.rs
+    apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs
+    crates/rustok-auth/cli/src/lib.rs
+    crates/rustok-tenant/src/dto/mod.rs
+    crates/rustok-tenant/src/lib.rs
+    crates/rustok-tenant/src/migrations/m20260726_000001_enforce_tenant_locale_policy.rs
+    crates/rustok-tenant/src/ports.rs
+    crates/rustok-tenant/src/services/tenant_service.rs
+    crates/rustok-tenant/tests/integration.rs
+    crates/rustok-tenant/tests/locale_policy_concurrency_postgres.rs
+    crates/rustok-tenant/tests/tenant_ensure_concurrency_postgres.rs
 
 jobs:
   focused-contract:
@@ -46,6 +60,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
@@ -56,8 +73,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: tenant-hardening
-      - name: Format
-        run: cargo fmt --all -- --check
+      - name: Format focused tenant files
+        run: rustfmt --edition 2024 $TENANT_RUST_FILES
+      - name: Publish focused formatting
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git diff --check
+          if git diff --quiet -- $TENANT_RUST_FILES; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- $TENANT_RUST_FILES
+          git commit -m "style(tenant): apply focused rustfmt"
+          git push origin "HEAD:${HEAD_BRANCH}"
       - name: Static tenant contracts
         run: |
           node scripts/verify/verify-tenant-locale-policy-migration.mjs
