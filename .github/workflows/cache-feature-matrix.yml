@@ -54,7 +54,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - name: Apply fail-closed source transform
-        run: python3 .github/agent/blog-graphql-conversion-evidence-transform.py
+        run: |
+          python3 .github/agent/blog-graphql-conversion-evidence-transform.py
+          sed -i 's/[[:space:]]\+$//' scripts/verify/verify-blog-graphql-richtext-boundary.mjs
       - name: Validate source contracts
         run: |
           node --check scripts/verify/verify-blog-graphql-richtext-boundary.mjs
