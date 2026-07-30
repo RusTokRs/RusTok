@@ -91,8 +91,8 @@
     "new_reindex_target_string_added": false,
     "reply_documents_projected": true,
     "profile_updated_rebuilds_public_author_projection": true,
-    "user_deleted_rebuilds_public_author_projection": true,
     "author_redaction_scope_ignores_unrelated_forum_watermark": true,
+    "account_deletion_redaction_completed": false,
     "completion_contract": "crates/rustok-forum/contracts/forum-projection-invalidation.json"
   },
   "downstream_handoff": {
@@ -139,6 +139,7 @@
   },
   "remaining_scope": [
     "add owner revision ordering for category topic reply and future member projections under FORUM-23",
+    "define an owner-ordered profile or account deletion projection invalidation contract",
     "add the planned FORUM-23 category subtree tag locale date solved kind channel group attachment and remaining author filters",
     "add member index projections",
     "capture maintainer-executed PostgreSQL full-rebuild failure preservation projection cleanup public-author redaction and approved-reply runtime evidence",
