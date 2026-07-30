@@ -237,8 +237,8 @@ fn map_post_detail(
         title: post.title,
         slug: Some(post.slug),
         excerpt: post.excerpt,
-        body: Some(post.body),
-        body_format: post.body_format,
+        content: post.content,
+        content_plain_text: post.content_plain_text,
         status: match post.status {
             rustok_blog::BlogPostStatus::Draft => "draft",
             rustok_blog::BlogPostStatus::Published => "published",
