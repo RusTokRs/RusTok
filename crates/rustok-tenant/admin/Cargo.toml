@@ -16,6 +16,7 @@ ssr = [
   "rustok-api/server",
   "dep:leptos_axum",
   "dep:rustok-core",
+  "dep:rustok-modules",
   "dep:rustok-tenant",
   "dep:sea-orm",
 ]
@@ -29,6 +30,7 @@ rustok-api = { workspace = true, default-features = false }
 
 rustok-ui-i18n-leptos.workspace = true
 rustok-core = { workspace = true, optional = true }
+rustok-modules = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
