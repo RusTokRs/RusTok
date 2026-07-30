@@ -120,7 +120,7 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
 ]);
 requireMarkers('crates/rustok-index/docs/m4-decimal-aggregate-order-wire.md', [
   'Status: `source_complete_execution_pending`',
-  '`numeric` for `MIN/MAX`',
+  '`MIN(numeric)` or `MAX(numeric)`',
   '`to_jsonb((aggregate_scalar)::text)`',
   'JSON value is a string',
   'No float conversion',
