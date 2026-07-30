@@ -1,0 +1,40 @@
+name: Agent Blog richtext offline backfill
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-source-slice:
+    if: github.head_ref == 'agent/blog-richtext-offline-backfill-20260730'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/blog-richtext-offline-backfill-20260730
+          fetch-depth: 0
+      - name: Apply fail-closed source slice
+        shell: bash
+        run: |
+          base64 --decode scripts/agent/blog_richtext_offline_backfill.py.gz.b64 | gzip --decompress > scripts/agent/apply_blog_richtext_offline_backfill.py
+          rm scripts/agent/blog_richtext_offline_backfill.py.gz.b64
+          python3 -m py_compile scripts/agent/apply_blog_richtext_offline_backfill.py
+          python3 scripts/agent/apply_blog_richtext_offline_backfill.py
+          rm scripts/agent/apply_blog_richtext_offline_backfill.py
+          rm .github/workflows/agent-blog-richtext-offline-backfill.yml
+          node --check scripts/verify/verify-blog-richtext-offline-backfill.mjs
+          python3 -m json.tool crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json >/dev/null
+          python3 -m json.tool crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json >/dev/null
+          git diff --check
+      - name: Commit source slice
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(blog): add article richtext offline backfill"
+          git push origin HEAD:agent/blog-richtext-offline-backfill-20260730
