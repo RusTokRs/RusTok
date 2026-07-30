@@ -54,8 +54,9 @@ the Forum reply selects the `discussion` profile. A Chromium spike verified the
 sandbox boundary, blocked cookie/parent-DOM access, CSP headers, private
 `MessageChannel`, and canonical document updates. The Leptos Trunk/SSR static
 fallback now copies the same hashed assets and applies the dedicated frame
-headers; Firefox/WebKit evidence and wiring the first owner Leptos form remain
-required before Phase 2 is marked complete.
+headers. The Blog owner Leptos form now mounts the same framed lifecycle
+adapter; Firefox/WebKit evidence remains required before Phase 2 is marked
+complete.
 
 The Blog article source cutover is implemented: owner and GraphQL writes use
 the fixed `article` document, Next admin submits it, and native/GraphQL
@@ -104,8 +105,9 @@ others are implementation gaps, not target behavior:
   `RichTextDocument`, storage is canonical, Search/SEO/AI/storefront consume
   shared projections, and an owner-specific offline backfill precedes the
   fail-closed migration; runtime evidence is still pending;
-- the Blog package also owns a Forum reply editor and Forum API helpers, which
-  violates module UI ownership;
+- resolved 2026-07-30: the Forum Next admin package owns its navigation,
+  GraphQL helpers, reply editor, and contained legacy format adapter; Blog and
+  Forum share only the neutral React richtext lifecycle adapter;
 - the prototype maintains a lossy manual mapping between snake-case RT nodes
   and Tiptap node names, exposes Markdown and raw JSON modes, contains
   hard-coded English, and embeds locale in the payload;
@@ -132,11 +134,10 @@ others are implementation gaps, not target behavior:
 - the legacy shared-content migration binary remains obsolete and deprecated;
   Blog now has an owner-specific dry-run-first backfill with no checkpoint
   mutation, explicit apply, and fail-closed conversion policy;
-- Leptos Blog and Forum forms are raw textareas. Their current adapters either
-  omit `content_json`, have no native `#[server]` path, or retry failed writes
-  through another protocol;
-- storefronts do not have a real richtext read path; some surfaces display raw
-  payload summaries;
+- resolved for the Blog Leptos owner form: it mounts the framed `article`
+  lifecycle adapter; Forum Leptos authoring still requires its owner cutover;
+- resolved for Blog storefront reads: native and GraphQL paths consume the
+  server-owned projection; Forum storefront richtext parity remains pending;
 - the parent Leptos/server CSP forbids style attributes, while ProseMirror core
   and extensions such as Dropcursor create inline styles. Loading Tiptap
   directly into the parent document would violate the current CSP contract.

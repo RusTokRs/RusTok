@@ -3,6 +3,7 @@
 import { FormInput, FormTextarea, FormSwitch } from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RichTextEditor } from '@/shared/ui/rich-text-editor';
 import { Form } from '@/shared/ui/shadcn/form';
 import {
   emptyRichTextDocument,
@@ -19,7 +20,6 @@ import { toast } from 'sonner';
 import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
-import { RichTextEditor } from './rich-text-editor';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters.'),
@@ -195,6 +195,7 @@ export default function PostForm({
 
           <RichTextEditor
             label='Content'
+            profile='article'
             value={content}
             onChange={setContent}
           />

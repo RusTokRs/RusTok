@@ -1,5 +1,10 @@
 import { graphqlRequest } from '@/lib/graphql';
-import type { GqlOpts } from './posts';
+
+export interface GqlOpts {
+  token?: string | null;
+  tenantSlug?: string | null;
+  tenantId?: string | null;
+}
 
 export interface ForumTopicSummary {
   id: string;

@@ -28,6 +28,13 @@ historical Markdown handling, uses optimistic updates, and verifies the result
 again. It neither executes the irreversible migration nor triggers Search
 reindex; those remain explicit operator steps.
 
+The Next admin Forum reply composer is no longer owned by Blog. Forum navigation,
+GraphQL helpers, the reply editor, and its contained `rt_json_v1` compatibility
+adapter now live under `apps/next-admin/packages/forum/src`; the host registers
+that package independently. Blog and Forum consume the same thin shared React
+lifecycle adapter at `apps/next-admin/src/shared/ui/rich-text-editor.tsx`, while
+profile selection remains owner-specific (`article` versus `discussion`).
+
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
 `contentPlainText`; native SSR maps `PostResponse.content` and
@@ -118,6 +125,9 @@ outbox publication.
   content-free reporting, explicit apply/Markdown acknowledgement, orphan
   detection, stable cursoring, optimistic writes, and post-apply verification
   are implemented.
+- Next admin Forum UI ownership: `source_verified_no_compile`; Blog no longer
+  registers or exports Forum navigation, GraphQL helpers, reply UI, or legacy
+  format adapters, and both owners use the shared richtext lifecycle adapter.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -161,6 +171,7 @@ outbox publication.
 - `crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
 - `crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json`
 - `crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json`
+- `crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json`
 - `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
@@ -169,6 +180,7 @@ outbox publication.
 - `scripts/verify/verify-blog-graphql-richtext-boundary.mjs`
 - `scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs`
 - `scripts/verify/verify-blog-richtext-offline-backfill.mjs`
+- `scripts/verify/verify-blog-forum-ui-ownership.mjs`
 - `scripts/verify/verify-blog-fba.mjs`
 - `scripts/verify/verify-blog-admin-boundary.mjs`
 - `scripts/verify/verify-blog-storefront-boundary.mjs`
@@ -245,6 +257,9 @@ outbox publication.
     of current owner tables, content-free NDJSON reporting, explicit apply and
     Markdown acknowledgement, fail-closed format/profile validation, optimistic
     batch writes, and post-apply verification.
+25. Removed Forum Next admin ownership from the Blog package, introduced the
+    Forum-owned package registration/navigation/API/editor boundary, and moved
+    the reusable React richtext lifecycle adapter to the host shared UI layer.
 
 ## Next results
 
@@ -296,6 +311,7 @@ outbox publication.
 - `npm run verify:blog:graphql-richtext-boundary`
 - `npm run test:verify:blog:graphql-richtext-boundary`
 - `npm run verify:blog:richtext-offline-backfill`
+- `npm run verify:blog:forum-ui-ownership`
 - `cargo run -p rustok-blog --bin blog_article_richtext_backfill -- --help`
 - `cargo test -p rustok-comments --test thread_write_invariants`
 - `node scripts/verify/verify-comments-thread-write-invariants.mjs`

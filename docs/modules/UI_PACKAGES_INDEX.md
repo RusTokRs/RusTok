@@ -177,6 +177,7 @@ with `[provides.admin_ui]`; the manifest remains the canonical source for mounte
 ### Next.js Admin Showcase
 
 - `rustok-blog`: `apps/next-admin/packages/blog/`
+- `rustok-forum`: `apps/next-admin/packages/forum/`
 - `rustok-product`: `apps/next-admin/packages/rustok-product/` as the current Next UX package over GraphQL product read-side; `apps/next-admin/src/features/products/` remains only a registration shim.
 - `rustok-search`: `apps/next-admin/packages/search/`
 - `rustok-workflow`: `apps/next-admin/packages/workflow/`
