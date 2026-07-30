@@ -67,6 +67,10 @@ const shadow = requireMarkers(shadowPath, [
   'authoritative: Arc<dyn SocialGraphPrivacyReadPort>',
   'projected: Arc<dyn SocialGraphPrivacyReadPort>',
   'projected: Arc::new(IndexSocialGraphPrivacyReadPort::new(runtime))',
+  'const INDEX_PRIVACY_SHADOW_TIMEOUT: Duration = Duration::from_millis(100);',
+  'tokio::time::timeout(',
+  'Social Graph Index privacy shadow timed out',
+  'timeout_ms = INDEX_PRIVACY_SHADOW_TIMEOUT.as_millis()',
   'fn from_ports(',
   'impl SocialGraphPrivacyReadPort for IndexShadowSocialGraphPrivacyReadPort',
   '.blocks_between(context.clone(), request)',
@@ -85,6 +89,10 @@ const authoritativeReturns = shadow.match(/Ok\(authoritative\)/g) ?? [];
 if (authoritativeReturns.length !== 4) {
   fail(`${shadowPath} must return the authoritative result from all four privacy methods`);
 }
+const shadowTimeoutCalls = shadow.match(/tokio::time::timeout\(/g) ?? [];
+if (shadowTimeoutCalls.length !== 4) {
+  fail(`${shadowPath} must bound all four projected comparisons`);
+}
 for (const forbidden of [
   'tenant_id =',
   'source_user_id =',
@@ -99,6 +107,10 @@ for (const forbidden of [
   if (shadow.includes(forbidden)) fail(`${shadowPath} contains forbidden telemetry/runtime marker ${forbidden}`);
 }
 
+requireMarkers('crates/rustok-social-graph/Cargo.toml', [
+  'tokio = { workspace = true, optional = true }',
+  'index = ["dep:rustok-index", "dep:tokio"]',
+]);
 requireMarkers('crates/rustok-social-graph/src/lib.rs', [
   'pub mod index_privacy;',
   'pub mod index_privacy_shadow;',
@@ -158,6 +170,9 @@ if (contract.privacy_semantics?.authoritative_owner_result_always_returned !== t
 if (contract.privacy_semantics?.index_shadow_never_authorizes !== true) {
   fail(`${contractPath} must forbid Index shadow authorization`);
 }
+if (contract.privacy_semantics?.index_shadow_timeout_ms !== 100) {
+  fail(`${contractPath} must retain the 100 ms shadow timeout`);
+}
 if (contract.server_composition?.notification_block_mute_index_shadow_source_complete !== true) {
   fail(`${contractPath} must record source-complete shadow composition`);
 }
@@ -183,6 +198,7 @@ requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
   'default-off',
+  '100 ms',
   'always returns the owner result',
   'never authorizes',
   'Not run by the implementation agent',
@@ -197,6 +213,7 @@ requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
   '`IndexSocialGraphPrivacyReadPort`',
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
+  '100 ms',
   'owner result',
   'never authorizes',
 ]);
