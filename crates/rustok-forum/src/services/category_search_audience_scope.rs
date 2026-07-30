@@ -77,7 +77,7 @@ impl ForumSearchCategoryAudienceScopeService {
         fallback_locale: Option<&str>,
         category_ids: &[Uuid],
     ) -> ForumResult<ForumSearchCategoryScope> {
-        let locale = context.locale.trim();
+        let locale = context.locale.trim().to_string();
         if locale.is_empty() {
             return Err(ForumError::Validation(
                 "Forum Search category audience context locale is unavailable".to_string(),
@@ -88,7 +88,7 @@ impl ForumSearchCategoryAudienceScopeService {
             tenant_id,
             security,
             viewer,
-            locale,
+            &locale,
             fallback_locale,
             category_ids,
         )
