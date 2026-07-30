@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0.0",
+  "status": "commerce_admin_order_change_native_error_safety_source_reviewed_unvalidated",
+  "captured_at": "2026-07-30",
+  "base_main_sha": "d5817939405f5577ef0f68c3e5583c1a2726ccbc",
+  "review": {
+    "mounted_endpoint_names_preserved": true,
+    "public_function_signatures_preserved": true,
+    "dto_mapping_preserved": true,
+    "permissions_preserved": true,
+    "tenant_match_and_input_validation_preserved": true,
+    "order_error_variants_reviewed": [
+      "Validation",
+      "OrderNotFound",
+      "OrderReturnNotFound",
+      "OrderChangeNotFound",
+      "InvalidTransition",
+      "Database",
+      "Core"
+    ],
+    "request_context_fields_reviewed": [
+      "tenant_id",
+      "user_id",
+      "channel_id",
+      "channel_slug",
+      "locale"
+    ],
+    "transactional_event_bus_composition_reviewed": true,
+    "existing_http_order_change_error_policy_reviewed": true,
+    "promotion_native_safety_markers_preserved": true,
+    "intervening_main_commits_have_no_commerce_admin_overlap": true,
+    "feature_diff_is_commerce_only": true
+  },
+  "execution": {
+    "commands_run": [],
+    "tests_run": [],
+    "verifiers_run": [],
+    "cargo_run": false,
+    "formatting_run": false,
+    "workflow_or_ci_run": false
+  },
+  "limitations": [
+    "No compiler evidence has been retained.",
+    "No mounted request or owner-failure trace has been retained.",
+    "The focused source guard has been added but not executed.",
+    "Direct OrderService composition and native/REST orchestration parity remain separate source debt.",
+    "Other ecommerce mapper cleanup and non-PortError public envelopes remain open."
+  ]
+}
