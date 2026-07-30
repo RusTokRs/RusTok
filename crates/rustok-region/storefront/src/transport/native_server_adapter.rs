@@ -11,6 +11,89 @@ use crate::model::StorefrontRegionsData;
 use super::ApiError;
 
 #[cfg(feature = "ssr")]
+const REGION_STOREFRONT_NATIVE_OWNER: &str = "rustok_region.storefront";
+#[cfg(feature = "ssr")]
+const REGION_STOREFRONT_NATIVE_BOUNDARY: &str = "region_storefront_native_transport";
+
+#[cfg(feature = "ssr")]
+fn record_optional_request_context_error<E: std::fmt::Display>(error: E) {
+    tracing::warn!(
+        error = %error,
+        owner = REGION_STOREFRONT_NATIVE_OWNER,
+        owner_operation = "storefront_regions",
+        code = "region.storefront_request_context_unavailable",
+        boundary = REGION_STOREFRONT_NATIVE_BOUNDARY,
+        "optional region storefront request context extraction failed"
+    );
+}
+
+#[cfg(feature = "ssr")]
+fn map_tenant_context_error<E: std::fmt::Display>(
+    request_context: Option<&rustok_api::RequestContext>,
+    error: E,
+) -> ServerFnError {
+    if let Some(request_context) = request_context {
+        tracing::error!(
+            error = %error,
+            owner = REGION_STOREFRONT_NATIVE_OWNER,
+            owner_operation = "storefront_regions",
+            correlation_id = %request_context.correlation_id,
+            tenant_id = %request_context.tenant_id,
+            channel_id = ?request_context.channel_id,
+            channel_slug = ?request_context.channel_slug,
+            locale = %request_context.locale,
+            code = "region.storefront_tenant_context_unavailable",
+            boundary = REGION_STOREFRONT_NATIVE_BOUNDARY,
+            "region storefront tenant context extraction failed"
+        );
+    } else {
+        tracing::error!(
+            error = %error,
+            owner = REGION_STOREFRONT_NATIVE_OWNER,
+            owner_operation = "storefront_regions",
+            code = "region.storefront_tenant_context_unavailable",
+            boundary = REGION_STOREFRONT_NATIVE_BOUNDARY,
+            "region storefront tenant context extraction failed without request context"
+        );
+    }
+    ServerFnError::new("Region storefront context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_region_runtime_error<E: std::fmt::Display>(
+    tenant: &rustok_api::TenantContext,
+    request_context: Option<&rustok_api::RequestContext>,
+    error: E,
+) -> ServerFnError {
+    if let Some(request_context) = request_context {
+        tracing::error!(
+            error = %error,
+            owner = REGION_STOREFRONT_NATIVE_OWNER,
+            owner_operation = "list_regions",
+            correlation_id = %request_context.correlation_id,
+            tenant_id = %tenant.id,
+            channel_id = ?request_context.channel_id,
+            channel_slug = ?request_context.channel_slug,
+            locale = %request_context.locale,
+            code = "region.storefront_owner_runtime_failed",
+            boundary = REGION_STOREFRONT_NATIVE_BOUNDARY,
+            "region storefront owner operation failed"
+        );
+    } else {
+        tracing::error!(
+            error = %error,
+            owner = REGION_STOREFRONT_NATIVE_OWNER,
+            owner_operation = "list_regions",
+            tenant_id = %tenant.id,
+            code = "region.storefront_owner_runtime_failed",
+            boundary = REGION_STOREFRONT_NATIVE_BOUNDARY,
+            "region storefront owner operation failed without request context"
+        );
+    }
+    ServerFnError::new("Storefront regions are temporarily unavailable")
+}
+
+#[cfg(feature = "ssr")]
 fn map_region(value: rustok_region::RegionResponse) -> StorefrontRegion {
     StorefrontRegion {
         id: value.id.to_string(),
@@ -68,12 +151,16 @@ async fn fetch_storefront_regions_server(
         use rustok_region::RegionService;
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let request_context = match leptos_axum::extract::<rustok_api::RequestContext>().await {
+            Ok(request_context) => Some(request_context),
+            Err(error) => {
+                record_optional_request_context_error(error);
+                None
+            }
+        };
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+            .map_err(|error| map_tenant_context_error(request_context.as_ref(), error))?;
         let requested_locale = resolve_requested_locale(
             locale,
             request_context
@@ -88,7 +175,9 @@ async fn fetch_storefront_regions_server(
                 Some(tenant.default_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(|error| {
+                map_region_runtime_error(&tenant, request_context.as_ref(), error)
+            })?
             .into_iter()
             .map(map_region)
             .collect();
