@@ -7,12 +7,12 @@
 - `infrastructure`
 - `migrations`
 
-The domain/application contract remains database independent. M3 adds module-owned
-production migrations, an Index-owned PostgreSQL mutation adapter, tenant-scoped
-source schema persistence, durable schema-application leases, schema-derived
-secondary-index lifecycle, and a fail-closed measured partition-admission contract;
-source-specific Content, Product, Flex, search, legacy migration, runtime, and
-scheduler modules remain deleted.
+The domain/application contract remains database independent. M3 owns the canonical
+PostgreSQL storage, mutation, schema-registration, lease, secondary-index, and measured
+partition-admission boundaries. M4 owns typed query planning, controlled SQL compilation,
+strict decoding, PostgreSQL execution, source-owned schema catalog composition, and the
+neutral shared query runtime. Source-specific Product, Content, Flex, search, migration,
+and scheduler implementations remain outside the engine core.
 
 ## Primary Public Types
 
@@ -25,396 +25,201 @@ scheduler modules remain deleted.
 - `IndexSchema`, `IndexField`, `IndexLink`, `SchemaFingerprint`
 - `IndexRecord`, `IndexLinkValue`, `LinkedEntityKey`
 - `IndexMutation`
-- `IndexQueryScope`, `IndexQuery`, `FilterExpr`, `OrderExpr`,
-  `OrderDirection`, `Pagination`
+- `IndexQueryScope`, `IndexQuery`, `FilterExpr`, `OrderExpr`, `OrderDirection`, `Pagination`
 - `DomainError`
 
 ### Application
 
 - `SchemaRegistry`, `RegisteredSchema`, `RegistrationOutcome`
 - `SchemaRegistryError`, `LinkPathStep`
+- `IndexSchemaSourceCatalog`, `IndexSchemaSourceDescriptor`, `IndexSchemaSourceError`
+- `SharedIndexSchemaRegistry`
+- `register_index_schema_source`, `materialize_index_schema_registry`
 - `RecordValidationError`, `QueryValidationError`
 - `IndexCursor`, `CursorCodec`, `CursorCodecError`, `CursorValidationError`
-- `ExecutableQueryPlan`, `PlannedJoin`, `PlannedField`, `PlannedManyProjection`,
-  `PlannedOrder`
+- `ExecutableQueryPlan`, `PlannedJoin`, `PlannedField`, `PlannedManyProjection`, `PlannedOrder`
 - `QueryPlanFingerprint`, `QueryPlanError`
-- `PostgresBindValue`, `CompiledQueryColumn`, `CompiledManyRelationColumn`,
-  `CompiledPostgresCount`
+- `PostgresBindValue`, `CompiledQueryColumn`, `CompiledManyRelationColumn`, `CompiledPostgresCount`
 - `CompiledPostgresQuery`, `PostgresQueryBuildError`, `PostgresQueryCompileError`
 - `CompiledPostgresCell`, `CompiledPostgresRow`, `CompiledPostgresPageQuery`
-- `IndexProjectedValue`, `IndexRelationIdentity`, `IndexNestedRelationItem`,
-  `IndexNestedRelationProjection`, `IndexQueryItem`, `IndexQueryPage`
+- `IndexProjectedValue`, `IndexRelationIdentity`, `IndexNestedRelationItem`
+- `IndexNestedRelationProjection`, `IndexQueryItem`, `IndexQueryPage`
 - `PostgresQueryPageBuildError`, `PostgresQueryDecodeError`
-- `IndexQueryPort`, `IndexQueryExecutionError`, `PersistedSchemaReadinessFailure`
+- `IndexQueryPort`, `SharedIndexQueryRuntime`
+- `IndexQueryExecutionError`, `PersistedSchemaReadinessFailure`
 
 ### Infrastructure
 
 - `PostgresIndexQueryPort`
-- `PostgresMutationStore`
-- `MutationDelivery`
-- `MutationApplyOutcome`
-- `MutationStorageError`
-- `PostgresSchemaRegistrationStore`
-- `PersistedSchemaRegistrationOutcome`
-- `SchemaRegistrationError`
-- `PostgresSchemaLeaseStore`
-- `SchemaApplicationLeaseRequest`
-- `SchemaApplicationLease`
-- `SchemaLeaseAcquireOutcome`
-- `SchemaLeaseError`
-- `SecondaryIndexPlan`
-- `SecondaryIndexSpec`
-- `SecondaryIndexKind`
-- `SecondaryIndexOperation`
-- `SecondaryIndexRequest`
-- `SecondaryIndexLease`
-- `SecondaryIndexClaimOutcome`
-- `SecondaryIndexExecutionOutcome`
-- `SecondaryIndexError`
-- `PostgresSecondaryIndexManager`
-- `PartitionStrategy`
-- `PartitionAdmissionPolicy`
-- `PartitionBaselineEvidence`
-- `PartitionMeasurementCoverage`
-- `PartitionShadowEvidence`
-- `PartitionEvidence`
-- `PartitionAdmissionReason`
-- `PartitionAdmissionOutcome`
-- `PartitionRelationPlan`
-- `PartitionShadowPlan`
-- `PartitionAdmissionError`
-- `evaluate_partition_admission`
+- `materialize_postgres_index_query_runtime`
+- `IndexQueryRuntimeCompositionError`
+- `PostgresMutationStore`, `MutationDelivery`, `MutationApplyOutcome`, `MutationStorageError`
+- `PostgresSchemaRegistrationStore`, `PersistedSchemaRegistrationOutcome`, `SchemaRegistrationError`
+- `PostgresSchemaLeaseStore`, `SchemaApplicationLeaseRequest`, `SchemaApplicationLease`
+- `SchemaLeaseAcquireOutcome`, `SchemaLeaseError`
+- `SecondaryIndexPlan`, `SecondaryIndexSpec`, `SecondaryIndexKind`, `SecondaryIndexOperation`
+- `SecondaryIndexRequest`, `SecondaryIndexLease`, `SecondaryIndexClaimOutcome`
+- `SecondaryIndexExecutionOutcome`, `SecondaryIndexError`, `PostgresSecondaryIndexManager`
+- `PartitionStrategy`, `PartitionAdmissionPolicy`, `PartitionBaselineEvidence`
+- `PartitionMeasurementCoverage`, `PartitionShadowEvidence`, `PartitionEvidence`
+- `PartitionAdmissionReason`, `PartitionAdmissionOutcome`, `PartitionRelationPlan`
+- `PartitionShadowPlan`, `PartitionAdmissionError`, `evaluate_partition_admission`
 
 ## Contract Status
 
-M1 domain/application contracts are active. They provide canonical identifiers
-and locales, stable schema fingerprints, atomic schema registration,
-deterministic link paths, record/query validation, bounded query complexity,
-and query-scoped keyset cursors.
+M1 generic domain/application contracts are active. They provide canonical identifiers and
+locales, stable schema fingerprints, atomic schema registration, deterministic link paths,
+record/query validation, bounded query complexity, and query-scoped cursors.
 
-The accepted M2 ADR selects JSONB, and M3 registers the canonical schema for
-`index_schemas`, `index_entities`, `index_links`, `index_inbox`, `index_jobs`,
-`index_checkpoints`, and `index_consistency_findings`.
-`PostgresSchemaRegistrationStore` is the generic Index-owned boundary for
-source-published tenant schemas. It validates the domain contract, serializes one
-tenant/schema identity under a PostgreSQL transaction advisory lock, inserts an
-active schema idempotently, rejects same-version contract reuse, lower-version
-insertion, retired reactivation, nil tenants, and unsupported backends. Source
-owners do not write `index_schemas` directly.
+M3 owns the canonical `index_schemas`, `index_entities`, `index_links`, `index_inbox`,
+`index_jobs`, `index_checkpoints`, and `index_consistency_findings` schema. Source modules
+persist tenant schema readiness only through `PostgresSchemaRegistrationStore`; they never
+write Index tables directly. Mutation persistence, schema leases, secondary-index lifecycle,
+and partition admission remain Index-owned and fail closed on identity or evidence drift.
 
-`PostgresMutationStore` atomically applies validated entity/link upserts and
-deletes through the durable inbox. `PostgresSchemaLeaseStore` serializes exact
-tenant/schema application, reclaims expired jobs with attempt fencing, and
-requires current ownership for heartbeat and terminal completion.
-`SecondaryIndexPlan` derives stable indexes from filterable/sortable schema fields,
-and `PostgresSecondaryIndexManager` coordinates concurrent ensure/reindex/retire
-execution through durable fenced jobs and PostgreSQL catalog readiness checks.
-Partition admission requires an exact retained evidence identifier, complete
-query/mutation/maintenance/cutover measurement coverage, and an explicit policy
-before producing deterministic tenant-hash shadow relation names and bootstrap
-SQL. It does not execute copy, constraint/index attachment, dual-write/replay,
-cutover, or rollback.
+M4 provides validated executable plans, controlled PostgreSQL SQL and ordered binds,
+root/one-link projection and ordering, correlated many-link filtering, deterministic nested
+many-link projection aggregates, exact count, bounded offset, query-scoped keyset pagination,
+one-row lookahead, strict row decoding, and PostgreSQL execution through one read-only
+repeatable-read snapshot.
 
-M4 provides validated typed executable plans, controlled PostgreSQL SQL and bind
-DTOs for root/one-link projection, filtering, ordering, counting and pagination,
-correlated many-link filtering, deterministic nested many-link projection aggregates,
-query-scoped cursor continuation, one-row page lookahead, strict scalar/nested result
-decoding, exact-count decoding, `has_more`, and next-cursor construction.
-`PostgresIndexQueryPort` now performs PostgreSQL-only execution with exact persisted
-schema readiness, one read-only repeatable-read page/count snapshot, exhaustive
-SeaORM bind conversion, and compiler-metadata-driven row mapping. It does not order
-through many links, authorize callers, compose into server/storefront/admin/search,
-or claim live PostgreSQL/reference-engine equivalence. Multi-source catalog
-composition, batch ingestion, rebuild, consumer cutover, partition cutover, and
-operator APIs remain later work.
+Source modules now publish generic schema contracts through `IndexSchemaSourceCatalog`.
+The catalog fixes one owner for every exact schema reference and for the complete schema
+identity across versions. `rustok-distribution` materializes all contributions through one
+atomic `SchemaRegistry::register_batch` and publishes `SharedIndexSchemaRegistry` only for a
+non-empty valid catalog. Social Graph is the first source owner.
 
-No compatibility contract exists for deleted behavior. `IndexDocument`,
-`DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
-`IndexerRuntimeConfig`, `IndexerContext`, and the old scheduler must not return.
+The server composes `SharedIndexQueryRuntime` through the Index-owned
+`materialize_postgres_index_query_runtime`. The materializer binds the exact immutable shared
+registry to the host `DatabaseConnection`, refuses duplicate runtime publication, performs no
+SQL, and transfers the neutral capability through `ModuleRuntimeExtensions` and
+`HostRuntimeContext`. Runtime presence does not claim PostgreSQL backend support for a test
+connection, persisted tenant schema readiness, authorization, or successful query execution.
+
+Many-link aggregate ordering, additional source schemas, transport authorization, first
+storefront/admin/search consumer cutover, and live PostgreSQL/reference evidence remain open.
+
+No compatibility contract exists for deleted behavior. `IndexDocument`, `DocumentType`, old
+ports/adapters, source DTOs/indexers/models/migrations, `IndexerRuntimeConfig`,
+`IndexerContext`, and the old scheduler must not return.
 
 ## Dependencies on Other RusToK Crates
 
-The generic engine core does not depend on source-domain crates. `rustok-core`
-is used only for module metadata and platform contracts. Source adapters belong
-to owner modules or explicit integration crates and register through Index-owned
-APIs.
-
-## Common AI Mistakes
-
-- Adding Product, Content, Flex, Pricing, or Inventory fields to engine-core
-  enums or structs.
-- Reading source-module tables from Index.
-- Writing `index_schemas` directly from a source module instead of calling
-  `PostgresSchemaRegistrationStore`.
-- Treating in-memory `SchemaRegistry` registration as persisted tenant schema
-  readiness for mutation or query execution.
-- Reactivating a retired schema or silently replacing a contract under the same
-  schema version.
-- Treating Index as a ranking/full-text search engine.
-- Reintroducing a catch-all JSON document as the public contract.
-- Implementing rebuild by collecting every source ID before processing.
-- Publishing unvalidated JSON filters instead of the typed query AST.
-- Accepting a cursor without checking tenant, schema, fingerprint, locale, filter,
-  ordered fields/directions, order arity, and order-value types.
-- Executing a page query through raw `compile_postgres_query` instead of the
-  one-row-lookahead `compile_postgres_page_query` handoff.
-- Executing compiler SQL outside `PostgresIndexQueryPort` or bypassing its exact
-  tenant-scoped persisted schema preflight.
-- Executing page and exact-count statements in separate snapshots.
-- Decoding rows without rechecking the plan fingerprint and exact scalar/nested
-  column contracts.
-- Reading arbitrary driver columns instead of compiler-declared UUID/JSONB/bigint
-  aliases.
-- Compiling a many-link filter as an ordinary outer join; it must remain a correlated
-  predicate so child multiplicity cannot duplicate root rows or counts.
-- Flattening many-link projection into outer rows or independent value arrays; one
-  aggregate item must retain its full identity chain and aligned selected values.
-- Sorting through a `many` link without an explicit aggregate ordering policy.
-- Completing or heartbeating schema/index work without exact worker and attempt
-  fencing.
-- Building expression indexes against `payload ->> field`; stored `IndexValue`
-  payloads are tagged and scalar/list values live under each field's `value` key.
-- Creating bespoke Product or other owner-specific indexes instead of deriving
-  them from the generic schema contract.
-- Enabling partitioning because a relation is merely large, without retained
-  tenant-scoped baseline and shadow evidence.
-- Treating zero measured runs or less than 100% tenant-predicate coverage as
-  acceptable partition evidence.
-- Treating `PartitionShadowPlan::bootstrap_statements` as cutover-ready DDL; it
-  intentionally contains no production rename/drop or constraint/index attachment.
-- Restoring deleted v1 or source-specific code as a compatibility layer.
+The generic engine core does not depend on source-domain crates. `rustok-core` supplies module
+metadata and `ModuleRuntimeExtensions`. Source adapters remain in owner modules and publish
+only generic Index contracts. Distribution and server composition must not import owner schema
+builders or DTOs.
 
 ## Minimum Contract Set
 
-### Input DTOs/Commands
+### Schema source and runtime composition
 
-- `IndexSchema`, `IndexRecord`, `IndexMutation`, and `IndexQuery` are the current
-  input contracts.
+- `IndexModule::register_runtime_extensions` seeds `IndexSchemaSourceCatalog`.
+- `register_index_schema_source` accepts one owner slug and one validated generic schema.
+- Duplicate exact references fail even when fingerprints match.
+- Different owners cannot split versions of one `(module, entity)` identity.
+- `materialize_index_schema_registry` returns `None` for an absent or empty catalog.
+- Non-empty materialization uses one atomic registration batch so cross-source links validate
+  without partial registry state.
+- `SharedIndexSchemaRegistry` wraps the exact immutable `Arc<SchemaRegistry>`; its constructor
+  is not public.
+- `SharedIndexQueryRuntime` exposes only the transport-neutral `IndexQueryPort` capability.
+- `materialize_postgres_index_query_runtime` is the production constructor for the PostgreSQL
+  runtime and fails when the runtime is already present.
+- Runtime composition performs no SQL and does not replace tenant-scoped persisted schema
+  registration or preflight.
+- Executable hosts transfer the capability through the existing typed runtime-extension seam.
+
+### Query input and execution
+
 - `IndexQueryScope` carries tenant and locale independently from caller filters.
-- `IndexQueryPort::execute_query` is the transport-neutral owner boundary for one
-  structured query and typed page result.
-- `SchemaRegistry::compile_postgres_page_query` is the page-execution compiler
-  handoff; it preserves SQL and increases only the validated limit bind by one.
-- `CompiledPostgresQuery::many_relations` binds every aggregate output alias to its
-  exact `PlannedManyProjection` metadata.
-- `CompiledPostgresRow` is the narrow adapter handoff for compiler-owned UUID,
-  tagged JSON, nested aggregate JSON, SQL-null, and exact-count cells.
-- `PostgresIndexQueryPort` binds one PostgreSQL connection to one immutable
-  `Arc<SchemaRegistry>` and never accepts arbitrary SQL or result metadata.
-- `PostgresSchemaRegistrationStore::register(tenant_id, schema)` binds one non-nil
-  tenant to one validated exact schema contract and calculated fingerprint.
-- `SchemaApplicationLeaseRequest` binds one tenant, exact schema reference,
-  computed fingerprint, worker identity, and bounded whole-second lease duration.
-- `SecondaryIndexPlan` binds one tenant and exact schema fingerprint to all
-  filterable/sortable field indexes.
-- `SecondaryIndexRequest` binds one immutable index spec, operation, worker, and
-  bounded whole-second lease duration.
-- `PartitionEvidence` binds measured unpartitioned baseline facts to one exact
-  SHA-256 identified tenant-hash shadow packet.
-- `PartitionMeasurementCoverage` records non-zero query, mutation, maintenance,
-  and cutover-rehearsal run counts. A missing group is a typed rejection reason.
-- `PartitionAdmissionPolicy` supplies explicit minimum scale and maximum
-  regression/skew/lock thresholds; no production default silently admits rollout,
-  and tenant-predicate coverage is fixed at 10000 basis points.
-- Construction and validation preserve tenant, schema, entity, locale, and
-  source-version identity.
-- Identifiers use bounded lowercase ASCII grammar; locales use ICU4X
-  canonicalization.
-- Public field changes require a new `SchemaVersion`; incompatible content under
-  the same version is rejected by both in-memory and persisted registration.
+- Selected, filtered, and ordered fields resolve through registered typed paths.
+- Query shape, depth, selected fields, ordering expressions, page size, and offset are bounded.
+- `SchemaRegistry::compile_postgres_page_query` preserves the compiled query and changes only
+  the validated page-limit bind from `N` to `N + 1`.
+- `CompiledPostgresQuery::many_relations` binds every aggregate alias to exact plan metadata.
+- `CompiledPostgresRow` contains only compiler-owned UUID, tagged JSON, nested aggregate JSON,
+  SQL-null, and exact-count cells.
+- `PostgresIndexQueryPort` owns one connection and one immutable registry. It accepts no raw SQL
+  or caller-provided result metadata.
+- Every execution verifies root/source/target schemas against the query tenant's exact active
+  persisted fingerprint and semantic JSON contract.
+- Page and optional exact-count statements execute in one read-only repeatable-read snapshot.
+- Authentication and transport policy remain caller responsibilities and must not widen the
+  tenant or locale scope already present in `IndexQuery`.
 
-### Domain Invariants
+### Mutation and storage
 
-- Every record and query is explicitly tenant scoped.
+- `PostgresSchemaRegistrationStore::register` binds one non-nil tenant to one exact validated
+  schema and calculated fingerprint.
+- `PostgresMutationStore` applies one `MutationDelivery` with inbox deduplication, complete
+  entity-key serialization, monotonic source versions, tombstones, and atomic link replacement.
+- `SchemaApplicationLeaseRequest` and `SecondaryIndexRequest` use exact worker/attempt fencing.
+- Partition admission requires one exact retained evidence identity, non-zero coverage groups,
+  100% tenant-predicate coverage, parity, catch-up, integrity, regression, WAL, skew, and lock
+  gates before producing shadow-only planning output.
+- Production partition copy, constraint/index attachment, replay/dual-write, cutover, rollback,
+  and global operation ownership remain outside the current source-complete boundary.
+
+## Domain Invariants
+
+- Every record and query is tenant scoped.
 - Locale presence follows the registered schema's `LocaleMode`.
-- Every record belongs to an exact registered schema version.
-- Record values match field type, nullability, and cardinality.
-- Link targets match registered target schemas, fields, join types, locale mode,
-  and cardinality.
-- Selected, filtered, and ordered fields are resolved through typed link paths.
-- Query complexity, path depth, page size, and offset depth are bounded.
-- Filtering through `many` paths uses correlated existential semantics.
-- Projection through `many` paths returns deterministic nested items with complete
-  relation identity chains and aligned tagged values.
-- Sorting through a `many` link is rejected until aggregate ordering is explicit.
+- Records belong to one exact schema version and values match type, cardinality, and nullability.
+- Link targets match registered target schemas, join fields, types, locale modes, and cardinality.
+- Filtering through `many` paths uses correlated existential semantics and cannot duplicate root
+  rows or exact counts.
+- Projection through `many` paths returns deterministic nested items with complete identity
+  chains and aligned tagged values.
+- Sorting through a `many` link remains rejected until an explicit aggregate policy is added.
 - Source versions and tombstones prevent stale mutation overwrite.
 - Generic engine types remain source-domain agnostic.
+- Runtime composition is not an authorization decision or persisted-readiness assertion.
 
-### Schema Registry
+## Query Planning, Compilation, and Decoding
 
-- In-memory registration is atomic for a batch.
-- Re-registering an identical schema version is idempotent.
-- Changing a contract under the same version is an error.
-- Versions for a schema identity are monotonic.
-- Link paths resolve deterministically through the registered graph.
-- Schema fingerprints ignore declaration order but include all semantic field,
-  link, locale, and version metadata.
+- `SchemaRegistry::plan_query` validates first, assigns stable aliases, resolves joins, propagates
+  `traverses_many`, captures typed fields, groups many projections, and emits a v4 fingerprint.
+- Many-traversing filters compile as independent nested correlated `EXISTS` chains.
+- Many projections compile as correlated JSONB aggregates outside the outer root rowset and use
+  stored link ordinal, entity identity, and locale for deterministic item order.
+- `decode_postgres_query_page` re-plans and verifies the plan fingerprint, scalar/many metadata,
+  tagged values, nested identity/value arity, uniqueness, page bounds, and optional exact count.
+- Cursor pages remove lookahead and produce a next scoped cursor from the last retained
+  entity/order tuple; offset pages report `has_more` without a cursor.
 
-### Persisted Source Schema Registration
-
-- Registration is tenant scoped and supports PostgreSQL and SQLite only.
-- PostgreSQL serializes the tenant/module/entity identity with a transaction-scoped
-  advisory lock before exact/latest-version checks.
-- An exact active schema with matching fingerprint and semantic JSON is
-  `Unchanged`; a new greater version is `Inserted`.
-- Same-version contract drift, an unregistered lower version, retired state, nil
-  tenant, malformed persisted values, and storage failures fail closed.
-- Registration commits before an owner mutation may rely on the schema foreign key.
-- The store contains no source-domain types or table reads outside Index-owned
-  storage.
-
-### Schema Application Lease
-
-- Acquisition is scoped by tenant, module, entity, and schema version.
-- PostgreSQL acquisition takes a transaction-scoped advisory lock before reading
-  persisted schema and job state.
-- The persisted schema must be active and match the request fingerprint.
-- A non-expired running owner returns `Busy`; a succeeded application returns
-  `AlreadyApplied`.
-- Expired work is reclaimed by increasing `attempt_count` on the same job.
-- Heartbeat, success, and failure require the exact job, worker, attempt, running
-  state, and an unexpired lease.
-- Failed terminal jobs permit a new job; succeeded jobs remain terminal.
-
-### Secondary Index Lifecycle
-
-- Plans include only fields declared filterable or sortable by the exact schema.
-- Scalar fields use deterministic typed partial B-tree expressions ordered by
-  locale, value, and entity identity.
-- Filterable `many` fields use field-local JSONB containment GIN.
-- Expressions read the tagged production `IndexValue` payload through the field's
-  `value` member; timestamp keys use an immutable canonical UTC-digit expression.
-- Names bind tenant, schema reference, schema fingerprint, field type,
-  cardinality, index kind, and payload contract through SHA-256.
-- Ensure, reindex, and retire use `CREATE INDEX CONCURRENTLY`,
-  `REINDEX INDEX CONCURRENTLY`, and `DROP INDEX CONCURRENTLY` in PostgreSQL.
-- Active jobs are serialized by a transaction advisory lock and fenced by worker,
-  attempt count, state, and lease expiry.
-- PostgreSQL owner comments bind the index name to its full definition hash;
-  conflicting ownership fails closed.
-- Completion requires catalog `indisready` and `indisvalid`; retirement remains
-  available after a schema is retired.
-
-### Partition Admission and Shadow Planning
-
-- The canonical `index_entities` and `index_links` tables remain unpartitioned by
-  default because M2 did not measure partitioning.
-- Tenant-hash modulus must be a power of two between 2 and 128.
-- Evidence identity is a lowercase 64-character SHA-256 digest.
-- Admission requires exactly 10000 basis points of tenant-predicate coverage.
-- Query, mutation, maintenance, and cutover-rehearsal measurement counts must each
-  be non-zero.
-- Admission also checks measured total rows/bytes, distinct tenants, entity/link
-  digest parity, catch-up, foreign keys, orphan links, query-plan regressions, p95
-  query/mutation regressions, WAL amplification, partition-size skew, and
-  cutover-lock duration.
-- Any failed gate returns `KeepUnpartitioned` with typed reasons.
-- An admitted plan derives deterministic shadow parent/partition names from the
-  evidence identity, strategy, modulus, and plan-contract version.
-- Bootstrap SQL creates only shadow hash-partition parents and children. It never
-  renames, drops, or alters the production entity/link relations.
-- Copy, constraints, indexes, replay/dual-write, cutover, rollback, durable global
-  ownership, and PostgreSQL evidence remain mandatory future work.
-
-### Query Planning, Compilation, Result Decoding, and Execution
-
-- `SchemaRegistry::plan_query` validates first and captures deterministic aliases,
-  joins, typed referenced fields, propagated `traverses_many`, scalar projection,
-  grouped `PlannedManyProjection` metadata, filters, ordering, pagination, and a v4
-  plan fingerprint.
-- Many projection groups preserve first terminal-path appearance and requested field
-  order; each group records every relation-prefix identity path.
-- `compile_postgres_query` emits controlled SQL plus ordered bind DTOs for root and
-  one-link projection/ordering, nested many projection aggregates, and all validated
-  filters; caller values and contract names remain binds.
-- Every many-traversing atomic filter emits an independent nested correlated `EXISTS`
-  chain. No many join enters the outer rowset or identity-column contract.
-- Every selected many path emits one correlated JSONB aggregate ordered by stored link
-  ordinal, target entity identity, and locale at every hop. Empty reachability emits
-  an empty array rather than a null relation.
-- Aggregate items carry parallel identity/value arrays whose exact arity and metadata
-  are fixed by the compiled plan; the public decoder reconstructs typed nested items.
-- Many-link `Ne` requires at least one stored reachable value and no reachable null or
-  equal value; `IsNull` tests the absence of any reachable non-null value.
-- `compile_postgres_page_query` changes only the validated main-statement page-limit
-  bind from `N` to `N + 1`; offset and exact-count binds are preserved.
-- `decode_postgres_query_page` re-plans the query, compares the plan fingerprint and
-  complete unique scalar/many metadata, validates every tagged field value, nested
-  identity/value arity, nil or duplicate identity chains, and rejects more than
-  `N + 1` rows.
-- The lookahead row is removed. Cursor pages produce `has_more` and a scoped next
-  cursor from the last retained entity/order tuple; offset pages produce
-  `has_more` without a cursor.
-- `PostgresIndexQueryPort` requires PostgreSQL, verifies every root/source/target
-  schema against the query tenant's exact active persisted fingerprint and JSON
-  contract, and performs preflight/page/count/decode in one read-only repeatable-read
-  transaction.
-- `PostgresBindValue` conversion is exhaustive for boolean, integer, decimal, text,
-  UUID, UTC timestamp, and JSONB.
-- The row adapter reads only compiler-declared identity, scalar, order, nested, and
-  count aliases and delegates semantic validation to the strict decoder.
-- Many-link ordering, server/consumer composition, and live equivalence evidence
-  remain separate future boundaries.
-
-### Cursor Contract
-
-- Cursor formats are explicitly versioned.
-- Payloads use postcard and URL-safe Base64.
-- A checksum detects corruption.
-- Production continuation tokens bind tenant, schema, locale, filter, ordered
-  fields, and directions through a query fingerprint.
-- Cursor application validates schema fingerprint, ordering arity, order-value
-  types, and non-nil entity tie-breaker identity.
-- Cursor integrity is not an authorization substitute; transport and query
-  policy still enforce caller access.
-
-### Events / Outbox Side Effects
-
-- Source events are converted to `IndexMutation` through owner-published adapters.
-- The source schema is persisted through the Index owner before a mutation relies
-  on it.
-- Delivery is replayable and idempotent.
-- `MutationDelivery` binds a source name and delivery ID to one exact serialized
-  `IndexMutation` payload.
-- `PostgresMutationStore` claims the tenant/source/delivery inbox identity,
-  rejects payload reuse, and commits the inbox terminal state with the entity/link
-  mutation.
-- Exact redelivery is `Duplicate`; stale source versions are terminally ignored;
-  live upserts and tombstones replace links atomically.
-
-### Errors / Failure Codes
+## Errors / Failure Codes
 
 - `DomainError` defines identifier, schema-shape, and query-shape failures.
-- `SchemaRegistryError` defines in-memory registration and graph failures.
-- `SchemaRegistrationError` separates nil tenant, invalid schema, same-version
-  conflict, non-monotonic version, retired state, and generic storage failure.
-- `RecordValidationError` and `QueryValidationError` define registry-backed data
-  and query failures.
-- `CursorCodecError` and `CursorValidationError` separate malformed cursors from
-  scope/schema/query-fingerprint/type mismatches.
-- `QueryPlanError`, `PostgresQueryBuildError`, and `PostgresQueryCompileError`
-  separate validation/planning failures from unsupported or corrupted compiler
-  contracts. Many-link ordering, missing join plans, inconsistent traversal metadata,
-  and inconsistent nested projection plans are distinct typed compiler failures.
-- `PostgresQueryPageBuildError` rejects missing or mismatched pagination binds;
-  `PostgresQueryDecodeError` rejects plan/scalar/many/count mismatches, malformed
-  cells, invalid tagged values, invalid nested JSON, identity/value arity drift,
-  nil/duplicate nested identities, unexpected nulls, and oversized result batches.
-- `IndexQueryExecutionError` separates plan/build/decode failures, unsupported
-  backends, missing/inactive/drifted persisted schemas, missing counts, invalid driver
-  column types, contract preparation, and storage operations. Storage diagnostic
-  details are retained in fields while top-level display remains operation-level.
-- `MutationStorageError` separates validation, delivery identity conflict,
-  in-progress/rejected replay, stored-version corruption, backend limits, and
-  database failure. Its public display is generic; transport adapters must still
-  map owner errors rather than returning storage details directly.
-- `SchemaLeaseError` separates request validation, missing/retired/conflicting
-  schema state, malformed durable jobs, lost ownership, and database failure.
-- `SecondaryIndexError` separates plan/request validation, schema conflicts,
-  malformed jobs, lease loss, ownership conflicts, missing/not-ready indexes,
-  unsupported backends, and storage failures.
-- `PartitionAdmissionError` separates invalid policy, invalid evidence, metric
-  overflow, and unsupported hash modulus. Typed admission reasons explain every
-  rejected evidence gate without exposing storage internals.
-- Later milestones add source catalog, retry, cancellation, rebuild, transport, and
-  consumer composition errors.
+- `SchemaRegistryError` defines atomic registration and graph failures.
+- `IndexSchemaSourceError` defines invalid owner identity, duplicate exact ownership, owner drift
+  across schema versions, empty materialization, invalid schema, and registry failures.
+- `IndexQueryRuntimeCompositionError` currently rejects duplicate shared runtime materialization.
+- `RecordValidationError` and `QueryValidationError` define registry-backed data/query failures.
+- `CursorCodecError` and `CursorValidationError` separate malformed cursors from scope, schema,
+  fingerprint, query-shape, arity, and value-type mismatches.
+- `QueryPlanError`, `PostgresQueryBuildError`, and `PostgresQueryCompileError` separate
+  validation/planning from unsupported or corrupted compiler contracts.
+- `PostgresQueryDecodeError` rejects plan/column/count mismatch, malformed tagged values, nested
+  arity drift, nil/duplicate identities, unexpected nulls, and oversized batches.
+- `IndexQueryExecutionError` separates unsupported backend, missing/inactive/drifted persisted
+  schemas, build/decode failures, missing counts, invalid driver columns, contract preparation,
+  and storage operations while keeping top-level display bounded.
+- Storage, lease, secondary-index, and partition errors retain their typed ownership and evidence
+  boundaries; transport adapters must not expose raw database details.
+
+## Common AI Mistakes
+
+- Adding Product, Content, Flex, Pricing, Inventory, or other source fields to engine enums.
+- Reading source-module tables from Index or writing Index tables from source modules.
+- Treating in-memory registry composition as tenant-scoped persisted schema readiness.
+- Constructing an ad hoc `SchemaRegistry` or `SharedIndexSchemaRegistry` in server/consumer code.
+- Calling `PostgresIndexQueryPort::new` outside the Index-owned runtime materializer.
+- Treating `SharedIndexQueryRuntime` presence as authorization or proof that a tenant query works.
+- Publishing a consumer query without owner/transport authorization and bounded error mapping.
+- Executing compiler SQL outside `PostgresIndexQueryPort` or splitting page/count snapshots.
+- Accepting cursors without verifying tenant, schema, fingerprint, locale, filters, order shape,
+  value types, and entity tie-breaker identity.
+- Compiling many filters as outer joins or flattening many projection into independent arrays.
+- Sorting through a `many` relation without an explicit aggregate policy.
+- Restoring deleted v1/source-specific code as a compatibility layer.
