@@ -66,7 +66,7 @@ expands the richer Forum category audience, while `FORUM-23B2D` adds
 `StorefrontSearchResultEligibilityPort` for exact topic-local and reply
 reauthorization. GraphQL `forumStorefrontSearch` and native
 `search/forum-storefront-search` share one Search execution owner. It rejects a
-raw result set above 512 rows, sends only typed topic/reply candidates to Forum,
+raw result set above 100 rows, sends only typed topic/reply candidates to Forum,
 preserves allowed ranking order, and computes visible totals, facets, offset, and
 limit after owner eligibility. Mixed, unspecified, Product, Blog, Content, and
 Forum-without-category requests remain on the existing exact-category
@@ -220,7 +220,7 @@ rebuild behavior through replayable event transport.
     native Forum-only storefront Search paths, and one Search execution owner while
     preserving the existing mixed/product storefront Search behavior.
 17. Added the neutral Forum result-eligibility port, Forum exact topic/reply owner,
-    host adapter, bounded 512-row candidate scan, and post-authorization totals,
+    host adapter, bounded 100-row candidate scan, and post-authorization totals,
     facets, offset, and limit under `FORUM-23B2D`.
 
 ## Next results
