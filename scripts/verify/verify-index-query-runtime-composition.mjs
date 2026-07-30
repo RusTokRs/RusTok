@@ -88,7 +88,7 @@ const server = requireMarkers(serverPath, [
   'pub mod module_event_dispatcher {',
   'build_shared_runtime_extensions_with_host_providers(',
   'module_event_dispatcher_base::build_shared_runtime_extensions_with_host_providers(',
-  'materialize_postgres_index_query_runtime(&mut extensions, db)',
+  'materialize_postgres_index_query_runtime(&mut extensions, db.clone())',
   'Index query runtime composition failed',
   'host_materializes_index_query_runtime_after_source_registry',
   'extensions.contains::<SharedIndexSchemaRegistry>()',
@@ -103,6 +103,7 @@ for (const relative of [
   'crates/rustok-distribution/src/lib.rs',
   'crates/rustok-social-graph/src/lib.rs',
   'crates/rustok-social-graph/src/index_consumer.rs',
+  'crates/rustok-social-graph/src/index_privacy.rs',
 ]) {
   const source = read(relative);
   if (source.includes('PostgresIndexQueryPort::new')) {
@@ -134,7 +135,7 @@ requireMarkers('crates/rustok-index/docs/m4-query-runtime-composition.md', [
   '`SharedIndexQueryRuntime`',
   '`materialize_postgres_index_query_runtime(extensions, db)`',
   'performs no SQL',
-  'does not:',
+  'selected consumers may be recomposed only after runtime publication',
   'Not run by the implementation agent',
 ]);
 requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
