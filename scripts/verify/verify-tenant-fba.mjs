@@ -16,9 +16,11 @@ const central = read('docs/modules/registry.md');
 const cargo = read('crates/rustok-tenant/Cargo.toml');
 const lib = read('crates/rustok-tenant/src/lib.rs');
 const ports = read('crates/rustok-tenant/src/ports.rs');
+const tenantService = read('crates/rustok-tenant/src/services/tenant_service.rs');
 const integrationTests = read('crates/rustok-tenant/tests/integration.rs');
 const serverTenantMiddleware = read('apps/server/src/middleware/tenant.rs');
 const serverInstallerCli = read('apps/server/src/installer_execution.rs');
+const installerPersistence = read('crates/rustok-installer-persistence/src/seaorm_ports.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
 if (registry.module !== 'tenant' || registry.role !== 'provider' || !['boundary_ready', 'transport_verified'].includes(registry.status)) fail('registry identity/status drift');
@@ -36,6 +38,27 @@ for (const marker of ['trait TenantReadPort', 'impl TenantReadPort for crate::Te
 }
 if (ports.includes('require_write_semantics()?')) fail('tenant read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('tenant FBA DTOs must be serializable');
+
+for (const marker of [
+  'pub struct TenantService {',
+  'TransactionalEventBus::publish_root_in_tx(txn, tenant_id, None, event)',
+  'DomainEvent::TenantCreated',
+  'DomainEvent::TenantUpdated',
+  'DomainEvent::TenantModuleToggled',
+]) {
+  if (!tenantService.includes(marker)) fail(`tenant lifecycle owner source missing ${marker}`);
+}
+for (const forbidden of [
+  'event_bus: Option<TransactionalEventBus>',
+  'pub fn with_event_bus',
+  'if let Some(event_bus)',
+]) {
+  if (tenantService.includes(forbidden)) fail(`tenant lifecycle publication contains fail-open compatibility path ${forbidden}`);
+}
+if (!installerPersistence.includes('TenantService::new(self.db.clone())') || !installerPersistence.includes('.ensure_tenant(CreateTenantInput')) {
+  fail('installer seed path must delegate tenant creation to TenantService');
+}
+
 if (!plan.includes(`- FBA status: \`${registry.status}\``) || !plan.includes(registryPath) || !plan.includes('TenantReadPort') || !plan.includes('tenant-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
 if (!central.includes('| `tenant` |') || !central.includes(registryPath) || !central.includes(`| \`tenant\` | admin | \`in_progress\` | \`${registry.status}\``)) fail('central readiness board drift');
 if (registry.status === 'transport_verified' && evidence.status !== 'runtime_verified') fail('transport_verified tenant requires runtime_verified evidence');
@@ -56,7 +79,9 @@ for (const marker of ['TenantReadPort', 'TenantService::new(ctx.db_clone())', 't
 for (const marker of ['TenantReadPort', 'TenantService::new(db.clone())', 'read_installer_tenant_by_slug(db, &plan.tenant.slug)', 'TenantReadSelector::Slug(slug.to_string())', 'include_inactive: true', '.with_deadline(INSTALLER_TENANT_READ_DEADLINE)', 'PortActor::service("rustok-installer.execution")', 'PortErrorKind::NotFound', 'treat missing tenant as create candidate']) {
   if (!serverInstallerCli.includes(marker)) fail(`server installer CLI missing ${marker}`);
 }
-for (const marker of ['tenant_read_port_requires_deadline_and_valid_slug', 'tenant_read_port_preserves_projection_and_inactive_degraded_mode', 'tenant_read_port_resolves_domain_and_validates_blank_domain', 'PortErrorKind::Timeout', 'PortErrorKind::Validation', 'PortErrorKind::NotFound', 'include_inactive: true', 'TenantReadSelector::Domain', 'tenant.domain_empty']) {
+for (const marker of ['tenant_read_port_requires_deadline_and_valid_slug', 'tenant_read_port_preserves_projection_and_inactive_degraded_mode', 'tenant_read_port_resolves_domain_and_validates_blank_domain', 'tenant_mutations_always_publish_outbox_events', 'PortErrorKind::Timeout', 'PortErrorKind::Validation', 'PortErrorKind::NotFound', 'include_inactive: true', 'TenantReadSelector::Domain', 'tenant.domain_empty']) {
   if (!integrationTests.includes(marker)) fail(`integration tests missing ${marker}`);
 }
-console.log('[verify-tenant-fba] Tenant FBA provider metadata, port semantics and static evidence are consistent');
+if (integrationTests.includes('TenantService::with_event_bus')) fail('integration evidence must exercise ordinary TenantService::new publication');
+
+console.log('[verify-tenant-fba] Tenant FBA provider metadata, port semantics, mandatory lifecycle outbox and static evidence are consistent');

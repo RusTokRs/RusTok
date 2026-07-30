@@ -9,7 +9,9 @@
 - `TenantModule` implements `RusToKModule` with `ModuleKind::Core`.
 
 ## Events
-- Publishes: `tenant.created`, `tenant.updated`, `tenant.module.toggled` (via `TransactionalEventBus`, if passed to `TenantService::with_event_bus`).
+- Publishes: `tenant.created`, `tenant.updated`, `tenant.module.toggled`, `tenant.locale.enabled`, and `tenant.locale.disabled`.
+- Every owner mutation inserts its validated event into the canonical transactional outbox in the same database transaction through `TransactionalEventBus::publish_root_in_tx`.
+- Event publication is mandatory for `TenantService::new`; there is no host-configured or fail-open event-bus constructor.
 - Consumes: N/A.
 
 ## Dependencies on Other RusToK Crates
@@ -20,6 +22,7 @@
 ## Common AI Mistakes
 - Mixes up `tenant slug` and internal `tenant_id`.
 - Does not add tenant isolation in queries and access checks.
+- Constructs a parallel tenant writer or makes lifecycle event publication conditional on host wiring.
 
 ## Minimum Contract Set
 
@@ -32,7 +35,8 @@
 - Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
 
 ### Events / Outbox Side Effects
-- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Every tenant, tenant-module, or locale-policy mutation that changes owner state must publish its lifecycle event through the canonical transactional outbox before commit.
+- Installer/bootstrap calls to `TenantService::ensure_tenant` use the same owner transaction and event contract as ordinary tenant creation.
 - Event payload and event-type format must remain backward-compatible for cross-module consumers.
 
 ### Errors / Failure Codes
