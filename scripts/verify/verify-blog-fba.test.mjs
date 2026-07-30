@@ -26,12 +26,14 @@ function canonicalRegistry() {
 }
 
 function canonicalPackageJson() {
-  return {
-    scripts: {
-      'verify:blog:fba': BLOG_FBA_VERIFICATION_STEPS.join(' && '),
-      'test:verify:blog:fba': BLOG_FBA_SELF_TEST_COMMAND,
-    },
+  const scripts = {
+    'verify:blog:fba': BLOG_FBA_VERIFICATION_STEPS.join(' && '),
+    'test:verify:blog:fba': BLOG_FBA_SELF_TEST_COMMAND,
   };
+  for (const gate of Object.values(BLOG_FBA_SOURCE_GATES)) {
+    scripts[gate.package_script] = `node ${gate.verifier}`;
+  }
+  return { scripts };
 }
 
 function canonicalExistingPaths() {
@@ -73,6 +75,28 @@ test('Blog FBA verification-chain policy rejects source-gate path drift', () => 
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.storefront_boundary.evidence = 'wrong/storefront-evidence.json';
   assert.ok(failures({ registry }).includes('registry source gate storefront_boundary path drift'));
+});
+
+test('Blog FBA verification-chain policy rejects registry leaf-script drift', () => {
+  const registry = canonicalRegistry();
+  registry.verification_chain.source_gates.storefront_boundary.package_script = 'verify:blog:wrong-storefront';
+  assert.ok(
+    failures({ registry }).includes('registry source gate storefront_boundary package script drift'),
+  );
+});
+
+test('Blog FBA verification-chain policy rejects a repointed leaf verifier command', () => {
+  const packageJson = canonicalPackageJson();
+  packageJson.scripts['verify:blog:storefront-boundary'] = 'node scripts/verify/verify-blog-admin-boundary.mjs';
+  assert.ok(failures({ packageJson }).includes('package source gate storefront_boundary command drift'));
+});
+
+test('Blog FBA verification-chain policy rejects a missing leaf verifier script', () => {
+  const packageJson = canonicalPackageJson();
+  delete packageJson.scripts['verify:blog:admin-boundary'];
+  assert.ok(
+    failures({ packageJson }).includes('package.json missing source gate script verify:blog:admin-boundary'),
+  );
 });
 
 test('Blog FBA verification-chain policy rejects a missing registered source-gate file', () => {

@@ -52,6 +52,9 @@ The exact-chain policy now lives in a pure source module shared by the aggregate
 verifier and its self-regression fixture. Negative cases cover missing storefront
 execution, package/registry order drift, source-gate path drift, missing files, and
 self-test binding drift without requiring product compilation or database access.
+Every registered leaf gate also binds its npm script to the exact verifier command;
+renaming, removing, or repointing a `verify:blog:*` script now fails the aggregate
+policy instead of leaving a no-op behind the correct aggregate step name.
 
 The Blog storefront selected-post path now consumes the owner read projection
 across both transports. GraphQL requests `content { document html }` plus
@@ -135,10 +138,10 @@ outbox publication.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v3
-  locks the exact package order, source-gate paths, and aggregate self-test binding
-  for admin, storefront, GraphQL richtext, offline backfill, Forum ownership, and
-  consumer runtime-order gates.
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v4
+  locks the exact package order, leaf npm-script-to-verifier commands, source-gate
+  paths, and aggregate self-test binding for admin, storefront, GraphQL richtext,
+  offline backfill, Forum ownership, and consumer runtime-order gates.
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
@@ -303,6 +306,9 @@ outbox publication.
 29. Extracted the exact Blog FBA chain policy into a pure module and added an
     aggregate self-regression fixture for missing storefront execution, package or
     registry order drift, source-path drift, missing files, and self-test binding.
+30. Bound every registered Blog FBA leaf npm script to its exact verifier command
+    and extended the aggregate policy fixture to reject missing, repointed, or
+    registry-renamed source-gate scripts.
 
 ## Next results
 
