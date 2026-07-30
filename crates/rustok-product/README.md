@@ -39,9 +39,11 @@
   Index source-factory boundary. The adapter reads Product-owned storage only,
   emits generic mutations, and does not own Index persistence or scheduling.
 - Product storage owns a positive monotonic `index_revision`; Product and
-  translation changes advance it, and `(tenant_id, index_revision, id)` provides
-  the bounded replay access path. Hard-delete tombstones and incremental event
-  acknowledgement remain later Index slices.
+  translation changes advance it. Replay enumeration uses the stable
+  `(product_id, locale)` identity through existing tenant/product and translation
+  uniqueness, while `index_revision` is used only as mutation `source_version`.
+  Hard-delete tombstones and incremental event acknowledgement remain later
+  Index slices.
 - Effective visibility is resolved as tri-state overrides with precedence
   `attribute defaults < schema/category overrides < channel settings`.
 - Virtual categories use a validated, bounded V1 rule contract over product
