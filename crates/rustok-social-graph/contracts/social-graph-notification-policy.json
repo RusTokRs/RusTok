@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "slice": "SOCIAL-01A/NOTIFY-07C",
   "promoted_by_slice": "NOTIFY-03C",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
@@ -9,6 +9,8 @@
   "entity": "crates/rustok-social-graph/src/entities/relation.rs",
   "service": "crates/rustok-social-graph/src/service.rs",
   "ports": "crates/rustok-social-graph/src/ports.rs",
+  "index_privacy": "crates/rustok-social-graph/src/index_privacy.rs",
+  "index_privacy_shadow": "crates/rustok-social-graph/src/index_privacy_shadow.rs",
   "relation_state": {
     "table": "social_graph_relations",
     "kinds": ["block", "mute"],
@@ -23,16 +25,25 @@
     "block_either_direction_suppresses": true,
     "mute_source_to_target_only": true,
     "notification_mute_source": "recipient_id",
-    "notification_mute_target": "actor_id"
+    "notification_mute_target": "actor_id",
+    "authoritative_owner_result_always_returned": true,
+    "index_shadow_never_authorizes": true
   },
   "server_composition": {
     "adapter": "apps/server/src/services/notification_recipient_policy.rs",
+    "final_host_facade": "apps/server/src/services/mod.rs",
     "profile_then_block_then_mute": true,
     "reads_private_social_graph_tables": false,
     "relation_ports_ready": true,
     "candidate_worker_runtime_delivered": true,
     "candidate_worker_default_enabled": false,
-    "candidate_worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json"
+    "candidate_worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json",
+    "index_query_runtime_required_when_shadow_enabled": true,
+    "notification_block_mute_index_shadow_source_complete": true,
+    "notification_block_mute_index_cutover": false,
+    "index_privacy_shadow_env": "RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED",
+    "index_privacy_shadow_default_enabled": false,
+    "owner_policy_remains_authoritative": true
   },
   "distribution": {
     "registry": "crates/rustok-distribution/src/lib.rs",
@@ -42,18 +53,22 @@
     "generated_promotions_remain_replaceable": true
   },
   "tests": [
-    "crates/rustok-social-graph/tests/privacy_sqlite.rs"
+    "crates/rustok-social-graph/tests/privacy_sqlite.rs",
+    "crates/rustok-social-graph/src/index_privacy.rs",
+    "crates/rustok-social-graph/src/index_privacy_shadow.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
+    "index_consumer_verifier": "scripts/verify/verify-index-social-graph-privacy-consumer.mjs",
     "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
+    "bounded shadow latency and resource overhead evidence",
+    "authoritative cutover after retained freshness, lag, negative-result safety, and result-parity evidence",
     "default candidate worker enablement after health and lag metrics",
-    "friend and follow lifecycle",
+    "friend and follow presentation cutover",
     "block and mute transports",
-    "outbox relation events",
     "PostgreSQL concurrency evidence",
     "inbox-open and delayed-delivery rechecks"
   ]
