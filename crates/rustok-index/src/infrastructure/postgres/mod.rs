@@ -57,6 +57,6 @@ pub use source_replay_job::{
     IndexReplayJobLeaseRequest, PostgresIndexReplayJobStore,
 };
 pub use source_replay_runner::{
-    IndexReplayRunError, IndexReplayRunOutcome, IndexReplayRunRequest, IndexReplayRunStatus,
-    PostgresIndexReplayRunner,
+    IndexReplayCancelOutcome, IndexReplayRunError, IndexReplayRunOutcome, IndexReplayRunRequest,
+    IndexReplayRunStatus, IndexReplayTerminalState, PostgresIndexReplayRunner,
 };
