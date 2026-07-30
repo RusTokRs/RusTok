@@ -117,6 +117,12 @@ pub mod module_event_dispatcher {
         if crate::services::notification_recipient_policy::social_graph_index_privacy_shadow_enabled()
             .map_err(Error::Message)?
         {
+            rustok_telemetry::social_graph_index_privacy_shadow_metrics::ensure_registered()
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Social Graph Index privacy shadow metrics registration failed: {error}"
+                    ))
+                })?;
             let index_runtime = extensions
                 .get::<rustok_index::SharedIndexQueryRuntime>()
                 .cloned()
@@ -228,28 +234,3 @@ pub mod registry_principal;
 pub mod registry_remote_runner;
 pub mod registry_remote_transitions;
 pub mod release_activation_hook;
-pub mod release_backend;
-pub mod runtime_guardrails;
-#[cfg(feature = "mod-seo")]
-pub mod seo_redirect_cache_reconciliation;
-pub mod server_bootstrap;
-pub mod server_runtime_context;
-pub mod settings_service;
-#[cfg(feature = "mod-social_graph")]
-pub mod social_graph_index_poison_observer;
-#[cfg(feature = "mod-social_graph")]
-pub mod social_graph_index_position_observer;
-#[cfg(feature = "mod-social_graph")]
-pub mod social_graph_index_worker;
-pub mod tenant_cache_generation;
-pub mod tenant_cache_generation_status;
-pub mod tenant_generation_delivery_gate;
-pub mod tenant_locale_generation;
-pub mod topic_field_service;
-pub mod user_admin_guard;
-pub mod user_field_service;
-
-pub mod field_definition_cache;
-pub mod field_definition_registry_bootstrap;
-pub mod flex_attached_values;
-pub mod flex_standalone_service;
