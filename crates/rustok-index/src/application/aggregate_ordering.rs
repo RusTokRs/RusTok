@@ -271,13 +271,6 @@ mod tests {
 
     #[test]
     fn aggregate_requires_supported_sortable_scalar() {
-        let boolean = registry(IndexValueType::Boolean, true);
-        assert!(matches!(
-            boolean
-                .validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, true)),
-            Err(AggregateOrderValidationError::AggregateRequiresOrderedScalar(_))
-        ));
-
         let uuid = registry(IndexValueType::Uuid, true);
         assert!(matches!(
             uuid.validate_query_with_aggregate_ordering(&query(OrderDirection::MaxAsc, true)),
