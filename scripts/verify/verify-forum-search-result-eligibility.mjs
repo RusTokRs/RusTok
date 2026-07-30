@@ -86,7 +86,7 @@ const existingNative = read(paths.existingNative);
 requireAll(
   searchPort,
   [
-    "pub const MAX_FORUM_SEARCH_RESULT_CANDIDATES: usize = 512",
+    "pub const MAX_FORUM_SEARCH_RESULT_CANDIDATES: usize = 100",
     "pub enum StorefrontSearchResultCandidateKind",
     "ForumTopic",
     "ForumReply",
@@ -113,7 +113,7 @@ rejectAll(
 requireAll(
   forumOwner,
   [
-    "pub const MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES: usize = 512",
+    "pub const MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES: usize = 100",
     "pub struct ForumSearchResultEligibilityService",
     "filter_public_storefront_visible",
     "filter_authenticated_storefront_visible",
@@ -295,7 +295,7 @@ requireAll(
     "ForumSearchResultEligibilityService",
     "before visible",
     "currently `approved`",
-    "capped at 512",
+    "capped at 100",
     "No command above was run",
   ],
   paths.note,
@@ -315,7 +315,7 @@ requireAll(
   [
     "StorefrontSearchResultEligibilityPort",
     "FORUM-23B2D",
-    "512",
+    "100",
     "source_complete_execution_pending",
   ],
   paths.searchPlan,
@@ -343,8 +343,11 @@ if (contract) {
   for (const [key, expected] of Object.entries(expectedPaths)) {
     if (contract[key] !== expected) failures.push(`${paths.contract}: ${key} drift`);
   }
-  if (contract.bounds?.maximum_raw_result_rows !== 512) {
+  if (contract.bounds?.maximum_raw_result_rows !== 100) {
     failures.push(`${paths.contract}: raw result bound drift`);
+  }
+  if (contract.bounds?.maximum_owner_candidates !== 100) {
+    failures.push(`${paths.contract}: owner candidate bound drift`);
   }
   if (contract.bounds?.raw_search_page_size !== 50) {
     failures.push(`${paths.contract}: raw page-size drift`);
