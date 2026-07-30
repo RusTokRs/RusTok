@@ -210,15 +210,19 @@ fn default_limit() -> u64 {
 }
 
 fn sys_event_tenant_condition(backend: DbBackend, tenant_id: Uuid) -> SimpleExpr {
-    let tenant_id = tenant_id.to_string();
-    let sql = match backend {
-        DbBackend::Sqlite => {
-            "json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1"
-        }
-        _ => "payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1",
-    };
+    Expr::cust_with_values(
+        sys_event_tenant_sql(backend),
+        vec![Value::from(tenant_id.to_string())],
+    )
+}
 
-    Expr::cust_with_values(sql, vec![Value::from(tenant_id)])
+fn sys_event_tenant_sql(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Sqlite => {
+            "(json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1)"
+        }
+        _ => "(payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1)",
+    }
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {
@@ -229,9 +233,8 @@ fn forbidden_error(description: impl Into<String>) -> Error {
 mod tests {
     use rustok_api::{Action, Permission, Resource};
     use sea_orm::DbBackend;
-    use uuid::Uuid;
 
-    use super::sys_event_tenant_condition;
+    use super::sys_event_tenant_sql;
 
     #[test]
     fn dlq_replay_permission_is_manage_not_read() {
@@ -243,18 +246,12 @@ mod tests {
 
     #[test]
     fn tenant_condition_covers_current_and_legacy_envelope_shapes() {
-        let tenant_id = Uuid::new_v4();
-        let postgres = format!(
-            "{:?}",
-            sys_event_tenant_condition(DbBackend::Postgres, tenant_id)
-        );
-        let sqlite = format!(
-            "{:?}",
-            sys_event_tenant_condition(DbBackend::Sqlite, tenant_id)
-        );
-        assert!(postgres.contains("tenant_id"));
-        assert!(postgres.contains("event"));
-        assert!(sqlite.contains("tenant_id"));
-        assert!(sqlite.contains("event"));
+        for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
+            let sql = sys_event_tenant_sql(backend);
+            assert!(sql.starts_with('('));
+            assert!(sql.ends_with(')'));
+            assert!(sql.contains("tenant_id"));
+            assert!(sql.contains("event"));
+        }
     }
 }
