@@ -1,6 +1,8 @@
 use uuid::Uuid;
 
-use super::{AggregateOrderValidationError, PostgresQueryCompileError, QueryPlanError, SchemaRegistry};
+use super::{
+    AggregateOrderValidationError, PostgresQueryCompileError, QueryPlanError, SchemaRegistry,
+};
 use crate::domain::{
     EntityName, FieldCardinality, FieldName, FieldPath, IndexField, IndexLink, IndexQuery,
     IndexQueryScope, IndexSchema, IndexValueType, LinkCardinality, LinkName, LocaleKey, LocaleMode,
@@ -98,10 +100,14 @@ fn min_asc_compiles_correlated_tagged_order_value() {
     let compiled = registry.compile_postgres_query(&query).unwrap();
     assert!(compiled.sql.contains("SELECT MIN("));
     assert!(compiled.sql.contains("FROM index_links AS \"mo_l1\""));
-    assert!(compiled.sql.contains("jsonb_build_object('type', 'integer'"));
+    assert!(compiled
+        .sql
+        .contains("jsonb_build_object('type', 'integer'"));
     assert!(compiled.sql.contains("ASC NULLS LAST"));
     assert!(compiled.sql.contains("\"t0\".entity_id ASC"));
-    assert!(!compiled.sql.contains(" LEFT JOIN index_links AS \"l1\""));
+    assert!(!compiled
+        .sql
+        .contains(" LEFT JOIN index_links AS \"l1\""));
 }
 
 #[test]
@@ -111,7 +117,9 @@ fn max_desc_compiles_explicit_null_policy() {
         .compile_postgres_query(&query(OrderDirection::MaxDesc))
         .unwrap();
     assert!(compiled.sql.contains("SELECT MAX("));
-    assert!(compiled.sql.contains("jsonb_build_object('type', 'decimal'"));
+    assert!(compiled
+        .sql
+        .contains("jsonb_build_object('type', 'decimal'"));
     assert!(compiled.sql.contains("DESC NULLS FIRST"));
 }
 
@@ -142,6 +150,19 @@ fn aggregate_cursor_and_uuid_modes_fail_closed() {
 #[test]
 fn forged_plans_cannot_bypass_explicit_aggregate_policy() {
     let registry = registry(IndexValueType::Integer);
+
+    let mut aggregate_cursor = registry
+        .plan_query(&query(OrderDirection::MinAsc))
+        .unwrap();
+    aggregate_cursor.pagination = Pagination::Cursor {
+        first: 20,
+        after: None,
+    };
+    assert!(matches!(
+        aggregate_cursor.compile_postgres(),
+        Err(PostgresQueryCompileError::AggregateOrderingRequiresOffsetPagination)
+    ));
+
     let mut ambiguous = registry
         .plan_query(&query(OrderDirection::MinAsc))
         .unwrap();
