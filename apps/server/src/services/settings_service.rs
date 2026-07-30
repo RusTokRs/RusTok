@@ -5,6 +5,9 @@ use uuid::Uuid;
 use crate::models::platform_settings::{self, ActiveModel, Entity};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
+const SEARCH_API_KEY_FIELD: &str = "api_key";
+const SEARCH_API_KEY_CONFIGURED_FIELD: &str = "api_key_configured";
+
 /// Known setting categories.
 pub mod category {
     pub const GENERAL: &str = "general";
@@ -94,6 +97,26 @@ impl SettingsValidator for RateLimitSettingsValidator {
     }
 }
 
+/// Search connector secrets are bootstrap-only and never tenant-managed through
+/// the generic settings API.
+pub struct SearchSettingsValidator;
+
+impl SettingsValidator for SearchSettingsValidator {
+    fn category(&self) -> &str {
+        category::SEARCH
+    }
+
+    fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
+        if settings.get(SEARCH_API_KEY_FIELD).is_some() {
+            return Err(vec![
+                "search.api_key is bootstrap-only and cannot be stored in tenant platform settings"
+                    .to_string(),
+            ]);
+        }
+        Ok(())
+    }
+}
+
 /// Built-in validator for the `email` category.
 pub struct EmailSettingsValidator;
 
@@ -138,6 +161,7 @@ impl Default for ValidatorRegistry {
             validators: Vec::new(),
         };
         reg.register(RateLimitSettingsValidator);
+        reg.register(SearchSettingsValidator);
         reg.register(EmailSettingsValidator);
         reg
     }
@@ -165,31 +189,24 @@ impl ValidatorRegistry {
 /// 1. `platform_settings` table (per-tenant DB override)
 /// 2. YAML `settings.rustok.<category>` (bootstrap defaults from config)
 /// 3. Compiled-in defaults (`serde_json::Value::Object {}`)
+///
+/// Public methods always return a category-aware safe projection. Raw values are
+/// confined to private storage helpers so bootstrap credentials cannot cross the
+/// generic settings GraphQL boundary.
 pub struct SettingsService;
 
 impl SettingsService {
-    /// Get settings for a single category with fallback.
+    /// Get a secret-safe public projection for a single category with fallback.
     pub async fn get(
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
         cat: &str,
     ) -> Result<Value, SettingsError> {
-        // 1. DB row
-        if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
-            return Ok(row.settings);
-        }
-
-        // 2. YAML
-        let yaml_value = Self::yaml_defaults_for(ctx, cat);
-        if !yaml_value.is_null() {
-            return Ok(yaml_value);
-        }
-
-        // 3. Empty object default
-        Ok(serde_json::json!({}))
+        let raw = Self::load_raw(ctx, tenant_id, cat).await?;
+        Ok(Self::public_projection(cat, raw))
     }
 
-    /// List all categories for a tenant, filling gaps with fallbacks.
+    /// List all categories for a tenant, filling gaps with secret-safe fallbacks.
     pub async fn get_all(
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
@@ -197,24 +214,26 @@ impl SettingsService {
         let db_rows = Entity::find_all_for_tenant(ctx.db(), tenant_id).await?;
         let mut result: Vec<(String, Value)> = db_rows
             .into_iter()
-            .map(|r| (r.category, r.settings))
+            .map(|row| {
+                let category = row.category;
+                let settings = Self::public_projection(&category, row.settings);
+                (category, settings)
+            })
             .collect();
 
-        // Fill in categories that are not yet in the DB
+        // Fill in categories that are not yet in the DB.
         let existing: std::collections::HashSet<String> =
             result.iter().map(|(c, _)| c.clone()).collect();
 
         for &cat in category::ALL {
             if !existing.contains(cat) {
-                let v = Self::yaml_defaults_for(ctx, cat);
-                result.push((
-                    cat.to_string(),
-                    if v.is_null() {
-                        serde_json::json!({})
-                    } else {
-                        v
-                    },
-                ));
+                let raw = Self::yaml_defaults_for(ctx, cat);
+                let value = if raw.is_null() {
+                    serde_json::json!({})
+                } else {
+                    Self::public_projection(cat, raw)
+                };
+                result.push((cat.to_string(), value));
             }
         }
 
@@ -222,9 +241,7 @@ impl SettingsService {
         Ok(result)
     }
 
-    /// Upsert settings for a category.
-    ///
-    /// Returns the stored `Value`.
+    /// Upsert settings for a category and return only its secret-safe public projection.
     pub async fn update(
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
@@ -237,6 +254,7 @@ impl SettingsService {
             return Err(SettingsError::InvalidCategory(cat.to_string()));
         }
 
+        let settings = Self::normalize_for_storage(cat, settings)?;
         validators
             .validate(cat, &settings)
             .map_err(SettingsError::ValidationFailed)?;
@@ -256,10 +274,60 @@ impl SettingsService {
             }
         }
 
+        Ok(Self::public_projection(cat, settings))
+    }
+
+    async fn load_raw(
+        ctx: &ServerRuntimeContext,
+        tenant_id: Uuid,
+        cat: &str,
+    ) -> Result<Value, SettingsError> {
+        if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
+            return Ok(row.settings);
+        }
+
+        let yaml_value = Self::yaml_defaults_for(ctx, cat);
+        if !yaml_value.is_null() {
+            return Ok(yaml_value);
+        }
+
+        Ok(serde_json::json!({}))
+    }
+
+    fn normalize_for_storage(cat: &str, mut settings: Value) -> Result<Value, SettingsError> {
+        if cat != category::SEARCH {
+            return Ok(settings);
+        }
+
+        if settings.get(SEARCH_API_KEY_FIELD).is_some() {
+            return Err(SettingsError::ValidationFailed(vec![
+                "search.api_key is bootstrap-only and cannot be stored in tenant platform settings"
+                    .to_string(),
+            ]));
+        }
+        if let Some(object) = settings.as_object_mut() {
+            object.remove(SEARCH_API_KEY_CONFIGURED_FIELD);
+        }
         Ok(settings)
     }
 
-    // ── Private helpers ────────────────────────────────────────────────────
+    fn public_projection(cat: &str, mut settings: Value) -> Value {
+        if cat != category::SEARCH {
+            return settings;
+        }
+
+        if let Some(object) = settings.as_object_mut() {
+            let configured = object
+                .remove(SEARCH_API_KEY_FIELD)
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .is_some_and(|value| !value.trim().is_empty());
+            object.insert(
+                SEARCH_API_KEY_CONFIGURED_FIELD.to_string(),
+                Value::Bool(configured),
+            );
+        }
+        settings
+    }
 
     fn yaml_defaults_for(ctx: &ServerRuntimeContext, cat: &str) -> Value {
         let rs = ctx.settings();
@@ -304,6 +372,54 @@ mod tests {
     }
 
     #[test]
+    fn search_validator_rejects_api_key_storage() {
+        let validator = SearchSettingsValidator;
+        let errors = validator
+            .validate(&json!({ "api_key": "must-not-be-stored" }))
+            .unwrap_err();
+        assert!(errors.iter().any(|error| error.contains("bootstrap-only")));
+    }
+
+    #[test]
+    fn search_public_projection_redacts_api_key_and_reports_configuration() {
+        let projected = SettingsService::public_projection(
+            category::SEARCH,
+            json!({
+                "enabled": true,
+                "driver": "meilisearch",
+                "api_key": "top-secret"
+            }),
+        );
+        assert_eq!(projected.get("api_key"), None);
+        assert_eq!(
+            projected.get("api_key_configured"),
+            Some(&Value::Bool(true))
+        );
+        assert_eq!(projected.get("driver"), Some(&json!("meilisearch")));
+    }
+
+    #[test]
+    fn search_storage_normalization_rejects_secret_and_drops_public_marker() {
+        let error = SettingsService::normalize_for_storage(
+            category::SEARCH,
+            json!({ "api_key": "top-secret" }),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("bootstrap-only"));
+
+        let normalized = SettingsService::normalize_for_storage(
+            category::SEARCH,
+            json!({
+                "enabled": true,
+                "api_key_configured": true
+            }),
+        )
+        .unwrap();
+        assert_eq!(normalized.get("api_key_configured"), None);
+        assert_eq!(normalized.get("enabled"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
     fn email_validator_rejects_bad_from_address() {
         let v = EmailSettingsValidator;
         let errs = v.validate(&json!({ "from": "not-an-email" })).unwrap_err();
@@ -329,11 +445,13 @@ mod tests {
     }
 
     #[test]
-    fn validator_registry_default_includes_rate_limit_and_email() {
+    fn validator_registry_default_includes_rate_limit_search_and_email() {
         let reg = ValidatorRegistry::default();
-        // rate_limit: valid
         assert!(reg.validate("rate_limit", &json!({})).is_ok());
-        // email: invalid provider
+        assert!(
+            reg.validate("search", &json!({ "api_key": "secret" }))
+                .is_err()
+        );
         assert!(
             reg.validate("email", &json!({ "provider": "pigeon" }))
                 .is_err()
