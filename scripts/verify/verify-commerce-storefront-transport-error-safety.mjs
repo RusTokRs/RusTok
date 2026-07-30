@@ -22,6 +22,9 @@ const evidence = JSON.parse(
     'crates/rustok-commerce/contracts/evidence/storefront-transport-error-safety-source.json',
   ),
 );
+const recheckDocPath =
+  'crates/rustok-commerce/docs/storefront-request-context-regression.md';
+const recheckDoc = read(recheckDocPath);
 
 const failures = [];
 const requireText = (source, value, label) => {
@@ -131,6 +134,18 @@ for (const [key, expected] of Object.entries({
     failures.push(`evidence source_contract.${key} must be ${expected}`);
   }
 }
+if (evidence.recheck?.documentation !== recheckDocPath) {
+  failures.push('evidence recheck documentation path drift');
+}
+if (evidence.recheck?.removed_request_context_field !== 'correlation_id') {
+  failures.push('evidence removed RequestContext field drift');
+}
+if (evidence.recheck?.guard_forbids_removed_field !== true) {
+  failures.push('evidence must retain the removed-field guard');
+}
+if (evidence.recheck?.master_plan_item_10_complete !== false) {
+  failures.push('evidence must not claim ecommerce master-plan item 10 complete');
+}
 for (const [key, expected] of Object.entries({
   request_context_unavailable: 'Storefront request context is temporarily unavailable',
   tenant_context_unavailable: 'Storefront tenant context is temporarily unavailable',
@@ -139,6 +154,14 @@ for (const [key, expected] of Object.entries({
     failures.push(`evidence stable_public_messages.${key} mismatch`);
   }
 }
+for (const marker of [
+  'Status: `source_corrected_unvalidated`.',
+  'immediate execution item 10',
+  '`RequestContext.correlation_id`',
+  'Customer admin',
+  'Pricing admin',
+  'No command above was run by the implementation agent.',
+]) requireText(recheckDoc, marker, 'storefront RequestContext regression documentation');
 for (const key of [
   'tests_run',
   'cargo_run',
