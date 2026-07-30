@@ -13,6 +13,7 @@ const files = {
   graphqlTypes: "crates/rustok-blog/src/graphql/types.rs",
   cargo: "crates/rustok-blog/storefront/Cargo.toml",
   legacyApi: "crates/rustok-blog/storefront/src/api.rs",
+  evidence: "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json",
   plan: "crates/rustok-blog/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
@@ -51,6 +52,7 @@ const native = text(files.native);
 const graphql = text(files.graphql);
 const graphqlTypes = text(files.graphqlTypes);
 const cargo = text(files.cargo);
+const evidence = JSON.parse(text(files.evidence));
 const plan = text(files.plan);
 const registry = text(files.registry);
 const verifierTest = text(files.verifierTest);
@@ -84,11 +86,23 @@ for (const marker of [
 
 assertContains(model, "pub struct BlogCommentList", `${files.model}: storefront DTO must model the public comment list`);
 assertContains(model, "pub public_comments: BlogCommentList", `${files.model}: selected posts must carry public comments`);
+assertContains(model, "use rustok_api::RichTextView;", `${files.model}: selected post DTO must consume the owner RichTextView`);
+assertContains(model, "pub content: Option<RichTextView>", `${files.model}: selected post DTO must carry canonical richtext`);
+assertContains(model, "pub content_plain_text: Option<String>", `${files.model}: selected post DTO must carry server-derived plain text`);
+assertNotContains(model, "pub body: Option<String>", `${files.model}: storefront DTO must not expose legacy body`);
+assertNotContains(model, "pub body_format: String", `${files.model}: storefront DTO must not expose legacy body format`);
+
 assertContains(ui, "use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY)", `${files.ui}: UI must read route-owned comments page state`);
 assertContains(ui, "use_route_query_writer()", `${files.ui}: UI must write pagination intents through shared routing`);
 assertContains(ui, "transport::fetch_blog(request, comments_page)", `${files.ui}: UI must pass the current comments page through transport`);
 assertContains(ui, "<PublicCommentsList comments=public_comments comments_page />", `${files.ui}: selected post must render paginated public comments`);
 assertContains(ui, "comments_pagination::comments_page_query_intent", `${files.ui}: pagination controls must use the pure route policy`);
+assertContains(ui, "let content = post.content;", `${files.ui}: UI must consume RichTextView from the storefront DTO`);
+assertContains(ui, "post.content_plain_text", `${files.ui}: UI must retain server-derived plain-text fallback`);
+assertContains(ui, "inner_html=content.html", `${files.ui}: UI must render owner-generated HTML`);
+assertNotContains(ui, "summarized_body_or_fallback", `${files.ui}: UI must not locally interpret body formats`);
+assertNotContains(ui, "post.body", `${files.ui}: UI must not read legacy body`);
+assertNotContains(ui, "body_format", `${files.ui}: UI must not read legacy body format`);
 assertNotContains(ui, "crate::api", `${files.ui}: UI must not call legacy api module`);
 
 assertContains(transport, "pub mod graphql_adapter;", `${files.transport}: transport facade must wire GraphQL adapter`);
@@ -111,9 +125,13 @@ for (const marker of [
   "page: comments_page.max(1)",
   "per_page: COMMENTS_PAGE_SIZE",
   "map_comment_list_item",
+  "content: post.content",
+  "content_plain_text: post.content_plain_text",
 ]) {
-  assertContains(native, marker, `${files.native}: missing channel/public-comments native marker ${marker}`);
+  assertContains(native, marker, `${files.native}: missing channel/comments/richtext native marker ${marker}`);
 }
+assertNotContains(native, "body: Some(post.body)", `${files.native}: native adapter must not map legacy body`);
+assertNotContains(native, "body_format: post.body_format", `${files.native}: native adapter must not map legacy body format`);
 assertContains(native, "#[server(prefix = \"/api/fn\", endpoint = \"blog/storefront-data\")]", `${files.native}: native adapter must own server function endpoint`);
 assertContains(native, "expect_context::<HostRuntimeContext>()", `${files.native}: native adapter must use the host runtime context`);
 assertContains(native, "shared_get::<TransactionalEventBus>()", `${files.native}: native adapter must receive the event bus through the host runtime context`);
@@ -121,29 +139,47 @@ assertContains(native, "runtime_ctx.db_clone()", `${files.native}: native adapte
 
 assertContains(graphql, "GraphqlRequest", `${files.graphql}: GraphQL adapter must keep GraphQL request contract`);
 assertContains(graphql, "STOREFRONT_BLOG_QUERY", `${files.graphql}: GraphQL adapter must own storefront blog query`);
+assertContains(graphql, "content { document html } contentPlainText", `${files.graphql}: GraphQL storefront query must request the owner richtext projection`);
+assertNotContains(graphql, " excerpt body bodyFormat ", `${files.graphql}: GraphQL storefront query must not request legacy body fields`);
 assertContains(graphql, "$commentsPage: Int!", `${files.graphql}: GraphQL query must declare comments page`);
 assertContains(graphql, "$commentsPerPage: Int!", `${files.graphql}: GraphQL query must declare comments page size`);
 assertContains(graphql, "publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage)", `${files.graphql}: GraphQL storefront query must request the selected comments page`);
 assertContains(graphql, "bounded_comments_request_page(comments_page)", `${files.graphql}: GraphQL page input must be bounded before serialization`);
 assertContains(graphql, "comments_per_page: COMMENTS_PAGE_SIZE", `${files.graphql}: GraphQL and native page size must match`);
 for (const marker of [
+  "pub content: Option<RichTextView>",
+  "pub content_plain_text: Option<String>",
   "#[graphql(complex)]",
   "async fn public_comments(",
   "CommentService::new",
   "SecurityContext::public_read()",
   "GqlPublicCommentList",
 ]) {
-  assertContains(graphqlTypes, marker, `${files.graphqlTypes}: missing approved public comments GraphQL marker ${marker}`);
+  assertContains(graphqlTypes, marker, `${files.graphqlTypes}: missing richtext/public-comments GraphQL marker ${marker}`);
+}
+
+if (evidence.status !== "source_verified_no_compile") {
+  fail(`${files.evidence}: status must remain source_verified_no_compile until maintainer execution`);
+}
+for (const field of ["graphql_owner_view", "native_owner_view", "server_html_render", "plain_text_fallback"]) {
+  if (evidence.contract?.[field] !== true) {
+    fail(`${files.evidence}: contract.${field} must be true`);
+  }
+}
+if (evidence.validation?.tests_run !== false || evidence.validation?.verifier_run !== false || evidence.validation?.cargo_run !== false) {
+  fail(`${files.evidence}: validation flags must record that execution remains maintainer-owned`);
 }
 
 assertContains(plan, "verify-blog-storefront-boundary.mjs", `${files.plan}: local plan must mention storefront guardrail`);
 assertContains(plan, "public comments", `${files.plan}: local plan must record public comment rendering parity`);
 assertContains(plan, "storefront comment pagination", `${files.plan}: local plan must record route-owned comment pagination`);
+assertContains(plan, "server-rendered `RichTextView` HTML", `${files.plan}: local plan must record storefront owner projection`);
 assertContains(registry, "verify-blog-storefront-boundary.mjs", `${files.registry}: central board must mention storefront guardrail`);
 assertContains(verifierTest, "passes canonical fixture", `${files.verifierTest}: fixture tests must cover canonical pass path`);
 assertContains(verifierTest, "rejects legacy api module", `${files.verifierTest}: fixture tests must reject legacy api module`);
 assertContains(verifierTest, "rejects missing public comments parity", `${files.verifierTest}: fixture tests must reject missing comments parity`);
 assertContains(verifierTest, "rejects missing comment pagination parity", `${files.verifierTest}: fixture tests must reject missing pagination parity`);
+assertContains(verifierTest, "rejects legacy richtext transport", `${files.verifierTest}: fixture tests must reject legacy richtext transport`);
 
 const scripts = pkg.scripts ?? {};
 if (scripts["verify:blog:storefront-boundary"] !== "node scripts/verify/verify-blog-storefront-boundary.mjs") {
