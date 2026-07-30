@@ -26,6 +26,8 @@ const MAX_FILTER_VALUE_LEN: usize = 64;
 const MAX_ATTRIBUTE_FILTERS: usize = 10;
 const MAX_LOCALE_LEN: usize = 16;
 const FORUM_RESULT_SCAN_PAGE_SIZE: usize = 50;
+const FORUM_STOREFRONT_SEARCH_UNAVAILABLE: &str =
+    "Forum storefront Search is temporarily unavailable";
 
 #[derive(Clone, Debug)]
 pub struct ForumStorefrontSearchAttributeFilter {
@@ -71,6 +73,7 @@ pub enum ForumStorefrontSearchExecutionError {
     Scope(PortError),
     Search(rustok_core::Error),
     Database(sea_orm::DbErr),
+    Invariant(&'static str),
 }
 
 impl Display for ForumStorefrontSearchExecutionError {
@@ -79,8 +82,8 @@ impl Display for ForumStorefrontSearchExecutionError {
             Self::Validation(message) => formatter.write_str(message),
             Self::Scope(error) => formatter.write_str(&error.message),
             Self::Search(error) => Display::fmt(error, formatter),
-            Self::Database(_) => {
-                formatter.write_str("Forum storefront Search is temporarily unavailable")
+            Self::Database(_) | Self::Invariant(_) => {
+                formatter.write_str(FORUM_STOREFRONT_SEARCH_UNAVAILABLE)
             }
         }
     }
@@ -267,26 +270,28 @@ async fn execute_result_eligible_search(
     let engine_kind = first_page.engine;
     let ranking_profile = first_page.ranking_profile;
     let mut all_items = first_page.items;
+    let mut raw_rows = HashSet::with_capacity(raw_total);
+    register_raw_rows(&mut raw_rows, &all_items)?;
     while all_items.len() < raw_total {
         scan_query.offset = all_items.len();
         let page = engine.search(scan_query.clone()).await?;
         if page.total != raw_total as u64 || page.items.is_empty() {
-            return Err(ForumStorefrontSearchExecutionError::Search(
-                rustok_core::Error::External(
-                    "Forum storefront Search candidate snapshot changed during bounded eligibility evaluation"
-                        .to_string(),
-                ),
+            return Err(ForumStorefrontSearchExecutionError::Invariant(
+                "Forum storefront Search candidate snapshot changed during bounded eligibility evaluation",
             ));
         }
+        register_raw_rows(&mut raw_rows, &page.items)?;
         all_items.extend(page.items);
         if all_items.len() > raw_total {
-            return Err(ForumStorefrontSearchExecutionError::Search(
-                rustok_core::Error::External(
-                    "Forum storefront Search candidate scan exceeded its initial bounded total"
-                        .to_string(),
-                ),
+            return Err(ForumStorefrontSearchExecutionError::Invariant(
+                "Forum storefront Search candidate scan exceeded its initial bounded total",
             ));
         }
+    }
+    if all_items.len() != raw_total || raw_rows.len() != raw_total {
+        return Err(ForumStorefrontSearchExecutionError::Invariant(
+            "Forum storefront Search candidate scan did not resolve one unique row per result",
+        ));
     }
 
     let mut seen_candidates = HashSet::new();
@@ -334,6 +339,24 @@ async fn execute_result_eligible_search(
         ranking_profile,
         facets,
     })
+}
+
+fn register_raw_rows(
+    seen: &mut HashSet<(String, String, Uuid)>,
+    items: &[SearchResultItem],
+) -> Result<(), ForumStorefrontSearchExecutionError> {
+    for item in items {
+        if !seen.insert((
+            item.source_module.clone(),
+            item.entity_type.clone(),
+            item.id,
+        )) {
+            return Err(ForumStorefrontSearchExecutionError::Invariant(
+                "Forum storefront Search candidate scan returned a duplicate raw row",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn result_candidate(item: &SearchResultItem) -> Option<StorefrontSearchResultCandidate> {
