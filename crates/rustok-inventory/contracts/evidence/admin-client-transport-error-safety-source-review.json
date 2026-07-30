@@ -9,6 +9,7 @@
   "findings": {
     "public_raw_server_fn_conversion_removed": true,
     "context_free_into_mapping_removed": true,
+    "public_error_variant_has_no_string_payload": true,
     "eight_facade_operations_mapped": true,
     "request_builders_preserved": true,
     "native_server_adapter_unchanged": true,
