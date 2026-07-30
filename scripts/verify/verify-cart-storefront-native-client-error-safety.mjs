@@ -29,12 +29,8 @@ function functionBody(source, functionName) {
     return "";
   }
   const openBrace = source.indexOf("{", match.index);
-  if (openBrace < 0) {
-    failures.push(`missing body for ${functionName}`);
-    return "";
-  }
   let depth = 0;
-  for (let index = openBrace; index < source.length; index += 1) {
+  for (let index = openBrace; index >= 0 && index < source.length; index += 1) {
     if (source[index] === "{") depth += 1;
     if (source[index] === "}") {
       depth -= 1;
@@ -45,7 +41,7 @@ function functionBody(source, functionName) {
   return "";
 }
 
-const paths = {
+const files = {
   transport: "crates/rustok-cart/storefront/src/transport/mod.rs",
   safety: "crates/rustok-cart/storefront/src/transport/native_client_error_safety.rs",
   native: "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs",
@@ -61,66 +57,43 @@ const paths = {
   graphqlGuard: "scripts/verify/verify-cart-storefront-graphql-error-safety.mjs",
 };
 
-const transport = read(paths.transport);
-const safety = read(paths.safety);
-const native = read(paths.native);
-const nativeSsr = read(paths.nativeSsr);
-const graphqlSafety = read(paths.graphqlSafety);
-const evidence = JSON.parse(read(paths.evidence));
-const review = JSON.parse(read(paths.review));
-const doc = read(paths.doc);
-const plan = read(paths.plan);
-const nativeGuard = read(paths.nativeGuard);
-const graphqlGuard = read(paths.graphqlGuard);
+const transport = read(files.transport);
+const safety = read(files.safety);
+const native = read(files.native);
+const nativeSsr = read(files.nativeSsr);
+const graphqlSafety = read(files.graphqlSafety);
+const evidence = JSON.parse(read(files.evidence));
+const review = JSON.parse(read(files.review));
+const doc = read(files.doc);
+const plan = read(files.plan);
+const nativeGuard = read(files.nativeGuard);
+const graphqlGuard = read(files.graphqlGuard);
 
-requireText(
-  transport,
+for (const marker of [
   "mod native_client_error_safety;",
-  `${paths.transport}: native client safety module wiring`,
-);
-requireText(
-  transport,
   "pub type CartTransportError = UiTransportError;",
-  `${paths.transport}: public transport error alias`,
-);
-requireText(
-  transport,
   "pub type TransportResult<T> = UiTransportResult<T>;",
-  `${paths.transport}: public result alias`,
-);
-requireText(
-  transport,
   "UiTransportPath::NativeServer",
-  `${paths.transport}: native transport selection`,
-);
-requireText(
-  transport,
   "UiTransportPath::Graphql",
-  `${paths.transport}: GraphQL transport selection`,
-);
-forbidText(
-  transport,
-  "fallback_attempted = true",
-  `${paths.transport}: no fallback may be introduced`,
-);
-
+]) requireText(transport, marker, `${files.transport}: preserved transport contract`);
+forbidText(transport, "fallback_attempted = true", `${files.transport}: fallback policy`);
 requireCount(
   transport,
   "native_client_error_safety::NativeClientErrorContext::",
   3,
-  `${paths.transport}: native client contexts`,
+  `${files.transport}: native contexts`,
 );
 requireCount(
   transport,
   "graphql_error_safety::GraphqlCallContext::",
   3,
-  `${paths.transport}: preserved GraphQL contexts`,
+  `${files.transport}: GraphQL contexts`,
 );
 requireCount(
   transport,
   ".map_err(|error| context.map_error(error))",
   6,
-  `${paths.transport}: three native and three GraphQL final mappings`,
+  `${files.transport}: native plus GraphQL final mappings`,
 );
 
 for (const [operation, nativeContext, nativeCall, graphqlContext, graphqlCall] of [
@@ -148,17 +121,13 @@ for (const [operation, nativeContext, nativeCall, graphqlContext, graphqlCall] o
 ]) {
   const body = functionBody(transport, operation);
   for (const marker of [nativeContext, nativeCall, graphqlContext, graphqlCall]) {
-    requireText(body, marker, `${paths.transport}: ${operation}`);
+    requireText(body, marker, `${files.transport}: ${operation}`);
   }
-  const nativeContextIndex = body.indexOf(nativeContext);
-  const nativeCallIndex = body.indexOf(nativeCall);
-  const graphqlContextIndex = body.indexOf(graphqlContext);
-  const graphqlCallIndex = body.indexOf(graphqlCall);
-  if (nativeContextIndex < 0 || nativeContextIndex > nativeCallIndex) {
-    failures.push(`${paths.transport}: ${operation} native context must precede call`);
+  if (body.indexOf(nativeContext) > body.indexOf(nativeCall)) {
+    failures.push(`${files.transport}: ${operation} native context must precede call`);
   }
-  if (graphqlContextIndex < 0 || graphqlContextIndex > graphqlCallIndex) {
-    failures.push(`${paths.transport}: ${operation} GraphQL context must precede call`);
+  if (body.indexOf(graphqlContext) > body.indexOf(graphqlCall)) {
+    failures.push(`${files.transport}: ${operation} GraphQL context must precede call`);
   }
 }
 
@@ -181,9 +150,7 @@ for (const marker of [
   'code = "cart.storefront_native_client_transport_failed"',
   "boundary = CART_STOREFRONT_NATIVE_CLIENT_BOUNDARY",
   "ApiError::ServerFn(CART_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE.to_string())",
-]) {
-  requireText(safety, marker, `${paths.safety}: safe final mapping`);
-}
+]) requireText(safety, marker, `${files.safety}: safe final mapping`);
 
 for (const forbidden of [
   "selected_cart_id = %",
@@ -196,9 +163,7 @@ for (const forbidden of [
   "line_item_id = ?",
   "request = ?",
   "error.to_string()",
-]) {
-  forbidText(safety, forbidden, `${paths.safety}: raw request or error text`);
-}
+]) forbidText(safety, forbidden, `${files.safety}: raw request or error text`);
 
 for (const adapter of [native, nativeSsr]) {
   for (const marker of [
@@ -209,41 +174,38 @@ for (const adapter of [native, nativeSsr]) {
     "pub async fn fetch_cart(",
     "pub async fn decrement_line_item(",
     "pub async fn remove_line_item(",
-  ]) {
-    requireText(adapter, marker, "native adapter contract");
-  }
+  ]) requireText(adapter, marker, "native adapter contract");
 }
 requireText(
   nativeSsr,
   "CART_STOREFRONT_NATIVE_BOUNDARY",
-  `${paths.nativeSsr}: mounted server-side safe boundary`,
+  `${files.nativeSsr}: mounted safe boundary`,
 );
 requireText(
   graphqlSafety,
   "pub(super) struct GraphqlCallContext",
-  `${paths.graphqlSafety}: GraphQL safety policy`,
+  `${files.graphqlSafety}: GraphQL safety policy`,
 );
 requireText(
   nativeGuard,
-  "Cart storefront native error-safety source invariants passed",
-  `${paths.nativeGuard}: prior mounted native guard`,
+  "Cart storefront native error-safety verification failed:",
+  `${files.nativeGuard}: mounted native guard identity`,
 );
 requireText(
   graphqlGuard,
-  "Cart storefront GraphQL error-safety source invariants passed",
-  `${paths.graphqlGuard}: prior GraphQL guard`,
+  "Cart storefront GraphQL error-safety verification failed:",
+  `${files.graphqlGuard}: GraphQL guard identity`,
 );
 
 if (evidence.status !== "storefront_native_client_error_safety_source_unvalidated") {
-  failures.push(`${paths.evidence}: unexpected status ${evidence.status}`);
+  failures.push(`${files.evidence}: unexpected status ${evidence.status}`);
 }
 if (
   review.status !==
   "storefront_native_client_error_safety_source_reviewed_unvalidated"
 ) {
-  failures.push(`${paths.review}: unexpected status ${review.status}`);
+  failures.push(`${files.review}: unexpected status ${review.status}`);
 }
-
 for (const [key, expected] of Object.entries({
   operation_count: 3,
   transport_selection_changed: false,
@@ -266,10 +228,9 @@ for (const [key, expected] of Object.entries({
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+    failures.push(`${files.evidence}: source_contract.${key} must be ${expected}`);
   }
 }
-
 for (const key of [
   "tests_run",
   "cargo_run",
@@ -283,20 +244,24 @@ for (const key of [
   "mounted_runtime_proven",
 ]) {
   if (evidence.validation?.[key] !== false) {
-    failures.push(`${paths.evidence}: validation.${key} must remain false`);
+    failures.push(`${files.evidence}: validation.${key} must remain false`);
   }
 }
-
-requireText(doc, "Status: **source-ready / unvalidated**", `${paths.doc}: status`);
+requireText(doc, "Status: **source-ready / unvalidated**", `${files.doc}: status`);
 requireText(
   doc,
   "Cart storefront request could not be completed",
-  `${paths.doc}: static technical public message`,
+  `${files.doc}: static technical message`,
+);
+requireText(
+  plan,
+  "Storefront native client error safety: `source_ready_unvalidated`",
+  `${files.plan}: local source status`,
 );
 requireText(
   plan,
   "No verification command was executed in this source wave.",
-  `${paths.plan}: execution disclosure remains explicit`,
+  `${files.plan}: execution disclosure`,
 );
 
 if (failures.length > 0) {
