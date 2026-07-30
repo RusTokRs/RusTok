@@ -38,13 +38,13 @@ This block is the first place an agent reads after `docs/index.md`.
 
 - Cycle: `cycle-001`
 - Cycle status: `active`
-- Current item: `core/channel`
-- Next item: `core/channel`
+- Current item: `core/email`
+- Next item: `core/email`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-07-29`
-- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery`
+- Last handoff at (UTC): `2026-07-30`
+- Carried release blockers: `core/auth P1: implicit refresh_token authority for auto-created OAuth applications whose persisted grant_types omit it; core/cache P1: failed Redis invalidations can become untracked when the bounded tombstone tracker is saturated, allowing stale shared reads after recovery; core/channel P1: channels.name and possibly tenant-visible policy-set names remain human-facing copy in language-neutral base rows; core/channel P1: tenant/concurrency invariant fixes are staged in draft PR #2469 but are not in main or same-SHA verified while Actions runs remain queued`
 - Release readiness: `not_assessed`
-- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; connector-only follow-up could not execute local targeted regressions because repository cloning failed DNS resolution; these conditions are not classified as product defects`
+- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; connector-only local targeted regressions for cache/channel could not run because github.com DNS resolution failed; channel Actions runs 30517068108 and 30517068093 remained queued; these conditions are not classified as product defects`
 
 Allowed cycle statuses are `ready`, `active`, and `closing`. An item uses `pending`,
 `in_progress`, `completed`, or `blocked` in its local handoff block. Only one item may
@@ -60,7 +60,6 @@ be `in_progress` at a time.
 3. If the cycle is already `active`, resume `Current item`. If the cursor and queue
    disagree, use the first unchecked item, but first reconcile its local handoff block.
 4. A local `completed` result counts only when its `Cycle` equals the current cycle.
-   A result from an earlier cycle is evidence, not completion for the current cycle.
 5. Before inspecting or editing a component, set its local handoff to `in_progress`.
    After verification, update the component's actual implementation plan and the
    handoff, then update this cursor and queue in the same work unit.
@@ -179,7 +178,7 @@ These are Core modules because the current `modules.toml` declares them with
 - [x] `core/modules` — `crates/rustok-modules`
 - [x] `core/auth` — `crates/rustok-auth` — blocked
 - [x] `core/cache` — `crates/rustok-cache` — blocked
-- [ ] `core/channel` — `crates/rustok-channel`
+- [x] `core/channel` — `crates/rustok-channel` — blocked
 - [ ] `core/email` — `crates/rustok-email`
 - [ ] `core/index` — `crates/rustok-index`
 - [ ] `core/search` — `crates/rustok-search`
