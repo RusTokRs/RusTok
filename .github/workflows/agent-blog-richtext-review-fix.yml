@@ -1,0 +1,56 @@
+name: Agent Blog richtext review fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/agent-blog-richtext-review-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-blog-richtext-review-fix
+  cancel-in-progress: true
+
+jobs:
+  apply-review-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/blog-richtext-storage-cutover-20260730
+          fetch-depth: 0
+      - name: Fix owner-local test paths
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('crates/rustok-blog/src/services/post.rs')
+          source = path.read_text(encoding='utf-8')
+          pattern = r'rustok_blog::richtext::article_document_from_plain_text\(&"([^"]*)"\.to_string\(\)\)'
+          updated, count = re.subn(
+              pattern,
+              lambda match: f'crate::richtext::article_document_from_plain_text("{match.group(1)}")',
+              source,
+          )
+          if count < 1:
+              raise RuntimeError('expected at least one owner-local test richtext path')
+          if 'rustok_blog::richtext::' in updated:
+              raise RuntimeError('owner service still contains external self-crate richtext paths')
+          path.write_text(updated, encoding='utf-8')
+          PY
+          rm .github/workflows/agent-blog-richtext-review-fix.yml
+          git diff --check
+      - name: Commit review fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(blog): use owner-local richtext path"
+          git push origin HEAD:agent/blog-richtext-storage-cutover-20260730
