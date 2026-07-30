@@ -105,6 +105,10 @@ may be stale and therefore cannot prove that no current block or mute exists.
 - Every method executes the owner read first.
 - Owner error is returned unchanged.
 - After owner success, the same request is issued to Index for comparison.
+- The projected comparison receives only the remaining caller deadline budget measured from
+  entry to the shadow wrapper.
+- Budget exhaustion or projected timeout records retryable
+  `social_graph.index_privacy_unavailable` without changing the owner result.
 - All four methods return the owner result; the Index shadow never authorizes or suppresses.
 - Boolean comparisons classify `match_positive`, `match_negative`, `false_negative`, or
   `false_positive`.
@@ -234,7 +238,9 @@ receipt, broker, or lag state.
   remain authoritative for block, mute, and follow.
 - Notification block/mute policy may run the approved Index projection only through
   `IndexShadowSocialGraphPrivacyReadPort`, which always returns the owner result.
-- Index shadow mismatch or failure never authorizes, suppresses, widens, or changes policy.
+- Index shadow mismatch, timeout, or failure never authorizes, suppresses, widens, or changes
+  policy.
+- The projected comparison must stay within the remaining caller deadline budget.
 - Privacy shadow observations and metrics observe parity but must not authorize or suppress.
 - Profiles privacy, presentation visibility, and revision-bearing follow state must not
   authorize from Index state, DLQ receipts, broker IDs, deduplication state, consumer lag, or
@@ -252,6 +258,7 @@ receipt, broker, or lag state.
   acknowledgement, and read-only position observation.
 - `rustok-outbox`: transactional event bus.
 - `sha2`: deterministic receipt-bound UUIDv8 derivation.
+- `tokio`: bounded async shadow comparison and test/runtime scheduling.
 
 ## Common mistakes
 
@@ -262,6 +269,7 @@ receipt, broker, or lag state.
 - Constructing `PostgresIndexQueryPort` in Social Graph or bypassing
   `SharedIndexQueryRuntime`.
 - Returning the Index result from the privacy shadow instead of the owner result.
+- Awaiting the projected privacy shadow beyond the remaining caller deadline budget.
 - Treating shadow mismatch, error, empty projection, observation, or metric as a privacy
   decision.
 - Treating schema readiness as a freshness watermark.
