@@ -1,15 +1,42 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
 
-const TYPES_PATH = 'crates/rustok-blog/src/graphql/types.rs';
-const MUTATION_PATH = 'crates/rustok-blog/src/graphql/mutation.rs';
+const GRAPHQL_ROOT = 'crates/rustok-blog/src/graphql';
+const TYPES_PATH = `${GRAPHQL_ROOT}/types.rs`;
+const MUTATION_PATH = `${GRAPHQL_ROOT}/mutation.rs`;
 
-const [typesSource, mutationSource] = await Promise.all([
-  readFile(TYPES_PATH, 'utf8'),
-  readFile(MUTATION_PATH, 'utf8'),
-]);
+function normalizePath(path) {
+  return path.split(sep).join('/');
+}
+
+async function collectRustFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await collectRustFiles(path));
+    } else if (entry.isFile() && entry.name.endsWith('.rs')) {
+      files.push(normalizePath(path));
+    }
+  }
+
+  return files;
+}
+
+const graphqlFiles = await collectRustFiles(GRAPHQL_ROOT);
+const sources = new Map(await Promise.all(
+  graphqlFiles.map(async (path) => [path, await readFile(path, 'utf8')]),
+));
+
+const typesSource = sources.get(TYPES_PATH);
+const mutationSource = sources.get(MUTATION_PATH);
+assert.ok(typesSource, `${TYPES_PATH} must remain part of the Blog GraphQL boundary`);
+assert.ok(mutationSource, `${MUTATION_PATH} must remain part of the Blog GraphQL boundary`);
 
 const canonicalTypeChecks = [
   'pub content: Option<RichTextView>',
@@ -44,12 +71,34 @@ for (const [path, source] of allowedLegacyFiles) {
   }
 }
 
+const legacyLeakPatterns = [
+  ['body', /\bpub\s+body\s*:/u],
+  ['body', /\bbody\s*:\s*input\.body\b/u],
+  ['body_format', /\bbody_format\b/u],
+  ['content_json', /\bcontent_json\b/u],
+];
+
+for (const [path, source] of sources) {
+  if (allowedLegacyFiles.has(path)) {
+    continue;
+  }
+
+  for (const [field, pattern] of legacyLeakPatterns) {
+    assert.ok(
+      !pattern.test(source),
+      `Blog GraphQL legacy richtext field ${field} must stay confined to the adapter allowlist; found in ${normalizePath(relative('.', path))}`,
+    );
+  }
+}
+
 const forbiddenAliases = ['rt_json', 'markdown_body', 'raw_content_json'];
-for (const alias of forbiddenAliases) {
-  assert.ok(
-    !typesSource.includes(alias) && !mutationSource.includes(alias),
-    `Blog GraphQL must not introduce a new richtext alias: ${alias}`,
-  );
+for (const [path, source] of sources) {
+  for (const alias of forbiddenAliases) {
+    assert.ok(
+      !source.includes(alias),
+      `Blog GraphQL must not introduce a new richtext alias ${alias}; found in ${normalizePath(relative('.', path))}`,
+    );
+  }
 }
 
 console.log('Blog GraphQL richtext boundary guardrail passed.');
