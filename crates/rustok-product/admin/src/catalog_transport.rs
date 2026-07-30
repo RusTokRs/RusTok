@@ -6,11 +6,17 @@ mod legacy;
 mod admin_catalog_graphql;
 #[path = "transport/admin_catalog_native.rs"]
 mod admin_catalog_native;
+#[path = "transport/graphql_error_safety.rs"]
+mod graphql_error_safety;
 
 pub(crate) use legacy::*;
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
-use crate::model::{ProductCatalogSearchOptions, ProductList};
+use crate::model::{
+    ProductAdminBootstrap, ProductCatalogSearchOptions, ProductDetail, ProductList,
+    ProductPricingDetail, ShippingProfileList,
+};
+use rustok_graphql::GraphqlHttpError;
 
 const PRODUCT_ADMIN_CATALOG_OPTIONS_OWNER: &str = "rustok_product.admin";
 const PRODUCT_ADMIN_CATALOG_OPTIONS_OPERATION: &str = "fetch_catalog_search_options";
@@ -58,6 +64,19 @@ impl CatalogSearchOptionsErrorContext {
     }
 }
 
+pub(crate) async fn fetch_bootstrap(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<ProductAdminBootstrap, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_bootstrap(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+    );
+    legacy::fetch_bootstrap(token, tenant_slug)
+        .await
+        .map_err(|error| context.map_error(error))
+}
+
 pub async fn fetch_catalog_search_options(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -81,7 +100,7 @@ pub(crate) async fn fetch_products(
     locale: Option<String>,
     search: Option<String>,
     status: Option<String>,
-) -> Result<ProductList, rustok_graphql::GraphqlHttpError> {
+) -> Result<ProductList, GraphqlHttpError> {
     let route_controls = leptos::prelude::use_context::<ProductAdminListInput>().unwrap_or_default();
     let attribute_filters = if route_controls.attribute_filters.is_empty() {
         None
@@ -106,6 +125,14 @@ pub(crate) async fn fetch_products(
     {
         Ok(value) => Ok(value),
         Err(_) => {
+            let context = graphql_error_safety::GraphqlReadContext::for_products(
+                token.as_deref(),
+                tenant_slug.as_deref(),
+                tenant_id.as_str(),
+                locale.as_deref(),
+                controls.search.as_deref(),
+                controls.status.as_deref(),
+            );
             admin_catalog_graphql::fetch_products(
                 token,
                 tenant_slug,
@@ -114,6 +141,69 @@ pub(crate) async fn fetch_products(
                 controls,
             )
             .await
+            .map_err(|error| context.map_error(error))
         }
     }
+}
+
+pub(crate) async fn fetch_product(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+    locale: Option<String>,
+) -> Result<Option<ProductDetail>, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_product(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        id.as_str(),
+        locale.as_deref(),
+    );
+    legacy::fetch_product(token, tenant_slug, tenant_id, id, locale)
+        .await
+        .map_err(|error| context.map_error(error))
+}
+
+pub(crate) async fn fetch_product_pricing(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+    locale: Option<String>,
+    currency_code: Option<String>,
+) -> Result<Option<ProductPricingDetail>, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_product_pricing(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        id.as_str(),
+        locale.as_deref(),
+        currency_code.as_deref(),
+    );
+    legacy::fetch_product_pricing(
+        token,
+        tenant_slug,
+        tenant_id,
+        id,
+        locale,
+        currency_code,
+    )
+    .await
+    .map_err(|error| context.map_error(error))
+}
+
+pub(crate) async fn fetch_shipping_profiles(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+) -> Result<ShippingProfileList, GraphqlHttpError> {
+    let context = graphql_error_safety::GraphqlReadContext::for_shipping_profiles(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+    );
+    legacy::fetch_shipping_profiles(token, tenant_slug, tenant_id)
+        .await
+        .map_err(|error| context.map_error(error))
 }
