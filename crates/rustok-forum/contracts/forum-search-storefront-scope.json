@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23B2C",
+  "status": "source_complete_execution_pending",
+  "scope": "Compose the richer Forum-owned category subtree scope into an explicit Forum-only storefront Search execution path",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "forum_owner": "crates/rustok-forum/src/services/category_search_audience_scope.rs",
+  "neutral_search_port": "crates/rustok-search/src/storefront_category_scope.rs",
+  "search_execution_owner": "crates/rustok-search/src/forum_storefront_execution.rs",
+  "host_adapter": "apps/server/src/services/forum_search_category_scope.rs",
+  "host_composition": "apps/server/src/services/mod.rs",
+  "graphql_owner": "crates/rustok-search/src/graphql/forum_storefront.rs",
+  "graphql_host_mount": "apps/server/src/graphql/schema.rs",
+  "native_adapter": "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  "graphql_adapter": "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+  "storefront_selector": "crates/rustok-search/storefront/src/transport/mod.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23b2c-storefront-search-scope.md",
+  "verifier": "scripts/verify/verify-forum-search-storefront-scope.mjs",
+  "selection": {
+    "explicit_graphql_field": "forumStorefrontSearch",
+    "explicit_native_endpoint": "search/forum-storefront-search",
+    "requires_exact_source_modules": ["forum"],
+    "requires_non_empty_category_roots": true,
+    "mixed_source_requests_use_existing_storefront_search": true,
+    "unspecified_source_requests_use_existing_storefront_search": true,
+    "product_category_semantics_changed": false
+  },
+  "authorization": {
+    "tenant_is_derived_from_request_context": true,
+    "tenant_override_is_rejected": true,
+    "tenant_forum_module_must_be_enabled": true,
+    "public_viewer_supported": true,
+    "authenticated_viewer_uses_exact_auth_and_request_context": true,
+    "forum_categories_list_permission_selects_authenticated_owner_path": true,
+    "missing_permission_degrades_to_public_scope": true,
+    "richer_role_trust_channel_group_allow_deny_rules_are_reused": true,
+    "missing_required_owner_facts_fail_closed": true,
+    "missing_scope_port_fails_closed": true,
+    "denied_selected_root_is_non_oracular": true
+  },
+  "execution": {
+    "graphql_and_native_share_one_search_execution_owner": true,
+    "published_only": true,
+    "search_dictionary_transform_reused": true,
+    "search_preset_and_ranking_resolution_reused": true,
+    "search_query_rules_reused": true,
+    "search_analytics_reused": true,
+    "search_rate_limit_reused_for_graphql": true,
+    "expanded_ids_use_existing_search_category_ids": true,
+    "search_imports_forum": false,
+    "forum_imports_search": false,
+    "server_is_only_cross_owner_adapter": true
+  },
+  "bounds": {
+    "raw_category_roots": 10,
+    "expanded_category_ids": 512,
+    "query_length": 256,
+    "filter_values_per_field": 10,
+    "attribute_filters": 10,
+    "storefront_page_limit": 50
+  },
+  "compatibility": {
+    "existing_storefront_search_field_changed": false,
+    "existing_storefront_native_endpoint_changed": false,
+    "search_query_shape_changed": false,
+    "forum_projection_shape_changed": false,
+    "database_migration_added": false,
+    "dependency_added": false,
+    "cargo_lock_changed": false,
+    "search_disabled_behavior_changed": false
+  },
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-search storefront_category_scope -- --nocapture",
+      "cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture",
+      "cargo test -p rustok-server --features mod-forum forum_search_category_scope -- --nocapture",
+      "node scripts/verify/verify-forum-search-storefront-scope.mjs",
+      "cargo check -p rustok-search --features graphql --all-targets",
+      "cargo check -p rustok-search-storefront --features ssr --all-targets",
+      "cargo check -p rustok-server --features mod-forum --all-targets",
+      "cargo xtask module validate forum",
+      "cargo xtask module validate search"
+    ]
+  },
+  "remaining_scope": [
+    "apply exact topic-local audience narrowing and reply authorization to Search result eligibility",
+    "derive trusted channel authority for all storefront Search result predicates",
+    "add author tag locale date solved kind channel group and attachment-presence filters",
+    "complete owner-issued projection revision ordering reconciliation and ACL cleanup",
+    "capture maintainer-executed PostgreSQL and cross-module runtime evidence"
+  ],
+  "non_claims": [
+    "FORUM-23 is complete",
+    "topic-local audience narrowing is applied to Search",
+    "reply-specific authorization is applied to Search",
+    "mixed source category roots are expanded",
+    "runtime verification was executed"
+  ]
+}
