@@ -89,8 +89,8 @@ for (const marker of [
   "pub(crate) enum ForumProjectionScope",
   "DomainEvent::ForumTopicCreated",
   "DomainEvent::ForumReplyStatusChanged",
-  'target_type.as_str(), target_id',
-  '(("search", _) | ("forum", _) | ("forum_topic", Some(_)))'.replaceAll("(", "(").replaceAll(")", ")"),
+  '("search", _) | ("forum", _) | ("forum_topic", Some(_))',
+  '("forum_category", Some(category_id))',
   "serde_json::to_value(envelope)?",
   "SqlValue::Json(Some(Box::new(envelope_json)))",
   "ON CONFLICT (event_id) DO NOTHING",
@@ -180,6 +180,7 @@ if (contract) {
   if (contract.upstream_task !== "FORUM-20BO") failures.push(`${contractPath}: unexpected upstream task`);
   if (contract.downstream_task !== "FORUM-20BQ") failures.push(`${contractPath}: unexpected downstream task`);
   if (contract.approved_reply_contract !== approvedReplyPath) failures.push(`${contractPath}: approved reply handoff drift`);
+
   for (const key of [
     "search_owns_inbox_storage",
     "search_projection_inbox_added",
@@ -200,6 +201,7 @@ if (contract) {
     if (contract.storage_boundary?.[key] !== false) failures.push(`${contractPath}: storage ${key} must remain false`);
   }
   if (contract.storage_boundary?.maximum_attempts !== 12) failures.push(`${contractPath}: retry bound drift`);
+
   for (const key of [
     "ordering_is_timestamp_then_event_id",
     "duplicate_event_id_is_idempotent",
@@ -219,6 +221,7 @@ if (contract) {
   ]) {
     if (contract.revision_boundary?.[key] !== false) failures.push(`${contractPath}: revision ${key} must remain false`);
   }
+
   for (const key of [
     "postgresql_try_advisory_transaction_lock_added",
     "lock_acquisition_is_non_blocking",
@@ -240,6 +243,7 @@ if (contract) {
   if (contract.serialization_boundary?.projection_and_inbox_use_same_database_transaction !== false) {
     failures.push(`${contractPath}: transaction boundary drift`);
   }
+
   for (const key of [
     "enqueue_commits_before_projection_claim",
     "projection_failure_is_persisted_as_retryable",
@@ -259,6 +263,7 @@ if (contract) {
   ]) {
     if (contract.recovery_boundary?.[key] !== false) failures.push(`${contractPath}: recovery ${key} must remain false`);
   }
+
   for (const [key, expected] of Object.entries({
     workspace_root_dependency_changed: false,
     search_crate_runtime_dependency_changed: false,
@@ -280,8 +285,11 @@ if (approvedReply) {
   if (approvedReply.downstream_task !== "FORUM-20BQ") {
     failures.push(`${approvedReplyPath}: downstream task must advance to FORUM-20BQ`);
   }
-  if (approvedReply.persistence_boundary?.out_of_order_owner_revision_guard_added !== true) {
-    failures.push(`${approvedReplyPath}: ordering completion not recorded`);
+  if (approvedReply.persistence_boundary?.consumer_envelope_revision_guard_added !== true) {
+    failures.push(`${approvedReplyPath}: consumer ordering completion not recorded`);
+  }
+  if (approvedReply.persistence_boundary?.out_of_order_owner_revision_guard_added !== false) {
+    failures.push(`${approvedReplyPath}: owner revision must remain explicitly absent`);
   }
   if (approvedReply.remaining_scope?.some((entry) => entry.includes("owner revision ordering and durable inbox"))) {
     failures.push(`${approvedReplyPath}: completed inbox work remains open`);
