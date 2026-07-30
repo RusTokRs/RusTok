@@ -122,12 +122,19 @@
     },
     {
       "name": "search_projection",
-      "status": "legacy_blocker",
+      "status": "contained_compatibility",
       "path": "crates/rustok-search/src/blog_projector.rs",
       "required_markers": [
-        "COALESCE(bt.body, '')"
+        "use rustok_content::{RichTextProfile, plain_text}",
+        "WHEN bt.body_format = 'richtext' THEN ''",
+        "refresh_canonical_richtext_bodies_in",
+        "plain_text(&document, RichTextProfile::Article)",
+        "compose_search_body"
       ],
-      "forbidden_markers": []
+      "forbidden_markers": [
+        "jsonb_path_query",
+        "jsonb_path_query_array"
+      ]
     },
     {
       "name": "seo_projection",
@@ -154,7 +161,6 @@
   ],
   "blocking_surfaces": [
     "storage_schema",
-    "search_projection",
     "ai_blog_draft_writer"
   ],
   "completion_conditions": [
