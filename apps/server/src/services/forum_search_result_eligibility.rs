@@ -1,14 +1,12 @@
 use async_trait::async_trait;
 use rustok_api::{
-    Permission, PortError, PortErrorKind, has_any_effective_permission,
-    is_tenant_module_enabled,
+    Permission, PortError, PortErrorKind, has_any_effective_permission, is_tenant_module_enabled,
 };
 use rustok_core::SecurityContext;
 use rustok_forum::{
-    ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError,
-    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
-    ForumSearchResultEligibilityService, SharedForumAudienceFactsPort,
-    category_read_audience_port_context,
+    ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError, ForumSearchResultCandidate,
+    ForumSearchResultCandidateKind, ForumSearchResultEligibilityService,
+    SharedForumAudienceFactsPort, category_read_audience_port_context,
 };
 use rustok_search::{
     FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchResultEligibilityPort,
@@ -92,16 +90,11 @@ impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilit
             .collect::<Vec<_>>();
         let service = self.service();
         let allowed = if let Some(auth) = request.auth.as_ref().filter(|auth| {
-            has_any_effective_permission(
-                &auth.permissions,
-                &[Permission::FORUM_CATEGORIES_LIST],
-            )
+            has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_LIST])
         }) {
             let transport = match request.transport {
                 StorefrontSearchTransport::Graphql => ForumCategoryReadTransport::Graphql,
-                StorefrontSearchTransport::NativeServer => {
-                    ForumCategoryReadTransport::NativeServer
-                }
+                StorefrontSearchTransport::NativeServer => ForumCategoryReadTransport::NativeServer,
             };
             let context = category_read_audience_port_context(
                 transport,
@@ -112,10 +105,8 @@ impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilit
                 locale,
             )
             .map_err(map_forum_error)?;
-            let security = SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            );
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
             service
                 .filter_authenticated_storefront_visible(
                     request.tenant_id,
@@ -207,14 +198,12 @@ fn map_forum_error(error: ForumError) -> PortError {
         ForumError::Validation(message) => PortError::validation(stable_code, message),
         ForumError::CategoryNotFound(_)
         | ForumError::TopicNotFound(_)
-        | ForumError::ReplyNotFound(_) => PortError::not_found(
-            stable_code,
-            "Forum Search result is unavailable",
-        ),
-        ForumError::Forbidden(_) => PortError::forbidden(
-            stable_code,
-            "Forum Search result is unavailable",
-        ),
+        | ForumError::ReplyNotFound(_) => {
+            PortError::not_found(stable_code, "Forum Search result is unavailable")
+        }
+        ForumError::Forbidden(_) => {
+            PortError::forbidden(stable_code, "Forum Search result is unavailable")
+        }
         ForumError::CapabilityUnavailable { .. }
         | ForumError::CapabilityFailure { .. }
         | ForumError::Database(_)

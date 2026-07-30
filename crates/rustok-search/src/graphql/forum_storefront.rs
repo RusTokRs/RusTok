@@ -198,9 +198,7 @@ fn map_execution_error(error: ForumStorefrontSearchExecutionError) -> FieldError
                     error = ?port_error,
                     "Forum storefront Search owner scope failed"
                 );
-                <FieldError as GraphQLError>::internal_error(
-                    FORUM_STOREFRONT_SEARCH_UNAVAILABLE,
-                )
+                <FieldError as GraphQLError>::internal_error(FORUM_STOREFRONT_SEARCH_UNAVAILABLE)
             }
         },
         ForumStorefrontSearchExecutionError::Search(

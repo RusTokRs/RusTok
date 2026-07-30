@@ -102,9 +102,9 @@ mod topic_audience {
     include!("topic_audience.rs");
     include!("topic_audience_owner.rs");
 }
-mod topic_audience_visibility;
 mod topic_audience_list;
 mod topic_audience_read;
+mod topic_audience_visibility;
 mod topic_create_audience_authorization;
 mod topic_facade;
 mod topic_owner {
@@ -124,9 +124,7 @@ pub use category_audience::{
     ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService,
     SetForumCategoryAudiencePolicyInput,
 };
-pub use category_audience_read::{
-    ForumCategoryAudiencePage, ForumCategoryAudienceReadService,
-};
+pub use category_audience_read::{ForumCategoryAudiencePage, ForumCategoryAudienceReadService};
 pub use category_audience_visibility::{
     ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
 };
@@ -210,11 +208,11 @@ pub use topic_audience::{
     ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
     SetForumTopicAudiencePolicyInput,
 };
+pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
+pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
-pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
-pub use topic_audience_read::ForumTopicAudienceReadService;
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };

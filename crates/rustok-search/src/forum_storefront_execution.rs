@@ -11,12 +11,11 @@ use crate::{
     FORUM_SEARCH_SOURCE_MODULE, MAX_FORUM_SEARCH_RESULT_CANDIDATES, PgSearchEngine,
     SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService, SearchEngine,
     SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
-    SearchResult, SearchResultItem, SearchSettingsService,
-    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
-    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
-    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityRequest,
-    StorefrontSearchTransport, resolve_storefront_search_category_ids,
-    resolve_storefront_search_result_candidates,
+    SearchResult, SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
+    resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
@@ -318,8 +317,9 @@ async fn execute_result_eligible_search(
         .into_iter()
         .filter(|item| match item.entity_type.as_str() {
             "forum_category" => true,
-            "forum_topic" | "forum_reply" => result_candidate(item)
-                .is_some_and(|candidate| allowed.contains(&candidate)),
+            "forum_topic" | "forum_reply" => {
+                result_candidate(item).is_some_and(|candidate| allowed.contains(&candidate))
+            }
             _ => false,
         })
         .collect::<Vec<_>>();
@@ -375,7 +375,9 @@ fn build_forum_result_facets(items: &[SearchResultItem]) -> Vec<SearchFacetGroup
     let mut statuses = BTreeMap::<String, u64>::new();
     for item in items {
         *entity_types.entry(item.entity_type.clone()).or_default() += 1;
-        *source_modules.entry(item.source_module.clone()).or_default() += 1;
+        *source_modules
+            .entry(item.source_module.clone())
+            .or_default() += 1;
         if let Some(status) = forum_visible_status(&item.entity_type) {
             *statuses.entry(status.to_string()).or_default() += 1;
         }
@@ -494,9 +496,7 @@ fn normalize_locale(
         .transpose()
 }
 
-fn normalize_required_locale(
-    value: &str,
-) -> Result<String, ForumStorefrontSearchExecutionError> {
+fn normalize_required_locale(value: &str) -> Result<String, ForumStorefrontSearchExecutionError> {
     let value = value.trim();
     if value.is_empty()
         || value.len() > MAX_LOCALE_LEN
@@ -652,9 +652,7 @@ fn normalize_attribute_bound(
     Ok(value)
 }
 
-fn validation<T>(
-    message: impl Into<String>,
-) -> Result<T, ForumStorefrontSearchExecutionError> {
+fn validation<T>(message: impl Into<String>) -> Result<T, ForumStorefrontSearchExecutionError> {
     Err(ForumStorefrontSearchExecutionError::Validation(
         message.into(),
     ))

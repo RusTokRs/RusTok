@@ -10,11 +10,11 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
-pub mod forum_storefront_execution;
-mod forum_storefront_execution_public;
 mod forum_inbox;
 mod forum_projector;
 mod forum_reconciliation;
+pub mod forum_storefront_execution;
+mod forum_storefront_execution_public;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod ingestion;
@@ -24,10 +24,10 @@ pub mod pg_engine;
 pub mod ports;
 pub mod presets;
 pub mod projection_source;
+pub mod projector;
 #[allow(dead_code)]
 #[path = "projector_legacy.rs"]
 mod projector_legacy;
-pub mod projector;
 pub mod ranking;
 pub mod search_settings;
 pub mod storefront_category_scope;
@@ -53,8 +53,8 @@ pub use engine::{
 };
 pub use engine::{SearchResult, SearchResultItem};
 pub use forum_reconciliation::{
-    DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
-    ForumProjectionReconciler, ForumProjectionSweepReport,
+    DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT, ForumProjectionReconciler,
+    ForumProjectionSweepReport,
 };
 pub use forum_storefront_execution::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,

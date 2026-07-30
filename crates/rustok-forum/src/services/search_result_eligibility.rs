@@ -108,7 +108,9 @@ impl ForumSearchResultEligibilityService {
                 ForumSearchResultCandidateKind::Topic => None,
             })
             .collect::<HashSet<_>>();
-        let reply_topics = self.load_approved_reply_topics(tenant_id, &reply_ids).await?;
+        let reply_topics = self
+            .load_approved_reply_topics(tenant_id, &reply_ids)
+            .await?;
 
         let mut topic_ids = candidates
             .iter()

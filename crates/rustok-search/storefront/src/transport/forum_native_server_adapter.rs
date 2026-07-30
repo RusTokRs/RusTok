@@ -30,9 +30,8 @@ async fn forum_storefront_search_native(
         use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_search::{
             ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest,
-            SharedStorefrontSearchCategoryScopePort,
-            SharedStorefrontSearchResultEligibilityPort, StorefrontSearchTransport,
-            execute_forum_storefront_search,
+            SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+            StorefrontSearchTransport, execute_forum_storefront_search,
         };
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -47,10 +46,9 @@ async fn forum_storefront_search_native(
             .await
             .map_err(ServerFnError::new)?
             .0;
-        let category_scope_port = runtime
-            .shared_get::<SharedStorefrontSearchCategoryScopePort>();
-        let result_eligibility_port = runtime
-            .shared_get::<SharedStorefrontSearchResultEligibilityPort>();
+        let category_scope_port = runtime.shared_get::<SharedStorefrontSearchCategoryScopePort>();
+        let result_eligibility_port =
+            runtime.shared_get::<SharedStorefrontSearchResultEligibilityPort>();
         let request = ForumStorefrontSearchRequest {
             tenant_id: tenant.id,
             query,
