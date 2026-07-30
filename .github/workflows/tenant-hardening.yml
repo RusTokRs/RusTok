@@ -94,6 +94,7 @@ jobs:
           cargo check -p rustok-auth-cli --tests
       - name: Focused unit and lifecycle guards
         run: |
+          cargo test -p rustok-tenant-admin --features ssr tenant_admin_scope_requires_matching_tenant -- --nocapture
           cargo test -p rustok-auth-cli oauth_create_app -- --nocapture
           cargo test -p rustok-tenant tenant_locale_policy --test integration -- --nocapture
           cargo test -p rustok-tenant --test integration tenant_mutations_always_publish_outbox_events -- --nocapture
