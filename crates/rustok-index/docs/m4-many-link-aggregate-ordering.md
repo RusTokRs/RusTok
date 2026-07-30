@@ -24,14 +24,19 @@ The machine-readable contract is
 Aggregate ordering is accepted only when all of the following are true:
 
 1. the field path crosses at least one `LinkCardinality::Many` edge;
-2. the terminal field has scalar cardinality, is sortable, and has type `integer`, `decimal`,
-   `string`, or `timestamp`;
+2. the terminal field has scalar cardinality, is sortable, and has type `integer`, `string`,
+   or `timestamp`;
 3. pagination is bounded offset pagination under the existing limit/depth caps.
 
 Aggregate ordering on a root or one-link-only path is rejected. Plain `asc` / `desc` over a
-many path is still rejected as `AmbiguousManyLinkSort`. Boolean, UUID, list-valued, and
-unsortable fields are rejected. UUID remains excluded because PostgreSQL 16 does not provide
-the same built-in `MIN`/`MAX` aggregate contract used by the supported types.
+many path is still rejected as `AmbiguousManyLinkSort`. Boolean, Decimal and UUID, list-valued,
+and unsortable fields are rejected.
+
+Decimal remains fail-closed because the hidden order column must round-trip through the exact
+tagged `IndexValue` JSON representation. The current PostgreSQL numeric JSON emission is not
+an admitted exact tagged-wire contract for `rust_decimal`; that contract needs a separate
+source and equivalence slice before Decimal ordering can be enabled. UUID also remains excluded
+from the bounded PostgreSQL `MIN` / `MAX` contract.
 
 Aggregate cursor continuation remains open. This slice deliberately does not reinterpret the
 existing cursor envelope or silently encode a derived many-link value into a legacy cursor.
@@ -82,6 +87,7 @@ aggregate cursor/reference equivalence is still owner-execution work.
 This slice does not:
 
 - enable aggregate cursor pagination;
+- enable Decimal or UUID aggregate ordering;
 - change ordinary root or one-link ordering;
 - choose the first related row, link ordinal, or storage order as an implicit aggregate;
 - add `array_agg` or caller-defined SQL;
@@ -103,6 +109,7 @@ node scripts/verify/verify-index-query-contract.mjs
 cargo xtask module validate index
 ```
 
-A later slice should extend the independent reference fixture and retained PostgreSQL/reference
-capture with aggregate offset scenarios before aggregate ordering is treated as execution
-proven. Cursor support should be designed and admitted separately.
+A later slice should define the exact Decimal tagged-wire contract and extend the independent
+reference fixture plus retained PostgreSQL/reference capture with aggregate offset scenarios
+before aggregate ordering is treated as execution proven. Cursor support should be designed and
+admitted separately.
