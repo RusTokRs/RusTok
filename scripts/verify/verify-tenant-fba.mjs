@@ -26,6 +26,8 @@ const serverTenantMiddleware = read('apps/server/src/middleware/tenant.rs');
 const serverInstallerCli = read('apps/server/src/installer_execution.rs');
 const installerPersistence = read('crates/rustok-installer-persistence/src/seaorm_ports.rs');
 const authCli = read('crates/rustok-auth/cli/src/lib.rs');
+const tenantAdminCargo = read('crates/rustok-tenant/admin/Cargo.toml');
+const tenantAdminNative = read('crates/rustok-tenant/admin/src/transport/native_server_adapter.rs');
 const storefrontEnabledModules = read('apps/storefront/src/shared/context/enabled_modules.rs');
 const storefrontEnabledModulesNative = read('apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs');
 
@@ -142,6 +144,28 @@ for (const forbidden of [
   if (authCli.includes(forbidden)) fail(`OAuth credential creation must not infer a tenant through ${forbidden}`);
 }
 
+if (!tenantAdminCargo.includes('"dep:rustok-modules"') || !tenantAdminCargo.includes('rustok-modules = { workspace = true, optional = true }')) {
+  fail('tenant admin SSR boundary must depend on rustok-modules control-plane owner');
+}
+for (const marker of [
+  'rustok_modules::ModuleControlPlane::new(db)',
+  '.composition()',
+  '.active_snapshot()',
+  '.effective_policy(&registry, manifest.settings.default_enabled)',
+  '.resolve_enabled(tenant.id)',
+  'let enabled = effective_modules.contains(module.slug());',
+  '"manifest-default"',
+  '"policy-dependency"',
+]) {
+  if (!tenantAdminNative.includes(marker)) fail(`tenant admin effective module-policy guard missing ${marker}`);
+}
+for (const forbidden of [
+  'enabled: if is_core',
+  'explicit.unwrap_or(false)',
+]) {
+  if (tenantAdminNative.includes(forbidden)) fail(`tenant admin must not treat raw tenant_modules as effective policy through ${forbidden}`);
+}
+
 for (const marker of [
   'pub(crate) async fn list_enabled_modules()',
   'leptos_axum::extract::<rustok_api::TenantContext>()',
@@ -206,4 +230,4 @@ for (const marker of [
   if (!localeConcurrencyPostgres.includes(marker)) fail(`PostgreSQL tenant locale-policy race evidence missing ${marker}`);
 }
 
-console.log('[verify-tenant-fba] Tenant FBA metadata, concurrent ensure replay, removed lifecycle bypass, trusted storefront tenant scope, explicit OAuth tenant selection, cross-backend locale migration guards, PostgreSQL locale-policy race evidence, mandatory lifecycle outbox and static evidence are consistent');
+console.log('[verify-tenant-fba] Tenant FBA metadata, concurrent ensure replay, removed lifecycle bypass, effective tenant-admin module policy, trusted storefront tenant scope, explicit OAuth tenant selection, cross-backend locale migration guards, PostgreSQL locale-policy race evidence, mandatory lifecycle outbox and static evidence are consistent');
