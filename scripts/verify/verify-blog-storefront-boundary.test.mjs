@@ -32,7 +32,16 @@ function fixture(options = {}) {
   const pagination = !options.missingPagination;
   const canonicalRichtext = !options.legacyRichtext;
   writeFixtureFile(root, "crates/rustok-blog/storefront/src/lib.rs", `${options.legacyApi ? "mod api;" : ""}\n${pagination ? "mod comments_pagination;" : ""}\nmod transport;\npub use ui::BlogView;\n`);
-  writeFixtureFile(root, "crates/rustok-blog/storefront/src/core.rs", options.leptosCore ? "use leptos::prelude::*;" : "pub struct BlogStorefrontFetchRequest;");
+  writeFixtureFile(
+    root,
+    "crates/rustok-blog/storefront/src/core.rs",
+    options.leptosCore
+      ? "use leptos::prelude::*;"
+      : `pub struct BlogStorefrontFetchRequest;
+pub fn body_or_fallback() {}
+pub fn summarized_body_or_fallback() {}
+pub fn summarize_content() {}`,
+  );
   writeFixtureFile(
     root,
     "crates/rustok-blog/storefront/src/comments_pagination.rs",
@@ -74,7 +83,7 @@ ${canonicalRichtext ? "let content = post.content; post.content_plain_text; inne
     root,
     "crates/rustok-blog/storefront/src/transport/mod.rs",
     pagination
-      ? "pub mod graphql_adapter; pub mod native_server_adapter; comments_page: u64; native_server_adapter::fetch_blog(native_request, comments_page); graphql_adapter::fetch_blog(request, comments_page);"
+      ? `pub mod graphql_adapter; pub mod native_server_adapter; comments_page: u64; native_server_adapter::fetch_blog(native_request, comments_page); graphql_adapter::fetch_blog(request, comments_page);${options.legacySummarizerConsumer ? " summarize_content(content, format, template);" : ""}`
       : "pub mod graphql_adapter; pub mod native_server_adapter; native_server_adapter::fetch_blog(native_request); graphql_adapter::fetch_blog(request);",
   );
   writeFixtureFile(
@@ -123,13 +132,18 @@ ${pagination ? "bounded_comments_request_page(comments_page); comments_per_page:
         native_owner_view: true,
         server_html_render: true,
         plain_text_fallback: true,
+        legacy_summarizer_quarantined: true,
+      },
+      legacy_summarizer_quarantine: {
+        allowed_files: ["crates/rustok-blog/storefront/src/core.rs"],
+        active_consumers: [],
       },
       validation: { tests_run: false, verifier_run: false, cargo_run: false },
     }),
   );
   writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", `verify-blog-storefront-boundary.mjs public comments ${pagination ? "storefront comment pagination" : ""} server-rendered \`RichTextView\` HTML`);
   writeFixtureFile(root, "docs/modules/registry.md", "verify-blog-storefront-boundary.mjs");
-  writeFixtureFile(root, "scripts/verify/verify-blog-storefront-boundary.test.mjs", "passes canonical fixture\nrejects legacy api module\nrejects missing public comments parity\nrejects missing comment pagination parity\nrejects legacy richtext transport\n");
+  writeFixtureFile(root, "scripts/verify/verify-blog-storefront-boundary.test.mjs", "passes canonical fixture\nrejects legacy api module\nrejects missing public comments parity\nrejects missing comment pagination parity\nrejects legacy richtext transport\nrejects legacy richtext summarizer consumer\n");
   writeFixtureFile(root, "package.json", packageSource(options));
   return root;
 }
@@ -178,4 +192,10 @@ test("blog storefront boundary verifier rejects legacy richtext transport", () =
   const result = run(fixture({ legacyRichtext: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /legacy body|owner RichTextView|canonical richtext|owner-generated HTML/);
+});
+
+test("blog storefront boundary verifier rejects legacy richtext summarizer consumer", () => {
+  const result = run(fixture({ legacySummarizerConsumer: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /quarantined legacy summarizer|active storefront code/);
 });
