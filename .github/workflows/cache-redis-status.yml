@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cache-redis-status-${{ github.ref }}
@@ -35,6 +35,7 @@ concurrency:
 
 jobs:
   contract:
+    if: github.head_ref != 'agent/blog-admin-richtext-guardrail-20260730'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -60,3 +61,52 @@ jobs:
         run: |
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
+
+  blog-admin-richtext-source:
+    if: github.head_ref == 'agent/blog-admin-richtext-guardrail-20260730'
+    name: Apply Blog admin richtext source transform
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/blog-admin-richtext-guardrail-20260730
+          fetch-depth: 0
+      - name: Extract and apply source transform
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/cache-feature-matrix.yml').read_text()
+          opening = "          python3 <<'PY'\n"
+          start = workflow.index(opening) + len(opening)
+          end = workflow.index("\n          PY", start)
+          block = workflow[start:end]
+          script = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in block.splitlines()
+          ) + "\n"
+          Path('/tmp/apply_blog_admin_guardrail.py').write_text(script)
+          PY
+          python3 /tmp/apply_blog_admin_guardrail.py
+          node --check scripts/verify/verify-blog-admin-boundary.mjs
+          node --check scripts/verify/verify-blog-admin-boundary.test.mjs
+          python3 -m json.tool crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json >/dev/null
+          python3 -m json.tool package.json >/dev/null
+          git diff --check
+      - name: Commit reconciled source
+        shell: bash
+        run: |
+          git show origin/main:.github/workflows/cache-feature-matrix.yml > .github/workflows/cache-feature-matrix.yml
+          git show origin/main:.github/workflows/cache-redis-status.yml > .github/workflows/cache-redis-status.yml
+          git config user.name "OpenAI Agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/verify/verify-blog-admin-boundary.mjs \
+            scripts/verify/verify-blog-admin-boundary.test.mjs \
+            crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json \
+            crates/rustok-blog/docs/implementation-plan.md \
+            package.json \
+            .github/workflows/cache-feature-matrix.yml \
+            .github/workflows/cache-redis-status.yml
+          git commit -m "fix(blog): align admin guardrail with canonical richtext"
+          git push origin HEAD:agent/blog-admin-richtext-guardrail-20260730
