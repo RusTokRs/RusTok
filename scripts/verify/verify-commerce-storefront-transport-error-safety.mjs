@@ -35,8 +35,18 @@ const countText = (source, value) => source.split(value).length - 1;
 requireText(cargo, 'tracing.workspace = true', 'storefront diagnostics dependency');
 
 for (const [value, label] of [
+  ['fn map_storefront_native_request_context_error<E: std::fmt::Debug>(', 'native request-context mapper'],
+  ['fn map_storefront_native_tenant_context_error<E: std::fmt::Debug>(', 'native tenant-context mapper'],
   ['fn map_storefront_native_validation_error(', 'native validation mapper'],
   ['fn map_storefront_native_owner_error<E: std::fmt::Debug>(', 'native owner mapper'],
+  ['owner_operation = "extract_request_context"', 'native request-context operation'],
+  ['owner_operation = "extract_tenant_context"', 'native tenant-context operation'],
+  ['code = "commerce.storefront_request_context_unavailable"', 'native request-context stable code'],
+  ['code = "commerce.storefront_tenant_context_unavailable"', 'native tenant-context stable code'],
+  ['"Storefront request context is temporarily unavailable"', 'native request-context public envelope'],
+  ['"Storefront tenant context is temporarily unavailable"', 'native tenant-context public envelope'],
+  ['.map_err(map_storefront_native_request_context_error)?', 'native request-context mapping'],
+  ['map_storefront_native_tenant_context_error(&request_context, error)', 'native tenant-context mapping'],
   ['correlation_id = %request_context.correlation_id', 'native correlation log'],
   ['tenant_id = %tenant_id', 'native tenant log'],
   ['channel_id = ?request_context.channel_id', 'native channel id log'],
@@ -55,6 +65,7 @@ for (const [value, label] of [
 ]) requireText(native, value, label);
 
 for (const value of [
+  '.map_err(ServerFnError::new)',
   '.map_err(|err| ServerFnError::new(err.to_string()))',
   'ServerFnError::new(error.to_string())',
   'ServerFnError::new(err.to_string())',
@@ -97,6 +108,9 @@ if (evidence.status !== 'storefront_transport_error_safety_source_unvalidated') 
 for (const [key, expected] of Object.entries({
   native_static_public_envelopes: true,
   native_context_logging: true,
+  native_request_context_static_public_envelope: true,
+  native_tenant_context_static_public_envelope: true,
+  native_context_extraction_raw_text_public: false,
   shared_static_public_envelopes: true,
   shared_raw_cause_logging: false,
   cart_error_variant_preserved: true,
@@ -104,6 +118,14 @@ for (const [key, expected] of Object.entries({
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`evidence source_contract.${key} must be ${expected}`);
+  }
+}
+for (const [key, expected] of Object.entries({
+  request_context_unavailable: 'Storefront request context is temporarily unavailable',
+  tenant_context_unavailable: 'Storefront tenant context is temporarily unavailable',
+})) {
+  if (evidence.stable_public_messages?.[key] !== expected) {
+    failures.push(`evidence stable_public_messages.${key} mismatch`);
   }
 }
 for (const key of [
@@ -128,5 +150,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ commerce storefront cart/payment transport failures retain SSR diagnostics, existing error variants, and static public envelopes without client-side raw causes; runtime evidence remains open',
+  '✔ commerce storefront request/tenant context plus cart/payment transport failures retain SSR diagnostics, existing error variants, and static public envelopes without client-side raw causes; runtime evidence remains open',
 );
