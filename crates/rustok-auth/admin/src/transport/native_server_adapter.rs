@@ -51,6 +51,25 @@ fn server_error(message: impl Into<String>) -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
+fn require_auth_admin_tenant_scope(
+    auth_tenant_id: Uuid,
+    resolved_tenant_id: Uuid,
+) -> Result<(), ServerFnError> {
+    if auth_tenant_id == resolved_tenant_id {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        auth_tenant_id = %auth_tenant_id,
+        resolved_tenant_id = %resolved_tenant_id,
+        code = "auth.admin_tenant_scope_mismatch",
+        boundary = "auth_admin_native_transport",
+        "auth admin permissions cannot cross the resolved tenant boundary"
+    );
+    Err(ServerFnError::new("Auth admin access is denied"))
+}
+
+#[cfg(feature = "ssr")]
 struct AuthAdminRuntime {
     db: sea_orm::DatabaseConnection,
     host: HostRuntimeContext,
@@ -114,6 +133,7 @@ pub async fn list_users_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(|err| server_error(err.to_string()))?;
+        require_auth_admin_tenant_scope(auth.tenant_id, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::USERS_LIST) {
             return Err(ServerFnError::new("users:list required"));
@@ -334,6 +354,7 @@ pub async fn user_details_native(id: String) -> Result<GraphqlUserResponse, Serv
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(|err| server_error(err.to_string()))?;
+        require_auth_admin_tenant_scope(auth.tenant_id, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::USERS_READ) {
             return Err(ServerFnError::new("users:read required"));
@@ -959,5 +980,18 @@ pub async fn revoke_oauth_app_native(id: uuid::Uuid) -> Result<uuid::Uuid, Serve
         Err(ServerFnError::new(
             "admin/revoke-oauth-app requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::require_auth_admin_tenant_scope;
+    use uuid::Uuid;
+
+    #[test]
+    fn auth_admin_scope_requires_matching_tenant() {
+        let tenant_id = Uuid::new_v4();
+        assert!(require_auth_admin_tenant_scope(tenant_id, tenant_id).is_ok());
+        assert!(require_auth_admin_tenant_scope(tenant_id, Uuid::new_v4()).is_err());
     }
 }
