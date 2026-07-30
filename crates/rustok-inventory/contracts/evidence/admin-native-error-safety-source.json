@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "status": "inventory_admin_native_error_safety_source_unvalidated",
+  "scope": "Mounted Inventory admin native bootstrap, product read, quantity, reservation, and availability error envelopes",
+  "source_contract": {
+    "mounted_endpoints_preserved": true,
+    "auth_context_static_public_envelope": true,
+    "tenant_context_static_public_envelope": true,
+    "request_context_static_public_envelope": true,
+    "runtime_dependency_static_public_envelope": true,
+    "read_owner_raw_error_public": false,
+    "write_owner_raw_error_public": false,
+    "original_causes_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "request_channel_locale_logging_when_available": true,
+    "dto_changed": false,
+    "permission_policy_changed": false,
+    "tenant_policy_changed": false
+  },
+  "public_messages": {
+    "auth_context": "Inventory authentication context is temporarily unavailable",
+    "tenant_context": "Inventory tenant context is temporarily unavailable",
+    "request_context": "Inventory request context is temporarily unavailable",
+    "runtime": "Inventory runtime is temporarily unavailable",
+    "products": "Inventory products are temporarily unavailable",
+    "product": "Inventory product is temporarily unavailable",
+    "quantity": "Inventory quantity could not be updated",
+    "reservation": "Inventory reservation could not be completed",
+    "availability": "Inventory availability is temporarily unavailable",
+    "reservation_release": "Inventory reservation could not be released"
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false
+  }
+}
