@@ -11,6 +11,14 @@
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
+[![Architecture: FBA/FFA](https://img.shields.io/badge/architecture-FBA%20%7C%20FFA-purple.svg)](docs/architecture/overview.md)
+[![Database: PostgreSQL / Turso](https://img.shields.io/badge/database-PostgreSQL%20%7C%20Turso-4169E1.svg)](docs/index.md)
+[![AI-Native: MCP](https://img.shields.io/badge/AI--Native-MCP%20Server-00A86B.svg)](crates/rustok-mcp/README.md)
+[![Scripting: Alloy](https://img.shields.io/badge/scripting-Alloy%20Sandbox-E02424.svg)](crates/alloy/README.md)
+
+[![Commit Activity](https://img.shields.io/github/commit-activity/m/RustokCMS/RusToK)](https://github.com/RustokCMS/RusToK/commits/main)
+[![Last Commit](https://img.shields.io/github/last-commit/RustokCMS/RusToK)](https://github.com/RustokCMS/RusToK/commits/main)
+[![Repo Size](https://img.shields.io/github/repo-size/RustokCMS/RusToK)](https://github.com/RustokCMS/RusToK)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 **[English version](README.md)** | **[Карта документации](docs/index.md)**
