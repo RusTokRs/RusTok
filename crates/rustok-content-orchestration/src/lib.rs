@@ -439,6 +439,18 @@ async fn promote_topic_to_post(
     .await?;
 
     for translation in &translations {
+        if translation.body_format != "richtext"
+            || rustok_content::richtext::parse_json(
+                &translation.body,
+                rustok_content::richtext::RichTextProfile::Article,
+            )
+            .is_err()
+        {
+            return Err(ContentError::validation(
+                "Forum topic content must be canonical article-compatible richtext before promotion to Blog",
+            ));
+        }
+
         blog_post_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             post_id: Set(post_id),
@@ -448,7 +460,6 @@ async fn promote_topic_to_post(
             seo_title: Set(None),
             seo_description: Set(None),
             body: Set(translation.body.clone()),
-            body_format: Set(translation.body_format.clone()),
             created_at: Set(translation.created_at),
             updated_at: Set(translation.updated_at),
         }
@@ -560,7 +571,7 @@ async fn demote_post_to_topic(
             title: Set(translation.title.clone()),
             slug: Set(Some(post.slug.clone())),
             body: Set(translation.body.clone()),
-            body_format: Set(translation.body_format.clone()),
+            body_format: Set("richtext".to_string()),
             created_at: Set(translation.created_at),
             updated_at: Set(translation.updated_at),
         }

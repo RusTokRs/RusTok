@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "blog",
   "surface": "article_richtext_cutover",
-  "status": "in_progress_source_verified_no_compile",
+  "status": "implemented_source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "atomicity": "required",
   "owner_contract": {
@@ -21,38 +21,49 @@
         "pub fn article_document_from_plain_text(text: &str)",
         "pub fn normalize_article(document: RichTextDocument)",
         "pub fn project_article(document: RichTextDocument)",
-        "pub fn project_stored_article(body: &str, format: &str)"
+        "pub fn project_stored_article(body: &str)"
+      ],
+      "forbidden_markers": [
+        "project_stored_article(body: &str, format: &str)"
+      ]
+    },
+    {
+      "name": "storage_schema",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/src/entities/blog_post_translation.rs",
+      "required_markers": [
+        "pub body: String"
+      ],
+      "forbidden_markers": [
+        "pub body_format: String"
+      ]
+    },
+    {
+      "name": "storage_migration",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/src/migrations/m20260730_000006_cutover_blog_article_richtext.rs",
+      "required_markers": [
+        "parse_json(&body, RichTextProfile::Article)",
+        ".drop_column(BlogPostTranslations::BodyFormat)",
+        "convert stored Blog article bodies before retrying the migration"
       ],
       "forbidden_markers": []
     },
     {
-      "name": "storage_schema",
-      "status": "legacy_blocker",
-      "path": "crates/rustok-blog/src/entities/blog_post_translation.rs",
-      "required_markers": [
-        "pub body: String",
-        "pub body_format: String"
-      ],
-      "forbidden_markers": [
-        "pub content: RichTextDocument",
-        "pub content_plain_text: String"
-      ]
-    },
-    {
       "name": "graphql_transport",
-      "status": "contained_compatibility",
+      "status": "implemented_source_verified_no_compile",
       "path": "crates/rustok-blog/src/graphql/types.rs",
       "required_markers": [
-        "pub content: Option<RichTextView>",
-        "pub content_plain_text: Option<String>",
-        "pub content: Option<RichTextDocument>",
-        "pub body: Option<String>",
-        "pub content_json: Option<Value>"
+        "pub content: RichTextView",
+        "pub content_plain_text: String",
+        "pub content: RichTextDocument",
+        "pub content: Option<RichTextDocument>"
       ],
       "forbidden_markers": [
-        "rt_json",
-        "markdown_body",
-        "raw_content_json"
+        "pub body:",
+        "pub body_format:",
+        "pub content_json:",
+        "CONTENT_FORMAT_MARKDOWN"
       ]
     },
     {
@@ -99,8 +110,8 @@
       "status": "implemented_source_verified_no_compile",
       "path": "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
       "required_markers": [
-        "content: post.content",
-        "content_plain_text: post.content_plain_text"
+        "content: Some(post.content)",
+        "content_plain_text: Some(post.content_plain_text)"
       ],
       "forbidden_markers": [
         "body: Some(post.body)",
@@ -121,19 +132,31 @@
       ]
     },
     {
+      "name": "leptos_storefront_legacy_removal",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-blog/storefront/src/core.rs",
+      "required_markers": [
+        "pub fn status_badge_css"
+      ],
+      "forbidden_markers": [
+        "body_or_fallback",
+        "summarized_body_or_fallback",
+        "summarize_content"
+      ]
+    },
+    {
       "name": "search_projection",
-      "status": "contained_compatibility",
+      "status": "implemented_source_verified_no_compile",
       "path": "crates/rustok-search/src/blog_projector.rs",
       "required_markers": [
         "use rustok_content::{RichTextProfile, plain_text}",
-        "WHEN bt.body_format = 'richtext' THEN ''",
-        "refresh_canonical_richtext_bodies_in",
+        "refresh_article_bodies_in",
         "plain_text(&document, RichTextProfile::Article)",
         "compose_search_body"
       ],
       "forbidden_markers": [
-        "jsonb_path_query",
-        "jsonb_path_query_array"
+        "bt.body_format",
+        "jsonb_path_query"
       ]
     },
     {
@@ -141,28 +164,41 @@
       "status": "implemented_source_verified_no_compile",
       "path": "crates/rustok-blog/src/seo_targets.rs",
       "required_markers": [
-        "post.content_plain_text.as_deref().and_then(summarize_text)"
+        "summarize_text(post.content_plain_text.as_str())"
       ],
       "forbidden_markers": [
+        "post.content_plain_text.as_deref()",
         "summarize_text(post.body.as_str())"
       ]
     },
     {
       "name": "ai_blog_draft_writer",
-      "status": "legacy_blocker",
+      "status": "implemented_source_verified_no_compile",
       "path": "crates/rustok-ai/src/direct.rs",
       "required_markers": [
-        "body_format: Some(CONTENT_FORMAT_MARKDOWN.to_string())",
-        "content: None",
-        "body_format: CONTENT_FORMAT_MARKDOWN.to_string()"
+        "rustok_blog::richtext::article_document_from_plain_text(&body)",
+        "content: rustok_blog::richtext::article_document_from_plain_text(body)",
+        "post.content_plain_text.clone()"
+      ],
+      "forbidden_markers": [
+        "CONTENT_FORMAT_MARKDOWN",
+        "body_format:",
+        "content_json:",
+        "content: None"
+      ]
+    },
+    {
+      "name": "content_orchestration_guard",
+      "status": "implemented_source_verified_no_compile",
+      "path": "crates/rustok-content-orchestration/src/lib.rs",
+      "required_markers": [
+        "Forum topic content must be canonical article-compatible richtext before promotion to Blog",
+        "rustok_content::richtext::RichTextProfile::Article"
       ],
       "forbidden_markers": []
     }
   ],
-  "blocking_surfaces": [
-    "storage_schema",
-    "ai_blog_draft_writer"
-  ],
+  "blocking_surfaces": [],
   "completion_conditions": [
     "storage_schema_uses_canonical_document_and_server_plain_text",
     "graphql_legacy_transport_fields_removed_atomically",

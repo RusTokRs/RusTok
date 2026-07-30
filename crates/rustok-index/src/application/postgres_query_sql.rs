@@ -1,10 +1,11 @@
 use crate::domain::{
-    FieldPath, FilterExpr, IndexValue, IndexValueType, OrderDirection, Pagination,
+    FieldPath, FilterExpr, IndexValue, IndexValueType, ManyOrderAggregate, OrderDirection,
+    Pagination,
 };
 
 use super::{
     cursor::IndexCursor,
-    planner::{ExecutableQueryPlan, PlannedField, PlannedManyProjection},
+    planner::{ExecutableQueryPlan, PlannedField, PlannedManyProjection, PlannedOrder},
     postgres_compiler::{
         CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
         CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError, quote_identifier,
@@ -66,7 +67,7 @@ pub(super) fn compile_postgres_plan(
     }
 
     for (index, order) in plan.order_by.iter().enumerate() {
-        let field_sql = field_sql(&order.field, &mut bindings);
+        let field_sql = order_sql(plan, order, &mut bindings)?;
         let output_alias = format!("__order_{index}");
         select.push(format!(
             "{} AS {}",
@@ -87,7 +88,7 @@ pub(super) fn compile_postgres_plan(
         predicates.push(compile_keyset(plan, cursor, &mut bindings)?);
     }
 
-    let order = compile_order(plan, &mut bindings);
+    let order = compile_order(plan, &mut bindings)?;
     let pagination = compile_pagination(&plan.pagination, &mut bindings)?;
     let sql = format!(
         "SELECT {} {} WHERE {} {order} {pagination}",
@@ -498,6 +499,104 @@ fn compile_many_exists(
     Ok(expression)
 }
 
+fn order_sql(
+    plan: &ExecutableQueryPlan,
+    order: &PlannedOrder,
+    bindings: &mut Bindings,
+) -> Result<FieldSql, PostgresQueryCompileError> {
+    match order.direction.aggregate() {
+        Some(aggregate) => compile_many_order_aggregate(plan, &order.field, aggregate, bindings),
+        None => Ok(field_sql(&order.field, bindings)),
+    }
+}
+
+fn compile_many_order_aggregate(
+    plan: &ExecutableQueryPlan,
+    field: &PlannedField,
+    aggregate: ManyOrderAggregate,
+    bindings: &mut Bindings,
+) -> Result<FieldSql, PostgresQueryCompileError> {
+    let mut path = Vec::new();
+    let mut source_alias = plan.root_alias.clone();
+    let mut from_sql = String::new();
+    let mut predicates = Vec::new();
+    let mut terminal_alias = None;
+
+    for (index, link_name) in field.path.links().iter().enumerate() {
+        path.push(link_name.clone());
+        let join = plan
+            .join_for_path(&path)
+            .ok_or_else(|| PostgresQueryCompileError::MissingJoinPlan(path.clone()))?;
+        let link_alias_name = format!("mo_l{}", index + 1);
+        let target_alias_name = format!("mo_t{}", index + 1);
+        let source_alias_q = quote_identifier(&source_alias);
+        let link_alias = quote_identifier(&link_alias_name);
+        let target_alias = quote_identifier(&target_alias_name);
+        let link_name = bindings.push(PostgresBindValue::Text(join.link.as_str().to_owned()));
+        let target_module = bindings.push(PostgresBindValue::Text(
+            join.target_schema.module.as_str().to_owned(),
+        ));
+        let target_entity = bindings.push(PostgresBindValue::Text(
+            join.target_schema.entity.as_str().to_owned(),
+        ));
+        let target_version = bindings.push(PostgresBindValue::Integer(i64::from(
+            join.target_schema.version.get(),
+        )));
+        let source_predicate = format!(
+            "{link_alias}.tenant_id = {source_alias_q}.tenant_id AND {link_alias}.source_module = {source_alias_q}.module_name AND {link_alias}.source_entity = {source_alias_q}.entity_name AND {link_alias}.source_schema_version = {source_alias_q}.schema_version AND {link_alias}.source_entity_id = {source_alias_q}.entity_id AND {link_alias}.source_locale_key = {source_alias_q}.locale_key AND {link_alias}.source_version = {source_alias_q}.source_version AND {link_alias}.link_name = {link_name} AND {link_alias}.target_module = {target_module} AND {link_alias}.target_entity = {target_entity} AND {link_alias}.target_schema_version = {target_version}"
+        );
+        let target_predicate = format!(
+            "{target_alias}.tenant_id = {link_alias}.tenant_id AND {target_alias}.module_name = {link_alias}.target_module AND {target_alias}.entity_name = {link_alias}.target_entity AND {target_alias}.schema_version = {link_alias}.target_schema_version AND {target_alias}.entity_id = {link_alias}.target_entity_id AND {target_alias}.locale_key = {link_alias}.target_locale_key AND {target_alias}.is_deleted = FALSE"
+        );
+
+        if index == 0 {
+            from_sql.push_str(&format!(
+                "FROM index_links AS {link_alias} JOIN index_entities AS {target_alias} ON {target_predicate}",
+            ));
+            predicates.push(source_predicate);
+        } else {
+            from_sql.push_str(&format!(
+                " JOIN index_links AS {link_alias} ON {source_predicate} JOIN index_entities AS {target_alias} ON {target_predicate}",
+            ));
+        }
+        source_alias = target_alias_name.clone();
+        terminal_alias = Some(target_alias_name);
+    }
+
+    let terminal_alias = terminal_alias.ok_or_else(|| {
+        PostgresQueryCompileError::ManyTraversalMismatch(field.path.links().to_vec())
+    })?;
+    let terminal = field_sql_for_alias(field, &terminal_alias, bindings);
+    let function = match aggregate {
+        ManyOrderAggregate::Min => "MIN",
+        ManyOrderAggregate::Max => "MAX",
+    };
+    let scalar = format!(
+        "(SELECT {function}({}) {from_sql} WHERE {})",
+        terminal.scalar,
+        predicates.join(" AND ")
+    );
+    let wire_value = aggregate_order_wire_value(field.value_type, &scalar);
+    let raw = format!(
+        "CASE WHEN {scalar} IS NULL THEN NULL ELSE jsonb_build_object('type', '{}', 'value', {wire_value}) END",
+        value_type_tag(field.value_type),
+    );
+    Ok(FieldSql {
+        raw,
+        scalar: scalar.clone(),
+        list_values: "NULL::jsonb".to_owned(),
+        type_text: "NULL::text".to_owned(),
+        null_predicate: format!("{scalar} IS NULL"),
+    })
+}
+
+fn aggregate_order_wire_value(value_type: IndexValueType, scalar: &str) -> String {
+    match value_type {
+        IndexValueType::Decimal => format!("to_jsonb(({scalar})::text)"),
+        _ => format!("to_jsonb({scalar})"),
+    }
+}
+
 fn compile_keyset(
     plan: &ExecutableQueryPlan,
     cursor: &IndexCursor,
@@ -506,11 +605,11 @@ fn compile_keyset(
     let mut equalities = Vec::new();
     let mut disjuncts = Vec::new();
     for (order, cursor_value) in plan.order_by.iter().zip(&cursor.order_values) {
-        let sql = field_sql(&order.field, bindings);
+        let sql = order_sql(plan, order, bindings)?;
         let (equal, after) = cursor_field_predicates(
             &order.field.path,
             &sql,
-            order.direction,
+            order.direction.base_direction(),
             cursor_value,
             bindings,
         )?;
@@ -539,6 +638,7 @@ fn cursor_field_predicates(
         let after = match direction {
             OrderDirection::Asc => "FALSE".to_owned(),
             OrderDirection::Desc => non_null,
+            _ => unreachable!("cursor predicates receive a normalized direction"),
         };
         return Ok((format!("({})", sql.null_predicate), after));
     }
@@ -553,6 +653,7 @@ fn cursor_field_predicates(
         OrderDirection::Desc => {
             format!("({non_null} AND {} < {value})", sql.scalar)
         }
+        _ => unreachable!("cursor predicates receive a normalized direction"),
     };
     Ok((equal, after))
 }
@@ -563,23 +664,27 @@ fn conjunction(prefix: &[String], final_predicate: &str) -> String {
     format!("({})", predicates.join(" AND "))
 }
 
-fn compile_order(plan: &ExecutableQueryPlan, bindings: &mut Bindings) -> String {
+fn compile_order(
+    plan: &ExecutableQueryPlan,
+    bindings: &mut Bindings,
+) -> Result<String, PostgresQueryCompileError> {
     let mut terms = plan
         .order_by
         .iter()
         .map(|order| {
-            let sql = field_sql(&order.field, bindings);
-            match order.direction {
+            let sql = order_sql(plan, order, bindings)?;
+            Ok(match order.direction.base_direction() {
                 OrderDirection::Asc => format!("{} ASC NULLS LAST", sql.scalar),
                 OrderDirection::Desc => format!("{} DESC NULLS FIRST", sql.scalar),
-            }
+                _ => unreachable!("order SQL receives a normalized direction"),
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, PostgresQueryCompileError>>()?;
     terms.push(format!(
         "{}.entity_id ASC",
         quote_identifier(&plan.root_alias)
     ));
-    format!("ORDER BY {}", terms.join(", "))
+    Ok(format!("ORDER BY {}", terms.join(", ")))
 }
 
 fn compile_pagination(
@@ -686,6 +791,17 @@ fn field_sql_for_alias(
         ),
         type_text,
         null_predicate,
+    }
+}
+
+fn value_type_tag(value_type: IndexValueType) -> &'static str {
+    match value_type {
+        IndexValueType::Boolean => "boolean",
+        IndexValueType::Integer => "integer",
+        IndexValueType::Decimal => "decimal",
+        IndexValueType::String => "string",
+        IndexValueType::Uuid => "uuid",
+        IndexValueType::Timestamp => "timestamp",
     }
 }
 

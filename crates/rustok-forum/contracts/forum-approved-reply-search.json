@@ -15,6 +15,7 @@
   "source_contract_test": "crates/rustok-search/tests/forum_approved_reply_projection_contract.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20bo-approved-reply-search.md",
   "source_verifier": "scripts/verify/verify-forum-approved-reply-search.mjs",
+  "search_inbox_ordering_contract": "crates/rustok-forum/contracts/forum-search-inbox-ordering.json",
   "upstream_contracts": [
     "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
     "crates/rustok-forum/contracts/forum-search-projection.json",
@@ -63,9 +64,11 @@
     "topic_copy_or_category_context_change_refreshes_child_reply_documents": true,
     "reply_create_and_status_events_reuse_existing_topic_refresh": true,
     "reply_edit_publishes_owner_transactional_topic_invalidation": true,
+    "search_projection_inbox_added": true,
+    "consumer_envelope_revision_guard_added": true,
+    "out_of_order_owner_revision_guard_added": false,
     "new_root_domain_event_added": false,
     "new_reindex_target_string_added": false,
-    "out_of_order_owner_revision_guard_added": false,
     "search_schema_migration_added": false
   },
   "canonical_url_boundary": {
@@ -114,28 +117,25 @@
     "canonical_plan_updated": false,
     "crate_api_updated": false,
     "search_plan_updated": false,
-    "synchronization_debt": "Advance Forum CRATE_API, Search local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BO with conflict-safe repository-local edits after maintainer validation."
+    "synchronization_debt": "Advance Forum CRATE_API, Search local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BP with conflict-safe repository-local edits after maintainer validation."
   },
   "remaining_scope": [
-    "add owner revision ordering and durable inbox reconciliation for category topic reply and future member projections under FORUM-23",
+    "add a host-owned startup or periodic due-inbox sweep for otherwise idle tenants under FORUM-20BQ",
+    "add owner-issued monotonic aggregate revisions if causal ordering must remain correct under cross-producer clock skew",
     "add safe author summaries and the planned category subtree author tag locale date solved kind channel group and attachment filters under FORUM-23",
+    "add Forum member projection documents after the safe public member identity contract is approved",
     "add storefront reply-anchor or focused-reply behavior only through a separate UI and route contract",
-    "capture maintainer-executed PostgreSQL full-rebuild failure preservation projection cleanup and approved-reply runtime evidence",
-    "capture maintainer-executed Search query runtime plus SQLite exact-visible bulk-read evidence",
-    "add an explicit Forum translation target invalidation adapter if Forum categories topics or replies are later registered with the translation control plane"
+    "capture maintainer-executed PostgreSQL projection ordering cleanup approved-reply and Search query evidence",
+    "capture maintainer-executed SQLite exact-visible bulk-read evidence"
   ],
   "downstream_task": "FORUM-20BP",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
+      "cargo test -p rustok-search --test forum_projection_inbox_contract -- --nocapture",
       "cargo test -p rustok-search --test forum_approved_reply_projection_contract -- --nocapture",
-      "cargo test -p rustok-search canonical_url_derives_forum_category_topic_and_reply_routes -- --nocapture",
-      "cargo test -p rustok-search forum_projector -- --nocapture",
+      "node scripts/verify/verify-forum-search-inbox-ordering.mjs",
       "node scripts/verify/verify-forum-approved-reply-search.mjs",
-      "node scripts/verify/verify-forum-search-projection.mjs",
-      "node scripts/verify/verify-forum-projection-invalidation.mjs",
-      "node scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
-      "node scripts/verify/verify-search-canonical-url-contract.mjs",
       "cargo xtask module validate forum"
     ]
   }

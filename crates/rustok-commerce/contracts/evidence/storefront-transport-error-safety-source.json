@@ -1,12 +1,16 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "generated_at": "2026-07-30",
   "status": "storefront_transport_error_safety_source_unvalidated",
-  "scope": "mounted commerce storefront aggregate cart and payment transport error mapping",
+  "scope": "mounted commerce storefront aggregate request/tenant context plus cart and payment transport error mapping",
   "source_contract": {
     "native_static_public_envelopes": true,
     "native_context_logging": true,
-    "native_correlation_logging": true,
+    "native_request_context_static_public_envelope": true,
+    "native_tenant_context_static_public_envelope": true,
+    "native_context_extraction_raw_text_public": false,
+    "native_correlation_logging": false,
+    "native_request_identity_logging": true,
     "native_tenant_logging": true,
     "native_channel_logging": true,
     "native_locale_logging": true,
@@ -20,9 +24,25 @@
     "transport_selection_changed": false
   },
   "stable_public_messages": {
+    "request_context_unavailable": "Storefront request context is temporarily unavailable",
+    "tenant_context_unavailable": "Storefront tenant context is temporarily unavailable",
     "invalid_cart_selection": "Invalid cart selection",
     "cart_unavailable": "Storefront cart data is temporarily unavailable",
     "payment_collection_unavailable": "Storefront payment collection is temporarily unavailable"
+  },
+  "recheck": {
+    "regression_source_pr": 2528,
+    "documentation": "crates/rustok-commerce/docs/storefront-request-context-regression.md",
+    "removed_request_context_field": "correlation_id",
+    "actual_request_context_fields_retained": [
+      "tenant_id",
+      "user_id",
+      "channel_id",
+      "channel_slug",
+      "locale"
+    ],
+    "guard_forbids_removed_field": true,
+    "master_plan_item_10_complete": false
   },
   "suggested_execution": [
     "node scripts/verify/verify-commerce-storefront-transport-error-safety.mjs",

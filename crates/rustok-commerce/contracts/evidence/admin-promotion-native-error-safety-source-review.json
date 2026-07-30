@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0.0",
+  "status": "commerce_admin_promotion_native_error_safety_source_reviewed_unvalidated",
+  "captured_at": "2026-07-30",
+  "base_main_sha": "94a037124840cd906a1f979cbb7eb90421c22ce4",
+  "review": {
+    "mounted_endpoint_names_preserved": true,
+    "public_function_signatures_preserved": true,
+    "dto_mapping_preserved": true,
+    "permissions_preserved": true,
+    "promotion_input_validation_preserved": true,
+    "cart_promotion_owner_guard_reviewed": true,
+    "port_error_public_sanitization_reviewed": true,
+    "request_context_fields_reviewed": [
+      "tenant_id",
+      "user_id",
+      "channel_id",
+      "channel_slug",
+      "channel_resolution_source",
+      "locale"
+    ],
+    "client_hydrate_contract_remains_on_canonical_adapter": true,
+    "ssr_routes_to_safe_adapter": true,
+    "order_change_source_explicitly_not_claimed_safe": true
+  },
+  "execution": {
+    "commands_run": [],
+    "tests_run": [],
+    "verifiers_run": [],
+    "cargo_run": false,
+    "formatting_run": false,
+    "workflow_or_ci_run": false
+  },
+  "limitations": [
+    "No compiler evidence has been retained.",
+    "No runtime request or owner-failure trace has been retained.",
+    "The focused source guard has been added but not executed.",
+    "Commerce admin order-change failures remain a separate open mapper-cleanup slice."
+  ]
+}

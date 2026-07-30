@@ -10,7 +10,9 @@ mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+mod forum_inbox;
 mod forum_projector;
+mod forum_reconciliation;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod ingestion;
@@ -46,6 +48,10 @@ pub use engine::{
     canonical_search_result_url,
 };
 pub use engine::{SearchResult, SearchResultItem};
+pub use forum_reconciliation::{
+    DEFAULT_FORUM_SWEEP_EVENT_LIMIT, DEFAULT_FORUM_SWEEP_TENANT_LIMIT,
+    ForumProjectionReconciler, ForumProjectionSweepReport,
+};
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;

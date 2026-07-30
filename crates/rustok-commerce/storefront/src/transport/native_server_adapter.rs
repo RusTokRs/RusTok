@@ -15,6 +15,42 @@ const STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY: &str =
 const STOREFRONT_COMMERCE_CONSUMER_OPERATION: &str = "fetch_storefront_commerce";
 
 #[cfg(feature = "ssr")]
+fn map_storefront_native_request_context_error<E: std::fmt::Debug>(error: E) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_commerce.storefront_transport",
+        owner_operation = "extract_request_context",
+        consumer_operation = STOREFRONT_COMMERCE_CONSUMER_OPERATION,
+        code = "commerce.storefront_request_context_unavailable",
+        boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
+        "storefront commerce request context extraction failed"
+    );
+    ServerFnError::new("Storefront request context is temporarily unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn map_storefront_native_tenant_context_error<E: std::fmt::Debug>(
+    request_context: &rustok_api::RequestContext,
+    error: E,
+) -> ServerFnError {
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_commerce.storefront_transport",
+        owner_operation = "extract_tenant_context",
+        consumer_operation = STOREFRONT_COMMERCE_CONSUMER_OPERATION,
+        request_tenant_id = %request_context.tenant_id,
+        user_id = ?request_context.user_id,
+        channel_id = ?request_context.channel_id,
+        channel_slug = ?request_context.channel_slug,
+        locale = %request_context.locale,
+        code = "commerce.storefront_tenant_context_unavailable",
+        boundary = STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY,
+        "storefront commerce tenant context extraction failed"
+    );
+    ServerFnError::new("Storefront tenant context is temporarily unavailable")
+}
+
+#[cfg(feature = "ssr")]
 fn map_storefront_native_validation_error(
     request_context: &rustok_api::RequestContext,
     tenant_id: uuid::Uuid,
@@ -26,8 +62,8 @@ fn map_storefront_native_validation_error(
         owner = "rustok_commerce.storefront_transport",
         owner_operation,
         consumer_operation = STOREFRONT_COMMERCE_CONSUMER_OPERATION,
-        correlation_id = %request_context.correlation_id,
         tenant_id = %tenant_id,
+        user_id = ?request_context.user_id,
         channel_id = ?request_context.channel_id,
         channel_slug = ?request_context.channel_slug,
         locale = %request_context.locale,
@@ -53,8 +89,8 @@ fn map_storefront_native_owner_error<E: std::fmt::Debug>(
         owner,
         owner_operation,
         consumer_operation = STOREFRONT_COMMERCE_CONSUMER_OPERATION,
-        correlation_id = %request_context.correlation_id,
         tenant_id = %tenant_id,
+        user_id = ?request_context.user_id,
         channel_id = ?request_context.channel_id,
         channel_slug = ?request_context.channel_slug,
         locale = %request_context.locale,
@@ -82,10 +118,12 @@ async fn storefront_commerce_native(
     {
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(map_storefront_native_request_context_error)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| {
+                map_storefront_native_tenant_context_error(&request_context, error)
+            })?;
         let tenant_id = tenant.id;
         let normalized_locale = shared_adapter::resolve_requested_locale(
             locale,

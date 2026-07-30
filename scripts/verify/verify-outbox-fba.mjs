@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -6,6 +7,7 @@ const fail = (message) => { console.error(`[verify-outbox-fba] ${message}`); pro
 const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(expected) && actual.length === expected.length && expected.every((item) => actual.includes(item));
 const registryPath = 'crates/rustok-outbox/contracts/outbox-fba-registry.json';
 const evidencePath = 'crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json';
+const dlqGuardPath = 'scripts/verify/verify-outbox-dlq-tenant-rbac.mjs';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeOrderSmoke = json(registry.evidence.runtime_order_smoke);
@@ -54,4 +56,6 @@ for (const smokeCase of runtimeOrderSmoke.cases) {
     if (!ports.includes(marker)) fail(`${smokeCase.operation} runtime order source marker missing ${marker}`);
   }
 }
-console.log('[verify-outbox-fba] Outbox FBA provider metadata, port semantics and static evidence are consistent');
+const dlqGuard = spawnSync(process.execPath, [dlqGuardPath], { encoding: 'utf8' });
+if (dlqGuard.status !== 0) fail(`DLQ tenant/RBAC guard failed: ${dlqGuard.stderr || dlqGuard.stdout}`);
+console.log('[verify-outbox-fba] Outbox FBA provider metadata, port semantics, tenant-scoped DLQ administration and static evidence are consistent');

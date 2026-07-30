@@ -36,10 +36,14 @@ and active UI path no longer expose or interpret `body` / `bodyFormat`. Blog SEO
 also consumes `content_plain_text`. Search canonical richtext rows are parsed as
 `RichTextDocument` and projected with `rustok-content::plain_text` under the fixed
 `Article` profile in the same projector transaction; legacy storage rows retain a
-contained raw-body fallback. The now-unused pure-core body-format summarizer
-remains to be removed, and storage, the AI Blog draft writer, remaining Leptos
-cleanup, and final compatibility removal must still finish atomically. Do not add
-new `rt_json`/Markdown aliases, `content_json` fields, or local renderers.
+owner-derived plain text. The target-only source cutover is implemented:
+`blog_post_translations.body` stores canonical Article documents, the migration
+validates every row before dropping `body_format`, GraphQL exposes only typed
+content, Search has no raw-body fallback, AI constructs owner documents directly,
+and storefront summarizers are removed. Forum-to-Blog orchestration fails closed
+unless the source is canonical Article-compatible richtext. Compilation,
+migration execution, PostgreSQL evidence, and browser parity remain user-owned.
+Do not add format aliases, raw JSON fields, selectors, or local renderers.
 
 The host GraphQL composition binds `rustok-profiles::ProfileSummaryLoader` to
 the current request audience. Existing Blog post/list author batches therefore
@@ -106,9 +110,9 @@ outbox publication.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
   user-owned.
-- Search Blog richtext projection: `source_verified_no_compile`; canonical rows
-  use the shared `Article` plain-text policy, legacy storage fallback is contained,
-  and execution is user-owned.
+- Blog article richtext cutover: `implemented_source_verified_no_compile`;
+  target-only owner/storage/GraphQL/Search/AI/storefront source is implemented,
+  the irreversible migration is fail-closed, and execution is user-owned.
 - Comments thread write invariants: `executable_no_run`; owner hooks, repair
   migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
@@ -136,6 +140,10 @@ outbox publication.
   the single temporary `types.rs` adapter/conversion owner, symmetric create/update
   conversion regression coverage, resolver delegation, verifier, self-test, and
   npm/FBA registration are implemented; execution is user-owned.
+- AI Blog draft owner writes: `source_verified_no_compile`; generated create/update
+  text is converted to `RichTextDocument` before the Blog service call, existing
+  source content prefers server-derived plain text, and the remaining direct-task
+  Markdown-shaped fields are contained behind the adapter.
 
 ## Evidence and guardrails
 
@@ -221,6 +229,13 @@ outbox publication.
 21. Migrated canonical Blog Search rows to the shared `Article` plain-text policy
     in the same projector transaction, retained a contained legacy storage
     fallback, and made invalid canonical documents fail closed before commit.
+22. Added a `rustok-ai` Blog owner adapter that converts AI draft create/update
+    text into canonical `RichTextDocument` content before owner service calls,
+    prefers server-derived plain text for existing-post source material, and
+    prevents direct-task compatibility fields from reaching the owner unchanged.
+23. Completed the target-only Blog article source cutover: added a fail-closed
+    irreversible storage migration, removed owner/GraphQL/AI/Search compatibility,
+    deleted storefront summarizers, and guarded Forum-to-Blog orchestration.
 
 ## Next results
 
@@ -243,23 +258,13 @@ outbox publication.
    reads, moderation, pagination, independent create commands, duplicate event
    delivery, concurrent counters, missing-post retry, rollback, and outbox
    publication.
-6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
-   boundary, Next admin, Blog storefront reads, SEO, and canonical Search
-   projection are implemented; storage, AI draft writes, remaining Leptos cleanup,
-   and compatibility removal remain.** The registered GraphQL/storefront/FBA
-   guardrails are containment measures, not the completed cutover. Replace the
-   string body plus `content_json` transport everywhere with `RichTextDocument`,
-   migrate `blog_post_translations` and relevant revision/audit data, switch the AI
-   Blog draft writer to the owner text-import adapter, remove the unused storefront
-   format summarizer, and remove Search's legacy raw-body fallback with the storage
-   transition. The Blog package must not own Forum editor/API code.
-   **Depends on:** the
-   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
-   and target `rustok-api`/`rustok-content` contracts.
-   **Done when:** Next and Leptos save/reload/SSR match on the target-only
-   contract, public comments rendering parity uses the same server projection,
-   Search indexes only owner-derived plain text, and no Blog path accepts Markdown,
-   format aliases, or raw JSON.
+6. **Execute and retain Blog article richtext cutover evidence.** The target-only
+   source and irreversible fail-closed migration are implemented. Run migration
+   preflight, convert rejected legacy rows offline, execute the migration, and
+   retain Next/Leptos save-reload-SSR, GraphQL/native, Search reindex/rollback,
+   AI draft persistence, and browser evidence on the same commit. **Done when:**
+   the migration has executed on representative PostgreSQL data and no runtime
+   path accepts Markdown, format aliases, or raw JSON.
 
 ## Verification
 

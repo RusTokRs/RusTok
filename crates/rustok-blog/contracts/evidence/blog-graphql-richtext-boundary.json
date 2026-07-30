@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "owner": "rustok-blog",
   "boundary": "graphql-post-richtext",
-  "status": "source_verified_no_compile",
+  "status": "implemented_source_verified_no_compile",
   "canonical_contract": {
     "write": "rustok_api::RichTextDocument",
     "read": "rustok_api::RichTextView",
@@ -10,21 +10,15 @@
     "resolver_conversion": "typed input.into() delegation"
   },
   "scan_scope": "crates/rustok-blog/src/graphql/**/*.rs",
-  "legacy_adapter_fields": [
-    "body",
-    "body_format",
-    "content_json"
-  ],
-  "legacy_adapter_files": [
-    "crates/rustok-blog/src/graphql/types.rs"
-  ],
+  "legacy_adapter_fields": [],
+  "legacy_adapter_files": [],
   "conversion_owner": {
     "file": "crates/rustok-blog/src/graphql/types.rs",
     "scopes": [
       "impl From<CreatePostInput> for DomainCreatePostInput",
       "impl From<UpdatePostInput> for DomainUpdatePostInput"
     ],
-    "reason": "temporary GraphQL-to-owner compatibility conversions"
+    "reason": "target-only typed GraphQL-to-owner conversion"
   },
   "conversion_tests": [
     "crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs",
@@ -32,19 +26,5 @@
   ],
   "guardrail": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
-  "test_coverage": [
-    "canonical RichTextDocument/RichTextView fields are required",
-    "create and update resolvers delegate conversion through input.into()",
-    "mutation resolvers do not own transport conversion or access richtext fields directly",
-    "retained create and update conversions live beside GraphQL input types",
-    "create conversion preserves explicit transport fields and canonical RichTextDocument",
-    "create conversion retains the temporary empty-body and Markdown-format defaults",
-    "update conversion retains its field-preservation regression test beside the input type",
-    "all Blog GraphQL Rust files are scanned recursively",
-    "legacy fields are rejected outside types.rs",
-    "retained legacy declarations and both conversion mappings are checked exactly",
-    "new legacy aliases are rejected in every GraphQL file",
-    "legacy field removal requires evidence and guardrail tightening"
-  ],
-  "exit_condition": "Remove legacy adapter fields atomically with storage, Leptos, storefront, Search, AI, and SEO cutover; then tighten the guardrail to require their absence."
+  "exit_condition": "Source cutover complete; compile, migration, and runtime execution remain maintainer-owned."
 }

@@ -7,7 +7,6 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::graphql::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
@@ -78,11 +77,8 @@ pub struct GqlPost {
     pub title: String,
     pub slug: Option<String>,
     pub excerpt: Option<String>,
-    pub body: Option<String>,
-    pub body_format: String,
-    pub content_json: Option<Value>,
-    pub content: Option<RichTextView>,
-    pub content_plain_text: Option<String>,
+    pub content: RichTextView,
+    pub content_plain_text: String,
     pub status: GqlContentStatus,
     pub author_id: Option<Uuid>,
     pub author_profile: Option<GqlProfileSummary>,
@@ -272,10 +268,7 @@ pub struct GqlPostList {
 pub struct CreatePostInput {
     pub locale: String,
     pub title: String,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
-    pub content: Option<RichTextDocument>,
+    pub content: RichTextDocument,
     pub excerpt: Option<String>,
     pub slug: Option<String>,
     pub publish: bool,
@@ -291,9 +284,6 @@ pub struct CreatePostInput {
 pub struct UpdatePostInput {
     pub locale: Option<String>,
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
     pub content: Option<RichTextDocument>,
     pub excerpt: Option<String>,
     pub slug: Option<String>,
@@ -326,9 +316,6 @@ impl From<PostResponse> for GqlPost {
             title: post.title,
             slug: Some(post.slug),
             excerpt: post.excerpt,
-            body: Some(post.body),
-            body_format: post.body_format,
-            content_json: post.content_json,
             content: post.content,
             content_plain_text: post.content_plain_text,
             status: match post.status {
@@ -400,11 +387,6 @@ impl From<CreatePostInput> for DomainCreatePostInput {
         Self {
             locale: input.locale,
             title: input.title,
-            body: input.body.unwrap_or_default(),
-            body_format: input
-                .body_format
-                .unwrap_or_else(|| rustok_core::CONTENT_FORMAT_MARKDOWN.to_string()),
-            content_json: input.content_json,
             content: input.content,
             excerpt: input.excerpt,
             slug: input.slug,
@@ -425,9 +407,6 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
         Self {
             locale: input.locale,
             title: input.title,
-            body: input.body,
-            body_format: input.body_format,
-            content_json: input.content_json,
             content: input.content,
             excerpt: input.excerpt,
             slug: input.slug,
@@ -446,18 +425,16 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
 #[cfg(test)]
 mod tests {
     use super::{DomainUpdatePostInput, UpdatePostInput};
-    use serde_json::json;
+    use rustok_api::RichTextDocument;
     use uuid::Uuid;
 
     #[test]
-    fn update_post_input_conversion_preserves_transport_fields() {
+    fn update_post_input_conversion_preserves_canonical_content() {
+        let canonical = RichTextDocument::single_paragraph("canonical update");
         let input = UpdatePostInput {
             locale: Some("ru".to_string()),
             title: Some("Заголовок".to_string()),
-            body: Some("legacy body".to_string()),
-            body_format: Some("markdown".to_string()),
-            content_json: Some(json!({"type": "doc"})),
-            content: None,
+            content: Some(canonical.clone()),
             excerpt: Some("excerpt".to_string()),
             slug: Some("post".to_string()),
             status: None,
@@ -468,25 +445,9 @@ mod tests {
             seo_description: Some("description".to_string()),
             channel_slugs: Some(vec!["web".to_string()]),
         };
-
         let domain: DomainUpdatePostInput = input.into();
-        assert_eq!(domain.locale.as_deref(), Some("ru"));
-        assert_eq!(domain.title.as_deref(), Some("Заголовок"));
-        assert_eq!(domain.body.as_deref(), Some("legacy body"));
-        assert_eq!(domain.body_format.as_deref(), Some("markdown"));
-        assert_eq!(domain.content_json, Some(json!({"type": "doc"})));
-        assert!(domain.content.is_none());
-        assert_eq!(domain.excerpt.as_deref(), Some("excerpt"));
-        assert_eq!(domain.slug.as_deref(), Some("post"));
-        assert_eq!(domain.tags, Some(vec!["tag".to_string()]));
+        assert_eq!(domain.content, Some(canonical));
         assert_eq!(domain.category_id, Some(Uuid::nil()));
-        assert_eq!(
-            domain.featured_image_url.as_deref(),
-            Some("https://example.test/image.png")
-        );
-        assert_eq!(domain.seo_title.as_deref(), Some("SEO"));
-        assert_eq!(domain.seo_description.as_deref(), Some("description"));
-        assert_eq!(domain.channel_slugs, Some(vec!["web".to_string()]));
         assert!(domain.metadata.is_none());
         assert!(domain.version.is_none());
     }

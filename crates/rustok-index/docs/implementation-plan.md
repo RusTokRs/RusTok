@@ -510,6 +510,23 @@ node scripts/verify/verify-index-many-link-filtering.mjs
   compiler-metadata-driven row adaptation. Server/consumer composition, plan/SQL
   snapshots, live PostgreSQL execution, and PostgreSQL/reference equivalence remain
   open.
+- 2026-07-30: bounded the non-authoritative Social Graph privacy shadow by the caller's
+  remaining deadline and repaired stale Index repository/evidence guards and retained
+  fixtures. No authoritative cutover, replay entrypoint, or live PostgreSQL evidence is
+  claimed by this change.
 - Repository test/fixture suites, verifiers, and one real full PostgreSQL partition
   packet remain for the owner to execute and admit before production partition
   lifecycle work begins.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `blocked`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `Index ownership, migrations, mutation/version ordering, query execution, partition evidence guards, Social Graph consumer authority, privacy shadow deadline behavior, and source/search/server boundaries`
+- Findings: `P0=0, P1=2, P2=0, P3=1`
+- Fixed in this pass: `bounded the non-authoritative Social Graph privacy comparison by the remaining caller deadline while preserving the owner result; repaired stale Index scale/FBA and retained-artifact guards so current accepted M2/M4 contracts execute again`
+- Remaining risks or blockers: `one retained admitted real PostgreSQL partition packet is absent; live PostgreSQL/reference query equivalence remains open; no retained per-tenant freshness/watermark, lag, negative-result safety, outage/restart/backlog catch-up, or replay-repair evidence exists; consumer and production partition cutover remain forbidden`
+- Evidence: `PR #2544 merged as b647a5a17f27b34a07c20cd57525ed1806994c49; same-SHA Index Storage Scale Run Contract and full Scale Evidence contract passed JavaScript syntax, workflow contracts, repository contracts, direct validator arguments and fixture suites; general CI/Hardening received no jobs; Rust-hosted smoke stopped before compilation because Cargo.lock required an Athanor update under --locked`
+- Next action: `execute the retained PostgreSQL packet, live query equivalence and per-tenant freshness/outage/recovery evidence; add a canonical bounded replay/rebuild owner path before reconsidering authoritative consumers or partition lifecycle`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-social-graph --all-targets --all-features && node scripts/verify/verify-index-query-contract.mjs && node scripts/verify/index-storage-tooling.mjs contract && node scripts/verify/index-storage-tooling.mjs fixtures`

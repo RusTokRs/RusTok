@@ -1,3 +1,4 @@
+mod aggregate_ordering;
 mod cursor;
 mod planner;
 mod postgres_compiler;
@@ -9,6 +10,8 @@ mod registry;
 mod source_schema_registry;
 mod validation;
 
+#[cfg(test)]
+mod aggregate_ordering_tests;
 #[cfg(test)]
 mod planner_tests;
 #[cfg(test)]
@@ -22,6 +25,7 @@ mod query_snapshot_tests;
 #[cfg(test)]
 mod reference;
 
+pub use aggregate_ordering::AggregateOrderValidationError;
 pub use cursor::{CursorCodec, CursorCodecError, CursorValidationError, IndexCursor};
 pub use planner::{
     ExecutableQueryPlan, PlannedField, PlannedJoin, PlannedManyProjection, PlannedOrder,

@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20BP",
+  "upstream_task": "FORUM-20BO",
+  "scope": "Persist and consumer-order Forum Search projection work so duplicate delayed and concurrently dispatched events cannot overwrite a newer accepted projection state when producer clocks are reasonably synchronized",
+  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md#forum-23--searchindex-integration",
+  "approved_reply_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json",
+  "search_inbox_owner": "crates/rustok-search/src/forum_inbox.rs",
+  "search_ingestion_owner": "crates/rustok-search/src/ingestion.rs",
+  "migration": "crates/rustok-search/src/migrations/m20260730_000009_create_search_projection_inbox.rs",
+  "migration_registry": "crates/rustok-search/src/migrations/mod.rs",
+  "source_contract_test": "crates/rustok-search/tests/forum_projection_inbox_contract.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-20bp-search-inbox-ordering.md",
+  "source_verifier": "scripts/verify/verify-forum-search-inbox-ordering.mjs",
+  "search_inbox_sweeper_contract": "crates/rustok-forum/contracts/forum-search-inbox-sweeper.json",
+  "storage_boundary": {
+    "search_owns_inbox_storage": true,
+    "search_projection_inbox_added": true,
+    "search_projection_watermarks_added": true,
+    "source_event_id_is_primary_dedupe_key": true,
+    "full_event_envelope_is_persisted": true,
+    "maximum_envelope_json_bytes": 65536,
+    "terminal_states": [
+      "completed",
+      "skipped",
+      "dead_letter"
+    ],
+    "retryable_state_recorded": true,
+    "attempt_count_and_next_attempt_recorded": true,
+    "maximum_attempts": 12,
+    "last_error_is_bounded": true,
+    "search_documents_schema_changed": false,
+    "forum_owner_storage_changed": false,
+    "second_platform_event_log_added": false
+  },
+  "revision_boundary": {
+    "revision_components": [
+      "event_envelope_timestamp_utc",
+      "event_id_ulid_backed_uuid"
+    ],
+    "ordering_is_timestamp_then_event_id": true,
+    "ordering_is_causal_owner_revision": false,
+    "producer_clock_synchronization_required": true,
+    "cross_producer_clock_skew_fully_resolved": false,
+    "source_domain_event_schema_changed": false,
+    "source_owner_revision_field_added": false,
+    "new_reindex_target_string_added": false,
+    "duplicate_event_id_is_idempotent": true,
+    "stale_or_equal_revision_is_skipped": true,
+    "invalid_stored_envelope_is_dead_lettered": true,
+    "category_scope_has_specific_watermark": true,
+    "category_completion_advances_full_scope_watermark": false,
+    "category_effective_watermark_includes_last_full_scope_watermark": true,
+    "full_scope_watermark_is_advanced_only_by_full_scope_work": true
+  },
+  "serialization_boundary": {
+    "postgresql_try_advisory_transaction_lock_added": true,
+    "lock_acquisition_is_non_blocking": true,
+    "lock_scope_is_tenant_wide_forum_projection": true,
+    "full_and_targeted_forum_operations_share_one_lock": true,
+    "candidate_order_is_oldest_revision_first": true,
+    "oldest_retry_backoff_blocks_newer_claims": true,
+    "inbox_row_is_selected_for_update_after_lock": true,
+    "watermark_is_checked_before_projection": true,
+    "projection_and_inbox_use_same_database_transaction": false,
+    "projection_finishes_before_watermark_commit": true,
+    "watermark_and_terminal_inbox_state_commit_atomically": true,
+    "competing_claims_release_database_connection_without_waiting": true,
+    "same_process_pool_starvation_by_waiting_claims_prevented": true,
+    "cross_process_serialization_remains_database_owned": true,
+    "older_topic_or_reply_event_cannot_overwrite_newer_module_disable": true
+  },
+  "recovery_boundary": {
+    "enqueue_commits_before_projection_claim": true,
+    "projection_failure_is_persisted_as_retryable": true,
+    "retry_backoff_seconds_minimum": 5,
+    "retry_backoff_seconds_maximum": 300,
+    "retry_exhaustion_is_dead_lettered": true,
+    "crash_before_claim_leaves_pending_work": true,
+    "crash_during_projection_rolls_back_processing_claim": true,
+    "crash_after_projection_before_terminal_commit_replays_idempotently": true,
+    "forum_event_delivery_runs_bounded_reconciliation": true,
+    "other_search_events_run_bounded_opportunistic_reconciliation": true,
+    "startup_reconciliation_sweep_added": false,
+    "idle_tenant_periodic_sweep_added": false,
+    "external_queue_or_scheduler_dependency_added": false
+  },
+  "recovery_completion": {
+    "task": "FORUM-20BQ",
+    "startup_reconciliation_sweep_added": true,
+    "idle_tenant_periodic_sweep_added": true,
+    "pending_work_recovers_without_new_search_event": true,
+    "retryable_work_recovers_after_backoff_without_new_search_event": true,
+    "historical_20bp_boundary_preserved": true
+  },
+  "event_scope_boundary": {
+    "full_scope_events": [
+      "ForumTopicCreated",
+      "ForumTopicReplied",
+      "ForumTopicStatusChanged",
+      "ForumTopicPinned",
+      "ForumReplyStatusChanged",
+      "Forum TenantModuleToggled",
+      "LocaleEnabled",
+      "LocaleDisabled",
+      "TenantCreated",
+      "TenantUpdated",
+      "search ReindexRequested",
+      "forum ReindexRequested",
+      "forum_topic ReindexRequested"
+    ],
+    "targeted_scope_events": [
+      "forum_category ReindexRequested"
+    ],
+    "automatic_topic_and_reply_events_rebuild_atomic_forum_scope": true,
+    "forum_module_disable_deletes_forum_scope": true,
+    "forum_category_reindex_remains_targeted": true,
+    "direct_forum_event_projection_bypass_remains": false
+  },
+  "compatibility": {
+    "existing_forum_rest_routes_changed": false,
+    "existing_forum_graphql_fields_changed": false,
+    "existing_search_query_contract_changed": false,
+    "public_response_dto_changed": false,
+    "workspace_root_dependency_changed": false,
+    "search_crate_runtime_dependency_changed": false,
+    "cargo_lock_changed": false,
+    "migration_added": true,
+    "postgresql_runtime_required_for_reconciliation": true,
+    "sqlite_schema_parity_added": true,
+    "ffa_status_changed": false,
+    "fba_status_changed": false
+  },
+  "documentation": {
+    "owner_note_added": true,
+    "contract_added": true,
+    "source_contract_test_added": true,
+    "source_verifier_added": true,
+    "canonical_plan_updated": false,
+    "crate_api_updated": false,
+    "search_plan_updated": false,
+    "synchronization_debt": "Advance Forum CRATE_API, Search local plan and the canonical FORUM-20/FORUM-23 ledger through FORUM-20BQ with conflict-safe repository-local edits after maintainer validation."
+  },
+  "remaining_scope": [
+    "add owner-issued monotonic aggregate revisions if causal ordering must remain correct under cross-producer clock skew",
+    "add safe author summaries and the planned category subtree author tag locale date solved kind channel group and attachment filters under FORUM-23",
+    "add Forum member projection documents after the safe public member identity contract is approved",
+    "capture maintainer-executed PostgreSQL startup periodic duplicate delayed-event retry crash-replay module-disable ordering multi-process and producer-clock-skew evidence",
+    "capture maintainer-executed PostgreSQL projection cleanup approved-reply and Search query evidence",
+    "capture maintainer-executed SQLite exact-visible bulk-read evidence"
+  ],
+  "downstream_task": "FORUM-20BQ",
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-search --test forum_projection_sweeper_contract -- --nocapture",
+      "cargo test -p rustok-search --test forum_projection_inbox_contract -- --nocapture",
+      "cargo test -p rustok-search forum_inbox -- --nocapture",
+      "cargo test -p rustok-search ingestion -- --nocapture",
+      "node scripts/verify/verify-forum-search-inbox-sweeper.mjs",
+      "node scripts/verify/verify-forum-search-inbox-ordering.mjs",
+      "node scripts/verify/verify-forum-approved-reply-search.mjs",
+      "cargo xtask module validate forum"
+    ]
+  }
+}

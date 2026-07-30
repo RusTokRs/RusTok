@@ -21,6 +21,12 @@ The read-only operator dashboard is an accepted single-adapter owner fragment:
 it has no public/headless outbox-admin contract, so its native `#[server]`
 bootstrap remains the only package transport and no GraphQL fallback is added.
 
+Tenant-facing DLQ administration is fail-closed. REST list and native counters
+derive tenant scope from trusted request context, while replay requires
+`logs:manage` and looks up the event by both id and tenant. Tenant admins cannot
+select another tenant or inspect platform-global relay state through these
+surfaces.
+
 ## FFA/FBA status block
 
 - FFA status: `in_progress`
@@ -32,7 +38,8 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
   `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json`
   and `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`.
 - `npm run verify:outbox:admin-boundary` and `npm run verify:outbox:fba` lock
-  the UI boundary, provider metadata, and owner-service invocation order.
+  the UI boundary, provider metadata, owner-service invocation order, and
+  tenant/RBAC invariants for DLQ administration.
 - The server relay worker consumes `OutboxRelayPort::process_pending_once` with
   a service actor, deadline, and per-tick idempotency key; it does not invoke
   the relay service method directly.
@@ -42,7 +49,18 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
 
 ## Open results
 
-1. **Execute relay, backlog, retry, and DLQ runtime contracts.** Replace static
+1. **Close the transport-to-consumer durability gap.** `sys_events=dispatched`
+   currently means the configured `EventTransport::publish` returned success.
+   In local fan-out modes, module handlers can still fail after that point or
+   miss events through broadcast lag without a durable consumer receipt,
+   consumer DLQ, or automatic source rebuild.
+   **Depends on:** server event transport, `rustok-core` dispatcher semantics,
+   and projection consumers such as Search.
+   **Done when:** terminal consumer failure is durably observable and replayable,
+   restart/lag recovery is executable, and projection consumers prove
+   idempotent duplicate/out-of-order handling.
+
+2. **Execute relay, backlog, retry, and DLQ runtime contracts.** Replace static
    evidence with targeted provider execution and fallback proof for relay
    control before any FBA promotion.
    **Depends on:** a runtime-composed relay and representative delivery
@@ -50,28 +68,31 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
    **Done when:** transactional publish, retry, DLQ transition, degraded mode,
    and typed port errors are covered by executable tests.
 
-2. **Prepare safe incremental operational adoption.** Define rollout,
+3. **Prepare safe incremental operational adoption.** Define rollout,
    migration, tenant, RBAC, and security requirements that belong to relay
    control rather than to the host UI.
    **Depends on:** deployment topology and operator authorization model.
    **Done when:** staged enablement has explicit guardrails, permissions, and a
    rollback path without duplicated relay ownership.
 
-3. **Maintain observability and incident guidance with delivery semantics.**
+4. **Maintain observability and incident guidance with delivery semantics.**
    Update metrics, alerting, and the runbook whenever relay/backlog/DLQ behavior
    changes.
    **Depends on:** the changed outbox runtime contract.
    **Done when:** operators can identify stalled relay, growing backlog, DLQ,
-   and retry failures with an owner-specific recovery procedure.
+   consumer-side terminal failures, and retry failures with an owner-specific
+   recovery procedure.
 
 ## Verification
 
 - `npm run verify:outbox:admin-boundary`
 - `npm run test:verify:outbox:admin-boundary`
+- `node scripts/verify/verify-outbox-dlq-tenant-rbac.mjs`
 - `npm run verify:outbox:fba`
 - `cargo xtask module validate outbox`
 - `cargo xtask module test outbox`
-- Targeted transactional publish, relay, retry, and DLQ runtime tests.
+- Targeted transactional publish, relay, retry, DLQ, tenant-isolation, and
+  consumer-recovery runtime tests.
 
 ## Change rules
 
@@ -80,3 +101,16 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
    contract change.
 3. Update this status block and `docs/modules/registry.md` with an FFA/FBA
    boundary change.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `blocked`
+- Last verified at (UTC): `2026-07-30`
+- Scope inspected: `relay claim/dispatch/retry/DLQ state machine, REST DLQ list/replay, native admin counters, tenant/RBAC trust boundaries, and server local-delivery composition`
+- Findings: `P0=1, P1=1, P2=0, P3=0`
+- Fixed in this pass: `P0 tenant isolation and authorization: tenant admins can no longer select or inspect another tenant's DLQ events; replay now requires logs:manage and a tenant-qualified event lookup; native operational counters require tenant context and are tenant-scoped`
+- Remaining risks or blockers: `P1: outbox dispatched state proves transport acceptance only; local module handler terminal failure or broadcast lag can leave Search and other projections stale without a durable consumer receipt/DLQ/replay contract`
+- Evidence: `source regressions in admin_events.rs and rustok-outbox-admin native adapter; scripts/verify/verify-outbox-dlq-tenant-rbac.mjs is included by npm run verify:outbox:fba; same-SHA Actions are required before merge`
+- Next action: `design and execute a durable consumer completion/recovery contract with server event delivery, rustok-core dispatcher, and Search projection owners; then run relay and restart E2E evidence`
+- Resume command: `node scripts/verify/verify-outbox-dlq-tenant-rbac.mjs && npm run verify:outbox:fba && cargo test -p rustok-outbox && cargo test -p rustok-server admin_events`

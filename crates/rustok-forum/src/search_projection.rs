@@ -17,6 +17,10 @@ use uuid::Uuid;
 use crate::entities::{
     forum_category, forum_category_translation, forum_reply_body, forum_topic_translation,
 };
+use crate::search_projection_author::{
+    load_public_author_summary, public_author_handle, public_author_id, public_author_keywords,
+    public_author_payload,
+};
 use crate::state_machine::ReplyStatus;
 use crate::ForumPublicDiscoveryService;
 
@@ -269,6 +273,11 @@ impl ForumSearchProjectionSource {
         let Some(category) = category else {
             return Ok(None);
         };
+        let author = load_public_author_summary(&self.db, tenant_id, topic.author_id, locale).await?;
+        let author_id = public_author_id(author.as_ref());
+        let author_handle = public_author_handle(author.as_ref());
+        let author_keywords = public_author_keywords(author.as_ref());
+        let author_payload = public_author_payload(author.as_ref());
         let created_at = parse_timestamp(&topic.created_at, "created_at")?;
         let updated_at = parse_timestamp(&topic.updated_at, "updated_at")?;
         let tags = topic.tags.clone();
@@ -285,18 +294,21 @@ impl ForumSearchProjectionSource {
             title: topic.title.clone(),
             subtitle: Some(category.name.clone()),
             slug: Some(topic.slug.clone()),
-            handle: None,
+            handle: author_handle,
             body: topic.body.clone(),
             keywords_text: format!(
-                "{} {} {} {}",
+                "{} {} {} {} {}",
                 category.name,
                 topic.slug,
                 tags.join(" "),
-                channels.join(" ")
+                channels.join(" "),
+                author_keywords
             ),
             facets: json!({
                 "kind": "forum_topic",
                 "category_id": topic.category_id,
+                "author_id": author_id,
+                "has_public_author": author_id.is_some(),
                 "has_tags": !tags.is_empty(),
                 "has_channels": !channels.is_empty(),
                 "channel_slugs": channels
@@ -304,7 +316,7 @@ impl ForumSearchProjectionSource {
             payload: json!({
                 "topic_id": topic.id,
                 "category_id": topic.category_id,
-                "author_id": topic.author_id,
+                "author": author_payload,
                 "tags": tags,
                 "channel_slugs": topic.channel_slugs,
                 "reply_count": topic.reply_count,
@@ -370,6 +382,11 @@ impl ForumSearchProjectionSource {
         let Some(category) = category else {
             return Ok(None);
         };
+        let author = load_public_author_summary(&self.db, tenant_id, reply.author_id, locale).await?;
+        let author_id = public_author_id(author.as_ref());
+        let author_handle = public_author_handle(author.as_ref());
+        let author_keywords = public_author_keywords(author.as_ref());
+        let author_payload = public_author_payload(author.as_ref());
 
         let created_at = parse_timestamp(&reply.created_at, "reply.created_at")?;
         let updated_at = parse_timestamp(&reply.updated_at, "reply.updated_at")?;
@@ -387,13 +404,18 @@ impl ForumSearchProjectionSource {
             title: topic.title.clone(),
             subtitle: Some(category.name.clone()),
             slug: None,
-            handle: None,
+            handle: author_handle,
             body: reply.content,
-            keywords_text: format!("{} {} {}", category.name, topic.title, topic.slug),
+            keywords_text: format!(
+                "{} {} {} {}",
+                category.name, topic.title, topic.slug, author_keywords
+            ),
             facets: json!({
                 "kind": "forum_reply",
                 "category_id": topic.category_id,
                 "topic_id": topic.id,
+                "author_id": author_id,
+                "has_public_author": author_id.is_some(),
                 "has_parent": reply.parent_reply_id.is_some(),
                 "is_solution": is_solution
             }),
@@ -401,7 +423,7 @@ impl ForumSearchProjectionSource {
                 "reply_id": reply_id,
                 "topic_id": topic.id,
                 "category_id": topic.category_id,
-                "author_id": reply.author_id,
+                "author": author_payload,
                 "parent_reply_id": reply.parent_reply_id,
                 "is_solution": is_solution,
                 "route": route

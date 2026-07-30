@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-23A",
+  "upstream_task": "FORUM-20BQ",
+  "status": "source_complete_execution_pending",
+  "scope": "Project privacy-aware public author summaries into Forum topic and approved-reply Search documents and durably redact them after Profiles owner changes",
+  "forum_projection_source": "crates/rustok-forum/src/search_projection.rs",
+  "forum_author_adapter": "crates/rustok-forum/src/search_projection_author.rs",
+  "profiles_owner": "crates/rustok-profiles/src/presentation.rs",
+  "profiles_event_owner": "crates/rustok-profiles/src/graphql/mutation.rs",
+  "profiles_visibility_event_owner": "crates/rustok-profiles/src/visibility_write.rs",
+  "search_inbox": "crates/rustok-search/src/forum_inbox.rs",
+  "search_ingestion": "crates/rustok-search/src/ingestion.rs",
+  "owner_note": "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md",
+  "verifier": "scripts/verify/verify-forum-search-public-author-summary.mjs",
+  "projection_boundary": {
+    "anonymous_profiles_presentation_is_authoritative": true,
+    "forum_does_not_copy_profile_privacy_policy": true,
+    "missing_or_denied_profile_projects_null_author": true,
+    "profile_owner_failure_is_retryable_not_empty": true,
+    "raw_topic_author_id_is_not_serialized": true,
+    "raw_reply_author_id_is_not_serialized": true,
+    "public_author_fields": [
+      "user_id",
+      "handle",
+      "display_name",
+      "avatar_media_id"
+    ],
+    "profile_tags_are_not_serialized": true,
+    "preferred_locale_is_not_serialized": true,
+    "profile_visibility_is_not_serialized": true,
+    "public_handle_populates_search_handle": true,
+    "public_handle_and_display_name_extend_keywords": true,
+    "author_filter_value_is_populated_only_for_public_author": true
+  },
+  "redaction_boundary": {
+    "profile_updated_is_durable": true,
+    "profile_updated_is_emitted_after_owner_write": true,
+    "profile_visibility_write_and_event_are_atomic": true,
+    "other_profile_update_write_and_event_pairs_are_atomic": false,
+    "visibility_event_failure_rolls_back_owner_write": true,
+    "author_scope_is_tenant_and_user_scoped": true,
+    "author_scope_is_not_suppressed_by_forum_wall_clock_watermark": true,
+    "author_change_rebuilds_current_forum_owner_state": true,
+    "projection_failure_remains_retryable": true,
+    "tenant_advisory_lock_is_preserved": true,
+    "schema_migration_added": false
+  },
+  "compatibility": {
+    "forum_graphql_changed": false,
+    "forum_rest_changed": false,
+    "search_query_api_changed": false,
+    "search_document_schema_changed": false,
+    "forum_owner_storage_changed": false,
+    "profiles_owner_storage_changed": false,
+    "cargo_lock_changed": false
+  },
+  "remaining_scope": [
+    "replace remaining wall-clock Forum projection ordering with owner-issued monotonic revisions",
+    "define an owner-ordered profile or account deletion projection invalidation contract",
+    "make non-visibility profile summary update events atomic with their owner writes",
+    "add bounded category-subtree tag locale date solved kind channel/group and attachment filters",
+    "add member index projections",
+    "capture maintainer-executed PostgreSQL rebuild redaction and query evidence"
+  ],
+  "verification": {
+    "execution_status": "not_run_by_implementation_agent",
+    "commands": [
+      "cargo test -p rustok-profiles error -- --nocapture",
+      "cargo test -p rustok-forum search_projection_author -- --nocapture",
+      "cargo test -p rustok-search forum_inbox -- --nocapture",
+      "cargo test -p rustok-search ingestion -- --nocapture",
+      "node scripts/verify/verify-forum-search-public-author-summary.mjs",
+      "node scripts/verify/verify-forum-search-projection.mjs",
+      "cargo xtask module validate profiles",
+      "cargo xtask module validate forum"
+    ]
+  },
+  "non_claims": [
+    "UserDeleted is sufficient to prove Profiles state has already been removed",
+    "account deletion redaction is complete",
+    "all ProfileUpdated owner writes are transactionally coupled to outbox publication",
+    "general cross-producer owner revision ordering is complete"
+  ],
+  "downstream_task": "FORUM-23B"
+}

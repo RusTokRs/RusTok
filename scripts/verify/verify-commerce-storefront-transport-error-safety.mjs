@@ -22,6 +22,9 @@ const evidence = JSON.parse(
     'crates/rustok-commerce/contracts/evidence/storefront-transport-error-safety-source.json',
   ),
 );
+const recheckDocPath =
+  'crates/rustok-commerce/docs/storefront-request-context-regression.md';
+const recheckDoc = read(recheckDocPath);
 
 const failures = [];
 const requireText = (source, value, label) => {
@@ -35,10 +38,21 @@ const countText = (source, value) => source.split(value).length - 1;
 requireText(cargo, 'tracing.workspace = true', 'storefront diagnostics dependency');
 
 for (const [value, label] of [
+  ['fn map_storefront_native_request_context_error<E: std::fmt::Debug>(', 'native request-context mapper'],
+  ['fn map_storefront_native_tenant_context_error<E: std::fmt::Debug>(', 'native tenant-context mapper'],
   ['fn map_storefront_native_validation_error(', 'native validation mapper'],
   ['fn map_storefront_native_owner_error<E: std::fmt::Debug>(', 'native owner mapper'],
-  ['correlation_id = %request_context.correlation_id', 'native correlation log'],
-  ['tenant_id = %tenant_id', 'native tenant log'],
+  ['owner_operation = "extract_request_context"', 'native request-context operation'],
+  ['owner_operation = "extract_tenant_context"', 'native tenant-context operation'],
+  ['code = "commerce.storefront_request_context_unavailable"', 'native request-context stable code'],
+  ['code = "commerce.storefront_tenant_context_unavailable"', 'native tenant-context stable code'],
+  ['"Storefront request context is temporarily unavailable"', 'native request-context public envelope'],
+  ['"Storefront tenant context is temporarily unavailable"', 'native tenant-context public envelope'],
+  ['.map_err(map_storefront_native_request_context_error)?', 'native request-context mapping'],
+  ['map_storefront_native_tenant_context_error(&request_context, error)', 'native tenant-context mapping'],
+  ['request_tenant_id = %request_context.tenant_id', 'native request tenant identity log'],
+  ['user_id = ?request_context.user_id', 'native request user identity log'],
+  ['tenant_id = %tenant_id', 'native resolved tenant log'],
   ['channel_id = ?request_context.channel_id', 'native channel id log'],
   ['channel_slug = ?request_context.channel_slug', 'native channel slug log'],
   ['locale = %request_context.locale', 'native locale log'],
@@ -54,11 +68,17 @@ for (const [value, label] of [
   ['"Storefront payment collection is temporarily unavailable"', 'native payment public envelope'],
 ]) requireText(native, value, label);
 
+if (countText(native, 'user_id = ?request_context.user_id') !== 3) {
+  failures.push('native tenant, validation, and owner diagnostics must all retain request user identity');
+}
+
 for (const value of [
+  'request_context.correlation_id',
+  '.map_err(ServerFnError::new)',
   '.map_err(|err| ServerFnError::new(err.to_string()))',
   'ServerFnError::new(error.to_string())',
   'ServerFnError::new(err.to_string())',
-]) forbidText(native, value, 'native raw public transport mapping');
+]) forbidText(native, value, 'native stale context or raw public transport mapping');
 
 if (countText(native, 'ApiError::ServerFn(error.to_string())') !== 1) {
   failures.push(
@@ -91,12 +111,20 @@ for (const value of [
   'ApiError::Graphql("Storefront cart data is temporarily unavailable".to_string())',
 ]) forbidText(shared, value, 'shared raw transport cause or variant drift');
 
+if (evidence.schema_version !== 3) {
+  failures.push(`evidence schema_version mismatch: ${evidence.schema_version}`);
+}
 if (evidence.status !== 'storefront_transport_error_safety_source_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
 for (const [key, expected] of Object.entries({
   native_static_public_envelopes: true,
   native_context_logging: true,
+  native_request_context_static_public_envelope: true,
+  native_tenant_context_static_public_envelope: true,
+  native_context_extraction_raw_text_public: false,
+  native_correlation_logging: false,
+  native_request_identity_logging: true,
   shared_static_public_envelopes: true,
   shared_raw_cause_logging: false,
   cart_error_variant_preserved: true,
@@ -106,6 +134,34 @@ for (const [key, expected] of Object.entries({
     failures.push(`evidence source_contract.${key} must be ${expected}`);
   }
 }
+if (evidence.recheck?.documentation !== recheckDocPath) {
+  failures.push('evidence recheck documentation path drift');
+}
+if (evidence.recheck?.removed_request_context_field !== 'correlation_id') {
+  failures.push('evidence removed RequestContext field drift');
+}
+if (evidence.recheck?.guard_forbids_removed_field !== true) {
+  failures.push('evidence must retain the removed-field guard');
+}
+if (evidence.recheck?.master_plan_item_10_complete !== false) {
+  failures.push('evidence must not claim ecommerce master-plan item 10 complete');
+}
+for (const [key, expected] of Object.entries({
+  request_context_unavailable: 'Storefront request context is temporarily unavailable',
+  tenant_context_unavailable: 'Storefront tenant context is temporarily unavailable',
+})) {
+  if (evidence.stable_public_messages?.[key] !== expected) {
+    failures.push(`evidence stable_public_messages.${key} mismatch`);
+  }
+}
+for (const marker of [
+  'Status: `source_corrected_unvalidated`.',
+  'immediate execution item 10',
+  '`RequestContext.correlation_id`',
+  'Customer admin',
+  'Pricing admin',
+  'No command above was run by the implementation agent.',
+]) requireText(recheckDoc, marker, 'storefront RequestContext regression documentation');
 for (const key of [
   'tests_run',
   'cargo_run',
@@ -128,5 +184,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ commerce storefront cart/payment transport failures retain SSR diagnostics, existing error variants, and static public envelopes without client-side raw causes; runtime evidence remains open',
+  '✔ commerce storefront request/tenant context plus cart/payment transport failures retain actual request identity, static public envelopes, and no client-side raw causes; runtime evidence remains open',
 );

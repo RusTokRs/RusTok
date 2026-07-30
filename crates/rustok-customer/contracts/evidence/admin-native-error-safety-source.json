@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "customer_admin_native_error_safety_source_unvalidated",
+  "scope": "rustok-customer-admin mounted native bootstrap, list, detail, create, and update error envelopes",
+  "source_contract": {
+    "mounted_endpoint_set_preserved": true,
+    "auth_context_static_public_envelope": true,
+    "tenant_context_static_public_envelope": true,
+    "request_context_diagnostic_only": true,
+    "customer_validation_static_public_envelope": true,
+    "customer_not_found_static_public_envelope": true,
+    "duplicate_email_static_public_envelope": true,
+    "duplicate_user_link_static_public_envelope": true,
+    "profile_failure_static_public_envelope": true,
+    "storage_failure_static_public_envelope": true,
+    "owner_context_logging": true,
+    "raw_customer_error_public": false,
+    "raw_profile_error_public": false,
+    "raw_framework_error_public": false,
+    "permissions_changed": false,
+    "request_response_dto_changed": false,
+    "profile_audience_policy_changed": false,
+    "ffa_status_promoted": false,
+    "fba_status_promoted": false
+  },
+  "public_messages": {
+    "auth_context": "Customer authentication context is temporarily unavailable",
+    "tenant_context": "Customer tenant context is temporarily unavailable",
+    "validation": "Customer request is invalid",
+    "not_found": "Customer was not found",
+    "duplicate_email": "Customer email already exists",
+    "duplicate_user_link": "Customer is already linked to a user",
+    "profile": "Customer profile is temporarily unavailable",
+    "storage": "Customer data is temporarily unavailable"
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "profile_audience_runtime_proven": false
+  }
+}

@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::{
     ProfileError, ProfileMediaSlot, ProfileOperation, ProfileOperationTimer, ProfileRecord,
     ProfileResult, ProfileService, validate_profile_media_asset,
+    visibility_write::update_profile_visibility_with_event,
 };
 
 use super::{MODULE_SLUG, types::*};
@@ -163,21 +164,22 @@ impl ProfilesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let service = ProfileService::new(db.clone());
 
         let profile = observe_profile_write(
             ProfileOperation::UpdateVisibility,
             tenant.id,
             auth.user_id,
-            service.update_profile_visibility(
+            update_profile_visibility_with_event(
+                db,
+                event_bus,
                 tenant.id,
+                auth.user_id,
                 auth.user_id,
                 visibility.into(),
                 Some(tenant.default_locale.as_str()),
             ),
         )
         .await?;
-        publish_profile_updated(event_bus, tenant.id, auth.user_id, &profile).await?;
 
         Ok(profile.into())
     }
@@ -368,6 +370,7 @@ fn map_profile_error(error: ProfileError) -> async_graphql::Error {
         }
         ProfileError::LocalizedCopyNotFound(_)
         | ProfileError::PresentationUnavailable
+        | ProfileError::EventPublishUnavailable
         | ProfileError::Database(_) => <FieldError as GraphQLError>::internal_error(&message),
     }
 }

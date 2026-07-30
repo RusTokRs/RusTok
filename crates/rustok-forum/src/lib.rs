@@ -27,6 +27,7 @@ pub mod openapi;
 mod reply_create_transport;
 pub mod reply_read_transport;
 mod search_projection;
+mod search_projection_author;
 mod seo_audience_targets;
 #[path = "seo_targets.rs"]
 mod seo_targets_legacy;

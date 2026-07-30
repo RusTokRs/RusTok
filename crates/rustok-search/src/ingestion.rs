@@ -13,15 +13,20 @@ use rustok_telemetry::metrics;
 use tracing::Instrument;
 
 use crate::blog_projector::BlogSearchProjector;
+use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 use crate::forum_projector::ForumSearchProjector;
 use crate::projector::SearchProjector;
 use crate::SearchProjectionSource;
+
+const FORUM_INBOX_EVENT_BATCH: usize = 64;
+const FORUM_INBOX_OPPORTUNISTIC_BATCH: usize = 8;
 
 #[derive(Clone)]
 pub struct SearchIngestionHandler {
     projector: SearchProjector,
     blog_projector: BlogSearchProjector,
     forum_projector: Option<ForumSearchProjector>,
+    forum_inbox: Option<ForumProjectionInbox>,
 }
 
 impl SearchIngestionHandler {
@@ -33,11 +38,16 @@ impl SearchIngestionHandler {
         db: DatabaseConnection,
         forum_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
+        let forum_projector = forum_source
+            .map(|source| ForumSearchProjector::new(db.clone(), source));
+        let forum_inbox = forum_projector
+            .as_ref()
+            .map(|_| ForumProjectionInbox::new(db.clone()));
         Self {
             projector: SearchProjector::new(db.clone()),
-            blog_projector: BlogSearchProjector::new(db.clone()),
-            forum_projector: forum_source
-                .map(|source| ForumSearchProjector::new(db, source)),
+            blog_projector: BlogSearchProjector::new(db),
+            forum_projector,
+            forum_inbox,
         }
     }
 
@@ -66,26 +76,6 @@ impl SearchIngestionHandler {
             ("product", None) => self.projector.rebuild_product_scope(tenant_id).await,
             ("blog", Some(post_id)) => self.blog_projector.upsert_post(tenant_id, post_id).await,
             ("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await,
-            ("forum", None) => match &self.forum_projector {
-                Some(projector) => projector.rebuild_tenant(tenant_id).await,
-                None => Ok(()),
-            },
-            ("forum_category", Some(category_id)) => match &self.forum_projector {
-                Some(projector) => {
-                    projector
-                        .refresh_entity(tenant_id, "forum_category", category_id)
-                        .await
-                }
-                None => Ok(()),
-            },
-            ("forum_topic", Some(topic_id)) => match &self.forum_projector {
-                Some(projector) => {
-                    projector
-                        .refresh_entity(tenant_id, "forum_topic", topic_id)
-                        .await
-                }
-                None => Ok(()),
-            },
             _ => Ok(()),
         }
     }
@@ -107,6 +97,72 @@ impl SearchIngestionHandler {
         } else {
             projector.delete_tenant(tenant_id).await
         }
+    }
+
+    async fn apply_forum_inbox_event(&self, envelope: &EventEnvelope) -> HandlerResult {
+        let Some(projector) = &self.forum_projector else {
+            return Ok(());
+        };
+        match &envelope.event {
+            DomainEvent::ForumTopicCreated { .. }
+            | DomainEvent::ForumTopicReplied { .. }
+            | DomainEvent::ForumTopicStatusChanged { .. }
+            | DomainEvent::ForumTopicPinned { .. }
+            | DomainEvent::ForumReplyStatusChanged { .. }
+            | DomainEvent::ProfileUpdated { .. } => {
+                projector.rebuild_tenant(envelope.tenant_id).await
+            }
+            DomainEvent::TenantModuleToggled {
+                module_slug,
+                enabled,
+                ..
+            } if module_slug == "forum" => {
+                self.handle_forum_module_toggle(envelope.tenant_id, *enabled)
+                    .await
+            }
+            DomainEvent::LocaleEnabled { .. }
+            | DomainEvent::LocaleDisabled { .. }
+            | DomainEvent::TenantCreated { .. }
+            | DomainEvent::TenantUpdated { .. } => self.rebuild_tenant(envelope.tenant_id).await,
+            DomainEvent::ReindexRequested {
+                target_type,
+                target_id,
+            } => match (target_type.as_str(), target_id) {
+                ("search", _) => self.rebuild_tenant(envelope.tenant_id).await,
+                ("forum", _) | ("forum_topic", Some(_)) => {
+                    projector.rebuild_tenant(envelope.tenant_id).await
+                }
+                ("forum_category", Some(category_id)) => {
+                    projector
+                        .refresh_entity(envelope.tenant_id, "forum_category", *category_id)
+                        .await
+                }
+                _ => Ok(()),
+            },
+            _ => Err(Error::Validation(format!(
+                "Unsupported Forum projection inbox event `{}`",
+                envelope.event.event_type()
+            ))),
+        }
+    }
+
+    async fn reconcile_forum_inbox(&self, tenant_id: Uuid, limit: usize) -> HandlerResult {
+        let Some(inbox) = &self.forum_inbox else {
+            return Ok(());
+        };
+        for _ in 0..limit {
+            let Some(claim) = inbox.claim_next(tenant_id).await? else {
+                break;
+            };
+            match self.apply_forum_inbox_event(claim.envelope()).await {
+                Ok(()) => claim.complete().await?,
+                Err(error) => {
+                    claim.retry(&error).await?;
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -149,7 +205,8 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::ForumTopicReplied { .. }
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
-            | DomainEvent::ForumReplyStatusChanged { .. } => self.forum_projector.is_some(),
+            | DomainEvent::ForumReplyStatusChanged { .. }
+            | DomainEvent::ProfileUpdated { .. } => self.forum_projector.is_some(),
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
@@ -186,6 +243,31 @@ impl EventHandler for SearchIngestionHandler {
         );
 
         async {
+            if let Some(scope) = ForumProjectionScope::for_event(&envelope.event)
+                && let Some(inbox) = &self.forum_inbox
+            {
+                inbox.enqueue(envelope, &scope).await?;
+                return self
+                    .reconcile_forum_inbox(envelope.tenant_id, FORUM_INBOX_EVENT_BATCH)
+                    .await;
+            }
+
+            if self.forum_inbox.is_some()
+                && let Err(error) = self
+                    .reconcile_forum_inbox(
+                        envelope.tenant_id,
+                        FORUM_INBOX_OPPORTUNISTIC_BATCH,
+                    )
+                    .await
+            {
+                tracing::warn!(
+                    tenant_id = %envelope.tenant_id,
+                    event_id = %envelope.id,
+                    error = %error,
+                    "Forum projection inbox opportunistic reconciliation failed"
+                );
+            }
+
             match &envelope.event {
                 DomainEvent::NodeCreated { node_id, .. }
                 | DomainEvent::NodeUpdated { node_id, .. }
@@ -252,34 +334,12 @@ impl EventHandler for SearchIngestionHandler {
                         .delete_post(envelope.tenant_id, *post_id)
                         .await
                 }
-                DomainEvent::ForumTopicCreated { topic_id, .. }
-                | DomainEvent::ForumTopicReplied { topic_id, .. }
-                | DomainEvent::ForumTopicStatusChanged { topic_id, .. }
-                | DomainEvent::ForumTopicPinned { topic_id, .. }
-                | DomainEvent::ForumReplyStatusChanged { topic_id, .. } => {
-                    match &self.forum_projector {
-                        Some(projector) => {
-                            projector
-                                .refresh_entity(envelope.tenant_id, "forum_topic", *topic_id)
-                                .await
-                        }
-                        None => Ok(()),
-                    }
-                }
                 DomainEvent::TenantModuleToggled {
                     module_slug,
                     enabled,
                     ..
                 } if module_slug == "blog" => {
                     self.handle_blog_module_toggle(envelope.tenant_id, *enabled)
-                        .await
-                }
-                DomainEvent::TenantModuleToggled {
-                    module_slug,
-                    enabled,
-                    ..
-                } if module_slug == "forum" => {
-                    self.handle_forum_module_toggle(envelope.tenant_id, *enabled)
                         .await
                 }
                 DomainEvent::LocaleEnabled { .. }
@@ -381,6 +441,11 @@ mod tests {
             author_id: None,
             locale: "en".to_string(),
         }));
+        assert!(!handler.handles(&DomainEvent::ProfileUpdated {
+            user_id: Uuid::new_v4(),
+            handle: "public-author".to_string(),
+            locale: Some("en".to_string()),
+        }));
     }
 }
 
@@ -405,8 +470,8 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
             "content" => "rebuild_content_scope",
             "product" => "rebuild_product_scope",
             "blog" => "rebuild_blog_scope",
-            "forum" => "rebuild_forum_scope",
-            "forum_category" | "forum_topic" => "refresh_forum_entity",
+            "forum" | "forum_topic" => "rebuild_forum_scope",
+            "forum_category" => "refresh_forum_category",
             _ => "rebuild_tenant",
         },
         DomainEvent::TenantModuleToggled {
@@ -431,11 +496,12 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
                 "delete_forum_scope"
             }
         }
+        DomainEvent::ProfileUpdated { .. } => "rebuild_forum_author_projection",
         DomainEvent::ForumTopicCreated { .. }
         | DomainEvent::ForumTopicReplied { .. }
         | DomainEvent::ForumTopicStatusChanged { .. }
         | DomainEvent::ForumTopicPinned { .. }
-        | DomainEvent::ForumReplyStatusChanged { .. } => "refresh_forum_entity",
+        | DomainEvent::ForumReplyStatusChanged { .. } => "rebuild_forum_scope",
         DomainEvent::NodeTranslationUpdated { .. } | DomainEvent::BodyUpdated { .. } => {
             "upsert_node_locale"
         }
