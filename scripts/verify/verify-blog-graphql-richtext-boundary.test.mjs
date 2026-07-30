@@ -32,6 +32,18 @@ async function runFixture({ typesSource, mutationSource, extraFiles = {} }) {
   }
 }
 
+const canonicalConversion = `
+impl From<UpdatePostInput> for DomainUpdatePostInput {
+    fn from(input: UpdatePostInput) -> Self {
+        Self {
+            body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
+            content: input.content,
+        }
+    }
+}
+`;
 const canonicalTypes = `
 pub content: Option<RichTextView>,
 pub content_plain_text: Option<String>,
@@ -39,6 +51,9 @@ pub content: Option<RichTextDocument>,
 pub body: Option<String>,
 pub body_format: String,
 pub content_json: Option<Value>,
+${canonicalConversion}
+#[cfg(test)]
+mod tests {}
 `;
 const canonicalMutation = `
 async fn create_post(input: CreatePostInput) {
@@ -50,17 +65,6 @@ async fn update_post(input: UpdatePostInput) {
 }
 
 async fn delete_post() {}
-
-impl From<UpdatePostInput> for DomainUpdatePostInput {
-    fn from(input: UpdatePostInput) -> Self {
-        Self {
-            body: input.body,
-            body_format: input.body_format,
-            content_json: input.content_json,
-            content: input.content,
-        }
-    }
-}
 
 fn mutation_tenant_id() {}
 `;
@@ -109,11 +113,18 @@ const mutationHelperLeak = await runFixture({
   ),
 });
 assert.notEqual(mutationHelperLeak.status, 0);
-assert.match(mutationHelperLeak.stderr, /must stay confined to types\.rs or the isolated UpdatePostInput conversion/);
+assert.match(mutationHelperLeak.stderr, /must stay confined to types\.rs/);
+
+const mutationOwnsConversion = await runFixture({
+  typesSource: canonicalTypes,
+  mutationSource: `${canonicalMutation}\n${canonicalConversion}`,
+});
+assert.notEqual(mutationOwnsConversion.status, 0);
+assert.match(mutationOwnsConversion.stderr, /mutation resolvers must not own UpdatePostInput transport conversion/);
 
 const conversionFieldRemoved = await runFixture({
-  typesSource: canonicalTypes,
-  mutationSource: canonicalMutation.replace('            body_format: input.body_format,\n', ''),
+  typesSource: canonicalTypes.replace('            body_format: input.body_format,\n', ''),
+  mutationSource: canonicalMutation,
 });
 assert.notEqual(conversionFieldRemoved.status, 0);
 assert.match(conversionFieldRemoved.stderr, /update the evidence status and tighten this guardrail/);
@@ -136,13 +147,13 @@ const legacyLeak = await runFixture({
   },
 });
 assert.notEqual(legacyLeak.status, 0);
-assert.match(legacyLeak.stderr, /must stay confined to types\.rs or the isolated UpdatePostInput conversion/);
+assert.match(legacyLeak.stderr, /must stay confined to types\.rs/);
 
-const legacyRemoved = await runFixture({
+const legacyDeclarationRemoved = await runFixture({
   typesSource: canonicalTypes.replace('pub body_format: String,', ''),
   mutationSource: canonicalMutation,
 });
-assert.notEqual(legacyRemoved.status, 0);
-assert.match(legacyRemoved.stderr, /update the evidence status and tighten this guardrail/);
+assert.notEqual(legacyDeclarationRemoved.status, 0);
+assert.match(legacyDeclarationRemoved.stderr, /update the evidence status and tighten this guardrail/);
 
 console.log('Blog GraphQL richtext boundary guardrail tests passed.');
