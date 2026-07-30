@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::time::Instant;
 
@@ -5,12 +6,17 @@ use rustok_api::{AuthContext, PortError, RequestContext};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use crate::engine::{SearchFacetBucket, SearchFacetGroup};
 use crate::{
-    FORUM_SEARCH_SOURCE_MODULE, PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter,
-    SearchDictionaryService, SearchEngine, SearchFilterPresetService, SearchQuery,
-    SearchQueryLogRecord, SearchRankingProfile, SearchResult, SearchSettingsService,
-    SharedStorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    FORUM_SEARCH_SOURCE_MODULE, MAX_FORUM_SEARCH_RESULT_CANDIDATES, PgSearchEngine,
+    SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService, SearchEngine,
+    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
+    SearchResult, SearchResultItem, SearchSettingsService,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
+    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityRequest,
     StorefrontSearchTransport, resolve_storefront_search_category_ids,
+    resolve_storefront_search_result_candidates,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
@@ -19,6 +25,7 @@ const MAX_FILTER_VALUES: usize = 10;
 const MAX_FILTER_VALUE_LEN: usize = 64;
 const MAX_ATTRIBUTE_FILTERS: usize = 10;
 const MAX_LOCALE_LEN: usize = 16;
+const FORUM_RESULT_SCAN_PAGE_SIZE: usize = 50;
 
 #[derive(Clone, Debug)]
 pub struct ForumStorefrontSearchAttributeFilter {
@@ -72,7 +79,9 @@ impl Display for ForumStorefrontSearchExecutionError {
             Self::Validation(message) => formatter.write_str(message),
             Self::Scope(error) => formatter.write_str(&error.message),
             Self::Search(error) => Display::fmt(error, formatter),
-            Self::Database(_) => formatter.write_str("Forum storefront Search is temporarily unavailable"),
+            Self::Database(_) => {
+                formatter.write_str("Forum storefront Search is temporarily unavailable")
+            }
         }
     }
 }
@@ -122,11 +131,13 @@ struct NormalizedForumStorefrontSearchRequest {
 pub async fn execute_forum_storefront_search(
     db: &DatabaseConnection,
     category_scope_port: Option<SharedStorefrontSearchCategoryScopePort>,
+    result_eligibility_port: Option<SharedStorefrontSearchResultEligibilityPort>,
     request: ForumStorefrontSearchRequest,
 ) -> Result<ForumStorefrontSearchExecution, ForumStorefrontSearchExecutionError> {
     let input = normalize_request(request)?;
     let started_at = Instant::now();
-    let transform = SearchDictionaryService::transform_query(db, input.tenant_id, &input.query).await?;
+    let transform =
+        SearchDictionaryService::transform_query(db, input.tenant_id, &input.query).await?;
     let settings = SearchSettingsService::load_effective(db, Some(input.tenant_id)).await?;
     let resolved_preset = SearchFilterPresetService::resolve(
         &settings.config,
@@ -148,19 +159,22 @@ pub async fn execute_forum_storefront_search(
         input.ranking_profile.as_deref(),
         resolved_preset.ranking_profile,
     )?;
+    let effective_locale = input
+        .locale
+        .clone()
+        .unwrap_or_else(|| input.fallback_locale.clone());
+    let auth = input.auth.clone();
+    let request_context = input.request_context.clone();
     let category_ids = resolve_storefront_search_category_ids(
         category_scope_port,
         StorefrontSearchCategoryScopeRequest {
             tenant_id: input.tenant_id,
-            locale: input
-                .locale
-                .clone()
-                .unwrap_or_else(|| input.fallback_locale.clone()),
+            locale: effective_locale.clone(),
             fallback_locale: Some(input.fallback_locale.clone()),
             source_modules: resolved_preset.source_modules.clone(),
             category_ids: input.category_ids,
-            auth: input.auth,
-            request_context: input.request_context,
+            auth: auth.clone(),
+            request_context: request_context.clone(),
             transport: input.transport,
         },
     )
@@ -184,7 +198,16 @@ pub async fn execute_forum_storefront_search(
         sort_attribute_code: input.sort_attribute_code,
         sort_desc: input.sort_desc,
     };
-    let result = PgSearchEngine::new(db.clone()).search(search_query.clone()).await?;
+    let result = execute_result_eligible_search(
+        db,
+        &search_query,
+        result_eligibility_port,
+        effective_locale,
+        auth,
+        request_context,
+        input.transport,
+    )
+    .await?;
     let result = SearchDictionaryService::apply_query_rules(db, &search_query, result).await?;
     let query_log_id = SearchAnalyticsService::record_query(
         db,
@@ -212,6 +235,168 @@ pub async fn execute_forum_storefront_search(
         preset_key: search_query.preset_key,
         elapsed_ms: started_at.elapsed().as_millis() as u64,
     })
+}
+
+async fn execute_result_eligible_search(
+    db: &DatabaseConnection,
+    query: &SearchQuery,
+    eligibility_port: Option<SharedStorefrontSearchResultEligibilityPort>,
+    effective_locale: String,
+    auth: Option<AuthContext>,
+    request_context: Option<RequestContext>,
+    transport: StorefrontSearchTransport,
+) -> Result<SearchResult, ForumStorefrontSearchExecutionError> {
+    let started_at = Instant::now();
+    let engine = PgSearchEngine::new(db.clone());
+    let mut scan_query = query.clone();
+    scan_query.limit = FORUM_RESULT_SCAN_PAGE_SIZE;
+    scan_query.offset = 0;
+
+    let first_page = engine.search(scan_query.clone()).await?;
+    let raw_total = usize::try_from(first_page.total).map_err(|_| {
+        ForumStorefrontSearchExecutionError::Validation(
+            "Forum storefront Search candidate count is too large".to_string(),
+        )
+    })?;
+    if raw_total > MAX_FORUM_SEARCH_RESULT_CANDIDATES {
+        return validation(format!(
+            "Forum storefront Search matched more than {MAX_FORUM_SEARCH_RESULT_CANDIDATES} candidates; narrow the query or category scope"
+        ));
+    }
+
+    let engine_kind = first_page.engine;
+    let ranking_profile = first_page.ranking_profile;
+    let mut all_items = first_page.items;
+    while all_items.len() < raw_total {
+        scan_query.offset = all_items.len();
+        let page = engine.search(scan_query.clone()).await?;
+        if page.total != raw_total as u64 || page.items.is_empty() {
+            return Err(ForumStorefrontSearchExecutionError::Search(
+                rustok_core::Error::External(
+                    "Forum storefront Search candidate snapshot changed during bounded eligibility evaluation"
+                        .to_string(),
+                ),
+            ));
+        }
+        all_items.extend(page.items);
+        if all_items.len() > raw_total {
+            return Err(ForumStorefrontSearchExecutionError::Search(
+                rustok_core::Error::External(
+                    "Forum storefront Search candidate scan exceeded its initial bounded total"
+                        .to_string(),
+                ),
+            ));
+        }
+    }
+
+    let mut seen_candidates = HashSet::new();
+    let candidates = all_items
+        .iter()
+        .filter_map(result_candidate)
+        .filter(|candidate| seen_candidates.insert(*candidate))
+        .collect::<Vec<_>>();
+    let allowed = resolve_storefront_search_result_candidates(
+        eligibility_port,
+        StorefrontSearchResultEligibilityRequest {
+            tenant_id: query.tenant_id.expect("validated Forum Search tenant"),
+            locale: effective_locale,
+            candidates,
+            auth,
+            request_context,
+            transport,
+        },
+    )
+    .await?;
+    let allowed = allowed.into_iter().collect::<HashSet<_>>();
+
+    let visible_items = all_items
+        .into_iter()
+        .filter(|item| match item.entity_type.as_str() {
+            "forum_category" => true,
+            "forum_topic" | "forum_reply" => result_candidate(item)
+                .is_some_and(|candidate| allowed.contains(&candidate)),
+            _ => false,
+        })
+        .collect::<Vec<_>>();
+    let total = visible_items.len() as u64;
+    let facets = build_forum_result_facets(&visible_items);
+    let items = visible_items
+        .into_iter()
+        .skip(query.offset)
+        .take(query.limit)
+        .collect();
+
+    Ok(SearchResult {
+        items,
+        total,
+        took_ms: started_at.elapsed().as_millis() as u64,
+        engine: engine_kind,
+        ranking_profile,
+        facets,
+    })
+}
+
+fn result_candidate(item: &SearchResultItem) -> Option<StorefrontSearchResultCandidate> {
+    StorefrontSearchResultCandidateKind::from_entity_type(&item.entity_type).map(|kind| {
+        StorefrontSearchResultCandidate {
+            document_id: item.id,
+            kind,
+        }
+    })
+}
+
+fn build_forum_result_facets(items: &[SearchResultItem]) -> Vec<SearchFacetGroup> {
+    let mut entity_types = BTreeMap::<String, u64>::new();
+    let mut source_modules = BTreeMap::<String, u64>::new();
+    let mut statuses = BTreeMap::<String, u64>::new();
+    for item in items {
+        *entity_types.entry(item.entity_type.clone()).or_default() += 1;
+        *source_modules.entry(item.source_module.clone()).or_default() += 1;
+        if let Some(status) = forum_visible_status(&item.entity_type) {
+            *statuses.entry(status.to_string()).or_default() += 1;
+        }
+    }
+    vec![
+        SearchFacetGroup {
+            name: "entity_type".to_string(),
+            buckets: facet_buckets(entity_types),
+        },
+        SearchFacetGroup {
+            name: "source_module".to_string(),
+            buckets: facet_buckets(source_modules),
+        },
+        SearchFacetGroup {
+            name: "status".to_string(),
+            buckets: facet_buckets(statuses),
+        },
+    ]
+}
+
+fn facet_buckets(values: BTreeMap<String, u64>) -> Vec<SearchFacetBucket> {
+    let mut buckets = values
+        .into_iter()
+        .map(|(value, count)| SearchFacetBucket {
+            value,
+            label: None,
+            count,
+        })
+        .collect::<Vec<_>>();
+    buckets.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.value.cmp(&right.value))
+    });
+    buckets
+}
+
+fn forum_visible_status(entity_type: &str) -> Option<&'static str> {
+    match entity_type {
+        "forum_category" => Some("public"),
+        "forum_topic" => Some("open"),
+        "forum_reply" => Some("approved"),
+        _ => None,
+    }
 }
 
 fn normalize_request(
@@ -305,7 +490,9 @@ fn normalize_filter_values(
     values: Vec<String>,
 ) -> Result<Vec<String>, ForumStorefrontSearchExecutionError> {
     if values.len() > MAX_FILTER_VALUES {
-        return validation(format!("{field} exceeds the maximum size of {MAX_FILTER_VALUES} values"));
+        return validation(format!(
+            "{field} exceeds the maximum size of {MAX_FILTER_VALUES} values"
+        ));
     }
     values
         .into_iter()
@@ -329,15 +516,18 @@ fn normalize_uuid_values(
     values: Vec<String>,
 ) -> Result<Vec<Uuid>, ForumStorefrontSearchExecutionError> {
     if values.len() > MAX_FILTER_VALUES {
-        return validation(format!("{field} exceeds the maximum size of {MAX_FILTER_VALUES} values"));
+        return validation(format!(
+            "{field} exceeds the maximum size of {MAX_FILTER_VALUES} values"
+        ));
     }
     values
         .into_iter()
         .map(|value| {
-            Uuid::parse_str(value.trim())
-                .map_err(|_| ForumStorefrontSearchExecutionError::Validation(format!(
+            Uuid::parse_str(value.trim()).map_err(|_| {
+                ForumStorefrontSearchExecutionError::Validation(format!(
                     "{field} contains an invalid UUID"
-                )))
+                ))
+            })
         })
         .collect()
 }
@@ -427,7 +617,9 @@ fn validate_attribute_code(value: &str) -> Result<(), ForumStorefrontSearchExecu
 fn normalize_attribute_bound(
     value: Option<String>,
 ) -> Result<Option<String>, ForumStorefrontSearchExecutionError> {
-    let value = value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty());
+    let value = value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     if let Some(value) = value.as_deref() {
         if value.len() > MAX_FILTER_VALUE_LEN || value.chars().any(char::is_control) {
             return validation("attribute filter bound contains an invalid value");
@@ -439,5 +631,20 @@ fn normalize_attribute_bound(
 fn validation<T>(
     message: impl Into<String>,
 ) -> Result<T, ForumStorefrontSearchExecutionError> {
-    Err(ForumStorefrontSearchExecutionError::Validation(message.into()))
+    Err(ForumStorefrontSearchExecutionError::Validation(
+        message.into(),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::forum_visible_status;
+
+    #[test]
+    fn visible_forum_statuses_match_owner_eligibility() {
+        assert_eq!(forum_visible_status("forum_category"), Some("public"));
+        assert_eq!(forum_visible_status("forum_topic"), Some("open"));
+        assert_eq!(forum_visible_status("forum_reply"), Some("approved"));
+        assert_eq!(forum_visible_status("product"), None);
+    }
 }
