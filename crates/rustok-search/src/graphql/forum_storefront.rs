@@ -14,7 +14,8 @@ use uuid::Uuid;
 use crate::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecutionError,
     ForumStorefrontSearchRequest, SharedStorefrontSearchCategoryScopePort,
-    StorefrontSearchTransport, execute_forum_storefront_search,
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchTransport,
+    execute_forum_storefront_search,
 };
 
 use super::{
@@ -32,9 +33,9 @@ pub struct ForumStorefrontSearchQuery;
 
 #[Object]
 impl ForumStorefrontSearchQuery {
-    /// Executes published Search through the Forum-owned richer category scope.
-    /// The input must explicitly select only the `forum` source and at least one
-    /// category root; mixed Search remains on the ordinary storefront field.
+    /// Executes published Search through the Forum-owned richer category scope
+    /// and exact topic/reply result eligibility. The input must explicitly select
+    /// only the `forum` source and at least one category root.
     async fn forum_storefront_search(
         &self,
         ctx: &Context<'_>,
@@ -61,13 +62,17 @@ impl ForumStorefrontSearchQuery {
         }
         let request_context = ctx.data::<RequestContext>()?.clone();
         let auth = ctx.data_opt::<AuthContext>().cloned();
-        let category_scope_port = ctx
-            .data_opt::<Arc<ModuleRuntimeExtensions>>()
-            .and_then(|extensions| {
-                extensions
-                    .get::<SharedStorefrontSearchCategoryScopePort>()
-                    .cloned()
-            });
+        let extensions = ctx.data_opt::<Arc<ModuleRuntimeExtensions>>();
+        let category_scope_port = extensions.and_then(|extensions| {
+            extensions
+                .get::<SharedStorefrontSearchCategoryScopePort>()
+                .cloned()
+        });
+        let result_eligibility_port = extensions.and_then(|extensions| {
+            extensions
+                .get::<SharedStorefrontSearchResultEligibilityPort>()
+                .cloned()
+        });
         let request = ForumStorefrontSearchRequest {
             tenant_id: tenant.id,
             query: input.query,
@@ -100,13 +105,18 @@ impl ForumStorefrontSearchQuery {
             transport: StorefrontSearchTransport::Graphql,
         };
 
-        let execution = execute_forum_storefront_search(db, category_scope_port, request)
-            .await
-            .map_err(map_execution_error)?;
+        let execution = execute_forum_storefront_search(
+            db,
+            category_scope_port,
+            result_eligibility_port,
+            request,
+        )
+        .await
+        .map_err(map_execution_error)?;
         metrics::record_read_path_query(
             "graphql",
             FORUM_STOREFRONT_SEARCH_SURFACE,
-            "forum_category_scope_then_fts",
+            "forum_category_scope_result_eligibility_then_fts",
             execution.elapsed_ms as f64 / 1000.0,
             execution.result.total,
         );
@@ -186,7 +196,7 @@ fn map_execution_error(error: ForumStorefrontSearchExecutionError) -> FieldError
             _ => {
                 tracing::error!(
                     error = ?port_error,
-                    "Forum storefront Search category scope failed"
+                    "Forum storefront Search owner scope failed"
                 );
                 <FieldError as GraphQLError>::internal_error(
                     FORUM_STOREFRONT_SEARCH_UNAVAILABLE,
@@ -200,15 +210,11 @@ fn map_execution_error(error: ForumStorefrontSearchExecutionError) -> FieldError
         ) => FieldError::new(message),
         ForumStorefrontSearchExecutionError::Search(error) => {
             tracing::error!(error = ?error, "Forum storefront Search execution failed");
-            <FieldError as GraphQLError>::internal_error(
-                FORUM_STOREFRONT_SEARCH_UNAVAILABLE,
-            )
+            <FieldError as GraphQLError>::internal_error(FORUM_STOREFRONT_SEARCH_UNAVAILABLE)
         }
         ForumStorefrontSearchExecutionError::Database(error) => {
             tracing::error!(error = ?error, "Forum storefront Search database failure");
-            <FieldError as GraphQLError>::internal_error(
-                FORUM_STOREFRONT_SEARCH_UNAVAILABLE,
-            )
+            <FieldError as GraphQLError>::internal_error(FORUM_STOREFRONT_SEARCH_UNAVAILABLE)
         }
     }
 }
