@@ -39,7 +39,7 @@ use crate::model::{
 };
 use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
-use rustok_core::{CONTENT_FORMAT_MARKDOWN, SecurityContext};
+use rustok_core::SecurityContext;
 #[path = "direct_content_moderation.rs"]
 mod direct_content_moderation;
 #[path = "direct_domain_alloy.rs"]
@@ -782,10 +782,9 @@ impl DirectTaskHandler for BlogDraftHandler {
                     UpdatePostInput {
                         locale: Some(request.resolved_locale.clone()),
                         title: Some(title.clone()),
-                        body: Some(body.clone()),
-                        body_format: Some(CONTENT_FORMAT_MARKDOWN.to_string()),
-                        content_json: None,
-                        content: None,
+                        content: Some(
+                            rustok_blog::richtext::article_document_from_plain_text(&body),
+                        ),
                         excerpt: excerpt.clone(),
                         slug: slug.clone(),
                         tags: if tags.is_empty() {
@@ -1000,7 +999,7 @@ fn resolve_blog_source_content(
         title: normalize_optional_text(input.source_title.clone())
             .or_else(|| existing_post.map(|post| post.title.clone())),
         body: normalize_optional_text(input.source_body.clone())
-            .or_else(|| existing_post.map(|post| post.body.clone())),
+            .or_else(|| existing_post.map(|post| post.content_plain_text.clone())),
         excerpt: normalize_optional_text(input.source_excerpt.clone())
             .or_else(|| existing_post.and_then(|post| post.excerpt.clone())),
         seo_title: normalize_optional_text(input.source_seo_title.clone())
@@ -1393,10 +1392,7 @@ fn build_blog_draft_create_input(
     Ok(CreatePostInput {
         locale: locale.to_string(),
         title: title.to_string(),
-        body: body.to_string(),
-        body_format: CONTENT_FORMAT_MARKDOWN.to_string(),
-        content_json: None,
-        content: None,
+        content: rustok_blog::richtext::article_document_from_plain_text(body),
         excerpt: excerpt.map(ToString::to_string),
         slug: slug.map(ToString::to_string),
         publish: false,
@@ -2470,6 +2466,10 @@ mod tests {
         assert_eq!(create.title, "Generated title");
         assert_eq!(create.tags, vec!["ai".to_string()]);
         assert_eq!(create.category_id, input.category_id);
+        assert_eq!(
+            create.content.content[0].content[0].text.as_deref(),
+            Some("Generated body")
+        );
     }
 
     #[tokio::test]

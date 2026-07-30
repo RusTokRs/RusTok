@@ -88,22 +88,10 @@ for (const marker of ["leptos::", "view!", "#[server", "ServerFnError"]) {
   assertNotContains(pagination, marker, `${files.pagination}: pagination policy must remain framework/server-function free (${marker})`);
 }
 
-for (const marker of [
-  "pub fn body_or_fallback",
-  "pub fn summarized_body_or_fallback",
-  "pub fn summarize_content",
-]) {
-  assertContains(core, marker, `${files.core}: quarantined legacy summarizer definition drift (${marker})`);
-}
 for (const rustFile of rustFilesUnder(files.storefrontSrc)) {
-  if (rustFile === files.core) continue;
   const source = text(rustFile);
   for (const marker of legacySummarizerMarkers) {
-    assertNotContains(
-      source,
-      marker,
-      `${rustFile}: active storefront code must not consume quarantined legacy summarizer ${marker}`,
-    );
+    assertNotContains(source, marker, `${rustFile}: removed legacy summarizer ${marker} must not return`);
   }
 }
 
@@ -160,8 +148,8 @@ for (const marker of [
   "page: comments_page.max(1)",
   "per_page: COMMENTS_PAGE_SIZE",
   "map_comment_list_item",
-  "content: post.content",
-  "content_plain_text: post.content_plain_text",
+  "content: Some(post.content)",
+  "content_plain_text: Some(post.content_plain_text)",
 ]) {
   assertContains(native, marker, `${files.native}: missing channel/comments/richtext native marker ${marker}`);
 }
@@ -201,17 +189,11 @@ for (const field of [
   "native_owner_view",
   "server_html_render",
   "plain_text_fallback",
-  "legacy_summarizer_quarantined",
+  "legacy_summarizer_removed",
 ]) {
   if (evidence.contract?.[field] !== true) {
     fail(`${files.evidence}: contract.${field} must be true`);
   }
-}
-if (JSON.stringify(evidence.legacy_summarizer_quarantine?.allowed_files) !== JSON.stringify([files.core])) {
-  fail(`${files.evidence}: legacy summarizer quarantine must allow only ${files.core}`);
-}
-if ((evidence.legacy_summarizer_quarantine?.active_consumers ?? []).length !== 0) {
-  fail(`${files.evidence}: legacy summarizer quarantine must have no active consumers`);
 }
 if (evidence.validation?.tests_run !== false || evidence.validation?.verifier_run !== false || evidence.validation?.cargo_run !== false) {
   fail(`${files.evidence}: validation flags must record that execution remains maintainer-owned`);
@@ -227,7 +209,7 @@ assertContains(verifierTest, "rejects legacy api module", `${files.verifierTest}
 assertContains(verifierTest, "rejects missing public comments parity", `${files.verifierTest}: fixture tests must reject missing comments parity`);
 assertContains(verifierTest, "rejects missing comment pagination parity", `${files.verifierTest}: fixture tests must reject missing pagination parity`);
 assertContains(verifierTest, "rejects legacy richtext transport", `${files.verifierTest}: fixture tests must reject legacy richtext transport`);
-assertContains(verifierTest, "rejects legacy richtext summarizer consumer", `${files.verifierTest}: fixture tests must reject legacy summarizer consumers`);
+assertContains(verifierTest, "rejects removed richtext summarizer", `${files.verifierTest}: fixture tests must reject removed summarizers`);
 
 const scripts = pkg.scripts ?? {};
 if (scripts["verify:blog:storefront-boundary"] !== "node scripts/verify/verify-blog-storefront-boundary.mjs") {

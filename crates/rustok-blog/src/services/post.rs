@@ -12,15 +12,15 @@ struct PostTranslationUpsertInput {
     excerpt: Option<String>,
     seo_title: Option<String>,
     seo_description: Option<String>,
-    prepared_body: Option<rustok_core::PreparedContent>,
+    article_body: Option<String>,
     now: chrono::DateTime<chrono::Utc>,
 }
 
-use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
-use rustok_core::{SecurityContext, prepare_content_payload};
+use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
@@ -63,9 +63,6 @@ impl PostService {
         let CreatePostInput {
             locale,
             title,
-            body,
-            body_format,
-            content_json,
             content,
             excerpt,
             slug,
@@ -84,22 +81,8 @@ impl PostService {
         validate_tags(&tags)?;
 
         let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
-        let prepared_body = if let Some(content) = content {
-            let content = normalize_article(content)?;
-            rustok_core::PreparedContent {
-                format: "richtext".to_string(),
-                body: canonical_article_body(&content)?,
-            }
-        } else {
-            prepare_content_payload(
-                Some(&body_format),
-                Some(&body),
-                content_json.as_ref(),
-                &locale,
-                "Body",
-            )
-            .map_err(BlogError::validation)?
-        };
+        let content = normalize_article(content)?;
+        let article_body = canonical_article_body(&content)?;
 
         let slug = normalize_slug(slug.as_deref().unwrap_or(&title));
         if slug.is_empty() {
@@ -160,8 +143,7 @@ impl PostService {
             excerpt: Set(excerpt),
             seo_title: Set(seo_title),
             seo_description: Set(seo_description),
-            body: Set(prepared_body.body),
-            body_format: Set(prepared_body.format),
+            body: Set(article_body),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -248,28 +230,14 @@ impl PostService {
             .unwrap_or_default();
         let replace_channel_visibility = input.channel_slugs.is_some();
 
-        let mut prepared_body = None;
-        if let Some(content) = input.content.clone() {
-            let content = normalize_article(content)?;
-            prepared_body = Some(rustok_core::PreparedContent {
-                format: "richtext".to_string(),
-                body: canonical_article_body(&content)?,
-            });
-        } else if input.body.is_some()
-            || input.content_json.is_some()
-            || input.body_format.is_some()
-        {
-            prepared_body = Some(
-                prepare_content_payload(
-                    input.body_format.as_deref(),
-                    input.body.as_deref(),
-                    input.content_json.as_ref(),
-                    &locale,
-                    "Body",
-                )
-                .map_err(BlogError::validation)?,
-            );
-        }
+        let article_body = input
+            .content
+            .clone()
+            .map(normalize_article)
+            .transpose()?
+            .as_ref()
+            .map(canonical_article_body)
+            .transpose()?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let now = chrono::Utc::now();
@@ -307,7 +275,7 @@ impl PostService {
                 excerpt: input.excerpt,
                 seo_title: input.seo_title,
                 seo_description: input.seo_description,
-                prepared_body,
+                article_body,
                 now,
             },
         )
@@ -1000,7 +968,7 @@ impl PostService {
             excerpt,
             seo_title,
             seo_description,
-            prepared_body,
+            article_body,
             now,
         } = input;
         let locale = normalize_locale(locale)?;
@@ -1027,9 +995,8 @@ impl PostService {
                 if seo_description.is_some() {
                     active.seo_description = Set(seo_description);
                 }
-                if let Some(prepared_body) = prepared_body {
-                    active.body = Set(prepared_body.body);
-                    active.body_format = Set(prepared_body.format);
+                if let Some(article_body) = article_body {
+                    active.body = Set(article_body);
                 }
                 active.updated_at = Set(now.into());
                 active.update(txn).await.map_err(BlogError::from)?;
@@ -1052,14 +1019,9 @@ impl PostService {
                         .as_ref()
                         .and_then(|item| item.seo_description.clone())
                 });
-                let prepared_body = prepared_body
-                    .or_else(|| {
-                        baseline.as_ref().map(|item| rustok_core::PreparedContent {
-                            body: item.body.clone(),
-                            format: item.body_format.clone(),
-                        })
-                    })
-                    .ok_or_else(|| BlogError::validation("Body is required for a new locale"))?;
+                let article_body = article_body
+                    .or_else(|| baseline.as_ref().map(|item| item.body.clone()))
+                    .ok_or_else(|| BlogError::validation("Content is required for a new locale"))?;
 
                 blog_post_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -1069,8 +1031,7 @@ impl PostService {
                     excerpt: Set(excerpt),
                     seo_title: Set(seo_title),
                     seo_description: Set(seo_description),
-                    body: Set(prepared_body.body),
-                    body_format: Set(prepared_body.format),
+                    body: Set(article_body),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1113,19 +1074,11 @@ impl PostService {
         .await?;
         let resolved = resolve_translation_record(&translations, locale, fallback_locale);
         let translation = resolved.translation;
-        let body = translation
-            .map(|item| item.body.clone())
-            .unwrap_or_default();
-        let body_format = translation
-            .map(|item| item.body_format.clone())
-            .unwrap_or_else(|| "markdown".to_string());
-        let content_json = if body_format == "rt_json_v1" {
-            serde_json::from_str(&body).ok()
-        } else {
-            None
+        let body = match translation {
+            Some(item) => item.body.clone(),
+            None => canonical_article_body(&RichTextDocument::empty())?,
         };
-        let (content, content_plain_text) = project_stored_article(&body, &body_format)
-            .map_or((None, None), |(view, text)| (Some(view), Some(text)));
+        let (content, content_plain_text) = project_stored_article(&body)?;
 
         Ok(PostResponse {
             id: post.id,
@@ -1139,9 +1092,6 @@ impl PostService {
             locale: locale.to_string(),
             effective_locale: resolved.effective_locale,
             available_locales: available_locales_from(&translations, |item| item.locale.as_str()),
-            body,
-            body_format,
-            content_json,
             content,
             content_plain_text,
             excerpt: translation.and_then(|item| item.excerpt.clone()),
@@ -1584,10 +1534,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Draft Post".to_string(),
-                    body: "Content".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
-                    content: None,
+                    content: rustok_blog::richtext::article_document_from_plain_text(&"Content".to_string()),
                     excerpt: None,
                     slug: Some("draft-post".to_string()),
                     publish: false,
@@ -1644,10 +1591,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Customer draft".to_string(),
-                    body: "Body".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
-                    content: None,
+                    content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
                     excerpt: None,
                     slug: Some("customer-draft".to_string()),
                     publish: false,
@@ -1671,10 +1615,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Admin draft".to_string(),
-                    body: "Body".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
-                    content: None,
+                    content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
                     excerpt: None,
                     slug: Some("admin-draft".to_string()),
                     publish: false,
@@ -1731,10 +1672,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Visible post".to_string(),
-                    body: "Body".to_string(),
-                    body_format: "markdown".to_string(),
-                    content_json: None,
-                    content: None,
+                    content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
                     excerpt: None,
                     slug: Some("visible-post".to_string()),
                     publish: true,
@@ -1775,9 +1713,6 @@ mod tests {
                 UpdatePostInput {
                     locale: Some("en".to_string()),
                     title: None,
-                    body: None,
-                    body_format: None,
-                    content_json: None,
                     content: None,
                     excerpt: None,
                     slug: None,
@@ -1837,10 +1772,7 @@ mod tests {
                     CreatePostInput {
                         locale: "en".to_string(),
                         title: title.to_string(),
-                        body: "Body".to_string(),
-                        body_format: "markdown".to_string(),
-                        content_json: None,
-                        content: None,
+                        content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
                         excerpt: None,
                         slug: Some(slug.to_string()),
                         publish: true,

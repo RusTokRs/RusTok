@@ -397,35 +397,6 @@ pub fn route_segment_or_default(value: Option<String>, default_segment: &str) ->
         .unwrap_or_else(|| default_segment.to_string())
 }
 
-#[allow(dead_code)]
-pub fn body_or_fallback(value: Option<String>, fallback: &str) -> String {
-    fallback_text(value, fallback)
-}
-
-#[allow(dead_code)]
-pub fn summarized_body_or_fallback(
-    body: Option<String>,
-    body_format: &str,
-    no_body_fallback: &str,
-    raw_format_template: &str,
-) -> String {
-    body_or_fallback(
-        body.map(|content| summarize_content(content.as_str(), body_format, raw_format_template)),
-        no_body_fallback,
-    )
-}
-
-#[allow(dead_code)]
-pub fn summarize_content(content: &str, format: &str, fallback_template: &str) -> String {
-    if format.eq_ignore_ascii_case("markdown") {
-        return content.trim().to_string();
-    }
-
-    fallback_template
-        .replace("{format}", format)
-        .replace("{count}", &content.chars().count().to_string())
-}
-
 pub fn status_badge_css(status: &str) -> &'static str {
     let status = status.trim();
 
@@ -758,40 +729,7 @@ mod tests {
         assert_eq!(view.locale_meta, "locale: en".to_string());
     }
 
-    #[test]
-    fn summarize_content_handles_markdown_and_raw() {
-        assert_eq!(summarize_content("  hello  ", "markdown", "x"), "hello");
-        assert_eq!(
-            summarize_content(
-                "raw payload",
-                "json",
-                "Stored in `{format}` format. Raw body length: {count} characters.",
-            ),
-            "Stored in `json` format. Raw body length: 11 characters.".to_string()
-        );
-    }
 
-    #[test]
-    fn summarized_body_or_fallback_handles_none_and_raw_payload() {
-        assert_eq!(
-            summarized_body_or_fallback(
-                None,
-                "markdown",
-                "No body content yet.",
-                "Stored in `{format}` format. Raw body length: {count} characters.",
-            ),
-            "No body content yet.".to_string()
-        );
-        assert_eq!(
-            summarized_body_or_fallback(
-                Some("raw payload".to_string()),
-                "json",
-                "No body content yet.",
-                "Stored in `{format}` format. Raw body length: {count} characters.",
-            ),
-            "Stored in `json` format. Raw body length: 11 characters.".to_string()
-        );
-    }
 
     #[test]
     fn error_and_href_helpers_format_expected_values() {
@@ -816,10 +754,6 @@ mod tests {
             "latest".to_string()
         );
         assert_eq!(route_segment_or_default(None, "blog"), "blog".to_string());
-        assert_eq!(
-            body_or_fallback(None, "No body content yet."),
-            "No body content yet.".to_string()
-        );
         assert_eq!(
             post_link("/store/modules/blog", "hello-world", "Open"),
             (

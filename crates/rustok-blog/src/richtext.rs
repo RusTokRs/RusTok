@@ -62,12 +62,7 @@ pub fn project_article(document: RichTextDocument) -> BlogResult<(RichTextView, 
 }
 
 /// Project a canonical storage row through the current article policy.
-pub fn project_stored_article(body: &str, format: &str) -> BlogResult<(RichTextView, String)> {
-    if format != "richtext" {
-        return Err(BlogError::validation(
-            "Stored article content does not use the canonical richtext format",
-        ));
-    }
+pub fn project_stored_article(body: &str) -> BlogResult<(RichTextView, String)> {
     let document = serde_json::from_str(body)
         .map_err(|_| BlogError::validation("Stored article content is not a document"))?;
 
@@ -150,7 +145,7 @@ mod tests {
         });
 
         let (view, text) =
-            project_stored_article(&stored.to_string(), "richtext").expect("projection");
+            project_stored_article(&stored.to_string()).expect("projection");
         assert_eq!(view.document.kind, "doc");
         assert_eq!(text, "Article");
     }

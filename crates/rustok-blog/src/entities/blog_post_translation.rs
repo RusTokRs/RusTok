@@ -14,7 +14,6 @@ pub struct Model {
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
     pub body: String,
-    pub body_format: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

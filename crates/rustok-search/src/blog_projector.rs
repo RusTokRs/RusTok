@@ -212,14 +212,7 @@ impl BlogSearchProjector {
                 bct.name AS subtitle,
                 p.slug,
                 NULL::text AS handle,
-                CONCAT_WS(
-                    E'\n\n',
-                    COALESCE(bt.excerpt, ''),
-                    CASE
-                        WHEN bt.body_format = 'richtext' THEN ''
-                        ELSE COALESCE(bt.body, '')
-                    END
-                ) AS body,
+                COALESCE(bt.excerpt, '') AS body,
                 CONCAT_WS(
                     ' ',
                     COALESCE(bct.name, ''),
@@ -313,12 +306,12 @@ impl BlogSearchProjector {
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
         conn.execute(stmt).await.map_err(Error::Database)?;
-        self.refresh_canonical_richtext_bodies_in(conn, tenant_id, post_id)
+        self.refresh_article_bodies_in(conn, tenant_id, post_id)
             .await?;
         Ok(())
     }
 
-    async fn refresh_canonical_richtext_bodies_in<C>(
+    async fn refresh_article_bodies_in<C>(
         &self,
         conn: &C,
         tenant_id: Uuid,
@@ -328,8 +321,7 @@ impl BlogSearchProjector {
         C: ConnectionTrait,
     {
         let mut values = vec![tenant_id.into()];
-        let mut where_clause =
-            String::from("WHERE p.tenant_id = $1 AND bt.body_format = 'richtext'");
+        let mut where_clause = String::from("WHERE p.tenant_id = $1");
         if let Some(post_id) = post_id {
             where_clause.push_str(" AND p.id = $2");
             values.push(post_id.into());

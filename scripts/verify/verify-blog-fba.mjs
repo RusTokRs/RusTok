@@ -40,9 +40,9 @@ sameSet(dependency.fallback_profiles, provider.consumers?.find(c => c.module ===
 sameSet(dependency.degraded_modes, provider.consumers?.find(c => c.module === 'blog')?.degraded_modes ?? [], 'consumer/provider degraded modes');
 if (dependency.context !== 'rustok_api::ports::PortContext' || dependency.error !== 'rustok_api::ports::PortError') fail('consumer context/error drift');
 
-if (richtextInventory.schema_version !== 1) fail('richtext cutover inventory schema_version drift');
+if (richtextInventory.schema_version !== 2) fail('richtext cutover inventory schema_version drift');
 if (richtextInventory.module !== 'blog' || richtextInventory.surface !== 'article_richtext_cutover') fail('richtext cutover inventory identity drift');
-if (richtextInventory.status !== 'in_progress_source_verified_no_compile') fail('richtext cutover inventory status drift');
+if (richtextInventory.status !== 'implemented_source_verified_no_compile') fail('richtext cutover inventory status drift');
 if (richtextInventory.compile_policy !== 'not_run_by_request' || richtextInventory.atomicity !== 'required') fail('richtext cutover inventory execution/atomicity drift');
 if (richtextInventory.owner_contract?.write !== 'rustok_api::RichTextDocument'
   || richtextInventory.owner_contract?.read !== 'rustok_api::RichTextView'
@@ -65,23 +65,25 @@ for (const check of richtextInventory.checks ?? []) {
 }
 sameSet(
   richtextInventory.blocking_surfaces ?? [],
-  ['storage_schema'],
+  [],
   'richtext cutover blockers',
 );
 const richtextCheckNames = new Set((richtextInventory.checks ?? []).map((check) => check.name));
 for (const requiredCheck of [
   'owner_article_projection',
   'storage_schema',
+  'storage_migration',
   'graphql_transport',
   'next_admin',
   'leptos_storefront_model',
   'leptos_storefront_graphql',
   'leptos_storefront_native',
   'leptos_storefront_rendering',
+  'leptos_storefront_legacy_removal',
   'search_projection',
   'seo_projection',
   'ai_blog_draft_writer',
-  'ai_blog_draft_direct_compatibility',
+  'content_orchestration_guard',
 ]) {
   if (!richtextCheckNames.has(requiredCheck)) fail(`richtext cutover inventory missing check ${requiredCheck}`);
 }
