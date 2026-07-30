@@ -90,7 +90,7 @@ pub mod module_event_dispatcher {
     };
 
     /// Adds host-owned adapters after module/distribution registration, materializes the
-    /// canonical Index query runtime, and then replaces selected final-host consumers.
+    /// canonical Index query runtime, and then activates selected final-host consumers.
     pub fn build_shared_runtime_extensions_with_host_providers(
         registry: &ModuleRegistry,
         settings: &RustokSettings,
@@ -114,13 +114,15 @@ pub mod module_event_dispatcher {
             feature = "mod-profiles",
             feature = "mod-social_graph"
         ))]
+        if crate::services::notification_recipient_policy::social_graph_index_privacy_reads_enabled()
+            .map_err(Error::Message)?
         {
             let index_runtime = extensions
                 .get::<rustok_index::SharedIndexQueryRuntime>()
                 .cloned()
                 .ok_or_else(|| {
                     Error::Message(
-                        "Index query runtime is required for Social Graph notification privacy reads"
+                        "Index query runtime is required when Social Graph Index privacy reads are enabled"
                             .to_string(),
                     )
                 })?;
