@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31",
+  "status": "fulfillment_storefront_native_client_error_safety_source_reviewed_unvalidated",
+  "review": {
+    "public_operation": "select_shipping_option",
+    "native_validation_order": [
+      "cart UUID",
+      "shipping selection plan",
+      "selected shipping option UUID"
+    ],
+    "native_context_precedes_server_function_call": true,
+    "technical_mapping_follows_server_function_call": true,
+    "transport_facade_outside_diff": true,
+    "graphql_adapter_outside_diff": true,
+    "graphql_error_policy_outside_diff": true,
+    "server_functions_outside_diff": true,
+    "endpoint_outside_diff": true,
+    "request_response_dto_outside_diff": true,
+    "selection_plan_outside_diff": true,
+    "validation_messages_preserved": true,
+    "raw_request_values_in_diagnostics": false,
+    "broad_ecommerce_cleanup_still_open": true
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "source_review_only": true
+  }
+}
