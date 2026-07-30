@@ -1534,7 +1534,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Draft Post".to_string(),
-                    content: rustok_blog::richtext::article_document_from_plain_text(&"Content".to_string()),
+                    content: crate::richtext::article_document_from_plain_text("Content"),
                     excerpt: None,
                     slug: Some("draft-post".to_string()),
                     publish: false,
@@ -1591,7 +1591,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Customer draft".to_string(),
-                    content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                    content: crate::richtext::article_document_from_plain_text("Body"),
                     excerpt: None,
                     slug: Some("customer-draft".to_string()),
                     publish: false,
@@ -1615,7 +1615,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Admin draft".to_string(),
-                    content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                    content: crate::richtext::article_document_from_plain_text("Body"),
                     excerpt: None,
                     slug: Some("admin-draft".to_string()),
                     publish: false,
@@ -1672,7 +1672,7 @@ mod tests {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: "Visible post".to_string(),
-                    content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                    content: crate::richtext::article_document_from_plain_text("Body"),
                     excerpt: None,
                     slug: Some("visible-post".to_string()),
                     publish: true,
@@ -1772,7 +1772,7 @@ mod tests {
                     CreatePostInput {
                         locale: "en".to_string(),
                         title: title.to_string(),
-                        content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                        content: crate::richtext::article_document_from_plain_text("Body"),
                         excerpt: None,
                         slug: Some(slug.to_string()),
                         publish: true,
