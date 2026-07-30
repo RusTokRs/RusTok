@@ -1,0 +1,172 @@
+#!/usr/bin/env node
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const fail = (message) => {
+  console.error(`[verify-index-replay-runtime-composition] ${message}`);
+  process.exit(1);
+};
+const requireMarkers = (relative, markers) => {
+  const source = read(relative);
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
+
+const indexRuntimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
+const indexRuntime = requireMarkers(indexRuntimePath, [
+  'pub struct SharedIndexReplayRuntime',
+  'pub async fn run(',
+  'pub async fn request_cancel(',
+  'pub enum IndexReplayRuntimeCompositionError',
+  'AlreadyMaterialized',
+  'MissingSchemaRegistry',
+  'pub fn materialize_postgres_index_replay_runtime(',
+  'extensions.get::<SharedIndexSourceRegistry>().cloned()',
+  'extensions.get::<SharedIndexSchemaRegistry>()',
+  'return Ok(None);',
+  'PostgresIndexReplayRunner::new(',
+  'extensions.insert(runtime.clone())',
+  'missing_source_registry_does_not_publish_false_replay_runtime',
+  'source_registry_without_shared_schema_registry_fails_closed',
+  'complete_registries_materialize_one_shared_replay_runtime',
+  'duplicate_replay_runtime_materialization_fails_closed',
+]);
+for (const forbidden of [
+  'tokio::spawn',
+  'tokio::time::sleep',
+  'loop {',
+  '.query_one(',
+  '.query_all(',
+  '.execute(',
+  '.begin()',
+  'permissions_for(',
+  'Permission::',
+]) {
+  if (indexRuntime.includes(forbidden)) {
+    fail(`${indexRuntimePath} contains host/IO/scheduler marker ${forbidden}`);
+  }
+}
+
+const serverRuntimePath = 'apps/server/src/services/index_replay_runtime_composition.rs';
+const serverRuntime = requireMarkers(serverRuntimePath, [
+  'pub struct IndexReplayOperatorContext',
+  'pub struct IndexReplayOperatorRuntime',
+  'pub enum IndexReplayOperatorError',
+  'Permission::MODULES_MANAGE',
+  'permissions_for(&self.tenant_id, &self.actor_id)',
+  'requested_tenant != self.tenant_id',
+  'pub async fn run(',
+  'pub async fn request_cancel(',
+  'materialize_index_source_registry(extensions)',
+  'materialize_postgres_index_replay_runtime(extensions, db)',
+  'extensions.insert(IndexReplayOperatorRuntime::new(runtime))',
+  'missing_replay_sources_do_not_publish_false_host_runtime',
+  'complete_source_catalog_publishes_guarded_runtime_to_host_context',
+  'duplicate_host_replay_materialization_fails_closed',
+  'operator_authorization_requires_exact_tenant_actor_and_modules_manage',
+  'operator_context_rejects_nil_identity',
+]);
+for (const forbidden of [
+  'tokio::spawn',
+  'tokio::time::sleep',
+  'loop {',
+  'StopHandle',
+  'runs_background_workers',
+  'rustok_product',
+  'rustok_content',
+  'rustok_flex',
+]) {
+  if (serverRuntime.includes(forbidden)) {
+    fail(`${serverRuntimePath} contains scheduler/source-domain marker ${forbidden}`);
+  }
+}
+
+const sourceMaterialization = serverRuntime.indexOf('materialize_index_source_registry(extensions)');
+const replayMaterialization = serverRuntime.indexOf(
+  'materialize_postgres_index_replay_runtime(extensions, db)',
+  sourceMaterialization,
+);
+const operatorPublication = serverRuntime.indexOf(
+  'extensions.insert(IndexReplayOperatorRuntime::new(runtime))',
+  replayMaterialization,
+);
+if (
+  sourceMaterialization < 0
+  || replayMaterialization <= sourceMaterialization
+  || operatorPublication <= replayMaterialization
+) {
+  fail('server must freeze source registry before replay runtime and guarded operator publication');
+}
+
+const servicesPath = 'apps/server/src/services/mod.rs';
+const services = requireMarkers(servicesPath, [
+  'pub mod index_replay_runtime_composition;',
+  'materialize_postgres_index_query_runtime(&mut extensions, db.clone())',
+  'index_replay_runtime_composition::materialize_index_replay_runtime(',
+  'canonical Index query and replay runtimes',
+]);
+const queryRuntime = services.indexOf(
+  'materialize_postgres_index_query_runtime(&mut extensions, db.clone())',
+);
+const replayRuntime = services.indexOf(
+  'index_replay_runtime_composition::materialize_index_replay_runtime(',
+  queryRuntime,
+);
+const optionalShadow = services.indexOf('social_graph_index_privacy_shadow_enabled()', replayRuntime);
+if (queryRuntime < 0 || replayRuntime <= queryRuntime || optionalShadow <= replayRuntime) {
+  fail('server must publish query then replay capabilities before optional Index shadows');
+}
+
+requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+  'mod replay_runtime;',
+  'SharedIndexReplayRuntime',
+  'IndexReplayRuntimeCompositionError',
+  'materialize_postgres_index_replay_runtime',
+]);
+requireMarkers('crates/rustok-index/src/lib.rs', [
+  'host-published',
+  'SharedIndexReplayRuntime',
+  'IndexReplayRuntimeCompositionError',
+  'materialize_postgres_index_replay_runtime',
+]);
+requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
+  'Status: `source_complete_owner_execution_pending`',
+  '`IndexReplayOperatorRuntime`',
+  '`modules:manage`',
+  'Composition performs no SQL and starts no task.',
+  'Transport adapters must not retrieve or call `SharedIndexReplayRuntime` directly.',
+  'Graceful shutdown and task ownership remain open',
+  'maintainer-run',
+]);
+requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+  '- M6 replay runtime host composition and operator guard: `source_complete_owner_execution_pending`',
+  '- [x] Bind job requests directly to the materialized source registry in server composition.',
+  '`IndexReplayOperatorRuntime` requires an exact request-bound tenant/actor permission snapshot',
+  'host scheduling, graceful task shutdown,',
+]);
+requireMarkers('crates/rustok-index/CRATE_API.md', [
+  '`SharedIndexReplayRuntime`',
+  '`materialize_postgres_index_replay_runtime`',
+  '`IndexReplayOperatorRuntime`',
+  'Runtime composition performs no SQL and starts no task.',
+]);
+requireMarkers('crates/rustok-index/README.md', [
+  'M6 replay runtime host composition and operator guard: source complete',
+  '`IndexReplayOperatorRuntime`',
+  '`modules:manage`',
+]);
+requireMarkers('crates/rustok-index/docs/README.md', [
+  'M6 replay runtime host composition and operator guard: `source_complete_owner_execution_pending`',
+  '[M6 replay runtime host composition](./m6-replay-runtime-composition.md)',
+]);
+requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
+  "'verify-index-replay-runtime-composition.mjs'",
+]);
+
+console.log('[verify-index-replay-runtime-composition] OK');
