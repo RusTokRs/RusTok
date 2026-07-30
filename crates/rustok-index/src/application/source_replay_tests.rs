@@ -43,6 +43,7 @@ impl IndexSource for ReplaySource {
 #[derive(Clone)]
 struct RecordingMutationSink {
     calls: Arc<AtomicUsize>,
+    event_ids: Arc<Mutex<Vec<Uuid>>>,
     order: Arc<Mutex<Vec<&'static str>>>,
 }
 
@@ -52,9 +53,10 @@ impl IndexReplayMutationSink for RecordingMutationSink {
         &self,
         _registry: &SchemaRegistry,
         _source_name: &str,
-        _mutation: &IndexMutation,
+        mutation: &IndexMutation,
     ) -> Result<IndexReplayMutationOutcome, IndexReplayFailure> {
         self.order.lock().unwrap().push("mutation");
+        self.event_ids.lock().unwrap().push(mutation.event_id());
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(if call == 0 {
             IndexReplayMutationOutcome::Applied
@@ -118,9 +120,9 @@ fn schema() -> IndexSchema {
     }
 }
 
-fn mutation(tenant_id: Uuid, entity_id: Uuid) -> IndexMutation {
+fn mutation(tenant_id: Uuid, entity_id: Uuid, event_id: Uuid) -> IndexMutation {
     IndexMutation::Upsert {
-        event_id: Uuid::from_u128(10),
+        event_id,
         record: IndexRecord {
             key: EntityKey {
                 tenant_id,
@@ -140,8 +142,10 @@ fn mutation(tenant_id: Uuid, entity_id: Uuid) -> IndexMutation {
 
 fn worker(
     tenant_id: Uuid,
+    event_id: Uuid,
     source_calls: Arc<AtomicUsize>,
     mutation_calls: Arc<AtomicUsize>,
+    event_ids: Arc<Mutex<Vec<Uuid>>>,
     checkpoint: Arc<Mutex<Option<IndexReplayCheckpoint>>>,
     fail_next_commit: Arc<AtomicBool>,
     order: Arc<Mutex<Vec<&'static str>>>,
@@ -157,7 +161,7 @@ fn worker(
             [schema_ref()],
             ReplaySource {
                 calls: source_calls,
-                mutation: mutation(tenant_id, Uuid::from_u128(20)),
+                mutation: mutation(tenant_id, Uuid::from_u128(20), event_id),
             },
         )
         .unwrap();
@@ -171,6 +175,7 @@ fn worker(
         Arc::new(registry),
         RecordingMutationSink {
             calls: mutation_calls,
+            event_ids,
             order: order.clone(),
         },
         RecordingCheckpointStore {
@@ -184,46 +189,55 @@ fn worker(
 #[tokio::test]
 async fn replay_page_commits_checkpoint_after_mutations() {
     let tenant_id = Uuid::from_u128(1);
+    let event_id = Uuid::from_u128(10);
     let source_calls = Arc::new(AtomicUsize::new(0));
     let mutation_calls = Arc::new(AtomicUsize::new(0));
     let checkpoint = Arc::new(Mutex::new(None));
     let order = Arc::new(Mutex::new(Vec::new()));
     let worker = worker(
         tenant_id,
+        event_id,
         source_calls,
         mutation_calls,
+        Arc::new(Mutex::new(Vec::new())),
         checkpoint.clone(),
         Arc::new(AtomicBool::new(false)),
         order.clone(),
     );
 
     let outcome = worker
-        .run_next_page(IndexReplayPageRequest::new(tenant_id, schema_ref(), "", 10).unwrap())
+        .run_next_page(IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap())
         .await
         .unwrap();
 
     assert_eq!(outcome.status(), IndexReplayPageStatus::Complete);
     assert_eq!(outcome.applied_count(), 1);
     assert_eq!(*order.lock().unwrap(), vec!["mutation", "checkpoint"]);
-    assert!(checkpoint.lock().unwrap().as_ref().unwrap().is_complete());
+    let stored = checkpoint.lock().unwrap().clone().unwrap();
+    assert!(stored.is_complete());
+    assert_eq!(stored.last_delivery_id(), Some(event_id.to_string().as_str()));
 }
 
 #[tokio::test]
-async fn checkpoint_failure_replays_the_page_through_inbox_identity() {
+async fn checkpoint_failure_replays_the_same_event_delivery() {
     let tenant_id = Uuid::from_u128(2);
+    let event_id = Uuid::from_u128(10);
     let source_calls = Arc::new(AtomicUsize::new(0));
     let mutation_calls = Arc::new(AtomicUsize::new(0));
+    let event_ids = Arc::new(Mutex::new(Vec::new()));
     let checkpoint = Arc::new(Mutex::new(None));
     let fail_next_commit = Arc::new(AtomicBool::new(true));
     let worker = worker(
         tenant_id,
+        event_id,
         source_calls.clone(),
         mutation_calls.clone(),
+        event_ids.clone(),
         checkpoint.clone(),
         fail_next_commit,
         Arc::new(Mutex::new(Vec::new())),
     );
-    let request = IndexReplayPageRequest::new(tenant_id, schema_ref(), "", 10).unwrap();
+    let request = IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap();
 
     assert!(matches!(
         worker.run_next_page(request.clone()).await,
@@ -235,39 +249,62 @@ async fn checkpoint_failure_replays_the_page_through_inbox_identity() {
     assert_eq!(outcome.duplicate_count(), 1);
     assert_eq!(source_calls.load(Ordering::SeqCst), 2);
     assert_eq!(mutation_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(*event_ids.lock().unwrap(), vec![event_id, event_id]);
 }
 
 #[tokio::test]
 async fn completed_checkpoint_skips_the_source() {
     let tenant_id = Uuid::from_u128(3);
+    let event_id = Uuid::from_u128(10);
     let source_calls = Arc::new(AtomicUsize::new(0));
     let mutation_calls = Arc::new(AtomicUsize::new(0));
-    let key = IndexReplayCheckpointKey::new(
-        tenant_id,
-        "product-primary",
-        schema_ref(),
-        "",
-    )
-    .unwrap();
+    let key = IndexReplayCheckpointKey::new(tenant_id, "product-primary", schema_ref()).unwrap();
     let checkpoint = Arc::new(Mutex::new(Some(
-        IndexReplayCheckpoint::new(key, None, Some(7), Some(Uuid::from_u128(10).to_string()))
-            .unwrap(),
+        IndexReplayCheckpoint::new(key, None, Some(7), Some(event_id.to_string())).unwrap(),
     )));
     let worker = worker(
         tenant_id,
+        event_id,
         source_calls.clone(),
         mutation_calls.clone(),
+        Arc::new(Mutex::new(Vec::new())),
         checkpoint,
         Arc::new(AtomicBool::new(false)),
         Arc::new(Mutex::new(Vec::new())),
     );
 
     let outcome = worker
-        .run_next_page(IndexReplayPageRequest::new(tenant_id, schema_ref(), "", 10).unwrap())
+        .run_next_page(IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap())
         .await
         .unwrap();
 
     assert_eq!(outcome.status(), IndexReplayPageStatus::AlreadyComplete);
     assert_eq!(source_calls.load(Ordering::SeqCst), 0);
     assert_eq!(mutation_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn nil_replay_event_is_rejected_before_persistence() {
+    let tenant_id = Uuid::from_u128(4);
+    let mutation_calls = Arc::new(AtomicUsize::new(0));
+    let checkpoint = Arc::new(Mutex::new(None));
+    let worker = worker(
+        tenant_id,
+        Uuid::nil(),
+        Arc::new(AtomicUsize::new(0)),
+        mutation_calls.clone(),
+        Arc::new(Mutex::new(Vec::new())),
+        checkpoint.clone(),
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(Mutex::new(Vec::new())),
+    );
+
+    assert!(matches!(
+        worker
+            .run_next_page(IndexReplayPageRequest::new(tenant_id, schema_ref(), 10).unwrap())
+            .await,
+        Err(IndexReplayError::NilReplayEventId { position: 0 })
+    ));
+    assert_eq!(mutation_calls.load(Ordering::SeqCst), 0);
+    assert!(checkpoint.lock().unwrap().is_none());
 }
