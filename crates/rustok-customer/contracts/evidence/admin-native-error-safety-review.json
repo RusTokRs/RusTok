@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "source_review_complete_runtime_unvalidated",
+  "reviewed_against_main": "36739625d6c244b8d96112591981550138aac667",
+  "reviewed_paths": [
+    "crates/rustok-customer/admin/Cargo.toml",
+    "crates/rustok-customer/admin/src/transport/native_server_adapter.rs",
+    "crates/rustok-customer/contracts/evidence/admin-native-error-safety-source.json",
+    "crates/rustok-customer/docs/admin-native-error-safety.md",
+    "crates/rustok-customer/docs/implementation-plan.md",
+    "scripts/verify/verify-customer-admin-native-error-safety.mjs"
+  ],
+  "findings": {
+    "branch_behind_main": false,
+    "mounted_endpoints_preserved": true,
+    "permission_policy_preserved": true,
+    "profile_audience_policy_preserved": true,
+    "raw_framework_map_err_remaining": false,
+    "raw_customer_map_err_remaining": false,
+    "payload_logging_added": false
+  },
+  "execution": {
+    "tests_run": false,
+    "verifiers_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "ci_run": false
+  }
+}
