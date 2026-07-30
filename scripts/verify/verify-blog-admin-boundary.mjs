@@ -56,6 +56,8 @@ const legacyApiPath = "crates/rustok-blog/admin/src/api.rs";
 const implementationPlanPath = "crates/rustok-blog/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const adminRichtextEvidencePath = "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json";
+const adminEnLocalePath = "crates/rustok-blog/admin/locales/en.json";
+const adminRuLocalePath = "crates/rustok-blog/admin/locales/ru.json";
 
 if (existsSync(repoPath(legacyApiPath))) {
   fail(`${legacyApiPath}: legacy GraphQL api adapter must live under transport/graphql_adapter.rs`);
@@ -75,6 +77,8 @@ for (const filePath of [
   implementationPlanPath,
   registryPath,
   adminRichtextEvidencePath,
+  adminEnLocalePath,
+  adminRuLocalePath,
 ]) {
   assertExists(filePath, `${filePath}: expected blog admin FFA boundary file`);
 }
@@ -92,6 +96,8 @@ const graphqlRateLimit = readRepo(graphqlRateLimitPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const adminRichtextEvidence = readJson(adminRichtextEvidencePath);
+const adminEnLocale = readJson(adminEnLocalePath);
+const adminRuLocale = readJson(adminRuLocalePath);
 
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
@@ -187,6 +193,18 @@ const legacyRichtextAdminMarkers = [
 for (const marker of legacyRichtextAdminMarkers) {
   assertNotContains(core, marker, `${corePath}: canonical richtext core must not reintroduce legacy admin helper ${marker}`);
   assertNotContains(ui, marker, `${uiPath}: canonical richtext UI must not reintroduce legacy admin helper ${marker}`);
+}
+
+const legacyRichtextLocaleKeys = ["blog.form.bodyFormat", "blog.form.rawWarning"];
+for (const [localePath, catalog] of [
+  [adminEnLocalePath, adminEnLocale],
+  [adminRuLocalePath, adminRuLocale],
+]) {
+  for (const key of legacyRichtextLocaleKeys) {
+    if (Object.prototype.hasOwnProperty.call(catalog, key)) {
+      fail(`${localePath}: canonical richtext locale catalog must not expose legacy key ${key}`);
+    }
+  }
 }
 
 assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter must consume core and transport layers`);
@@ -293,7 +311,7 @@ for (const marker of [
 }
 
 if (
-  adminRichtextEvidence.schema_version !== 1 ||
+  adminRichtextEvidence.schema_version !== 2 ||
   adminRichtextEvidence.module !== "blog" ||
   adminRichtextEvidence.surface !== "leptos_admin_article_richtext_boundary" ||
   adminRichtextEvidence.status !== "source_verified_no_compile" ||
@@ -304,6 +322,8 @@ if (
 if (
   adminRichtextEvidence.sources?.core !== corePath ||
   adminRichtextEvidence.sources?.ui !== uiPath ||
+  adminRichtextEvidence.sources?.locales?.en !== adminEnLocalePath ||
+  adminRichtextEvidence.sources?.locales?.ru !== adminRuLocalePath ||
   adminRichtextEvidence.verifier !== "scripts/verify/verify-blog-admin-boundary.mjs" ||
   adminRichtextEvidence.self_test !== "scripts/verify/verify-blog-admin-boundary.test.mjs"
 ) {
@@ -318,6 +338,11 @@ for (const marker of adminRichtextEvidence.required_markers?.ui ?? []) {
 for (const marker of adminRichtextEvidence.forbidden_markers ?? []) {
   assertNotContains(core, marker, `${corePath}: evidence-forbidden legacy richtext marker ${marker}`);
   assertNotContains(ui, marker, `${uiPath}: evidence-forbidden legacy richtext marker ${marker}`);
+}
+const evidenceLocaleKeys = [...(adminRichtextEvidence.forbidden_locale_keys ?? [])].sort();
+const expectedLocaleKeys = [...legacyRichtextLocaleKeys].sort();
+if (JSON.stringify(evidenceLocaleKeys) !== JSON.stringify(expectedLocaleKeys)) {
+  fail(`${adminRichtextEvidencePath}: forbidden locale key evidence drift`);
 }
 
 assertContains(implementationPlan, "verify-blog-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the blog fast boundary guardrail`);

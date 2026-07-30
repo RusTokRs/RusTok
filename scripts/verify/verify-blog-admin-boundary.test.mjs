@@ -209,21 +209,33 @@ function withFixture(options = {}) {
     writeFixtureFile(root, "crates/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
   }
   writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", `verify-blog-admin-boundary.mjs ${options.omitModeration ? "" : "moderation"}`);
+  const localeCatalog = { "blog.form.body": "Body" };
+  if (options.legacyLocaleKeys) {
+    localeCatalog["blog.form.bodyFormat"] = "Body format";
+    localeCatalog["blog.form.rawWarning"] = "Raw payload warning";
+  }
+  writeFixtureFile(root, "crates/rustok-blog/admin/locales/en.json", JSON.stringify(localeCatalog));
+  writeFixtureFile(root, "crates/rustok-blog/admin/locales/ru.json", JSON.stringify(localeCatalog));
   writeFixtureFile(root, "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json", JSON.stringify({
-    schema_version: 1,
+    schema_version: 2,
     module: "blog",
     surface: "leptos_admin_article_richtext_boundary",
     status: "source_verified_no_compile",
     compile_policy: "not_run_by_request",
     sources: {
       core: "crates/rustok-blog/admin/src/core.rs",
-      ui: "crates/rustok-blog/admin/src/ui/leptos.rs"
+      ui: "crates/rustok-blog/admin/src/ui/leptos.rs",
+      locales: {
+        en: "crates/rustok-blog/admin/locales/en.json",
+        ru: "crates/rustok-blog/admin/locales/ru.json"
+      }
     },
     required_markers: {
       core: ["RichTextDocument", "content: &'a RichTextDocument", "content: RichTextDocument", "has_required_draft_fields"],
       ui: ["use super::richtext::BlogRichTextEditor;", "let (content, set_content) = signal(RichTextDocument::empty());", "<BlogRichTextEditor", "document=content", "set_document=set_content"]
     },
     forbidden_markers: ["blog_post_admin_body_format_select_view", "blog_post_admin_body_format_change_view", "normalize_blog_post_body_format", "blog_post_admin_raw_body_warning_view"],
+    forbidden_locale_keys: ["blog.form.bodyFormat", "blog.form.rawWarning"],
     verifier: "scripts/verify/verify-blog-admin-boundary.mjs",
     self_test: "scripts/verify/verify-blog-admin-boundary.test.mjs"
   }, null, 2));
@@ -266,6 +278,13 @@ test("blog admin boundary verifier rejects legacy richtext helpers in UI", () =>
   withRoot({ legacyRichtextUi: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /canonical richtext UI must not reintroduce legacy admin helper/);
+  });
+});
+
+test("blog admin boundary verifier rejects legacy richtext locale keys", () => {
+  withRoot({ legacyLocaleKeys: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /canonical richtext locale catalog must not expose legacy key/);
   });
 });
 

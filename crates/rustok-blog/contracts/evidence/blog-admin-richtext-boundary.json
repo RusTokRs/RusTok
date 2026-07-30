@@ -1,12 +1,16 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "blog",
   "surface": "leptos_admin_article_richtext_boundary",
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "sources": {
     "core": "crates/rustok-blog/admin/src/core.rs",
-    "ui": "crates/rustok-blog/admin/src/ui/leptos.rs"
+    "ui": "crates/rustok-blog/admin/src/ui/leptos.rs",
+    "locales": {
+      "en": "crates/rustok-blog/admin/locales/en.json",
+      "ru": "crates/rustok-blog/admin/locales/ru.json"
+    }
   },
   "required_markers": {
     "core": [
@@ -40,5 +44,9 @@
     "tests_run": false,
     "node_execution": false,
     "syntax_checked": true
-  }
+  },
+  "forbidden_locale_keys": [
+    "blog.form.bodyFormat",
+    "blog.form.rawWarning"
+  ]
 }
