@@ -78,8 +78,7 @@ for (const [value, label] of [
   ['code = "commerce.storefront_cart_unavailable"', 'shared cart stable code'],
   ['code = "commerce.storefront_payment_collection_unavailable"', 'shared payment stable code'],
   ['ApiError::Validation("cart_id must be a valid UUID".to_string())', 'shared validation public envelope'],
-  ['ApiError::ServerFn("Storefront cart data is temporarily unavailable".to_string())', 'shared native cart public envelope'],
-  ['ApiError::Graphql("Storefront cart data is temporarily unavailable".to_string())', 'shared GraphQL cart public envelope'],
+  ['ApiError::ServerFn("Storefront cart data is temporarily unavailable".to_string())', 'shared preserved cart error variant'],
   ['"Storefront payment collection is temporarily unavailable".to_string()', 'shared payment public envelope'],
 ]) requireText(shared, value, label);
 
@@ -89,7 +88,8 @@ for (const value of [
   'ApiError::ServerFn(error.to_string())',
   'ApiError::Graphql(error.to_string())',
   'ApiError::ServerFn(message)',
-]) forbidText(shared, value, 'shared raw transport cause exposure');
+  'ApiError::Graphql("Storefront cart data is temporarily unavailable".to_string())',
+]) forbidText(shared, value, 'shared raw transport cause or variant drift');
 
 if (evidence.status !== 'storefront_transport_error_safety_source_unvalidated') {
   failures.push(`evidence status mismatch: ${evidence.status}`);
@@ -99,6 +99,7 @@ for (const [key, expected] of Object.entries({
   native_context_logging: true,
   shared_static_public_envelopes: true,
   shared_raw_cause_logging: false,
+  cart_error_variant_preserved: true,
   foreign_transport_error_text_public: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
@@ -127,5 +128,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ commerce storefront cart/payment transport failures retain SSR diagnostics and static public envelopes without client-side raw causes; runtime evidence remains open',
+  '✔ commerce storefront cart/payment transport failures retain SSR diagnostics, existing error variants, and static public envelopes without client-side raw causes; runtime evidence remains open',
 );
