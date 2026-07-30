@@ -274,7 +274,7 @@ fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
         .seo_description
         .clone()
         .or_else(|| post.excerpt.clone())
-        .or_else(|| summarize_text(post.body.as_str()))
+        .or_else(|| post.content_plain_text.as_deref().and_then(summarize_text))
         .or_else(|| summarize_text(post.title.as_str()));
     let primary_image = primary_post_image_descriptor(&post, title.as_str());
     let open_graph_images = primary_image.clone().into_iter().collect::<Vec<_>>();
