@@ -16,6 +16,8 @@ pub mod index_consumer;
 mod index_dlq_message_id;
 #[cfg(feature = "index-consumer")]
 pub mod index_dlq_receipt;
+#[cfg(feature = "index")]
+pub mod index_privacy;
 pub mod maintenance;
 pub mod migrations;
 pub mod model;
@@ -26,6 +28,8 @@ pub mod service;
 
 pub use error::{SocialGraphError, SocialGraphResult};
 pub use follow_read::{SocialGraphFollowReadPort, SocialGraphFollowState};
+#[cfg(feature = "index")]
+pub use index_privacy::IndexSocialGraphPrivacyReadPort;
 pub use maintenance::{
     SocialGraphReceiptMaintenanceService, SocialGraphRelationEventMaintenanceService,
 };
