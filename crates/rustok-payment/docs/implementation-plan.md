@@ -93,9 +93,16 @@ The payment storefront owner transport continues to use
 status for that boundary is maintained only in the payment workstream of the main
 commerce plan.
 
+Payment storefront native client error safety: `source_ready_unvalidated`. The final
+native client mapper preserves validation messages, keeps technical compatibility
+errors in correlation-aware private diagnostics, and returns a static public envelope
+before `UiTransportError` aggregation. Hydrate, SSR, browser, and mounted runtime
+evidence remain open.
+
 Boundary guards:
 
 - `npm run verify:payment:storefront-boundary`
+- `node scripts/verify/verify-payment-storefront-native-client-error-safety.mjs`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - `node scripts/verify/verify-payment-typed-lifecycle-statuses.mjs`
