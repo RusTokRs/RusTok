@@ -9,13 +9,13 @@ const INVENTORY_ADMIN_CLIENT_PUBLIC_MESSAGE: &str =
 
 #[derive(Debug, Clone)]
 pub enum InventoryTransportError {
-    ServerFn(String),
+    ServerFn,
 }
 
 impl Display for InventoryTransportError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ServerFn(message) => write!(f, "{message}"),
+            Self::ServerFn => write!(f, "{INVENTORY_ADMIN_CLIENT_PUBLIC_MESSAGE}"),
         }
     }
 }
@@ -127,7 +127,7 @@ impl InventoryTransportErrorContext {
             "inventory admin client transport request failed"
         );
 
-        InventoryTransportError::ServerFn(INVENTORY_ADMIN_CLIENT_PUBLIC_MESSAGE.to_string())
+        InventoryTransportError::ServerFn
     }
 }
 
