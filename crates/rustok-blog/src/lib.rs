@@ -24,7 +24,7 @@
 //! let input = CreatePostInput {
 //!     locale: "ru".to_string(),
 //!     title: "Мой первый пост".to_string(),
-//!     body: "Привет, мир!".to_string(),
+//!     content: rustok_api::RichTextDocument::single_paragraph("Привет, мир!"),
 //!     excerpt: Some("Введение".to_string()),
 //!     slug: Some("my-first-post".to_string()),
 //!     publish: false,

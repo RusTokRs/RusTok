@@ -3,7 +3,6 @@ use rustok_api::{RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -14,11 +13,7 @@ pub struct CreatePostInput {
     pub locale: String,
     #[schema(max_length = 512)]
     pub title: String,
-    pub body: String,
-    #[serde(default = "default_content_format")]
-    pub body_format: String,
-    pub content_json: Option<Value>,
-    pub content: Option<RichTextDocument>,
+    pub content: RichTextDocument,
     #[schema(max_length = 1000)]
     pub excerpt: Option<String>,
     #[schema(max_length = 255)]
@@ -39,9 +34,6 @@ pub struct UpdatePostInput {
     pub locale: Option<String>,
     #[schema(max_length = 512)]
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
-    pub content_json: Option<Value>,
     pub content: Option<RichTextDocument>,
     #[schema(max_length = 1000)]
     pub excerpt: Option<String>,
@@ -69,11 +61,8 @@ pub struct PostResponse {
     pub locale: String,
     pub effective_locale: String,
     pub available_locales: Vec<String>,
-    pub body: String,
-    pub body_format: String,
-    pub content_json: Option<Value>,
-    pub content: Option<RichTextView>,
-    pub content_plain_text: Option<String>,
+    pub content: RichTextView,
+    pub content_plain_text: String,
     pub excerpt: Option<String>,
     pub status: BlogPostStatus,
     pub category_id: Option<Uuid>,
@@ -94,76 +83,28 @@ pub struct PostResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::PostResponse;
-    use crate::state_machine::BlogPostStatus;
-    use serde_json::json;
-    use uuid::Uuid;
+    use super::CreatePostInput;
+    use rustok_api::RichTextDocument;
 
-    fn sample_post_response(
-        body: &str,
-        body_format: &str,
-        content_json: Option<serde_json::Value>,
-    ) -> PostResponse {
-        PostResponse {
-            id: Uuid::new_v4(),
-            tenant_id: Uuid::new_v4(),
-            author_id: Uuid::new_v4(),
-            title: "title".to_string(),
-            slug: "slug".to_string(),
-            requested_locale: "en".to_string(),
+    #[test]
+    fn create_post_input_serde_requires_canonical_document() {
+        let input = CreatePostInput {
             locale: "en".to_string(),
-            effective_locale: "en".to_string(),
-            available_locales: vec!["en".to_string()],
-            body: body.to_string(),
-            body_format: body_format.to_string(),
-            content_json,
-            content: None,
-            content_plain_text: None,
+            title: "Title".to_string(),
+            content: RichTextDocument::single_paragraph("Body"),
             excerpt: None,
-            status: BlogPostStatus::Draft,
+            slug: None,
+            publish: false,
+            tags: Vec::new(),
             category_id: None,
-            category_name: None,
-            tags: vec![],
             featured_image_url: None,
             seo_title: None,
             seo_description: None,
-            channel_slugs: vec![],
-            metadata: json!({}),
-            comment_count: 0,
-            view_count: 0,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            published_at: None,
-            version: 1,
-        }
-    }
-
-    #[test]
-    fn post_response_serde_markdown() {
-        let response = sample_post_response("plain text", "markdown", None);
-        let encoded = serde_json::to_value(&response).expect("serialize post response");
-        assert_eq!(encoded["body_format"], "markdown");
-        assert_eq!(encoded["content_json"], serde_json::Value::Null);
-
-        let decoded: PostResponse =
-            serde_json::from_value(encoded).expect("deserialize post response");
-        assert_eq!(decoded.body, "plain text");
-        assert_eq!(decoded.body_format, "markdown");
-        assert!(decoded.content_json.is_none());
-    }
-
-    #[test]
-    fn post_response_serde_rt_json_v1() {
-        let rich = json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
-        let response = sample_post_response(&rich.to_string(), "rt_json_v1", Some(rich.clone()));
-        let encoded = serde_json::to_value(&response).expect("serialize post response");
-        assert_eq!(encoded["body_format"], "rt_json_v1");
-        assert_eq!(encoded["content_json"], rich);
-
-        let decoded: PostResponse =
-            serde_json::from_value(encoded).expect("deserialize post response");
-        assert_eq!(decoded.body_format, "rt_json_v1");
-        assert_eq!(decoded.content_json, Some(rich));
+            channel_slugs: None,
+            metadata: None,
+        };
+        let encoded = serde_json::to_value(input).expect("serialize");
+        assert_eq!(encoded["content"]["type"], "doc");
     }
 }
 
@@ -242,8 +183,4 @@ impl PostListResponse {
             total_pages,
         }
     }
-}
-
-fn default_content_format() -> String {
-    CONTENT_FORMAT_MARKDOWN.to_string()
 }
