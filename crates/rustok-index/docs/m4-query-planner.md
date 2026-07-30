@@ -33,6 +33,7 @@ source-complete offline retained-window capture/admission tooling.
 - M4 many-link `EXISTS` filtering: `source_complete_execution_pending`.
 - M4 nested many-link projection aggregation: `source_complete_execution_pending`.
 - M4 explicit many-link `min` / `max` bounded-offset ordering: `source_complete_execution_pending`.
+- M4 Decimal aggregate tagged-wire contract: `open_source_work`.
 - M4 aggregate cursor continuation: `open_source_work`.
 - M4 PostgreSQL query port and strict row adapter: `source_complete_execution_pending`.
 - M4 retained plan/SQL snapshots: `source_complete_owner_execution_pending`.
@@ -85,9 +86,13 @@ lookahead, and exact count remain duplicate free.
 
 Explicit many-link order modes are `min_asc`, `min_desc`, `max_asc`, and `max_desc`.
 Plain `asc` / `desc` over a many path remains rejected. The aggregate path must end at a
-sortable scalar integer, decimal, string, or timestamp field and must use bounded offset
-pagination. Boolean, UUID, list-valued, singular-path, cursor-paginated, and unsortable
-aggregate requests fail closed.
+sortable scalar integer, string, or timestamp field and must use bounded offset pagination.
+Boolean, Decimal, UUID, list-valued, singular-path, cursor-paginated, and unsortable aggregate
+requests fail closed.
+
+Decimal remains excluded from aggregate ordering until its hidden `__order_N` value has an
+exact tagged `IndexValue` JSON wire contract. Ordinary Decimal filters and root/one-link
+ordering remain supported; only the many-link aggregate handoff is deferred.
 
 The compiler emits a correlated typed `MIN` / `MAX` scalar subquery outside the outer rowset.
 Null terminal values do not participate; an empty or all-null relation set yields SQL `NULL`.
@@ -261,6 +266,8 @@ The canonical checklist remains open until the owner runs the PostgreSQL/referen
 through capture, admits the retained bundle, and preserves both bundle and receipt. Additional
 boundaries remain:
 
+- define and verify the exact Decimal tagged-order wire contract before Decimal many-link
+  aggregation can be enabled;
 - extend explicit aggregate ordering to query-scoped cursor continuation with a stable cursor
   identity and strict null/value semantics;
 - add aggregate offset scenarios to the independent PostgreSQL/reference fixture and retained
