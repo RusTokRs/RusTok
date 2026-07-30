@@ -67,6 +67,25 @@ commands `verify:comments:thread-write-invariants` and
 schema v2 and the Comments FBA verify/test chains. Blog consumes the owner result;
 it does not duplicate thread locking or counter policy.
 
+The Comments consumer call surface is now a first-class Blog source boundary.
+`CommentService` depends on `Arc<dyn CommentsThreadPort>`, uses the in-process
+provider only through `in_process_comments_thread_port`, and routes all seven
+operations through typed `PortContext` / `PortError` contracts. Reads and writes
+carry a two-second deadline; writes add command-scoped idempotency keys; public
+lists use the dedicated approved-only operation and service actor; richtext input,
+view, and plain-text projections remain typed. Evidence schema v2 lives at
+`crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`.
+The active fallback/error source evidence is
+`crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
+with `consumer_error_mapping` bound to `crates/rustok-blog/src/services/comment.rs`
+rather than the legacy `CommentsError` conversion. The fail-closed gate is
+`scripts/verify/verify-blog-comments-port-boundary.mjs` with focused fixture
+`scripts/verify/verify-blog-comments-port-boundary.test.mjs`; exact commands
+`verify:blog:comments-port-boundary` and
+`test:verify:blog:comments-port-boundary` run after storefront and before event
+projection. The in-process source profile is verified; the remote adapter and
+degraded UI modes remain planned, and runtime evidence is pending.
+
 Comments lifecycle projection into Blog-owned `comment_count` is a Blog consumer
 boundary. `BlogCommentProjectionHandler` accepts only `comment.created` and
 `comment.deleted` for `blog_post`, uses the envelope id as the durable delivery
@@ -76,9 +95,9 @@ evidence is `crates/rustok-blog/contracts/evidence/blog-comments-event-projectio
 guarded by `scripts/verify/verify-blog-comments-event-projection.mjs` and focused
 fixture `scripts/verify/verify-blog-comments-event-projection.test.mjs`. Exact
 commands `verify:blog:comments-event-projection` and
-`test:verify:blog:comments-event-projection` run after the storefront gate in the
-Blog FBA chains. Status remains `source_verified_no_compile`; runtime delivery and
-recovery evidence is not recorded.
+`test:verify:blog:comments-event-projection` run after the Comments port gate in
+the Blog FBA chains. Status remains `source_verified_no_compile`; runtime delivery
+and recovery evidence is not recorded.
 
 Blog categories use the exclusive `blog_categories:*` permission resource.
 `CategoryService::new(db, event_bus)` is the only owner constructor. Category
@@ -170,15 +189,31 @@ negative fixture, named npm leaf commands, or first-class Blog source gate. Slic
 41 adds those owner-side artifacts, upgrades Blog registry schema v9, and locks
 the exact verify/test order while leaving runtime delivery and recovery pending.
 
+The continuation audit at `b788f806bd600595b79425d85cacc13d70f08158`
+found the broader Comments consumer port contract still represented as
+`planned_cases_locked`, with `get_comment` missing from the static matrix and
+fallback evidence pointing to the legacy `error.rs` conversion instead of the
+active `PortErrorKind` mapper. Slice 42 upgrades the matrix to source evidence,
+adds a focused fail-closed fixture and exact leaf commands, aligns the shared
+runtime-order evidence, upgrades Blog registry schema v10, and keeps the remote
+adapter plus degraded UI modes explicitly pending.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v9
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v10
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, and aggregate/consumer bindings for admin, storefront, Comments
-  event projection, category Search reindex, GraphQL rate limiting, GraphQL
-  richtext, AI richtext, offline backfill, Forum ownership, and runtime order.
+  port boundary, Comments event projection, category Search reindex, GraphQL rate
+  limiting, GraphQL richtext, AI richtext, offline backfill, Forum ownership, and
+  runtime order.
+- Comments consumer port boundary: Blog-owned `source_verified_no_compile` for
+  the in-process profile; all seven operations, approved public read, typed
+  richtext projection, two-second deadlines, write idempotency, active typed
+  `PortErrorKind` mapping, exact npm leaf commands, focused fixture, and Blog FBA
+  ordering are locked. The remote adapter and degraded UI modes remain planned;
+  runtime evidence is pending.
 - Comments event projection: Blog-owned `source_verified_no_compile`; evidence,
   verifier, focused self-test, exact npm leaf commands, delivery-ledger identity,
   transactional outbox markers, and Blog FBA ordering are locked. Duplicate,
@@ -228,6 +263,8 @@ the exact verify/test order while leaving runtime delivery and recovery pending.
 - `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
+- `scripts/verify/verify-blog-comments-port-boundary.mjs`
+- `scripts/verify/verify-blog-comments-port-boundary.test.mjs`
 - `scripts/verify/verify-blog-comments-event-projection.mjs`
 - `scripts/verify/verify-blog-comments-event-projection.test.mjs`
 - `scripts/verify/verify-blog-graphql-rate-limit.mjs`
@@ -326,6 +363,11 @@ the exact verify/test order while leaving runtime delivery and recovery pending.
     fail-closed fixture, registered exact verify/test leaf commands in registry
     schema v9, and kept delivery, retry, rollback, restart, and PostgreSQL execution
     explicitly pending.
+42. Promoted the implemented Comments consumer port surface from a planned matrix
+    to source-verified evidence, added the missing `get_comment` case, bound the
+    active `PortErrorKind` mapper and runtime-order evidence to `services/comment.rs`,
+    registered a focused negative fixture plus exact verify/test commands in Blog
+    registry schema v10, and kept the remote adapter and degraded UI modes pending.
 
 ## Next results
 
@@ -342,10 +384,12 @@ the exact verify/test order while leaving runtime delivery and recovery pending.
 4. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
-5. **Close comments runtime evidence.** Run both thread invariant concurrency
-   targets and concurrent PostgreSQL create/delete transactions; cover approved-only
-   reads, moderation, pagination, duplicate delivery, counters, first-thread
-   identity, missing-post retry, rollback, outbox publication, and restart recovery.
+5. **Close comments runtime evidence.** Run the Comments port boundary fixture,
+   shared consumer runtime-order verifier, both thread invariant concurrency
+   targets, and concurrent PostgreSQL create/delete transactions; cover the
+   remote adapter, degraded UI modes, approved-only reads, moderation, pagination,
+   duplicate delivery, counters, first-thread identity, missing-post retry,
+   rollback, outbox publication, and restart recovery.
 6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
    backfill in default dry-run mode, review its report, apply accepted conversion,
    execute the irreversible migration, reindex/rollback Search, and retain
@@ -357,6 +401,8 @@ the exact verify/test order while leaving runtime delivery and recovery pending.
 Execution is intentionally not recorded by this source-only update. Maintainers
 should run the relevant subset, including:
 
+- `npm run verify:blog:comments-port-boundary`
+- `npm run test:verify:blog:comments-port-boundary`
 - `npm run verify:blog:comments-event-projection`
 - `npm run test:verify:blog:comments-event-projection`
 - `npm run verify:blog:category-search-reindex`

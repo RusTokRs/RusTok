@@ -2,6 +2,7 @@ use super::{
     graphql_adapter,
     graphql_error_safety::{graphql_correlation_id, map_graphql_error},
     native_server_adapter,
+    order_change_client_error_safety::OrderChangeClientErrorContext,
 };
 use crate::model::{CommerceOrderChange, CommerceOrderChangeActionDraft, CommerceOrderChangeList};
 use native_server_adapter::ApiError;
@@ -34,8 +35,16 @@ pub async fn fetch_order_changes(
                 )
             })
     } else {
+        let context = OrderChangeClientErrorContext::for_fetch(
+            token.as_deref(),
+            tenant_slug.as_deref(),
+            tenant_id.as_str(),
+            order_id.as_deref(),
+            status.as_deref(),
+        );
         native_server_adapter::fetch_order_changes(token, tenant_slug, tenant_id, order_id, status)
             .await
+            .map_err(|order_change_error| context.map_error(order_change_error))
     }
 }
 
@@ -63,6 +72,12 @@ pub async fn apply_order_change(
                 )
             })
     } else {
+        let context = OrderChangeClientErrorContext::for_apply(
+            token.as_deref(),
+            tenant_slug.as_deref(),
+            tenant_id.as_str(),
+            order_change_id.as_str(),
+        );
         native_server_adapter::apply_order_change(
             token,
             tenant_slug,
@@ -71,6 +86,7 @@ pub async fn apply_order_change(
             draft,
         )
         .await
+        .map_err(|order_change_error| context.map_error(order_change_error))
     }
 }
 
@@ -98,6 +114,12 @@ pub async fn cancel_order_change(
                 )
             })
     } else {
+        let context = OrderChangeClientErrorContext::for_cancel(
+            token.as_deref(),
+            tenant_slug.as_deref(),
+            tenant_id.as_str(),
+            order_change_id.as_str(),
+        );
         native_server_adapter::cancel_order_change(
             token,
             tenant_slug,
@@ -106,6 +128,7 @@ pub async fn cancel_order_change(
             draft,
         )
         .await
+        .map_err(|order_change_error| context.map_error(order_change_error))
     }
 }
 

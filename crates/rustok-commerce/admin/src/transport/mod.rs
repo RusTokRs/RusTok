@@ -6,6 +6,7 @@ mod native_server_adapter;
 #[path = "native_server_adapter_ssr.rs"]
 mod native_server_adapter;
 mod order_change;
+mod order_change_client_error_safety;
 mod promotion;
 mod promotion_client_error_safety;
 mod shipping_profile;
