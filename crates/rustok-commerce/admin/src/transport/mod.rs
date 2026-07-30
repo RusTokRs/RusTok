@@ -1,4 +1,8 @@
 mod graphql_adapter;
+#[cfg(not(feature = "ssr"))]
+mod native_server_adapter;
+#[cfg(feature = "ssr")]
+#[path = "native_server_adapter_ssr.rs"]
 mod native_server_adapter;
 mod order_change;
 mod promotion;
