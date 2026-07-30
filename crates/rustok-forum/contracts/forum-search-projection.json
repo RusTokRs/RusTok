@@ -9,6 +9,7 @@
   "forum_source_registration": "crates/rustok-forum/src/lib.rs",
   "search_projector": "crates/rustok-search/src/forum_projector.rs",
   "search_ingestion": "crates/rustok-search/src/ingestion.rs",
+  "search_runtime_composition": "crates/rustok-search/src/lib.rs",
   "search_storage": "search_documents",
   "source_module": "forum",
   "entity_types": [
