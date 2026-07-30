@@ -21,6 +21,9 @@ ALTER TABLE products
     ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1,
     ADD CONSTRAINT chk_products_index_revision_positive CHECK (index_revision > 0);
 
+CREATE INDEX idx_products_index_replay
+    ON products (tenant_id, index_revision, id);
+
 CREATE OR REPLACE FUNCTION rustok_product_bump_index_revision()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -54,10 +57,14 @@ BEGIN
         UPDATE products
         SET index_revision = index_revision + 1
         WHERE id = NEW.product_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE products
+        SET index_revision = index_revision + 1
+        WHERE id = OLD.product_id;
     ELSE
         UPDATE products
         SET index_revision = index_revision + 1
-        WHERE id = CASE WHEN TG_OP = 'DELETE' THEN OLD.product_id ELSE NEW.product_id END;
+        WHERE id = NEW.product_id;
     END IF;
 
     IF TG_OP = 'DELETE' THEN
@@ -93,6 +100,7 @@ DROP TRIGGER IF EXISTS trg_product_translations_bump_index_revision ON product_t
 DROP FUNCTION IF EXISTS rustok_product_translation_bump_index_revision();
 DROP TRIGGER IF EXISTS trg_products_bump_index_revision ON products;
 DROP FUNCTION IF EXISTS rustok_product_bump_index_revision();
+DROP INDEX IF EXISTS idx_products_index_replay;
 ALTER TABLE products
     DROP CONSTRAINT IF EXISTS chk_products_index_revision_positive,
     DROP COLUMN IF EXISTS index_revision;
