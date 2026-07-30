@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "modules.toml"
+      - "modules.toml.example"
       - "crates/rustok-tenant/**"
       - "crates/rustok-auth/cli/**"
       - "crates/rustok-commerce/Cargo.toml"
@@ -28,6 +30,8 @@ on:
       - ".github/workflows/tenant-hardening.yml"
   pull_request:
     paths:
+      - "modules.toml"
+      - "modules.toml.example"
       - "crates/rustok-tenant/**"
       - "crates/rustok-auth/cli/**"
       - "crates/rustok-commerce/Cargo.toml"
