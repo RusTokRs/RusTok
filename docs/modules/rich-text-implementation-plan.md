@@ -57,12 +57,13 @@ fallback now copies the same hashed assets and applies the dedicated frame
 headers; Firefox/WebKit evidence and wiring the first owner Leptos form remain
 required before Phase 2 is marked complete.
 
-The Blog article source cutover is implemented: owner, GraphQL, native and
-browser transports use the fixed `article` document; storage retains canonical
-root JSON; Search, SEO, AI, and storefront reads use server projections; and the
-format selector is removed by a fail-closed irreversible migration. The
-owner-specific dry-run/apply backfill prepares retained legacy rows. Migration,
-PostgreSQL, and browser execution evidence remain maintainer-owned.
+The Blog article source cutover is implemented: owner and GraphQL writes use
+the fixed `article` document, Next admin submits it, and native/GraphQL
+storefront reads use server projections. Storage retains canonical root JSON;
+Search, SEO, and AI use owner projections; and the format selector is removed by
+a fail-closed irreversible migration. The owner-specific dry-run/apply backfill
+prepares retained legacy rows. Migration, PostgreSQL, and browser execution
+evidence remain maintainer-owned.
 
 ## Decisions fixed by this plan
 

@@ -53,7 +53,10 @@ DATABASE_URL=postgresql://... cargo run -p rustok-blog \
 
 After reviewing the report and backup, rerun with `--apply`. Add
 `--allow-markdown-plain-text` only when literal-text conversion is accepted.
-The utility does not execute the schema migration or Search reindex.
+Tenant-scoped runs are useful for rehearsal or incremental conversion, but a
+final unscoped dry-run is required before the global schema migration so orphan
+and cross-tenant rows cannot be missed. The utility does not execute the schema
+migration or Search reindex.
 
 ## Guardrail
 

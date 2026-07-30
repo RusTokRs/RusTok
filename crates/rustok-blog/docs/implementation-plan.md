@@ -271,7 +271,8 @@ outbox publication.
    owner-specific offline backfill in default dry-run mode and retain its NDJSON
    report. Resolve unknown formats manually; use `--allow-markdown-plain-text`
    only after accepting literal-text conversion, then rerun with `--apply`.
-   Execute the irreversible migration, perform Blog Search reindex/rollback, and
+   Complete a final unscoped dry-run before the global migration. Execute the
+   irreversible migration, perform Blog Search reindex/rollback, and
    retain Next/Leptos save-reload-SSR, GraphQL/native, AI draft persistence, and
    browser evidence on the same commit. **Done when:** representative PostgreSQL
    rows pass post-apply verification, the migration has executed, and no runtime
