@@ -9,6 +9,8 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const rootManifest = read('modules.toml');
+const exampleManifest = read('modules.toml.example');
 const cargo = read('crates/rustok-commerce/Cargo.toml');
 const manifest = read('crates/rustok-commerce/rustok-module.toml');
 const lib = read('crates/rustok-commerce/src/lib.rs');
@@ -25,6 +27,13 @@ if (!manifest.includes('tenant = { version_req = ">=0.1.0" }')) {
 }
 if (!lib.includes('"tenant",')) {
   fail('CommerceModule runtime dependencies must include tenant');
+}
+const rootDependency = 'commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["tenant",';
+if (!rootManifest.includes(rootDependency)) {
+  fail('root modules.toml must order commerce after tenant');
+}
+if (!exampleManifest.includes(rootDependency)) {
+  fail('modules.toml.example must mirror the commerce tenant dependency');
 }
 
 for (const marker of [
