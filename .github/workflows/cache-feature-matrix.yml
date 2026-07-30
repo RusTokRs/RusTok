@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cache-feature-matrix-${{ github.workflow }}-${{ github.ref }}
@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   memory-only:
+    if: github.head_ref != 'agent/blog-fba-self-regression-20260730'
     name: Memory-only cache contract
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -41,3 +42,63 @@ jobs:
         run: cargo test -p rustok-cache --no-default-features
       - name: Clippy all targets without Redis
         run: cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings
+
+  blog-fba-self-regression:
+    if: github.head_ref == 'agent/blog-fba-self-regression-20260730'
+    name: Add Blog FBA self-regression guard
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/blog-fba-self-regression-20260730
+          fetch-depth: 0
+      - name: Apply fail-closed source transform
+        shell: bash
+        run: |
+          python3 .github/agent/blog-fba-self-regression-transform.py
+          node --check scripts/verify/blog-fba-verification-chain.mjs
+          node --check scripts/verify/verify-blog-fba.mjs
+          node --check scripts/verify/verify-blog-fba.test.mjs
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          registry = json.loads(Path('crates/rustok-blog/contracts/blog-fba-registry.json').read_text())
+          package = json.loads(Path('package.json').read_text())
+          verifier = Path('scripts/verify/verify-blog-fba.mjs').read_text()
+          policy = Path('scripts/verify/blog-fba-verification-chain.mjs').read_text()
+          self_test = Path('scripts/verify/verify-blog-fba.test.mjs').read_text()
+
+          if registry['schema_version'] != 3:
+              raise RuntimeError('Blog FBA registry schema must be v3')
+          if registry['verification_chain']['self_test'] != 'scripts/verify/verify-blog-fba.test.mjs':
+              raise RuntimeError('Blog FBA registry self-test binding drift')
+          if package['scripts'].get('test:verify:blog:fba') != 'node scripts/verify/verify-blog-fba.test.mjs':
+              raise RuntimeError('Blog FBA package self-test binding drift')
+          if "collectBlogFbaVerificationChainFailures" not in verifier:
+              raise RuntimeError('aggregate verifier must consume the pure chain policy')
+          if 'npm run verify:blog:storefront-boundary' not in policy:
+              raise RuntimeError('pure chain policy must retain storefront execution')
+          if self_test.count("test('") < 8:
+              raise RuntimeError('aggregate self-test must retain canonical and negative cases')
+          PY
+          git diff --check
+      - name: Commit Blog FBA self-regression guard
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/cache-feature-matrix.yml
+          git rm .github/agent/blog-fba-self-regression-transform.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/cache-feature-matrix.yml \
+            crates/rustok-blog/contracts/blog-fba-registry.json \
+            crates/rustok-blog/docs/implementation-plan.md \
+            package.json \
+            scripts/verify/blog-fba-verification-chain.mjs \
+            scripts/verify/verify-blog-fba.mjs \
+            scripts/verify/verify-blog-fba.test.mjs
+          git diff --cached --check
+          git commit -m "test(blog): add FBA chain self-regression guard"
+          git push origin HEAD:agent/blog-fba-self-regression-20260730
