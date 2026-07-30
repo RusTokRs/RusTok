@@ -4,6 +4,8 @@ Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
 
+Latest slice: `FORUM-23A2`
+
 This slice advances the canonical `FORUM-23` visibility-aware Search track. Public Forum topic
 and approved-reply documents now obtain author presentation from the Profiles owner instead of
 serializing the raw Forum author identifier.
@@ -35,9 +37,8 @@ empty author: it fails projection so the durable Search inbox can retry.
 ## Durable redaction
 
 Embedded summaries require invalidation when profile presentation changes. Profiles publishes
-`ProfileUpdated` after a successful owner write for handle, display content, locale, visibility,
-and media changes. Search now treats that owner event as a Forum projection event whenever the
-Forum source is composed.
+`ProfileUpdated` for handle, display content, locale, visibility, and media changes. Search treats
+that owner event as a Forum projection event whenever the Forum source is composed.
 
 The privacy-critical `update_my_profile_visibility` path writes the new visibility and the
 `ProfileUpdated` outbox envelope in the same Profiles-owned database transaction. If outbox
@@ -45,14 +46,23 @@ publication fails, the visibility write is explicitly rolled back and the mutati
 retryable owner error. A successful private visibility change therefore cannot commit without the
 durable invalidation consumed by Forum Search.
 
-Other profile summary mutations still publish their update event after the owner write and are
-not claimed to be transactionally coupled in this slice. Closing that non-ACL freshness gap
-remains follow-up work.
+`FORUM-23A2` applies the same owner rule to `update_my_profile_handle`. Handle normalization,
+duplicate-owner validation, the profile row update, and the `ProfileUpdated` outbox envelope now
+share one Profiles-owned transaction. If event publication fails, the handle write is rolled back;
+a successful public-handle change cannot commit while Forum Search retains only the previous
+handle because the invalidation event was lost.
+
+Both paths use the shared transactional publisher in
+`crates/rustok-profiles/src/profile_updated_event.rs`, so their event envelope and retryable error
+classification cannot drift independently. Profile upsert, display-content, locale, and media
+mutations still publish after their owner write and are not claimed to be transactionally coupled
+in this slice.
 
 The event is stored under `forum_author:<user_id>`. This scope is intentionally a redaction
 barrier: it is not stale-skipped against the unrelated full Forum wall-clock watermark. The
 consumer rebuilds the Forum tenant projection from current owner state, so a profile changed to
-private removes the previously stored public summary.
+private removes the previously stored public summary and a committed handle change replaces the
+old Search presentation.
 
 The existing tenant advisory lock, durable retry, dead-letter bound, and periodic/opportunistic
 inbox reconciliation remain unchanged. This slice does not claim that general Forum producer
@@ -62,7 +72,7 @@ prove that the Profiles owner has already removed or hidden its state.
 
 ## Search shape
 
-Topic and approved-reply documents now use:
+Topic and approved-reply documents use:
 
 - `payload.author` for the bounded public summary or `null`;
 - `facets.author_id` with a non-null value only when the Profiles owner returned a public summary;
@@ -75,14 +85,15 @@ discovery contract are unchanged.
 ## Compatibility
 
 No database migration, Search query API change, Forum GraphQL/REST change, Forum owner-storage
-change, Profiles owner-storage change, or Cargo dependency change is introduced. Existing Search
-document rows are replaced by the next Forum rebuild or relevant durable event.
+change, Profiles owner-storage change, dependency change, or `Cargo.lock` change is introduced.
+Existing Search document rows are replaced by the next Forum rebuild or relevant durable event.
 
 ## Remaining FORUM-23 scope
 
 - owner-issued monotonic projection revisions across Forum producers;
 - an owner-ordered profile or account deletion invalidation contract;
-- transactionally couple non-visibility profile summary updates to their owner events;
+- transactionally couple profile upsert, display-content, locale, and media summary updates to
+  their owner events;
 - bounded category-subtree, tag, locale, date, solved, kind, channel/group, attachment, and
   remaining author filters;
 - member Search projections;
@@ -95,6 +106,7 @@ Not run by the implementation agent, per maintainer instruction.
 Suggested commands:
 
 ```bash
+cargo check -p rustok-profiles --all-targets
 cargo test -p rustok-profiles error -- --nocapture
 cargo test -p rustok-forum search_projection_author -- --nocapture
 cargo test -p rustok-search forum_inbox -- --nocapture
