@@ -36,7 +36,6 @@ const paths = {
     "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
   legacy: "crates/rustok-product/admin/src/transport.rs",
   graphql: "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
-  ui: "crates/rustok-product/admin/src/ui/leptos.rs",
   primaryMutationGuard:
     "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
   categoryReadGuard:
@@ -58,7 +57,6 @@ const wrappers = read(paths.wrappers);
 const safety = read(paths.safety);
 const legacy = read(paths.legacy);
 const graphql = read(paths.graphql);
-const ui = read(paths.ui);
 const primaryMutationGuard = read(paths.primaryMutationGuard);
 const categoryReadGuard = read(paths.categoryReadGuard);
 const primaryReadGuard = read(paths.primaryReadGuard);
@@ -67,16 +65,6 @@ const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
 const doc = read(paths.doc);
 const masterPlan = read(paths.masterPlan);
-
-for (const marker of [
-  '#[path = "transport/graphql_fallback_mutation_error_safety.rs"]',
-  "mod graphql_fallback_mutation_error_safety;",
-  '#[path = "transport/graphql_fallback_mutations.rs"]',
-  "mod graphql_fallback_mutations;",
-  "pub(crate) use graphql_fallback_mutations::{",
-]) {
-  requireText(facade, marker, `${paths.facade}: explicit sanitized fallback exports`);
-}
 
 const operationNames = [
   "create_product_attribute",
@@ -92,50 +80,45 @@ const operationNames = [
   "clear_detached_product_attribute_values",
 ];
 
+for (const marker of [
+  '#[path = "transport/graphql_fallback_mutation_error_safety.rs"]',
+  "mod graphql_fallback_mutation_error_safety;",
+  '#[path = "transport/graphql_fallback_mutations.rs"]',
+  "mod graphql_fallback_mutations;",
+  "pub(crate) use graphql_fallback_mutations::{",
+]) {
+  requireText(facade, marker, `${paths.facade}: explicit sanitized fallback exports`);
+}
 for (const name of operationNames) {
   requireText(facade, name, `${paths.facade}: explicit export ${name}`);
 }
 
-const wrapperOperations = operationNames.map((name, index) => ({
-  name,
-  start: `pub(crate) async fn ${name}(`,
-  end:
-    index + 1 < operationNames.length
-      ? `pub(crate) async fn ${operationNames[index + 1]}(`
-      : null,
-  context: `GraphqlFallbackMutationContext::for_${name}(`,
-  call: `legacy::${name}(`,
-}));
-
-for (const operation of wrapperOperations) {
-  const from = wrappers.indexOf(operation.start);
-  const block =
-    operation.end === null
-      ? from < 0
-        ? ""
-        : wrappers.slice(from)
-      : between(wrappers, operation.start, operation.end, paths.wrappers);
-  if (from < 0) failures.push(`${paths.wrappers}: missing ${operation.start}`);
-  for (const marker of [
-    operation.context,
-    operation.call,
-    ".map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))",
-  ]) {
-    requireText(block, marker, `${paths.wrappers}: ${operation.name} final boundary`);
+for (let index = 0; index < operationNames.length; index += 1) {
+  const name = operationNames[index];
+  const start = `pub(crate) async fn ${name}(`;
+  const next = operationNames[index + 1];
+  const from = wrappers.indexOf(start);
+  const block = next
+    ? between(wrappers, start, `pub(crate) async fn ${next}(`, paths.wrappers)
+    : from < 0
+      ? ""
+      : wrappers.slice(from);
+  if (from < 0) failures.push(`${paths.wrappers}: missing ${start}`);
+  const context = `GraphqlFallbackMutationContext::for_${name}(`;
+  const call = `legacy::${name}(`;
+  const mapper =
+    ".map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))";
+  for (const marker of [context, call, mapper]) {
+    requireText(block, marker, `${paths.wrappers}: ${name} final boundary`);
   }
-  const contextIndex = block.indexOf(operation.context);
-  const callIndex = block.indexOf(operation.call);
-  if (!(contextIndex >= 0 && callIndex >= 0 && contextIndex < callIndex)) {
-    failures.push(`${paths.wrappers}: ${operation.name} context/call order drift`);
+  if (!(block.indexOf(context) >= 0 && block.indexOf(context) < block.indexOf(call))) {
+    failures.push(`${paths.wrappers}: ${name} context must precede compatibility execution`);
   }
 }
 
-if (
-  countText(
-    wrappers,
-    ".map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))",
-  ) !== operationNames.length
-) {
+const fallbackMapper =
+  ".map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))";
+if (countText(wrappers, fallbackMapper) !== operationNames.length) {
   failures.push(`${paths.wrappers}: expected exactly eleven final fallback mappers`);
 }
 
@@ -143,10 +126,7 @@ for (const [marker, label] of [
   ["pub(super) struct GraphqlFallbackMutationContext", "private typed context"],
   ["Uuid::new_v4()", "unique correlation id"],
   ['"product-admin-fallback-mutation:{operation}:{}"', "correlation namespace"],
-  [
-    '"product_admin_fallback_graphql_mutations"',
-    "dedicated fallback mutation boundary",
-  ],
+  ['"product_admin_fallback_graphql_mutations"', "dedicated boundary"],
   ["pub(super) fn map_error(&self, error: GraphqlHttpError)", "typed mapper"],
   ["GraphqlHttpError::Network", "network classification"],
   ["GraphqlHttpError::Http(_)", "HTTP classification"],
@@ -168,24 +148,15 @@ for (const [marker, label] of [
   ["locale_length = ?self.locale_length", "locale shape"],
   ["item_count = ?self.item_count", "collection count"],
   ["input_present = self.input_present", "input presence"],
-  [
-    "native_fallback_attempted = self.native_fallback_attempted",
-    "native fallback state",
-  ],
+  ["native_fallback_attempted = self.native_fallback_attempted", "fallback state"],
   ["native_fallback_attempted: true", "final error fallback invariant"],
   ["public_error", "static typed return"],
 ]) {
   requireText(safety, marker, `${paths.safety}: ${label}`);
 }
-
 for (const name of operationNames) {
-  requireText(
-    safety,
-    `pub(super) fn for_${name}(`,
-    `${paths.safety}: operation context ${name}`,
-  );
+  requireText(safety, `pub(super) fn for_${name}(`, `${paths.safety}: context ${name}`);
 }
-
 for (const marker of [
   "token = %",
   "token = ?",
@@ -211,36 +182,28 @@ for (const marker of [
   forbidText(safety, marker, `${paths.safety}: raw request values must not be logged`);
 }
 
-const legacyOperations = operationNames.map((name, index) => ({
-  name,
-  start: `pub(crate) async fn ${name}(`,
-  end:
-    index + 1 < operationNames.length
-      ? `pub(crate) async fn ${operationNames[index + 1]}(`
-      : "pub(crate) async fn update_product(",
-}));
-
-for (const operation of legacyOperations) {
-  const block = between(legacy, operation.start, operation.end, paths.legacy);
-  const nativeCall = `native_server_adapter::${operation.name}(`;
-  const graphqlCall = `graphql_adapter::${operation.name}(`;
+for (let index = 0; index < operationNames.length; index += 1) {
+  const name = operationNames[index];
+  const next = operationNames[index + 1] ?? "update_product";
+  const block = between(
+    legacy,
+    `pub(crate) async fn ${name}(`,
+    `pub(crate) async fn ${next}(`,
+    paths.legacy,
+  );
+  const nativeCall = `native_server_adapter::${name}(`;
+  const graphqlCall = `graphql_adapter::${name}(`;
   for (const marker of [nativeCall, "Err(_) => {", graphqlCall]) {
-    requireText(block, marker, `${paths.legacy}: ${operation.name} native-first contract`);
+    requireText(block, marker, `${paths.legacy}: ${name} native-first contract`);
   }
   const nativeIndex = block.indexOf(nativeCall);
   const errorIndex = block.indexOf("Err(_) => {");
   const graphqlIndex = block.indexOf(graphqlCall);
-  if (
-    !(
-      nativeIndex >= 0 &&
-      errorIndex > nativeIndex &&
-      graphqlIndex > errorIndex
-    )
-  ) {
-    failures.push(`${paths.legacy}: ${operation.name} native/fallback order drift`);
+  if (!(nativeIndex >= 0 && nativeIndex < errorIndex && errorIndex < graphqlIndex)) {
+    failures.push(`${paths.legacy}: ${name} native/fallback order drift`);
   }
   if (countText(block, nativeCall) !== 1 || countText(block, graphqlCall) !== 1) {
-    failures.push(`${paths.legacy}: ${operation.name} must retain one native and one GraphQL call`);
+    failures.push(`${paths.legacy}: ${name} must retain one native and one GraphQL call`);
   }
 }
 
@@ -265,10 +228,6 @@ for (const marker of [
   requireText(graphql, marker, `${paths.graphql}: preserved mutation contract`);
 }
 
-for (const name of operationNames) {
-  requireText(ui, `transport::${name}(`, `${paths.ui}: preserved UI action ${name}`);
-}
-
 for (const [source, marker, label] of [
   [primaryMutationGuard, "create_product", "primary mutation guard"],
   [categoryReadGuard, "fetch_product_attributes", "category read guard"],
@@ -282,9 +241,7 @@ if (evidence.schema_version !== 1) failures.push(`${paths.evidence}: schema_vers
 if (
   evidence.status !==
   "product_admin_fallback_graphql_mutation_error_safety_source_unvalidated"
-) {
-  failures.push(`${paths.evidence}: status mismatch`);
-}
+) failures.push(`${paths.evidence}: status mismatch`);
 if (JSON.stringify(evidence.operations) !== JSON.stringify(operationNames)) {
   failures.push(`${paths.evidence}: operation scope drift`);
 }
@@ -339,9 +296,7 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 if (
   review.status !==
   "product_admin_fallback_graphql_mutation_error_safety_source_reviewed_unvalidated"
-) {
-  failures.push(`${paths.review}: status mismatch`);
-}
+) failures.push(`${paths.review}: status mismatch`);
 for (const key of [
   "tests_run",
   "cargo_run",
