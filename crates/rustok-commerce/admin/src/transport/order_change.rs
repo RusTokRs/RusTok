@@ -1,4 +1,8 @@
-use super::{graphql_adapter, native_server_adapter};
+use super::{
+    graphql_adapter,
+    graphql_error_safety::{graphql_correlation_id, map_graphql_error},
+    native_server_adapter,
+};
 use crate::model::{CommerceOrderChange, CommerceOrderChangeActionDraft, CommerceOrderChangeList};
 use native_server_adapter::ApiError;
 
@@ -14,7 +18,21 @@ pub async fn fetch_order_changes(
     status: Option<String>,
 ) -> Result<CommerceOrderChangeList, ApiError> {
     if use_graphql_transport() {
-        graphql_adapter::fetch_order_changes(token, tenant_slug, tenant_id, order_id, status).await
+        let operation = "fetch_order_changes";
+        let correlation_id = graphql_correlation_id(operation);
+        let diagnostic_tenant_id = tenant_id.clone();
+        let tenant_slug_length = tenant_slug.as_deref().map(str::len);
+        graphql_adapter::fetch_order_changes(token, tenant_slug, tenant_id, order_id, status)
+            .await
+            .map_err(|error| {
+                map_graphql_error(
+                    error,
+                    operation,
+                    &correlation_id,
+                    Some(diagnostic_tenant_id.as_str()),
+                    tenant_slug_length,
+                )
+            })
     } else {
         native_server_adapter::fetch_order_changes(token, tenant_slug, tenant_id, order_id, status)
             .await
@@ -29,8 +47,21 @@ pub async fn apply_order_change(
     draft: CommerceOrderChangeActionDraft,
 ) -> Result<CommerceOrderChange, ApiError> {
     if use_graphql_transport() {
+        let operation = "apply_order_change";
+        let correlation_id = graphql_correlation_id(operation);
+        let diagnostic_tenant_id = tenant_id.clone();
+        let tenant_slug_length = tenant_slug.as_deref().map(str::len);
         graphql_adapter::apply_order_change(token, tenant_slug, tenant_id, order_change_id, draft)
             .await
+            .map_err(|error| {
+                map_graphql_error(
+                    error,
+                    operation,
+                    &correlation_id,
+                    Some(diagnostic_tenant_id.as_str()),
+                    tenant_slug_length,
+                )
+            })
     } else {
         native_server_adapter::apply_order_change(
             token,
@@ -51,8 +82,21 @@ pub async fn cancel_order_change(
     draft: CommerceOrderChangeActionDraft,
 ) -> Result<CommerceOrderChange, ApiError> {
     if use_graphql_transport() {
+        let operation = "cancel_order_change";
+        let correlation_id = graphql_correlation_id(operation);
+        let diagnostic_tenant_id = tenant_id.clone();
+        let tenant_slug_length = tenant_slug.as_deref().map(str::len);
         graphql_adapter::cancel_order_change(token, tenant_slug, tenant_id, order_change_id, draft)
             .await
+            .map_err(|error| {
+                map_graphql_error(
+                    error,
+                    operation,
+                    &correlation_id,
+                    Some(diagnostic_tenant_id.as_str()),
+                    tenant_slug_length,
+                )
+            })
     } else {
         native_server_adapter::cancel_order_change(
             token,
