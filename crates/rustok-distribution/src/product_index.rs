@@ -49,6 +49,10 @@ enum ProductIndexBridgeError {
 }
 
 pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
+    if !extensions.contains::<rustok_product::ProductRuntimeSelected>() {
+        return Ok(());
+    }
+
     let schema = product_schema().map_err(|error| {
         rustok_core::Error::Validation(format!(
             "selected Product Index schema construction failed: {error}"
@@ -361,13 +365,21 @@ impl ProductRow {
         let revision = row
             .try_get::<i64>("", "index_revision")
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
-        let locale = row
+        let raw_locale = row
             .try_get::<String>("", "locale")
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
-        if tenant_id != expected_tenant || tenant_id.is_nil() || product_id.is_nil() || revision <= 0 {
+        if tenant_id != expected_tenant
+            || tenant_id.is_nil()
+            || product_id.is_nil()
+            || revision <= 0
+        {
             return Err(ProductIndexBridgeError::InvalidRow);
         }
-        let locale = LocaleKey::new(&locale).map_err(ProductIndexBridgeError::InvalidContract)?;
+        let locale = LocaleKey::new(&raw_locale)
+            .map_err(ProductIndexBridgeError::InvalidContract)?;
+        if locale.as_str() != raw_locale {
+            return Err(ProductIndexBridgeError::InvalidRow);
+        }
         let primary_category_id = row
             .try_get::<Option<Uuid>>("", "primary_category_id")
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
@@ -513,8 +525,25 @@ mod tests {
     }
 
     #[test]
+    fn selected_product_bridge_skips_partial_registry_without_product_module() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
+        extensions.insert(rustok_index::PostgresIndexSourceFactoryCatalog::new());
+        register(&mut extensions).unwrap();
+        assert!(extensions
+            .get::<rustok_index::IndexSchemaSourceCatalog>()
+            .unwrap()
+            .is_empty());
+        assert!(extensions
+            .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn selected_product_bridge_registers_schema_and_factory() {
         let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
         extensions.insert(rustok_index::PostgresIndexSourceFactoryCatalog::new());
         register(&mut extensions).unwrap();
