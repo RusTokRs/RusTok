@@ -1,0 +1,39 @@
+{
+  "status": "order_storefront_native_client_diagnostics_source_unvalidated",
+  "scope": "rustok-order storefront complete-checkout native client diagnostics",
+  "source_contract": {
+    "operation_count": 1,
+    "context_created_before_server_function_call": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "cart_id_values_logged": false,
+    "idempotency_key_values_logged": false,
+    "command_metadata_values_logged": false,
+    "static_public_transport_message_preserved": true,
+    "public_transport_variant_preserved": true,
+    "transport_facade_changed": false,
+    "graphql_transport_changed": false,
+    "request_response_dto_changed": false,
+    "mounted_endpoint_changed": false,
+    "runtime_dependency_composition_changed": false,
+    "runtime_error_mapper_changed": false,
+    "checkout_command_payload_changed": false,
+    "validation_messages_changed": false,
+    "fallback_enabled": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_runtime_proven": false,
+    "remote_transport_proven": false
+  }
+}
