@@ -3,7 +3,7 @@
 This M4 chain compiles the database-independent `ExecutableQueryPlan` into
 controlled PostgreSQL statements plus ordered typed bind lists. The compiler does not
 connect to PostgreSQL or execute SQL. Deterministic compiled-row decoding lives in a
-separate application handoff; neither slice publishes an `IndexQueryPort`.
+separate application handoff; execution remains owned by `PostgresIndexQueryPort`.
 
 ## Planner contract
 
@@ -24,6 +24,11 @@ relation identity prefix. The plan fingerprint domain is
 `rustok-index-query-plan-v4`, so older or altered nested-result plans cannot be
 confused with current compiler input.
 
+Aggregate ordering does not add plan fields. Explicit `min_*` / `max_*` directions use the
+existing `PlannedOrder` and mark the derived order field nullable because an empty or all-null
+relation set yields SQL `NULL`. Existing `asc` / `desc` variants retain their original enum
+positions and plan representation.
+
 ## Supported query semantics
 
 `SchemaRegistry::compile_postgres_query` validates and plans the query, decodes
@@ -35,18 +40,17 @@ and validates any continuation cursor, and then compiles:
 - filtering through paths that cross one or more many-cardinality links;
 - typed PostgreSQL casts for boolean, integer, decimal, string, UUID, and
   timestamp fields;
-- deterministic multi-column ordering with explicit null placement;
-- lexicographic keyset continuation with an ascending root `entity_id`
-  tie-breaker;
+- deterministic multi-column root/one-link ordering with explicit null placement;
+- explicit `MIN` / `MAX` ordering through many links for bounded offset pages;
+- lexicographic keyset continuation for ordinary non-aggregate ordering;
 - bounded cursor limits;
 - bounded compatibility offset pagination;
 - an optional separate exact-count statement over the same scope and filters,
   without cursor, limit, offset, or projection leakage.
 
 The main page statement selects hidden tagged JSONB order values when explicit
-ordering is present. `decode_postgres_query_page` uses those values to construct
-the next `IndexCursor` even when an order field was not requested in the public
-projection.
+ordering is present. Ordinary cursor pages use those values to construct the next
+`IndexCursor`. Aggregate cursor pagination remains rejected by both validator and compiler.
 
 ## Predicate and ordering contract
 
@@ -64,8 +68,13 @@ semantics:
   null.
 
 Ascending order uses `NULLS LAST`; descending order uses `NULLS FIRST`, followed
-by the invariant ascending `entity_id` tie-breaker. Ordering through a many link
-remains rejected because no aggregate order policy exists.
+by the invariant ascending root `entity_id` tie-breaker. Plain `asc` / `desc` through a
+many link remains rejected. Callers must select `min_asc`, `min_desc`, `max_asc`, or
+`max_desc`.
+
+Many-link aggregate ordering is accepted only for sortable scalar integer, decimal, string,
+or timestamp fields and only with bounded offset pagination. Boolean, UUID, list-valued,
+singular-path, cursor-paginated, and unsortable aggregate orders fail closed.
 
 ## Many-link filter boundary
 
@@ -108,6 +117,23 @@ ancestry and field alignment. It rejects malformed JSON, arity drift, nil identi
 duplicate identity chains, invalid tagged values, and source type/cardinality/
 nullability mismatches.
 
+## Many-link aggregate ordering boundary
+
+Every explicit aggregate order compiles as a correlated scalar subquery rooted at the current
+outer entity. The subquery walks the complete relation path and evaluates typed `MIN` or `MAX`
+over the terminal scalar. It does not join the relation into the outer rowset.
+
+PostgreSQL aggregate null behavior is the contract:
+
+- null terminal values do not participate;
+- an empty or all-null relation set produces SQL `NULL`;
+- the selected `__order_N` value is SQL null or tagged `IndexValue` JSONB;
+- `ORDER BY` uses the typed scalar expression, explicit null placement, and root ID tie-break.
+
+Compiler validation independently rejects forged plans that omit the aggregate on a many path,
+place an aggregate on a singular path, use an unsupported type, mutate nullable metadata, or
+switch an aggregate plan to cursor pagination.
+
 ## Cursor boundary
 
 Raw v1 cursor envelopes remain available only for codec round trips and the
@@ -130,14 +156,15 @@ and ordered field/direction semantics. A continuation query must use
 Changing a filter, ordered field, or order direction therefore produces
 `QueryFingerprintMismatch` before keyset SQL is emitted. Projection changes alter the
 v4 executable plan and compiled-column contract without invalidating a cursor whose
-filter/order scope is otherwise unchanged.
+filter/order scope is otherwise unchanged. Aggregate directions are rejected before cursor
+encoding or continuation until a separate derived-value cursor contract exists.
 
 ## Bind and SQL boundary
 
 Tenant UUID, schema identities, locale, link metadata, field names, filter values,
 cursor values, limit, and offset are bind values. Only fixed
 `index_entities`/`index_links` table and column names plus compiler-owned `tN`, `lN`,
-`mx_*`, and `mpN_*` aliases appear in SQL.
+`mx_*`, `mpN_*`, and `mo_*` aliases appear in SQL.
 
 The compiler contract, SQL emission, and page/result handoff live in separate modules:
 
@@ -145,7 +172,7 @@ The compiler contract, SQL emission, and page/result handoff live in separate mo
 - `application/postgres_compiler.rs` owns public SQL/bind types, scoped cursor entry
   points, compiled column metadata, and plan invariant checks;
 - `application/postgres_query_sql.rs` owns controlled SQL, correlated many-link
-  predicates/aggregates, and deterministic bind emission;
+  predicates/projections/order aggregates, and deterministic bind emission;
 - `application/postgres_query_result.rs` owns one-row lookahead wrapping, strict
   compiled-column and nested-payload decoding, exact count, `has_more`, and scoped
   next cursors.
@@ -157,10 +184,10 @@ only the main page-limit bind from `N` to `N + 1`. The SQL string, filters, proj
 ordering, keyset predicate, offset, plan fingerprint, and optional count statement
 remain unchanged.
 
-A later database adapter executes the compiled statements and maps driver values into
-`CompiledPostgresRow`. `decode_postgres_query_page` then rechecks the v4 plan
-fingerprint and complete `CompiledQueryColumn` contract, validates flat and nested
-tagged values, removes the lookahead row, and returns `IndexQueryPage`.
+`PostgresIndexQueryPort` maps driver values into `CompiledPostgresRow`.
+`decode_postgres_query_page` then rechecks the v4 plan fingerprint and complete
+`CompiledQueryColumn` contract, validates flat and nested tagged values, removes the
+lookahead row, and returns `IndexQueryPage`.
 
 ## Exact count
 
@@ -172,23 +199,22 @@ child multiplicity cannot inflate the count.
 
 ## Remaining fail-closed semantics
 
-Many-link ordering remains rejected until an explicit aggregate policy exists.
-Compiler validation recalculates propagated many metadata and nested projection groups,
-and rejects missing or inconsistent join/field/result contracts before SQL emission.
+Aggregate cursor continuation remains rejected until a stable derived-value cursor identity,
+strict null/value continuation semantics, and independent reference coverage are implemented.
+Compiler validation recalculates propagated many metadata and nested projection groups, and
+rejects missing or inconsistent join/field/result contracts before SQL emission.
 
 ## Non-claims
 
 This source chain does not:
 
-- prepare or execute a statement;
-- convert abstract bind values into SeaORM/sqlx parameters;
-- decode directly from SeaORM `QueryResult`;
+- execute PostgreSQL in this implementation pass;
+- add aggregate scenarios to the retained PostgreSQL/reference fixture or evidence bundle;
 - authorize callers;
-- verify persisted schema readiness;
-- support aggregate ordering through many links;
-- claim plan/SQL snapshots or PostgreSQL/reference-engine equivalence;
+- weaken persisted schema readiness checks;
+- support aggregate cursor continuation;
 - read source-module tables;
-- change migrations or production partition lifecycle state.
+- change migrations, runtime composition, or production partition lifecycle state.
 
-Formatting, compilation, tests, static verifiers, and later PostgreSQL/reference-engine
-equivalence evidence are reserved for the owner-operated verification phase.
+Formatting, compilation, tests, static verifiers, and PostgreSQL/reference aggregate evidence
+are reserved for the owner-operated verification phase.
